@@ -9,9 +9,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from ..._workflow_progress import (
-    AbstractProgress,
     JaniformOutputController,
-    NullProgress,
     WorkflowProgressMode,
     resolve_workflow_progress_mode,
 )
@@ -21,16 +19,26 @@ from ..errors import (
     calibration_execution_error,
     calibration_integration_error,
 )
-from ..market_data.contracts import CalibrationFlatCarryInput, CalibrationInputFileFormat
+from ..market_data.contracts import (
+    CalibrationFlatCarryInput,
+    CalibrationInputFileFormat,
+    CalibrationMarketDataWorkflowScope,
+)
+from ..market_data.workflow import (
+    MarketDataCalibrationPreparationDiagnostics,
+    MarketDataCalibrationPreparationProvenance,
+)
+from ..presets.resolution import ResolvedPresetWorkflowConfiguration
+from ..sessions.contracts import MarketDataSessionResolution
 from ..staged import (
     CalibrationResumeSettings,
     CalibrationStageExecutionStatus,
 )
+from ..staged.request import StagedCalibrationRequest
 from ..staged.results import build_staged_failure_context, format_staged_failure_summary
-from ._preparation.contracts import FitExecutionConfiguration, PreparedFitWorkflow
+from ._preparation.contracts import FitExecutionConfiguration
 from ._runtime.metadata import normalize_model_parameters
-from ._runtime.stage_reports import resolved_stage_report_payloads
-from ._runtime.workflow import NativeFitWorkflowOutput, run_prepared_fit_workflow
+from ._runtime.workflow import NativeFitWorkflowOutput, run_fit_workflow
 from .model import JaniformModel
 from .report import JaniformFitReport
 
@@ -56,17 +64,9 @@ def fit_with_execution_configuration(
         option_surface_provenance_label=option_surface_provenance_label,
     )
 
-    output_controller = _build_fit_output_controller(
-        configuration.output_controller_factory,
-        silent=configuration.silent,
-    )
+    output_controller = _build_fit_output_controller(silent=configuration.silent)
 
-    (
-        prepared_workflow,
-        staged_response,
-        raw_response_payload,
-        native_model_payload,
-    ) = _run_fit_with_output_controller(
+    native_output = _run_fit_with_output_controller(
         configuration,
         output_controller=output_controller,
         output_dir=output_dir,
@@ -82,13 +82,7 @@ def fit_with_execution_configuration(
         carry=carry,
     )
 
-    fit_report, model = _build_fit_outputs(
-        prepared_workflow=prepared_workflow,
-        staged_response=staged_response,
-        raw_response_payload=raw_response_payload,
-        native_model_payload=native_model_payload,
-        output_dir=output_dir,
-    )
+    fit_report, model = _build_fit_outputs_from_native(native_output)
 
     if model is None:
         if report:
@@ -119,11 +113,10 @@ def _validate_fit_input_labels(
 
 
 def _build_fit_output_controller(
-    output_controller_factory: Any,
     *,
     silent: bool,
 ) -> JaniformOutputController:
-    return output_controller_factory(
+    return JaniformOutputController(
         suppress_info_output=silent,
         default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
     )
@@ -144,12 +137,9 @@ def _run_fit_with_output_controller(
     option_surface_provenance_label: str,
     option_surface_valuation_time_utc: Optional[datetime],
     carry: Optional[CalibrationFlatCarryInput],
-) -> tuple[PreparedFitWorkflow, Any, dict[str, Any], Optional[dict[str, Any]]]:
-    prepared_workflow: Optional[PreparedFitWorkflow] = None
+) -> NativeFitWorkflowOutput:
     suppression_context = redirect_stdout(StringIO()) if configuration.silent else nullcontext()
     native_output: Optional[NativeFitWorkflowOutput] = None
-    staged_response: Optional[Any] = None
-    raw_response_payload: Optional[dict[str, Any]] = None
     resolved_progress_mode = resolve_workflow_progress_mode(
         output_controller.progress_mode,
         default_mode=output_controller.default_progress_mode,
@@ -157,117 +147,87 @@ def _run_fit_with_output_controller(
 
     with suppression_context:
         try:
-            with _fit_preparation_progress(
-                output_controller,
-                resolved_progress_mode=resolved_progress_mode,
-                total_steps=configuration.progress_total_steps,
-            ) as progress:
-                progress.update(detail="inferring workflow inputs")
-
-                prepared_workflow = configuration.prepare_fit_workflow(
-                    run_id=run_id,
-                    tick_data_path=tick_data_path,
-                    tick_data_format=tick_data_format,
-                    tick_data_provenance_label=tick_data_provenance_label,
-                    option_surface_path=option_surface_path,
-                    option_surface_format=option_surface_format,
-                    option_surface_provenance_label=option_surface_provenance_label,
-                    option_surface_valuation_time_utc=option_surface_valuation_time_utc,
-                    carry=carry,
-                    progress=progress,
-                )
-                if prepared_workflow.fit_warning is not None:
-                    output_controller.warning(prepared_workflow.fit_warning)
-
-                progress.update(detail="running calibration")
-
-                native_output = run_prepared_fit_workflow(
-                    configuration,
-                    prepared_workflow=prepared_workflow,
-                    output_dir=output_dir,
-                    resume_settings=resume_settings,
-                    progress_mode=resolved_progress_mode,
-                )
-                staged_response = native_output.staged_response
-                raw_response_payload = native_output.raw_staged_response_payload
+            native_output = run_fit_workflow(
+                configuration,
+                output_dir=output_dir,
+                resume_settings=resume_settings,
+                run_id=run_id,
+                tick_data_path=tick_data_path,
+                tick_data_format=tick_data_format,
+                tick_data_provenance_label=tick_data_provenance_label,
+                option_surface_path=option_surface_path,
+                option_surface_format=option_surface_format,
+                option_surface_provenance_label=option_surface_provenance_label,
+                option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+                carry=carry,
+                progress_mode=resolved_progress_mode,
+            )
         finally:
-            if prepared_workflow is not None and prepared_workflow.temporary_directory is not None:
-                prepared_workflow.temporary_directory.cleanup()
-
             if native_output is not None and native_output.temporary_directory is not None:
                 native_output.temporary_directory.cleanup()
 
-    if prepared_workflow is None:
-        raise RuntimeError("Fit execution did not produce a PreparedFitWorkflow")
+    if native_output is None:
+        raise RuntimeError("Fit execution did not produce a native workflow response")
 
-    if staged_response is None or raw_response_payload is None:
-        raise RuntimeError("Fit execution did not produce a staged calibration response")
-
-    return prepared_workflow, staged_response, raw_response_payload, native_output.model_payload
+    return native_output
 
 
-def _fit_preparation_progress(
-    output_controller: JaniformOutputController,
-    *,
-    resolved_progress_mode: WorkflowProgressMode,
-    total_steps: int,
-) -> AbstractProgress:
-    if resolved_progress_mode is WorkflowProgressMode.HUMAN:
-        return NullProgress()
-
-    return output_controller.progress("fit", total_steps=total_steps)
-
-
-def _build_fit_outputs(
-    prepared_workflow: PreparedFitWorkflow,
-    staged_response: Any,
-    raw_response_payload: dict[str, Any],
-    native_model_payload: Optional[dict[str, Any]],
-    output_dir: Optional[str | Path],
+def _build_fit_outputs_from_native(
+    native_output: NativeFitWorkflowOutput,
 ) -> tuple[JaniformFitReport, Optional[JaniformModel]]:
-    _ = output_dir
-
-    stage_report_payloads = resolved_stage_report_payloads(
-        raw_response_payload,
-        selected_stage_kinds=prepared_workflow.prepared.staged_request.selected_stages,
-        run_id=prepared_workflow.run_id,
-        disk_checkpoint_directory=(
-            prepared_workflow.prepared.request.output_preferences.disk_checkpoint_directory
-        ),
-        require_complete_selection=(
-            staged_response.status == CalibrationStageExecutionStatus.SUCCESS
-        ),
-    )
+    staged_response = native_output.staged_response
+    fit_report_payload = native_output.fit_report_payload
+    preparation_payload = fit_report_payload["preparation"]
+    staged_request_payload = fit_report_payload["staged_request"]
 
     fit_report = JaniformFitReport(
-        run_id=prepared_workflow.run_id,
-        workflow_scope=prepared_workflow.workflow_scope,
-        success=staged_response.status == CalibrationStageExecutionStatus.SUCCESS,
-        resolved_configuration=prepared_workflow.resolved_configuration,
-        session_resolution=prepared_workflow.prepared.session_resolution,
-        preparation_diagnostics=prepared_workflow.prepared.diagnostics,
-        preparation_provenance=prepared_workflow.prepared.provenance,
-        staged_request=prepared_workflow.prepared.staged_request,
-        prepared_data_reference=prepared_workflow.prepared.prepared_data_reference,
-        prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
-        staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
+        run_id=str(fit_report_payload["run_id"]),
+        workflow_scope=CalibrationMarketDataWorkflowScope(
+            str(fit_report_payload["workflow_scope"])
+        ),
+        success=bool(fit_report_payload["success"]),
+        resolved_configuration=ResolvedPresetWorkflowConfiguration.from_mapping(
+            preparation_payload["resolved_configuration"],
+            field_path="fit_report.preparation.resolved_configuration",
+        ),
+        session_resolution=MarketDataSessionResolution.from_mapping(
+            preparation_payload["session_resolution"],
+            field_path="fit_report.preparation.session_resolution",
+        ),
+        preparation_diagnostics=(
+            MarketDataCalibrationPreparationDiagnostics.from_mapping(
+                preparation_payload["diagnostics"]
+            )
+        ),
+        preparation_provenance=(
+            MarketDataCalibrationPreparationProvenance.from_mapping(
+                preparation_payload["provenance"]
+            )
+        ),
+        staged_request=StagedCalibrationRequest.from_mapping(
+            staged_request_payload,
+            field_path_prefix="fit_report.staged_request",
+        ),
+        prepared_data_reference=fit_report_payload.get("prepared_data_reference"),
+        prepared_payload_path=fit_report_payload.get("prepared_payload_path"),
+        staged_execution_input_path=fit_report_payload.get("staged_execution_input_path"),
         staged_response=staged_response,
-        stage_report_payloads=stage_report_payloads,
     )
 
     if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
         return fit_report, None
 
-    model_parameters, model_metadata = _validated_native_model_payload(native_model_payload)
+    model_parameters, model_metadata = _validated_native_model_payload(
+        native_output.model_payload
+    )
 
     model = JaniformModel(
-        run_id=prepared_workflow.run_id,
-        workflow_scope=prepared_workflow.workflow_scope,
+        run_id=fit_report.run_id,
+        workflow_scope=fit_report.workflow_scope,
         parameters=model_parameters,
         metadata=model_metadata,
-        resolved_configuration=prepared_workflow.resolved_configuration,
-        session_resolution=prepared_workflow.prepared.session_resolution,
-        _stage_report_payloads=fit_report.stage_report_payloads,
+        resolved_configuration=fit_report.resolved_configuration,
+        session_resolution=fit_report.session_resolution,
     )
 
     return fit_report, model

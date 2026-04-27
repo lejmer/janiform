@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::sync::Mutex;
+use std::sync::mpsc::Sender;
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform_affine_oracle::sufficient_statistics::{
@@ -24,6 +26,9 @@ use crate::stages::joint_metrics::{
 };
 use crate::stages::joint_refinement::contracts::JointRefinementStageCoarseTickConsistencyMetric;
 
+use super::super::contracts::{
+    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
+};
 use super::super::mean_reversion_runtime::{
     endogenous_interval_factors_from_hourly_contract,
     materialize_joint_refinement_mean_reversion_runtime_inputs,
@@ -54,8 +59,16 @@ struct JointRefinementCoarseConsistencyTask {
 #[derive(Debug)]
 struct JointRefinementCoarseConsistencyTaskOutput {
     seed_position: usize,
+    simulation_seed: u64,
     horizon: JointRefinementCoarseConsistencyHorizon,
     intervals: Option<Vec<JointRefinementAggregatedIntervalObservation>>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct JointRefinementCoarseConsistencyProgress<'a> {
+    pub(crate) sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+    pub(crate) phase: JointRefinementStageProgressPhase,
+    pub(crate) current_item_label: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,16 +81,22 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     tick_seed_summaries: &[(u64, JointRefinementSeedSummary)],
+    progress: Option<JointRefinementCoarseConsistencyProgress<'_>>,
 ) -> Vec<JointRefinementStageCoarseTickConsistencyMetric> {
+    let task_count = coarse_consistency_task_count(tick_seed_summaries);
+
     if joint_refinement_has_parallel_worker_capacity(context) && !tick_seed_summaries.is_empty() {
         return build_joint_coarse_tick_consistency_metrics_parallel(
             context,
             fitted_parameters,
             tick_seed_summaries,
+            progress,
+            task_count,
         );
     }
 
     let mut metrics = Vec::new();
+    let mut completed_tasks = 0;
 
     for (simulation_seed, tick_summary) in tick_seed_summaries {
         let coarse_5m_intervals = build_joint_coarse_interval_observations(
@@ -90,6 +109,15 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
                 .simulated_5m_interval_template
                 .as_slice(),
         );
+        completed_tasks += 1;
+
+        emit_coarse_consistency_metric_progress(
+            progress,
+            completed_tasks,
+            task_count,
+            *simulation_seed,
+            JointRefinementCoarseConsistencyHorizon::FiveMinute,
+        );
 
         let coarse_15m_intervals = build_joint_coarse_interval_observations(
             context,
@@ -100,6 +128,15 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
                 .observed_data
                 .simulated_15m_interval_template
                 .as_slice(),
+        );
+        completed_tasks += 1;
+
+        emit_coarse_consistency_metric_progress(
+            progress,
+            completed_tasks,
+            task_count,
+            *simulation_seed,
+            JointRefinementCoarseConsistencyHorizon::FifteenMinute,
         );
 
         extend_joint_coarse_tick_consistency_metrics_for_seed(
@@ -118,6 +155,8 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     tick_seed_summaries: &[(u64, JointRefinementSeedSummary)],
+    progress: Option<JointRefinementCoarseConsistencyProgress<'_>>,
+    task_count: usize,
 ) -> Vec<JointRefinementStageCoarseTickConsistencyMetric> {
     let tasks = tick_seed_summaries
         .iter()
@@ -137,12 +176,14 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
             ]
         })
         .collect::<Vec<_>>();
+    let completed_tasks = Mutex::new(0usize);
 
     let task_outputs = with_joint_refinement_thread_pool(context, || {
         tasks
             .into_par_iter()
             .map(|task| JointRefinementCoarseConsistencyTaskOutput {
                 seed_position: task.seed_position,
+                simulation_seed: task.simulation_seed,
                 horizon: task.horizon,
                 intervals: build_joint_coarse_interval_observations(
                     context,
@@ -151,6 +192,19 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
                     task.horizon.interval_duration_nanos(),
                     task.horizon.template(context),
                 ),
+            })
+            .inspect(|task_output| {
+                if let Ok(mut completed_tasks_guard) = completed_tasks.lock() {
+                    *completed_tasks_guard = (*completed_tasks_guard).saturating_add(1);
+
+                    emit_coarse_consistency_metric_progress(
+                        progress,
+                        *completed_tasks_guard,
+                        task_count,
+                        task_output.simulation_seed(),
+                        task_output.horizon,
+                    );
+                }
             })
             .collect::<Vec<_>>()
     });
@@ -196,11 +250,62 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
     metrics
 }
 
+fn coarse_consistency_task_count(
+    tick_seed_summaries: &[(u64, JointRefinementSeedSummary)],
+) -> usize {
+    tick_seed_summaries.len().saturating_mul(2)
+}
+
+fn emit_coarse_consistency_metric_progress(
+    progress: Option<JointRefinementCoarseConsistencyProgress<'_>>,
+    completed_units: usize,
+    total_units: usize,
+    simulation_seed: u64,
+    horizon: JointRefinementCoarseConsistencyHorizon,
+) {
+    let Some(progress) = progress else {
+        return;
+    };
+
+    let Some(progress_sender) = progress.sender else {
+        return;
+    };
+
+    if total_units == 0 {
+        return;
+    }
+
+    let current_item_label = match progress.current_item_label {
+        Some(label) => format!("{label}, seed {simulation_seed}, {}", horizon.label()),
+        None => format!("seed {simulation_seed}, {}", horizon.label()),
+    };
+
+    let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+        current_item_label: Some(current_item_label),
+        current_evaluation_count: Some(completed_units),
+        total_evaluation_budget: Some(total_units),
+        ..JointRefinementStageProgressUpdate::new(progress.phase, completed_units, total_units)
+    });
+}
+
+impl JointRefinementCoarseConsistencyTaskOutput {
+    const fn simulation_seed(&self) -> u64 {
+        self.simulation_seed
+    }
+}
+
 impl JointRefinementCoarseConsistencyHorizon {
     const fn interval_duration_nanos(self) -> i64 {
         match self {
             Self::FiveMinute => FIVE_MINUTES_NANOS,
             Self::FifteenMinute => 3 * FIVE_MINUTES_NANOS,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::FiveMinute => "5m",
+            Self::FifteenMinute => "15m",
         }
     }
 
@@ -256,6 +361,7 @@ pub(crate) fn build_joint_candidate_coarse_consistency_artifacts(
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,
     baseline_raw_fit: Option<f64>,
+    progress: Option<JointRefinementCoarseConsistencyProgress<'_>>,
 ) -> Option<JointRefinementCoarseConsistencyArtifacts> {
     let finalist_seed_summaries = cached_seed_summaries_for_candidate_seeds(
         parameter_bits,
@@ -273,6 +379,7 @@ pub(crate) fn build_joint_candidate_coarse_consistency_artifacts(
         context,
         fitted_parameters,
         finalist_seed_summaries.as_slice(),
+        progress,
     );
 
     let raw_fit = joint_coarse_tick_consistency_fit(coarse_tick_consistency.as_slice())?;

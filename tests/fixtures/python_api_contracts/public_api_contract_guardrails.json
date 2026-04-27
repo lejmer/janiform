@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "36f333355ba26ac1aac0f6dbc4d43396402de077146576e58b4d0ed17af240c6",
+  "approved_snapshot_sha256": "62f5d703cb71ec2bcf4e53332bda85c3e4e93f3e2fc87b4accbfa43e8850feb1",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1209,6 +1209,18 @@
       "updated_surfaces": [
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-04-27",
+      "docs_updated": [],
+      "rationale": "High-level fit reports and fitted-model payloads no longer retain full stage payloads or candidate datasets across the Rust-to-Python boundary. Python receives compact staged summaries and model metadata while Rust owns persisted stage artifacts and fitted parameter selection. The fitted-model module no longer exposes the imported model-persistence schema constant through a fake-private alias.",
+      "snapshot_sha256": "62f5d703cb71ec2bcf4e53332bda85c3e4e93f3e2fc87b4accbfa43e8850feb1",
+      "summary": "Remove retained stage payloads from the high-level fit report surface.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.report"
       ]
     }
   ],

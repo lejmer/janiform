@@ -184,6 +184,34 @@ pub(super) fn build_calendar_registry_json(
     })
 }
 
+/// Build a calendar-registry JSON document from an explicit session
+/// configuration payload.
+pub fn build_market_data_session_definition_json(
+    exchange_code: &str,
+    exchange_name: &str,
+    timezone_name: &str,
+    regular_session_windows: &[MarketDataSessionRegularWindowPayload],
+    recurring_closed_windows: &[MarketDataSessionRecurringClosedWindowPayload],
+) -> Result<String, MarketDataLoadingError> {
+    let session_template = SessionTemplate {
+        policy_id: "high_level.explicit_session_configuration.v1".to_string(),
+        provenance_kind: "explicit_configuration".to_string(),
+        exchange_name: exchange_name.to_string(),
+        timezone_name: timezone_name.to_string(),
+        timezone_source: "session_configuration".to_string(),
+        holiday_calendar_code: "USER_DEFINED".to_string(),
+        early_close_rule_set: None,
+        regular_session_windows: regular_session_windows.to_vec(),
+        recurring_closed_windows: recurring_closed_windows.to_vec(),
+        continuous_weekday_template: looks_like_continuous_weekday_template(
+            exchange_code,
+            regular_session_windows,
+        ),
+    };
+
+    build_calendar_registry_json(exchange_code, &session_template)
+}
+
 pub(super) fn build_regular_session_artifacts(
     regular_session_windows: &[MarketDataSessionRegularWindowPayload],
     recurring_closed_windows: &[MarketDataSessionRecurringClosedWindowPayload],

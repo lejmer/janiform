@@ -844,6 +844,13 @@ fn establish_baseline_evaluation(
             &normalized_baseline_final_evaluation.fitted_parameters,
             Some(baseline_parameter_bits.as_slice()),
             None,
+            Some(
+                super::coarse_consistency::JointRefinementCoarseConsistencyProgress {
+                    sender: progress_sender,
+                    phase: JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+                    current_item_label: Some("baseline coarse_consistency"),
+                },
+            ),
         )
         .inspect(|_| {
             emit_coarse_consistency_progress(progress_sender, 1, 1, "baseline coarse_consistency");
@@ -1413,6 +1420,13 @@ fn select_restart_outcome(
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     resume_store: &mut JointRefinementResumeStore,
 ) -> Result<RestartSelectionArtifacts, JointRefinementStageExecutionFailure> {
+    emit_restart_candidate_screening_progress(
+        progress_sender,
+        0,
+        4,
+        "build selectable restart candidates",
+    );
+
     let selectable_restart_outcomes = build_selectable_restart_outcomes(
         restart_outcomes,
         &baseline_evaluation_artifacts.baseline_restart_outcome,
@@ -1427,6 +1441,13 @@ fn select_restart_outcome(
                 && restart_outcome.final_evaluation.invalid_reason.is_none()
         })
         .collect::<Vec<_>>();
+
+    emit_restart_candidate_screening_progress(
+        progress_sender,
+        1,
+        4,
+        "rank valid restart candidates",
+    );
 
     let selected_restart_count = if prepared_bootstrap
         .bootstrap_context
@@ -1457,6 +1478,13 @@ fn select_restart_outcome(
                     .any(|restart_outcome| restart_outcome.restart_id == selection.best_restart_id)
         });
 
+    emit_restart_candidate_screening_progress(
+        progress_sender,
+        2,
+        4,
+        "resolve coarse consistency frontier",
+    );
+
     let selection_artifacts = persisted_selection.map_or_else(
         || {
             select_restart_outcomes_with_lazy_coarse_consistency(
@@ -1484,6 +1512,8 @@ fn select_restart_outcome(
                 .coarse_consistency_artifacts_by_restart_id,
         },
     );
+
+    emit_restart_candidate_screening_progress(progress_sender, 3, 4, "select best restart");
 
     let selection_coarse_consistency_by_restart_id = selection_artifacts
         .coarse_consistency_artifacts_by_restart_id
@@ -1547,6 +1577,8 @@ fn select_restart_outcome(
             .clone(),
         coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
     });
+
+    emit_restart_candidate_screening_progress(progress_sender, 4, 4, "restart selection ready");
 
     Ok(RestartSelectionArtifacts {
         best_restart,
@@ -1647,6 +1679,7 @@ fn assemble_final_stage_outputs(
         baseline_evaluation_artifacts,
         restart_search_artifacts,
         finalist_seed_summaries.as_slice(),
+        progress_sender,
     );
 
     emit_final_assembly_progress(progress_sender, 3, 3, "coarse_tick_consistency");
@@ -1726,6 +1759,7 @@ fn resolve_selected_coarse_tick_consistency(
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     restart_search_artifacts: &RestartSearchArtifacts,
     finalist_seed_summaries: &[(u64, super::JointRefinementSeedSummary)],
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Vec<crate::stages::joint_refinement::contracts::JointRefinementStageCoarseTickConsistencyMetric>
 {
     if restart_search_artifacts.best_restart.restart_id
@@ -1745,6 +1779,13 @@ fn resolve_selected_coarse_tick_consistency(
                         .final_evaluation
                         .fitted_parameters,
                     finalist_seed_summaries,
+                    Some(
+                        super::coarse_consistency::JointRefinementCoarseConsistencyProgress {
+                            sender: progress_sender,
+                            phase: JointRefinementStageProgressPhase::FinalAssembly,
+                            current_item_label: Some("coarse_tick_consistency"),
+                        },
+                    ),
                 )
             });
     }
@@ -1761,6 +1802,13 @@ fn resolve_selected_coarse_tick_consistency(
                     .final_evaluation
                     .fitted_parameters,
                 finalist_seed_summaries,
+                Some(
+                    super::coarse_consistency::JointRefinementCoarseConsistencyProgress {
+                        sender: progress_sender,
+                        phase: JointRefinementStageProgressPhase::FinalAssembly,
+                        current_item_label: Some("coarse_tick_consistency"),
+                    },
+                ),
             )
         })
 }
@@ -1916,6 +1964,21 @@ fn emit_final_assembly_progress(
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressPhase::FinalAssembly,
+        completed_units,
+        total_units,
+        current_item_label,
+    );
+}
+
+fn emit_restart_candidate_screening_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
+    emit_joint_refinement_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::RestartCandidateScreening,
         completed_units,
         total_units,
         current_item_label,

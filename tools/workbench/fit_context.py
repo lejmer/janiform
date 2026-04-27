@@ -23,6 +23,9 @@ from janiform._timestamps import (
 )
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.calibration.fit import JaniformModel
+from janiform.calibration.fit._runtime.input_inference import (
+    tick_data_input_inference_from_model_metadata,
+)
 from janiform.simulation import SimulationProgressEvent
 
 from .artifacts import WorkbenchArtifacts
@@ -823,37 +826,30 @@ def _normalize_tick_series(
     model: JaniformModel,
     preparation_provenance: dict[str, Any],
 ) -> WorkbenchPriceSeries:
-    input_inference = cast(dict[str, Any], model.metadata["input_inference"])
-    price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
-
     normalization_policy = cast(
         dict[str, Any],
         preparation_provenance["normalization_policy"],
     )
+    input_inference = tick_data_input_inference_from_model_metadata(model.metadata)
 
-    timestamp_column = cast(str, input_inference["timestamp_column"])
-    timezone_name = cast(str, input_inference["timestamp_timezone"])
-    tick_price_input_policy = cast(Optional[str], input_inference["tick_price_input_policy"])
-    price_column = cast(Optional[str], price_columns["price_column"])
-    trade_sign_column = cast(Optional[str], price_columns["trade_sign_column"])
     duplicate_record_policy = cast(Optional[str], normalization_policy.get("duplicate_record_policy"))
     sort_records_by_timestamp = bool(normalization_policy.get("sort_records_by_timestamp", True))
 
-    normalized_timezone = _resolve_timezone(timezone_name)
+    normalized_timezone = _resolve_timezone(input_inference.timestamp_timezone)
     required_columns = _required_tick_columns(
-        timestamp_column=timestamp_column,
-        tick_price_input_policy=tick_price_input_policy,
-        price_column=price_column,
-        bid_column=cast(Optional[str], price_columns["bid_column"]),
-        ask_column=cast(Optional[str], price_columns["ask_column"]),
-        trade_sign_column=trade_sign_column,
+        timestamp_column=input_inference.timestamp_column,
+        tick_price_input_policy=input_inference.tick_price_input_policy,
+        price_column=input_inference.price_column,
+        bid_column=input_inference.bid_column,
+        ask_column=input_inference.ask_column,
+        trade_sign_column=input_inference.trade_sign_column,
     )
     available_columns = tuple(
         column_name
         for column_name in required_columns
         if column_name in source_table.column_names
     )
-    if timestamp_column not in available_columns:
+    if input_inference.timestamp_column not in available_columns:
         return _empty_price_series()
 
     timestamp_chunks: list[NDArray[np.int64]] = []
@@ -870,15 +866,15 @@ def _normalize_tick_series(
         batch_row_count = batch.num_rows
 
         timestamp_microseconds_utc = _parse_timestamp_column(
-            batch_columns[timestamp_column],
+            batch_columns[input_inference.timestamp_column],
             normalized_timezone=normalized_timezone,
         )
         price_values, valid_price_mask = _resolve_price_values(
             batch_columns,
-            price_column=price_column,
-            bid_column=cast(Optional[str], price_columns["bid_column"]),
-            ask_column=cast(Optional[str], price_columns["ask_column"]),
-            tick_price_input_policy=tick_price_input_policy,
+            price_column=input_inference.price_column,
+            bid_column=input_inference.bid_column,
+            ask_column=input_inference.ask_column,
+            tick_price_input_policy=input_inference.tick_price_input_policy,
         )
 
         valid_row_mask = valid_price_mask

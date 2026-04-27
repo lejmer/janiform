@@ -2325,8 +2325,6 @@ mod tests {
         intraday_factor_by_bin: Vec<f64>,
         day_of_week_factor: Vec<f64>,
         day_of_year_factor: Vec<f64>,
-        timestamp_utc_nanos: Vec<i64>,
-        normalized_combined_factor_by_event: Vec<f64>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -2513,9 +2511,6 @@ mod tests {
             intraday_factor_by_bin: seasonality_fixture.intraday_factor_by_bin,
             day_of_week_factor: seasonality_fixture.day_of_week_factor,
             day_of_year_factor: seasonality_fixture.day_of_year_factor,
-            timestamp_utc_nanos: seasonality_fixture.timestamp_utc_nanos,
-            normalized_combined_factor_by_event: seasonality_fixture
-                .normalized_combined_factor_by_event,
         };
 
         let option_pricing_input = JointRefinementStageOptionPricingInput {

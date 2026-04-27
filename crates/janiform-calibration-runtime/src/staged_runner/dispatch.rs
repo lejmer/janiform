@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use super::payload_state::joint_refinement_seasonality_factors_from_payload;
 use super::{
     CalibrationExecutionMode, CalibrationInMemoryStagePayloadState, CalibrationRunSpec,
     CalibrationStage, CalibrationStageHandoffTransport, CalibrationStagedRunFailure,
@@ -183,6 +182,7 @@ pub(super) fn run_stage_for_staged_execution(
                             aggregate_progress_percent: progress_update.aggregate_progress_percent,
                             current_item_label: progress_update.current_item_label,
                             current_restart_id: None,
+                            planned_work_item_labels: Vec::new(),
                             active_restart_count: None,
                             current_parameter_block: None,
                             completed_outer_cycles: None,
@@ -195,6 +195,7 @@ pub(super) fn run_stage_for_staged_execution(
                             cumulative_local_evaluation_count: None,
                             current_weighted_objective: None,
                             current_restart_best_weighted_objective: None,
+                            current_candidate_assessment: None,
                             best_restart_id: None,
                             best_weighted_objective: None,
                             current_coarse_consistency_fit: None,
@@ -270,12 +271,6 @@ pub(super) fn run_stage_for_staged_execution(
             let Some(seasonality_factors_input) = payload_state
                 .joint_refinement_seasonality_factors_input
                 .clone()
-                .or_else(|| {
-                    payload_state
-                        .seasonality_stage_payload
-                        .as_ref()
-                        .map(joint_refinement_seasonality_factors_from_payload)
-                })
             else {
                 return Err(
                     CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
@@ -441,6 +436,7 @@ pub(super) fn run_stage_for_staged_execution(
                             aggregate_progress_percent: progress_update.aggregate_progress_percent,
                             current_item_label: progress_update.current_item_label,
                             current_restart_id: progress_update.current_restart_id,
+                            planned_work_item_labels: progress_update.planned_work_item_labels,
                             active_restart_count: progress_update.active_restart_count,
                             current_parameter_block: progress_update.current_parameter_block,
                             completed_outer_cycles: progress_update.completed_outer_cycles,
@@ -455,6 +451,8 @@ pub(super) fn run_stage_for_staged_execution(
                             current_weighted_objective: progress_update.current_weighted_objective,
                             current_restart_best_weighted_objective: progress_update
                                 .current_restart_best_weighted_objective,
+                            current_candidate_assessment: progress_update
+                                .current_candidate_assessment,
                             best_restart_id: progress_update.best_restart_id,
                             best_weighted_objective: progress_update.best_weighted_objective,
                             current_coarse_consistency_fit: progress_update

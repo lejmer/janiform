@@ -28,6 +28,15 @@ pub enum WorkflowError {
         message: String,
     },
 
+    /// Fit workflow input validation failed.
+    #[error("{field}: {message}")]
+    FitValidationFailed {
+        /// Field that failed validation.
+        field: &'static str,
+        /// User-readable validation message.
+        message: String,
+    },
+
     /// Fit artifact writing failed.
     #[error("failed to write fit artifact `{}`", path.display())]
     FitArtifactWrite {
@@ -52,6 +61,13 @@ pub enum WorkflowError {
         /// Source serialization error.
         #[source]
         source: serde_json::Error,
+    },
+
+    /// Serialized workflow output did not match the public payload shape.
+    #[error("workflow output payload was invalid: {message}")]
+    OutputPayloadInvalid {
+        /// User-readable validation message.
+        message: String,
     },
 
     /// Output writing failed.

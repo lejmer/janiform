@@ -270,8 +270,15 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                 Self::StagedExecutionPlanFailed { source }
             }
             janiform_workflows::error::WorkflowError::CalendarRegistryLoadFailed { message }
-            | janiform_workflows::error::WorkflowError::FitExecutionFailed { message } => {
+            | janiform_workflows::error::WorkflowError::FitExecutionFailed { message }
+            | janiform_workflows::error::WorkflowError::OutputPayloadInvalid { message } => {
                 Self::FitExecutionFailed { message }
+            }
+            janiform_workflows::error::WorkflowError::FitValidationFailed { field, message } => {
+                Self::InvalidCommandArgument {
+                    argument_name: field,
+                    message,
+                }
             }
             janiform_workflows::error::WorkflowError::FitArtifactWrite { path, source } => {
                 Self::FitArtifactWrite { path, source }

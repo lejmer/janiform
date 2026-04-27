@@ -311,10 +311,6 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                 day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
                 day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
-                timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos.clone(),
-                normalized_combined_factor_by_event: seasonality_payload
-                    .normalized_combined_factor_by_event
-                    .clone(),
             },
             hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
                 payload: hawkes_payload.clone(),
@@ -341,9 +337,6 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
-                timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
-                normalized_combined_factor_by_event: seasonality_payload
-                    .normalized_combined_factor_by_event,
             },
             hawkes_input: JointRefinementStageHawkesInput::PersistedArtifactReference {
                 artifact_reference: "artifact://hawkes/run-joint-stage-disk".to_string(),
@@ -418,10 +411,6 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
-                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos.clone(),
-                        normalized_combined_factor_by_event: seasonality_payload
-                            .normalized_combined_factor_by_event
-                            .clone(),
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
                         payload: hawkes_payload.clone(),
@@ -451,10 +440,6 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
-                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos.clone(),
-                        normalized_combined_factor_by_event: seasonality_payload
-                            .normalized_combined_factor_by_event
-                            .clone(),
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
                         payload: hawkes_payload.clone(),
@@ -533,9 +518,6 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
                         day_of_week_factor: seasonality_payload.day_of_week_factor,
                         day_of_year_factor: seasonality_payload.day_of_year_factor,
-                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
-                        normalized_combined_factor_by_event: seasonality_payload
-                            .normalized_combined_factor_by_event,
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
                         payload: hawkes_payload,
@@ -604,9 +586,6 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
-                timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
-                normalized_combined_factor_by_event: seasonality_payload
-                    .normalized_combined_factor_by_event,
             },
             hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
                 payload: hawkes_payload,
@@ -666,9 +645,6 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
-                timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
-                normalized_combined_factor_by_event: seasonality_payload
-                    .normalized_combined_factor_by_event,
             },
             hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
                 payload: hawkes_payload,

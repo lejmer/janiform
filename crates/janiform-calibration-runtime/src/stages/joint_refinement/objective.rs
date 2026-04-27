@@ -202,6 +202,65 @@ pub(super) fn dynamics_block_search_objective(
     )
 }
 
+pub(super) fn compressed_final_objective(
+    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
+    thresholds: JointRefinementAdmissibilityThresholds,
+) -> f64 {
+    root_mean_square(
+        [
+            threshold_relative_likelihood_search_score(
+                raw_metrics.aggregated_likelihood_fit,
+                thresholds.aggregated_likelihood_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.aggregated_return_shape_fit,
+                thresholds.aggregated_return_shape_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.return_asymmetry_fit,
+                thresholds.return_asymmetry_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.tick_return_asymmetry_fit,
+                thresholds.tick_return_asymmetry_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.aggregated_return_scale_fit,
+                thresholds.aggregated_return_scale_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.tick_return_scale_fit,
+                thresholds.tick_return_scale_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.business_time_return_scale_fit,
+                thresholds.business_time_return_scale_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.intraday_return_level_fit,
+                thresholds.intraday_return_level_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.activity_shape_fit,
+                thresholds.activity_shape_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.activity_level_fit,
+                thresholds.activity_level_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.rv_activity_coupling_fit,
+                thresholds.rv_activity_coupling_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.price_span_sanity_fit,
+                thresholds.price_span_sanity_fit,
+            ),
+        ]
+        .as_slice(),
+    )
+}
+
 pub(super) fn evaluate_joint_fitted_parameters(
     fitted_parameters: JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,

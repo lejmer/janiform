@@ -36,6 +36,7 @@ use super::payload_state::{
 };
 use super::reporting::{
     build_staged_run_failure_report, diagnostic_runtime_profile_entry_for_stage_report,
+    retained_stage_report,
 };
 use crate::checkpointing::{
     CalibrationInMemoryStagePayloadState, CalibrationMemoryCheckpointStore,
@@ -515,6 +516,9 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             stage_runtime_seconds,
         ));
 
+        let stage_status = stage_report.status();
+        let retained_stage_report = retained_stage_report(&stage_report);
+
         emit_observer_event(
             &mut observer,
             CalibrationStagedRunObserverEvent::StageCompleted {
@@ -523,13 +527,11 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                 stage_index: stage_position + 1,
                 stage_count: execution_stage_order.len(),
                 runtime_seconds: stage_runtime_seconds,
-                stage_report: stage_report.clone(),
+                stage_report: retained_stage_report.clone(),
             },
         );
 
-        let stage_status = stage_report.status();
-
-        stage_reports.push(stage_report.clone());
+        stage_reports.push(retained_stage_report.clone());
 
         if stage_status == CalibrationStageExecutionStatus::Failure {
             let failure = CalibrationStagedRunFailure::StageExecutionFailed {
@@ -646,7 +648,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
 
             if let Err(error_message) = persist_stage_report_snapshot_to_run_directory(
                 artifact_run_writer.pending_run_directory(),
-                &stage_report,
+                &retained_stage_report,
             ) {
                 return build_staged_run_failure_report(
                     run_contract,

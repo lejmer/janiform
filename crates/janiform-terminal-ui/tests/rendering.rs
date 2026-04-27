@@ -2,6 +2,7 @@ use janiform_terminal_ui::{
     ArtifactPathGroup, CompactTable, CompletionSummary, CompletionSummaryStatus, FailureBlock,
     KeyValueRow, SemanticStyle, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, TerminalRenderer, WarningBlock, format_count, format_duration_seconds,
+    format_elapsed_label,
 };
 
 #[test]
@@ -11,6 +12,10 @@ fn summary_renderer_produces_scan_friendly_monochrome_output() {
         title: "run".to_string(),
         rows: vec![
             KeyValueRow::new("run id", "fit-20260426"),
+            KeyValueRow::block(
+                "inputs",
+                "ticks  : data/es_ticks.parquet\noptions: data/es_options.parquet",
+            ),
             KeyValueRow::styled(
                 "output path",
                 ".janiform/runs/fit",
@@ -21,7 +26,7 @@ fn summary_renderer_produces_scan_friendly_monochrome_output() {
 
     assert_eq!(
         summary.render(&renderer),
-        "run\nrun id     : fit-20260426\noutput path: .janiform/runs/fit"
+        "run\n\nrun id     : fit-20260426\ninputs:\n  ticks  : data/es_ticks.parquet\n  options: data/es_options.parquet\noutput path: .janiform/runs/fit"
     );
 }
 
@@ -117,5 +122,9 @@ fn formatting_helpers_keep_units_explicit() {
     assert_eq!(
         format_duration_seconds(std::time::Duration::from_millis(1500)),
         "1.500s"
+    );
+    assert_eq!(
+        format_elapsed_label(std::time::Duration::from_secs(125)),
+        "00:02:05"
     );
 }

@@ -36,7 +36,7 @@ pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> 
 /// Render a staged calibration stage for progress and event payloads.
 pub const fn stage_label(stage: CalibrationStage) -> &'static str {
     match stage {
-        CalibrationStage::Seasonality => "Prepare market data and fit seasonality",
+        CalibrationStage::Seasonality => "Fit seasonality",
         CalibrationStage::Hawkes => "Fit event activity",
         CalibrationStage::ReturnComponents => "Fit return distribution",
         CalibrationStage::MeanReversion => "Fit mean reversion",

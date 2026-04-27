@@ -1096,25 +1096,29 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
 
     let initial_run_contract =
         build_run_contract_with_mode_and_resume(run_id, CalibrationExecutionMode::Memory, None);
-    let _initial_report = run_staged_calibration_with_checkpointing(
+    let initial_report = run_staged_calibration_with_checkpointing(
         &initial_run_contract,
         &calendar_registry,
-        staged_run_inputs(true, true, false),
+        staged_run_inputs(true, true, true),
         Some(&mut checkpoint_store),
         None,
+    );
+    assert_eq!(
+        initial_report.status,
+        CalibrationStageExecutionStatus::Success
     );
 
     let resume_run_contract = build_run_contract_with_mode_and_resume(
         run_id,
         CalibrationExecutionMode::Memory,
         Some(CalibrationResumeSettings::same_process(Some(
-            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
         ))),
     );
     let resume_report = run_staged_calibration_with_checkpointing(
         &resume_run_contract,
         &calendar_registry,
-        staged_run_inputs(false, true, true),
+        staged_run_inputs(false, false, true),
         Some(&mut checkpoint_store),
         None,
     );
@@ -1125,10 +1129,10 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
     );
     assert_eq!(
         resume_report.started_from_stage,
-        Some(CalibrationStage::Hawkes)
+        Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 4);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 4);
+    assert_eq!(resume_report.stage_reports.len(), 3);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 3);
 }
 
 #[test]

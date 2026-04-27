@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
-from typing import Any, Optional
+from typing import Optional
 
 from ...market_data.contracts import (
     CalibrationKnownNewsColumnMapping,
@@ -59,6 +58,8 @@ class FitPreparationConfiguration:
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     dynamics_search_restart_candidate_budget: Optional[int]
+    joint_refinement_option_refinement_candidate_count_override: Optional[int]
+    joint_refinement_audit_option_pricing_enabled: bool
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration
     market_profile_reference: Optional[MarketProfileReference]
     known_news_reference: Optional[KnownNewsPresetReference]
@@ -74,8 +75,4 @@ class FitPreparationConfiguration:
 @dataclass(frozen=True, slots=True)
 class FitExecutionConfiguration:
     silent: bool
-    progress_total_steps: int
     preparation: FitPreparationConfiguration
-    output_controller_factory: Callable[..., Any]
-    prepare_fit_workflow: Callable[..., PreparedFitWorkflow]
-    build_fit_inference_metadata: Callable[[PreparedFitWorkflow], dict[str, Any]]

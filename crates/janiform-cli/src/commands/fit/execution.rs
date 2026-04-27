@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 
 use janiform::calibration::{
@@ -10,12 +9,12 @@ use janiform_event_log::RunEvent;
 use janiform_terminal_ui::{ProgressAdapter, format_path};
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::fit::{
-    FitCompletionView, FitExecutionObserver, FitExecutionOutput, FitExecutionRequest,
+    FitExecutionObserver, FitExecutionOutput, FitExecutionRequest, FitTerminalOutput,
     FitWorkflowPaths, apply_resume_settings as apply_fit_resume_settings, failure_reason,
-    fit_completion_json_payload, fit_completion_view, fit_start_summary,
-    run_fit_execution as run_shared_fit_execution,
+    fit_completion_json_payload, run_fit_execution as run_shared_fit_execution,
     staged_execution_paths as shared_staged_execution_paths,
 };
+use janiform_workflows::write_machine_event_to_stderr;
 use serde_json::Value;
 use serde_json::json;
 
@@ -209,14 +208,13 @@ fn run_execution_input(
 ) -> Result<(), CliError> {
     let paths = artifacts.paths(context, &execution_input);
     let input_paths = artifacts.input_paths(&execution_input);
-
-    emit_start_summary(context, &execution_input, input_paths.as_slice(), &paths)?;
+    let terminal_output = fit_terminal_output_for_context(context);
 
     let mut progress_adapter = match context.output_mode() {
         OutputMode::Human | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
         OutputMode::Json | OutputMode::Silent => None,
     };
-    let mut machine_event_sink = write_machine_event;
+    let mut machine_event_sink = write_machine_event_to_stderr;
 
     // Completion rendering happens after the shared runner consumes the request.
     // Keep boundary copies here rather than making the workflow API borrow CLI state.
@@ -234,6 +232,7 @@ fn run_execution_input(
         },
         FitExecutionObserver {
             progress_adapter: progress_adapter.as_mut(),
+            terminal_output,
             machine_event_sink: machine_event_sink_for_context(context, &mut machine_event_sink),
         },
     )?;
@@ -254,23 +253,16 @@ fn run_execution_input(
     Ok(())
 }
 
-fn emit_start_summary(
-    context: &CommandContext,
-    execution_input: &CalibrationStagedExecutionInput,
-    input_paths: &[String],
-    paths: &FitWorkflowPaths,
-) -> Result<(), CliError> {
-    if context.output_mode() != OutputMode::Human {
-        return Ok(());
+fn fit_terminal_output_for_context(context: &CommandContext) -> Option<FitTerminalOutput> {
+    match context.output_mode() {
+        OutputMode::Human => Some(FitTerminalOutput::start_and_completion(
+            context.stdout_renderer(),
+        )),
+        OutputMode::Quiet => Some(FitTerminalOutput::completion_only(
+            context.stdout_renderer(),
+        )),
+        OutputMode::Json | OutputMode::Silent => None,
     }
-
-    let rendered =
-        fit_start_summary(execution_input, input_paths, paths).render(&context.stdout_renderer());
-
-    context
-        .stdout_renderer()
-        .write_stdout(&rendered)
-        .map_err(|source| CliError::OutputWrite { source })
 }
 
 fn emit_completion_output(
@@ -286,23 +278,7 @@ fn emit_completion_output(
             paths,
             output.event_log_path.as_path(),
         )),
-        OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
-            let rendered = match fit_completion_view(
-                &output.report,
-                paths,
-                output.event_log_path.as_path(),
-                output.execution_duration,
-            )? {
-                FitCompletionView::Success(summary) => summary.render(&context.stdout_renderer()),
-                FitCompletionView::Failure(summary) => summary.render(&context.stdout_renderer()),
-            };
-
-            context
-                .stdout_renderer()
-                .write_stdout(&rendered)
-                .map_err(|source| CliError::OutputWrite { source })
-        }
+        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }
 
@@ -315,15 +291,6 @@ fn machine_event_sink_for_context<'a>(
     }
 
     None
-}
-
-fn write_machine_event(event: &RunEvent) -> Result<(), WorkflowError> {
-    let mut stderr = std::io::stderr().lock();
-
-    serde_json::to_writer(&mut stderr, event)
-        .map_err(|source| WorkflowError::OutputSerialize { source })?;
-
-    writeln!(stderr).map_err(|source| WorkflowError::OutputWrite { source })
 }
 
 fn apply_resume_settings(

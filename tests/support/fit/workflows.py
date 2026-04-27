@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Optional, cast
@@ -78,7 +79,7 @@ def patch_fit_workflow_runner(
 ) -> None:
     monkeypatch.setattr(
         fit_execution_module,
-        "run_prepared_fit_workflow",
+        "_run_fit_with_output_controller",
         _fit_workflow_runner_from_staged_runner(staged_runner),
     )
 
@@ -86,30 +87,48 @@ def patch_fit_workflow_runner(
 def _fit_workflow_runner_from_staged_runner(
     staged_runner: StagedRunner,
 ) -> FitWorkflowRunner:
-    def run_prepared_fit_workflow(
+    def run_fit_workflow(
         configuration: Any,
         *,
-        prepared_workflow: Any,
+        output_controller: Any,
         output_dir: Optional[str | Path],
+        run_id: Optional[str],
         resume_settings: Any,
-        progress_mode: Any,
+        tick_data_path: str | Path,
+        tick_data_format: Optional[Any],
+        tick_data_provenance_label: str,
+        option_surface_path: Optional[str | Path],
+        option_surface_format: Any,
+        option_surface_provenance_label: str,
+        option_surface_valuation_time_utc: Any,
+        carry: Any,
     ) -> NativeFitWorkflowOutput:
+        _ = output_controller
         _ = resume_settings
-        _ = progress_mode
+        _ = option_surface_path
+        _ = option_surface_format
+        _ = option_surface_provenance_label
+        _ = option_surface_valuation_time_utc
+        _ = carry
 
+        resolved_run_id = run_id or "fit-workflow-test"
+        prepared_handle = _PreparedExecutionHandle(run_id=resolved_run_id)
         staged_response, raw_response_payload = staged_runner(
-            prepared_workflow.prepared.prepared_handle,
+            prepared_handle,
             configuration=configuration,
-            prepared_workflow=prepared_workflow,
         )
         model_payload = (
             None
             if staged_response.status != CalibrationStageExecutionStatus.SUCCESS
-            else _successful_full_model_payload(run_id=prepared_workflow.run_id)
+            else _successful_full_model_payload(run_id=resolved_run_id)
         )
-        fit_report_payload = _fit_report_placeholder(
-            run_id=prepared_workflow.run_id,
+        fit_report_payload = _fit_report_payload(
+            run_id=resolved_run_id,
             success=staged_response.status == CalibrationStageExecutionStatus.SUCCESS,
+            raw_response_payload=raw_response_payload,
+            tick_data_path=tick_data_path,
+            tick_data_format=tick_data_format,
+            tick_data_provenance_label=tick_data_provenance_label,
         )
 
         if output_dir is not None:
@@ -130,18 +149,62 @@ def _fit_workflow_runner_from_staged_runner(
             temporary_directory=None,
         )
 
-    return run_prepared_fit_workflow
+    return run_fit_workflow
 
 
-def _fit_report_placeholder(
+class _PreparedExecutionHandle:
+    def __init__(self, *, run_id: str) -> None:
+        self._run_id = run_id
+
+    def serialize_execution_input_json(self) -> str:
+        return json.dumps({"request": {"run_id": self._run_id}})
+
+
+def _fit_report_payload(
     *,
     run_id: str,
     success: bool,
+    raw_response_payload: dict[str, Any],
+    tick_data_path: str | Path,
+    tick_data_format: Optional[Any],
+    tick_data_provenance_label: str,
 ) -> dict[str, Any]:
+    selected_stages = tuple(
+        cast(str, stage_report["stage"])
+        for stage_report in cast(list[dict[str, Any]], raw_response_payload["stage_reports"])
+    )
+
     return {
         "schema_version": "janiform.fit_report.v1",
         "run_id": run_id,
+        "workflow_scope": "full_without_option_surface",
         "success": success,
+        "summary": {
+            "run_id": run_id,
+            "workflow_scope": "full_without_option_surface",
+            "success": success,
+            "selected_stages": list(selected_stages),
+            "stage_statuses": [
+                {
+                    "stage": stage_report["stage"],
+                    "status": stage_report["status"],
+                }
+                for stage_report in cast(list[dict[str, Any]], raw_response_payload["stage_reports"])
+            ],
+            "diagnostic_count": len(raw_response_payload.get("diagnostic_artifact_references", [])),
+        },
+        "preparation": _preparation_payload(
+            run_id=run_id,
+            selected_stages=selected_stages,
+            tick_data_path=tick_data_path,
+            tick_data_format=tick_data_format,
+            tick_data_provenance_label=tick_data_provenance_label,
+        ),
+        "prepared_data_reference": "memory://prepared/ticks",
+        "prepared_payload_path": None,
+        "staged_execution_input_path": None,
+        "staged_request": _staged_request_payload(run_id=run_id, selected_stages=selected_stages),
+        "staged_response": raw_response_payload,
     }
 
 
@@ -155,10 +218,260 @@ def _successful_full_model_payload(*, run_id: str) -> dict[str, Any]:
     }
 
 
+def _preparation_payload(
+    *,
+    run_id: str,
+    selected_stages: tuple[str, ...],
+    tick_data_path: str | Path,
+    tick_data_format: Optional[Any],
+    tick_data_provenance_label: str,
+) -> dict[str, Any]:
+    tick_data_format_label = (
+        "csv" if tick_data_format is None else getattr(tick_data_format, "value", tick_data_format)
+    )
+
+    return {
+        "resolved_configuration": _resolved_configuration_payload(),
+        "session_resolution": _session_resolution_payload(),
+        "diagnostics": _preparation_diagnostics_payload(selected_stages=selected_stages),
+        "provenance": _preparation_provenance_payload(
+            selected_stages=selected_stages,
+            tick_data_path=tick_data_path,
+            tick_data_format=str(tick_data_format_label),
+            tick_data_provenance_label=tick_data_provenance_label,
+        ),
+        "input_inference": _input_inference_payload(run_id=run_id),
+        "reference_price": 100.0,
+    }
+
+
+def _resolved_configuration_payload() -> dict[str, Any]:
+    selected_session = {
+        "category": "session",
+        "registry_scope": "built_in",
+        "preset_name": "XNYS",
+    }
+    selected_known_news = {
+        "category": "known_news",
+        "registry_scope": "built_in",
+        "preset_name": "none",
+    }
+
+    return {
+        "schema_version": "calibration.preset_resolution.resolved_configuration.v1",
+        "market_profile": {
+            "configuration": {
+                "profile_name": "us_equity_cash",
+                "session_reference": {
+                    "usage_mode": "named",
+                    "preset_name": "XNYS",
+                    "registry_scope": "built_in",
+                },
+                "known_news_reference": {
+                    "usage_mode": "named",
+                    "preset_name": "none",
+                    "registry_scope": "built_in",
+                },
+                "known_news_policy": "suggest_only",
+                "timestamp_timezone_name": "UTC",
+                "column_alias_hints": [],
+                "default_calibration_hint_ids": [],
+            },
+            "source_kind": "built_in",
+            "selected_preset": {
+                "category": "market_profile",
+                "registry_scope": "built_in",
+                "preset_name": "us_equity_cash",
+            },
+            "applied_override_fields": [],
+        },
+        "session": {
+            "configuration": _session_configuration_payload(),
+            "source_kind": "built_in",
+            "selected_preset": selected_session,
+            "inferred_from_data": False,
+            "applied_override_fields": [],
+        },
+        "known_news": {
+            "configuration": {
+                "events": [],
+                "calendar_timezone_name": "America/New_York",
+            },
+            "source_kind": "built_in",
+            "selected_preset": selected_known_news,
+            "applied_override_fields": [],
+            "recommended_reference": None,
+            "recommendation_policy": None,
+            "recommendation_applied": False,
+        },
+        "diagnostics": [],
+    }
+
+
+def _session_configuration_payload() -> dict[str, Any]:
+    return {
+        "exchange_code": "XNYS",
+        "exchange_name": "New York Stock Exchange",
+        "timezone_name": "America/New_York",
+        "regular_session_windows": [
+            {
+                "weekday": weekday,
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "16:00",
+            }
+            for weekday in ("mon", "tue", "wed", "thu", "fri")
+        ],
+        "recurring_closed_windows": [],
+    }
+
+
+def _session_resolution_payload() -> dict[str, Any]:
+    return {
+        "schema_version": "calibration.market_data.session_resolution.v1",
+        "resolution_kind": "automatic_inference",
+        "provenance_kind": "bundled_preset",
+        "selected_policy_id": "XNYS",
+        "manual_override_applied": False,
+        "exchange_code": "XNYS",
+        "exchange_name": "New York Stock Exchange",
+        "resolved_timezone_name": "America/New_York",
+        "timezone_source": "session",
+        "open_session_duration_hours_per_week": 32.5,
+        "confidence_score": 1.0,
+        "confidence_label": "high",
+        "regular_session_windows": _session_configuration_payload()["regular_session_windows"],
+        "recurring_closed_windows": [],
+        "reasons": [],
+        "ambiguity_warnings": [],
+        "metadata_discrepancies": [],
+        "resolved_session_definition_json": json.dumps(_session_configuration_payload()),
+    }
+
+
+def _preparation_diagnostics_payload(*, selected_stages: tuple[str, ...]) -> dict[str, Any]:
+    return {
+        "workflow_scope": "full_without_option_surface",
+        "selected_stages": list(selected_stages),
+        "executed_preprocessing_steps": [],
+        "tick_record_count": 3,
+        "option_surface_record_count": 0,
+        "known_news_event_count": 0,
+        "known_news_events_outside_source_window_count": 0,
+        "session_open_tick_count": 3,
+        "session_closed_tick_count": 0,
+        "known_news_open_event_count": 0,
+        "known_news_closed_event_count": 0,
+        "seasonality_overlay_count": 0,
+        "hawkes_candidate_count": 1,
+        "known_news_return_sample_count": 0,
+        "intraday_jump_candidate_count": 0,
+        "close_open_boundary_observation_count": 0,
+        "material_close_open_gap_count": 0,
+    }
+
+
+def _preparation_provenance_payload(
+    *,
+    selected_stages: tuple[str, ...],
+    tick_data_path: str | Path,
+    tick_data_format: str,
+    tick_data_provenance_label: str,
+) -> dict[str, Any]:
+    return {
+        "tick_data_summary": {
+            "path": str(tick_data_path),
+            "file_format": tick_data_format,
+            "provenance_label": tick_data_provenance_label,
+            "source_row_count": 3,
+            "retained_row_count": 3,
+            "dropped_duplicate_row_count": 0,
+            "sort_records_by_timestamp": True,
+            "applied_timestamp_timezone": "UTC",
+            "canonical_value_field": "trade_price",
+            "value_mapping_policy": "explicit_price_column",
+        },
+        "option_surface_summary": None,
+        "known_news_summary": None,
+        "normalization_policy": {
+            "timestamp_timezone": "UTC",
+            "sort_records_by_timestamp": True,
+            "duplicate_record_policy": None,
+            "tick_price_input_policy": "explicit_price_column",
+            "option_quote_input_policy": None,
+        },
+        "workflow_scope": "full_without_option_surface",
+        "selected_stages": list(selected_stages),
+        "session_definition_path": None,
+        "derived_trade_events_data_reference": "memory://prepared/ticks",
+        "derived_option_surface_data_reference": None,
+        "derivation_policies": [],
+        "deterministic_defaults_applied": [],
+    }
+
+
+def _staged_request_payload(*, run_id: str, selected_stages: tuple[str, ...]) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "data_inputs": {
+            "exchange_code": "XNYS",
+            "trade_events_data_reference": "memory://prepared/ticks",
+            "option_surface_data_reference": None,
+        },
+        "execution_mode": "memory",
+        "selected_stages": list(selected_stages),
+        "seed_settings": {
+            "global_seed": 17,
+            "stage_seed_overrides": [],
+        },
+        "optimizer_settings_by_stage": [
+            {
+                "stage": stage,
+                "optimizer_settings": {
+                    "solver_name": "test",
+                    "max_iterations": 1,
+                    "cpu_count": 1,
+                    "absolute_tolerance": 1.0,
+                    "relative_tolerance": 1.0,
+                    "constraint_penalty_weight": 0.0,
+                },
+            }
+            for stage in selected_stages
+        ],
+        "stage_handoffs": [],
+        "resume_settings": None,
+    }
+
+
+def _input_inference_payload(*, run_id: str) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "workflow_scope": "full_without_option_surface",
+        "tick_data_source": {
+            "file_format": "csv",
+        },
+        "tick_data_column_mapping": {
+            "timestamp_column": "timestamp_utc",
+            "price_column": "trade_price",
+            "trade_sign_column": "trade_sign",
+            "bid_column": None,
+            "ask_column": None,
+        },
+        "normalization_policy": {
+            "timestamp_timezone": "UTC",
+            "timestamp_timezone_source": "explicit",
+            "tick_price_input_policy": "explicit_price_column",
+        },
+    }
+
+
 def _successful_full_model_parameters_payload() -> dict[str, Any]:
     _, raw_response = successful_full_model_staged_runner_payload("fixture-run")
     stage_reports = cast(list[dict[str, Any]], raw_response["stage_reports"])
     seasonality_stage_payload = cast(dict[str, Any], stage_reports[0]["normalized_stage_payload"])
+    joint_refinement_payload = deepcopy(stage_reports[4]["fitted_stage_payload"])
+    joint_refinement_payload.pop("baseline_hawkes_fitted_parameters", None)
+    joint_refinement_payload.pop("baseline_return_components_fitted_parameters", None)
 
     return {
         "seasonality": {
@@ -169,10 +482,7 @@ def _successful_full_model_parameters_payload() -> dict[str, Any]:
             "day_of_week_factor": tuple(seasonality_stage_payload["day_of_week_factor"]),
             "day_of_year_factor": tuple(seasonality_stage_payload["day_of_year_factor"]),
         },
-        "hawkes": deepcopy(stage_reports[1]["fitted_stage_payload"]),
-        "return_components": deepcopy(stage_reports[2]["fitted_stage_payload"]),
-        "mean_reversion": deepcopy(stage_reports[3]["fitted_stage_payload"]),
-        "joint_refinement": deepcopy(stage_reports[4]["fitted_stage_payload"]),
+        "joint_refinement": joint_refinement_payload,
     }
 
 
@@ -196,10 +506,7 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
         "known_news_source_kind": "built_in",
         "fitted_parameter_summary": {
             "stage_keys": [
-                "hawkes",
                 "joint_refinement",
-                "mean_reversion",
-                "return_components",
                 "seasonality",
             ],
             "selected_candidate_ids": {
@@ -213,7 +520,7 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
                 "source_kind": "built_in",
                 "selected_preset": {
                     "category": "market_profile",
-                    "registry_scope": "bundled",
+                    "registry_scope": "built_in",
                     "preset_name": "us_equity_cash",
                 },
                 "applied_override_fields": [],
@@ -222,7 +529,7 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
                 "source_kind": "built_in",
                 "selected_preset": {
                     "category": "session",
-                    "registry_scope": "bundled",
+                    "registry_scope": "built_in",
                     "preset_name": "XNYS",
                 },
                 "applied_override_fields": [],
@@ -232,7 +539,7 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
                 "source_kind": "built_in",
                 "selected_preset": {
                     "category": "known_news",
-                    "registry_scope": "bundled",
+                    "registry_scope": "built_in",
                     "preset_name": "none",
                 },
                 "applied_override_fields": [],
@@ -264,39 +571,7 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
             "artifact_bundle_available": False,
             "artifact_families": [],
         },
-        "input_inference": {
-            "run_id": run_id,
-            "workflow_scope": "full_without_option_surface",
-            "tick_data_format": "csv",
-            "timestamp_column": "timestamp_utc",
-            "timestamp_timezone": "UTC",
-            "timestamp_timezone_source": "explicit",
-            "tick_price_input_policy": "explicit_price_column",
-            "tick_price_columns": {
-                "price_column": "trade_price",
-                "trade_sign_column": "trade_sign",
-                "bid_column": None,
-                "ask_column": None,
-            },
-            "available_columns": [
-                "timestamp_utc",
-                "trade_price",
-                "trade_sign",
-            ],
-            "candidate_columns": {
-                "timestamp": ["timestamp_utc"],
-                "price": ["trade_price"],
-                "trade_sign": ["trade_sign"],
-            },
-            "default_calibration_hint_ids": [],
-            "market_profile": "us_equity_cash",
-            "known_news": {
-                "selected_preset": "none",
-                "recommended_preset": None,
-                "recommendation_applied": False,
-            },
-            "session_source_kind": "built_in",
-        },
+        "input_inference": _input_inference_payload(run_id=run_id),
         "diagnostics": [],
         "fit_report_summary": {
             "run_id": run_id,

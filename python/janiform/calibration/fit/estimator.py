@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
 from ._execution import fit_with_execution_configuration
-from ._inference import build_fit_inference_payload
+from ._inference import FitInference
 from ._preparation.configuration import (
     coerce_known_news_reference,
     coerce_market_profile_reference,
@@ -21,22 +21,18 @@ from ._preparation.configuration import (
 from ._preparation.contracts import (
     FitExecutionConfiguration,
     FitPreparationConfiguration,
-)
-from ._preparation.workflow import (
     PreparedFitWorkflow,
-    build_market_data_request,
-    fit_progress_total_steps,
-    infer_session_resolution,
-    prepare_fit_workflow,
 )
+from ._runtime.workflow import prepare_fit_workflow as prepare_native_fit_workflow
 from .model import JaniformModel
 from .result import JaniformFitResult
+from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
 from ..errors import calibration_error
 from ..market_data.contracts import (
+    CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
     CalibrationExecutionMode,
     CalibrationFlatCarryInput,
     CalibrationInputFileFormat,
-    CalibrationInputFileReference,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataPreprocessingSettings,
@@ -45,15 +41,12 @@ from ..market_data.contracts import (
     CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
 )
-from ..market_data.request import MarketDataCalibrationRequest
-from ..market_data.translation import (
-    NormalizedMarketDataSource,
-    normalize_market_data_source,
-)
+from ..market_data.request import validate_market_data_calibration_request
 from ..market_data.workflow import (
-    prepare_market_data_calibration,
+    MarketDataCalibrationPreparationDiagnostics,
+    MarketDataCalibrationPreparationProvenance,
+    PreparedMarketDataCalibration,
 )
-from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
 from ..presets.references import (
     KnownNewsPresetReference,
     MarketProfileExplicitConfiguration,
@@ -62,11 +55,10 @@ from ..presets.references import (
     SessionPresetReference,
 )
 from ..presets.registry import PresetRegistry
-from ..presets.resolution import ResolvedPresetWorkflowConfiguration, resolve_preset_workflow_configuration
+from ..presets.resolution import ResolvedPresetWorkflowConfiguration
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged import CalibrationResumeSettings, CalibrationStageSolverSettings
-from ..._workflow_progress import AbstractProgress, NullProgress
-from ..._workflow_progress import JaniformOutputController
+from ..staged.request import StagedCalibrationRequest
 
 _DEFAULT_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     execution_mode=CalibrationExecutionMode.MEMORY,
@@ -87,6 +79,8 @@ class JaniformEstimator:
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     _dynamics_search_restart_candidate_budget: Optional[int]
+    _joint_refinement_option_refinement_candidate_count_override: Optional[int]
+    _joint_refinement_audit_option_pricing_enabled: bool
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
     _known_news_reference: Optional[KnownNewsPresetReference]
@@ -109,6 +103,8 @@ class JaniformEstimator:
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         dynamics_search_restart_candidate_budget: Optional[int] = None,
+        joint_refinement_option_refinement_candidate_count: Optional[int] = None,
+        joint_refinement_audit_option_pricing: bool = False,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -153,6 +149,15 @@ class JaniformEstimator:
                 "must be strictly positive when provided",
             )
 
+        if (
+            joint_refinement_option_refinement_candidate_count is not None
+            and joint_refinement_option_refinement_candidate_count <= 0
+        ):
+            raise calibration_error(
+                "joint_refinement_option_refinement_candidate_count",
+                "must be strictly positive when provided",
+            )
+
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
         self._normalization_policy = normalization_policy
@@ -167,6 +172,12 @@ class JaniformEstimator:
             else pricing_interval_schedule_policy
         )
         self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
+        self._joint_refinement_option_refinement_candidate_count_override = (
+            joint_refinement_option_refinement_candidate_count
+        )
+        self._joint_refinement_audit_option_pricing_enabled = (
+            joint_refinement_audit_option_pricing
+        )
         self._market_profile_reference = coerce_market_profile_reference(market_profile)
         self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
         self._known_news_reference = coerce_known_news_reference(known_news)
@@ -282,6 +293,12 @@ class JaniformEstimator:
                 else pricing_interval_schedule_policy
             ),
             dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
+            joint_refinement_option_refinement_candidate_count_override=(
+                self._joint_refinement_option_refinement_candidate_count_override
+            ),
+            joint_refinement_audit_option_pricing_enabled=(
+                self._joint_refinement_audit_option_pricing_enabled
+            ),
             default_endogenous_mean_reversion_configuration=(
                 self._default_endogenous_mean_reversion_configuration()
             ),
@@ -312,46 +329,7 @@ class JaniformEstimator:
 
         return FitExecutionConfiguration(
             silent=effective_silent,
-            progress_total_steps=fit_progress_total_steps(preparation_configuration),
             preparation=preparation_configuration,
-            output_controller_factory=JaniformOutputController,
-            prepare_fit_workflow=lambda **kwargs: prepare_fit_workflow(
-                preparation_configuration,
-                **kwargs,
-                temporary_directory_factory=TemporaryDirectory,
-                normalize_market_data_source_method=normalize_market_data_source,
-                resolve_preset_workflow_configuration_method=resolve_preset_workflow_configuration,
-                prepare_market_data_calibration_method=prepare_market_data_calibration,
-            ),
-            build_fit_inference_metadata=self._build_fit_inference_metadata,
-        )
-
-    def _build_market_data_request(
-        self,
-        *,
-        run_id: str,
-        workflow_scope: CalibrationMarketDataWorkflowScope,
-        tick_data_source: CalibrationInputFileReference,
-        option_surface_source: Optional[CalibrationInputFileReference],
-        option_surface_valuation_time_utc: Optional[datetime],
-        carry: Optional[CalibrationFlatCarryInput],
-        resolved_configuration: ResolvedPresetWorkflowConfiguration,
-        tick_data_column_mapping: CalibrationTickDataColumnMapping,
-        normalization_policy: CalibrationMarketDataNormalizationPolicy,
-        working_directory: Optional[Path],
-    ) -> MarketDataCalibrationRequest:
-        return build_market_data_request(
-            self._build_preparation_configuration(),
-            run_id=run_id,
-            workflow_scope=workflow_scope,
-            tick_data_source=tick_data_source,
-            option_surface_source=option_surface_source,
-            option_surface_valuation_time_utc=option_surface_valuation_time_utc,
-            carry=carry,
-            resolved_configuration=resolved_configuration,
-            tick_data_column_mapping=tick_data_column_mapping,
-            normalization_policy=normalization_policy,
-            working_directory=working_directory,
         )
 
     def _prepare_fit_workflow(
@@ -366,25 +344,34 @@ class JaniformEstimator:
         option_surface_provenance_label: str,
         option_surface_valuation_time_utc: Optional[datetime] = None,
         carry: Optional[CalibrationFlatCarryInput] = None,
-        progress: Optional[AbstractProgress] = None,
     ) -> PreparedFitWorkflow:
-        return prepare_fit_workflow(
-            self._build_preparation_configuration(),
-            run_id=run_id,
-            tick_data_path=tick_data_path,
-            tick_data_format=tick_data_format,
-            tick_data_provenance_label=tick_data_provenance_label,
-            option_surface_path=option_surface_path,
-            option_surface_format=option_surface_format,
-            option_surface_provenance_label=option_surface_provenance_label,
-            option_surface_valuation_time_utc=option_surface_valuation_time_utc,
-            carry=carry,
-            progress=progress,
-            temporary_directory_factory=TemporaryDirectory,
-            normalize_market_data_source_method=normalize_market_data_source,
-            resolve_preset_workflow_configuration_method=resolve_preset_workflow_configuration,
-            prepare_market_data_calibration_method=prepare_market_data_calibration,
-        )
+        temporary_directory = TemporaryDirectory(prefix="janiform-fit-")
+
+        try:
+            raw_prepared = prepare_native_fit_workflow(
+                self._build_execution_configuration(
+                    silent=self._silent,
+                    pricing_interval_schedule_policy=None,
+                ),
+                working_directory=temporary_directory.name,
+                run_id=run_id,
+                tick_data_path=tick_data_path,
+                tick_data_format=tick_data_format,
+                tick_data_provenance_label=tick_data_provenance_label,
+                option_surface_path=option_surface_path,
+                option_surface_format=option_surface_format,
+                option_surface_provenance_label=option_surface_provenance_label,
+                option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+                carry=carry,
+            )
+
+            return _prepared_fit_workflow_from_native(
+                raw_prepared,
+                temporary_directory=temporary_directory,
+            )
+        except Exception:
+            temporary_directory.cleanup()
+            raise
 
     def _effective_session_reference(self) -> Optional[SessionPresetReference]:
         if self._session_reference is not None:
@@ -398,46 +385,6 @@ class JaniformEstimator:
             timezone_name_hint=self._session_timezone,
         )
 
-    def _effective_workflow_scope(
-        self,
-        *,
-        option_surface_path: Optional[str | Path],
-    ) -> CalibrationMarketDataWorkflowScope:
-        if self._workflow_scope_override is not None:
-            return self._workflow_scope_override
-        if option_surface_path is not None:
-            return CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE
-
-        return CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE
-
-    def _infer_session_resolution(
-        self,
-        *,
-        run_id: str,
-        workflow_scope: CalibrationMarketDataWorkflowScope,
-        tick_data_source: CalibrationInputFileReference,
-        option_surface_source: Optional[CalibrationInputFileReference],
-        option_surface_valuation_time_utc: Optional[datetime],
-        carry: Optional[CalibrationFlatCarryInput],
-        tick_data_column_mapping: CalibrationTickDataColumnMapping,
-        normalization_policy: CalibrationMarketDataNormalizationPolicy,
-        normalized_market_data: NormalizedMarketDataSource,
-        progress: AbstractProgress,
-    ) -> Optional[MarketDataSessionResolution]:
-        return infer_session_resolution(
-            self._build_preparation_configuration(),
-            run_id=run_id,
-            workflow_scope=workflow_scope,
-            tick_data_source=tick_data_source,
-            option_surface_source=option_surface_source,
-            option_surface_valuation_time_utc=option_surface_valuation_time_utc,
-            carry=carry,
-            tick_data_column_mapping=tick_data_column_mapping,
-            normalization_policy=normalization_policy,
-            normalized_market_data=normalized_market_data,
-            progress=progress,
-        )
-
     def _requires_session_inference(self) -> bool:
         if self._session_reference is not None:
             return self._session_reference.usage_mode == PresetReferenceUsageMode.AUTOMATIC
@@ -446,7 +393,10 @@ class JaniformEstimator:
         if market_profile_configuration is None:
             return True
 
-        return market_profile_configuration.session_reference.usage_mode == PresetReferenceUsageMode.AUTOMATIC
+        return (
+            market_profile_configuration.session_reference.usage_mode
+            == PresetReferenceUsageMode.AUTOMATIC
+        )
 
     def _resolve_market_profile_configuration(self) -> Optional[MarketProfileExplicitConfiguration]:
         if self._market_profile_reference is None:
@@ -495,49 +445,67 @@ class JaniformEstimator:
 
         return nullcontext()
 
-    def _null_progress(self) -> NullProgress:
-        return NullProgress()
-
     def _default_endogenous_mean_reversion_configuration(
         self,
     ) -> CalibrationMeanReversionConfiguration:
         return _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION
 
-    def _build_fit_inference_metadata(
-        self,
-        prepared_workflow: PreparedFitWorkflow,
-    ) -> dict[str, Any]:
-        return build_fit_inference_payload(
-            inference=prepared_workflow.input_inference,
-            workflow_scope=prepared_workflow.workflow_scope,
-            market_profile_name=(
-                prepared_workflow.resolved_configuration.market_profile.selected_preset.preset_name
-                if (
-                    prepared_workflow.resolved_configuration.market_profile is not None
-                    and prepared_workflow.resolved_configuration.market_profile.selected_preset is not None
-                )
-                else (
-                    prepared_workflow.resolved_configuration.market_profile.configuration.profile_name
-                    if prepared_workflow.resolved_configuration.market_profile is not None
-                    else None
-                )
-            ),
-            known_news_preset_name=(
-                prepared_workflow.resolved_configuration.known_news.selected_preset.preset_name
-                if prepared_workflow.resolved_configuration.known_news.selected_preset is not None
-                else None
-            ),
-            known_news_recommended_name=(
-                prepared_workflow.resolved_configuration.known_news.recommended_reference.preset_name
-                if prepared_workflow.resolved_configuration.known_news.recommended_reference is not None
-                else None
-            ),
-            known_news_recommendation_applied=(
-                prepared_workflow.resolved_configuration.known_news.recommendation_applied
-            ),
-            session_source_kind=prepared_workflow.resolved_configuration.session.source_kind.value,
-            known_news_source_kind=prepared_workflow.resolved_configuration.known_news.source_kind.value,
-        )
+
+def _prepared_fit_workflow_from_native(
+    raw_prepared: dict[str, Any],
+    *,
+    temporary_directory: TemporaryDirectory[str],
+) -> PreparedFitWorkflow:
+    raw_preparation_payload = _required_mapping(raw_prepared, "preparation_payload")
+    request = validate_market_data_calibration_request(raw_preparation_payload["request"])
+    staged_request = StagedCalibrationRequest.from_mapping(
+        _required_mapping(raw_prepared, "staged_request"),
+        field_path_prefix="staged_request",
+    )
+
+    prepared = PreparedMarketDataCalibration(
+        schema_version=CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
+        request=request,
+        staged_request=staged_request,
+        diagnostics=MarketDataCalibrationPreparationDiagnostics.from_mapping(
+            raw_preparation_payload["diagnostics"]
+        ),
+        provenance=MarketDataCalibrationPreparationProvenance.from_mapping(
+            raw_preparation_payload["provenance"]
+        ),
+        session_resolution=MarketDataSessionResolution.from_mapping(
+            raw_preparation_payload["session_resolution"],
+            field_path="session_resolution",
+        ),
+        fit_warning=raw_preparation_payload.get("fit_warning"),
+        reference_price=raw_preparation_payload.get("reference_price"),
+        _prepared_handle=raw_prepared["prepared_handle"],
+    )
+
+    resolved_configuration = ResolvedPresetWorkflowConfiguration.from_mapping(
+        raw_preparation_payload["resolved_configuration"],
+        field_path="resolved_configuration",
+    )
+    input_inference = FitInference.from_mapping(raw_preparation_payload["input_inference"])
+
+    return PreparedFitWorkflow(
+        run_id=request.run_id,
+        workflow_scope=request.workflow_scope,
+        prepared=prepared,
+        resolved_configuration=resolved_configuration,
+        input_inference=input_inference,
+        fit_warning=prepared.fit_warning,
+        reference_price=prepared.reference_price,
+        temporary_directory=temporary_directory,
+    )
+
+
+def _required_mapping(payload: dict[str, Any], field_name: str) -> dict[str, Any]:
+    raw_value = payload.get(field_name)
+    if not isinstance(raw_value, dict):
+        raise calibration_error(field_name, "must be a mapping")
+
+    return raw_value
 
 
 __all__ = ["JaniformEstimator"]

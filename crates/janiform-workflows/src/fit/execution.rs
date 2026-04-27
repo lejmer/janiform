@@ -7,22 +7,29 @@ use std::time::Instant;
 use janiform_calibration_artifacts::CalibrationResumeSettings;
 use janiform_calibration_artifacts::CalibrationStage;
 use janiform_calibration_runtime::{
-    CalibrationStageExecutionStatus, CalibrationStagedExecutionInput,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, MarketDataSessionConfiguration,
-    resolve_market_data_session_configuration,
+    CalibrationStageExecutionStatus, CalibrationStageProgressPhase,
+    CalibrationStagedExecutionInput, CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
+    MarketDataSessionConfiguration, resolve_market_data_session_configuration,
     run_staged_calibration_from_execution_input_with_observer,
 };
-use janiform_event_log::{RunEvent, RunEventLogWriter, WorkflowRef, default_run_event_paths};
+use janiform_event_log::{
+    EventPersistencePolicy, RunEvent, RunEventLogWriter, SnapshotWritePolicy, WorkflowRef,
+    default_run_event_paths,
+};
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-use janiform_terminal_ui::{ProgressAdapter, format_path};
+use janiform_terminal_ui::{
+    ProgressAdapter, ProgressEvent, ProgressMeasure, TerminalRenderer, format_path,
+};
 use serde_json::Value;
 
 use crate::error::WorkflowError;
+use crate::progress::VolatileProgressGate;
 
 use super::artifacts::{build_fit_report_payload, build_model_payload, write_pretty_json};
 use super::events::{
     append_artifact_event, progress_event_from_staged_event, run_events_from_staged_event,
 };
+use super::output::{FitCompletionView, fit_completion_view, fit_start_summary};
 use super::scope::{workflow_scope_id, workflow_scope_label_for_input};
 
 /// Filesystem paths used by fit workflow execution.
@@ -60,8 +67,41 @@ pub struct FitExecutionRequest {
 pub struct FitExecutionObserver<'a> {
     /// Terminal progress adapter.
     pub progress_adapter: Option<&'a mut ProgressAdapter>,
+    /// Terminal output for run start and completion summaries.
+    pub terminal_output: Option<FitTerminalOutput>,
     /// Sink for machine-readable run events.
     pub machine_event_sink: Option<&'a mut dyn FnMut(&RunEvent) -> Result<(), WorkflowError>>,
+}
+
+/// Terminal output policy for a shared fit workflow execution.
+#[derive(Clone, Copy, Debug)]
+pub struct FitTerminalOutput {
+    /// Renderer used for stdout summaries.
+    pub renderer: TerminalRenderer,
+    /// Whether to emit the start summary.
+    pub emit_start_summary: bool,
+    /// Whether to emit the completion summary.
+    pub emit_completion_summary: bool,
+}
+
+impl FitTerminalOutput {
+    /// Emit both start and completion summaries through the provided renderer.
+    pub const fn start_and_completion(renderer: TerminalRenderer) -> Self {
+        Self {
+            renderer,
+            emit_start_summary: true,
+            emit_completion_summary: true,
+        }
+    }
+
+    /// Emit only the completion summary through the provided renderer.
+    pub const fn completion_only(renderer: TerminalRenderer) -> Self {
+        Self {
+            renderer,
+            emit_start_summary: false,
+            emit_completion_summary: true,
+        }
+    }
 }
 
 /// Output produced by shared fit workflow execution.
@@ -84,8 +124,15 @@ pub struct FitExecutionOutput {
 /// Run a prepared fit workflow through the shared orchestration path.
 pub fn run_fit_execution(
     request: FitExecutionRequest,
-    observer: FitExecutionObserver<'_>,
+    mut observer: FitExecutionObserver<'_>,
 ) -> Result<FitExecutionOutput, WorkflowError> {
+    emit_start_summary(
+        &observer,
+        &request.execution_input,
+        &request.input_paths,
+        &request.paths,
+    )?;
+
     // Intentional clone because build_execution_plan consumes the execution input,
     // while orchestration still needs the validated input for execution and artifacts.
     let _execution_plan = request
@@ -116,11 +163,12 @@ pub fn run_fit_execution(
     let event_paths = default_run_event_paths(request.paths.output_directory.as_path());
     let workflow = WorkflowRef::labeled("fit", "Fit");
 
-    let mut event_writer = RunEventLogWriter::create(
+    let mut event_writer = RunEventLogWriter::create_with_policy(
         &event_paths.event_log_path,
         Some(&event_paths.latest_state_snapshot_path),
         request.execution_input.request.run_id.clone(),
         workflow.clone(),
+        fit_event_persistence_policy(),
     )
     .map_err(|source| WorkflowError::FitEventLog { source })?;
 
@@ -133,7 +181,7 @@ pub fn run_fit_execution(
         &workflow,
         request.input_paths.as_slice(),
         output_directory.as_str(),
-        observer,
+        &mut observer,
     )?;
 
     let (report_payload, model_payload) = write_execution_artifacts(
@@ -144,20 +192,27 @@ pub fn run_fit_execution(
         request.staged_execution_input_path.as_deref(),
         &mut event_writer,
         &workflow,
+        &mut observer.progress_adapter,
     )?;
 
     event_writer
         .flush()
         .map_err(|source| WorkflowError::FitEventLog { source })?;
 
-    Ok(FitExecutionOutput {
+    let output = FitExecutionOutput {
         report,
         report_payload,
         model_payload,
         event_log_path: event_paths.event_log_path,
         latest_state_snapshot_path: event_paths.latest_state_snapshot_path,
         execution_duration,
-    })
+    };
+
+    finish_progress(&mut observer.progress_adapter)?;
+
+    emit_completion_summary(&observer, &request.paths, &output)?;
+
+    Ok(output)
 }
 
 /// Resolve standard fit output paths from an output directory.
@@ -221,6 +276,56 @@ fn fit_workflow_paths_with_checkpoint_directory(
     }
 }
 
+fn emit_start_summary(
+    observer: &FitExecutionObserver<'_>,
+    execution_input: &CalibrationStagedExecutionInput,
+    input_paths: &[String],
+    paths: &FitWorkflowPaths,
+) -> Result<(), WorkflowError> {
+    let Some(terminal_output) = observer.terminal_output else {
+        return Ok(());
+    };
+    if !terminal_output.emit_start_summary {
+        return Ok(());
+    }
+
+    let rendered =
+        fit_start_summary(execution_input, input_paths, paths).render(&terminal_output.renderer);
+
+    terminal_output
+        .renderer
+        .write_stdout(&format!("\n{rendered}"))
+        .map_err(|source| WorkflowError::OutputWrite { source })
+}
+
+fn emit_completion_summary(
+    observer: &FitExecutionObserver<'_>,
+    paths: &FitWorkflowPaths,
+    output: &FitExecutionOutput,
+) -> Result<(), WorkflowError> {
+    let Some(terminal_output) = observer.terminal_output else {
+        return Ok(());
+    };
+    if !terminal_output.emit_completion_summary {
+        return Ok(());
+    }
+
+    let rendered = match fit_completion_view(
+        &output.report,
+        paths,
+        output.event_log_path.as_path(),
+        output.execution_duration,
+    )? {
+        FitCompletionView::Success(summary) => summary.render(&terminal_output.renderer),
+        FitCompletionView::Failure(summary) => summary.render(&terminal_output.renderer),
+    };
+
+    terminal_output
+        .renderer
+        .write_stdout(&format!("\n{rendered}"))
+        .map_err(|source| WorkflowError::OutputWrite { source })
+}
+
 fn resolve_session_definition_json(
     execution_input: &CalibrationStagedExecutionInput,
     session_definition_json: Option<&str>,
@@ -251,14 +356,19 @@ fn run_staged_with_observer(
     workflow: &WorkflowRef,
     input_paths: &[String],
     output_directory: &str,
-    mut observer: FitExecutionObserver<'_>,
+    observer: &mut FitExecutionObserver<'_>,
 ) -> Result<(CalibrationStagedRunReport, Duration), WorkflowError> {
     let scope_id = workflow_scope_id(execution_input);
     let scope_label = workflow_scope_label_for_input(execution_input);
     let mut observer_error: Option<WorkflowError> = None;
+    let mut progress_gate = VolatileProgressGate::default();
 
     let mut staged_observer = |event: CalibrationStagedRunObserverEvent| {
         if observer_error.is_some() {
+            return;
+        }
+
+        if !should_observe_staged_event(&mut progress_gate, &event) {
             return;
         }
 
@@ -305,6 +415,52 @@ fn run_staged_with_observer(
     Ok((report, execution_duration))
 }
 
+fn fit_event_persistence_policy() -> EventPersistencePolicy {
+    EventPersistencePolicy {
+        snapshot_policy: SnapshotWritePolicy::DurableBoundariesOnly,
+    }
+}
+
+fn should_observe_staged_event(
+    progress_gate: &mut VolatileProgressGate<(CalibrationStage, CalibrationStageProgressPhase)>,
+    event: &CalibrationStagedRunObserverEvent,
+) -> bool {
+    let CalibrationStagedRunObserverEvent::StageProgress {
+        stage,
+        progress_phase,
+        completed_units,
+        total_units,
+        current_item_label,
+        planned_work_item_labels,
+        current_evaluation_count,
+        evaluation_progress_percent,
+        ..
+    } = event
+    else {
+        return true;
+    };
+
+    if *evaluation_progress_percent == Some(100) {
+        return true;
+    }
+    if !planned_work_item_labels.is_empty() {
+        return true;
+    }
+    if current_item_label.is_some()
+        && *current_evaluation_count == Some(0)
+        && evaluation_progress_percent.is_none()
+    {
+        return true;
+    }
+
+    progress_gate.should_emit(
+        Instant::now(),
+        (*stage, *progress_phase),
+        *completed_units,
+        *total_units,
+    )
+}
+
 fn observe_progress(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     event: &CalibrationStagedRunObserverEvent,
@@ -321,6 +477,37 @@ fn observe_progress(
     progress_adapter
         .draw_latest()
         .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+fn observe_output_materialization_progress(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+    latest_signal: &str,
+) -> Result<(), WorkflowError> {
+    let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunProgress {
+        phase: "finalizing outputs".to_string(),
+        measure: ProgressMeasure::Unbounded,
+        latest_signal: Some(latest_signal.to_string()),
+    });
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+fn finish_progress(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+) -> Result<(), WorkflowError> {
+    if let Some(progress_adapter) = progress_adapter.as_deref_mut() {
+        progress_adapter
+            .finish_and_keep()
+            .map_err(|source| WorkflowError::OutputWrite { source })?;
+    }
+
+    Ok(())
 }
 
 fn observe_run_events(
@@ -363,7 +550,10 @@ fn write_execution_artifacts(
     staged_execution_input_path: Option<&Path>,
     event_writer: &mut RunEventLogWriter,
     workflow: &WorkflowRef,
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<(Value, Option<Value>), WorkflowError> {
+    observe_output_materialization_progress(progress_adapter, "building fit report")?;
+
     let report_payload = build_fit_report_payload(
         execution_input,
         report,
@@ -371,7 +561,11 @@ fn write_execution_artifacts(
         staged_execution_input_path,
     )?;
 
+    observe_output_materialization_progress(progress_adapter, "writing fit report")?;
+
     write_pretty_json(paths.report_path.as_path(), &report_payload)?;
+
+    observe_output_materialization_progress(progress_adapter, "recording fit report artifact")?;
 
     append_artifact_event(
         event_writer,
@@ -386,6 +580,8 @@ fn write_execution_artifacts(
         return Ok((report_payload, None));
     }
 
+    observe_output_materialization_progress(progress_adapter, "building fitted model")?;
+
     let model_payload = build_model_payload(
         execution_input,
         report,
@@ -393,7 +589,11 @@ fn write_execution_artifacts(
         preparation_payload,
     )?;
 
+    observe_output_materialization_progress(progress_adapter, "writing fitted model")?;
+
     write_pretty_json(paths.model_path.as_path(), &model_payload)?;
+
+    observe_output_materialization_progress(progress_adapter, "recording model artifact")?;
 
     append_artifact_event(
         event_writer,

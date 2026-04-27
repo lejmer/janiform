@@ -21,6 +21,9 @@ class PricingExecutionError(Exception): ...
 class CalibrationExecutionError(Exception): ...
 
 
+class CalibrationValidationError(ValueError): ...
+
+
 class SimulationExecutionError(Exception): ...
 
 
@@ -1053,10 +1056,16 @@ def resolve_market_data_session(
 ) -> object: ...
 
 
+def prepare_fit_workflow(request: object) -> object: ...
+
+
 def run_prepared_fit_workflow(
     prepared_handle: PreparedCalibrationExecutionHandle,
     request: object,
 ) -> object: ...
+
+
+def run_fit_workflow(request: object) -> object: ...
 
 
 def run_coarse_simulation(

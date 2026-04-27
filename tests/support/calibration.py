@@ -34,29 +34,32 @@ def build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload() -> di
 
 
 def update_model_mean_reversion_payload(model: Any, mean_reversion_payload: dict[str, Any]) -> None:
-    model.parameters["return_components"]["fitted_parameters"][
-        "mean_reversion_fitted_parameters"
-    ] = mean_reversion_payload
-    model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
-
     joint_refinement_parameters = model.parameters.get("joint_refinement")
 
-    if isinstance(joint_refinement_parameters, dict):
-        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
-        if isinstance(fitted_parameters, dict):
-            return_components_fitted_parameters = fitted_parameters.get(
-                "return_components_fitted_parameters"
-            )
-            if isinstance(return_components_fitted_parameters, dict):
-                return_components_fitted_parameters["mean_reversion_fitted_parameters"] = (
-                    mean_reversion_payload
-                )
+    if not isinstance(joint_refinement_parameters, dict):
+        model.parameters["return_components"]["fitted_parameters"][
+            "mean_reversion_fitted_parameters"
+        ] = mean_reversion_payload
 
-        baseline_return_components = joint_refinement_parameters.get(
-            "baseline_return_components_fitted_parameters"
+        model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
+
+        return
+
+    fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
+    if not isinstance(fitted_parameters, dict):
+        raise AssertionError("joint_refinement model parameters must contain fitted_parameters")
+
+    return_components_fitted_parameters = fitted_parameters.get(
+        "return_components_fitted_parameters"
+    )
+    if not isinstance(return_components_fitted_parameters, dict):
+        raise AssertionError(
+            "joint_refinement fitted_parameters must contain return_components_fitted_parameters"
         )
-        if isinstance(baseline_return_components, dict):
-            baseline_return_components["mean_reversion_fitted_parameters"] = mean_reversion_payload
+
+    return_components_fitted_parameters["mean_reversion_fitted_parameters"] = (
+        mean_reversion_payload
+    )
 
 
 def build_endogenous_mean_reversion_fitted_parameters_payload(

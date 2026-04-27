@@ -21,7 +21,6 @@ import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.mean_reversion as fit_mean_reversion_runtime_module
 import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
 import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
-import janiform.calibration.fit._runtime.stage_reports as fit_stage_reports_module
 import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
 import janiform.calibration.fit._runtime.shared as fit_runtime_shared_module
@@ -1369,9 +1368,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
 
     summary = model.summary()
 
-    assert "hawkes" in summary["fitted_parameters"]
-    assert "return_components" in summary["fitted_parameters"]
-    assert "mean_reversion" in summary["fitted_parameters"]
+    assert set(summary["fitted_parameters"]) == {"seasonality", "joint_refinement"}
     assert (
         summary["preset_provenance"]["known_news"]["selected_preset"]["preset_name"]
         == "none"
@@ -1419,14 +1416,11 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
         "resolved_configuration",
         "session_resolution",
     }
+    assert set(persisted_payload["parameters"]) == {"seasonality", "joint_refinement"}
     assert (
-        persisted_payload["parameters"]["return_components"]["fitted_parameters"][
-            "mean_reversion_fitted_parameters"
-        ]
-        == build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
-    )
-    assert (
-        persisted_payload["parameters"]["mean_reversion"]["fitted_parameters"]
+        persisted_payload["parameters"]["joint_refinement"]["fitted_parameters"][
+            "return_components_fitted_parameters"
+        ]["mean_reversion_fitted_parameters"]
         == build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
     )
     assert set(persisted_payload["parameters"]["seasonality"]) == {
@@ -1532,16 +1526,7 @@ def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reve
         anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
-    model.parameters["return_components"]["fitted_parameters"][
-        "mean_reversion_fitted_parameters"
-    ] = mean_reversion_payload
-    model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
-    model.parameters["joint_refinement"]["fitted_parameters"]["return_components_fitted_parameters"][
-        "mean_reversion_fitted_parameters"
-    ] = mean_reversion_payload
-    model.parameters["joint_refinement"]["baseline_return_components_fitted_parameters"][
-        "mean_reversion_fitted_parameters"
-    ] = mean_reversion_payload
+    update_model_mean_reversion_payload(model, mean_reversion_payload)
 
     persisted_model_path = tmp_path / "model-mean-reversion.json"
 
@@ -1549,24 +1534,9 @@ def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reve
     loaded_model = JaniformModel.load(persisted_model_path)
 
     assert (
-        loaded_model.parameters["return_components"]["fitted_parameters"][
-            "mean_reversion_fitted_parameters"
-        ]
-        == mean_reversion_payload
-    )
-    assert (
-        loaded_model.parameters["mean_reversion"]["fitted_parameters"] == mean_reversion_payload
-    )
-    assert (
         loaded_model.parameters["joint_refinement"]["fitted_parameters"][
             "return_components_fitted_parameters"
         ]["mean_reversion_fitted_parameters"]
-        == mean_reversion_payload
-    )
-    assert (
-        loaded_model.parameters["joint_refinement"]["baseline_return_components_fitted_parameters"][
-            "mean_reversion_fitted_parameters"
-        ]
         == mean_reversion_payload
     )
 
@@ -2531,16 +2501,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
         anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
-    model.parameters["return_components"]["fitted_parameters"][
-        "mean_reversion_fitted_parameters"
-    ] = mean_reversion_payload
-    model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
-    model.parameters["joint_refinement"]["fitted_parameters"]["return_components_fitted_parameters"][
-        "mean_reversion_fitted_parameters"
-    ] = mean_reversion_payload
-    model.parameters["joint_refinement"]["baseline_return_components_fitted_parameters"][
-        "mean_reversion_fitted_parameters"
-    ] = mean_reversion_payload
+    update_model_mean_reversion_payload(model, mean_reversion_payload)
 
     captured_requests: dict[str, Any] = {}
     coarse_result = object()
@@ -4695,106 +4656,11 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
     assert prepare_call_count == 1
 
 
-def test_high_level_fit_nonhuman_progress_uses_native_preparation_step(
+@pytest.mark.parametrize("silent", [False, True])
+def test_high_level_fit_uses_native_terminal_ui_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tick_data_path = tmp_path / "ticks.csv"
-    tick_data_path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc",
-                "2026-02-02T14:30:00Z",
-                "2026-02-02T15:00:00Z",
-                "2026-02-02T20:59:00Z",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    progress_details: list[str] = []
-
-    class _CapturingProgress:
-        def __enter__(self) -> Self:
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback) -> None:
-            _ = exc_type
-            _ = exc_value
-            _ = traceback
-
-            return None
-
-        def update(
-            self,
-            *,
-            detail: str | None = None,
-            subdetail: str | None = None,
-            completed_units: int | None = None,
-            total_units: int | None = None,
-            reset_progress_units: bool = False,
-        ) -> None:
-            _ = subdetail
-            _ = completed_units
-            _ = total_units
-            _ = reset_progress_units
-
-            if detail is not None:
-                progress_details.append(detail)
-
-    def capturing_progress(
-        self: Any,
-        label: str,
-        *,
-        total_steps: int | None = None,
-    ) -> _CapturingProgress:
-        assert label == "fit"
-        assert total_steps == 5
-
-        return _CapturingProgress()
-
-    monkeypatch.setattr(
-        fit_estimator_module.JaniformOutputController,
-        "progress",
-        capturing_progress,
-    )
-    patch_fit_workflow_runner(
-        monkeypatch,
-        lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-progress"),
-    )
-
-    estimator = JaniformEstimator(
-        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
-        tick_data_column_mapping=CalibrationTickDataColumnMapping(
-            timestamp_column="timestamp_utc",
-        ),
-        normalization_policy=CalibrationMarketDataNormalizationPolicy(
-            timestamp_timezone="UTC",
-            sort_records_by_timestamp=True,
-        ),
-        session="XNYS",
-        known_news="none",
-        silent=True,
-    )
-
-    estimator.fit(
-        run_id="high-level-fit-progress",
-        tick_data_path=tick_data_path,
-        tick_data_format=CalibrationInputFileFormat.CSV,
-    )
-
-    assert progress_details == [
-        "inferring workflow inputs",
-        "resolve presets",
-        "build market-data request",
-        "prepare market data",
-        "running calibration",
-    ]
-
-
-def test_high_level_fit_human_progress_uses_native_terminal_ui_only(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    silent: bool,
 ) -> None:
     tick_data_path = tmp_path / "ticks.csv"
     tick_data_path.write_text(
@@ -4824,7 +4690,7 @@ def test_high_level_fit_human_progress_uses_native_terminal_ui_only(
         _ = label
         _ = total_steps
 
-        raise AssertionError("Python fit progress must not render in human mode")
+        raise AssertionError("Python fit progress must not render")
 
     monkeypatch.setattr(
         fit_estimator_module.JaniformOutputController,
@@ -4849,6 +4715,7 @@ def test_high_level_fit_human_progress_uses_native_terminal_ui_only(
         ),
         session="XNYS",
         known_news="none",
+        silent=silent,
     )
 
     estimator.fit(
@@ -4915,60 +4782,7 @@ def test_high_level_fit_report_returns_success_details_with_model(
     assert fit_result.succeeded is True
     assert fit_report.success is True
     assert fit_report.staged_response.failure is None
-    assert [stage_payload["stage_report_kind"] for stage_payload in fit_report.stage_report_payloads] == [
-        "seasonality",
-        "hawkes",
-        "return_components",
-        "mean_reversion",
-        "joint_refinement",
-    ]
-
-
-def test_resolved_stage_report_payloads_reconstruct_missing_resumed_stage_payloads_from_disk(
-    tmp_path: Path,
-) -> None:
-    run_id = "resumed-fit-stage-reconstruction"
-    _, full_raw_response = _successful_full_model_staged_runner_payload(run_id)
-    _write_stage_parameter_artifacts_for_stage_reports(
-        checkpoint_directory=tmp_path,
-        run_id=run_id,
-        raw_stage_reports=cast(list[dict[str, Any]], full_raw_response["stage_reports"]),
-    )
-
-    resumed_raw_response = dict(full_raw_response)
-    resumed_raw_response["stage_reports"] = [
-        {
-            "stage_report_kind": "joint_refinement",
-            "stage": "joint_refinement",
-            "status": "success",
-            "run_id": run_id,
-            "execution_mode": "disk",
-            "handoff_policy": "summary_only_resume_stage_report.v1",
-        }
-    ]
-
-    stage_report_payloads = fit_stage_reports_module.resolved_stage_report_payloads(
-        resumed_raw_response,
-        selected_stage_kinds=(
-            CalibrationStage.SEASONALITY,
-            CalibrationStage.HAWKES,
-            CalibrationStage.RETURN_COMPONENTS,
-            CalibrationStage.MEAN_REVERSION,
-            CalibrationStage.JOINT_REFINEMENT,
-        ),
-        run_id=run_id,
-        disk_checkpoint_directory=str(tmp_path),
-        require_complete_selection=True,
-    )
-
-    assert [stage_payload["stage_report_kind"] for stage_payload in stage_report_payloads] == [
-        "seasonality",
-        "hawkes",
-        "return_components",
-        "mean_reversion",
-        "joint_refinement",
-    ]
-    assert [stage_payload["stage_report_kind"] for stage_payload in stage_report_payloads] == [
+    assert [report.stage_report_kind.value for report in fit_report.staged_response.stage_reports] == [
         "seasonality",
         "hawkes",
         "return_components",
@@ -5415,10 +5229,12 @@ def _write_stage_parameter_artifacts_for_stage_reports(
                 "payload": stage_payload,
             },
         }
-        artifact_path = fit_stage_reports_module.stage_parameter_artifact_path(
-            checkpoint_directory=checkpoint_directory,
-            run_id=run_id,
-            stage_kind=stage_kind,
+        artifact_path = (
+            checkpoint_directory
+            / "artifacts"
+            / "runs"
+            / run_id
+            / f"{stage_kind.value}.stage_parameter.artifact.json"
         )
         artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
 

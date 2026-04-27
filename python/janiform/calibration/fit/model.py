@@ -2,17 +2,30 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
+from ..._workflow_progress import WorkflowProgressMode
+from ...contracts.base import require_non_empty_string
+from ...mean_reversion import MeanReversionBoundaryState
+from ...pricing import (
+    PricingIntervalSchedulePolicy,
+    VanillaOptionPayoffType,
+    VanillaOptionPricingRunResult,
+)
+from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
+from ..errors import calibration_error
+from ..market_data.contracts import (
+    CalibrationMarketDataWorkflowScope,
+    CalibrationOptionSurfaceColumnMapping,
+)
+from ..presets.resolution import ResolvedPresetWorkflowConfiguration
+from ..sessions.contracts import MarketDataSessionResolution
 from ._runtime.metadata import (
     normalize_model_parameters,
     serialize_model_payload,
-)
-from ._runtime.shared import (
-    MODEL_PERSISTENCE_SCHEMA_VERSION as _MODEL_PERSISTENCE_SCHEMA_VERSION,
 )
 from ._runtime.option_pricing.workflow import (
     price_option_grid_for_model,
@@ -40,20 +53,6 @@ from .pricing.surface import (
 )
 from .state import CurrentStateEstimationRequest, CurrentStateEstimationResult
 from .state._estimation import estimate_current_state_for_model
-from ..errors import calibration_error
-from ..market_data.contracts import CalibrationMarketDataWorkflowScope, CalibrationOptionSurfaceColumnMapping
-from ..presets.resolution import ResolvedPresetWorkflowConfiguration
-from ..sessions.contracts import MarketDataSessionResolution
-from ..._workflow_progress import WorkflowProgressMode
-from ...contracts.base import require_non_empty_string
-from ...mean_reversion import MeanReversionBoundaryState
-from ...pricing import (
-    PricingIntervalSchedulePolicy,
-    VanillaOptionPayoffType,
-    VanillaOptionPricingRunResult,
-)
-from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +63,6 @@ class JaniformModel:
     metadata: dict[str, Any]
     resolved_configuration: ResolvedPresetWorkflowConfiguration
     session_resolution: MarketDataSessionResolution
-    _stage_report_payloads: tuple[dict[str, Any], ...] = field(repr=False, compare=False)
 
     @property
     def fitted_parameters(self) -> dict[str, Any]:
@@ -335,12 +333,9 @@ class JaniformModel:
         if not isinstance(payload, dict):
             raise calibration_error("path", "persisted model payload must be a JSON object")
 
-        schema_version = payload.get("schema_version")
-        if schema_version != _MODEL_PERSISTENCE_SCHEMA_VERSION:
-            raise calibration_error(
-                "schema_version",
-                f"must be `{_MODEL_PERSISTENCE_SCHEMA_VERSION}`",
-            )
+        from ._runtime.metadata import validate_model_persistence_schema_version
+
+        validate_model_persistence_schema_version(payload.get("schema_version"))
 
         workflow_scope_value = payload.get("workflow_scope")
         if not isinstance(workflow_scope_value, str):
@@ -381,7 +376,6 @@ class JaniformModel:
                 raw_session_resolution,
                 field_path="session_resolution",
             ),
-            _stage_report_payloads=(),
         )
 
 

@@ -8,7 +8,8 @@ mod summary_simulation;
 mod worker_runtime;
 
 pub use contracts::{
-    JointRefinementStageCandidateDiagnostic, JointRefinementStageCoarseTickConsistencyMetric,
+    JointRefinementProgressCandidateAssessment, JointRefinementStageCandidateDiagnostic,
+    JointRefinementStageCoarseTickConsistencyMetric,
     JointRefinementStageCurrentStateEstimationInput, JointRefinementStageExecutionFailure,
     JointRefinementStageExecutionInput, JointRefinementStageExecutionMetadata,
     JointRefinementStageExecutionReport, JointRefinementStageFittedPayload,

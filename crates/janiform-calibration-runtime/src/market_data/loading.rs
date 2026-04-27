@@ -13,6 +13,7 @@ mod shared;
 #[cfg(test)]
 mod test_support;
 
+pub use calendar_materialization::build_market_data_session_definition_json;
 pub use contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
     MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingError,

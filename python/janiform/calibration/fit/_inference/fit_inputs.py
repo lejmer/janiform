@@ -67,6 +67,13 @@ class FitInference:
     timestamp_timezone_source: str
     default_calibration_hint_ids: tuple[str, ...]
 
+    @staticmethod
+    def from_mapping(raw_payload: Any) -> FitInference:
+        if not isinstance(raw_payload, dict):
+            raise calibration_error("input_inference", "must be a mapping")
+
+        return _fit_inference_from_mapping(raw_payload)
+
 
 def infer_fit_inputs(
     *,
@@ -106,6 +113,10 @@ def infer_fit_inputs(
         }
     )
 
+    return _fit_inference_from_mapping(raw_inference)
+
+
+def _fit_inference_from_mapping(raw_inference: dict[str, Any]) -> FitInference:
     tick_data_source = CalibrationInputFileReference.from_mapping(
         _require_mapping(raw_inference, "tick_data_source"),
         field_path="tick_data_source",

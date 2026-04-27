@@ -21,6 +21,16 @@ def build_model_persistence_payload(model: Any) -> dict[str, Any]:
     }
 
 
+def validate_model_persistence_schema_version(raw_schema_version: Any) -> None:
+    if raw_schema_version == MODEL_PERSISTENCE_SCHEMA_VERSION:
+        return
+
+    raise calibration_error(
+        "schema_version",
+        f"must be `{MODEL_PERSISTENCE_SCHEMA_VERSION}`",
+    )
+
+
 def normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, Any]:
     parameters = deepcopy(dict(raw_parameters))
     raw_seasonality = parameters.get("seasonality")
@@ -72,15 +82,6 @@ def normalize_mean_reversion_model_parameters(parameters: dict[str, Any]) -> Non
                 raw_return_components_fitted_parameters,
                 field_path="parameters.joint_refinement.fitted_parameters.return_components_fitted_parameters",
             )
-
-    raw_baseline_return_components = raw_joint_refinement.get(
-        "baseline_return_components_fitted_parameters"
-    )
-    if isinstance(raw_baseline_return_components, Mapping):
-        normalize_return_components_mean_reversion_block(
-            raw_baseline_return_components,
-            field_path="parameters.joint_refinement.baseline_return_components_fitted_parameters",
-        )
 
 
 def normalize_return_components_mean_reversion_block(

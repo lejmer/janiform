@@ -1186,6 +1186,7 @@ version = "0.0.0"
 dependencies = [
  "janiform-calibration-artifacts",
  "janiform-calibration-runtime",
+ "janiform-engine-pricing",
  "janiform-event-log",
  "janiform-market-time",
  "janiform-terminal-ui",

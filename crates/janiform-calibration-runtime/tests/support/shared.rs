@@ -1513,10 +1513,6 @@ fn stage_parameter_artifact_input(
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
-                    timestamp_utc_nanos: payload.timestamp_utc_nanos.clone(),
-                    normalized_combined_factor_by_event: payload
-                        .normalized_combined_factor_by_event
-                        .clone(),
                     normalization_metadata: payload.normalization_metadata.clone(),
                 },
             ))
@@ -2518,9 +2514,6 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
                         day_of_week_factor: seasonality_payload.day_of_week_factor,
                         day_of_year_factor: seasonality_payload.day_of_year_factor,
-                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
-                        normalized_combined_factor_by_event: seasonality_payload
-                            .normalized_combined_factor_by_event,
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
                         payload: build_hawkes_stage_success_payload(),
