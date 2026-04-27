@@ -39,6 +39,7 @@ pub use event::WorkflowRef;
 pub use paths::RunEventPaths;
 pub use paths::default_run_event_paths;
 pub use replay::replay_event_log;
+pub use replay::replay_event_log_allowing_trailing_partial;
 pub use state::ArtifactSummary;
 pub use state::CheckpointAvailability;
 pub use state::RunFailureSummary;

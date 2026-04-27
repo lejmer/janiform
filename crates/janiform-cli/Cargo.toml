@@ -17,6 +17,7 @@ name = "janiform"
 path = "src/main.rs"
 
 [dependencies]
+chrono = { workspace = true }
 clap = { workspace = true }
 janiform = { path = "../janiform" }
 janiform-terminal-ui = { path = "../janiform-terminal-ui" }

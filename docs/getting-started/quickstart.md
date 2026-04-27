@@ -11,6 +11,9 @@ janiform --help
 janiform fit --help
 janiform simulate --help
 janiform price --help
+janiform inspect --help
+janiform report --help
+janiform presets --help
 ```
 
 The top-level CLI is organized around:
@@ -18,6 +21,8 @@ The top-level CLI is organized around:
 - `fit` for calibration
 - `simulate` for coarse-interval or seeded-tick simulation
 - `price` for vanilla option pricing
+- `inspect` for persisted run and model artifact inspection
+- `report` for fit report views and rendered report artifacts
 - `presets`, `seasonality`, `hourly-factors`, and `stylized-facts` for supporting workflows
 
 ## Python

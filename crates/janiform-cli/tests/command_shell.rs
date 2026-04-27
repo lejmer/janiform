@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::process::Command;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -56,8 +57,6 @@ fn root_help_shows_primary_command_tree() {
 #[test]
 fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
     for arguments in [
-        &["inspect", "model", "model.jf", "--parameters"][..],
-        &["report", "fit", ".janiform/runs/example"][..],
         &[
             "price",
             "fitted-model",
@@ -225,6 +224,137 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
             .expect("event log should have a parent directory")
             .join("latest-state.json")
             .is_file()
+    );
+    let persisted_report_before_export =
+        std::fs::read_to_string(&report_path).expect("persisted report should be readable");
+
+    let model_inspect_output = janiform_command()
+        .args([
+            "--json",
+            "inspect",
+            "model",
+            model_path
+                .to_str()
+                .expect("model path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform inspect model should execute");
+
+    assert_eq!(
+        model_inspect_output.status.code(),
+        Some(CliExitCode::Success as i32)
+    );
+
+    let inspected_model: serde_json::Value = serde_json::from_slice(&model_inspect_output.stdout)
+        .expect("inspect model should return JSON");
+    assert_eq!(inspected_model["run_id"], payload["run_id"]);
+    assert!(inspected_model["parameters"]["seasonality"].is_object());
+
+    let report_output = janiform_command()
+        .args([
+            "--json",
+            "report",
+            "fit",
+            report_path
+                .to_str()
+                .expect("report path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform report fit should execute");
+
+    assert_eq!(
+        report_output.status.code(),
+        Some(CliExitCode::Success as i32)
+    );
+
+    let reported_fit: serde_json::Value =
+        serde_json::from_slice(&report_output.stdout).expect("report fit should return JSON");
+    assert_eq!(reported_fit["schema_version"], "janiform.fit_report.v1");
+    assert_eq!(reported_fit["run_id"], payload["run_id"]);
+    assert!(reported_fit["parameter_fits"]["seasonality"]["parameters"].is_object());
+
+    let human_report_output = janiform_command()
+        .args([
+            "--color",
+            "never",
+            "report",
+            "fit",
+            report_path
+                .to_str()
+                .expect("report path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform report fit should execute");
+
+    assert_eq!(
+        human_report_output.status.code(),
+        Some(CliExitCode::Success as i32)
+    );
+
+    let human_report =
+        String::from_utf8(human_report_output.stdout).expect("human output should be UTF-8");
+    for expected in [
+        "Fit report",
+        "Fit summary",
+        "Workflow scope",
+        "Selected stages",
+        "Calibration outcomes",
+        "Artifacts",
+        "Paths:",
+        "  report:",
+    ] {
+        assert!(
+            human_report.contains(expected),
+            "missing `{expected}` in report output:\n{human_report}"
+        );
+    }
+    assert_eq!(
+        human_report.matches("  model:").count(),
+        1,
+        "report fit should list the model artifact once:\n{human_report}"
+    );
+
+    let html_report_path = report_path.with_extension("html");
+    let export_output = janiform_command()
+        .args([
+            "--json",
+            "report",
+            "fit",
+            "--html",
+            report_path
+                .to_str()
+                .expect("report path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform report fit export should execute");
+
+    assert_eq!(
+        export_output.status.code(),
+        Some(CliExitCode::Success as i32)
+    );
+    assert!(html_report_path.is_file());
+    let html_report =
+        std::fs::read_to_string(&html_report_path).expect("HTML report should be readable");
+    for expected in [
+        "Fit report",
+        "Overview",
+        "Schema version",
+        "Staged response",
+        "Summary",
+        "Parameter fits",
+        "Fit seasonality",
+        "field-table",
+        "data-table",
+    ] {
+        assert!(
+            html_report.contains(expected),
+            "missing `{expected}` in HTML report:\n{html_report}"
+        );
+    }
+    assert_eq!(
+        std::fs::read_to_string(&report_path).expect("persisted report should still be readable"),
+        persisted_report_before_export,
+        "report fit presentation exports should not rewrite report.json"
     );
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
@@ -466,7 +596,22 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
     .expect("event writer should be created");
     writer
         .append_event(&janiform_event_log::RunEvent::at(
-            "2026-04-26T10:00:00Z",
+            "2026-04-26T10:00:01Z",
+            "run-001",
+            workflow.clone(),
+            janiform_event_log::EventDeliveryPriority::Required,
+            janiform_event_log::RunEventPayload::Artifact(janiform_event_log::RunArtifactEvent {
+                artifact_kind: "model".to_string(),
+                path: run_directory.join("model.json").display().to_string(),
+                stage: None,
+                phase: None,
+                label: None,
+            }),
+        ))
+        .expect("artifact event should write");
+    writer
+        .append_event(&janiform_event_log::RunEvent::at(
+            "2026-04-26T10:00:02Z",
             "run-001",
             workflow,
             janiform_event_log::EventDeliveryPriority::Required,
@@ -498,7 +643,90 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
     assert_eq!(payload["run_id"], "run-001");
     assert_eq!(payload["status"], "completed");
+    assert_eq!(payload["event_count"], 2);
+
+    let human_output = janiform_command()
+        .args([
+            "--color",
+            "never",
+            "inspect",
+            "run",
+            run_directory
+                .to_str()
+                .expect("temporary run path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(
+        human_output.status.code(),
+        Some(CliExitCode::Success as i32)
+    );
+
+    let human_stdout =
+        String::from_utf8(human_output.stdout).expect("human output should be UTF-8");
+    assert!(human_stdout.contains("Run"));
+    assert!(human_stdout.contains("Artifacts"));
+    assert!(human_stdout.contains("Paths:"));
+    assert!(human_stdout.contains("  model: model.json"));
+    assert!(human_stdout.contains("  events: events.jsonl"));
+    assert!(!human_stdout.contains("Event log"));
+    assert!(!human_stdout.contains("State source"));
+
+    std::fs::remove_dir_all(run_directory).expect("temporary run directory should be removable");
+}
+
+#[test]
+fn inspect_run_replay_ignores_trailing_partial_event_row() {
+    let run_directory = temporary_run_directory("inspect-run-partial-event");
+    std::fs::create_dir_all(&run_directory).expect("temporary run directory should be created");
+    let event_paths = janiform_event_log::default_run_event_paths(&run_directory);
+    let workflow = janiform_event_log::WorkflowRef::labeled("fit", "Fit");
+    let event = janiform_event_log::RunEvent::at(
+        "2026-04-26T10:00:00Z",
+        "run-001",
+        workflow,
+        janiform_event_log::EventDeliveryPriority::Required,
+        janiform_event_log::RunEventPayload::Lifecycle(
+            janiform_event_log::RunLifecycleEvent::RunStarted {
+                scope_id: "seasonality_only".to_string(),
+                scope_label: Some("seasonality only".to_string()),
+                inputs: vec!["ticks.csv".to_string()],
+                output_directory: Some(run_directory.display().to_string()),
+                stage_sequence: Vec::new(),
+            },
+        ),
+    );
+
+    let mut event_log =
+        std::fs::File::create(&event_paths.event_log_path).expect("event log should be created");
+    janiform_event_log::append_event_to_log(&mut event_log, &event_paths.event_log_path, &event)
+        .expect("complete event should write");
+    write!(event_log, "{{\"schema_version\":\"janiform.run_event.v1\"")
+        .expect("partial event should write");
+    event_log.flush().expect("event log should flush");
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "inspect",
+            "run",
+            run_directory
+                .to_str()
+                .expect("temporary run path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["run_id"], "run-001");
     assert_eq!(payload["event_count"], 1);
+    assert_eq!(payload["inspection"]["state_source"], "event_log_replay");
+    assert_eq!(payload["inspection"]["replay_fallback_attempted"], true);
 
     std::fs::remove_dir_all(run_directory).expect("temporary run directory should be removable");
 }
@@ -506,13 +734,13 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
 #[test]
 fn json_mode_writes_one_final_json_error_to_stdout() {
     let output = janiform_command()
-        .args(["--json", "inspect", "model", "model.jf", "--parameters"])
+        .args(["--json", "report", "fit", "missing-report.json"])
         .output()
         .expect("janiform command should execute");
 
     assert_eq!(
         output.status.code(),
-        Some(CliExitCode::UnimplementedCommand as i32)
+        Some(CliExitCode::CommandLineUsage as i32)
     );
     assert!(
         output.stderr.is_empty(),
@@ -524,17 +752,23 @@ fn json_mode_writes_one_final_json_error_to_stdout() {
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
     assert_eq!(payload["status"], "error");
-    assert_eq!(payload["code"], "unimplemented_command");
-    assert_eq!(
-        payload["exit_code"],
-        CliExitCode::UnimplementedCommand as u8
-    );
+    assert_eq!(payload["code"], "artifact_read");
+    assert_eq!(payload["exit_code"], CliExitCode::CommandLineUsage as u8);
 }
 
 #[test]
 fn terminal_diagnostics_follow_color_policy() {
     let forced_color = janiform_command()
-        .args(["--color", "always", "inspect", "model", "model.jf"])
+        .args([
+            "--color",
+            "always",
+            "price",
+            "fitted-model",
+            "--model-path",
+            "model.jf",
+            "--strike",
+            "5000",
+        ])
         .output()
         .expect("janiform command should execute");
 
@@ -548,7 +782,16 @@ fn terminal_diagnostics_follow_color_policy() {
     );
 
     let disabled_color = janiform_command()
-        .args(["--color", "never", "inspect", "model", "model.jf"])
+        .args([
+            "--color",
+            "never",
+            "price",
+            "fitted-model",
+            "--model-path",
+            "model.jf",
+            "--strike",
+            "5000",
+        ])
         .output()
         .expect("janiform command should execute");
 
@@ -588,9 +831,12 @@ fn toml_configuration_supplies_cli_boundary_defaults() {
             config_path
                 .to_str()
                 .expect("temporary config path should be valid UTF-8"),
-            "inspect",
-            "model",
+            "price",
+            "fitted-model",
+            "--model-path",
             "model.jf",
+            "--strike",
+            "5000",
         ])
         .output()
         .expect("janiform command should execute");

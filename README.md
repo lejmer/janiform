@@ -62,6 +62,8 @@ Use [examples/README.md](examples/README.md) for the grouped example index.
 janiform fit --help
 janiform simulate --help
 janiform price --help
+janiform inspect --help
+janiform report --help
 janiform presets list --help
 ```
 

@@ -190,12 +190,54 @@ pub enum CliError {
         source: janiform_terminal_ui::ProgressContractError,
     },
 
-    #[error("failed to inspect run directory `{}`", run_directory.display())]
+    #[error("failed to read {artifact_name} artifact `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::artifact_read))]
+    ArtifactRead {
+        artifact_name: &'static str,
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("failed to parse {artifact_name} artifact `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::artifact_parse))]
+    ArtifactParse {
+        artifact_name: &'static str,
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("malformed {artifact_name} artifact `{}`: {message}", path.display())]
+    #[diagnostic(code(janiform_cli::artifact_malformed))]
+    ArtifactMalformed {
+        artifact_name: &'static str,
+        path: PathBuf,
+        message: String,
+    },
+
+    #[error("failed to write {artifact_name} artifact `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::artifact_write))]
+    ArtifactWrite {
+        artifact_name: &'static str,
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error(
+        "failed to inspect run directory `{}`: {message}. latest-state snapshot `{}`. event log `{}`. replay fallback attempted: {replay_fallback_attempted}",
+        run_directory.display(),
+        snapshot_path.display(),
+        event_log_path.display()
+    )]
     #[diagnostic(code(janiform_cli::run_inspection_failed))]
     RunInspectionFailed {
         run_directory: PathBuf,
-        #[source]
-        source: janiform_event_log::EventLogError,
+        snapshot_path: PathBuf,
+        event_log_path: PathBuf,
+        replay_fallback_attempted: bool,
+        message: String,
     },
 }
 
@@ -229,6 +271,10 @@ impl CliError {
             | Self::OutputWrite { .. }
             | Self::OutputSerialize { .. }
             | Self::OutputProgress { .. }
+            | Self::ArtifactRead { .. }
+            | Self::ArtifactParse { .. }
+            | Self::ArtifactMalformed { .. }
+            | Self::ArtifactWrite { .. }
             | Self::RunInspectionFailed { .. } => CliExitCode::CommandLineUsage,
         }
     }
@@ -258,6 +304,10 @@ impl CliError {
             Self::OutputWrite { .. } => "output_write",
             Self::OutputSerialize { .. } => "output_serialize",
             Self::OutputProgress { .. } => "output_progress",
+            Self::ArtifactRead { .. } => "artifact_read",
+            Self::ArtifactParse { .. } => "artifact_parse",
+            Self::ArtifactMalformed { .. } => "artifact_malformed",
+            Self::ArtifactWrite { .. } => "artifact_write",
             Self::RunInspectionFailed { .. } => "run_inspection_failed",
         }
     }
