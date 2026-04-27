@@ -5,8 +5,7 @@ use janiform_terminal_ui::{
     CompletionSummary, CompletionSummaryStatus, KeyValueRow, StartSummary, format_artifact_path,
     format_elapsed_label, format_path,
 };
-
-use super::artifacts::SimulationExportSummary;
+use janiform_workflows::simulation::SimulationExportSummary;
 
 pub(crate) fn simulation_start_summary(
     run_id: &str,

@@ -6,8 +6,6 @@ use clap::Subcommand;
 use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
-mod artifacts;
-mod direct;
 mod execution;
 mod rendering;
 mod requests;
@@ -15,7 +13,7 @@ mod requests;
 pub(crate) use execution::run_simulate_coarse_interval;
 pub(crate) use execution::run_simulate_seeded_ticks;
 
-pub(crate) const DEFAULT_SIMULATION_EXPORT_BATCH_SIZE: usize = 256;
+use janiform_workflows::simulation::DEFAULT_SIMULATION_EXPORT_BATCH_SIZE;
 
 #[derive(Debug, Args)]
 pub(crate) struct SimulateCommand {

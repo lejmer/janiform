@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
 import pyarrow as pyarrow
 from pyarrow import parquet
 
+from ._native_api import native_module
 from .calendar import CalendarRegistry, MarketState
 from .contracts import serialize_pretty_json
 from .pricing import VanillaOptionPricingRunResult
@@ -316,6 +317,16 @@ def simulation_output_columns(preferences: SimulationOutputPreferences) -> tuple
     return tuple(columns)
 
 
+def _simulation_output_side_column(preferences: SimulationOutputPreferences) -> Optional[str]:
+    if (
+        preferences.tick_price_input_policy == "explicit_price_column"
+        and preferences.trade_sign_column is not None
+    ):
+        return preferences.trade_sign_column
+
+    return None
+
+
 def persist_seeded_tick_simulation(
     *,
     simulation_result: SeededTickSimulationResponse,
@@ -324,6 +335,21 @@ def persist_seeded_tick_simulation(
     sink: Optional[SimulationArtifactSink] = None,
 ) -> None:
     resolved_output_path = Path(output_path)
+    if sink is None:
+        native_result = simulation_result._native_result
+        if native_result is None:
+            raise RuntimeError("seeded simulation file export requires a native simulation result")
+
+        native_module().export_seeded_tick_simulation_artifact(
+            native_result,
+            str(resolved_output_path),
+            preferences.reference_price,
+            preferences.timestamp_column,
+            simulation_output_price_column(preferences),
+            _simulation_output_side_column(preferences),
+        )
+
+        return
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
@@ -374,6 +400,22 @@ def persist_coarse_simulation(
 
     if (calendar_registry is None) != (exchange_code is None):
         raise ValueError("calendar_registry and exchange_code must be provided together")
+
+    if sink is None:
+        if calendar_registry is None or exchange_code is None:
+            raise RuntimeError("coarse simulation file export requires calendar context")
+
+        native_module().export_coarse_simulation_artifact(
+            simulation_result.to_payload(),
+            str(resolved_output_path),
+            preferences.reference_price,
+            preferences.timestamp_column,
+            simulation_output_price_column(preferences),
+            calendar_registry._native_registry,
+            exchange_code,
+        )
+
+        return
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,

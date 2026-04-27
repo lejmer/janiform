@@ -6,13 +6,13 @@ use janiform::simulation::{
     SimulationProgressPhase,
 };
 use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure, format_path};
+use janiform_workflows::simulation::{
+    CoarseIntervalExportSettings, DirectSimulationCompleted, DirectSimulationCompletion,
+    DirectSimulationJob, SeededTickExportSettings, SimulationExportSummary,
+    SimulationOutputColumns,
+};
 use serde_json::{Value, json};
 
-use super::artifacts::{SimulationExportSummary, SimulationOutputColumns};
-use super::direct::{
-    CoarseIntervalExportSettings, DirectSimulationCompleted, DirectSimulationCompletion,
-    DirectSimulationJob, SeededTickExportSettings,
-};
 use super::rendering::{simulation_completion_summary, simulation_start_summary};
 use super::requests::{load_coarse_simulation_request, load_seeded_tick_simulation_request};
 use super::{CoarseIntervalCommand, SeededTicksCommand};

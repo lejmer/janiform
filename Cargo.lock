@@ -981,18 +981,14 @@ dependencies = [
 name = "janiform-cli"
 version = "0.0.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
  "chrono",
  "clap",
- "csv",
  "janiform",
  "janiform-event-log",
  "janiform-foundations",
  "janiform-terminal-ui",
  "janiform-workflows",
  "miette",
- "parquet",
  "serde",
  "serde_json",
  "thiserror",
@@ -1189,12 +1185,18 @@ dependencies = [
 name = "janiform-workflows"
 version = "0.0.0"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "chrono",
+ "csv",
+ "janiform",
  "janiform-calibration-artifacts",
  "janiform-calibration-runtime",
  "janiform-engine-pricing",
  "janiform-event-log",
  "janiform-market-time",
  "janiform-terminal-ui",
+ "parquet",
  "serde",
  "serde_json",
  "thiserror",
