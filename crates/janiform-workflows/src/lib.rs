@@ -4,6 +4,7 @@
 
 pub mod error;
 pub mod fit;
+pub mod simulation;
 
 mod machine_events;
 mod progress;

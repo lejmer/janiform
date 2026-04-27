@@ -210,6 +210,7 @@
     },
     "janiform.calibration.fit": {
       "exports": [
+        "FitProgressEvent",
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformFitResult",
@@ -219,6 +220,18 @@
       "module_name": "janiform.calibration.fit",
       "schema_identifiers": [],
       "symbols": {
+        "FitProgressEvent": {
+          "field_names": [
+            "stage_id",
+            "stage_label",
+            "phase_id",
+            "phase_label",
+            "completed_units",
+            "total_units"
+          ],
+          "kind": "contract_model",
+          "signature": "(stage_id: 'Optional[str]', stage_label: 'Optional[str]', phase_id: 'Optional[str]', phase_label: 'Optional[str]', completed_units: 'int', total_units: 'int') -> 'None'"
+        },
         "JaniformEstimator": {
           "base_classes": [],
           "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
@@ -296,8 +309,8 @@
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
-            "fit": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None) -> 'JaniformModel'",
-            "fit_with_report": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None) -> 'JaniformFitResult'"
+            "fit": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[FitProgressEvent], None]]' = None) -> 'JaniformModel'",
+            "fit_with_report": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[FitProgressEvent], None]]' = None) -> 'JaniformFitResult'"
           },
           "qualname": "JaniformEstimator"
         }

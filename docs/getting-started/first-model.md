@@ -62,6 +62,7 @@ simulation = model.simulate(
     start_time_utc=datetime(2023, 3, 28, 19, 0, tzinfo=UTC),
     horizon_interval_count=96,
     interval="15min",
+    coarse=True,
 )
 frame = simulation.to_pandas()
 ```

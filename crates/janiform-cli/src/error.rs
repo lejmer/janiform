@@ -330,8 +330,22 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                     message,
                 }
             }
+            janiform_workflows::error::WorkflowError::SimulationValidationFailed {
+                field,
+                message,
+            } => Self::InvalidCommandArgument {
+                argument_name: field,
+                message,
+            },
             janiform_workflows::error::WorkflowError::FitArtifactWrite { path, source } => {
                 Self::FitArtifactWrite { path, source }
+            }
+            janiform_workflows::error::WorkflowError::SimulationArtifactWrite { path, source } => {
+                Self::ArtifactWrite {
+                    artifact_name: "simulation artifact",
+                    path,
+                    source,
+                }
             }
             janiform_workflows::error::WorkflowError::FitEventLog { source } => {
                 Self::FitEventLog { source }

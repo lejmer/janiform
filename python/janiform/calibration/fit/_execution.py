@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -40,6 +41,7 @@ from ._preparation.contracts import FitExecutionConfiguration
 from ._runtime.metadata import normalize_model_parameters
 from ._runtime.workflow import NativeFitWorkflowOutput, run_fit_workflow
 from .model import JaniformModel
+from .progress import FitProgressEvent
 from .report import JaniformFitReport
 
 
@@ -58,6 +60,7 @@ def fit_with_execution_configuration(
     carry: Optional[CalibrationFlatCarryInput] = None,
     output_dir: Optional[str | Path] = None,
     report: bool = False,
+    progress_callback: Optional[Callable[[FitProgressEvent], None]] = None,
 ) -> Union[JaniformModel, tuple[Optional[JaniformModel], JaniformFitReport]]:
     _validate_fit_input_labels(
         tick_data_provenance_label=tick_data_provenance_label,
@@ -80,6 +83,7 @@ def fit_with_execution_configuration(
         option_surface_provenance_label=option_surface_provenance_label,
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
+        progress_callback=progress_callback,
     )
 
     fit_report, model = _build_fit_outputs_from_native(native_output)
@@ -137,6 +141,7 @@ def _run_fit_with_output_controller(
     option_surface_provenance_label: str,
     option_surface_valuation_time_utc: Optional[datetime],
     carry: Optional[CalibrationFlatCarryInput],
+    progress_callback: Optional[Callable[[FitProgressEvent], None]],
 ) -> NativeFitWorkflowOutput:
     suppression_context = redirect_stdout(StringIO()) if configuration.silent else nullcontext()
     native_output: Optional[NativeFitWorkflowOutput] = None
@@ -161,6 +166,7 @@ def _run_fit_with_output_controller(
                 option_surface_valuation_time_utc=option_surface_valuation_time_utc,
                 carry=carry,
                 progress_mode=resolved_progress_mode,
+                progress_callback=progress_callback,
             )
         finally:
             if native_output is not None and native_output.temporary_directory is not None:

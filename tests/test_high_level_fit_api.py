@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, NoReturn, Optional, Self, cast
+from typing import Any, NoReturn, Optional, cast
 
 import pyarrow as pa
 import pandas
@@ -18,23 +18,21 @@ import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
-import janiform.calibration.fit._runtime.mean_reversion as fit_mean_reversion_runtime_module
 import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
 import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
 import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
-import janiform.calibration.fit._runtime.shared as fit_runtime_shared_module
 import janiform.calibration.fit._runtime.simulation.result as fit_simulation_result_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
 import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
 import janiform.calibration.fit.pricing.market_surface._workflow.progress as fit_market_surface_progress_module
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
-import janiform.hourly_factors.workflow as hourly_factors_workflow_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform._workflow_progress import JaniformOutputController
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
+    FitProgressEvent,
     JaniformEstimator,
     JaniformFitResult,
     JaniformFitReport,
@@ -105,8 +103,7 @@ from janiform.pricing import (
     VanillaOptionPricingStatus,
 )
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
-from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
-from janiform.simulation.progress import SimulationProgressEvent
+from janiform.simulation import SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
     build_endogenous_mean_reversion_fitted_parameters_payload,
@@ -163,6 +160,50 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
     assert "seasonality" in model.parameters
     assert model.run_id == "high-level-fit-success"
     assert model.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+
+
+def test_janiform_estimator_fit_forwards_progress_events_to_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    progress_event = FitProgressEvent(
+        stage_id="fit_return_distribution",
+        stage_label="Fit return distribution",
+        phase_id="estimate_student_t",
+        phase_label="Estimate Student t",
+        completed_units=1,
+        total_units=3,
+    )
+    observed_events: list[FitProgressEvent] = []
+
+    patch_fit_workflow_runner(
+        monkeypatch,
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
+        ),
+        progress_event=progress_event,
+    )
+
+    estimator = JaniformEstimator(market_profile="us_equity_cash")
+
+    estimator.fit(
+        tick_data_path=tick_data_path,
+        progress_callback=observed_events.append,
+    )
+
+    assert observed_events == [progress_event]
 
 
 def test_janiform_estimator_supports_simple_zero_config_tick_fit(
@@ -1047,7 +1088,7 @@ def test_surface_pricing_result_exposes_log_forward_moneyness_grid() -> None:
     ),)
 
 
-def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
+def test_high_level_model_simulate_sends_model_payload_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1074,23 +1115,20 @@ def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
 
     estimator = JaniformEstimator(market_profile="us_equity_cash")
     model = estimator.fit(tick_data_path=tick_data_path)
-    prepared_inputs = fit_simulation_workflow_module.prepare_model_simulation_inputs(
-        model,
+
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+
+    model.simulate(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=2,
         interval="1h",
-        simulation_kind="coarse_interval",
-        initial_excitation_state=None,
-        debug_trace_enabled=False,
-        sample_every_nth_transition=1,
-        max_records_per_chunk=1_000,
-        state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
+        coarse=True,
     )
-    assert prepared_inputs.coarse_request is not None
 
-    assert prepared_inputs.coarse_request.hourly_factor_contract.surprise_component_nu_h[0] == pytest.approx(0.04)
-    assert prepared_inputs.coarse_request.hourly_factor_contract.surprise_component_nu_h[1] == pytest.approx(0.02)
+    assert captured_requests[0]["simulation_kind"] == "coarse_interval"
+    assert captured_requests[0]["model_payload"]["parameters"] == model.parameters
+    assert captured_requests[0]["interval_duration_nanos"] == 3_600_000_000_000
 
 
 def test_janiform_estimator_preserves_duplicate_ticks_by_default(
@@ -1649,7 +1687,7 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
         )
 
 
-def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_inputs(
+def test_high_level_model_simulate_sends_coarse_interval_request_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1659,27 +1697,22 @@ def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_input
         run_id="high-level-model-closed-seasonality-gating",
     )
 
-    prepared_inputs = fit_simulation_workflow_module.prepare_model_simulation_inputs(
-        model,
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+
+    model.simulate(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=4,
         interval="15min",
-        simulation_kind="coarse_interval",
-        initial_excitation_state=None,
-        debug_trace_enabled=False,
-        sample_every_nth_transition=1,
-        max_records_per_chunk=1_000,
-        state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
-    )
-    assert prepared_inputs.coarse_request is not None
-
-    assert prepared_inputs.coarse_request.hourly_factor_contract.s_h == pytest.approx(
-        (0.0, 0.0, 1.0, 1.0)
+        coarse=True,
     )
 
+    assert captured_requests[0]["simulation_kind"] == "coarse_interval"
+    assert captured_requests[0]["horizon_interval_count"] == 4
+    assert captured_requests[0]["interval_duration_nanos"] == 900_000_000_000
 
-def test_high_level_model_simulate_dispatches_by_interval_mode(
+
+def test_high_level_model_simulate_dispatches_by_explicit_coarse_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1689,29 +1722,39 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         run_id="high-level-model-simulate",
     )
 
-    prepared_inputs = fit_runtime_shared_module.PreparedModelSimulationInputs(
-        coarse_request=object(),
-        seeded_request=object(),
-    )
-
-    captured_calls: list[tuple[str, Any]] = []
+    captured_requests: list[tuple[str, int]] = []
     coarse_result = object()
     tick_result = object()
 
+    class _FakeNativeModule:
+        def run_model_simulation_workflow(
+            self,
+            request_payload: dict[str, Any],
+            progress_callback: Any,
+        ) -> dict[str, Any]:
+            del progress_callback
+            captured_requests.append(
+                (
+                    str(request_payload["simulation_kind"]),
+                    int(request_payload["interval_duration_nanos"]),
+                )
+            )
+
+            return {}
+
     monkeypatch.setattr(
         fit_simulation_workflow_module,
-        "prepare_model_simulation_inputs",
-        lambda model_value, *args, **kwargs: prepared_inputs,
+        "native_module",
+        lambda: _FakeNativeModule(),
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module,
-        "run_coarse_simulation",
-        lambda request, **kwargs: captured_calls.append(("coarse", request)) or coarse_result,
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        lambda request, **kwargs: captured_calls.append(("ticks", request)) or tick_result,
+        "_adapt_native_simulation_output",
+        lambda raw_output, **kwargs: (
+            tick_result
+            if kwargs["simulation_kind"].value == "seeded_tick"
+            else coarse_result
+        ),
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module,
@@ -1739,21 +1782,32 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=2,
         interval="15min",
+        coarse=True,
+    )
+    observed_seeded_with_custom_interval = model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=2,
+        interval="15min",
     )
 
     assert isinstance(observed_seeded, JaniformSimulationResult)
     assert isinstance(observed_coarse, JaniformSimulationResult)
+    assert isinstance(observed_seeded_with_custom_interval, JaniformSimulationResult)
     assert observed_seeded.raw_result is tick_result
     assert observed_coarse.raw_result is coarse_result
+    assert observed_seeded_with_custom_interval.raw_result is tick_result
     assert observed_seeded.simulation_kind == "seeded_tick"
     assert observed_coarse.simulation_kind == "coarse_interval"
-    assert captured_calls == [
-        ("ticks", prepared_inputs.seeded_request),
-        ("coarse", prepared_inputs.coarse_request),
+    assert observed_seeded_with_custom_interval.simulation_kind == "seeded_tick"
+    assert captured_requests == [
+        ("seeded_tick", 3_600_000_000_000),
+        ("coarse_interval", 900_000_000_000),
+        ("seeded_tick", 900_000_000_000),
     ]
 
 
-def test_high_level_model_simulate_forwards_progress_events_to_callback_and_renderer(
+def test_high_level_model_simulate_forwards_progress_events_to_callback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1763,67 +1817,37 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
         run_id="high-level-model-progress",
     )
 
-    prepared_inputs = fit_runtime_shared_module.PreparedModelSimulationInputs(
-        coarse_request=None,
-        seeded_request=object(),
-    )
     simulated_result = object()
-    observed_progress_updates: list[tuple[str | None, int | None, int | None]] = []
     observed_callback_events: list[tuple[str, int, int]] = []
 
-    class _CapturingProgress:
-        def __enter__(self) -> Self:
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback) -> None:
-            _ = exc_type
-            _ = exc_value
-            _ = traceback
-            return None
-
-        def update(
+    class _FakeNativeModule:
+        def run_model_simulation_workflow(
             self,
-            *,
-            detail: str | None = None,
-            completed_units: int | None = None,
-            total_units: int | None = None,
-        ) -> None:
-            observed_progress_updates.append((detail, completed_units, total_units))
+            request_payload: dict[str, Any],
+            progress_callback: Any,
+        ) -> dict[str, Any]:
+            del request_payload
+            assert progress_callback is not None
 
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "prepare_model_simulation_inputs",
-        lambda model_value, *args, **kwargs: prepared_inputs,
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module.JaniformOutputController,
-        "progress",
-        lambda self, label, total_steps=None: _CapturingProgress(),
-    )
-
-    def fake_seeded_runtime(
-        request: Any,
-        *,
-        progress_callback: Any = None,
-    ) -> Any:
-        del request
-
-        assert progress_callback is not None
-
-        progress_callback(
-            SimulationProgressEvent(
-                phase="seeded_tick_intervals",
-                completed_units=2,
-                total_units=5,
+            progress_callback(
+                {
+                    "phase": "seeded_tick_intervals",
+                    "completed_units": 2,
+                    "total_units": 5,
+                }
             )
-        )
 
-        return simulated_result
+            return {}
 
     monkeypatch.setattr(
         fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        fake_seeded_runtime,
+        "native_module",
+        lambda: _FakeNativeModule(),
+    )
+    monkeypatch.setattr(
+        fit_simulation_workflow_module,
+        "_adapt_native_simulation_output",
+        lambda raw_output, **kwargs: simulated_result,
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module,
@@ -1847,7 +1871,6 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
     )
 
     assert result.raw_result is simulated_result
-    assert observed_progress_updates == [("seeded tick path generation", 2, 5)]
     assert observed_callback_events == [("seeded tick path generation", 2, 5)]
 
 
@@ -2012,7 +2035,7 @@ def test_price_option_grid_for_model_reports_pre_native_progress_stages(
     ]
 
 
-def test_high_level_model_simulate_uses_estimated_current_state_when_continuation_data_is_supplied(
+def test_high_level_model_simulate_sends_continuation_data_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2020,24 +2043,6 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
         tmp_path,
         monkeypatch,
         run_id="high-level-model-simulate-estimated-current-state",
-    )
-    captured_requests: dict[str, Any] = {}
-    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
-    seeded_result = object()
-    coarse_result = object()
-    estimated_state = CurrentStateEstimationResult(
-        hawkes_excitation_state=HawkesExcitationState(
-            y_plus_plus=0.45,
-            y_plus_minus=0.15,
-            y_minus_plus=0.3,
-            y_minus_minus=0.2,
-        ),
-        mean_reversion_boundary_state=MeanReversionBoundaryState(
-            observed_log_price=0.05,
-            anchor_value=0.05,
-            pressure_state=0.0,
-            deviation=0.0,
-        ),
     )
     continuation_data = CurrentStateEstimationRequest(
         observed_tick_data=pandas.DataFrame(
@@ -2048,53 +2053,7 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
             }
         ),
     )
-
-    monkeypatch.setattr(
-        fit_model_module,
-        "estimate_current_state_for_model",
-        lambda model_value, *, state_time_utc, request: (
-            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "provide_hourly_factor_contract",
-        lambda **kwargs: _build_test_hourly_factor_contract(
-            start_time_utc=cast(datetime, kwargs["range_start_utc"]),
-            interval_end_times_utc=(cast(datetime, kwargs["range_end_utc"]),),
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "seeded",
-            request,
-            seeded_result,
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_coarse_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "coarse",
-            request,
-            coarse_result,
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "build_simulation_result",
-        lambda model_value, **kwargs: JaniformSimulationResult(
-            simulation_kind="seeded_tick",
-            metadata={},
-            provenance={},
-            diagnostics={},
-            raw_result=kwargs["simulation_result"],
-        ),
-    )
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2107,27 +2066,28 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=1,
         interval="15min",
+        coarse=True,
         continuation_data=continuation_data,
     )
 
-    assert captured_estimation_calls == [
-        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data),
-        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data),
+    assert [request["simulation_kind"] for request in captured_requests] == [
+        "seeded_tick",
+        "coarse_interval",
     ]
-    assert captured_requests["seeded"].initial_excitation_state == estimated_state.hawkes_excitation_state
-    assert (
-        captured_requests["seeded"].initial_mean_reversion_boundary_state
-        == estimated_state.mean_reversion_boundary_state
-    )
-    coarse_model_inputs = captured_requests["coarse"].model_inputs.sufficient_statistics_model_inputs
-    assert coarse_model_inputs.initial_excitation_state == estimated_state.hawkes_excitation_state
-    assert (
-        coarse_model_inputs.initial_mean_reversion_boundary_state
-        == estimated_state.mean_reversion_boundary_state
-    )
+    for request in captured_requests:
+        assert request["continuation_data"] == {
+            "observation_timestamp_utc_nanos": (
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 30, tzinfo=UTC)),
+            ),
+            "observation_trade_prices": (100.0,),
+            "observation_trade_sides": ("buy",),
+            "observed_price": None,
+        }
+        assert request["initial_excitation_state"] is None
+        assert request["initial_mean_reversion_boundary_state"] is None
 
 
-def test_high_level_model_simulate_estimates_mean_reversion_boundary_when_hawkes_override_is_supplied(
+def test_high_level_model_simulate_sends_hawkes_override_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2135,22 +2095,6 @@ def test_high_level_model_simulate_estimates_mean_reversion_boundary_when_hawkes
         tmp_path,
         monkeypatch,
         run_id="high-level-model-simulate-hawkes-override-with-continuation",
-    )
-    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
-    captured_requests: dict[str, Any] = {}
-    estimated_state = CurrentStateEstimationResult(
-        hawkes_excitation_state=HawkesExcitationState(
-            y_plus_plus=0.45,
-            y_plus_minus=0.15,
-            y_minus_plus=0.3,
-            y_minus_minus=0.2,
-        ),
-        mean_reversion_boundary_state=MeanReversionBoundaryState(
-            observed_log_price=0.05,
-            anchor_value=0.05,
-            pressure_state=0.1,
-            deviation=0.0,
-        ),
     )
     explicit_initial_excitation_state = HawkesExcitationState(
         y_plus_plus=0.9,
@@ -2167,43 +2111,7 @@ def test_high_level_model_simulate_estimates_mean_reversion_boundary_when_hawkes
             }
         ),
     )
-
-    monkeypatch.setattr(
-        fit_model_module,
-        "estimate_current_state_for_model",
-        lambda model_value, *, state_time_utc, request: (
-            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "provide_hourly_factor_contract",
-        lambda **kwargs: _build_test_hourly_factor_contract(
-            start_time_utc=cast(datetime, kwargs["range_start_utc"]),
-            interval_end_times_utc=(cast(datetime, kwargs["range_end_utc"]),),
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "seeded",
-            request,
-            object(),
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "build_simulation_result",
-        lambda model_value, **kwargs: JaniformSimulationResult(
-            simulation_kind="seeded_tick",
-            metadata={},
-            provenance={},
-            diagnostics={},
-            raw_result=kwargs["simulation_result"],
-        ),
-    )
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2213,17 +2121,12 @@ def test_high_level_model_simulate_estimates_mean_reversion_boundary_when_hawkes
         initial_excitation_state=explicit_initial_excitation_state,
     )
 
-    assert captured_estimation_calls == [
-        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data)
-    ]
-    assert captured_requests["seeded"].initial_excitation_state == explicit_initial_excitation_state
-    assert (
-        captured_requests["seeded"].initial_mean_reversion_boundary_state
-        == estimated_state.mean_reversion_boundary_state
-    )
+    assert captured_requests[0]["continuation_data"] is not None
+    assert captured_requests[0]["initial_excitation_state"] == explicit_initial_excitation_state.to_payload()
+    assert captured_requests[0]["initial_mean_reversion_boundary_state"] is None
 
 
-def test_high_level_model_simulate_uses_explicit_mean_reversion_boundary_override(
+def test_high_level_model_simulate_sends_mean_reversion_boundary_override_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2231,22 +2134,6 @@ def test_high_level_model_simulate_uses_explicit_mean_reversion_boundary_overrid
         tmp_path,
         monkeypatch,
         run_id="high-level-model-simulate-boundary-override",
-    )
-    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
-    captured_requests: dict[str, Any] = {}
-    estimated_state = CurrentStateEstimationResult(
-        hawkes_excitation_state=HawkesExcitationState(
-            y_plus_plus=0.45,
-            y_plus_minus=0.15,
-            y_minus_plus=0.3,
-            y_minus_minus=0.2,
-        ),
-        mean_reversion_boundary_state=MeanReversionBoundaryState(
-            observed_log_price=0.05,
-            anchor_value=0.05,
-            pressure_state=0.1,
-            deviation=0.0,
-        ),
     )
     explicit_boundary_state = MeanReversionBoundaryState(
         observed_log_price=0.2,
@@ -2263,43 +2150,7 @@ def test_high_level_model_simulate_uses_explicit_mean_reversion_boundary_overrid
             }
         ),
     )
-
-    monkeypatch.setattr(
-        fit_model_module,
-        "estimate_current_state_for_model",
-        lambda model_value, *, state_time_utc, request: (
-            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "provide_hourly_factor_contract",
-        lambda **kwargs: _build_test_hourly_factor_contract(
-            start_time_utc=cast(datetime, kwargs["range_start_utc"]),
-            interval_end_times_utc=(cast(datetime, kwargs["range_end_utc"]),),
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "seeded",
-            request,
-            object(),
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "build_simulation_result",
-        lambda model_value, **kwargs: JaniformSimulationResult(
-            simulation_kind="seeded_tick",
-            metadata={},
-            provenance={},
-            diagnostics={},
-            raw_result=kwargs["simulation_result"],
-        ),
-    )
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2309,14 +2160,15 @@ def test_high_level_model_simulate_uses_explicit_mean_reversion_boundary_overrid
         initial_mean_reversion_boundary_state=explicit_boundary_state,
     )
 
-    assert captured_estimation_calls == [
-        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data)
-    ]
-    assert captured_requests["seeded"].initial_excitation_state == estimated_state.hawkes_excitation_state
-    assert captured_requests["seeded"].initial_mean_reversion_boundary_state == explicit_boundary_state
+    assert captured_requests[0]["continuation_data"] is not None
+    assert captured_requests[0]["initial_excitation_state"] is None
+    assert (
+        captured_requests[0]["initial_mean_reversion_boundary_state"]
+        == explicit_boundary_state.to_payload()
+    )
 
 
-def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continuation_data_is_supplied(
+def test_high_level_model_simulate_leaves_state_initialization_to_native_workflow_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2325,36 +2177,22 @@ def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continua
         monkeypatch,
         run_id="high-level-model-simulate-stationary-default",
     )
-    prepared_inputs = fit_simulation_workflow_module.prepare_model_simulation_inputs(
-        model,
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+
+    model.simulate(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=1,
         interval="1h",
-        simulation_kind="seeded_tick",
-        continuation_data=None,
-        initial_excitation_state=None,
-        initial_mean_reversion_boundary_state=None,
-        debug_trace_enabled=False,
-        sample_every_nth_transition=1,
-        max_records_per_chunk=1_000,
-        state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
-    )
-    runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
-        model,
-        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
-        horizon_interval_count=1,
-        interval="1h",
     )
 
-    assert prepared_inputs.seeded_request is not None
-    assert (
-        prepared_inputs.seeded_request.initial_excitation_state
-        == runtime_factors.kernel_parameters.stationary_excitation_state()
-    )
+    assert captured_requests[0]["simulation_kind"] == "seeded_tick"
+    assert captured_requests[0]["continuation_data"] is None
+    assert captured_requests[0]["initial_excitation_state"] is None
+    assert captured_requests[0]["initial_mean_reversion_boundary_state"] is None
 
 
-def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
+def test_high_level_model_coarse_simulation_selects_native_coarse_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2363,58 +2201,21 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
         monkeypatch,
         run_id="high-level-model-coarse-only",
     )
-    coarse_result = object()
-
-    def _unexpected_seeded_runtime(request: Any, **kwargs: Any) -> NoReturn:
-        del request
-        del kwargs
-        raise AssertionError("coarse simulation should not dispatch the seeded runtime")
-
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "provide_hourly_factor_contract",
-        lambda **kwargs: _build_test_hourly_factor_contract(
-            start_time_utc=kwargs["range_start_utc"],
-            interval_end_times_utc=(
-                kwargs["range_start_utc"] + timedelta(minutes=15),
-                kwargs["range_start_utc"] + timedelta(minutes=30),
-            ),
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        _unexpected_seeded_runtime,
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_coarse_simulation",
-        lambda request, **kwargs: coarse_result,
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "build_simulation_result",
-        lambda model_value, **kwargs: JaniformSimulationResult(
-            simulation_kind="coarse_interval",
-            metadata={},
-            provenance={},
-            diagnostics={},
-            raw_result=kwargs["simulation_result"],
-        ),
-    )
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
 
     observed = model.simulate(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=2,
         interval="15min",
+        coarse=True,
     )
 
     assert observed.simulation_kind == "coarse_interval"
-    assert observed.raw_result is coarse_result
+    assert captured_requests[0]["simulation_kind"] == "coarse_interval"
 
 
-def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
+def test_high_level_model_simulation_sends_mean_reversion_payload_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2431,66 +2232,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
 
     update_model_mean_reversion_payload(model, mean_reversion_payload)
 
-    captured_requests: dict[str, Any] = {}
-    coarse_result = object()
-    seeded_result = object()
-
-    def _build_runtime_hourly_factor_contract(**kwargs: Any) -> HourlyFactorContract:
-        interval_duration_nanos = hourly_factors_workflow_module._parse_interval_duration_nanos(
-            kwargs["interval"],
-            field_name="interval",
-        )
-        interval_duration = timedelta(microseconds=interval_duration_nanos / 1_000)
-        start_time_utc = kwargs["range_start_utc"]
-
-        return _build_test_hourly_factor_contract(
-            start_time_utc=start_time_utc,
-            interval_end_times_utc=(
-                start_time_utc + interval_duration,
-                start_time_utc + (interval_duration * 2),
-            ),
-        )
-
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "provide_hourly_factor_contract",
-        _build_runtime_hourly_factor_contract,
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "seeded",
-            request,
-            seeded_result,
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_coarse_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "coarse",
-            request,
-            coarse_result,
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "build_simulation_result",
-        lambda model_value, **kwargs: JaniformSimulationResult(
-            simulation_kind=(
-                "seeded_tick"
-                if kwargs["simulation_result"] is seeded_result
-                else "coarse_interval"
-            ),
-            metadata={},
-            provenance={},
-            diagnostics={},
-            raw_result=kwargs["simulation_result"],
-        ),
-    )
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2502,39 +2244,21 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
         start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
         horizon_interval_count=2,
         interval=timedelta(minutes=30),
+        coarse=True,
     )
 
-    seeded_request = captured_requests["seeded"]
-    coarse_request = captured_requests["coarse"]
-    seeded_end_anchor_values = tuple(
-        float(anchor_value)
-        for anchor_value in seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values
-    )
-    coarse_end_anchor_values = tuple(
-        float(anchor_value)
-        for anchor_value in coarse_request.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values
-    )
-
-    assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
-    assert len(seeded_end_anchor_values) == 2
-    assert seeded_end_anchor_values == pytest.approx((0.0, 0.0))
-    assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
-    assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
-    assert seeded_request.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(0.0)
-    assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
-
-    coarse_model_inputs = coarse_request.model_inputs.sufficient_statistics_model_inputs
-    assert coarse_model_inputs.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
-    assert len(coarse_end_anchor_values) == 2
-    assert coarse_end_anchor_values == pytest.approx((0.0, 0.0))
-    assert coarse_model_inputs.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
-    assert coarse_model_inputs.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
-    assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
+    assert [request["simulation_kind"] for request in captured_requests] == [
+        "seeded_tick",
+        "coarse_interval",
+    ]
+    for request in captured_requests:
+        assert (
+            _mean_reversion_fitted_parameters_payload_from_model_payload(request["model_payload"])
+            == mean_reversion_payload
+        )
 
 
-def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_via_native_recursion(
+def test_high_level_model_sends_endogenous_mean_reversion_payload_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2547,142 +2271,7 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
 
     update_model_mean_reversion_payload(model, mean_reversion_payload)
 
-    captured_requests: dict[str, Any] = {}
-    captured_native_requests: list[dict[str, Any]] = []
-
-    coarse_result = object()
-    seeded_result = object()
-
-    def _build_runtime_hourly_factor_contract(**kwargs: Any) -> HourlyFactorContract:
-        interval_duration_nanos = hourly_factors_workflow_module._parse_interval_duration_nanos(
-            kwargs["interval"],
-            field_name="interval",
-        )
-        interval_duration = timedelta(microseconds=interval_duration_nanos / 1_000)
-        start_time_utc = kwargs["range_start_utc"]
-
-        return _build_test_hourly_factor_contract(
-            start_time_utc=start_time_utc,
-            interval_end_times_utc=(
-                start_time_utc + interval_duration,
-                start_time_utc + (interval_duration * 2),
-            ),
-        )
-
-    def _materialize_runtime_anchors(
-        kernel_parameters: Any,
-        nig_shared_plus_shift_configuration: Any,
-        news_process_configuration: Any,
-        initial_excitation_state: Any,
-        mean_reversion_fitted_parameters: Any,
-        interval_alignment_policy: str,
-        start_anchor_value: float,
-        s_h: Any,
-        known_nu_h: Any,
-        surprise_nu_h: Any,
-        interval_deltas: Any,
-    ) -> dict[str, Any]:
-        captured_native_requests.append(
-            {
-                "kernel_parameters": kernel_parameters,
-                "nig_shared_plus_shift_configuration": nig_shared_plus_shift_configuration,
-                "news_process_configuration": news_process_configuration,
-                "initial_excitation_state": initial_excitation_state,
-                "mean_reversion_fitted_parameters": mean_reversion_fitted_parameters,
-                "interval_alignment_policy": interval_alignment_policy,
-                "start_anchor_value": start_anchor_value,
-                "s_h": tuple(s_h),
-                "known_nu_h": tuple(known_nu_h),
-                "surprise_nu_h": tuple(surprise_nu_h),
-                "interval_deltas": tuple(interval_deltas),
-            }
-        )
-
-        return {
-            "interval_alignment_policy": interval_alignment_policy,
-            "start_anchor_value": start_anchor_value,
-            "start_pressure_state": 0.0,
-            "end_anchor_values": [0.1, 0.3],
-            "end_pressure_states": [0.0, 0.0],
-            "interval_deltas": list(interval_deltas),
-        }
-
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "provide_hourly_factor_contract",
-        _build_runtime_hourly_factor_contract,
-    )
-    monkeypatch.setattr(
-        fit_seasonality_runtime_module,
-        "native_module",
-        lambda: SimpleNamespace(
-            materialize_runtime_structural_seasonality=(
-                lambda *args, **kwargs: {
-                    "interval_start_utc_nanos": [
-                        datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 30, tzinfo=UTC)),
-                        datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 30, tzinfo=UTC)),
-                    ],
-                    "seasonality_factors": [1.0, 1.0],
-                }
-            ),
-            materialize_endogenous_mean_reversion_runtime_interval_anchors=(
-                _materialize_runtime_anchors
-            )
-        ),
-    )
-    monkeypatch.setattr(
-        fit_mean_reversion_runtime_module,
-        "native_module",
-        lambda: SimpleNamespace(
-            materialize_runtime_structural_seasonality=(
-                lambda *args, **kwargs: {
-                    "interval_start_utc_nanos": [
-                        datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 30, tzinfo=UTC)),
-                        datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 30, tzinfo=UTC)),
-                    ],
-                    "seasonality_factors": [1.0, 1.0],
-                }
-            ),
-            materialize_endogenous_mean_reversion_runtime_interval_anchors=(
-                _materialize_runtime_anchors
-            ),
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "seeded",
-            request,
-            seeded_result,
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_coarse_simulation",
-        lambda request, **kwargs: _capture_request(
-            captured_requests,
-            "coarse",
-            request,
-            coarse_result,
-        ),
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "build_simulation_result",
-        lambda model_value, **kwargs: JaniformSimulationResult(
-            simulation_kind=(
-                "seeded_tick"
-                if kwargs["simulation_result"] is seeded_result
-                else "coarse_interval"
-            ),
-            metadata={},
-            provenance={},
-            diagnostics={},
-            raw_result=kwargs["simulation_result"],
-        ),
-    )
+    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2694,43 +2283,18 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
         start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
         horizon_interval_count=2,
         interval=timedelta(minutes=30),
+        coarse=True,
     )
 
-    seeded_request = captured_requests["seeded"]
-    coarse_request = captured_requests["coarse"]
-
-    assert len(captured_native_requests) == 2
-    assert captured_native_requests[0]["start_anchor_value"] == pytest.approx(0.0)
-    assert captured_native_requests[0]["interval_alignment_policy"] == (
-        "explicit_runtime_interval_grid_alignment.v1"
-    )
-    assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
-    assert seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
-        (0.1, 0.3)
-    )
-    assert seeded_request.mean_reversion_runtime_interval_anchors.start_pressure_state == pytest.approx(
-        0.0
-    )
-    assert seeded_request.mean_reversion_runtime_interval_anchors.end_pressure_states == pytest.approx(
-        (0.0, 0.0)
-    )
-    assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
-    assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
-    assert seeded_request.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(0.0)
-    assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
-
-    coarse_model_inputs = coarse_request.model_inputs.sufficient_statistics_model_inputs
-    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
-        (0.1, 0.3)
-    )
-    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_pressure_states == pytest.approx(
-        (0.0, 0.0)
-    )
-    assert coarse_model_inputs.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(
-        0.0
-    )
-    assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
+    assert [request["simulation_kind"] for request in captured_requests] == [
+        "seeded_tick",
+        "coarse_interval",
+    ]
+    for request in captured_requests:
+        assert (
+            _mean_reversion_fitted_parameters_payload_from_model_payload(request["model_payload"])
+            == mean_reversion_payload
+        )
 
 
 def test_high_level_simulation_result_exposes_tabular_exports(
@@ -5071,6 +4635,57 @@ def _capture_request(
 ) -> Any:
     captured_requests[key] = request
     return result
+
+
+def _capture_native_model_simulation_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[dict[str, Any]]:
+    captured_requests: list[dict[str, Any]] = []
+
+    class _FakeNativeModule:
+        def run_model_simulation_workflow(
+            self,
+            request_payload: dict[str, Any],
+            progress_callback: Any,
+        ) -> dict[str, Any]:
+            del progress_callback
+            captured_requests.append(request_payload)
+
+            return {}
+
+    monkeypatch.setattr(
+        fit_simulation_workflow_module,
+        "native_module",
+        lambda: _FakeNativeModule(),
+    )
+    monkeypatch.setattr(
+        fit_simulation_workflow_module,
+        "_adapt_native_simulation_output",
+        lambda raw_output, **kwargs: kwargs["simulation_kind"],
+    )
+    monkeypatch.setattr(
+        fit_simulation_workflow_module,
+        "build_simulation_result",
+        lambda model_value, **kwargs: JaniformSimulationResult(
+            simulation_kind=kwargs["simulation_result"],
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    return captured_requests
+
+
+def _mean_reversion_fitted_parameters_payload_from_model_payload(
+    model_payload: dict[str, Any],
+) -> dict[str, Any]:
+    raw_joint_refinement = model_payload["parameters"]["joint_refinement"]
+    raw_fitted_parameters = raw_joint_refinement["fitted_parameters"]
+    raw_return_components = raw_fitted_parameters["return_components_fitted_parameters"]
+
+    return raw_return_components["mean_reversion_fitted_parameters"]
 
 
 def _write_stage_parameter_artifacts_for_stage_reports(

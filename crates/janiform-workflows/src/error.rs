@@ -47,6 +47,25 @@ pub enum WorkflowError {
         source: io::Error,
     },
 
+    /// Simulation workflow input validation failed.
+    #[error("{field}: {message}")]
+    SimulationValidationFailed {
+        /// Field that failed validation.
+        field: &'static str,
+        /// User-readable validation message.
+        message: String,
+    },
+
+    /// Simulation artifact writing failed.
+    #[error("failed to write simulation artifact `{}`", path.display())]
+    SimulationArtifactWrite {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source IO error.
+        #[source]
+        source: io::Error,
+    },
+
     /// Fit event-log writing failed.
     #[error("failed to write fit event log")]
     FitEventLog {

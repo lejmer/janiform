@@ -78,16 +78,20 @@ def build_full_workflow_model(
 def patch_fit_workflow_runner(
     monkeypatch: pytest.MonkeyPatch,
     staged_runner: StagedRunner,
+    *,
+    progress_event: Optional[Any] = None,
 ) -> None:
     monkeypatch.setattr(
         fit_execution_module,
         "_run_fit_with_output_controller",
-        _fit_workflow_runner_from_staged_runner(staged_runner),
+        _fit_workflow_runner_from_staged_runner(staged_runner, progress_event=progress_event),
     )
 
 
 def _fit_workflow_runner_from_staged_runner(
     staged_runner: StagedRunner,
+    *,
+    progress_event: Optional[Any] = None,
 ) -> FitWorkflowRunner:
     def run_fit_workflow(
         configuration: FitExecutionConfiguration,
@@ -104,6 +108,7 @@ def _fit_workflow_runner_from_staged_runner(
         option_surface_provenance_label: str,
         option_surface_valuation_time_utc: Any,
         carry: Any,
+        progress_callback: Any,
     ) -> NativeFitWorkflowOutput:
         _ = output_controller
         _ = resume_settings
@@ -112,6 +117,9 @@ def _fit_workflow_runner_from_staged_runner(
         _ = option_surface_provenance_label
         _ = option_surface_valuation_time_utc
         _ = carry
+
+        if progress_event is not None and progress_callback is not None:
+            progress_callback(progress_event)
 
         resolved_run_id = run_id or generate_workflow_run_id(Path(tick_data_path).stem)
         prepared_handle = _PreparedExecutionHandle(

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "62f5d703cb71ec2bcf4e53332bda85c3e4e93f3e2fc87b4accbfa43e8850feb1",
+  "approved_snapshot_sha256": "7081d05aeb1f591ccde2db6250e1a6067b797436b0441dfde9fdbd57c9816495",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1221,6 +1221,18 @@
         "janiform.calibration",
         "janiform.calibration.fit",
         "janiform.calibration.fit.report"
+      ]
+    },
+    {
+      "approved_on": "2026-04-28",
+      "docs_updated": [],
+      "rationale": "High-level fit now exposes the same typed progress callback boundary as fitted-model simulation, so users can observe Rust-owned workflow progress without Python owning a second progress implementation.",
+      "snapshot_sha256": "7081d05aeb1f591ccde2db6250e1a6067b797436b0441dfde9fdbd57c9816495",
+      "summary": "Approve typed fit progress callback events.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.model"
       ]
     }
   ],

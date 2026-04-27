@@ -13,6 +13,7 @@ Import the module that matches the workflow you want. The package root stays int
 Primary high-level fitting surface. Representative public symbols include:
 
 - `JaniformEstimator`
+- `FitProgressEvent`
 - `JaniformFitReport`
 - `JaniformFitResult`
 - `JaniformModel`
@@ -95,6 +96,17 @@ model and the fit report without changing the main `fit(...)` return shape. The 
 `JaniformFitReport` also exposes staged execution summaries and the resolved stage-report payloads
 through `report.stage_report_payloads`.
 
+`JaniformEstimator.fit(...)` and `JaniformEstimator.fit_with_report(...)` accept an optional
+`progress_callback` that receives `FitProgressEvent` values emitted by the Rust workflow. The event
+contains the current stage, phase, completed units, total units, and a `detail` label suitable for
+user-facing progress displays.
+
+`JaniformModel.simulate(...)` accepts an optional `progress_callback` that receives
+`SimulationProgressEvent` values from the Rust simulation workflow. When `interval` is omitted,
+the model uses the default `1h` horizon interval. The model generates a seeded-tick path by
+default, and `coarse=True` selects the coarse-interval fitted-model path. `interval` only controls
+the horizon unit.
+
 When fitting with options, one fit run targets one option quote timestamp, tick data remains
 mandatory, and the option surface must contain bid and ask quote data together with prices.
 
@@ -104,6 +116,7 @@ Public simulation workflows and shared runtime contracts. Representative public 
 
 - `CoarseSimulationRunRequest`
 - `CoarseSimulationPath`
+- `SimulationProgressEvent`
 - `SeededTickSimulationRequest`
 - `SeededTickSimulationResponse`
 - `HawkesKernelParameters`

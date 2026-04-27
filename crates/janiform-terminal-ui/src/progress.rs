@@ -53,8 +53,10 @@ impl ProgressAdapter {
         if let Ok(style) = ProgressStyle::with_template(UNBOUNDED_PROGRESS_TEMPLATE) {
             progress_bar.set_style(style);
         }
+
         let color_enabled =
             console::colors_enabled_stderr() && std::env::var_os("NO_COLOR").is_none();
+
         let render_state = Arc::new(Mutex::new(ProgressRenderState {
             color_enabled,
             ..ProgressRenderState::default()
@@ -104,6 +106,7 @@ impl ProgressAdapter {
                 self.snapshot.scope = Some(scope);
                 self.snapshot.input_count = Some(input_count);
                 self.snapshot.output_path = output_path;
+
                 self.snapshot.stages = stage_sequence
                     .into_iter()
                     .enumerate()
@@ -114,7 +117,9 @@ impl ProgressAdapter {
                         elapsed: None,
                     })
                     .collect();
+
                 self.run_started_at = Some(Instant::now());
+
                 self.snapshot.terminal_status = None;
                 self.snapshot.failure_reason = None;
             }
@@ -126,6 +131,7 @@ impl ProgressAdapter {
                 self.snapshot.active_stage = Some(stage);
                 self.snapshot.stage_number = Some(stage_number);
                 self.snapshot.stage_count = Some(stage_count);
+
                 self.active_stage_started_at = Some(Instant::now());
 
                 self.clear_progress_details();
@@ -144,6 +150,7 @@ impl ProgressAdapter {
                 self.snapshot.phase = Some(phase.clone());
                 self.snapshot.measure = Some(measure);
                 self.snapshot.latest_signal = latest_signal.clone();
+
                 self.merge_work_item_columns(work_item_columns);
                 self.seed_work_items(planned_work_item_labels);
 
@@ -175,7 +182,9 @@ impl ProgressAdapter {
                 runtime_seconds,
             } => {
                 self.snapshot.completed_stage = Some(stage);
+
                 self.clear_progress_details();
+
                 let elapsed = format_elapsed_seconds(runtime_seconds);
 
                 if let Some(stage_number) = self.snapshot.stage_number {
@@ -185,6 +194,7 @@ impl ProgressAdapter {
                         Some(elapsed),
                     );
                 }
+
                 self.active_stage_started_at = None;
 
                 self.progress_bar.reset();
@@ -195,6 +205,7 @@ impl ProgressAdapter {
                 self.snapshot.active_stage = None;
                 self.snapshot.stage_number = None;
                 self.snapshot.stage_count = None;
+
                 self.active_stage_started_at = None;
 
                 self.clear_progress_details();
@@ -204,6 +215,7 @@ impl ProgressAdapter {
             }
             ProgressEvent::RunFailed { reason } => {
                 self.snapshot.failure_reason = Some(reason);
+
                 if let Some(stage_number) = self.snapshot.stage_number {
                     self.update_stage_status(
                         stage_number,
@@ -242,10 +254,12 @@ impl ProgressAdapter {
             } => {
                 let total_units = u64::try_from(total_units)?;
                 let completed_units = u64::try_from(completed_units)?;
+
                 let progress_bar = self.progress_bar_for_bounded(total_units);
 
                 progress_bar.set_message(message);
                 progress_bar.set_position(completed_units);
+
                 self.enable_steady_tick();
                 self.start_message_refresh();
             }
@@ -254,6 +268,7 @@ impl ProgressAdapter {
 
                 progress_bar.set_message(message);
                 progress_bar.tick();
+
                 self.enable_steady_tick();
                 self.start_message_refresh();
             }
@@ -277,11 +292,13 @@ impl ProgressAdapter {
     /// Finish the live progress section while leaving the final rows on screen.
     pub fn finish_and_keep(&mut self) -> io::Result<()> {
         self.message_refresh.stop();
+
         let message = self.progress_message();
 
         self.progress_bar.finish_and_clear();
 
-        Term::stderr().write_line(message.as_str())?;
+        Term::stderr().write_line("")?;
+        Term::stderr().write_line(&format!("  {message}"))?;
         Term::stderr().write_line("")
     }
 
@@ -408,14 +425,18 @@ impl ProgressAdapter {
         metrics: Vec<ProgressWorkItemMetric>,
     ) {
         let status = work_item_status_text(progress_percent).to_string();
+
         let started_at = self
             .active_work_started_at_by_label
             .entry(label.clone())
             .or_insert_with(Instant::now);
+
         let elapsed = format_elapsed_duration(started_at.elapsed());
+
         let progress = progress_percent
             .map(progress_percent_label)
             .unwrap_or_else(|| progress_measure_label(measure));
+
         let metrics = metrics
             .into_iter()
             .map(|metric| (metric.key, metric.value))

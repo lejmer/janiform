@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -25,6 +26,7 @@ from ._preparation.contracts import (
 )
 from ._runtime.workflow import prepare_fit_workflow as prepare_native_fit_workflow
 from .model import JaniformModel
+from .progress import FitProgressEvent
 from .result import JaniformFitResult
 from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
 from ..errors import calibration_error
@@ -203,6 +205,7 @@ class JaniformEstimator:
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
+        progress_callback: Optional[Callable[[FitProgressEvent], None]] = None,
     ) -> JaniformModel:
         return fit_with_execution_configuration(
             self._build_execution_configuration(
@@ -221,6 +224,7 @@ class JaniformEstimator:
             carry=carry,
             output_dir=output_dir,
             report=False,
+            progress_callback=progress_callback,
         )
 
     def fit_with_report(
@@ -239,6 +243,7 @@ class JaniformEstimator:
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
+        progress_callback: Optional[Callable[[FitProgressEvent], None]] = None,
     ) -> JaniformFitResult:
         model, fit_report = fit_with_execution_configuration(
             self._build_execution_configuration(
@@ -257,6 +262,7 @@ class JaniformEstimator:
             carry=carry,
             output_dir=output_dir,
             report=True,
+            progress_callback=progress_callback,
         )
 
         return JaniformFitResult(

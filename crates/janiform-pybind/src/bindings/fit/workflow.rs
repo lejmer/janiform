@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use janiform::calibration::{CalibrationResumeSettings, CalibrationStagedExecutionInput};
+use janiform_event_log::RunEvent;
 use janiform_terminal_ui::{ProgressAdapter, TerminalRenderer};
 use janiform_workflows::fit::{
     FitExecutionObserver, FitExecutionOutput, FitExecutionRequest, FitPreparationRequest,
@@ -90,8 +92,12 @@ fn prepare_fit_workflow(py: Python<'_>, request: &Bound<'_, PyAny>) -> PyResult<
 }
 
 #[pyfunction]
-#[pyo3(signature = (request))]
-fn run_fit_workflow(py: Python<'_>, request: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+#[pyo3(signature = (request, event_callback = None))]
+fn run_fit_workflow(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+    event_callback: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Py<PyAny>> {
     let request: FullRunRequestPayload = serde_json::from_value(py_any_to_json_value(request)?)
         .map_err(|source| {
             CalibrationExecutionError::new_err(format!(
@@ -99,19 +105,28 @@ fn run_fit_workflow(py: Python<'_>, request: &Bound<'_, PyAny>) -> PyResult<Py<P
             ))
         })?;
 
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_sink = Arc::clone(&callback_error_message);
+    let event_callback = event_callback.map(|callback| callback.clone().unbind());
+
     let workflow_output = py
-        .detach(move || run_full_workflow_from_request(request))
+        .detach(move || {
+            run_full_workflow_from_request(request, event_callback, callback_error_message_for_sink)
+        })
         .map_err(workflow_error_to_py_error)?;
+
+    raise_fit_progress_callback_error(&callback_error_message)?;
 
     workflow_output_to_py_object(py, workflow_output)
 }
 
 #[pyfunction]
-#[pyo3(signature = (prepared_handle, request))]
+#[pyo3(signature = (prepared_handle, request, event_callback = None))]
 fn run_prepared_fit_workflow(
     py: Python<'_>,
     prepared_handle: &PyPreparedCalibrationExecutionHandle,
     request: &Bound<'_, PyAny>,
+    event_callback: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let mut request: RunRequestPayload = serde_json::from_value(py_any_to_json_value(request)?)
         .map_err(|source| {
@@ -127,9 +142,22 @@ fn run_prepared_fit_workflow(
         execution_input.request.resume_settings = Some(resume_settings);
     }
 
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_sink = Arc::clone(&callback_error_message);
+    let event_callback = event_callback.map(|callback| callback.clone().unbind());
+
     let workflow_output = py
-        .detach(move || run_workflow_from_request(execution_input, request))
+        .detach(move || {
+            run_workflow_from_request(
+                execution_input,
+                request,
+                event_callback,
+                callback_error_message_for_sink,
+            )
+        })
         .map_err(workflow_error_to_py_error)?;
+
+    raise_fit_progress_callback_error(&callback_error_message)?;
 
     workflow_output_to_py_object(py, workflow_output)
 }
@@ -137,6 +165,8 @@ fn run_prepared_fit_workflow(
 fn run_workflow_from_request(
     execution_input: CalibrationStagedExecutionInput,
     request: RunRequestPayload,
+    event_callback: Option<Py<PyAny>>,
+    callback_error_message: Arc<Mutex<Option<String>>>,
 ) -> Result<FitExecutionOutput, WorkflowError> {
     let paths = FitWorkflowPaths {
         output_directory: PathBuf::from(request.paths.output_directory),
@@ -153,7 +183,11 @@ fn run_workflow_from_request(
         ProgressMode::None => None,
     };
 
-    let mut machine_event_sink = write_machine_event_to_stderr;
+    let mut machine_event_sink = fit_machine_event_sink(
+        request.emit_machine_events,
+        event_callback,
+        callback_error_message,
+    );
 
     run_fit_execution(
         FitExecutionRequest {
@@ -167,15 +201,15 @@ fn run_workflow_from_request(
         FitExecutionObserver {
             progress_adapter: progress_adapter.as_mut(),
             terminal_output,
-            machine_event_sink: request
-                .emit_machine_events
-                .then_some(&mut machine_event_sink),
+            machine_event_sink: machine_event_sink.as_mut().map(|sink| sink as _),
         },
     )
 }
 
 fn run_full_workflow_from_request(
     request: FullRunRequestPayload,
+    event_callback: Option<Py<PyAny>>,
+    callback_error_message: Arc<Mutex<Option<String>>>,
 ) -> Result<FitExecutionOutput, WorkflowError> {
     let terminal_output = fit_terminal_output(request.progress_mode);
 
@@ -184,7 +218,11 @@ fn run_full_workflow_from_request(
         ProgressMode::None => None,
     };
 
-    let mut machine_event_sink = write_machine_event_to_stderr;
+    let mut machine_event_sink = fit_machine_event_sink(
+        request.emit_machine_events,
+        event_callback,
+        callback_error_message,
+    );
 
     run_fit_workflow_core(
         FitWorkflowRequest {
@@ -195,11 +233,105 @@ fn run_full_workflow_from_request(
         FitExecutionObserver {
             progress_adapter: progress_adapter.as_mut(),
             terminal_output,
-            machine_event_sink: request
-                .emit_machine_events
-                .then_some(&mut machine_event_sink),
+            machine_event_sink: machine_event_sink.as_mut().map(|sink| sink as _),
         },
     )
+}
+
+fn fit_machine_event_sink(
+    emit_machine_events: bool,
+    event_callback: Option<Py<PyAny>>,
+    callback_error_message: Arc<Mutex<Option<String>>>,
+) -> Option<impl FnMut(&RunEvent) -> Result<(), WorkflowError>> {
+    if !emit_machine_events && event_callback.is_none() {
+        return None;
+    }
+
+    Some(move |event: &RunEvent| {
+        if emit_machine_events {
+            write_machine_event_to_stderr(event)?;
+        }
+
+        if let Some(event_callback) = &event_callback {
+            emit_fit_progress_callback_event(event_callback, event, &callback_error_message);
+        }
+
+        Ok(())
+    })
+}
+
+fn emit_fit_progress_callback_event(
+    event_callback: &Py<PyAny>,
+    event: &RunEvent,
+    callback_error_message: &Arc<Mutex<Option<String>>>,
+) {
+    if fit_progress_callback_failed(callback_error_message) {
+        return;
+    }
+
+    Python::attach(|py| {
+        let callback_result = python_fit_progress_event_to_py_object(py, event)
+            .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+
+        if let Err(source) = callback_result {
+            record_fit_progress_callback_error(callback_error_message, source.to_string());
+        }
+    });
+}
+
+fn fit_progress_callback_failed(callback_error_message: &Arc<Mutex<Option<String>>>) -> bool {
+    callback_error_message
+        .lock()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
+fn record_fit_progress_callback_error(
+    callback_error_message: &Arc<Mutex<Option<String>>>,
+    error_message: String,
+) {
+    let Ok(mut guard) = callback_error_message.lock() else {
+        return;
+    };
+
+    if guard.is_some() {
+        return;
+    }
+
+    *guard = Some(error_message);
+}
+
+fn raise_fit_progress_callback_error(
+    callback_error_message: &Arc<Mutex<Option<String>>>,
+) -> PyResult<()> {
+    let Ok(guard) = callback_error_message.lock() else {
+        return Ok(());
+    };
+
+    let Some(error_message) = guard.as_ref() else {
+        return Ok(());
+    };
+
+    Err(CalibrationExecutionError::new_err(format!(
+        "fit progress callback failed: {error_message}"
+    )))
+}
+
+fn python_fit_progress_event_to_py_object(py: Python<'_>, event: &RunEvent) -> PyResult<Py<PyAny>> {
+    let serialized_event = match serde_json::to_value(event).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize fit progress event: {source}"
+        ))
+    })? {
+        Value::Object(object) => Value::Object(object),
+        _ => {
+            return Err(CalibrationExecutionError::new_err(
+                "failed to serialize fit progress event: expected a JSON object",
+            ));
+        }
+    };
+
+    json_value_to_py_object(py, &serialized_event)
 }
 
 fn workflow_output_to_py_object(

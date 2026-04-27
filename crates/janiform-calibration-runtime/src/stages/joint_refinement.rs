@@ -22,6 +22,7 @@ pub use contracts::{
 pub use execution::JointRefinementSeedSummary;
 pub use execution::run_joint_refinement_calibration_stage;
 pub(crate) use execution::run_joint_refinement_calibration_stage_with_progress_observer_and_persistence;
+pub use mean_reversion_runtime::endogenous_interval_factors_from_hourly_contract;
 pub(crate) use setup::build_surprise_multipliers_for_interval_grid;
 pub use summary_simulation::{
     CloseSessionRequest, CloseSessionResponse, InitializeSessionRequest, InitializeSessionResponse,

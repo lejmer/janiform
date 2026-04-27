@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any, Optional, cast
 
@@ -650,6 +650,12 @@ class SeededTickSimulationResponse(ContractModel):
     diagnostics: SeededTickSimulationDiagnostics
     fine_path: SeededFinePathView
     event_tape: SeededTickEventTapeView
+    _native_result: Optional[Any] = field(default=None, repr=False, compare=False)
+
+    def to_payload(self) -> dict[str, Any]:
+        payload = super().to_payload()
+        payload.pop("_native_result", None)
+        return payload
 
     @staticmethod
     def from_mapping(
@@ -847,9 +853,9 @@ class SeededTickSimulationResponse(ContractModel):
                 chunk_record_count=chunk_record_count,
                 tracker=tracker,
             ),
+            _native_result=native_result,
         )
 
-        response._native_result = native_result
         return response
 
 def validate_seeded_tick_simulation_response(

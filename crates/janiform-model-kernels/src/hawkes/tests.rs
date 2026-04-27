@@ -27,6 +27,41 @@ fn build_hourly_factor_contract_with_seasonality(seasonality_factors: Vec<f64>) 
 }
 
 #[test]
+fn kernel_parameters_stationary_excitation_state_solves_diagonal_system() {
+    let kernel_parameters = HawkesKernelParameters::try_new(
+        1.0,
+        2.0,
+        HawkesKernelLoadings {
+            plus_plus: 1.0,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 1.0,
+        },
+        HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.0,
+        },
+    )
+    .expect("fixture kernel parameters should be valid");
+
+    let stationary_state = kernel_parameters
+        .stationary_excitation_state()
+        .expect("valid fixture should have stationary state");
+
+    assert_eq!(
+        stationary_state,
+        HawkesExcitationState {
+            y_plus_plus: 1.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 1.0,
+        }
+    );
+}
+
+#[test]
 fn excitation_state_from_target_components_preserves_component_mapping() {
     let target_plus = HawkesSourceComponents::new(1.0, 2.0);
     let target_minus = HawkesSourceComponents::new(3.0, 4.0);

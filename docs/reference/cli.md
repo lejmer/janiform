@@ -23,9 +23,10 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 | --- | --- |
 | Validate and derive a fit plan | `janiform fit plan` |
 | Run the prepared staged calibration boundary | `janiform fit staged` |
-| Run the default seeded simulation workflow | `janiform simulate` |
-| Run the explicit coarse path | `janiform simulate coarse-interval` |
-| Run the explicit seeded path | `janiform simulate seeded-ticks` |
+| Simulate from a persisted model | `janiform simulate --model-path MODEL.jf --horizon-interval-count COUNT` |
+| Simulate a coarse interval path from a persisted model | `janiform simulate --model-path MODEL.jf --coarse --horizon-interval-count COUNT` |
+| Run from an explicit coarse request JSON | `janiform simulate coarse-interval --request-json REQUEST.json` |
+| Run from an explicit seeded request JSON | `janiform simulate seeded-ticks --request-json REQUEST.json --calendar-registry-json CALENDAR.json` |
 | Inspect a fit run directory | `janiform inspect run RUN_DIR` |
 | Inspect a fitted model artifact | `janiform inspect model MODEL_PATH` |
 | Render a fit report | `janiform report fit RUN_OR_REPORT_PATH --html` |
@@ -41,6 +42,7 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 | Data inputs | `--tick-data-path`, `--known-news-path`, `--option-surface-path`, `--calendar-registry-json` |
 | Workflow shape | `--workflow-scope`, `--execution-mode` |
 | Calibration search | `--dynamics-search-restart-candidate-budget` |
+| Simulation horizon | `--seed`, `--start-time-utc`, `--horizon-interval-count`, `--interval`, `--coarse` |
 
 ## Shared CLI Boundary
 
@@ -76,5 +78,12 @@ the source `report.json`.
 - `fit` chooses the fit from the supplied inputs, so adding `--option-surface-path` fits the model
   to the underlying data *and* the selected option snapshot.
 - `fit staged` is the explicit orchestration boundary, not the recommended starting point.
-- `simulate` defaults to the seeded-tick path unless an explicit interval workflow is chosen.
+- `simulate` reads a fitted `model.jf` artifact through `--model-path`. It defaults to seeded-tick
+  generation, uses `--interval 1h` for horizon units when omitted, and switches to coarse-interval
+  generation only when `--coarse` is supplied.
+- `simulate --seed` defaults to `0`, `--start-time-utc` defaults to the current UTC timestamp, and
+  `--output-path` defaults to `.janiform/runs/<run-id>/simulation.<model-default-format>`.
+- `simulate --output-batch-size` controls exported artifact batching and defaults to `256` rows.
+- `simulate seeded-ticks` and `simulate coarse-interval` are direct request-JSON boundaries for
+  workflows that already have native simulation request artifacts.
 - `price` derives its pricing state from the persisted model, the valuation timestamp, and the supplied spot.

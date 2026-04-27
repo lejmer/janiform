@@ -19,11 +19,21 @@ boundary.
 
 ## Simulate
 
-- `janiform simulate` is the default simulation entrypoint.
-- `janiform simulate seeded-ticks` runs the priced fine-path workflow.
-- `janiform simulate coarse-interval` runs the direct coarse-interval path.
+- `janiform simulate --model-path MODEL.jf --horizon-interval-count COUNT` is the
+  fitted-model simulation entrypoint.
+- `janiform simulate --model-path MODEL.jf --coarse --horizon-interval-count COUNT` runs the
+  fitted-model coarse-interval path.
+- `janiform simulate seeded-ticks` runs from an explicit seeded-tick request JSON.
+- `janiform simulate coarse-interval` runs from an explicit coarse-interval request JSON.
 
-Choose seeded ticks when you need event replay or fine-path output. Choose coarse interval when you want direct interval paths without replaying fine-scale events.
+The fitted-model command defaults to seeded ticks because that is the fine-path simulation most
+callers want after fitting. `--interval` controls the horizon unit and defaults to `1h`; it does not
+select the path kind. Add `--coarse` when you want direct interval paths without replaying
+fine-scale events.
+
+`--seed` defaults to `0`, `--start-time-utc` defaults to the current UTC timestamp, and
+`--output-path` defaults under `.janiform/runs/<run-id>/`. Use `--output-batch-size` to control
+artifact export batching when writing large simulation outputs.
 
 ## Price
 

@@ -1,10 +1,12 @@
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any
 
 import orjson
 import pytest
 
+import janiform.calibration.fit.model as fit_model_module
 import janiform.cli as cli_module
+from janiform.calibration.fit._runtime.simulation.result import JaniformSimulationResult
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from tests.support.cli import invoke_cli, normalize_help_output, render_help
 from tests.support.fit.workflows import (
@@ -446,6 +448,21 @@ def test_simulate_outputs_model_provenance_and_simulation_payload(
     model_path = tmp_path / "saved-model.json"
     model.save(model_path)
 
+    captured_simulation_call: dict[str, Any] = {}
+
+    def capture_simulation_call(model_value: Any, **kwargs: Any) -> JaniformSimulationResult:
+        captured_simulation_call.update(kwargs)
+
+        return JaniformSimulationResult(
+            simulation_kind="seeded_tick",
+            metadata={},
+            provenance={"model_run_id": model_value.run_id},
+            diagnostics={"simulated_interval_count": kwargs["horizon_interval_count"]},
+            raw_result=object(),
+        )
+
+    monkeypatch.setattr(fit_model_module, "simulate_model", capture_simulation_call)
+
     exit_code, stdout, stderr = invoke_cli(
         [
             "simulate",
@@ -471,9 +488,12 @@ def test_simulate_outputs_model_provenance_and_simulation_payload(
     assert payload["command"] == cli_module.CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT
     assert payload["model_path"] == str(model_path)
     assert payload["resolved_configuration"]["market_profile"]["selected_preset"]["preset_name"] == "us_equity_cash"
-    assert payload["simulation_kind"] == "coarse_interval"
+    assert payload["simulation_kind"] == "seeded_tick"
     assert payload["primary_output_path"].endswith(".csv")
     assert payload["report_path"].endswith("simulation_report.json")
+    assert captured_simulation_call["interval"] == "1h"
+    assert captured_simulation_call["coarse"] is False
+    assert captured_simulation_call["horizon_interval_count"] == 2
 
 
 def test_removed_duplicate_roots_are_rejected() -> None:

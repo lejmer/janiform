@@ -73,22 +73,6 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             "--option-surface-path",
             "options.parquet",
         ][..],
-        &[
-            "simulate",
-            "seeded-ticks",
-            "--model-path",
-            "model.jf",
-            "--seed",
-            "123",
-        ][..],
-        &[
-            "simulate",
-            "coarse-interval",
-            "--model-path",
-            "model.jf",
-            "--interval",
-            "1h",
-        ][..],
         &["presets", "list", "--kind", "session"][..],
         &["presets", "show", "market-profile", "es_futures_globex"][..],
         &[
@@ -163,6 +147,102 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn simulate_help_exposes_high_level_interval_option() {
+    let output = janiform_command()
+        .args(["simulate", "--help"])
+        .output()
+        .expect("janiform simulate --help should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+    assert!(
+        stdout.contains("--interval"),
+        "simulate help should include high-level interval control:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--coarse"),
+        "simulate help should include the explicit coarse mode switch:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("seeded tick"),
+        "simulate help should explain the default seeded tick path:\n{stdout}"
+    );
+}
+
+#[test]
+fn simulate_validates_interval_before_loading_model() {
+    let output = janiform_command()
+        .args([
+            "--json",
+            "simulate",
+            "--model-path",
+            "missing-model.jf",
+            "--seed",
+            "1",
+            "--start-time-utc",
+            "2026-01-01T00:00:00Z",
+            "--horizon-interval-count",
+            "1",
+            "--interval",
+            "fortnight",
+        ])
+        .output()
+        .expect("janiform simulate should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::CommandLineUsage as i32)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write terminal diagnostics to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["code"], "invalid_command_argument");
+    assert!(
+        payload["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("--interval")
+    );
+}
+
+#[test]
+fn simulate_defaults_seed_start_time_and_output_path() {
+    let output = janiform_command()
+        .args([
+            "--json",
+            "simulate",
+            "--model-path",
+            "missing-model.jf",
+            "--horizon-interval-count",
+            "1",
+        ])
+        .output()
+        .expect("janiform simulate should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::CommandLineUsage as i32)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write terminal diagnostics to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["code"], "missing_input_file");
 }
 
 #[test]

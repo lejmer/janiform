@@ -1062,10 +1062,14 @@ def prepare_fit_workflow(request: object) -> object: ...
 def run_prepared_fit_workflow(
     prepared_handle: PreparedCalibrationExecutionHandle,
     request: object,
+    event_callback: Optional[object] = None,
 ) -> object: ...
 
 
-def run_fit_workflow(request: object) -> object: ...
+def run_fit_workflow(
+    request: object,
+    event_callback: Optional[object] = None,
+) -> object: ...
 
 
 def run_coarse_simulation(
@@ -1077,6 +1081,18 @@ def run_coarse_simulation(
     hourly_factor_contract: HourlyFactorContractResult,
     event_callback: Optional[object] = None,
 ) -> Any: ...
+
+
+def export_coarse_simulation_artifact(
+    path_payload: object,
+    output_path: str,
+    reference_price: float,
+    timestamp_column: str,
+    price_column: str,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    batch_size: int = 256,
+) -> int: ...
 
 
 def run_prepared_staged_calibration(
@@ -1109,6 +1125,12 @@ def materialize_endogenous_mean_reversion_runtime_interval_anchors(
 ) -> object: ...
 
 
+def run_model_simulation_workflow(
+    request: object,
+    event_callback: Optional[object] = None,
+) -> object: ...
+
+
 def run_seeded_tick_event_simulation(
     seed: int,
     start_time_utc: str,
@@ -1128,3 +1150,14 @@ def run_seeded_tick_event_simulation(
     state_snapshot_capture: str = "disabled",
     event_callback: Optional[object] = None,
 ) -> SeededTickSimulationNativeResult: ...
+
+
+def export_seeded_tick_simulation_artifact(
+    native_result: SeededTickSimulationNativeResult,
+    output_path: str,
+    reference_price: float,
+    timestamp_column: str,
+    price_column: str,
+    side_column: Optional[str] = None,
+    batch_size: int = 256,
+) -> int: ...

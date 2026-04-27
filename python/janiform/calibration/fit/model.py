@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -15,6 +16,7 @@ from ...pricing import (
     VanillaOptionPayoffType,
     VanillaOptionPricingRunResult,
 )
+from ...simulation.progress import SimulationProgressEvent
 from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ..errors import calibration_error
 from ..market_data.contracts import (
@@ -81,6 +83,7 @@ class JaniformModel:
         start_time_utc: datetime,
         horizon_interval_count: int,
         interval: Optional[str | timedelta] = None,
+        coarse: bool = False,
         output_path: Optional[str | Path] = None,
         sink: Optional[Any] = None,
         continuation_data: Optional[CurrentStateEstimationRequest] = None,
@@ -90,9 +93,7 @@ class JaniformModel:
         sample_every_nth_transition: int = 1,
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-        silent: bool = False,
-        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-        progress_callback: Optional[Any] = None,
+        progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
     ) -> JaniformSimulationResult:
         return simulate_model(
             self,
@@ -100,6 +101,7 @@ class JaniformModel:
             start_time_utc=start_time_utc,
             horizon_interval_count=horizon_interval_count,
             interval=interval,
+            coarse=coarse,
             output_path=output_path,
             sink=sink,
             continuation_data=continuation_data,
@@ -109,8 +111,6 @@ class JaniformModel:
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
             state_snapshot_capture=state_snapshot_capture,
-            silent=silent,
-            progress_mode=progress_mode,
             progress_callback=progress_callback,
         )
 
