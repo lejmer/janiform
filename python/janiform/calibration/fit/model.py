@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -15,6 +16,7 @@ from ...pricing import (
     VanillaOptionPayoffType,
     VanillaOptionPricingRunResult,
 )
+from ...simulation.progress import SimulationProgressEvent
 from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ..errors import calibration_error
 from ..market_data.contracts import (
@@ -90,7 +92,7 @@ class JaniformModel:
         sample_every_nth_transition: int = 1,
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-        progress_callback: Optional[Any] = None,
+        progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
     ) -> JaniformSimulationResult:
         return simulate_model(
             self,

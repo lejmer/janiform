@@ -1062,10 +1062,14 @@ def prepare_fit_workflow(request: object) -> object: ...
 def run_prepared_fit_workflow(
     prepared_handle: PreparedCalibrationExecutionHandle,
     request: object,
+    event_callback: Optional[object] = None,
 ) -> object: ...
 
 
-def run_fit_workflow(request: object) -> object: ...
+def run_fit_workflow(
+    request: object,
+    event_callback: Optional[object] = None,
+) -> object: ...
 
 
 def run_coarse_simulation(

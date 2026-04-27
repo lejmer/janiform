@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, NoReturn, Optional, Self, cast
+from typing import Any, NoReturn, Optional, cast
 
 import pyarrow as pa
 import pandas
@@ -23,7 +23,6 @@ import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_na
 import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
 import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
-import janiform.calibration.fit._runtime.shared as fit_runtime_shared_module
 import janiform.calibration.fit._runtime.simulation.result as fit_simulation_result_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
 import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
@@ -35,6 +34,7 @@ from janiform._timestamps import datetime_to_utc_nanos
 from janiform._workflow_progress import JaniformOutputController
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
+    FitProgressEvent,
     JaniformEstimator,
     JaniformFitResult,
     JaniformFitReport,
@@ -106,7 +106,6 @@ from janiform.pricing import (
 )
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
-from janiform.simulation.progress import SimulationProgressEvent
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
     build_endogenous_mean_reversion_fitted_parameters_payload,
@@ -163,6 +162,50 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
     assert "seasonality" in model.parameters
     assert model.run_id == "high-level-fit-success"
     assert model.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+
+
+def test_janiform_estimator_fit_forwards_progress_events_to_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    progress_event = FitProgressEvent(
+        stage_id="fit_return_distribution",
+        stage_label="Fit return distribution",
+        phase_id="estimate_student_t",
+        phase_label="Estimate Student t",
+        completed_units=1,
+        total_units=3,
+    )
+    observed_events: list[FitProgressEvent] = []
+
+    patch_fit_workflow_runner(
+        monkeypatch,
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
+        ),
+        progress_event=progress_event,
+    )
+
+    estimator = JaniformEstimator(market_profile="us_equity_cash")
+
+    estimator.fit(
+        tick_data_path=tick_data_path,
+        progress_callback=observed_events.append,
+    )
+
+    assert observed_events == [progress_event]
 
 
 def test_janiform_estimator_supports_simple_zero_config_tick_fit(
@@ -1689,29 +1732,34 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         run_id="high-level-model-simulate",
     )
 
-    prepared_inputs = fit_runtime_shared_module.PreparedModelSimulationInputs(
-        coarse_request=object(),
-        seeded_request=object(),
-    )
-
-    captured_calls: list[tuple[str, Any]] = []
+    captured_kinds: list[str] = []
     coarse_result = object()
     tick_result = object()
 
+    class _FakeNativeModule:
+        def run_model_simulation_workflow(
+            self,
+            request_payload: dict[str, Any],
+            progress_callback: Any,
+        ) -> dict[str, Any]:
+            del progress_callback
+            captured_kinds.append(str(request_payload["simulation_kind"]))
+
+            return {}
+
     monkeypatch.setattr(
         fit_simulation_workflow_module,
-        "prepare_model_simulation_inputs",
-        lambda model_value, *args, **kwargs: prepared_inputs,
+        "native_module",
+        lambda: _FakeNativeModule(),
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module,
-        "run_coarse_simulation",
-        lambda request, **kwargs: captured_calls.append(("coarse", request)) or coarse_result,
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        lambda request, **kwargs: captured_calls.append(("ticks", request)) or tick_result,
+        "_adapt_native_simulation_output",
+        lambda raw_output, **kwargs: (
+            tick_result
+            if kwargs["simulation_kind"].value == "seeded_tick"
+            else coarse_result
+        ),
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module,
@@ -1747,13 +1795,10 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
     assert observed_coarse.raw_result is coarse_result
     assert observed_seeded.simulation_kind == "seeded_tick"
     assert observed_coarse.simulation_kind == "coarse_interval"
-    assert captured_calls == [
-        ("ticks", prepared_inputs.seeded_request),
-        ("coarse", prepared_inputs.coarse_request),
-    ]
+    assert captured_kinds == ["seeded_tick", "coarse_interval"]
 
 
-def test_high_level_model_simulate_forwards_progress_events_to_callback_and_renderer(
+def test_high_level_model_simulate_forwards_progress_events_to_callback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1763,67 +1808,37 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
         run_id="high-level-model-progress",
     )
 
-    prepared_inputs = fit_runtime_shared_module.PreparedModelSimulationInputs(
-        coarse_request=None,
-        seeded_request=object(),
-    )
     simulated_result = object()
-    observed_progress_updates: list[tuple[str | None, int | None, int | None]] = []
     observed_callback_events: list[tuple[str, int, int]] = []
 
-    class _CapturingProgress:
-        def __enter__(self) -> Self:
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback) -> None:
-            _ = exc_type
-            _ = exc_value
-            _ = traceback
-            return None
-
-        def update(
+    class _FakeNativeModule:
+        def run_model_simulation_workflow(
             self,
-            *,
-            detail: str | None = None,
-            completed_units: int | None = None,
-            total_units: int | None = None,
-        ) -> None:
-            observed_progress_updates.append((detail, completed_units, total_units))
+            request_payload: dict[str, Any],
+            progress_callback: Any,
+        ) -> dict[str, Any]:
+            del request_payload
+            assert progress_callback is not None
 
-    monkeypatch.setattr(
-        fit_simulation_workflow_module,
-        "prepare_model_simulation_inputs",
-        lambda model_value, *args, **kwargs: prepared_inputs,
-    )
-    monkeypatch.setattr(
-        fit_simulation_workflow_module.JaniformOutputController,
-        "progress",
-        lambda self, label, total_steps=None: _CapturingProgress(),
-    )
-
-    def fake_seeded_runtime(
-        request: Any,
-        *,
-        progress_callback: Any = None,
-    ) -> Any:
-        del request
-
-        assert progress_callback is not None
-
-        progress_callback(
-            SimulationProgressEvent(
-                phase="seeded_tick_intervals",
-                completed_units=2,
-                total_units=5,
+            progress_callback(
+                {
+                    "phase": "seeded_tick_intervals",
+                    "completed_units": 2,
+                    "total_units": 5,
+                }
             )
-        )
 
-        return simulated_result
+            return {}
 
     monkeypatch.setattr(
         fit_simulation_workflow_module,
-        "run_seeded_tick_event_simulation",
-        fake_seeded_runtime,
+        "native_module",
+        lambda: _FakeNativeModule(),
+    )
+    monkeypatch.setattr(
+        fit_simulation_workflow_module,
+        "_adapt_native_simulation_output",
+        lambda raw_output, **kwargs: simulated_result,
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module,
@@ -1847,7 +1862,6 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
     )
 
     assert result.raw_result is simulated_result
-    assert observed_progress_updates == [("seeded tick path generation", 2, 5)]
     assert observed_callback_events == [("seeded tick path generation", 2, 5)]
 
 

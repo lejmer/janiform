@@ -1,13 +1,12 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
-from collections.abc import Mapping
 
+from .._progress_events import bounded_progress_counts_from_mapping
 from ..contracts.base import (
-    require_non_negative_integer,
     require_optional_non_negative_integer_value,
     require_optional_positive_integer_value,
-    require_positive_integer,
 )
 from .errors import _pricing_error
 
@@ -93,25 +92,12 @@ def pricing_progress_event_from_mapping(payload: Mapping[str, Any]) -> PricingPr
             "must be a recognized pricing progress phase",
         ) from error
 
-    completed_units = require_non_negative_integer(
+    counts = bounded_progress_counts_from_mapping(
         payload,
-        "completed_units",
-        "progress_event.completed_units",
-        _pricing_error,
+        completed_units_field_path="progress_event.completed_units",
+        total_units_field_path="progress_event.total_units",
+        error_factory=_pricing_error,
     )
-
-    total_units = require_positive_integer(
-        payload,
-        "total_units",
-        "progress_event.total_units",
-        _pricing_error,
-    )
-
-    if completed_units > total_units:
-        raise _pricing_error(
-            "progress_event.completed_units",
-            "must be less than or equal to total_units",
-        )
 
     current_group_index = require_optional_non_negative_integer_value(
         payload.get("current_group_index"),
@@ -157,8 +143,8 @@ def pricing_progress_event_from_mapping(payload: Mapping[str, Any]) -> PricingPr
 
     return PricingProgressEvent(
         phase=phase,
-        completed_units=completed_units,
-        total_units=total_units,
+        completed_units=counts.completed_units,
+        total_units=counts.total_units,
         current_group_index=current_group_index,
         current_maturity_index=current_maturity_index,
         total_maturities=total_maturities,

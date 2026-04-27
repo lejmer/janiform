@@ -26,7 +26,10 @@ from .....calendar import CalendarRegistry
 from .....mean_reversion import MeanReversionBoundaryState
 from .....simulation.coarse import CoarseSimulationPath
 from .....simulation.kinds import SimulationKind
-from .....simulation.progress import simulation_progress_event_from_mapping
+from .....simulation.progress import (
+    SimulationProgressEvent,
+    simulation_progress_event_from_mapping,
+)
 from .....simulation.seeded import SeededTickSimulationResponse
 from .....simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ....errors import calibration_error
@@ -56,7 +59,7 @@ def simulate_model(
     sample_every_nth_transition: int = 1,
     max_records_per_chunk: int = 1024,
     state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-    progress_callback: Optional[Any] = None,
+    progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
 ) -> JaniformSimulationResult:
     if output_path is not None and sink is not None:
         raise calibration_error("sink", "output_path and sink are mutually exclusive")

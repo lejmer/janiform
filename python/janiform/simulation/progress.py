@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from .._progress_events import (
+    BoundedProgressEvent,
+    bounded_progress_counts_from_mapping,
+)
 from .shared.errors import _simulation_error
 
 
@@ -14,7 +18,7 @@ class SimulationProgressPhase(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class SimulationProgressEvent:
+class SimulationProgressEvent(BoundedProgressEvent):
     phase: SimulationProgressPhase
     completed_units: int
     total_units: int
@@ -46,30 +50,17 @@ def simulation_progress_event_from_mapping(
             "must be a recognized simulation progress phase",
         ) from error
 
-    completed_units = payload.get("completed_units")
-    if not isinstance(completed_units, int) or completed_units < 0:
-        raise _simulation_error(
-            "progress_event.completed_units",
-            "must be a non-negative integer",
-        )
-
-    total_units = payload.get("total_units")
-    if not isinstance(total_units, int) or total_units <= 0:
-        raise _simulation_error(
-            "progress_event.total_units",
-            "must be a positive integer",
-        )
-
-    if completed_units > total_units:
-        raise _simulation_error(
-            "progress_event.completed_units",
-            "must be less than or equal to total_units",
-        )
+    counts = bounded_progress_counts_from_mapping(
+        payload,
+        completed_units_field_path="progress_event.completed_units",
+        total_units_field_path="progress_event.total_units",
+        error_factory=_simulation_error,
+    )
 
     return SimulationProgressEvent(
         phase=phase,
-        completed_units=completed_units,
-        total_units=total_units,
+        completed_units=counts.completed_units,
+        total_units=counts.total_units,
     )
 
 
