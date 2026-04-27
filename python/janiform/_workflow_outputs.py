@@ -336,20 +336,22 @@ def persist_seeded_tick_simulation(
 ) -> None:
     resolved_output_path = Path(output_path)
     if sink is None:
-        native_result = simulation_result._native_result
-        if native_result is None:
-            raise RuntimeError("seeded simulation file export requires a native simulation result")
-
-        native_module().export_seeded_tick_simulation_artifact(
-            native_result,
-            str(resolved_output_path),
-            preferences.reference_price,
-            preferences.timestamp_column,
-            simulation_output_price_column(preferences),
-            _simulation_output_side_column(preferences),
+        native_result = (
+            simulation_result._native_result
+            if isinstance(simulation_result, SeededTickSimulationResponse)
+            else None
         )
+        if native_result is not None:
+            native_module().export_seeded_tick_simulation_artifact(
+                native_result,
+                str(resolved_output_path),
+                preferences.reference_price,
+                preferences.timestamp_column,
+                simulation_output_price_column(preferences),
+                _simulation_output_side_column(preferences),
+            )
 
-        return
+            return
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
