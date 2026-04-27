@@ -146,6 +146,14 @@ pub(crate) struct FitPreparationObserver<'a> {
     pub(crate) preparation_request_ready: Option<
         &'a mut dyn FnMut(&CalibrationMarketDataPreparationRequest) -> Result<(), WorkflowError>,
     >,
+    pub(crate) preparation_progress:
+        Option<&'a mut dyn FnMut(FitPreparationProgress) -> Result<(), WorkflowError>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct FitPreparationProgress {
+    pub(crate) phase: &'static str,
+    pub(crate) latest_signal: &'static str,
 }
 
 struct EffectiveMarketProfileReference {
@@ -170,6 +178,12 @@ pub(crate) fn prepare_fit_workflow_with_observer(
     working_directory: &Path,
     mut observer: FitPreparationObserver<'_>,
 ) -> Result<PreparedFitWorkflow, WorkflowError> {
+    emit_preparation_progress(
+        &mut observer,
+        "resolving workflow inputs",
+        "inferring workflow scope and market profile",
+    )?;
+
     let workflow_scope = effective_workflow_scope(
         request.configuration.workflow_scope_override,
         request.option_surface_path.as_deref(),
@@ -183,6 +197,12 @@ pub(crate) fn prepare_fit_workflow_with_observer(
     let market_profile_defaults = market_profile_defaults(
         &request.configuration.registry,
         market_profile_reference.reference.as_ref(),
+    )?;
+
+    emit_preparation_progress(
+        &mut observer,
+        "inferring input columns",
+        "probing tick data and resolving normalization policy",
     )?;
 
     let input_inference = infer_market_data_fit_inputs(MarketDataFitInputInferenceRequest {
@@ -204,6 +224,12 @@ pub(crate) fn prepare_fit_workflow_with_observer(
     })?;
 
     let option_surface_source = option_surface_source(&request)?;
+
+    emit_preparation_progress(
+        &mut observer,
+        "resolving presets",
+        "selecting session and known-news inputs",
+    )?;
 
     let inferred_session_resolution = infer_session_resolution(
         &request,
@@ -227,6 +253,12 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 
     let materialization_directory = working_directory.join("resolved-inputs");
 
+    emit_preparation_progress(
+        &mut observer,
+        "building market-data request",
+        "assembling prepared calibration inputs",
+    )?;
+
     let preparation_request = build_preparation_request(
         &request,
         workflow_scope,
@@ -242,6 +274,12 @@ pub(crate) fn prepare_fit_workflow_with_observer(
     if let Some(preparation_request_ready) = observer.preparation_request_ready.as_mut() {
         preparation_request_ready(&preparation_request)?;
     }
+
+    emit_preparation_progress(
+        &mut observer,
+        "loading market data",
+        "normalizing source records and materializing runtime inputs",
+    )?;
 
     let prepared_plan = prepare_market_data_calibration_plan(
         preparation_request.clone(),
@@ -284,6 +322,21 @@ fn effective_workflow_scope(
     }
 
     CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface
+}
+
+fn emit_preparation_progress(
+    observer: &mut FitPreparationObserver<'_>,
+    phase: &'static str,
+    latest_signal: &'static str,
+) -> Result<(), WorkflowError> {
+    let Some(preparation_progress) = observer.preparation_progress.as_mut() else {
+        return Ok(());
+    };
+
+    preparation_progress(FitPreparationProgress {
+        phase,
+        latest_signal,
+    })
 }
 
 fn resolve_effective_market_profile_reference(

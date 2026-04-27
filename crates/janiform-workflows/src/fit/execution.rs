@@ -208,8 +208,8 @@ pub fn run_fit_execution(
         execution_duration,
     };
 
+    complete_progress(&mut observer.progress_adapter, output.report.status)?;
     finish_progress(&mut observer.progress_adapter)?;
-
     emit_completion_summary(&observer, &request.paths, &output)?;
 
     Ok(output)
@@ -322,7 +322,7 @@ fn emit_completion_summary(
 
     terminal_output
         .renderer
-        .write_stdout(&format!("\n{rendered}"))
+        .write_stdout(&format!("{rendered}"))
         .map_err(|source| WorkflowError::OutputWrite { source })
 }
 
@@ -508,6 +508,30 @@ fn finish_progress(
     }
 
     Ok(())
+}
+
+fn complete_progress(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+    status: CalibrationStageExecutionStatus,
+) -> Result<(), WorkflowError> {
+    let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunCompleted {
+        status: terminal_progress_status(status).to_string(),
+    });
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+const fn terminal_progress_status(status: CalibrationStageExecutionStatus) -> &'static str {
+    match status {
+        CalibrationStageExecutionStatus::Success => "completed",
+        CalibrationStageExecutionStatus::Failure => "failed",
+    }
 }
 
 fn observe_run_events(
