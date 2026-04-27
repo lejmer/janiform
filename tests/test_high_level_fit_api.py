@@ -1722,7 +1722,7 @@ def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_input
     )
 
 
-def test_high_level_model_simulate_dispatches_by_interval_mode(
+def test_high_level_model_simulate_dispatches_by_explicit_coarse_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1732,7 +1732,7 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         run_id="high-level-model-simulate",
     )
 
-    captured_kinds: list[str] = []
+    captured_requests: list[tuple[str, int]] = []
     coarse_result = object()
     tick_result = object()
 
@@ -1743,7 +1743,12 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
             progress_callback: Any,
         ) -> dict[str, Any]:
             del progress_callback
-            captured_kinds.append(str(request_payload["simulation_kind"]))
+            captured_requests.append(
+                (
+                    str(request_payload["simulation_kind"]),
+                    int(request_payload["interval_duration_nanos"]),
+                )
+            )
 
             return {}
 
@@ -1787,15 +1792,29 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=2,
         interval="15min",
+        coarse=True,
+    )
+    observed_seeded_with_custom_interval = model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=2,
+        interval="15min",
     )
 
     assert isinstance(observed_seeded, JaniformSimulationResult)
     assert isinstance(observed_coarse, JaniformSimulationResult)
+    assert isinstance(observed_seeded_with_custom_interval, JaniformSimulationResult)
     assert observed_seeded.raw_result is tick_result
     assert observed_coarse.raw_result is coarse_result
+    assert observed_seeded_with_custom_interval.raw_result is tick_result
     assert observed_seeded.simulation_kind == "seeded_tick"
     assert observed_coarse.simulation_kind == "coarse_interval"
-    assert captured_kinds == ["seeded_tick", "coarse_interval"]
+    assert observed_seeded_with_custom_interval.simulation_kind == "seeded_tick"
+    assert captured_requests == [
+        ("seeded_tick", 3_600_000_000_000),
+        ("coarse_interval", 900_000_000_000),
+        ("seeded_tick", 900_000_000_000),
+    ]
 
 
 def test_high_level_model_simulate_forwards_progress_events_to_callback(
@@ -2121,6 +2140,7 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=1,
         interval="15min",
+        coarse=True,
         continuation_data=continuation_data,
     )
 
@@ -2422,6 +2442,7 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=2,
         interval="15min",
+        coarse=True,
     )
 
     assert observed.simulation_kind == "coarse_interval"
@@ -2516,6 +2537,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
         start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
         horizon_interval_count=2,
         interval=timedelta(minutes=30),
+        coarse=True,
     )
 
     seeded_request = captured_requests["seeded"]
@@ -2708,6 +2730,7 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
         start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
         horizon_interval_count=2,
         interval=timedelta(minutes=30),
+        coarse=True,
     )
 
     seeded_request = captured_requests["seeded"]

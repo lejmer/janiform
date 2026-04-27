@@ -1224,6 +1224,7 @@ def build_cli_simulate_result_payload(
         start_time_utc=start_time_utc,
         horizon_interval_count=horizon_interval_count,
         interval=interval_value,
+        coarse=bool(command_arguments.get("coarse")),
         output_path=artifact_paths.primary_output_path,
         debug_trace_enabled=bool(command_arguments.get("debug_trace_enabled")),
         sample_every_nth_transition=sample_every_nth_transition,
@@ -1356,9 +1357,10 @@ def build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) -> 
         environment=environment,
         help=(
             "Simulate from a persisted Janiform model.\n\n"
-            "Run `janiform simulate` without --interval for the default seeded tick workflow. "
-            "Provide --interval for the coarse interval workflow. Use `simulate coarse-interval` "
-            "or `simulate seeded-ticks` when you need direct control over those explicit contracts."
+            "Run `janiform simulate` for the default seeded tick workflow. "
+            "Use --interval to set the horizon interval duration and --coarse for the coarse "
+            "interval workflow. Use `simulate coarse-interval` or `simulate seeded-ticks` when "
+            "you need direct control over those explicit contracts."
         ),
         invoke_without_command=True,
         params=model_workflow_simulate_options(
@@ -1663,9 +1665,13 @@ def model_workflow_simulate_options(
             command_option(
                 "--interval",
                 help_text=(
-                    "Optional coarse simulation interval such as `1min`, `15min`, `1h`, or `1D`. "
-                    "When omitted, Janiform runs the default seeded tick simulation path."
+                    "Optional simulation horizon interval such as `1min`, `15min`, `1h`, or `1D`."
                 ),
+            ),
+            command_option(
+                "--coarse",
+                help_text="Generate a coarse interval path instead of the default seeded tick path.",
+                is_flag=True,
             ),
             optional_path_option(
                 "--output-path",

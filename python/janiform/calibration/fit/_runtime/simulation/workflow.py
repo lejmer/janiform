@@ -50,6 +50,7 @@ def simulate_model(
     start_time_utc: datetime,
     horizon_interval_count: int,
     interval: Optional[str | timedelta] = None,
+    coarse: bool = False,
     output_path: Optional[str | Path] = None,
     sink: Optional[SimulationArtifactSink] = None,
     continuation_data: Optional[CurrentStateEstimationRequest] = None,
@@ -65,7 +66,7 @@ def simulate_model(
         raise calibration_error("sink", "output_path and sink are mutually exclusive")
 
     effective_interval = DEFAULT_SIMULATION_INTERVAL if interval is None else interval
-    simulation_kind = SimulationKind.SEEDED_TICK if interval is None else SimulationKind.COARSE_INTERVAL
+    simulation_kind = SimulationKind.COARSE_INTERVAL if coarse else SimulationKind.SEEDED_TICK
 
     preferences = simulation_output_preferences_from_model(model)
 
@@ -74,7 +75,7 @@ def simulate_model(
     resolved_output_path = _resolve_native_output_path(
         run_id=simulation_run_id,
         output_path=output_path,
-        interval=None if interval is None else effective_interval,
+        interval=effective_interval if coarse else None,
         default_file_format=preferences.file_format,
     )
 
