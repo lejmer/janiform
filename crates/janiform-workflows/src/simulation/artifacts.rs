@@ -10,6 +10,7 @@ use janiform::simulation::{
     CoarseSimulationPath, SeededFinePathRecord, SeededTickEventSide, SeededTickSimulationRunResult,
 };
 use parquet::arrow::ArrowWriter;
+use serde::Deserialize;
 
 use crate::error::WorkflowError;
 
@@ -23,7 +24,7 @@ const STATE_COLUMN_NAMES: [&str; 4] = [
     "deviation_from_anchor",
 ];
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct SimulationOutputColumns {
     /// Output timestamp column name.
     pub timestamp_column: String,

@@ -1121,6 +1121,12 @@ def materialize_endogenous_mean_reversion_runtime_interval_anchors(
 ) -> object: ...
 
 
+def run_model_simulation_workflow(
+    request: object,
+    event_callback: Optional[object] = None,
+) -> object: ...
+
+
 def run_seeded_tick_event_simulation(
     seed: int,
     start_time_utc: str,

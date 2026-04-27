@@ -23,11 +23,15 @@ use janiform::simulation::{
 use janiform::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::simulation::{
-    DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, SimulationOutputColumns, export_coarse_simulation,
+    DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, DirectSimulationCompleted,
+    ModelSimulationWorkflowRequest, SimulationOutputColumns, export_coarse_simulation,
     export_seeded_tick_simulation,
+    run_model_simulation_workflow as run_model_simulation_workflow_core,
 };
 use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
-use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods};
+use pyo3::types::{
+    PyAny, PyAnyMethods, PyDictMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods,
+};
 use pyo3::{pyfunction, wrap_pyfunction};
 use serde_json::Value;
 
@@ -39,6 +43,38 @@ use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{
     PyCalendarRegistry, PyHourlyFactorContractResult, PySeededTickSimulationNativeResult,
 };
+
+#[pyfunction]
+#[pyo3(signature = (request, event_callback = None))]
+fn run_model_simulation_workflow(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+    event_callback: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Py<PyAny>> {
+    let request: ModelSimulationWorkflowRequest =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            SimulationExecutionError::new_err(format!(
+                "failed to deserialize model simulation workflow request: {source}"
+            ))
+        })?;
+
+    let output = run_simulation_with_optional_progress_events(
+        py,
+        "running fitted-model simulation workflow",
+        request,
+        event_callback,
+        |request| {
+            run_model_simulation_workflow_core(request, &mut |_| {})
+                .map_err(workflow_error_to_simulation_error)
+        },
+        |request, observer| {
+            run_model_simulation_workflow_core(request, observer)
+                .map_err(workflow_error_to_simulation_error)
+        },
+    )?;
+
+    model_simulation_workflow_output_to_py_object(py, output)
+}
 
 #[pyfunction]
 #[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
@@ -347,6 +383,63 @@ fn run_seeded_tick_event_simulation(
     Ok(PySeededTickSimulationNativeResult { output: run_result })
 }
 
+fn model_simulation_workflow_output_to_py_object(
+    py: Python<'_>,
+    output: janiform_workflows::simulation::ModelSimulationWorkflowOutput,
+) -> PyResult<Py<PyAny>> {
+    let result = pyo3::types::PyDict::new(py);
+
+    result.set_item(
+        "workflow",
+        json_value_to_py_object(
+            py,
+            &output
+                .response_payload()
+                .map_err(workflow_error_to_simulation_error)?,
+        )?,
+    )?;
+    result.set_item(
+        "execution_duration_seconds",
+        output.execution_duration.as_secs_f64(),
+    )?;
+
+    match output.completed {
+        DirectSimulationCompleted::SeededTick {
+            result: native_result,
+            ..
+        } => {
+            result.set_item("simulation_kind", "seeded_tick")?;
+            result.set_item(
+                "native_result",
+                Py::new(
+                    py,
+                    PySeededTickSimulationNativeResult {
+                        output: native_result,
+                    },
+                )?,
+            )?;
+        }
+        DirectSimulationCompleted::CoarseInterval {
+            result: coarse_path,
+            ..
+        } => {
+            let raw_result_payload = serde_json::to_value(&coarse_path).map_err(|source| {
+                SimulationExecutionError::new_err(format!(
+                    "failed to serialize coarse simulation path: {source}"
+                ))
+            })?;
+
+            result.set_item("simulation_kind", "coarse_interval")?;
+            result.set_item(
+                "raw_result_payload",
+                json_value_to_py_object(py, &raw_result_payload)?,
+            )?;
+        }
+    }
+
+    Ok(result.into_any().unbind())
+}
+
 #[pyfunction]
 #[pyo3(signature = (native_result, output_path, reference_price, timestamp_column, price_column, side_column = None, batch_size = DEFAULT_SIMULATION_EXPORT_BATCH_SIZE))]
 fn export_seeded_tick_simulation_artifact(
@@ -360,7 +453,9 @@ fn export_seeded_tick_simulation_artifact(
     batch_size: usize,
 ) -> PyResult<usize> {
     let columns = simulation_output_columns(timestamp_column, price_column, side_column);
+
     let output_path = PathBuf::from(output_path);
+
     let summary = py
         .detach(|| {
             export_seeded_tick_simulation(
@@ -397,9 +492,13 @@ fn export_coarse_simulation_artifact(
         })?;
 
     let columns = simulation_output_columns(timestamp_column, price_column, None);
+
     let output_path = PathBuf::from(output_path);
+
     let registry = calendar_registry.registry.clone();
+
     let exchange_code = exchange_code.to_string();
+
     let summary = py
         .detach(move || {
             export_coarse_simulation(
@@ -435,6 +534,7 @@ where
 {
     let callback_error_message = Arc::new(Mutex::new(None::<String>));
     let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+
     let event_callback = event_callback.map(|callback| callback.clone().unbind());
 
     let run_output = panic_to_pyresult(panic_context, SimulationExecutionError::new_err, || {
@@ -882,6 +982,7 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         materialize_endogenous_mean_reversion_runtime_interval_anchors,
         module
     )?)?;
+    module.add_function(wrap_pyfunction!(run_model_simulation_workflow, module)?)?;
     module.add_function(wrap_pyfunction!(run_seeded_tick_event_simulation, module)?)?;
 
     Ok(())

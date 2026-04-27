@@ -11,7 +11,8 @@ use janiform_model_kernels::mean_reversion::{
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 
-pub(super) fn endogenous_interval_factors_from_hourly_contract(
+/// Convert an hourly factor contract into endogenous anchor interval factors.
+pub fn endogenous_interval_factors_from_hourly_contract(
     hourly_factor_contract: &HourlyFactorContractOutput,
 ) -> Result<Vec<EndogenousAnchorIntervalFactors>, String> {
     let interval_count = hourly_factor_contract.interval_indices.len();

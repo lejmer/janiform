@@ -4,9 +4,10 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HawkesKernelLoadings, HawkesSourceComponents, HawkesSpectralRadiusStabilityCheck,
-    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
-    HawkesStructuredRhoSelfDominancePolicy, spectral_radius_stability_check,
+    HawkesExcitationState, HawkesKernelLoadings, HawkesSourceComponents,
+    HawkesSpectralRadiusStabilityCheck, HawkesStructuredAlphaParameterization,
+    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
+    spectral_radius_stability_check,
 };
 /// Shared-kernel parameter payload for the 4D Hawkes excitation dynamics.
 ///
@@ -80,6 +81,42 @@ pub struct HawkesKernelParameterValidationSummary {
 }
 
 impl HawkesKernelParameters {
+    /// Return the stationary excitation state implied by the fitted Hawkes kernel.
+    pub fn stationary_excitation_state(
+        self,
+    ) -> Result<HawkesExcitationState, HawkesKernelParameterError> {
+        Self::try_new(self.lambda_bar, self.beta, self.alpha, self.rho)?;
+
+        let scaled_plus_plus = self.alpha.plus_plus / self.beta;
+        let scaled_plus_minus = self.alpha.plus_minus / self.beta;
+
+        let scaled_minus_plus = self.alpha.minus_plus / self.beta;
+        let scaled_minus_minus = self.alpha.minus_minus / self.beta;
+
+        let determinant = (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
+            - scaled_plus_minus * scaled_minus_plus;
+        if determinant == 0.0 {
+            return Err(HawkesKernelParameterError::UnstableSpectralRadius {
+                spectral_radius_alpha_over_beta: HAWKES_STRICT_STATIONARITY_THRESHOLD,
+                strict_stationarity_threshold: HAWKES_STRICT_STATIONARITY_THRESHOLD,
+                numeric_tolerance: HAWKES_DEFAULT_STABILITY_NUMERIC_TOLERANCE,
+                effective_stationarity_threshold: HAWKES_STRICT_STATIONARITY_THRESHOLD,
+            });
+        }
+
+        let stationary_buy_intensity =
+            self.lambda_bar * (((1.0 - scaled_minus_minus) + scaled_plus_minus) / determinant);
+        let stationary_sell_intensity =
+            self.lambda_bar * ((scaled_minus_plus + (1.0 - scaled_plus_plus)) / determinant);
+
+        Ok(HawkesExcitationState {
+            y_plus_plus: scaled_plus_plus * stationary_buy_intensity,
+            y_plus_minus: scaled_plus_minus * stationary_sell_intensity,
+            y_minus_plus: scaled_minus_plus * stationary_buy_intensity,
+            y_minus_minus: scaled_minus_minus * stationary_sell_intensity,
+        })
+    }
+
     /// Run pure domain validation without constructing a kernel payload.
     ///
     /// This helper is intended for pre-checking candidate vectors before
