@@ -981,14 +981,18 @@ dependencies = [
 name = "janiform-cli"
 version = "0.0.0"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "chrono",
  "clap",
+ "csv",
  "janiform",
  "janiform-event-log",
  "janiform-foundations",
  "janiform-terminal-ui",
  "janiform-workflows",
  "miette",
+ "parquet",
  "serde",
  "serde_json",
  "thiserror",

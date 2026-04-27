@@ -17,14 +17,18 @@ name = "janiform"
 path = "src/main.rs"
 
 [dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
+csv = { workspace = true }
 janiform = { path = "../janiform" }
 janiform-terminal-ui = { path = "../janiform-terminal-ui" }
 janiform-event-log = { path = "../janiform-event-log" }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-workflows = { path = "../janiform-workflows" }
 miette = { version = "7.6.0", features = ["derive"] }
+parquet = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = "2.0.17"

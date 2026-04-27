@@ -6,6 +6,17 @@ use clap::Subcommand;
 use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
+mod artifacts;
+mod direct;
+mod execution;
+mod rendering;
+mod requests;
+
+pub(crate) use execution::run_simulate_coarse_interval;
+pub(crate) use execution::run_simulate_seeded_ticks;
+
+pub(crate) const DEFAULT_SIMULATION_EXPORT_BATCH_SIZE: usize = 256;
+
 #[derive(Debug, Args)]
 pub(crate) struct SimulateCommand {
     #[command(flatten)]
@@ -32,29 +43,107 @@ pub(crate) enum SimulateSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct SeededTicksCommand {
-    #[command(flatten)]
-    pub(crate) model: ModelPathOptions,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Seeded tick simulation request JSON document."
+    )]
+    pub(crate) request_json: Option<PathBuf>,
 
-    #[command(flatten)]
-    pub(crate) simulation: SimulationHorizonOptions,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Calendar registry JSON document used to rehydrate hourly factors."
+    )]
+    pub(crate) calendar_registry_json: Option<PathBuf>,
 
     #[command(flatten)]
     pub(crate) output_path: OutputPathOptions,
+
+    #[command(flatten)]
+    pub(crate) export_batch: SimulationExportBatchOptions,
+
+    #[arg(
+        long,
+        value_name = "PRICE",
+        default_value_t = 1.0,
+        help = "Reference price used to convert simulated log prices."
+    )]
+    pub(crate) reference_price: f64,
+
+    #[arg(
+        long,
+        value_name = "COLUMN",
+        default_value = "timestamp",
+        help = "Output timestamp column name."
+    )]
+    pub(crate) timestamp_column: String,
+
+    #[arg(
+        long,
+        value_name = "COLUMN",
+        default_value = "price",
+        help = "Output price column name."
+    )]
+    pub(crate) price_column: String,
+
+    #[arg(
+        long,
+        value_name = "COLUMN",
+        help = "Optional output trade-side column name."
+    )]
+    pub(crate) side_column: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct CoarseIntervalCommand {
-    #[command(flatten)]
-    pub(crate) model: ModelPathOptions,
-
-    #[command(flatten)]
-    pub(crate) simulation: SimulationHorizonOptions,
-
-    #[arg(long, value_name = "INTERVAL", help = "Coarse interval specification.")]
-    pub(crate) interval: Option<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Coarse interval simulation request JSON document."
+    )]
+    pub(crate) request_json: Option<PathBuf>,
 
     #[command(flatten)]
     pub(crate) output_path: OutputPathOptions,
+
+    #[command(flatten)]
+    pub(crate) export_batch: SimulationExportBatchOptions,
+
+    #[arg(
+        long,
+        value_name = "PRICE",
+        default_value_t = 1.0,
+        help = "Reference price used to convert simulated log prices."
+    )]
+    pub(crate) reference_price: f64,
+
+    #[arg(
+        long,
+        value_name = "COLUMN",
+        default_value = "timestamp",
+        help = "Output timestamp column name."
+    )]
+    pub(crate) timestamp_column: String,
+
+    #[arg(
+        long,
+        value_name = "COLUMN",
+        default_value = "price",
+        help = "Output price column name."
+    )]
+    pub(crate) price_column: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SimulationExportBatchOptions {
+    #[arg(
+        long = "output-batch-size",
+        value_name = "ROWS",
+        default_value_t = DEFAULT_SIMULATION_EXPORT_BATCH_SIZE,
+        help = "Number of simulation output rows per exported artifact batch."
+    )]
+    pub(crate) output_batch_size: usize,
 }
 
 #[derive(Debug, Args)]

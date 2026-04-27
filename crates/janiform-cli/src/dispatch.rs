@@ -44,9 +44,11 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
             None => not_implemented("price"),
         },
         RootCommand::Simulate(command) => match command.command {
-            Some(SimulateSubcommand::SeededTicks(_)) => not_implemented("simulate seeded-ticks"),
-            Some(SimulateSubcommand::CoarseInterval(_)) => {
-                not_implemented("simulate coarse-interval")
+            Some(SimulateSubcommand::SeededTicks(command)) => {
+                crate::commands::simulation::run_simulate_seeded_ticks(context, command)
+            }
+            Some(SimulateSubcommand::CoarseInterval(command)) => {
+                crate::commands::simulation::run_simulate_coarse_interval(context, command)
             }
             None => not_implemented("simulate"),
         },

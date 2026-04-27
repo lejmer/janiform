@@ -73,22 +73,6 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             "--option-surface-path",
             "options.parquet",
         ][..],
-        &[
-            "simulate",
-            "seeded-ticks",
-            "--model-path",
-            "model.jf",
-            "--seed",
-            "123",
-        ][..],
-        &[
-            "simulate",
-            "coarse-interval",
-            "--model-path",
-            "model.jf",
-            "--interval",
-            "1h",
-        ][..],
         &["presets", "list", "--kind", "session"][..],
         &["presets", "show", "market-profile", "es_futures_globex"][..],
         &[

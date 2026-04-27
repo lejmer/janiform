@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
@@ -23,7 +23,7 @@ use super::runtime::{
 };
 
 /// State snapshot capture mode for per-event diagnostics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SeededTickEventStateSnapshotCapture {
     Disabled,
