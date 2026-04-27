@@ -214,6 +214,7 @@
       "layer": "workflow_orchestration",
       "allowed_internal_dependencies": [
         "janiform-market-time",
+        "janiform-engine-pricing",
         "janiform-calibration-artifacts",
         "janiform-calibration-runtime",
         "janiform-event-log",

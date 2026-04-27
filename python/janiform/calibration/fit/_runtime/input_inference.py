@@ -18,6 +18,7 @@ class ModelTickDataInputInference:
     file_format: str
     timestamp_column: str
     timestamp_timezone: str
+    timestamp_timezone_source: str
     tick_price_input_policy: Optional[str]
     price_column: Optional[str]
     trade_sign_column: Optional[str]
@@ -73,6 +74,12 @@ def tick_data_input_inference_from_model_metadata(
             normalization_policy,
             "timestamp_timezone",
             "metadata.input_inference.normalization_policy.timestamp_timezone",
+            calibration_error,
+        ),
+        timestamp_timezone_source=require_non_empty_string(
+            input_inference,
+            "timestamp_timezone_source",
+            "metadata.input_inference.timestamp_timezone_source",
             calibration_error,
         ),
         tick_price_input_policy=require_optional_string_value(

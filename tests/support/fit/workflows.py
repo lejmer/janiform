@@ -8,10 +8,12 @@ import pytest
 import janiform.calibration.fit._execution as fit_execution_module
 from janiform._workflow_outputs import (
     build_run_manifest,
+    generate_workflow_run_id,
     resolve_fit_artifact_paths,
     write_json_document,
 )
 from janiform.calibration.fit import JaniformEstimator, JaniformModel
+from janiform.calibration.fit._preparation.contracts import FitExecutionConfiguration
 from janiform.calibration.fit._runtime.workflow import NativeFitWorkflowOutput
 from janiform.calibration.market_data import (
     CalibrationInputFileFormat,
@@ -88,17 +90,17 @@ def _fit_workflow_runner_from_staged_runner(
     staged_runner: StagedRunner,
 ) -> FitWorkflowRunner:
     def run_fit_workflow(
-        configuration: Any,
+        configuration: FitExecutionConfiguration,
         *,
         output_controller: Any,
         output_dir: Optional[str | Path],
         run_id: Optional[str],
         resume_settings: Any,
         tick_data_path: str | Path,
-        tick_data_format: Optional[Any],
+        tick_data_format: Optional[CalibrationInputFileFormat],
         tick_data_provenance_label: str,
         option_surface_path: Optional[str | Path],
-        option_surface_format: Any,
+        option_surface_format: CalibrationInputFileFormat,
         option_surface_provenance_label: str,
         option_surface_valuation_time_utc: Any,
         carry: Any,
@@ -111,8 +113,11 @@ def _fit_workflow_runner_from_staged_runner(
         _ = option_surface_valuation_time_utc
         _ = carry
 
-        resolved_run_id = run_id or "fit-workflow-test"
-        prepared_handle = _PreparedExecutionHandle(run_id=resolved_run_id)
+        resolved_run_id = run_id or generate_workflow_run_id(Path(tick_data_path).stem)
+        prepared_handle = _PreparedExecutionHandle(
+            run_id=resolved_run_id,
+            configuration=configuration,
+        )
         staged_response, raw_response_payload = staged_runner(
             prepared_handle,
             configuration=configuration,
@@ -120,7 +125,10 @@ def _fit_workflow_runner_from_staged_runner(
         model_payload = (
             None
             if staged_response.status != CalibrationStageExecutionStatus.SUCCESS
-            else _successful_full_model_payload(run_id=resolved_run_id)
+            else _successful_full_model_payload(
+                run_id=resolved_run_id,
+                configuration=configuration,
+            )
         )
         fit_report_payload = _fit_report_payload(
             run_id=resolved_run_id,
@@ -129,6 +137,7 @@ def _fit_workflow_runner_from_staged_runner(
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
+            configuration=configuration,
         )
 
         if output_dir is not None:
@@ -153,11 +162,23 @@ def _fit_workflow_runner_from_staged_runner(
 
 
 class _PreparedExecutionHandle:
-    def __init__(self, *, run_id: str) -> None:
+    def __init__(self, *, run_id: str, configuration: FitExecutionConfiguration) -> None:
         self._run_id = run_id
+        self._configuration = configuration
 
     def serialize_execution_input_json(self) -> str:
-        return json.dumps({"request": {"run_id": self._run_id}})
+        payload: dict[str, Any] = {"request": {"run_id": self._run_id}}
+        mean_reversion = self._configuration.preparation.mean_reversion
+        if mean_reversion is not None:
+            payload["mean_reversion_stage_input"] = {
+                "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+                "calibration_grid_interval_hours": mean_reversion.calibration_grid_interval_hours,
+                "source_observation_count": 0,
+                "coverage_ratio": 0.0,
+                "observations": [],
+            }
+
+        return json.dumps(payload)
 
 
 def _fit_report_payload(
@@ -166,22 +187,24 @@ def _fit_report_payload(
     success: bool,
     raw_response_payload: dict[str, Any],
     tick_data_path: str | Path,
-    tick_data_format: Optional[Any],
+    tick_data_format: Optional[CalibrationInputFileFormat],
     tick_data_provenance_label: str,
+    configuration: FitExecutionConfiguration,
 ) -> dict[str, Any]:
     selected_stages = tuple(
         cast(str, stage_report["stage"])
         for stage_report in cast(list[dict[str, Any]], raw_response_payload["stage_reports"])
     )
+    workflow_scope = _workflow_scope_value(configuration)
 
     return {
         "schema_version": "janiform.fit_report.v1",
         "run_id": run_id,
-        "workflow_scope": "full_without_option_surface",
+        "workflow_scope": workflow_scope,
         "success": success,
         "summary": {
             "run_id": run_id,
-            "workflow_scope": "full_without_option_surface",
+            "workflow_scope": workflow_scope,
             "success": success,
             "selected_stages": list(selected_stages),
             "stage_statuses": [
@@ -199,22 +222,34 @@ def _fit_report_payload(
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
+            configuration=configuration,
         ),
         "prepared_data_reference": "memory://prepared/ticks",
         "prepared_payload_path": None,
         "staged_execution_input_path": None,
-        "staged_request": _staged_request_payload(run_id=run_id, selected_stages=selected_stages),
+        "staged_request": _staged_request_payload(
+            run_id=run_id,
+            selected_stages=selected_stages,
+            configuration=configuration,
+        ),
         "staged_response": raw_response_payload,
     }
 
 
-def _successful_full_model_payload(*, run_id: str) -> dict[str, Any]:
+def _successful_full_model_payload(
+    *,
+    run_id: str,
+    configuration: FitExecutionConfiguration,
+) -> dict[str, Any]:
     return {
         "schema_version": "calibration.high_level.model.v1",
         "run_id": run_id,
-        "workflow_scope": "full_without_option_surface",
+        "workflow_scope": _workflow_scope_value(configuration),
         "parameters": _successful_full_model_parameters_payload(),
-        "metadata": _successful_full_model_metadata_fixture(run_id=run_id),
+        "metadata": _successful_full_model_metadata_fixture(
+            run_id=run_id,
+            configuration=configuration,
+        ),
     }
 
 
@@ -223,33 +258,43 @@ def _preparation_payload(
     run_id: str,
     selected_stages: tuple[str, ...],
     tick_data_path: str | Path,
-    tick_data_format: Optional[Any],
+    tick_data_format: Optional[CalibrationInputFileFormat],
     tick_data_provenance_label: str,
+    configuration: FitExecutionConfiguration,
 ) -> dict[str, Any]:
-    tick_data_format_label = (
-        "csv" if tick_data_format is None else getattr(tick_data_format, "value", tick_data_format)
-    )
+    tick_data_format_label = "csv" if tick_data_format is None else tick_data_format.value
 
     return {
-        "resolved_configuration": _resolved_configuration_payload(),
-        "session_resolution": _session_resolution_payload(),
-        "diagnostics": _preparation_diagnostics_payload(selected_stages=selected_stages),
+        "resolved_configuration": _resolved_configuration_payload(configuration),
+        "session_resolution": _session_resolution_payload(configuration),
+        "diagnostics": _preparation_diagnostics_payload(
+            selected_stages=selected_stages,
+            configuration=configuration,
+        ),
         "provenance": _preparation_provenance_payload(
             selected_stages=selected_stages,
             tick_data_path=tick_data_path,
             tick_data_format=str(tick_data_format_label),
             tick_data_provenance_label=tick_data_provenance_label,
+            configuration=configuration,
         ),
-        "input_inference": _input_inference_payload(run_id=run_id),
+        "input_inference": _input_inference_payload(
+            run_id=run_id,
+            configuration=configuration,
+        ),
         "reference_price": 100.0,
     }
 
 
-def _resolved_configuration_payload() -> dict[str, Any]:
+def _resolved_configuration_payload(configuration: FitExecutionConfiguration) -> dict[str, Any]:
+    market_profile_name = _market_profile_name(configuration)
+    session_preset_name = _session_preset_name(configuration)
+    session_configuration = _session_configuration_payload(session_preset_name)
+
     selected_session = {
         "category": "session",
         "registry_scope": "built_in",
-        "preset_name": "XNYS",
+        "preset_name": session_preset_name,
     }
     selected_known_news = {
         "category": "known_news",
@@ -261,10 +306,10 @@ def _resolved_configuration_payload() -> dict[str, Any]:
         "schema_version": "calibration.preset_resolution.resolved_configuration.v1",
         "market_profile": {
             "configuration": {
-                "profile_name": "us_equity_cash",
+                "profile_name": market_profile_name,
                 "session_reference": {
                     "usage_mode": "named",
-                    "preset_name": "XNYS",
+                    "preset_name": session_preset_name,
                     "registry_scope": "built_in",
                 },
                 "known_news_reference": {
@@ -281,12 +326,12 @@ def _resolved_configuration_payload() -> dict[str, Any]:
             "selected_preset": {
                 "category": "market_profile",
                 "registry_scope": "built_in",
-                "preset_name": "us_equity_cash",
+                "preset_name": market_profile_name,
             },
             "applied_override_fields": [],
         },
         "session": {
-            "configuration": _session_configuration_payload(),
+            "configuration": session_configuration,
             "source_kind": "built_in",
             "selected_preset": selected_session,
             "inferred_from_data": False,
@@ -300,25 +345,44 @@ def _resolved_configuration_payload() -> dict[str, Any]:
             "source_kind": "built_in",
             "selected_preset": selected_known_news,
             "applied_override_fields": [],
-            "recommended_reference": None,
-            "recommendation_policy": None,
+            "recommended_reference": (
+                {
+                    "usage_mode": "named",
+                    "category": "known_news",
+                    "registry_scope": "built_in",
+                    "preset_name": "us_macro_core",
+                }
+                if market_profile_name == "us_equity_cash"
+                else None
+            ),
+            "recommendation_policy": (
+                "suggest_only" if market_profile_name == "us_equity_cash" else None
+            ),
             "recommendation_applied": False,
         },
         "diagnostics": [],
     }
 
 
-def _session_configuration_payload() -> dict[str, Any]:
+def _session_configuration_payload(session_preset_name: str = "XNYS") -> dict[str, Any]:
+    exchange_code = _exchange_code_for_session(session_preset_name)
+    exchange_name = (
+        "FX spot synthetic 24/5"
+        if session_preset_name == "fx_spot_24_5"
+        else "New York Stock Exchange"
+    )
+    timezone_name = "UTC" if session_preset_name == "fx_spot_24_5" else "America/New_York"
+
     return {
-        "exchange_code": "XNYS",
-        "exchange_name": "New York Stock Exchange",
-        "timezone_name": "America/New_York",
+        "exchange_code": exchange_code,
+        "exchange_name": exchange_name,
+        "timezone_name": timezone_name,
         "regular_session_windows": [
             {
                 "weekday": weekday,
                 "label": "regular",
-                "open_time": "09:30",
-                "close_time": "16:00",
+                "open_time": "00:00" if session_preset_name == "fx_spot_24_5" else "09:30",
+                "close_time": "24:00" if session_preset_name == "fx_spot_24_5" else "16:00",
             }
             for weekday in ("mon", "tue", "wed", "thu", "fri")
         ],
@@ -326,32 +390,109 @@ def _session_configuration_payload() -> dict[str, Any]:
     }
 
 
-def _session_resolution_payload() -> dict[str, Any]:
+def _session_resolution_payload(
+    configuration: Optional[FitExecutionConfiguration] = None,
+) -> dict[str, Any]:
+    session_preset_name = "XNYS" if configuration is None else _session_preset_name(configuration)
+    session_configuration = _session_configuration_payload(session_preset_name)
+
     return {
         "schema_version": "calibration.market_data.session_resolution.v1",
         "resolution_kind": "automatic_inference",
         "provenance_kind": "bundled_preset",
-        "selected_policy_id": "XNYS",
+        "selected_policy_id": session_preset_name,
         "manual_override_applied": False,
-        "exchange_code": "XNYS",
-        "exchange_name": "New York Stock Exchange",
-        "resolved_timezone_name": "America/New_York",
+        "exchange_code": session_configuration["exchange_code"],
+        "exchange_name": session_configuration["exchange_name"],
+        "resolved_timezone_name": session_configuration["timezone_name"],
         "timezone_source": "session",
         "open_session_duration_hours_per_week": 32.5,
         "confidence_score": 1.0,
         "confidence_label": "high",
-        "regular_session_windows": _session_configuration_payload()["regular_session_windows"],
+        "regular_session_windows": session_configuration["regular_session_windows"],
         "recurring_closed_windows": [],
         "reasons": [],
         "ambiguity_warnings": [],
         "metadata_discrepancies": [],
-        "resolved_session_definition_json": json.dumps(_session_configuration_payload()),
+        "resolved_session_definition_json": json.dumps(
+            _calendar_registry_payload(session_configuration)
+        ),
     }
 
 
-def _preparation_diagnostics_payload(*, selected_stages: tuple[str, ...]) -> dict[str, Any]:
+def _market_profile_name(configuration: FitExecutionConfiguration) -> str:
+    market_profile_reference = configuration.preparation.market_profile_reference
+    if market_profile_reference is None or market_profile_reference.preset_name is None:
+        return "us_equity_cash"
+
+    return market_profile_reference.preset_name
+
+
+def _workflow_scope_value(configuration: FitExecutionConfiguration) -> str:
+    workflow_scope = configuration.preparation.workflow_scope_override
+    if workflow_scope is None:
+        return "full_without_option_surface"
+
+    return str(workflow_scope.value)
+
+
+def _session_preset_name(configuration: FitExecutionConfiguration) -> str:
+    session_reference = configuration.preparation.effective_session_reference
+    if session_reference is not None and session_reference.preset_name is not None:
+        return session_reference.preset_name
+
+    return "fx_spot_24_5" if _market_profile_name(configuration) == "eurusd_spot" else "XNYS"
+
+
+def _exchange_code_for_session(session_preset_name: str) -> str:
+    return "FXSPOT" if session_preset_name == "fx_spot_24_5" else "XNYS"
+
+
+def _calendar_registry_payload(session_configuration: dict[str, Any]) -> dict[str, Any]:
     return {
-        "workflow_scope": "full_without_option_surface",
+        "schema_version": "calendar.registry.v1",
+        "artifact_date": "2026-01-31",
+        "exchanges": [
+            {
+                "schema_version": "calendar.v1",
+                "exchange_code": session_configuration["exchange_code"],
+                "exchange_name": session_configuration["exchange_name"],
+                "timezone_name": session_configuration["timezone_name"],
+                "rule_metadata": {
+                    "holiday_calendar_code": "TEST",
+                    "early_close_rule_set": "NONE",
+                },
+                "regular_sessions": [
+                    {
+                        "weekday": weekday,
+                        "windows": [
+                            {
+                                "label": window["label"],
+                                "open_time": window["open_time"],
+                                "close_time": window["close_time"],
+                            }
+                        ],
+                    }
+                    for weekday, window in zip(
+                        ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"),
+                        session_configuration["regular_session_windows"],
+                        strict=True,
+                    )
+                ],
+                "holiday_dates": [],
+                "early_close_sessions": [],
+            }
+        ],
+    }
+
+
+def _preparation_diagnostics_payload(
+    *,
+    selected_stages: tuple[str, ...],
+    configuration: FitExecutionConfiguration,
+) -> dict[str, Any]:
+    return {
+        "workflow_scope": _workflow_scope_value(configuration),
         "selected_stages": list(selected_stages),
         "executed_preprocessing_steps": [],
         "tick_record_count": 3,
@@ -377,6 +518,7 @@ def _preparation_provenance_payload(
     tick_data_path: str | Path,
     tick_data_format: str,
     tick_data_provenance_label: str,
+    configuration: FitExecutionConfiguration,
 ) -> dict[str, Any]:
     return {
         "tick_data_summary": {
@@ -400,7 +542,7 @@ def _preparation_provenance_payload(
             "tick_price_input_policy": "explicit_price_column",
             "option_quote_input_policy": None,
         },
-        "workflow_scope": "full_without_option_surface",
+        "workflow_scope": _workflow_scope_value(configuration),
         "selected_stages": list(selected_stages),
         "session_definition_path": None,
         "derived_trade_events_data_reference": "memory://prepared/ticks",
@@ -410,11 +552,16 @@ def _preparation_provenance_payload(
     }
 
 
-def _staged_request_payload(*, run_id: str, selected_stages: tuple[str, ...]) -> dict[str, Any]:
+def _staged_request_payload(
+    *,
+    run_id: str,
+    selected_stages: tuple[str, ...],
+    configuration: FitExecutionConfiguration,
+) -> dict[str, Any]:
     return {
         "run_id": run_id,
         "data_inputs": {
-            "exchange_code": "XNYS",
+            "exchange_code": _exchange_code_for_session(_session_preset_name(configuration)),
             "trade_events_data_reference": "memory://prepared/ticks",
             "option_surface_data_reference": None,
         },
@@ -443,10 +590,14 @@ def _staged_request_payload(*, run_id: str, selected_stages: tuple[str, ...]) ->
     }
 
 
-def _input_inference_payload(*, run_id: str) -> dict[str, Any]:
+def _input_inference_payload(
+    *,
+    run_id: str,
+    configuration: FitExecutionConfiguration,
+) -> dict[str, Any]:
     return {
         "run_id": run_id,
-        "workflow_scope": "full_without_option_surface",
+        "workflow_scope": _workflow_scope_value(configuration),
         "tick_data_source": {
             "file_format": "csv",
         },
@@ -457,9 +608,9 @@ def _input_inference_payload(*, run_id: str) -> dict[str, Any]:
             "bid_column": None,
             "ask_column": None,
         },
+        "timestamp_timezone_source": "explicit",
         "normalization_policy": {
             "timestamp_timezone": "UTC",
-            "timestamp_timezone_source": "explicit",
             "tick_price_input_policy": "explicit_price_column",
         },
     }
@@ -486,10 +637,19 @@ def _successful_full_model_parameters_payload() -> dict[str, Any]:
     }
 
 
-def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
+def _successful_full_model_metadata_fixture(
+    *,
+    run_id: str,
+    configuration: FitExecutionConfiguration,
+) -> dict[str, Any]:
+    workflow_scope = _workflow_scope_value(configuration)
+    market_profile_name = _market_profile_name(configuration)
+    session_preset_name = _session_preset_name(configuration)
+    exchange_code = _exchange_code_for_session(session_preset_name)
+
     return {
         "run_id": run_id,
-        "workflow_scope": "full_without_option_surface",
+        "workflow_scope": workflow_scope,
         "calibration_scope": "underlying_only",
         "execution_mode": "memory",
         "selected_stages": [
@@ -499,8 +659,8 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
             "mean_reversion",
             "joint_refinement",
         ],
-        "market_profile": "us_equity_cash",
-        "session_preset": "XNYS",
+        "market_profile": market_profile_name,
+        "session_preset": session_preset_name,
         "known_news_preset": "none",
         "session_source_kind": "built_in",
         "known_news_source_kind": "built_in",
@@ -521,7 +681,7 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
                 "selected_preset": {
                     "category": "market_profile",
                     "registry_scope": "built_in",
-                    "preset_name": "us_equity_cash",
+                    "preset_name": market_profile_name,
                 },
                 "applied_override_fields": [],
             },
@@ -530,7 +690,7 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
                 "selected_preset": {
                     "category": "session",
                     "registry_scope": "built_in",
-                    "preset_name": "XNYS",
+                    "preset_name": session_preset_name,
                 },
                 "applied_override_fields": [],
                 "inferred_from_data": False,
@@ -551,10 +711,16 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
         "session_resolution": {
             "resolution_kind": "automatic_inference",
             "provenance_kind": "bundled_preset",
-            "selected_policy_id": "XNYS",
-            "exchange_code": "XNYS",
-            "exchange_name": "New York Stock Exchange",
-            "resolved_timezone_name": "America/New_York",
+            "selected_policy_id": session_preset_name,
+            "exchange_code": exchange_code,
+            "exchange_name": (
+                "FX spot synthetic 24/5"
+                if session_preset_name == "fx_spot_24_5"
+                else "New York Stock Exchange"
+            ),
+            "resolved_timezone_name": (
+                "UTC" if session_preset_name == "fx_spot_24_5" else "America/New_York"
+            ),
             "confidence_score": 1.0,
             "confidence_label": "high",
             "manual_override_applied": False,
@@ -571,11 +737,14 @@ def _successful_full_model_metadata_fixture(*, run_id: str) -> dict[str, Any]:
             "artifact_bundle_available": False,
             "artifact_families": [],
         },
-        "input_inference": _input_inference_payload(run_id=run_id),
+        "input_inference": _input_inference_payload(
+            run_id=run_id,
+            configuration=configuration,
+        ),
         "diagnostics": [],
         "fit_report_summary": {
             "run_id": run_id,
-            "workflow_scope": "full_without_option_surface",
+            "workflow_scope": workflow_scope,
             "success": True,
             "selected_stages": [
                 "seasonality",

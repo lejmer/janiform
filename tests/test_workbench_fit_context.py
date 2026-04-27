@@ -85,6 +85,7 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -219,6 +220,7 @@ def test_workbench_comparison_reuses_persisted_cache_for_same_model_seed_and_ran
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -331,6 +333,7 @@ def test_workbench_comparison_cache_does_not_apply_to_edited_models(
     class _PersistedModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -461,6 +464,7 @@ def test_workbench_comparison_uses_canonical_bid_ask_simulation_output_columns(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -560,6 +564,7 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -725,6 +730,7 @@ def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping()
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -864,6 +870,7 @@ def test_workbench_comparison_uses_full_observed_range_for_large_inputs() -> Non
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -1445,6 +1452,7 @@ def test_workbench_comparison_builds_seeded_15m_series_from_raw_path(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -1554,6 +1562,7 @@ def test_workbench_plot_export_includes_observed_simulated_comparison(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -2233,6 +2242,7 @@ def test_workbench_fit_context_reads_parquet_ticks_with_column_batches(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "parquet",
                 },
@@ -2302,6 +2312,7 @@ def test_workbench_fit_context_keeps_last_duplicate_across_parquet_batch_boundar
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "parquet",
                 },
@@ -2385,6 +2396,7 @@ def test_workbench_plot_export_builds_observed_simulation_comparison_once(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -2471,6 +2483,7 @@ def test_workbench_plot_export_accepts_mismatched_return_series_lengths(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -2553,6 +2566,7 @@ def test_workbench_plot_export_accepts_time_as_timestamp_key(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -2638,6 +2652,7 @@ def test_workbench_plot_export_accepts_time_microseconds_timestamp_key(
     class _FakeModel:
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },

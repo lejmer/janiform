@@ -110,6 +110,7 @@ def test_apply_reevaluation_request_updates_loaded_model_parameters(
         _execution_input = None
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },
@@ -196,6 +197,7 @@ def test_lab_tab_populates_editable_parameter_rows_when_opened(
         _execution_input = None
         metadata = {
             "input_inference": {
+                "timestamp_timezone_source": "explicit",
                 "tick_data_source": {
                     "file_format": "csv",
                 },

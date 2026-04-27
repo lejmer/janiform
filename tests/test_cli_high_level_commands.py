@@ -429,7 +429,7 @@ def test_fit_inspect_previews_inference(
     assert payload["input_inference"]["tick_data_format"] == "csv"
     assert payload["input_inference"]["timestamp_column"] == "timestamp_utc"
     assert payload["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
-    assert payload["temporary_workspace_materialized"] is False
+    assert payload["temporary_workspace_materialized"] is True
 
 
 def test_simulate_outputs_model_provenance_and_simulation_payload(

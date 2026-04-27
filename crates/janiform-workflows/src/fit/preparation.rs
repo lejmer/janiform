@@ -514,7 +514,8 @@ fn infer_session_resolution(
         },
         Some(&normalized_market_data),
     )
-    .map_err(|source| WorkflowError::FitExecutionFailed {
+    .map_err(|source| WorkflowError::FitValidationFailed {
+        field: "session_configuration",
         message: format!("market-data session inference failed: {source}"),
     })?;
 
