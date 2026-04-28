@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 use janiform_governance_bench::benchmarking::{
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE,
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING,
-    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
 };
 use janiform_validation::CoarseFineConsistencyRegressionReport;
 use serde::{Deserialize, Serialize};
@@ -511,7 +511,7 @@ fn map_component_id_from_coarse_fine_metric(metric_id: &str) -> &'static str {
         return ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING;
     }
     if metric_id.starts_with("sufficient_statistics_") {
-        return ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK;
+        return ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS;
     }
 
     "coarse_fine_consistency_harness"

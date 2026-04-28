@@ -51,7 +51,7 @@ use super::report::{
     ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_REQUIRED_REPORT_FIELDS,
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE,
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING,
-    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
     OraclePricerSufficientStatisticsBenchmarkComponentMetrics,
     OraclePricerSufficientStatisticsBenchmarkOutputSchemaMetadata,
     OraclePricerSufficientStatisticsBenchmarkProfileReport,
@@ -346,7 +346,8 @@ pub fn run_oracle_pricer_sufficient_statistics_benchmark_harness(
                 .ok_or_else(|| {
                     OraclePricerSufficientStatisticsBenchmarkHarnessError::OperationCountOverflow {
                         profile_id: profile.profile_id.clone(),
-                        component: ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
+                        component:
+                            ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
                     }
                 })?;
 
@@ -549,7 +550,7 @@ fn run_profile_benchmark(
 
     let sufficient_statistics_sampling_metrics = run_component_benchmark(
         profile,
-        ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
+        ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
         resolved_run_length,
         profile
             .component_workload

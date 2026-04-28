@@ -12,7 +12,7 @@ use janiform_governance_bench::benchmarking::{
     ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_REPORT_SCHEMA_VERSION,
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE,
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING,
-    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
     OraclePricerSufficientStatisticsBenchmarkComponentMetrics,
     OraclePricerSufficientStatisticsBenchmarkReport, sort_profile_records_canonically,
 };
@@ -322,7 +322,7 @@ impl OraclePricerSufficientStatisticsPerformanceBaselineArtifact {
             )?;
             validate_component_metrics_for_baseline(
                 &profile_record.profile_id,
-                ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
+                ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
                 profile_record.sufficient_statistics_sampling_metrics,
             )?;
         }
@@ -1160,7 +1160,7 @@ pub fn compare_oracle_pricer_sufficient_statistics_performance_baseline_versions
         component_entries.push(build_performance_baseline_comparison_component_entry(
             profile_id,
             reference_profile.workload_scale,
-            ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
+            ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
             reference_profile.sufficient_statistics_sampling_metrics,
             candidate_profile.sufficient_statistics_sampling_metrics,
         ));

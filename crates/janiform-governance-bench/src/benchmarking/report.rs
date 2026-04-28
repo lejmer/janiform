@@ -51,7 +51,7 @@ pub(super) const ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_REQUIRED_COMPONEN
 pub const ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE: &str = "oracle_solver";
 pub const ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING: &str =
     "characteristic_function_pricer";
-pub const ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK: &str =
+pub const ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS: &str =
     "sufficient_statistics_sampler";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OraclePricerSufficientStatisticsBenchmarkOutputSchemaMetadata {

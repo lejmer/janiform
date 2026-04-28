@@ -138,7 +138,7 @@ impl PreparedPricingKernelBenchmarkCase {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PreparedRiskSamplingBenchmarkCase {
+pub struct PreparedSufficientStatisticsSamplingBenchmarkCase {
     pub profile_id: &'static str,
     pub sampling_seed: u64,
     pub solved_slices: Vec<SufficientStatisticsTransformSlices>,
@@ -252,7 +252,7 @@ impl MicrobenchmarkFixtureSet {
     pub fn prepare_sufficient_statistics_sampling_case(
         &self,
         profile_id: &'static str,
-    ) -> Result<PreparedRiskSamplingBenchmarkCase, MicrobenchmarkFixtureError> {
+    ) -> Result<PreparedSufficientStatisticsSamplingBenchmarkCase, MicrobenchmarkFixtureError> {
         let profile = self.profile(profile_id)?;
         let equation_specification = build_equation_specification(profile, &self.policy)
             .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
@@ -272,7 +272,7 @@ impl MicrobenchmarkFixtureSet {
         )
         .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
 
-        Ok(PreparedRiskSamplingBenchmarkCase {
+        Ok(PreparedSufficientStatisticsSamplingBenchmarkCase {
             profile_id,
             sampling_seed: derive_invocation_seed(sufficient_statistics_seed, 1),
             solved_slices,
