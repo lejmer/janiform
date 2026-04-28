@@ -1,6 +1,7 @@
 # Janiform
 
 [![CI](https://github.com/lejmer/janiform/actions/workflows/ci-fast-regression.yml/badge.svg?branch=develop)](https://github.com/lejmer/janiform/actions/workflows/ci-fast-regression.yml)
+[![Platform CI](https://github.com/lejmer/janiform/actions/workflows/ci-platform.yml/badge.svg?branch=develop)](https://github.com/lejmer/janiform/actions/workflows/ci-platform.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](https://github.com/lejmer/janiform/blob/develop/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://github.com/lejmer/janiform/blob/develop/pyproject.toml)
 [![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)](https://github.com/lejmer/janiform/blob/develop/Cargo.toml)
