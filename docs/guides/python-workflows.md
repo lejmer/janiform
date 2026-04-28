@@ -74,6 +74,10 @@ a direct coarse-interval path instead. The optional `progress_callback` receives
 `JaniformEstimator.fit(...)` and `fit_with_report(...)` also accept `progress_callback`; those
 callbacks receive typed `FitProgressEvent` values from the Rust fit workflow.
 
+`model.price_option_grid(...)`, `model.price_option_grid_surface(...)`, and
+`janiform.pricing.run_vanilla_option_surface_pricing(...)` accept `progress_callback`; those
+callbacks receive typed `PricingProgressEvent` values from the Rust pricing workflow.
+
 ## When To Drop Lower
 
 - Use `janiform.calibration.staged` when you need explicit staged orchestration contracts.

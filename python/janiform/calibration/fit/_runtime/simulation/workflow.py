@@ -8,7 +8,9 @@ from time import perf_counter
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from ....._native_api import native_module
+from ....._native_progress import native_terminal_progress_mode
 from ....._timestamps import datetime_to_utc_nanos
+from ....._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
 from ....._workflow_outputs import (
     SimulationArtifactSink,
     _file_format_for_simulation_path,
@@ -61,6 +63,7 @@ def simulate_model(
     max_records_per_chunk: int = 1024,
     state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
     progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+    progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> JaniformSimulationResult:
     if output_path is not None and sink is not None:
         raise calibration_error("sink", "output_path and sink are mutually exclusive")
@@ -109,6 +112,16 @@ def simulate_model(
     raw_output = native_module().run_simulation_from_model_artifact(
         request_payload,
         native_progress_callback,
+        progress_mode=(
+            "none"
+            if native_progress_callback is not None
+            else native_terminal_progress_mode(
+                resolve_workflow_progress_mode(
+                    progress_mode,
+                    default_mode=WorkflowProgressMode.HUMAN,
+                )
+            )
+        ),
     )
 
     simulation_result = _adapt_native_simulation_output(

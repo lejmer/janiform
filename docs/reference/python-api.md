@@ -107,6 +107,10 @@ the model uses the default `1h` horizon interval. The model generates a seeded-t
 default, and `coarse=True` selects the coarse-interval fitted-model path. `interval` only controls
 the horizon unit.
 
+`JaniformModel.price_option_grid(...)`, `JaniformModel.price_option_grid_surface(...)`, and
+`janiform.pricing.run_vanilla_option_surface_pricing(...)` accept an optional `progress_callback`
+that receives `PricingProgressEvent` values from the Rust pricing workflow.
+
 When fitting with options, one fit run targets one option quote timestamp, tick data remains
 mandatory, and the option surface must contain bid and ask quote data together with prices.
 

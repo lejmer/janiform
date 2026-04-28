@@ -901,6 +901,7 @@ def build_market_profile_reference_from_arguments(
         preset_name=market_name,
         raw_scope=raw_scope,
     )
+
     return MarketProfileReference(
         usage_mode=PresetReferenceUsageMode.NAMED,
         registry_scope=resolved_scope,
@@ -1229,6 +1230,7 @@ def build_cli_simulate_result_payload(
         debug_trace_enabled=bool(command_arguments.get("debug_trace_enabled")),
         sample_every_nth_transition=sample_every_nth_transition,
         max_records_per_chunk=max_records_per_chunk,
+        progress_mode=output_controller.progress_mode,
     )
 
     return {

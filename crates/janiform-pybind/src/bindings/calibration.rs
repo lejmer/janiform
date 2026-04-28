@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use janiform::calibration::{
@@ -50,6 +50,7 @@ use pyo3::{pyfunction, wrap_pyfunction};
 use serde_json::Value;
 
 use super::calendar::parse_timestamp_utc;
+use super::events::{callback_error_state, emit_callback_event_payload, raise_callback_error};
 use crate::CalibrationExecutionError;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{
@@ -703,34 +704,17 @@ fn run_staged_calibration_with_python_events(
     memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
 ) -> PyResult<Py<PyAny>> {
     let event_callback = event_callback.clone().unbind();
-
-    let callback_error_message = Arc::new(Mutex::new(None::<String>));
-    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+    let callback_error_state = callback_error_state();
+    let callback_error_state_for_observer = callback_error_state.clone();
 
     let report = py
         .detach(move || {
             let mut observer = |event: CalibrationStagedRunObserverEvent| {
-                if callback_error_message_for_observer
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.clone())
-                    .is_some()
-                {
-                    return;
-                }
-
-                Python::attach(|py| {
-                    let callback_result = python_staged_calibration_event_to_py_object(py, &event)
-                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
-
-                    if let Err(source) = callback_result {
-                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
-                            if guard.is_none() {
-                                *guard = Some(source.to_string());
-                            }
-                        }
-                    }
-                });
+                emit_callback_event_payload(
+                    &event_callback,
+                    &callback_error_state_for_observer,
+                    |py| python_staged_calibration_event_to_py_object(py, &event),
+                );
             };
 
             run_staged_calibration_from_execution_input_with_observer(
@@ -742,13 +726,11 @@ fn run_staged_calibration_with_python_events(
         })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
-    if let Ok(guard) = callback_error_message.lock() {
-        if let Some(error_message) = guard.as_ref() {
-            return Err(CalibrationExecutionError::new_err(format!(
-                "staged calibration event callback failed: {error_message}"
-            )));
-        }
-    }
+    raise_callback_error(
+        &callback_error_state,
+        "staged calibration event callback failed",
+        CalibrationExecutionError::new_err,
+    )?;
 
     python_staged_calibration_report_to_py_object(py, &report)
 }

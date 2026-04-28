@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC
 from time import perf_counter
-from collections.abc import Callable
 from typing import Any, Optional
 
 from .contracts import (
@@ -22,12 +22,15 @@ from ..shared.errors import (
 )
 from ...contracts.base import require_datetime_utc
 from ..._native_api import native_exception_matches, native_module
+from ..._native_progress import native_terminal_progress_mode
+from ..._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
 
 
 def run_seeded_tick_event_simulation(
     request: SeededTickSimulationRequest,
     *,
     progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+    progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> SeededTickSimulationResponse:
     if not isinstance(request, SeededTickSimulationRequest):
         raise _simulation_error("request", "must be a SeededTickSimulationRequest")
@@ -72,29 +75,49 @@ def run_seeded_tick_event_simulation(
 
             progress_callback(simulation_progress_event_from_mapping(raw_event))
 
-        native_run_kwargs: dict[str, Any] = {
-            "debug_trace_enabled": normalized_request.debug_trace_enabled,
-            "sample_every_nth_transition": normalized_request.sample_every_nth_transition,
-            "max_records_per_chunk": normalized_request.max_records_per_chunk,
-            "state_snapshot_capture": normalized_request.state_snapshot_capture.value,
-        }
+        native_run_kwargs: dict[str, Any] = {}
+
         if progress_callback is not None:
             native_run_kwargs["event_callback"] = native_progress_callback
+        else:
+            resolved_progress_mode = resolve_workflow_progress_mode(
+                progress_mode,
+                default_mode=WorkflowProgressMode.HUMAN,
+            )
+
+            native_run_kwargs["progress_mode"] = native_terminal_progress_mode(
+                resolved_progress_mode
+            )
 
         native_result: Any = native.run_seeded_tick_event_simulation(
-            normalized_request.seed,
-            normalized_request.start_time_utc.astimezone(UTC).isoformat(),
-            normalized_request.horizon_interval_count,
-            normalized_request.kernel_parameters.to_payload(),
-            normalized_request.nig_shared_plus_shift_configuration.to_payload(),
-            normalized_request.initial_excitation_state.to_payload(),
-            normalized_request.hourly_factor_contract._native_result,
-            normalized_request.news_process_configuration.to_payload(),
-            normalized_request.mean_reversion_fitted_parameters.to_payload(),
-            normalized_request.mean_reversion_runtime_interval_anchors.to_payload(),
-            normalized_request.initial_mean_reversion_boundary_state.to_payload(),
+            {
+                "seed": normalized_request.seed,
+                "start_time_utc": normalized_request.start_time_utc.astimezone(UTC).isoformat(),
+                "horizon_interval_count": normalized_request.horizon_interval_count,
+                "kernel_parameters": normalized_request.kernel_parameters.to_payload(),
+                "nig_shared_plus_shift_configuration": (
+                    normalized_request.nig_shared_plus_shift_configuration.to_payload()
+                ),
+                "initial_excitation_state": normalized_request.initial_excitation_state.to_payload(),
+                "hourly_factor_contract": normalized_request.hourly_factor_contract._native_result,
+                "news_process_configuration": normalized_request.news_process_configuration.to_payload(),
+                "mean_reversion_fitted_parameters": (
+                    normalized_request.mean_reversion_fitted_parameters.to_payload()
+                ),
+                "mean_reversion_runtime_interval_anchors": (
+                    normalized_request.mean_reversion_runtime_interval_anchors.to_payload()
+                ),
+                "initial_mean_reversion_boundary_state": (
+                    normalized_request.initial_mean_reversion_boundary_state.to_payload()
+                ),
+                "debug_trace_enabled": normalized_request.debug_trace_enabled,
+                "sample_every_nth_transition": normalized_request.sample_every_nth_transition,
+                "max_records_per_chunk": normalized_request.max_records_per_chunk,
+                "state_snapshot_capture": normalized_request.state_snapshot_capture.value,
+            },
             **native_run_kwargs,
         )
+
         native_runtime_seconds = perf_counter() - native_run_started
     except Exception as e:
         if native_exception_matches(native, e, "SeasonalityInputValidationError"):
@@ -112,6 +135,7 @@ def run_seeded_tick_event_simulation(
 
     try:
         response_build_started = perf_counter()
+
         response = SeededTickSimulationResponse.from_native_result(
             native_result=native_result,
             native_runtime_seconds=native_runtime_seconds,
@@ -121,6 +145,7 @@ def run_seeded_tick_event_simulation(
         response.diagnostics.python_response_construction_seconds = (
             perf_counter() - response_build_started
         )
+
         return response
     except SeededTickSimulationValidationError as e:
         raise _simulation_integration_error(

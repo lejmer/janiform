@@ -46,6 +46,28 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `janiform-validation` | Validation domains and regression harnesses |
 | `janiform-workflows` | Shared workflow orchestration for Janiform entrypoints |
 
+# Terminal UX Boundary
+
+Janiform keeps terminal UX ownership split by concern:
+
+| Layer | Owns | Does not own |
+| --- | --- | --- |
+| `janiform-terminal-ui` | Generic terminal primitives: semantic styles, renderers, reusable summary/table blocks, progress adapters, path and duration formatting, and summary emission policy. | Fit, pricing, simulation, or other workflow-specific labels and rows. |
+| `janiform-workflows` | Workflow execution UX: start summaries, progress labels, completion summaries, and the lifecycle points where those views are emitted. | CLI output-mode selection, argument parsing, Python object conversion, or terminal rendering mechanics. |
+| `janiform-cli` | CLI shell behavior: command parsing, path resolution, output-mode selection, JSON command payload emission, and non-execution command screens such as fit planning and inspection. | Workflow execution start/progress/completion UX. |
+| `janiform-pybind` and Python | Boundary conversion and typed public API ergonomics. | Terminal workflow UX and workflow execution logic. |
+
+This keeps the reusable terminal design system independent from domain workflows while ensuring every entrypoint sees the same workflow execution UX. CLI and Python can choose whether human terminal output is enabled, but the workflows decide what a fit, pricing, or simulation run says when it starts, progresses, and completes.
+
+## Workflow Module Details
+
+Fit, pricing, and simulation workflow internals follow the crate-level module conventions in
+[workflow-module-conventions.md](workflow-module-conventions.md).
+
+## Fit Planning Screens
+
+Fit plan, inspect, and staged-plan commands render pre-execution planning screens in `janiform-cli`. Those screens summarize command preparation and resolved inputs before a workflow run exists, so they are classified as CLI shell UX. Once fit execution starts, lifecycle terminal output is owned by `janiform-workflows`.
+
 ## Documentation Layout
 
 Human-facing documentation lives in `docs/`. Local `README.md` files describe their own directory. Machine-readable workflow inputs, fixture payloads, and policy artifacts live under tests, fixtures, or data directories rather than under `docs/`.

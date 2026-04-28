@@ -18,12 +18,15 @@ from ..shared.errors import (
     _simulation_integration_error,
 )
 from ..._native_api import native_exception_matches, native_module
+from ..._native_progress import native_terminal_progress_mode
+from ..._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
 
 
 def run_coarse_simulation(
     request: CoarseSimulationRunRequest,
     *,
     progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+    progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> CoarseSimulationPath:
     if not isinstance(request, CoarseSimulationRunRequest):
         raise _simulation_error("request", "must be a CoarseSimulationRunRequest")
@@ -48,16 +51,28 @@ def run_coarse_simulation(
             progress_callback(simulation_progress_event_from_mapping(raw_event))
 
         native_run_kwargs: dict[str, Any] = {}
+
         if progress_callback is not None:
             native_run_kwargs["event_callback"] = native_progress_callback
+        else:
+            resolved_progress_mode = resolve_workflow_progress_mode(
+                progress_mode,
+                default_mode=WorkflowProgressMode.HUMAN,
+            )
+
+            native_run_kwargs["progress_mode"] = native_terminal_progress_mode(
+                resolved_progress_mode
+            )
 
         raw_path = native.run_coarse_simulation(
-            normalized_request.seed,
-            normalized_request.start_time_utc_nanos,
-            normalized_request.horizon_interval_count,
-            normalized_request.interval_delta,
-            normalized_request.model_inputs.to_payload(),
-            normalized_request.hourly_factor_contract._native_result,
+            {
+                "seed": normalized_request.seed,
+                "start_time_utc_nanos": normalized_request.start_time_utc_nanos,
+                "horizon_interval_count": normalized_request.horizon_interval_count,
+                "interval_delta": normalized_request.interval_delta,
+                "model_inputs": normalized_request.model_inputs.to_payload(),
+                "hourly_factor_contract": normalized_request.hourly_factor_contract._native_result,
+            },
             **native_run_kwargs,
         )
     except Exception as e:

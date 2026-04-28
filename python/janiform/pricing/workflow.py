@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import ModuleType
-from typing import Any
+from typing import Any, Optional
 
+from .._native_api import native_exception_matches, native_module
 from .contracts import (
     VanillaOptionPricingExecutionInput,
     VanillaOptionPricingRunResult,
@@ -19,7 +21,11 @@ from .errors import (
     _pricing_execution_error,
     _pricing_integration_error,
 )
-from .._native_api import native_exception_matches, native_module
+from .progress import (
+    PricingProgressEvent,
+    _pricing_progress_callback_from_mapping,
+)
+
 
 def run_vanilla_option_pricing(
     execution_input: VanillaOptionPricingExecutionInput,
@@ -91,6 +97,8 @@ def run_vanilla_option_pricing(
 
 def run_vanilla_option_surface_pricing(
     execution_input: VanillaOptionSurfacePricingExecutionInput,
+    *,
+    progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
 ) -> VanillaOptionSurfacePricingRunResult:
     if not isinstance(execution_input, VanillaOptionSurfacePricingExecutionInput):
         raise _pricing_error(
@@ -110,9 +118,16 @@ def run_vanilla_option_surface_pricing(
         ) from error
 
     try:
-        raw_run_result = native.run_vanilla_option_surface_pricing(
-            _surface_pricing_native_execution_input(execution_input)
-        )
+        native_progress_callback = _pricing_progress_callback_from_mapping(progress_callback)
+        native_execution_input = _surface_pricing_native_execution_input(execution_input)
+
+        if native_progress_callback is None:
+            raw_run_result = native.run_vanilla_option_surface_pricing(native_execution_input)
+        else:
+            raw_run_result = native.run_vanilla_option_surface_pricing_with_events(
+                native_execution_input,
+                native_progress_callback,
+            )
     except Exception as error:
         if native_exception_matches(native, error, "PricingExecutionError"):
             raise _pricing_execution_error(

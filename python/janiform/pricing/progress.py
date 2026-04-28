@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
@@ -153,6 +153,18 @@ def pricing_progress_event_from_mapping(payload: Mapping[str, Any]) -> PricingPr
         current_strike_index=current_strike_index,
         total_strikes=total_strikes,
     )
+
+
+def _pricing_progress_callback_from_mapping(
+    progress_callback: Optional[Callable[[PricingProgressEvent], None]],
+) -> Optional[Callable[[dict[str, Any]], None]]:
+    if progress_callback is None:
+        return None
+
+    def emit_pricing_progress(raw_event: dict[str, Any]) -> None:
+        progress_callback(pricing_progress_event_from_mapping(raw_event))
+
+    return emit_pricing_progress
 
 
 __all__ = [

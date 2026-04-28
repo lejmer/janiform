@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 import pandas
 
-from ......_workflow_progress import AbstractProgress, WorkflowProgressMode
+from ......_workflow_progress import WorkflowProgressMode
 from .....market_data.contracts import CalibrationTickDataColumnMapping
 from ...._runtime.option_pricing.workflow import price_option_grid_for_model
 from ....state import CurrentStateEstimationRequest
@@ -38,7 +38,6 @@ def price_prepared_snapshot_groups_for_model(
     cpu_count: Optional[int],
     silent: bool,
     progress_mode: WorkflowProgressMode | str,
-    progress: Optional[AbstractProgress] = None,
 ) -> JaniformObservedOptionSnapshotPricingResult:
     pricing_result = price_option_grid_for_model(
         model,
@@ -64,7 +63,6 @@ def price_prepared_snapshot_groups_for_model(
         cpu_count=cpu_count,
         silent=silent,
         progress_mode=progress_mode,
-        progress=progress,
     )
 
     return build_observed_option_snapshot_pricing_result(

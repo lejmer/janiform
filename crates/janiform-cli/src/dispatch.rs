@@ -3,8 +3,8 @@ use crate::commands::dev::DevSubcommand;
 use crate::commands::dev::RegressionSubcommand;
 use crate::commands::fit::FitStagedSubcommand;
 use crate::commands::fit::FitSubcommand;
-use crate::commands::fit::execution::run_fit_execution;
-use crate::commands::fit::execution::run_fit_staged_execution;
+use crate::commands::fit::execution::run_fit_command;
+use crate::commands::fit::execution::run_fit_staged_run_command;
 use crate::commands::fit::planning::run_fit_inspect;
 use crate::commands::fit::planning::run_fit_plan;
 use crate::commands::fit::planning::run_fit_staged_plan;
@@ -14,8 +14,8 @@ use crate::commands::inspection::run_inspect_model;
 use crate::commands::inspection::run_inspect_run;
 use crate::commands::presets::PresetsSubcommand;
 use crate::commands::pricing::PriceSubcommand;
-use crate::commands::pricing::run_price;
-use crate::commands::pricing::run_price_fitted_model;
+use crate::commands::pricing::run_price_command;
+use crate::commands::pricing::run_price_fitted_model_command;
 use crate::commands::reporting::ReportSubcommand;
 use crate::commands::reporting::run_report_fit;
 use crate::commands::seasonality::SeasonalitySubcommand;
@@ -43,12 +43,14 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
         RootCommand::Price(command) => dispatch_price(context, command),
         RootCommand::Simulate(command) => match command.command {
             Some(SimulateSubcommand::SeededTicks(command)) => {
-                crate::commands::simulation::run_simulate_seeded_ticks(context, command)
+                crate::commands::simulation::run_simulate_seeded_ticks_command(context, command)
             }
             Some(SimulateSubcommand::CoarseInterval(command)) => {
-                crate::commands::simulation::run_simulate_coarse_interval(context, command)
+                crate::commands::simulation::run_simulate_coarse_interval_command(context, command)
             }
-            None => crate::commands::simulation::run_simulate_from_model_artifact(context, command),
+            None => crate::commands::simulation::run_simulate_from_model_artifact_command(
+                context, command,
+            ),
         },
         RootCommand::Presets(command) => match command.command {
             PresetsSubcommand::List(_) => not_implemented("presets list"),
@@ -100,11 +102,11 @@ fn dispatch_fit(
         Some(FitSubcommand::Staged(command)) => match command.command {
             Some(FitStagedSubcommand::Plan(command)) => run_fit_staged_plan(context, command),
             Some(FitStagedSubcommand::Run(command)) => {
-                run_fit_staged_execution(context, command.staged)
+                run_fit_staged_run_command(context, command.staged)
             }
-            None => run_fit_staged_execution(context, command.staged),
+            None => run_fit_staged_run_command(context, command.staged),
         },
-        None => run_fit_execution(context, command),
+        None => run_fit_command(context, command),
     }
 }
 
@@ -113,9 +115,11 @@ fn dispatch_price(
     mut command: crate::commands::pricing::PriceCommand,
 ) -> Result<(), CliError> {
     match command.command.take() {
-        Some(PriceSubcommand::FittedModel(command)) => run_price_fitted_model(context, command),
+        Some(PriceSubcommand::FittedModel(command)) => {
+            run_price_fitted_model_command(context, command)
+        }
         Some(PriceSubcommand::ObservedOptions(_)) => not_implemented("price observed-options"),
-        None => run_price(context, command),
+        None => run_price_command(context, command),
     }
 }
 

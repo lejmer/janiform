@@ -3,8 +3,8 @@ pub(crate) mod execution;
 pub(crate) mod labels;
 pub(crate) mod payloads;
 pub(crate) mod planning;
+pub(crate) mod planning_rendering;
 pub(crate) mod preparation;
-pub(crate) mod rendering;
 
 pub(crate) use args::FitCommand;
 pub(crate) use args::FitInspectCommand;

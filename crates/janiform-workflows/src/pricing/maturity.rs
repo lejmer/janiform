@@ -9,7 +9,8 @@ use janiform::pricing::{
 
 use crate::error::WorkflowError;
 
-use super::{FittedModelSingleOptionPricingRequest, pricing_validation_error};
+use super::FittedModelSingleOptionPricingRequest;
+use super::validation::pricing_validation_error;
 
 pub(super) fn resolve_single_maturity(
     request: &FittedModelSingleOptionPricingRequest,

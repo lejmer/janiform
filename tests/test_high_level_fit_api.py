@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import queue
 from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -25,11 +24,10 @@ import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_
 import janiform.calibration.fit._runtime.simulation.result as fit_simulation_result_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
 import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
-import janiform.calibration.fit.pricing.market_surface._workflow.progress as fit_market_surface_progress_module
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform._timestamps import datetime_to_utc_nanos
-from janiform._workflow_progress import JaniformOutputController
+from janiform._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
     FitProgressEvent,
@@ -688,6 +686,8 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_frame(
         option_surface=option_surface_path,
         valuation_time_utc=datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
         option_type="call",
+        silent=True,
+        progress_mode=WorkflowProgressMode.NONE,
     )
 
     observed_data = captured_arguments["observed_data"]
@@ -705,6 +705,8 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_frame(
         (95.0, 105.0),
         (95.0, 105.0),
     )
+    assert captured_arguments["silent"] is True
+    assert captured_arguments["progress_mode"] is WorkflowProgressMode.NONE
 
     frame = result.to_pandas()
     assert list(frame.columns) == [
@@ -890,129 +892,6 @@ def test_price_option_surface_returns_single_expiry_evolution_surface(
     assert surface_frame.shape[0] == 2
     assert surface_frame.shape[1] >= 1
     assert surface_frame.iloc[0, 0] != surface_frame.iloc[1, 0]
-
-
-def test_single_expiry_surface_progress_panel_formats_slice_rows(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        fit_market_surface_progress_module,
-        "monotonic",
-        lambda: 80.0,
-    )
-
-    running_row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
-        valuation_time_utc=datetime(2026, 3, 27, 18, 42, tzinfo=UTC),
-        status="running",
-        detail="interval 193/957",
-        started_at_monotonic=0.0,
-        last_observed_elapsed_seconds=80.0,
-    )
-    completed_row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
-        valuation_time_utc=datetime(2026, 3, 31, 20, 0, tzinfo=UTC),
-        status="done",
-        detail="strike 41/128",
-        completed_elapsed_seconds=185.0,
-    )
-
-    panel = fit_market_surface_progress_module.build_single_expiry_surface_progress_panel(
-        rows_by_time={
-            running_row.valuation_time_utc: running_row,
-            completed_row.valuation_time_utc: completed_row,
-        },
-        active_count=1,
-        surface_parallelism=22,
-        total_cpu_count=24,
-        pricing_cpu_count=1,
-    )
-
-    assert panel == "\n".join(
-        (
-            "active 1 | valuation workers 22/24 | pricing cpus per worker 1",
-            "  2026-03-27T18:42:00Z | running | interval 193/957 | 01:20",
-            "  2026-03-31T20:00:00Z | done    | strike 41/128 | 03:05",
-        )
-    )
-
-
-def test_normalize_single_expiry_surface_progress_detail_suppresses_redundant_prefixes() -> None:
-    assert (
-        fit_market_surface_progress_module.normalize_single_expiry_surface_slice_progress_detail(
-            "maturity 1/1 | strike 41/128"
-        )
-        == "strike 41/128"
-    )
-    assert (
-        fit_market_surface_progress_module.normalize_single_expiry_surface_slice_progress_detail(
-            "group 1/1"
-        )
-        is None
-    )
-    assert (
-        fit_market_surface_progress_module.normalize_single_expiry_surface_slice_progress_detail(
-            "interval 193/957"
-        )
-        == "interval 193/957"
-    )
-
-
-def test_single_expiry_surface_worker_progress_updates_rows_from_queue(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    target_time = datetime(2026, 3, 31, 20, 0, tzinfo=UTC)
-    row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
-        valuation_time_utc=target_time,
-    )
-    progress_queue: queue.Queue[Any] = queue.Queue()
-    monotonic_values = iter((100.0, 120.0))
-
-    monkeypatch.setattr(
-        fit_market_surface_progress_module,
-        "monotonic",
-        lambda: next(monotonic_values),
-    )
-
-    worker_progress = fit_market_surface_progress_module.SingleExpirySurfaceSliceWorkerProgress(
-        valuation_time_utc=target_time,
-        progress_queue=progress_queue,
-    )
-    worker_progress.notify_started()
-    worker_progress.update(
-        detail="running option grid pricing workflow",
-        subdetail="interval 193/957",
-    )
-
-    fit_market_surface_progress_module.drain_single_expiry_surface_progress_queue(
-        progress_queue=progress_queue,
-        rows_by_time={target_time: row},
-    )
-
-    assert row.status == "running"
-    assert row.detail == "interval 193/957"
-    assert row.last_observed_elapsed_seconds == pytest.approx(20.0)
-
-
-def test_single_expiry_surface_running_row_elapsed_label_advances_without_detail(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        fit_market_surface_progress_module,
-        "monotonic",
-        lambda: 125.0,
-    )
-    row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
-        valuation_time_utc=datetime(2026, 3, 31, 20, 0, tzinfo=UTC),
-        status="running",
-        detail="-",
-        started_at_monotonic=5.0,
-    )
-
-    assert (
-        fit_market_surface_progress_module.single_expiry_surface_slice_row_elapsed_label(
-            row
-        )
-        == "02:00"
-    )
 
 
 def test_vanilla_option_pricing_diagnostics_exposes_log_forward_moneyness() -> None:
@@ -1735,8 +1614,9 @@ def test_high_level_model_simulate_dispatches_by_explicit_coarse_flag(
             self,
             request_payload: dict[str, Any],
             progress_callback: Any,
+            progress_mode: str = "none",
         ) -> dict[str, Any]:
-            del progress_callback
+            del progress_callback, progress_mode
             captured_requests.append(
                 (
                     str(request_payload["simulation_kind"]),
@@ -1829,8 +1709,9 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback(
             self,
             request_payload: dict[str, Any],
             progress_callback: Any,
+            progress_mode: str = "none",
         ) -> dict[str, Any]:
-            del request_payload
+            del request_payload, progress_mode
             assert progress_callback is not None
 
             progress_callback(
@@ -1878,63 +1759,52 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback(
     assert observed_callback_events == [("seeded tick path generation", 2, 5)]
 
 
-def test_run_model_native_pricing_workflow_reports_native_surface_progress(
+def test_run_model_vanilla_option_surface_pricing_uses_terminal_progress_native_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    observed_progress_updates: list[tuple[str | None, str | None, int | None, int | None]] = []
-
-    class _CapturingProgress:
-        def update(
-            self,
-            *,
-            detail: str | None = None,
-            subdetail: str | None = None,
-            completed_units: int | None = None,
-            total_units: int | None = None,
-            reset_progress_units: bool = False,
-            progress_fraction: float | None = None,
-        ) -> None:
-            del reset_progress_units, progress_fraction
-            observed_progress_updates.append(
-                (detail, subdetail, completed_units, total_units)
-            )
+    observed_native_inputs: list[dict[str, Any]] = []
+    observed_progress_modes: list[str] = []
+    expected_result = JaniformVanillaOptionSurfacePricingResult(
+        spot=100.0,
+        strikes=(95.0,),
+        maturity_intervals=(1.0,),
+        payoff_type=VanillaOptionPayoffType.CALL,
+        risk_free_rate=0.01,
+        dividend_yield=0.0,
+        price_grid=((5.0,),),
+        implied_volatility_grid=((0.2,),),
+        implied_volatility_inversion_status_grid=(
+            (VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,),
+        ),
+        pricing_status_grid=((VanillaOptionPricingStatus.SUCCEEDED,),),
+        pricing_failure_stage_grid=((None,),),
+        pricing_failure_reason_grid=((None,),),
+        forward_price_grid=((100.5,),),
+        discount_factor_grid=((0.99,),),
+        boundary_state_norm_grid=((0.0,),),
+        maturity_summaries=(None,),
+        runtime_interval_schedule=build_runtime_interval_schedule((1.0,)),
+        maturity_terminal_interval_indices=(0,),
+    )
 
     class _FakeNativeModule:
-        def run_vanilla_option_surface_pricing_with_events(
+        def run_vanilla_option_surface_pricing_with_terminal_progress(
             self,
             execution_input: dict[str, Any],
-            event_callback: Any,
+            progress_mode: str,
         ) -> dict[str, Any]:
-            del execution_input
-            event_callback(
-                {
-                    "phase": "maturity_progress",
-                    "completed_units": 0,
-                    "total_units": 2,
-                    "current_group_index": None,
-                    "current_maturity_index": 0,
-                    "total_maturities": 2,
-                    "current_interval_index": None,
-                    "total_intervals": None,
-                    "current_strike_index": None,
-                    "total_strikes": None,
-                }
-            )
-            event_callback(
-                {
-                    "phase": "strike_pricing_progress",
-                    "completed_units": 1,
-                    "total_units": 3,
-                    "current_group_index": None,
-                    "current_maturity_index": 1,
-                    "total_maturities": 2,
-                    "current_interval_index": None,
-                    "total_intervals": None,
-                    "current_strike_index": 1,
-                    "total_strikes": 3,
-                }
-            )
-            return {"result": "ok"}
+            observed_native_inputs.append(execution_input)
+            observed_progress_modes.append(progress_mode)
+
+            payload = expected_result.to_payload()
+            return {
+                "response": payload,
+                "maturity_summaries": payload["maturity_summaries"],
+                "runtime_interval_schedule": payload["runtime_interval_schedule"],
+                "maturity_terminal_interval_indices": payload[
+                    "maturity_terminal_interval_indices"
+                ],
+            }
 
     monkeypatch.setattr(
         fit_pricing_native_module,
@@ -1947,32 +1817,17 @@ def test_run_model_native_pricing_workflow_reports_native_surface_progress(
         lambda native, error, name: False,
     )
 
-    result = fit_pricing_native_module.run_model_native_pricing_workflow(
-        native_method_name="run_vanilla_option_surface_pricing",
+    result = fit_pricing_native_module.run_model_vanilla_option_surface_pricing(
         native_execution_input={"prepared": "surface"},
-        result_parser=lambda payload, field_path: {"payload": payload, "field_path": field_path},
-        entrypoint="JaniformModel.price_option_grid_surface",
-        result_field_path="surface_pricing_result",
-        progress=_CapturingProgress(),
-        progress_detail="running option grid surface pricing workflow",
+        progress_mode="human",
     )
 
-    assert result == {
-        "payload": {"result": "ok"},
-        "field_path": "surface_pricing_result",
-    }
-    assert observed_progress_updates == [
-        ("running option grid surface pricing workflow", "maturity 1/2", 0, 2),
-        (
-            "running option grid surface pricing workflow",
-            "maturity 2/2 | strike 2/3",
-            1,
-            3,
-        ),
-    ]
+    assert observed_native_inputs == [{"prepared": "surface"}]
+    assert observed_progress_modes == ["human"]
+    assert result == expected_result
 
 
-def test_price_option_grid_for_model_reports_pre_native_progress_stages(
+def test_price_option_grid_for_model_does_not_render_python_pricing_progress(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1981,29 +1836,23 @@ def test_price_option_grid_for_model_reports_pre_native_progress_stages(
         monkeypatch,
         run_id="high-level-model-grid-batch-pre-native-progress",
     )
-    observed_progress_updates: list[tuple[str | None, str | None, int | None, int | None]] = []
     observed_result = object()
+    captured_progress_modes: list[str] = []
 
-    class _CapturingProgress:
-        def update(
-            self,
-            *,
-            detail: str | None = None,
-            subdetail: str | None = None,
-            completed_units: int | None = None,
-            total_units: int | None = None,
-            reset_progress_units: bool = False,
-            progress_fraction: float | None = None,
-        ) -> None:
-            del reset_progress_units, progress_fraction
-            observed_progress_updates.append(
-                (detail, subdetail, completed_units, total_units)
-            )
+    def capture_pricing_call(
+        native_execution_input: dict[str, Any],
+        *,
+        progress_mode: str,
+    ) -> object:
+        del native_execution_input
+        captured_progress_modes.append(progress_mode)
+
+        return observed_result
 
     monkeypatch.setattr(
         fit_pricing_workflow_module,
         "run_model_vanilla_option_grid_batch_pricing",
-        lambda native_execution_input, *, progress=None: observed_result,
+        capture_pricing_call,
     )
 
     batch = JaniformVanillaOptionGridBatch(
@@ -2023,20 +1872,10 @@ def test_price_option_grid_for_model_reports_pre_native_progress_stages(
         model,
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
-        progress=_CapturingProgress(),
     )
 
     assert result is observed_result
-    assert observed_progress_updates == [
-        ("running option grid pricing workflow", "resolve pricing maturity schedule", None, None),
-        ("running option grid pricing workflow", "prepare pricing runtime inputs", None, None),
-        ("running option grid pricing workflow", "prepare runtime factors", None, None),
-        ("running option grid pricing workflow", "build hourly factor contracts", None, None),
-        ("running option grid pricing workflow", "estimate pricing boundary state", None, None),
-        ("running option grid pricing workflow", "finalize runtime schedule", None, None),
-        ("running option grid pricing workflow", "assemble native pricing request", None, None),
-        ("running option grid pricing workflow", "materialize spectral pricing context", None, None),
-    ]
+    assert captured_progress_modes == ["human"]
 
 
 def test_high_level_model_simulate_sends_continuation_data_to_native_workflow(
@@ -2808,6 +2647,48 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
     assert captured_requests[0]["spot"] == 100.0
     assert captured_requests[0]["strike"] == 105.0
     assert captured_requests[0]["expiry_timestamp_utc"] == "2026-02-02T19:00:00+00:00"
+    assert captured_requests[0]["progress_mode"] == "human"
+
+
+def test_high_level_model_price_option_forwards_terminal_progress_suppression_to_native(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-native-progress-suppression",
+    )
+
+    captured_requests, _pricing_result = _capture_native_single_option_pricing_requests(monkeypatch)
+
+    model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        tenor="4h",
+        silent=True,
+    )
+    model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        tenor="4h",
+        progress_mode=WorkflowProgressMode.NONE,
+    )
+    model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        tenor="4h",
+        progress_mode=WorkflowProgressMode.JSONL,
+    )
+
+    assert [request["progress_mode"] for request in captured_requests] == [
+        "none",
+        "none",
+        "none",
+    ]
 
 
 def test_high_level_model_price_option_delegates_default_boundary_state_to_native_workflow(
@@ -3324,9 +3205,10 @@ def test_high_level_model_price_option_grid_dispatches_through_grid_batch_pricin
     monkeypatch.setattr(
         fit_pricing_workflow_module,
         "run_model_vanilla_option_grid_batch_pricing",
-        lambda native_execution_input, *, progress=None: (
+        lambda native_execution_input, *, progress_mode: (
             observed_result
             if native_execution_input is prepared_native_execution_input
+            and progress_mode == "human"
             else None
         ),
     )
@@ -3430,9 +3312,10 @@ def test_high_level_model_price_option_grid_surface_dispatches_through_surface_p
     monkeypatch.setattr(
         fit_pricing_workflow_module,
         "run_model_vanilla_option_surface_pricing",
-        lambda native_execution_input, *, progress=None: (
+        lambda native_execution_input, *, progress_mode: (
             observed_result
             if native_execution_input is prepared_native_execution_input
+            and progress_mode == "human"
             else None
         ),
     )
@@ -3991,7 +3874,7 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
 
 
 @pytest.mark.parametrize("silent", [False, True])
-def test_high_level_fit_uses_native_terminal_ui_only(
+def test_high_level_fit_uses_native_terminal_progress_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     silent: bool,
@@ -4535,8 +4418,9 @@ def _capture_native_model_artifact_simulation_requests(
             self,
             request_payload: dict[str, Any],
             progress_callback: Any,
+            progress_mode: str = "none",
         ) -> dict[str, Any]:
-            del progress_callback
+            del progress_callback, progress_mode
             captured_requests.append(request_payload)
 
             return {}

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use janiform_calibration_runtime::{
@@ -9,18 +10,34 @@ use janiform_terminal_ui::{
     CompletionSummary, CompletionSummaryStatus, FailureBlock, KeyValueRow, StartSummary,
     format_artifact_path, format_elapsed_label, format_path,
 };
-use serde_json::Value;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::error::WorkflowError;
 
 use super::events::{failed_stage_label, failure_reason, resume_availability};
-use super::execution::FitWorkflowPaths;
 use super::labels::workflow_scope_label;
+use super::request::FitWorkflowPaths;
 use super::scope::workflow_scope_label_for_input;
 
 const FIT_RUN_SCHEMA_VERSION: &str = "janiform.fit_run.v1";
 const FIT_RUN_COMMAND_ID: &str = "fit";
+
+/// Output produced by shared fit workflow execution.
+#[derive(Debug)]
+pub struct FitWorkflowOutput {
+    /// Staged calibration report.
+    pub report: CalibrationStagedRunReport,
+    /// Fit report artifact payload.
+    pub report_payload: Value,
+    /// Model artifact payload when the fit succeeded.
+    pub model_payload: Option<Value>,
+    /// Durable event-log path.
+    pub event_log_path: PathBuf,
+    /// Latest-state snapshot path.
+    pub latest_state_snapshot_path: PathBuf,
+    /// Wall-clock execution duration.
+    pub execution_duration: Duration,
+}
 
 /// Human completion view for a fit workflow.
 #[derive(Debug)]

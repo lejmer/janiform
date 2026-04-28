@@ -5,23 +5,29 @@ use janiform::pricing::{
     PricingIntervalSchedulePolicy, VanillaOptionPayoffType,
     VanillaOptionPricingOptionalOutputSelection,
 };
-use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
 use janiform_workflows::pricing::{
-    FittedModelSingleOptionPricingRequest, run_fitted_model_single_option_pricing,
+    FittedModelSingleOptionPricingOutput, FittedModelSingleOptionPricingRequest,
+    FittedModelSingleOptionPricingWorkflowRequest, PricingWorkflowObserver,
+    run_fitted_model_single_option_pricing_workflow,
 };
 use serde_json::Value;
 
-use super::rendering::{pricing_completion_summary, pricing_start_summary};
 use super::{
     FittedModelPricingCommand, PriceCommand, PricePayoffType, VanillaOptionPricingOptions,
 };
 use crate::commands::shared::artifact_documents::load_json_artifact;
 use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::output_paths::default_run_output_directory;
+use crate::commands::shared::terminal::{
+    terminal_output_for_context, terminal_progress_adapter_for_context,
+};
 use crate::context::{CommandContext, OutputMode};
 use crate::error::CliError;
 
-pub(crate) fn run_price(context: &CommandContext, command: PriceCommand) -> Result<(), CliError> {
+pub(crate) fn run_price_command(
+    context: &CommandContext,
+    command: PriceCommand,
+) -> Result<(), CliError> {
     run_fitted_model_pricing(
         context,
         command.model,
@@ -30,7 +36,7 @@ pub(crate) fn run_price(context: &CommandContext, command: PriceCommand) -> Resu
     )
 }
 
-pub(crate) fn run_price_fitted_model(
+pub(crate) fn run_price_fitted_model_command(
     context: &CommandContext,
     command: FittedModelPricingCommand,
 ) -> Result<(), CliError> {
@@ -60,22 +66,6 @@ fn run_fitted_model_pricing(
 
     let output_path = resolve_pricing_output_path(context, output_path, &run_id);
 
-    emit_start_summary(
-        context,
-        &run_id,
-        &model_path,
-        &output_path,
-        &valuation_time_utc.to_rfc3339(),
-    )?;
-
-    let mut progress_adapter = progress_adapter_for_context(context, &run_id, &output_path)?;
-
-    observe_pricing_progress(
-        progress_adapter.as_mut(),
-        "pricing workflow",
-        "preparing runtime inputs and executing pricing",
-    )?;
-
     let workflow_request = FittedModelSingleOptionPricingRequest {
         model_payload,
         run_id: Some(run_id),
@@ -99,9 +89,17 @@ fn run_fitted_model_pricing(
         output_path: Some(output_path),
     };
 
-    let output = run_fitted_model_single_option_pricing(workflow_request)?;
-
-    complete_progress(progress_adapter.as_mut())?;
+    let mut progress_adapter = terminal_progress_adapter_for_context(context);
+    let output = run_fitted_model_single_option_pricing_workflow(
+        FittedModelSingleOptionPricingWorkflowRequest {
+            pricing_request: workflow_request,
+            model_path: Some(model_path.clone()),
+        },
+        PricingWorkflowObserver {
+            progress_adapter: progress_adapter.as_mut(),
+            terminal_output: terminal_output_for_context(context),
+        },
+    )?;
 
     emit_completion(context, &model_path, &output)
 }
@@ -162,108 +160,14 @@ fn resolve_pricing_output_path(
     resolved_path
 }
 
-fn progress_adapter_for_context(
-    context: &CommandContext,
-    run_id: &str,
-    output_path: &std::path::Path,
-) -> Result<Option<ProgressAdapter>, CliError> {
-    match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => {
-            let mut adapter = ProgressAdapter::stderr();
-
-            adapter.observe(ProgressEvent::RunStarted {
-                run_id: run_id.to_string(),
-                scope: "Pricing".to_string(),
-                input_count: 1,
-                output_path: Some(janiform_terminal_ui::format_path(output_path)),
-                stage_sequence: Vec::new(),
-            });
-
-            adapter
-                .draw_latest()
-                .map_err(|source| CliError::OutputProgress { source })?;
-
-            Ok(Some(adapter))
-        }
-        OutputMode::Json | OutputMode::Silent => Ok(None),
-    }
-}
-
-fn observe_pricing_progress(
-    progress_adapter: Option<&mut ProgressAdapter>,
-    phase: &str,
-    latest_signal: &str,
-) -> Result<(), CliError> {
-    let Some(progress_adapter) = progress_adapter else {
-        return Ok(());
-    };
-
-    progress_adapter.observe(ProgressEvent::RunProgress {
-        phase: phase.to_string(),
-        measure: ProgressMeasure::Unbounded,
-        latest_signal: Some(latest_signal.to_string()),
-    });
-
-    progress_adapter
-        .draw_latest()
-        .map_err(|source| CliError::OutputProgress { source })
-}
-
-fn complete_progress(progress_adapter: Option<&mut ProgressAdapter>) -> Result<(), CliError> {
-    let Some(progress_adapter) = progress_adapter else {
-        return Ok(());
-    };
-
-    progress_adapter.observe(ProgressEvent::RunCompleted {
-        status: "completed".to_string(),
-    });
-
-    progress_adapter
-        .draw_latest()
-        .map_err(|source| CliError::OutputProgress { source })?;
-
-    progress_adapter
-        .finish_and_keep()
-        .map_err(|source| CliError::OutputWrite { source })
-}
-
-fn emit_start_summary(
-    context: &CommandContext,
-    run_id: &str,
-    model_path: &std::path::Path,
-    output_path: &std::path::Path,
-    valuation_time_utc: &str,
-) -> Result<(), CliError> {
-    if context.output_mode() != OutputMode::Human {
-        return Ok(());
-    }
-
-    let rendered = pricing_start_summary(run_id, model_path, output_path, valuation_time_utc)
-        .render(&context.stdout_renderer());
-
-    context
-        .stdout_renderer()
-        .write_stdout(&format!("\n{rendered}"))
-        .map_err(|source| CliError::OutputWrite { source })
-}
-
 fn emit_completion(
     context: &CommandContext,
     model_path: &std::path::Path,
-    output: &janiform_workflows::pricing::FittedModelSingleOptionPricingOutput,
+    output: &FittedModelSingleOptionPricingOutput,
 ) -> Result<(), CliError> {
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&output.completion_payload(model_path)?),
-        OutputMode::Human | OutputMode::Quiet => {
-            let rendered = pricing_completion_summary(output, output.execution_duration)
-                .render(&context.stdout_renderer());
-
-            context
-                .stdout_renderer()
-                .write_stdout(&rendered)
-                .map_err(|source| CliError::OutputWrite { source })
-        }
-        OutputMode::Silent => Ok(()),
+        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }
 
