@@ -17,115 +17,28 @@ use janiform_event_log::{
     default_run_event_paths,
 };
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-use janiform_terminal_ui::{
-    ProgressAdapter, ProgressEvent, ProgressMeasure, TerminalRenderer, format_path,
-};
+use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure, format_path};
 use serde_json::Value;
 
 use crate::error::WorkflowError;
 use crate::progress::VolatileProgressGate;
+use crate::terminal::{emit_terminal_completion_view, emit_terminal_start_view};
 
 use super::artifacts::{build_fit_report_payload, build_model_payload, write_pretty_json};
 use super::events::{
     append_artifact_event, progress_event_from_staged_event, run_events_from_staged_event,
 };
+use super::output::FitWorkflowOutput;
 use super::output::{FitCompletionView, fit_completion_view, fit_start_summary};
+use super::request::{FitWorkflowPaths, StagedFitExecutionWorkflowRequest};
 use super::scope::{workflow_scope_id, workflow_scope_label_for_input};
+use super::workflow::FitWorkflowObserver;
 
-/// Filesystem paths used by fit workflow execution.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct FitWorkflowPaths {
-    /// Run output directory.
-    pub output_directory: PathBuf,
-    /// Fitted model artifact path.
-    pub model_path: PathBuf,
-    /// Fit report artifact path.
-    pub report_path: PathBuf,
-    /// Checkpoint directory.
-    pub checkpoint_directory: PathBuf,
-}
-
-/// Request for shared fit workflow execution.
-#[derive(Debug)]
-pub struct FitExecutionRequest {
-    /// Prepared staged execution input.
-    pub execution_input: CalibrationStagedExecutionInput,
-    /// Output artifact paths.
-    pub paths: FitWorkflowPaths,
-    /// Human-readable input path labels.
-    pub input_paths: Vec<String>,
-    /// Optional preparation payload included in the fit report.
-    pub preparation_payload: Option<Value>,
-    /// Optional staged execution input artifact path.
-    pub staged_execution_input_path: Option<PathBuf>,
-    /// Optional already-resolved session definition JSON.
-    pub session_definition_json: Option<String>,
-}
-
-/// Optional observers for shared fit workflow execution.
-#[derive(Default)]
-pub struct FitExecutionObserver<'a> {
-    /// Terminal progress adapter.
-    pub progress_adapter: Option<&'a mut ProgressAdapter>,
-    /// Terminal output for run start and completion summaries.
-    pub terminal_output: Option<FitTerminalOutput>,
-    /// Sink for machine-readable run events.
-    pub machine_event_sink: Option<&'a mut dyn FnMut(&RunEvent) -> Result<(), WorkflowError>>,
-}
-
-/// Terminal output policy for a shared fit workflow execution.
-#[derive(Clone, Copy, Debug)]
-pub struct FitTerminalOutput {
-    /// Renderer used for stdout summaries.
-    pub renderer: TerminalRenderer,
-    /// Whether to emit the start summary.
-    pub emit_start_summary: bool,
-    /// Whether to emit the completion summary.
-    pub emit_completion_summary: bool,
-}
-
-impl FitTerminalOutput {
-    /// Emit both start and completion summaries through the provided renderer.
-    pub const fn start_and_completion(renderer: TerminalRenderer) -> Self {
-        Self {
-            renderer,
-            emit_start_summary: true,
-            emit_completion_summary: true,
-        }
-    }
-
-    /// Emit only the completion summary through the provided renderer.
-    pub const fn completion_only(renderer: TerminalRenderer) -> Self {
-        Self {
-            renderer,
-            emit_start_summary: false,
-            emit_completion_summary: true,
-        }
-    }
-}
-
-/// Output produced by shared fit workflow execution.
-#[derive(Debug)]
-pub struct FitExecutionOutput {
-    /// Staged calibration report.
-    pub report: CalibrationStagedRunReport,
-    /// Fit report artifact payload.
-    pub report_payload: Value,
-    /// Model artifact payload when the fit succeeded.
-    pub model_payload: Option<Value>,
-    /// Durable event-log path.
-    pub event_log_path: PathBuf,
-    /// Latest-state snapshot path.
-    pub latest_state_snapshot_path: PathBuf,
-    /// Wall-clock execution duration.
-    pub execution_duration: Duration,
-}
-
-/// Run a prepared fit workflow through the shared orchestration path.
-pub fn run_fit_execution(
-    request: FitExecutionRequest,
-    mut observer: FitExecutionObserver<'_>,
-) -> Result<FitExecutionOutput, WorkflowError> {
+/// Run staged fit execution through the shared orchestration path.
+pub fn run_staged_fit_execution_workflow(
+    request: StagedFitExecutionWorkflowRequest,
+    mut observer: FitWorkflowObserver<'_>,
+) -> Result<FitWorkflowOutput, WorkflowError> {
     emit_start_summary(
         &observer,
         &request.execution_input,
@@ -199,7 +112,7 @@ pub fn run_fit_execution(
         .flush()
         .map_err(|source| WorkflowError::FitEventLog { source })?;
 
-    let output = FitExecutionOutput {
+    let output = FitWorkflowOutput {
         report,
         report_payload,
         model_payload,
@@ -277,53 +190,37 @@ fn fit_workflow_paths_with_checkpoint_directory(
 }
 
 fn emit_start_summary(
-    observer: &FitExecutionObserver<'_>,
+    observer: &FitWorkflowObserver<'_>,
     execution_input: &CalibrationStagedExecutionInput,
     input_paths: &[String],
     paths: &FitWorkflowPaths,
 ) -> Result<(), WorkflowError> {
-    let Some(terminal_output) = observer.terminal_output else {
-        return Ok(());
-    };
-    if !terminal_output.emit_start_summary {
-        return Ok(());
-    }
-
-    let rendered =
-        fit_start_summary(execution_input, input_paths, paths).render(&terminal_output.renderer);
-
-    terminal_output
-        .renderer
-        .write_stdout(&format!("\n{rendered}"))
-        .map_err(|source| WorkflowError::OutputWrite { source })
+    emit_terminal_start_view(&observer.terminal_output, |terminal_output| {
+        Ok(
+            fit_start_summary(execution_input, input_paths, paths)
+                .render(&terminal_output.renderer),
+        )
+    })
 }
 
 fn emit_completion_summary(
-    observer: &FitExecutionObserver<'_>,
+    observer: &FitWorkflowObserver<'_>,
     paths: &FitWorkflowPaths,
-    output: &FitExecutionOutput,
+    output: &FitWorkflowOutput,
 ) -> Result<(), WorkflowError> {
-    let Some(terminal_output) = observer.terminal_output else {
-        return Ok(());
-    };
-    if !terminal_output.emit_completion_summary {
-        return Ok(());
-    }
+    emit_terminal_completion_view(&observer.terminal_output, |terminal_output| {
+        let rendered = match fit_completion_view(
+            &output.report,
+            paths,
+            output.event_log_path.as_path(),
+            output.execution_duration,
+        )? {
+            FitCompletionView::Success(summary) => summary.render(&terminal_output.renderer),
+            FitCompletionView::Failure(summary) => summary.render(&terminal_output.renderer),
+        };
 
-    let rendered = match fit_completion_view(
-        &output.report,
-        paths,
-        output.event_log_path.as_path(),
-        output.execution_duration,
-    )? {
-        FitCompletionView::Success(summary) => summary.render(&terminal_output.renderer),
-        FitCompletionView::Failure(summary) => summary.render(&terminal_output.renderer),
-    };
-
-    terminal_output
-        .renderer
-        .write_stdout(&format!("{rendered}"))
-        .map_err(|source| WorkflowError::OutputWrite { source })
+        Ok(rendered)
+    })
 }
 
 fn resolve_session_definition_json(
@@ -356,7 +253,7 @@ fn run_staged_with_observer(
     workflow: &WorkflowRef,
     input_paths: &[String],
     output_directory: &str,
-    observer: &mut FitExecutionObserver<'_>,
+    observer: &mut FitWorkflowObserver<'_>,
 ) -> Result<(CalibrationStagedRunReport, Duration), WorkflowError> {
     let scope_id = workflow_scope_id(execution_input);
     let scope_label = workflow_scope_label_for_input(execution_input);

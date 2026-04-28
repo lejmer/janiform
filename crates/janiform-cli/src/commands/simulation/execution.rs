@@ -1,29 +1,27 @@
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
-use janiform::simulation::{
-    CoarseSimulationPath, SeededTickSimulationRunResult, SimulationProgressEvent,
-    SimulationProgressPhase,
-};
-use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure, format_path};
+use janiform::simulation::{CoarseSimulationPath, SeededTickSimulationRunResult};
 use janiform_workflows::simulation::{
     CoarseIntervalExportSettings, DirectSimulationCompleted, DirectSimulationCompletion,
-    DirectSimulationJob, SeededTickExportSettings, SimulationExportSummary,
-    SimulationOutputColumns,
+    DirectSimulationJob, DirectSimulationWorkflowRequest, SeededTickExportSettings,
+    SimulationExportSummary, SimulationOutputColumns, SimulationWorkflowObserver,
+    run_direct_simulation_workflow,
 };
 use serde_json::{Value, json};
 
-use super::rendering::{simulation_completion_summary, simulation_start_summary};
 use super::requests::{load_coarse_simulation_request, load_seeded_tick_simulation_request};
 use super::{CoarseIntervalCommand, SeededTicksCommand};
 use crate::commands::shared::output::{write_json_payload, write_pretty_json_file};
+use crate::commands::shared::terminal::{
+    terminal_output_for_context, terminal_progress_adapter_for_context,
+};
 use crate::context::{CommandContext, OutputMode};
 use crate::error::CliError;
 
 const SEEDED_TICK_SCOPE_LABEL: &str = "seeded tick simulation";
 const COARSE_INTERVAL_SCOPE_LABEL: &str = "coarse interval simulation";
 
-pub(crate) fn run_simulate_seeded_ticks(
+pub(crate) fn run_simulate_seeded_ticks_command(
     context: &CommandContext,
     command: SeededTicksCommand,
 ) -> Result<(), CliError> {
@@ -64,7 +62,7 @@ pub(crate) fn run_simulate_seeded_ticks(
     )
 }
 
-pub(crate) fn run_simulate_coarse_interval(
+pub(crate) fn run_simulate_coarse_interval_command(
     context: &CommandContext,
     command: CoarseIntervalCommand,
 ) -> Result<(), CliError> {
@@ -123,55 +121,40 @@ fn execute_direct_simulation(
     job: DirectSimulationJob,
 ) -> Result<(), CliError> {
     let run_id = direct_simulation_run_id(run_id_prefix);
+    let mut progress_adapter = terminal_progress_adapter_for_context(context);
 
-    emit_start_summary(
-        context,
-        &run_id,
-        scope_label,
-        request_path,
-        output_path.as_deref(),
+    let output = run_direct_simulation_workflow(
+        DirectSimulationWorkflowRequest {
+            job,
+            run_id: run_id.clone(),
+            scope_label: scope_label.to_string(),
+            request_path: Some(request_path.to_path_buf()),
+            output_path: output_path.clone(),
+        },
+        SimulationWorkflowObserver {
+            progress_adapter: progress_adapter.as_mut(),
+            terminal_output: terminal_output_for_context(context),
+        },
     )?;
-
-    let mut progress_adapter =
-        progress_adapter_for_context(context, &run_id, output_path.as_deref())?;
-
-    let started_at = Instant::now();
-
-    let mut progress_error = None;
-    let mut observer = simulation_progress_observer(progress_adapter.as_mut(), &mut progress_error);
-
-    let completed = job.run(&mut observer)?;
-
-    drop(observer);
-
-    if let Some(progress_error) = progress_error {
-        return Err(progress_error);
-    }
-
-    let elapsed = started_at.elapsed();
-    let export_summary = completed.export(output_path.as_deref())?;
-
-    complete_progress(progress_adapter.as_mut())?;
 
     if let Some(output_path) = output_path.as_deref() {
         write_report_and_manifest(
             output_path,
             &run_id,
             report_kind,
-            completed_diagnostics(&completed, export_summary.as_ref()),
+            completed_diagnostics(&output.completed, output.export_summary.as_ref()),
         )?;
     }
 
-    let completion = completed.completion();
+    let completion = output.completed.completion();
 
     emit_completion(
         context,
         scope_label,
         output_path.as_deref(),
-        export_summary.as_ref(),
-        elapsed,
+        output.export_summary.as_ref(),
         completion,
-        || completed_raw_payload(&completed),
+        || completed_raw_payload(&output.completed),
     )
 }
 
@@ -238,116 +221,11 @@ pub(super) fn resolve_optional_output_path(
     path.map(|path| context.paths().resolve_process_path(&path))
 }
 
-pub(super) fn progress_adapter_for_context(
-    context: &CommandContext,
-    run_id: &str,
-    output_path: Option<&Path>,
-) -> Result<Option<ProgressAdapter>, CliError> {
-    match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => {
-            let mut adapter = ProgressAdapter::stderr();
-
-            adapter.observe(ProgressEvent::RunStarted {
-                run_id: run_id.to_string(),
-                scope: "Simulation".to_string(),
-                input_count: 1,
-                output_path: output_path.map(format_path),
-                stage_sequence: Vec::new(),
-            });
-
-            adapter
-                .draw_latest()
-                .map_err(|source| CliError::OutputProgress { source })?;
-
-            Ok(Some(adapter))
-        }
-        OutputMode::Json | OutputMode::Silent => Ok(None),
-    }
-}
-
-pub(super) fn simulation_progress_observer<'a>(
-    progress_adapter: Option<&'a mut ProgressAdapter>,
-    progress_error: &'a mut Option<CliError>,
-) -> impl FnMut(SimulationProgressEvent) + 'a {
-    let mut progress_adapter = progress_adapter;
-
-    move |event| {
-        if progress_error.is_some() {
-            return;
-        }
-
-        let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
-            return;
-        };
-
-        let phase = match event.phase {
-            SimulationProgressPhase::SeededTickIntervals => "seeded tick path generation",
-            SimulationProgressPhase::CoarseIntervals => "coarse interval path generation",
-        };
-
-        if let Ok(measure) = ProgressMeasure::bounded(event.completed_units, event.total_units) {
-            progress_adapter.observe(ProgressEvent::RunProgress {
-                phase: phase.to_string(),
-                measure,
-                latest_signal: Some(format!(
-                    "{} of {} intervals completed",
-                    event.completed_units, event.total_units
-                )),
-            });
-
-            if let Err(source) = progress_adapter.draw_latest() {
-                *progress_error = Some(CliError::OutputProgress { source });
-            }
-        }
-    }
-}
-
-pub(super) fn complete_progress(
-    progress_adapter: Option<&mut ProgressAdapter>,
-) -> Result<(), CliError> {
-    let Some(progress_adapter) = progress_adapter else {
-        return Ok(());
-    };
-
-    progress_adapter.observe(ProgressEvent::RunCompleted {
-        status: "completed".to_string(),
-    });
-
-    progress_adapter
-        .draw_latest()
-        .map_err(|source| CliError::OutputProgress { source })?;
-
-    progress_adapter
-        .finish_and_keep()
-        .map_err(|source| CliError::OutputWrite { source })
-}
-
-pub(super) fn emit_start_summary(
-    context: &CommandContext,
-    run_id: &str,
-    simulation_kind: &str,
-    request_path: &Path,
-    output_path: Option<&Path>,
-) -> Result<(), CliError> {
-    if context.output_mode() != OutputMode::Human {
-        return Ok(());
-    }
-
-    let rendered = simulation_start_summary(run_id, simulation_kind, request_path, output_path)
-        .render(&context.stdout_renderer());
-
-    context
-        .stdout_renderer()
-        .write_stdout(&format!("\n{rendered}"))
-        .map_err(|source| CliError::OutputWrite { source })
-}
-
 pub(super) fn emit_completion(
     context: &CommandContext,
     simulation_kind: &str,
     output_path: Option<&Path>,
     export_summary: Option<&SimulationExportSummary>,
-    elapsed: Duration,
     completion: DirectSimulationCompletion,
     raw_payload: impl FnOnce() -> Result<Value, CliError>,
 ) -> Result<(), CliError> {
@@ -369,23 +247,7 @@ pub(super) fn emit_completion(
                 write_json_payload(&raw_payload)
             }
         }
-        OutputMode::Human | OutputMode::Quiet => {
-            let rendered = simulation_completion_summary(
-                simulation_kind,
-                completion.seed,
-                output_path,
-                export_summary,
-                elapsed,
-                completion.simulated_interval_count,
-            )
-            .render(&context.stdout_renderer());
-
-            context
-                .stdout_renderer()
-                .write_stdout(&rendered)
-                .map_err(|source| CliError::OutputWrite { source })
-        }
-        OutputMode::Silent => Ok(()),
+        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }
 

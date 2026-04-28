@@ -2,34 +2,37 @@ use chrono::{DateTime, Utc};
 use janiform::simulation::SeededTickEventStateSnapshotCapture;
 use janiform_foundations::time::parse_duration_spec_nanos;
 use janiform_workflows::simulation::{
-    ModelSimulationKind, ModelSimulationWorkflowRequest, run_model_simulation_workflow,
+    ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest,
+    SimulationWorkflowObserver, run_simulation_from_model_artifact_workflow,
     simulation_output_preferences_from_model_payload,
 };
 
 use super::SimulateCommand;
 use super::execution::{
-    complete_progress, completed_diagnostics, completed_raw_payload, direct_simulation_run_id,
-    emit_completion, emit_start_summary, progress_adapter_for_context,
-    required_horizon_interval_count, required_input_path, simulation_progress_observer,
-    write_report_and_manifest,
+    completed_diagnostics, completed_raw_payload, direct_simulation_run_id, emit_completion,
+    required_horizon_interval_count, required_input_path, write_report_and_manifest,
 };
 use crate::commands::shared::artifact_documents::load_json_artifact;
 use crate::commands::shared::output_paths::default_run_output_directory;
+use crate::commands::shared::terminal::{
+    terminal_output_for_context, terminal_progress_adapter_for_context,
+};
 use crate::context::CommandContext;
 use crate::error::CliError;
 
-const DEFAULT_MODEL_SIMULATION_SEED: u64 = 0;
-const MODEL_SEEDED_TICK_SCOPE_LABEL: &str = "model seeded tick simulation";
-const MODEL_COARSE_INTERVAL_SCOPE_LABEL: &str = "model coarse interval simulation";
+const DEFAULT_MODEL_ARTIFACT_SIMULATION_SEED: u64 = 0;
+const MODEL_ARTIFACT_SEEDED_TICK_SCOPE_LABEL: &str = "model artifact seeded tick simulation";
+const MODEL_ARTIFACT_COARSE_INTERVAL_SCOPE_LABEL: &str =
+    "model artifact coarse interval simulation";
 
-pub(crate) fn run_simulate_model(
+pub(crate) fn run_simulate_from_model_artifact_command(
     context: &CommandContext,
     command: SimulateCommand,
 ) -> Result<(), CliError> {
     let seed = command
         .simulation
         .seed
-        .unwrap_or(DEFAULT_MODEL_SIMULATION_SEED);
+        .unwrap_or(DEFAULT_MODEL_ARTIFACT_SIMULATION_SEED);
 
     let start_time_utc = match command.simulation.start_time_utc.as_deref() {
         Some(start_time_utc) => parse_start_time_utc(start_time_utc, "--start-time-utc")?,
@@ -42,15 +45,19 @@ pub(crate) fn run_simulate_model(
     let interval_duration_nanos = model_interval_duration_nanos(command.interval.as_str())?;
 
     let simulation_kind = if command.coarse {
-        ModelSimulationKind::CoarseInterval
+        ModelArtifactSimulationKind::CoarseInterval
     } else {
-        ModelSimulationKind::SeededTick
+        ModelArtifactSimulationKind::SeededTick
     };
 
     let run_id = direct_simulation_run_id("model");
+
     let model_path = required_input_path(context, "--model-path", command.model.model_path)?;
+
     let model_payload = load_json_artifact(&model_path, "model")?;
+
     let output_preferences = simulation_output_preferences_from_model_payload(&model_payload)?;
+
     let output_path = resolve_model_output_path(
         context,
         command.output_path.output_path,
@@ -58,70 +65,55 @@ pub(crate) fn run_simulate_model(
         output_preferences.default_file_format,
     );
 
-    let scope_label = model_simulation_scope_label(simulation_kind);
+    let scope_label = model_artifact_simulation_scope_label(simulation_kind);
 
-    emit_start_summary(
-        context,
-        &run_id,
-        scope_label,
-        &model_path,
-        Some(output_path.as_path()),
-    )?;
+    let workflow_request = ModelArtifactSimulationWorkflowRequest {
+        model_payload,
+        run_id: Some(run_id.clone()),
+        scope_label: Some(scope_label.to_string()),
+        request_path: Some(model_path),
+        simulation_kind,
+        seed,
+        start_time_utc,
+        horizon_interval_count,
+        interval_duration_nanos,
+        output_path: Some(output_path.clone()),
+        output_columns: output_preferences.output_columns,
+        reference_price: output_preferences.reference_price,
+        export_batch_size: command.export_batch.output_batch_size,
+        continuation_data: None,
+        initial_excitation_state: None,
+        initial_mean_reversion_boundary_state: None,
+        debug_trace_enabled: command.debug_trace_enabled,
+        sample_every_nth_transition: command.sample_every_nth_transition,
+        max_records_per_chunk: command.max_records_per_chunk,
+        state_snapshot_capture: SeededTickEventStateSnapshotCapture::default(),
+    };
 
-    let mut progress_adapter =
-        progress_adapter_for_context(context, &run_id, Some(output_path.as_path()))?;
+    let mut progress_adapter = terminal_progress_adapter_for_context(context);
 
-    let mut progress_error = None;
-
-    let mut observer = simulation_progress_observer(progress_adapter.as_mut(), &mut progress_error);
-
-    let output = run_model_simulation_workflow(
-        ModelSimulationWorkflowRequest {
-            model_payload,
-            simulation_kind,
-            seed,
-            start_time_utc,
-            horizon_interval_count,
-            interval_duration_nanos,
-            output_path: Some(output_path.clone()),
-            output_columns: output_preferences.output_columns,
-            reference_price: output_preferences.reference_price,
-            export_batch_size: command.export_batch.output_batch_size,
-            continuation_data: None,
-            initial_excitation_state: None,
-            initial_mean_reversion_boundary_state: None,
-            debug_trace_enabled: command.debug_trace_enabled,
-            sample_every_nth_transition: command.sample_every_nth_transition,
-            max_records_per_chunk: command.max_records_per_chunk,
-            state_snapshot_capture: SeededTickEventStateSnapshotCapture::default(),
+    let output = run_simulation_from_model_artifact_workflow(
+        workflow_request,
+        SimulationWorkflowObserver {
+            progress_adapter: progress_adapter.as_mut(),
+            terminal_output: terminal_output_for_context(context),
         },
-        &mut observer,
     )?;
-
-    drop(observer);
-
-    if let Some(progress_error) = progress_error {
-        return Err(progress_error);
-    }
-
-    complete_progress(progress_adapter.as_mut())?;
 
     write_report_and_manifest(
         output_path.as_path(),
         &run_id,
-        model_simulation_report_kind(simulation_kind),
+        model_artifact_simulation_report_kind(simulation_kind),
         completed_diagnostics(&output.completed, output.export_summary.as_ref()),
     )?;
 
     let completion = output.completed.completion();
-    let elapsed = output.execution_duration;
 
     emit_completion(
         context,
         scope_label,
         Some(output_path.as_path()),
         output.export_summary.as_ref(),
-        elapsed,
         completion,
         || completed_raw_payload(&output.completed),
     )
@@ -165,16 +157,20 @@ fn model_interval_duration_nanos(interval: &str) -> Result<i64, CliError> {
     })
 }
 
-fn model_simulation_scope_label(simulation_kind: ModelSimulationKind) -> &'static str {
+fn model_artifact_simulation_scope_label(
+    simulation_kind: ModelArtifactSimulationKind,
+) -> &'static str {
     match simulation_kind {
-        ModelSimulationKind::SeededTick => MODEL_SEEDED_TICK_SCOPE_LABEL,
-        ModelSimulationKind::CoarseInterval => MODEL_COARSE_INTERVAL_SCOPE_LABEL,
+        ModelArtifactSimulationKind::SeededTick => MODEL_ARTIFACT_SEEDED_TICK_SCOPE_LABEL,
+        ModelArtifactSimulationKind::CoarseInterval => MODEL_ARTIFACT_COARSE_INTERVAL_SCOPE_LABEL,
     }
 }
 
-fn model_simulation_report_kind(simulation_kind: ModelSimulationKind) -> &'static str {
+fn model_artifact_simulation_report_kind(
+    simulation_kind: ModelArtifactSimulationKind,
+) -> &'static str {
     match simulation_kind {
-        ModelSimulationKind::SeededTick => "seeded_tick",
-        ModelSimulationKind::CoarseInterval => "coarse_interval",
+        ModelArtifactSimulationKind::SeededTick => "seeded_tick",
+        ModelArtifactSimulationKind::CoarseInterval => "coarse_interval",
     }
 }

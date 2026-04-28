@@ -1,5 +1,6 @@
 mod calendar;
 mod calibration;
+mod events;
 mod fit;
 mod hourly;
 mod pricing;

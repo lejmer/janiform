@@ -2,38 +2,26 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 
-use janiform_calibration_artifacts::CalibrationResumeSettings;
 use janiform_calibration_runtime::CalibrationMarketDataPreparationRequest;
 use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
 
 use crate::error::WorkflowError;
 
-use super::execution::{
-    FitExecutionObserver, FitExecutionOutput, FitExecutionRequest, FitWorkflowPaths,
-    fit_workflow_paths, run_fit_execution,
-};
+use super::execution::{fit_workflow_paths, run_staged_fit_execution_workflow};
+use super::output::FitWorkflowOutput;
 use super::output::fit_preparation_start_summary;
 use super::preparation::{
     FitPreparationObserver, FitPreparationProgress, FitPreparationRequest,
     prepare_fit_workflow_with_observer,
 };
-
-/// Request for a complete fit workflow run.
-#[derive(Debug)]
-pub struct FitWorkflowRequest {
-    /// High-level preparation request.
-    pub preparation_request: FitPreparationRequest,
-    /// Optional output base directory. The run directory is created below it.
-    pub output_base_directory: Option<PathBuf>,
-    /// Optional resume settings applied before execution.
-    pub resume_settings: Option<CalibrationResumeSettings>,
-}
+use super::request::{FitWorkflowPaths, FitWorkflowRequest, StagedFitExecutionWorkflowRequest};
+use super::workflow::FitWorkflowObserver;
 
 /// Run fit preparation and staged calibration through one shared workflow path.
 pub fn run_fit_workflow(
     request: FitWorkflowRequest,
-    mut observer: FitExecutionObserver<'_>,
-) -> Result<FitExecutionOutput, WorkflowError> {
+    mut observer: FitWorkflowObserver<'_>,
+) -> Result<FitWorkflowOutput, WorkflowError> {
     let FitWorkflowRequest {
         preparation_request,
         output_base_directory,
@@ -112,8 +100,8 @@ pub fn run_fit_workflow(
         }
     }
 
-    run_fit_execution(
-        FitExecutionRequest {
+    run_staged_fit_execution_workflow(
+        StagedFitExecutionWorkflowRequest {
             execution_input,
             paths,
             input_paths: prepared_workflow.input_paths,

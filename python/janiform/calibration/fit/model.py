@@ -16,6 +16,7 @@ from ...pricing import (
     VanillaOptionPayoffType,
     VanillaOptionPricingRunResult,
 )
+from ...pricing.progress import PricingProgressEvent
 from ...simulation.progress import SimulationProgressEvent
 from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ..errors import calibration_error
@@ -94,6 +95,7 @@ class JaniformModel:
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
         progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformSimulationResult:
         return simulate_model(
             self,
@@ -112,6 +114,7 @@ class JaniformModel:
             max_records_per_chunk=max_records_per_chunk,
             state_snapshot_capture=state_snapshot_capture,
             progress_callback=progress_callback,
+            progress_mode=progress_mode,
         )
 
     def price_option(
@@ -171,6 +174,7 @@ class JaniformModel:
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+        progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
         return price_option_grid_for_model(
             self,
@@ -184,6 +188,7 @@ class JaniformModel:
             cpu_count=cpu_count,
             silent=silent,
             progress_mode=progress_mode,
+            progress_callback=progress_callback,
         )
 
     def price_future(self, *args: Any, **kwargs: Any) -> Any:
@@ -214,6 +219,7 @@ class JaniformModel:
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+        progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
     ) -> JaniformVanillaOptionSurfacePricingResult:
         return price_option_grid_surface_for_model(
             self,
@@ -227,6 +233,7 @@ class JaniformModel:
             cpu_count=cpu_count,
             silent=silent,
             progress_mode=progress_mode,
+            progress_callback=progress_callback,
         )
 
     def price_option_snapshot(

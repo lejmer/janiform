@@ -1,10 +1,14 @@
 //! Shared semantic terminal rendering and progress adapters for Janiform.
+//!
+//! This crate owns reusable terminal primitives only. Workflow-specific terminal
+//! summaries and progress labels live in `janiform-workflows`.
 
 #![forbid(unsafe_code)]
 
 mod color;
 mod formatting;
 mod layout;
+mod policy;
 mod progress;
 mod renderer;
 mod style;
@@ -31,6 +35,7 @@ pub use layout::StageChecklistItem;
 pub use layout::StageChecklistStatus;
 pub use layout::StartSummary;
 pub use layout::WarningBlock;
+pub use policy::TerminalSummaryPolicy;
 pub use progress::ProgressAdapter;
 pub use progress::ProgressContractError;
 pub use progress::ProgressEvent;

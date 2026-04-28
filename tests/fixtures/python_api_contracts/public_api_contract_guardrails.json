@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "7081d05aeb1f591ccde2db6250e1a6067b797436b0441dfde9fdbd57c9816495",
+  "approved_snapshot_sha256": "74b2bc4daac39eadfd10abe6eeb06de88f33507443b8fcc8d415edd8fd59b97f",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1226,13 +1226,38 @@
     {
       "approved_on": "2026-04-28",
       "docs_updated": [],
-      "rationale": "High-level fit now exposes the same typed progress callback boundary as fitted-model simulation, so users can observe Rust-owned workflow progress without Python owning a second progress implementation.",
+      "rationale": "High-level fit now exposes the same typed progress callback boundary as simulation from a model artifact, so users can observe Rust-owned workflow progress without Python owning a second progress implementation.",
       "snapshot_sha256": "7081d05aeb1f591ccde2db6250e1a6067b797436b0441dfde9fdbd57c9816495",
       "summary": "Approve typed fit progress callback events.",
       "updated_surfaces": [
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
         "janiform.calibration.fit.model"
+      ]
+    },
+    {
+      "approved_on": "2026-04-28",
+      "docs_updated": [],
+      "rationale": "Simulation entrypoints now accept terminal progress mode at the Python boundary so Rust owns simulation progress UX while Python remains a thin native adapter. The existing progress callback remains an event observation hook rather than the CLI UX path.",
+      "snapshot_sha256": "69eb017ca4dfb4a17f7b00d18e43627e05e9009110a2700db7ad3aa8d7649400",
+      "summary": "Approve Rust-owned simulation terminal progress boundaries.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.model",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-04-28",
+      "docs_updated": [
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Pricing surface workflows now expose the same typed progress callback boundary as fit and simulation, so users can observe Rust-owned workflow progress without Python owning a separate progress implementation.",
+      "snapshot_sha256": "74b2bc4daac39eadfd10abe6eeb06de88f33507443b8fcc8d415edd8fd59b97f",
+      "summary": "Approve typed pricing progress callback events.",
+      "updated_surfaces": [
+        "janiform.pricing"
       ]
     }
   ],

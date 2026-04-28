@@ -8,7 +8,9 @@ from time import perf_counter
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from ....._native_api import native_module
+from ....._native_progress import native_terminal_progress_mode
 from ....._timestamps import datetime_to_utc_nanos
+from ....._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
 from ....._workflow_outputs import (
     SimulationArtifactSink,
     _file_format_for_simulation_path,
@@ -61,6 +63,7 @@ def simulate_model(
     max_records_per_chunk: int = 1024,
     state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
     progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+    progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> JaniformSimulationResult:
     if output_path is not None and sink is not None:
         raise calibration_error("sink", "output_path and sink are mutually exclusive")
@@ -79,7 +82,7 @@ def simulate_model(
         default_file_format=preferences.file_format,
     )
 
-    request_payload = _build_model_simulation_workflow_request(
+    request_payload = _build_simulation_from_model_artifact_request(
         model,
         run_id=simulation_run_id,
         seed=seed,
@@ -106,9 +109,19 @@ def simulate_model(
 
         native_progress_callback = emit_simulation_progress
 
-    raw_output = native_module().run_model_simulation_workflow(
+    raw_output = native_module().run_simulation_from_model_artifact(
         request_payload,
         native_progress_callback,
+        progress_mode=(
+            "none"
+            if native_progress_callback is not None
+            else native_terminal_progress_mode(
+                resolve_workflow_progress_mode(
+                    progress_mode,
+                    default_mode=WorkflowProgressMode.HUMAN,
+                )
+            )
+        ),
     )
 
     simulation_result = _adapt_native_simulation_output(
@@ -184,7 +197,7 @@ def build_simulation_result(
     return result
 
 
-def _build_model_simulation_workflow_request(
+def _build_simulation_from_model_artifact_request(
     model: JaniformModel,
     *,
     run_id: str,

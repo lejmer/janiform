@@ -1,3 +1,9 @@
+//! Native Janiform command shell.
+//!
+//! The CLI owns command parsing, path resolution, output-mode selection, and
+//! non-execution command screens. Workflow execution UX lives in
+//! `janiform-workflows`.
+
 mod application;
 mod cli;
 mod commands;

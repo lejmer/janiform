@@ -3,10 +3,12 @@ use std::path::Path;
 use janiform::calibration::CalibrationExecutionMode;
 
 use super::payloads::{inspect_json, plan_json, staged_plan_json};
+use super::planning_rendering::{
+    render_inspect_human, render_plan_human, render_staged_plan_human,
+};
 use super::preparation::{
     FitPreparationOverrides, PreparedFitPreview, prepare_fit_preview, write_staged_execution_input,
 };
-use super::rendering::{render_inspect_human, render_plan_human, render_staged_plan_human};
 use crate::commands::fit::FitInspectCommand;
 use crate::commands::fit::FitPlanCommand;
 use crate::commands::fit::FitStagedPlanCommand;

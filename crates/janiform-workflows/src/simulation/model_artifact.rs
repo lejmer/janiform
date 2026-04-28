@@ -1,33 +1,224 @@
-use janiform::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, materialize_endogenous_anchor_path,
-};
+use std::time::Instant;
+
+use chrono::{DateTime, Utc};
+use janiform::affine_oracle::ExponentialAffineTransformEquationSpecification;
+use janiform::calendar::MarketState;
 use janiform::hawkes::HawkesExcitationState;
-use janiform::hourly_factors::HourlyFactorContractOutput;
+use janiform::hourly_factors::{HourlyFactorContractOutput, ONE_HOUR_NANOS};
 use janiform::simulation::{
     CoarseSimulationModelInputs, MeanReversionBoundaryState, SeededTickSimulationDebugTraceOptions,
-    SeededTickSimulationModelInputs, SeededTickSimulationRunOptions,
-    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
+    SeededTickSimulationModelInputs, SeededTickSimulationRunOptions, SimulationProgressEvent,
 };
 use janiform::sufficient_statistics::{
     SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
 };
 
 use crate::error::WorkflowError;
-
-use super::context::ModelRuntimeContext;
-use super::state::ResolvedInitialState;
-use super::support::validation_error;
-use super::{ModelSimulationKind, ModelSimulationWorkflowRequest};
+use crate::model::{
+    FittedModelContext, ModelStateObservationData, estimate_current_state_from_observation_data,
+    fitted_model_context,
+};
 use crate::simulation::direct::{
     CoarseIntervalExportSettings, DirectSimulationJob, SeededTickExportSettings,
 };
 
-const DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE: f64 = 0.0;
-const DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION: f64 = 0.0;
+use super::output::ModelArtifactSimulationWorkflowOutput;
+use super::request::{ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest};
 
-pub(super) fn build_direct_job(
-    request: &ModelSimulationWorkflowRequest,
-    context: &ModelRuntimeContext,
+const CLOSED_INTERVAL_SEASONALITY_FACTOR: f64 = 0.0;
+
+/// Run a simulation workflow from a persisted model artifact payload.
+pub fn run_simulation_from_model_artifact(
+    request: ModelArtifactSimulationWorkflowRequest,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
+    validate_request(&request)?;
+
+    let started_at = Instant::now();
+
+    let context = runtime_context(&request)?;
+    let hourly_factor_contract = build_hourly_factor_contract(&request, &context)?;
+    let initial_state = resolve_initial_state(&request, &context)?;
+
+    let job = build_direct_job(&request, &context, hourly_factor_contract, initial_state)?;
+    let completed = job.run(observer)?;
+
+    let export_summary = completed.export(request.output_path.as_deref())?;
+
+    Ok(ModelArtifactSimulationWorkflowOutput {
+        completed,
+        export_summary,
+        execution_duration: started_at.elapsed(),
+    })
+}
+
+fn validate_request(request: &ModelArtifactSimulationWorkflowRequest) -> Result<(), WorkflowError> {
+    if request.horizon_interval_count == 0 {
+        return Err(validation_error(
+            "horizon_interval_count",
+            "must be a positive integer",
+        ));
+    }
+
+    if request.interval_duration_nanos <= 0 {
+        return Err(validation_error(
+            "interval_duration_nanos",
+            "must be a positive integer number of nanoseconds",
+        ));
+    }
+
+    if !request.reference_price.is_finite() || request.reference_price <= 0.0 {
+        return Err(validation_error(
+            "reference_price",
+            "must be finite and strictly positive",
+        ));
+    }
+
+    if request.export_batch_size == 0 {
+        return Err(validation_error("export_batch_size", "must be positive"));
+    }
+
+    Ok(())
+}
+
+fn runtime_context(
+    request: &ModelArtifactSimulationWorkflowRequest,
+) -> Result<FittedModelContext, WorkflowError> {
+    fitted_model_context(
+        &request.model_payload,
+        request.start_time_utc,
+        request.interval_duration_nanos,
+        request.horizon_interval_count,
+    )
+}
+
+fn build_hourly_factor_contract(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
+) -> Result<HourlyFactorContractOutput, WorkflowError> {
+    let mut hourly_factor_contract = crate::model::build_hourly_factor_contract(
+        context,
+        request.start_time_utc,
+        context.range_end_utc,
+        request.interval_duration_nanos,
+    )?;
+
+    if request.simulation_kind == ModelArtifactSimulationKind::CoarseInterval {
+        zero_closed_coarse_interval_seasonality_factors(&mut hourly_factor_contract, context)?;
+    }
+
+    Ok(hourly_factor_contract)
+}
+
+fn zero_closed_coarse_interval_seasonality_factors(
+    hourly_factor_contract: &mut HourlyFactorContractOutput,
+    context: &FittedModelContext,
+) -> Result<(), WorkflowError> {
+    if hourly_factor_contract.interval_duration_nanos >= ONE_HOUR_NANOS {
+        return Ok(());
+    }
+
+    for (interval_start_utc_nanos, seasonality_factor) in hourly_factor_contract
+        .interval_start_utc_nanos
+        .iter()
+        .zip(hourly_factor_contract.s_h.iter_mut())
+    {
+        let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(*interval_start_utc_nanos);
+
+        let market_state = context
+            .calendar_registry
+            .resolve_market_state_at_utc(
+                context.model.session_resolution.exchange_code.as_str(),
+                timestamp_utc,
+            )
+            .map_err(|source| validation_error("calendar_registry", source.to_string()))?;
+
+        if market_state == MarketState::Closed {
+            *seasonality_factor = CLOSED_INTERVAL_SEASONALITY_FACTOR;
+        }
+    }
+
+    Ok(())
+}
+
+struct ResolvedInitialState {
+    excitation_state: HawkesExcitationState,
+    mean_reversion_boundary_state: Option<MeanReversionBoundaryState>,
+    start_anchor_value: f64,
+}
+
+fn resolve_initial_state(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
+) -> Result<ResolvedInitialState, WorkflowError> {
+    let estimated_state = if request.continuation_data.is_some()
+        && (request.initial_excitation_state.is_none()
+            || request.initial_mean_reversion_boundary_state.is_none())
+    {
+        Some(estimate_current_state(request, context)?)
+    } else {
+        None
+    };
+
+    let excitation_state = match (request.initial_excitation_state, estimated_state.as_ref()) {
+        (Some(excitation_state), _) => excitation_state,
+        (None, Some(estimated_state)) => estimated_state.hawkes_excitation_state,
+        (None, None) => context
+            .hawkes_fitted_parameters
+            .kernel_parameters
+            .stationary_excitation_state()
+            .map_err(|source| validation_error("kernel_parameters", source.to_string()))?,
+    };
+
+    // Intentional copy because the resolved state is stored and also inspected
+    // for the runtime anchor start value.
+    let mean_reversion_boundary_state = request
+        .initial_mean_reversion_boundary_state
+        .clone()
+        .or_else(|| estimated_state.map(|state| state.mean_reversion_boundary_state));
+
+    let start_anchor_value = mean_reversion_boundary_state
+        .as_ref()
+        .map(|boundary_state| boundary_state.anchor_value)
+        .unwrap_or(0.0);
+
+    Ok(ResolvedInitialState {
+        excitation_state,
+        mean_reversion_boundary_state,
+        start_anchor_value,
+    })
+}
+
+fn estimate_current_state(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
+) -> Result<janiform_calibration_runtime::CurrentStateEstimationOutput, WorkflowError> {
+    let continuation_data = request
+        .continuation_data
+        .as_ref()
+        .ok_or_else(|| validation_error("continuation_data", "missing continuation data"))?;
+
+    estimate_current_state_from_observation_data(
+        context,
+        request.start_time_utc,
+        &ModelStateObservationData {
+            // Intentional copies because the shared model-state estimator owns
+            // observation columns while the workflow request remains borrowed.
+            observation_timestamp_utc_nanos: continuation_data
+                .observation_timestamp_utc_nanos
+                .clone(),
+            observation_trade_prices: continuation_data.observation_trade_prices.clone(),
+            observation_trade_sides: continuation_data.observation_trade_sides.clone(),
+            observed_price: continuation_data.observed_price,
+        },
+        None,
+    )
+    .map_err(|source| validation_error("continuation_data", source.to_string()))
+}
+
+fn build_direct_job(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
     hourly_factor_contract: HourlyFactorContractOutput,
     initial_state: ResolvedInitialState,
 ) -> Result<DirectSimulationJob, WorkflowError> {
@@ -45,7 +236,7 @@ pub(super) fn build_direct_job(
         .unwrap_or(derived_boundary_state);
 
     match request.simulation_kind {
-        ModelSimulationKind::SeededTick => {
+        ModelArtifactSimulationKind::SeededTick => {
             let run_config = janiform::simulation::SeededTickSimulationRunConfig::try_new(
                 request.seed,
                 request.start_time_utc,
@@ -97,7 +288,7 @@ pub(super) fn build_direct_job(
                 },
             })
         }
-        ModelSimulationKind::CoarseInterval => {
+        ModelArtifactSimulationKind::CoarseInterval => {
             let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
                 context.hawkes_fitted_parameters.kernel_parameters,
                 context
@@ -188,8 +379,8 @@ pub(super) fn build_direct_job(
 }
 
 fn materialize_mean_reversion_runtime_inputs(
-    request: &ModelSimulationWorkflowRequest,
-    context: &ModelRuntimeContext,
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
     hourly_factor_contract: &HourlyFactorContractOutput,
     initial_excitation_state: HawkesExcitationState,
     start_anchor_value: f64,
@@ -200,73 +391,19 @@ fn materialize_mean_reversion_runtime_inputs(
     ),
     WorkflowError,
 > {
-    let interval_factors =
-        janiform_calibration_runtime::endogenous_interval_factors_from_hourly_contract(
-            hourly_factor_contract,
-        )
-        .map_err(|source| validation_error("hourly_factor_contract", source))?;
-
-    let interval_alignment_policy = hourly_factor_contract.metadata.interval_alignment_policy;
-
-    let anchor_materialization = materialize_endogenous_anchor_path(
-        interval_alignment_policy,
-        start_anchor_value,
-        ExponentialAffineTransformEquationSpecification::try_new(
-            context.hawkes_fitted_parameters.kernel_parameters,
-            context
-                .return_components_fitted_parameters
-                .news_process_configuration
-                .shared_mark_law
-                .gamma_severity_marks,
-        )
-        .map_err(|source| validation_error("equation_specification", source.to_string()))?,
-        context
-            .return_components_fitted_parameters
-            .nig_shared_plus_shift_configuration,
-        &context
-            .return_components_fitted_parameters
-            .news_process_configuration,
+    crate::model::materialize_mean_reversion_runtime_inputs(
+        context,
+        hourly_factor_contract,
         initial_excitation_state,
-        interval_factors.as_slice(),
+        start_anchor_value,
+        context.interval_delta,
+        request.horizon_interval_count,
     )
-    .map_err(|source| validation_error("mean_reversion_runtime", source.to_string()))?;
+}
 
-    let core_expected_increments = anchor_materialization
-        .interval_expectations
-        .iter()
-        .map(|expectation| expectation.core_expected_increment)
-        .collect::<Vec<_>>();
-
-    let interval_deltas = vec![context.interval_delta; request.horizon_interval_count];
-
-    let runtime_interval_anchors =
-        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            interval_alignment_policy,
-            start_anchor_value,
-            DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE,
-            &context
-                .return_components_fitted_parameters
-                .mean_reversion_fitted_parameters
-                .anchor_model,
-            core_expected_increments.as_slice(),
-            interval_deltas.as_slice(),
-        )
-        .map_err(|source| validation_error("mean_reversion_runtime", source.to_string()))?;
-
-    let initial_boundary_state = match MeanReversionBoundaryState::try_new(
-        runtime_interval_anchors.start_anchor_value,
-        runtime_interval_anchors.start_anchor_value,
-        runtime_interval_anchors.start_pressure_state,
-        DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION,
-    ) {
-        Ok(boundary_state) => boundary_state,
-        Err(source) => {
-            return Err(validation_error(
-                "mean_reversion_boundary_state",
-                source.to_string(),
-            ));
-        }
-    };
-
-    Ok((runtime_interval_anchors, initial_boundary_state))
+fn validation_error(field: &'static str, message: impl Into<String>) -> WorkflowError {
+    WorkflowError::SimulationValidationFailed {
+        field,
+        message: message.into(),
+    }
 }

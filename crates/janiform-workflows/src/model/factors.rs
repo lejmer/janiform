@@ -1,5 +1,4 @@
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, Timelike, Utc};
-use janiform::calendar::MarketState;
 use janiform::calibration::materialize_runtime_structural_seasonality;
 use janiform::hourly_factors::{
     DEFAULT_SEASONALITY_AGGREGATION_METHOD, DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
@@ -11,30 +10,41 @@ use serde_json::Value;
 
 use crate::error::WorkflowError;
 
-use super::context::{ModelRuntimeContext, PersistedModelPayload};
-use super::support::{interval_span_nanos, validation_error};
-use super::{ModelSimulationKind, ModelSimulationWorkflowRequest};
+use super::context::{
+    FittedModelContext, PersistedModelPayload, interval_span_nanos, validation_error,
+};
 
 const RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: &str =
     "runtime_compact_seasonality_parameters_mean_renormalized.v1";
 const SURPRISE_MULTIPLIER_HOURS_PER_WEEK: usize = 168;
 const MINUTES_PER_DAY: usize = 1_440;
-const CLOSED_INTERVAL_SEASONALITY_FACTOR: f64 = 0.0;
 
-pub(super) fn build_hourly_factor_contract(
-    request: &ModelSimulationWorkflowRequest,
-    context: &ModelRuntimeContext,
+pub(crate) fn build_hourly_factor_contract(
+    context: &FittedModelContext,
+    range_start_utc: DateTime<Utc>,
+    range_end_utc: DateTime<Utc>,
+    interval_duration_nanos: i64,
 ) -> Result<HourlyFactorContractOutput, WorkflowError> {
-    let seasonality_grid = materialize_runtime_seasonality_grid(request, context)?;
+    let seasonality_grid = materialize_runtime_seasonality_grid(
+        context,
+        range_start_utc,
+        range_end_utc,
+        interval_duration_nanos,
+    )?;
 
-    let seasonality_source = hourly_seasonality_source(request, context, &seasonality_grid);
+    let seasonality_source = hourly_seasonality_source(
+        range_start_utc,
+        range_end_utc,
+        interval_duration_nanos,
+        &seasonality_grid,
+    );
 
     let known_news_timestamps = known_news_timestamp_utc_nanos(&context.model)?;
 
     let surprise_multipliers = surprise_deterministic_time_multiplier_by_interval_index(
-        request.start_time_utc,
-        context.range_end_utc,
-        request.interval_duration_nanos,
+        range_start_utc,
+        range_end_utc,
+        interval_duration_nanos,
         context
             .return_components_fitted_parameters
             .surprise_deterministic_intensity_profile
@@ -49,35 +59,30 @@ pub(super) fn build_hourly_factor_contract(
         .surprise
         .baseline_intensity;
 
-    let mut hourly_factor_contract =
-        janiform_calibration_runtime::load_hourly_factor_contract_for_calibration(
-            &context.calendar_registry,
-            HourlyFactorProviderRequest {
-                exchange_code: context.model.session_resolution.exchange_code.as_str(),
-                range_start_utc: request.start_time_utc,
-                range_end_utc: context.range_end_utc,
-                interval_duration_nanos: request.interval_duration_nanos,
-                seasonality_source: Some(seasonality_source),
-                news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
-                    known_scheduled_event_timestamps_utc_nanos: known_news_timestamps.as_slice(),
-                    surprise_baseline_intensity,
-                    surprise_deterministic_time_multiplier_by_interval_index: surprise_multipliers
-                        .as_slice(),
-                }),
-            },
-        )
-        .map_err(|source| validation_error("hourly_factor_contract", source.to_string()))?;
-
-    if request.simulation_kind == ModelSimulationKind::CoarseInterval {
-        zero_closed_coarse_interval_seasonality_factors(&mut hourly_factor_contract, context)?;
-    }
-
-    Ok(hourly_factor_contract)
+    janiform_calibration_runtime::load_hourly_factor_contract_for_calibration(
+        &context.calendar_registry,
+        HourlyFactorProviderRequest {
+            exchange_code: context.model.session_resolution.exchange_code.as_str(),
+            range_start_utc,
+            range_end_utc,
+            interval_duration_nanos,
+            seasonality_source: Some(seasonality_source),
+            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+                known_scheduled_event_timestamps_utc_nanos: known_news_timestamps.as_slice(),
+                surprise_baseline_intensity,
+                surprise_deterministic_time_multiplier_by_interval_index: surprise_multipliers
+                    .as_slice(),
+            }),
+        },
+    )
+    .map_err(|source| validation_error("hourly_factor_contract", source.to_string()))
 }
 
 fn materialize_runtime_seasonality_grid(
-    request: &ModelSimulationWorkflowRequest,
-    context: &ModelRuntimeContext,
+    context: &FittedModelContext,
+    range_start_utc: DateTime<Utc>,
+    range_end_utc: DateTime<Utc>,
+    interval_duration_nanos: i64,
 ) -> Result<(Vec<i64>, Vec<f64>), WorkflowError> {
     let seasonality_parameters = context.model.parameters.get("seasonality").ok_or_else(|| {
         validation_error(
@@ -112,21 +117,19 @@ fn materialize_runtime_seasonality_grid(
         janiform_calibration_runtime::RuntimeStructuralSeasonalityMaterializationInput {
             // Intentional copy because the materialization input owns its exchange identifier.
             exchange_code: context.model.session_resolution.exchange_code.clone(),
-            range_start_utc_nanos: request.start_time_utc.timestamp_nanos_opt().ok_or_else(
-                || {
-                    validation_error(
-                        "start_time_utc",
-                        "timestamp is outside the supported nanosecond range",
-                    )
-                },
-            )?,
-            range_end_utc_nanos: context.range_end_utc.timestamp_nanos_opt().ok_or_else(|| {
+            range_start_utc_nanos: range_start_utc.timestamp_nanos_opt().ok_or_else(|| {
+                validation_error(
+                    "range_start_utc",
+                    "timestamp is outside the supported nanosecond range",
+                )
+            })?,
+            range_end_utc_nanos: range_end_utc.timestamp_nanos_opt().ok_or_else(|| {
                 validation_error(
                     "range_end_utc",
                     "timestamp is outside the supported nanosecond range",
                 )
             })?,
-            interval_duration_nanos: request.interval_duration_nanos,
+            interval_duration_nanos,
             intraday_minutes_per_bin,
             intraday_factor_by_bin,
             day_of_week_factor,
@@ -139,8 +142,9 @@ fn materialize_runtime_seasonality_grid(
 }
 
 fn hourly_seasonality_source<'a>(
-    request: &ModelSimulationWorkflowRequest,
-    context: &ModelRuntimeContext,
+    range_start_utc: DateTime<Utc>,
+    range_end_utc: DateTime<Utc>,
+    interval_duration_nanos: i64,
     seasonality_grid: &'a (Vec<i64>, Vec<f64>),
 ) -> HourlySeasonalityFactorSource<'a> {
     if seasonality_grid.1.is_empty() {
@@ -150,8 +154,8 @@ fn hourly_seasonality_source<'a>(
         };
     }
 
-    if request.interval_duration_nanos < ONE_HOUR_NANOS
-        || !runtime_interval_grid_is_hour_aligned(request.start_time_utc, context.range_end_utc)
+    if interval_duration_nanos < ONE_HOUR_NANOS
+        || !runtime_interval_grid_is_hour_aligned(range_start_utc, range_end_utc)
     {
         return HourlySeasonalityFactorSource::Materialized {
             source_timestamp_utc_nanos: seasonality_grid.0.as_slice(),
@@ -167,37 +171,6 @@ fn hourly_seasonality_source<'a>(
         hourly_factors: seasonality_grid.1.as_slice(),
         materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
     }
-}
-
-fn zero_closed_coarse_interval_seasonality_factors(
-    hourly_factor_contract: &mut HourlyFactorContractOutput,
-    context: &ModelRuntimeContext,
-) -> Result<(), WorkflowError> {
-    if hourly_factor_contract.interval_duration_nanos >= ONE_HOUR_NANOS {
-        return Ok(());
-    }
-
-    for (interval_start_utc_nanos, seasonality_factor) in hourly_factor_contract
-        .interval_start_utc_nanos
-        .iter()
-        .zip(hourly_factor_contract.s_h.iter_mut())
-    {
-        let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(*interval_start_utc_nanos);
-
-        let market_state = context
-            .calendar_registry
-            .resolve_market_state_at_utc(
-                context.model.session_resolution.exchange_code.as_str(),
-                timestamp_utc,
-            )
-            .map_err(|source| validation_error("calendar_registry", source.to_string()))?;
-
-        if market_state == MarketState::Closed {
-            *seasonality_factor = CLOSED_INTERVAL_SEASONALITY_FACTOR;
-        }
-    }
-
-    Ok(())
 }
 
 fn numeric_sequence(

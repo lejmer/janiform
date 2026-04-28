@@ -90,12 +90,14 @@ def test_coarse_simulation_python_wrapper_matches_native_json_bridge(
     wrapped_path = run_coarse_simulation(request)
     native_path = validate_coarse_simulation_path(
         native_module().run_coarse_simulation(
-            request.seed,
-            request.start_time_utc_nanos,
-            request.horizon_interval_count,
-            request.interval_delta,
-            request.model_inputs.to_payload(),
-            request.hourly_factor_contract._native_result,
+            {
+                "seed": request.seed,
+                "start_time_utc_nanos": request.start_time_utc_nanos,
+                "horizon_interval_count": request.horizon_interval_count,
+                "interval_delta": request.interval_delta,
+                "model_inputs": request.model_inputs.to_payload(),
+                "hourly_factor_contract": request.hourly_factor_contract._native_result,
+            }
         )
     )
 

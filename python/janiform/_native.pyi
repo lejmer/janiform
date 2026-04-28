@@ -943,25 +943,37 @@ def run_vanilla_option_pricing(
 
 
 def run_vanilla_option_grid_batch_pricing(
-    execution_input: object,
-) -> object: ...
+    execution_input: Any,
+) -> Any: ...
+
+
+def run_vanilla_option_grid_batch_pricing_with_terminal_progress(
+    execution_input: Any,
+    progress_mode: str,
+) -> Any: ...
 
 
 def run_vanilla_option_grid_batch_pricing_with_events(
-    execution_input: object,
-    event_callback: object,
-) -> object: ...
+    execution_input: Any,
+    event_callback: Any,
+) -> Any: ...
 
 
 def run_vanilla_option_surface_pricing(
-    execution_input: object,
-) -> object: ...
+    execution_input: Any,
+) -> Any: ...
+
+
+def run_vanilla_option_surface_pricing_with_terminal_progress(
+    execution_input: Any,
+    progress_mode: str,
+) -> Any: ...
 
 
 def run_vanilla_option_surface_pricing_with_events(
-    execution_input: object,
-    event_callback: object,
-) -> object: ...
+    execution_input: Any,
+    event_callback: Any,
+) -> Any: ...
 
 
 def run_staged_calibration(
@@ -1073,13 +1085,9 @@ def run_fit_workflow(
 
 
 def run_coarse_simulation(
-    seed: int,
-    start_time_utc_nanos: int,
-    horizon_interval_count: int,
-    interval_delta: float,
-    model_inputs: Any,
-    hourly_factor_contract: HourlyFactorContractResult,
+    request: object,
     event_callback: Optional[object] = None,
+    progress_mode: str = "none",
 ) -> Any: ...
 
 
@@ -1125,30 +1133,22 @@ def materialize_endogenous_mean_reversion_runtime_interval_anchors(
 ) -> object: ...
 
 
-def run_model_simulation_workflow(
+def run_fitted_model_single_option_pricing_workflow(
+    request: Any,
+) -> Any: ...
+
+
+def run_simulation_from_model_artifact(
     request: object,
     event_callback: Optional[object] = None,
+    progress_mode: str = "none",
 ) -> object: ...
 
 
 def run_seeded_tick_event_simulation(
-    seed: int,
-    start_time_utc: str,
-    horizon_interval_count: int,
-    kernel_parameters: object,
-    nig_shared_plus_shift_configuration: object,
-    initial_excitation_state: object,
-    hourly_factor_contract: HourlyFactorContractResult,
-    news_process_configuration: object,
-    mean_reversion_fitted_parameters: object,
-    mean_reversion_runtime_interval_anchors: object,
-    initial_mean_reversion_boundary_state: object,
-    *,
-    debug_trace_enabled: bool = False,
-    sample_every_nth_transition: int = 1,
-    max_records_per_chunk: int = 1024,
-    state_snapshot_capture: str = "disabled",
+    request: object,
     event_callback: Optional[object] = None,
+    progress_mode: str = "none",
 ) -> SeededTickSimulationNativeResult: ...
 
 

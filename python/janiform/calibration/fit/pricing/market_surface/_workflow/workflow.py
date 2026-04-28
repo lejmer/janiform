@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import os
-from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from multiprocessing import Manager
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 import pandas
 
-from ......_workflow_progress import JaniformOutputController, WorkflowProgressMode
+from ......_workflow_progress import WorkflowProgressMode
 from ......contracts.base import require_finite_scalar
 from ......pricing import VanillaOptionPayoffType
 from .....errors import calibration_error
@@ -27,14 +26,6 @@ from ...market_snapshot._workflow.preparation import (
     prepare_selected_expiry_snapshot_groups_by_valuation_time,
     prepare_selected_expiry_history_frame,
     prepare_snapshot_groups,
-)
-from .progress import (
-    SingleExpirySurfaceSliceProgressRow,
-    SingleExpirySurfaceSliceWorkerProgress,
-    build_single_expiry_surface_progress_panel,
-    complete_single_expiry_surface_slice_progress_row,
-    drain_single_expiry_surface_progress_queue,
-    fail_single_expiry_surface_slice_progress_row,
 )
 from ...market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 from ...market_surface.result import (
@@ -165,8 +156,6 @@ def price_option_surface_for_model(
     total_cpu_count = max(1, os.cpu_count() or 1) if cpu_count is None else cpu_count
     surface_parallelism = min(total_cpu_count, len(valuation_times))
     pricing_cpu_count = max(1, total_cpu_count // surface_parallelism)
-    use_surface_progress = surface_parallelism > 1
-    worker_silent = silent if not use_surface_progress else True
 
     if surface_parallelism <= 1:
         snapshot_results = _price_single_expiry_surface_slices_serial(
@@ -177,7 +166,7 @@ def price_option_surface_for_model(
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             pricing_cpu_count=pricing_cpu_count,
-            worker_silent=worker_silent,
+            silent=silent,
             progress_mode=progress_mode,
         )
     else:
@@ -189,9 +178,7 @@ def price_option_surface_for_model(
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             surface_parallelism=surface_parallelism,
-            total_cpu_count=total_cpu_count,
             pricing_cpu_count=pricing_cpu_count,
-            worker_silent=worker_silent,
             silent=silent,
             progress_mode=progress_mode,
         )
@@ -301,7 +288,7 @@ def _price_single_expiry_surface_slices_serial(
     risk_free_rate: float,
     dividend_yield: float,
     pricing_cpu_count: int,
-    worker_silent: bool,
+    silent: bool,
     progress_mode: WorkflowProgressMode | str,
 ) -> tuple[JaniformObservedOptionSnapshotPricingResult, ...]:
     return tuple(
@@ -312,7 +299,7 @@ def _price_single_expiry_surface_slices_serial(
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             cpu_count=pricing_cpu_count,
-            silent=worker_silent,
+            silent=silent,
             progress_mode=progress_mode,
         )
         for panel_valuation_time_utc in valuation_times
@@ -328,65 +315,27 @@ def _price_single_expiry_surface_slices_parallel(
     risk_free_rate: float,
     dividend_yield: float,
     surface_parallelism: int,
-    total_cpu_count: int,
     pricing_cpu_count: int,
-    worker_silent: bool,
     silent: bool,
     progress_mode: WorkflowProgressMode | str,
 ) -> tuple[JaniformObservedOptionSnapshotPricingResult, ...]:
-    output_controller = JaniformOutputController(
-        suppress_info_output=silent,
-        progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
-        default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
-    )
-
-    with output_controller.progress("price") as progress:
-        rows_by_time = {
-            panel_valuation_time_utc: SingleExpirySurfaceSliceProgressRow(
-                valuation_time_utc=panel_valuation_time_utc,
-            )
-            for panel_valuation_time_utc in valuation_times
-        }
-
-        _update_single_expiry_surface_progress(
-            progress=progress,
-            rows_by_time=rows_by_time,
-            completed_valuation_count=0,
-            active_count=len(valuation_times),
-            valuation_count=len(valuation_times),
-            surface_parallelism=surface_parallelism,
-            total_cpu_count=total_cpu_count,
+    with ProcessPoolExecutor(max_workers=surface_parallelism) as executor:
+        futures = _submit_single_expiry_surface_slice_futures(
+            executor=executor,
+            model=model,
+            resolved_tick_column_mapping=resolved_tick_column_mapping,
+            valuation_times=valuation_times,
+            prepared_slice_inputs_by_time=prepared_slice_inputs_by_time,
+            risk_free_rate=risk_free_rate,
+            dividend_yield=dividend_yield,
             pricing_cpu_count=pricing_cpu_count,
-            detail="pricing observed option surface",
+            silent=silent,
+            progress_mode=progress_mode,
         )
 
-        with Manager() as manager:
-            progress_queue = manager.Queue()
-
-            with ProcessPoolExecutor(max_workers=surface_parallelism) as executor:
-                futures = _submit_single_expiry_surface_slice_futures(
-                    executor=executor,
-                    model=model,
-                    resolved_tick_column_mapping=resolved_tick_column_mapping,
-                    valuation_times=valuation_times,
-                    prepared_slice_inputs_by_time=prepared_slice_inputs_by_time,
-                    risk_free_rate=risk_free_rate,
-                    dividend_yield=dividend_yield,
-                    pricing_cpu_count=pricing_cpu_count,
-                    worker_silent=worker_silent,
-                    progress_mode=progress_mode,
-                    progress_queue=progress_queue,
-                )
-                snapshot_results_by_time = _collect_parallel_single_expiry_surface_slice_results(
-                    progress=progress,
-                    progress_queue=progress_queue,
-                    rows_by_time=rows_by_time,
-                    futures_by_time=futures,
-                    valuation_count=len(valuation_times),
-                    surface_parallelism=surface_parallelism,
-                    total_cpu_count=total_cpu_count,
-                    pricing_cpu_count=pricing_cpu_count,
-                )
+        snapshot_results_by_time = _collect_parallel_single_expiry_surface_slice_results(
+            futures_by_time=futures,
+        )
 
     return tuple(
         snapshot_results_by_time[panel_valuation_time_utc]
@@ -404,9 +353,8 @@ def _submit_single_expiry_surface_slice_futures(
     risk_free_rate: float,
     dividend_yield: float,
     pricing_cpu_count: int,
-    worker_silent: bool,
+    silent: bool,
     progress_mode: WorkflowProgressMode | str,
-    progress_queue: Any,
 ) -> dict[Future[JaniformObservedOptionSnapshotPricingResult], datetime]:
     return {
         executor.submit(
@@ -417,9 +365,8 @@ def _submit_single_expiry_surface_slice_futures(
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             cpu_count=pricing_cpu_count,
-            silent=worker_silent,
+            silent=silent,
             progress_mode=progress_mode,
-            progress_queue=progress_queue,
         ): panel_valuation_time_utc
         for panel_valuation_time_utc in valuation_times
     }
@@ -427,95 +374,15 @@ def _submit_single_expiry_surface_slice_futures(
 
 def _collect_parallel_single_expiry_surface_slice_results(
     *,
-    progress: Any,
-    progress_queue: Any,
-    rows_by_time: dict[datetime, SingleExpirySurfaceSliceProgressRow],
     futures_by_time: dict[Future[JaniformObservedOptionSnapshotPricingResult], datetime],
-    valuation_count: int,
-    surface_parallelism: int,
-    total_cpu_count: int,
-    pricing_cpu_count: int,
 ) -> dict[datetime, JaniformObservedOptionSnapshotPricingResult]:
-    completed_valuation_count = 0
     snapshot_results_by_time: dict[datetime, JaniformObservedOptionSnapshotPricingResult] = {}
-    pending_futures = set(futures_by_time)
 
-    while pending_futures:
-        completed_futures, pending_futures = wait(
-            pending_futures,
-            timeout=0.1,
-            return_when=FIRST_COMPLETED,
-        )
-
-        drain_single_expiry_surface_progress_queue(
-            progress_queue=progress_queue,
-            rows_by_time=rows_by_time,
-        )
-
-        for future in completed_futures:
-            panel_valuation_time_utc = futures_by_time[future]
-            row = rows_by_time[panel_valuation_time_utc]
-
-            try:
-                snapshot_results_by_time[panel_valuation_time_utc] = future.result()
-            except Exception:
-                fail_single_expiry_surface_slice_progress_row(row)
-
-                _update_single_expiry_surface_progress(
-                    progress=progress,
-                    rows_by_time=rows_by_time,
-                    completed_valuation_count=completed_valuation_count,
-                    active_count=len(pending_futures),
-                    valuation_count=valuation_count,
-                    surface_parallelism=surface_parallelism,
-                    total_cpu_count=total_cpu_count,
-                    pricing_cpu_count=pricing_cpu_count,
-                )
-
-                raise
-
-            complete_single_expiry_surface_slice_progress_row(row)
-
-            completed_valuation_count += 1
-
-        _update_single_expiry_surface_progress(
-            progress=progress,
-            rows_by_time=rows_by_time,
-            completed_valuation_count=completed_valuation_count,
-            active_count=len(pending_futures),
-            valuation_count=valuation_count,
-            surface_parallelism=surface_parallelism,
-            total_cpu_count=total_cpu_count,
-            pricing_cpu_count=pricing_cpu_count,
-        )
+    for future in as_completed(futures_by_time):
+        panel_valuation_time_utc = futures_by_time[future]
+        snapshot_results_by_time[panel_valuation_time_utc] = future.result()
 
     return snapshot_results_by_time
-
-
-def _update_single_expiry_surface_progress(
-    *,
-    progress: Any,
-    rows_by_time: dict[datetime, SingleExpirySurfaceSliceProgressRow],
-    completed_valuation_count: int,
-    active_count: int,
-    valuation_count: int,
-    surface_parallelism: int,
-    total_cpu_count: int,
-    pricing_cpu_count: int,
-    detail: Optional[str] = None,
-) -> None:
-    progress.update(
-        detail=detail,
-        completed_units=completed_valuation_count,
-        total_units=valuation_count,
-        subdetail=build_single_expiry_surface_progress_panel(
-            rows_by_time=rows_by_time,
-            active_count=active_count,
-            surface_parallelism=surface_parallelism,
-            total_cpu_count=total_cpu_count,
-            pricing_cpu_count=pricing_cpu_count,
-        ),
-    )
 
 
 def _retained_snapshot_valuation_count(
@@ -566,19 +433,7 @@ def _price_single_expiry_surface_slice(
     cpu_count: int,
     silent: bool,
     progress_mode: WorkflowProgressMode | str,
-    progress_queue: Optional[Any] = None,
 ) -> JaniformObservedOptionSnapshotPricingResult:
-    progress = (
-        None
-        if progress_queue is None
-        else SingleExpirySurfaceSliceWorkerProgress(
-            valuation_time_utc=slice_input.valuation_time_utc,
-            progress_queue=progress_queue,
-        )
-    )
-    if progress is not None:
-        progress.notify_started()
-
     return price_prepared_snapshot_groups_for_model(
         model,
         valuation_time_utc=slice_input.valuation_time_utc,
@@ -591,7 +446,6 @@ def _price_single_expiry_surface_slice(
         cpu_count=cpu_count,
         silent=silent,
         progress_mode=progress_mode,
-        progress=progress,
     )
 
 

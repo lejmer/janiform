@@ -1,5 +1,4 @@
-from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional
 
@@ -35,54 +34,29 @@ from ..rendering import (
     write_command_output,
 )
 from ...errors import JaniformError
-from ..._workflow_progress import JaniformOutputController, NullProgress, WorkflowProgressMode
+from ..._workflow_progress import WorkflowProgressMode
 from ...simulation import (
     CoarseSimulationRunRequest,
     SeededTickSimulationRequest,
-    SimulationProgressEvent,
     run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
 
 
-def build_simulation_output_controller(
+def resolve_simulation_progress_mode(
     *,
     output: str,
     progress: str,
-) -> JaniformOutputController:
+) -> WorkflowProgressMode:
     resolved_progress_mode = WorkflowProgressMode(progress)
     if resolved_progress_mode is WorkflowProgressMode.AUTO:
-        resolved_progress_mode = (
+        return (
             WorkflowProgressMode.HUMAN
             if output == CliOutputMode.HUMAN.value
             else WorkflowProgressMode.NONE
         )
 
-    return JaniformOutputController(
-        suppress_info_output=output == CliOutputMode.JSON.value,
-        progress_mode=resolved_progress_mode,
-        default_progress_mode=resolved_progress_mode,
-    )
-
-
-def simulation_progress_callback(
-    progress_controller: JaniformOutputController,
-) -> tuple[
-    Optional[Callable[[SimulationProgressEvent], None]],
-    AbstractContextManager[None],
-]:
-    progress = progress_controller.progress("simulate")
-    if isinstance(progress, NullProgress):
-        return None, progress
-
-    def callback(event: SimulationProgressEvent) -> None:
-        progress.update(
-            detail=event.detail,
-            completed_units=event.completed_units,
-            total_units=event.total_units,
-        )
-
-    return callback, progress
+    return resolved_progress_mode
 
 
 def run_simulation_coarse_interval_command(
@@ -94,9 +68,7 @@ def run_simulation_coarse_interval_command(
     **_,
 ) -> int:
     try:
-        output_controller = build_simulation_output_controller(output=output, progress=progress)
-
-        progress_callback, progress_scope = simulation_progress_callback(output_controller)
+        progress_mode = resolve_simulation_progress_mode(output=output, progress=progress)
 
         request_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
@@ -109,14 +81,10 @@ def run_simulation_coarse_interval_command(
 
         request = CoarseSimulationRunRequest.from_mapping(request_document)
 
-        with progress_scope:
-            if progress_callback is None:
-                response = run_coarse_simulation(request)
-            else:
-                response = run_coarse_simulation(
-                    request,
-                    progress_callback=progress_callback,
-                )
+        response = run_coarse_simulation(
+            request,
+            progress_mode=progress_mode,
+        )
     except JaniformError as e:
         return write_cli_error(e)
     except Exception as e:
@@ -152,9 +120,7 @@ def run_simulation_seeded_ticks_command(
     **_,
 ) -> int:
     try:
-        output_controller = build_simulation_output_controller(output=output, progress=progress)
-
-        progress_callback, progress_scope = simulation_progress_callback(output_controller)
+        progress_mode = resolve_simulation_progress_mode(output=output, progress=progress)
 
         request_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
@@ -183,14 +149,10 @@ def run_simulation_seeded_ticks_command(
             calendar_registry=calendar_registry,
         )
 
-        with progress_scope:
-            if progress_callback is None:
-                response = run_seeded_tick_event_simulation(request_with_runtime_contract)
-            else:
-                response = run_seeded_tick_event_simulation(
-                    request_with_runtime_contract,
-                    progress_callback=progress_callback,
-                )
+        response = run_seeded_tick_event_simulation(
+            request_with_runtime_contract,
+            progress_mode=progress_mode,
+        )
     except JaniformError as e:
         return write_cli_error(e)
     except Exception as e:

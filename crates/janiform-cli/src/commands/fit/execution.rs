@@ -9,9 +9,10 @@ use janiform_event_log::RunEvent;
 use janiform_terminal_ui::{ProgressAdapter, format_path};
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::fit::{
-    FitExecutionObserver, FitExecutionOutput, FitExecutionRequest, FitTerminalOutput,
-    FitWorkflowPaths, apply_resume_settings as apply_fit_resume_settings, failure_reason,
-    fit_completion_json_payload, run_fit_execution as run_shared_fit_execution,
+    FitWorkflowObserver, FitWorkflowOutput, FitWorkflowPaths, StagedFitExecutionWorkflowRequest,
+    apply_resume_settings as apply_fit_resume_settings, failure_reason,
+    fit_completion_json_payload,
+    run_staged_fit_execution_workflow as run_shared_staged_fit_execution_workflow,
     staged_execution_paths as shared_staged_execution_paths,
 };
 use janiform_workflows::write_machine_event_to_stderr;
@@ -26,12 +27,13 @@ use crate::commands::shared::calibration::calibration_execution_mode;
 use crate::commands::shared::calibration::calibration_stage;
 use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::output_paths::default_run_output_directory;
+use crate::commands::shared::terminal::terminal_output_for_context;
 use crate::context::CommandContext;
 use crate::context::EventStreamFormat;
 use crate::context::OutputMode;
 use crate::error::CliError;
 
-pub(crate) fn run_fit_execution(
+pub(crate) fn run_fit_command(
     context: &CommandContext,
     command: FitCommand,
 ) -> Result<(), CliError> {
@@ -62,7 +64,7 @@ pub(crate) fn run_fit_execution(
     )
 }
 
-pub(crate) fn run_fit_staged_execution(
+pub(crate) fn run_fit_staged_run_command(
     context: &CommandContext,
     options: StagedExecutionOptions,
 ) -> Result<(), CliError> {
@@ -208,12 +210,14 @@ fn run_execution_input(
 ) -> Result<(), CliError> {
     let paths = artifacts.paths(context, &execution_input);
     let input_paths = artifacts.input_paths(&execution_input);
-    let terminal_output = fit_terminal_output_for_context(context);
+
+    let terminal_output = terminal_output_for_context(context);
 
     let mut progress_adapter = match context.output_mode() {
         OutputMode::Human | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
         OutputMode::Json | OutputMode::Silent => None,
     };
+
     let mut machine_event_sink = write_machine_event_to_stderr;
 
     // Completion rendering happens after the shared runner consumes the request.
@@ -221,8 +225,8 @@ fn run_execution_input(
     let completion_execution_input = execution_input.clone();
     let completion_paths = paths.clone();
 
-    let output = run_shared_fit_execution(
-        FitExecutionRequest {
+    let output = run_shared_staged_fit_execution_workflow(
+        StagedFitExecutionWorkflowRequest {
             execution_input,
             paths,
             input_paths,
@@ -230,7 +234,7 @@ fn run_execution_input(
             staged_execution_input_path: artifacts.staged_execution_input_path(),
             session_definition_json: artifacts.session_definition_json(),
         },
-        FitExecutionObserver {
+        FitWorkflowObserver {
             progress_adapter: progress_adapter.as_mut(),
             terminal_output,
             machine_event_sink: machine_event_sink_for_context(context, &mut machine_event_sink),
@@ -253,23 +257,11 @@ fn run_execution_input(
     Ok(())
 }
 
-fn fit_terminal_output_for_context(context: &CommandContext) -> Option<FitTerminalOutput> {
-    match context.output_mode() {
-        OutputMode::Human => Some(FitTerminalOutput::start_and_completion(
-            context.stdout_renderer(),
-        )),
-        OutputMode::Quiet => Some(FitTerminalOutput::completion_only(
-            context.stdout_renderer(),
-        )),
-        OutputMode::Json | OutputMode::Silent => None,
-    }
-}
-
 fn emit_completion_output(
     context: &CommandContext,
     execution_input: &CalibrationStagedExecutionInput,
     paths: &FitWorkflowPaths,
-    output: &FitExecutionOutput,
+    output: &FitWorkflowOutput,
 ) -> Result<(), CliError> {
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&fit_completion_json_payload(

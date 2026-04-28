@@ -1,29 +1,38 @@
 use std::path::PathBuf;
-use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use janiform::hawkes::HawkesExcitationState;
 use janiform::hourly_factors::ONE_HOUR_NANOS;
-use janiform::simulation::{MeanReversionBoundaryState, SeededTickEventStateSnapshotCapture};
+use janiform::simulation::{
+    CoarseSimulationRunRequest, MeanReversionBoundaryState, SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationRunConfig,
+};
 use janiform_foundations::time::deserialize_utc_datetime;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::simulation::artifacts::{
-    DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, SimulationExportSummary, SimulationOutputColumns,
-};
-use crate::simulation::direct::DirectSimulationCompleted;
+use super::artifacts::{DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, SimulationOutputColumns};
+use super::direct::DirectSimulationJob;
 
 const DEFAULT_SIMULATION_INTERVAL_DURATION_NANOS: i64 = ONE_HOUR_NANOS;
 const DEFAULT_SEEDED_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1024;
 
-/// Complete fitted-model simulation workflow request.
+/// Complete simulation-from-model-artifact workflow request.
 #[derive(Debug, Deserialize)]
-pub struct ModelSimulationWorkflowRequest {
+pub struct ModelArtifactSimulationWorkflowRequest {
     /// Persisted `JaniformModel` payload.
     pub model_payload: Value,
+    /// Optional stable workflow run id shown in terminal summaries.
+    #[serde(default)]
+    pub run_id: Option<String>,
+    /// Optional human-readable workflow scope shown in terminal summaries.
+    #[serde(default)]
+    pub scope_label: Option<String>,
+    /// Optional request artifact path when the boundary loaded the request from disk.
+    #[serde(default)]
+    pub request_path: Option<PathBuf>,
     /// Simulation kind selected by the public API.
-    pub simulation_kind: ModelSimulationKind,
+    pub simulation_kind: ModelArtifactSimulationKind,
     /// Deterministic run seed.
     pub seed: u64,
     /// First simulated interval start.
@@ -45,7 +54,7 @@ pub struct ModelSimulationWorkflowRequest {
     #[serde(default = "default_simulation_export_batch_size")]
     pub export_batch_size: usize,
     /// Optional continuation observations used to estimate missing initial state.
-    pub continuation_data: Option<ModelSimulationContinuationData>,
+    pub continuation_data: Option<ModelArtifactSimulationContinuationData>,
     /// Optional explicit initial Hawkes state.
     pub initial_excitation_state: Option<HawkesExcitationState>,
     /// Optional explicit initial mean-reversion boundary state.
@@ -64,10 +73,10 @@ pub struct ModelSimulationWorkflowRequest {
     pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
 }
 
-/// Fitted-model simulation kind.
+/// Model-artifact simulation kind.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum ModelSimulationKind {
+pub enum ModelArtifactSimulationKind {
     /// Seeded tick-event simulation.
     SeededTick,
     /// Coarse interval simulation.
@@ -76,7 +85,7 @@ pub enum ModelSimulationKind {
 
 /// Boundary payload for continuation-based current state estimation.
 #[derive(Debug, Deserialize)]
-pub struct ModelSimulationContinuationData {
+pub struct ModelArtifactSimulationContinuationData {
     /// Observation timestamp column in UTC nanoseconds.
     pub observation_timestamp_utc_nanos: Vec<i64>,
     /// Observed trade prices.
@@ -87,14 +96,30 @@ pub struct ModelSimulationContinuationData {
     pub observed_price: Option<f64>,
 }
 
-/// Completed fitted-model simulation workflow.
-pub struct ModelSimulationWorkflowOutput {
-    /// Completed native simulation result.
-    pub completed: DirectSimulationCompleted,
-    /// Optional export summary.
-    pub export_summary: Option<SimulationExportSummary>,
-    /// Native workflow execution duration.
-    pub execution_duration: Duration,
+/// Workflow request for direct simulation execution.
+pub struct DirectSimulationWorkflowRequest {
+    /// Direct simulation job.
+    pub job: DirectSimulationJob,
+    /// Stable workflow run id shown in terminal summaries.
+    pub run_id: String,
+    /// Human-readable simulation scope.
+    pub scope_label: String,
+    /// Optional request artifact path when the boundary loaded the request from disk.
+    pub request_path: Option<PathBuf>,
+    /// Optional primary output path.
+    pub output_path: Option<PathBuf>,
+}
+
+/// Workflow request for direct coarse simulation.
+pub struct CoarseSimulationWorkflowRequest {
+    /// Coarse simulation runtime request.
+    pub run_request: CoarseSimulationRunRequest,
+}
+
+/// Workflow request for seeded tick-event simulation.
+pub struct SeededTickEventSimulationWorkflowRequest {
+    /// Seeded tick-event simulation runtime configuration.
+    pub run_config: SeededTickSimulationRunConfig,
 }
 
 fn default_simulation_interval_duration_nanos() -> i64 {

@@ -1549,12 +1549,12 @@ def test_simulation_cli_maps_request_json_to_runtime_request(
     def capturing_runner(
         request_model: SeededTickSimulationRequest,
         *,
-        progress_callback: Any = None,
+        progress_mode: Any = None,
     ) -> simulation_module.SeededTickSimulationResponse:
         captured_request["request"] = request_model
         return simulation_module.run_seeded_tick_event_simulation(
             request_model,
-            progress_callback=progress_callback,
+            progress_mode=progress_mode,
         )
 
     monkeypatch.setattr(cli_simulation_commands_module, "run_seeded_tick_event_simulation", capturing_runner)
@@ -1623,12 +1623,12 @@ def test_coarse_simulation_cli_maps_request_json_to_runtime_contract(
     def capturing_runner(
         request_model: CoarseSimulationRunRequest,
         *,
-        progress_callback: Any = None,
+        progress_mode: Any = None,
     ) -> simulation_module.CoarseSimulationPath:
         captured_request["request"] = request_model
         return simulation_module.run_coarse_simulation(
             request_model,
-            progress_callback=progress_callback,
+            progress_mode=progress_mode,
         )
 
     monkeypatch.setattr(cli_simulation_commands_module, "run_coarse_simulation", capturing_runner)
@@ -1993,9 +1993,9 @@ def test_coarse_simulation_cli_runtime_failures_return_runtime_exit_code(
     def failing_runner(
         _: CoarseSimulationRunRequest,
         *,
-        progress_callback: Any = None,
+        progress_mode: Any = None,
     ) -> simulation_module.CoarseSimulationPath:
-        del progress_callback
+        del progress_mode
         raise JaniformExecutionError(
             JaniformErrorDetails.from_context(
                 error_id="simulation.execution.coarse_interval.run_failed",
@@ -2171,8 +2171,6 @@ def test_coarse_simulation_cli_supports_human_output_mode(
     assert stdout_text.startswith("simulate coarse-interval completed:")
     assert "simulated_interval_count=3" in stdout_text
     assert "interval_delta=1.0" in stdout_text
-    assert "coarse interval path generation" in stderr_text
-    assert "done simulate total" in stderr_text
 
 
 def test_calibration_cli_requires_disk_checkpoint_directory_when_defaulting_to_disk(

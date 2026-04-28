@@ -11,6 +11,7 @@ from types import ModuleType
 from typing import Any, Optional
 
 from ...._native_api import native_error_parts, native_exception_matches, native_module
+from ...._native_progress import native_terminal_progress_mode
 from ...._workflow_progress import WorkflowProgressMode
 from ...errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
@@ -72,7 +73,7 @@ def run_fit_workflow(
         ),
         "output_dir": None if output_dir is None else str(Path(output_dir)),
         "resume_settings": None if resume_settings is None else resume_settings.to_payload(),
-        "progress_mode": native_fit_workflow_progress_mode(progress_mode),
+        "progress_mode": native_terminal_progress_mode(progress_mode),
         "emit_machine_events": progress_mode == WorkflowProgressMode.JSONL,
     }
 
@@ -278,16 +279,6 @@ def _enum_value_or_none(value: Any) -> Any:
         return None
 
     return _enum_value(value)
-
-
-def native_fit_workflow_progress_mode(progress_mode: WorkflowProgressMode) -> str:
-    match progress_mode:
-        case WorkflowProgressMode.HUMAN:
-            return "human"
-        case WorkflowProgressMode.JSONL | WorkflowProgressMode.NONE:
-            return "none"
-        case WorkflowProgressMode.AUTO:
-            return "none"
 
 
 def _native_module_for_fit_workflow() -> ModuleType:
