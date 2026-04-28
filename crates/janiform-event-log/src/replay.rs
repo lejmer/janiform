@@ -61,7 +61,7 @@ fn replay_event_log_with_policy(
 
         let event: RunEvent = match serde_json::from_str(&line) {
             Ok(event) => event,
-            Err(source)
+            Err(_)
                 if trailing_partial_line_policy
                     == TrailingPartialLinePolicy::IgnoreMalformedUnterminated
                     && !line_is_terminated =>
