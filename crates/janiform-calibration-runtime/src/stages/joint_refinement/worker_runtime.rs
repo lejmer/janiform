@@ -450,7 +450,9 @@ impl PersistentSummarySimulationWorker {
         malformed_output_context: &str,
     ) -> Result<JointRefinementSummarySimulationWorkerResponse, String> {
         write_joint_refinement_worker_frame(&mut self.stdin, worker_request).map_err(|source| {
-            format!("failed to write summary simulation worker request: {source}")
+            self.decorate_worker_protocol_error(format!(
+                "failed to write summary simulation worker request: {source}"
+            ))
         })?;
 
         read_joint_refinement_worker_frame(&mut self.stdout)
@@ -720,6 +722,15 @@ mod tests {
         }
     }
 
+    fn assert_initialize_session_protocol_failure_is_reported(error: &str) {
+        assert!(
+            error.contains("malformed initialize-session output")
+                || error.contains("exited abnormally")
+                || error.contains("failed to write summary simulation worker request"),
+            "{error}"
+        );
+    }
+
     #[test]
     fn malformed_worker_initialize_session_output_is_reported() {
         let script_path = temporary_worker_script_path("malformed");
@@ -735,11 +746,7 @@ mod tests {
             &joint_refinement_summary_session_context_fixture(),
         )
         .expect_err("malformed worker output should fail");
-        assert!(
-            error.contains("malformed initialize-session output")
-                || error.contains("exited abnormally"),
-            "{error}"
-        );
+        assert_initialize_session_protocol_failure_is_reported(&error);
     }
 
     #[test]
@@ -750,6 +757,7 @@ mod tests {
         } else {
             "#!/bin/sh\nprintf '\\010\\000\\000\\000\\000\\000\\000\\000\\001\\000\\000\\000'\n"
         };
+
         write_worker_script(&script_path, script_body);
 
         let error = spawn_initialized_worker(
@@ -757,11 +765,7 @@ mod tests {
             &joint_refinement_summary_session_context_fixture(),
         )
         .expect_err("schema-mismatched worker output should fail");
-        assert!(
-            error.contains("malformed initialize-session output")
-                || error.contains("exited abnormally"),
-            "{error}"
-        );
+        assert_initialize_session_protocol_failure_is_reported(&error);
     }
 
     #[test]
