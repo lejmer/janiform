@@ -1,0 +1,280 @@
+use std::path::PathBuf;
+
+use chrono::{DateTime, Utc};
+use janiform::pricing::{
+    PricingIntervalSchedulePolicy, VanillaOptionPayoffType,
+    VanillaOptionPricingOptionalOutputSelection,
+};
+use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
+use janiform_workflows::pricing::{
+    FittedModelSingleOptionPricingRequest, run_fitted_model_single_option_pricing,
+};
+use serde_json::Value;
+
+use super::rendering::{pricing_completion_summary, pricing_start_summary};
+use super::{
+    FittedModelPricingCommand, PriceCommand, PricePayoffType, VanillaOptionPricingOptions,
+};
+use crate::commands::shared::artifact_documents::load_json_artifact;
+use crate::commands::shared::output::write_json_payload;
+use crate::commands::shared::output_paths::default_run_output_directory;
+use crate::context::{CommandContext, OutputMode};
+use crate::error::CliError;
+
+pub(crate) fn run_price(context: &CommandContext, command: PriceCommand) -> Result<(), CliError> {
+    run_fitted_model_pricing(
+        context,
+        command.model,
+        command.option,
+        command.output_path.output_path,
+    )
+}
+
+pub(crate) fn run_price_fitted_model(
+    context: &CommandContext,
+    command: FittedModelPricingCommand,
+) -> Result<(), CliError> {
+    run_fitted_model_pricing(
+        context,
+        command.model,
+        command.option,
+        command.output_path.output_path,
+    )
+}
+
+fn run_fitted_model_pricing(
+    context: &CommandContext,
+    model: crate::commands::options::ModelPathOptions,
+    option: VanillaOptionPricingOptions,
+    output_path: Option<PathBuf>,
+) -> Result<(), CliError> {
+    let model_path = required_model_path(context, model.model_path)?;
+
+    let model_payload = load_json_artifact(&model_path, "model")?;
+
+    let valuation_time_utc = required_valuation_time(option.valuation_time_utc.as_deref())?;
+
+    let model_run_id = model_run_id(&model_payload)?;
+
+    let run_id = pricing_run_id(model_run_id);
+
+    let output_path = resolve_pricing_output_path(context, output_path, &run_id);
+
+    emit_start_summary(
+        context,
+        &run_id,
+        &model_path,
+        &output_path,
+        &valuation_time_utc.to_rfc3339(),
+    )?;
+
+    let mut progress_adapter = progress_adapter_for_context(context, &run_id, &output_path)?;
+
+    observe_pricing_progress(
+        progress_adapter.as_mut(),
+        "pricing workflow",
+        "preparing runtime inputs and executing pricing",
+    )?;
+
+    let workflow_request = FittedModelSingleOptionPricingRequest {
+        model_payload,
+        run_id: Some(run_id),
+        valuation_time_utc,
+        spot: required_f64("--spot", option.spot)?,
+        strike: required_f64("--strike", option.strike)?,
+        expiry_timestamp_utc: option.expiry_timestamp_utc,
+        expiry_date: option.expiry_date,
+        tenor: option.tenor,
+        payoff_type: payoff_type(option.payoff_type),
+        risk_free_rate: option.risk_free_rate,
+        dividend_yield: option.dividend_yield,
+        optional_output_selection: VanillaOptionPricingOptionalOutputSelection::new(
+            option.include_transform_diagnostics,
+            option.include_integration_quality_diagnostics,
+            option.include_calibration_hooks,
+        ),
+        pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::default(),
+        output_path: Some(output_path),
+    };
+
+    let output = run_fitted_model_single_option_pricing(workflow_request)?;
+
+    complete_progress(progress_adapter.as_mut())?;
+
+    emit_completion(context, &model_path, &output)
+}
+
+fn required_model_path(
+    context: &CommandContext,
+    path: Option<PathBuf>,
+) -> Result<PathBuf, CliError> {
+    let path = path.ok_or(CliError::MissingRequiredArgument {
+        argument_name: "--model-path",
+    })?;
+
+    context.paths().input_file("--model-path", &path)
+}
+
+fn required_valuation_time(value: Option<&str>) -> Result<DateTime<Utc>, CliError> {
+    let value = value.ok_or(CliError::MissingRequiredArgument {
+        argument_name: "--valuation-time-utc",
+    })?;
+
+    DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| timestamp.with_timezone(&Utc))
+        .map_err(|source| CliError::InvalidCommandArgument {
+            argument_name: "--valuation-time-utc",
+            message: format!("must be an RFC 3339 timestamp: {source}"),
+        })
+}
+
+fn required_f64(argument_name: &'static str, value: Option<f64>) -> Result<f64, CliError> {
+    value.ok_or(CliError::MissingRequiredArgument { argument_name })
+}
+
+fn model_run_id(model_payload: &Value) -> Result<&str, CliError> {
+    model_payload
+        .get("run_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CliError::ArtifactMalformed {
+            artifact_name: "model",
+            path: PathBuf::from("model_payload"),
+            message: "missing string field `run_id`".to_string(),
+        })
+}
+
+fn resolve_pricing_output_path(
+    context: &CommandContext,
+    output_path: Option<PathBuf>,
+    run_id: &str,
+) -> PathBuf {
+    let Some(output_path) = output_path else {
+        return default_run_output_directory(context, run_id).join("pricing.json");
+    };
+
+    let mut resolved_path = context.paths().resolve_process_path(&output_path);
+    if resolved_path.extension().is_none() {
+        resolved_path.set_extension("json");
+    }
+
+    resolved_path
+}
+
+fn progress_adapter_for_context(
+    context: &CommandContext,
+    run_id: &str,
+    output_path: &std::path::Path,
+) -> Result<Option<ProgressAdapter>, CliError> {
+    match context.output_mode() {
+        OutputMode::Human | OutputMode::Quiet => {
+            let mut adapter = ProgressAdapter::stderr();
+
+            adapter.observe(ProgressEvent::RunStarted {
+                run_id: run_id.to_string(),
+                scope: "Pricing".to_string(),
+                input_count: 1,
+                output_path: Some(janiform_terminal_ui::format_path(output_path)),
+                stage_sequence: Vec::new(),
+            });
+
+            adapter
+                .draw_latest()
+                .map_err(|source| CliError::OutputProgress { source })?;
+
+            Ok(Some(adapter))
+        }
+        OutputMode::Json | OutputMode::Silent => Ok(None),
+    }
+}
+
+fn observe_pricing_progress(
+    progress_adapter: Option<&mut ProgressAdapter>,
+    phase: &str,
+    latest_signal: &str,
+) -> Result<(), CliError> {
+    let Some(progress_adapter) = progress_adapter else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunProgress {
+        phase: phase.to_string(),
+        measure: ProgressMeasure::Unbounded,
+        latest_signal: Some(latest_signal.to_string()),
+    });
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| CliError::OutputProgress { source })
+}
+
+fn complete_progress(progress_adapter: Option<&mut ProgressAdapter>) -> Result<(), CliError> {
+    let Some(progress_adapter) = progress_adapter else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunCompleted {
+        status: "completed".to_string(),
+    });
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| CliError::OutputProgress { source })?;
+
+    progress_adapter
+        .finish_and_keep()
+        .map_err(|source| CliError::OutputWrite { source })
+}
+
+fn emit_start_summary(
+    context: &CommandContext,
+    run_id: &str,
+    model_path: &std::path::Path,
+    output_path: &std::path::Path,
+    valuation_time_utc: &str,
+) -> Result<(), CliError> {
+    if context.output_mode() != OutputMode::Human {
+        return Ok(());
+    }
+
+    let rendered = pricing_start_summary(run_id, model_path, output_path, valuation_time_utc)
+        .render(&context.stdout_renderer());
+
+    context
+        .stdout_renderer()
+        .write_stdout(&format!("\n{rendered}"))
+        .map_err(|source| CliError::OutputWrite { source })
+}
+
+fn emit_completion(
+    context: &CommandContext,
+    model_path: &std::path::Path,
+    output: &janiform_workflows::pricing::FittedModelSingleOptionPricingOutput,
+) -> Result<(), CliError> {
+    match context.output_mode() {
+        OutputMode::Json => write_json_payload(&output.completion_payload(model_path)?),
+        OutputMode::Human | OutputMode::Quiet => {
+            let rendered = pricing_completion_summary(output, output.execution_duration)
+                .render(&context.stdout_renderer());
+
+            context
+                .stdout_renderer()
+                .write_stdout(&rendered)
+                .map_err(|source| CliError::OutputWrite { source })
+        }
+        OutputMode::Silent => Ok(()),
+    }
+}
+
+fn payoff_type(payoff_type: PricePayoffType) -> VanillaOptionPayoffType {
+    match payoff_type {
+        PricePayoffType::Call => VanillaOptionPayoffType::Call,
+        PricePayoffType::Put => VanillaOptionPayoffType::Put,
+    }
+}
+
+fn pricing_run_id(model_run_id: &str) -> String {
+    format!(
+        "{model_run_id}_price_{}",
+        chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+    )
+}

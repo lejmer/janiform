@@ -1,12 +1,9 @@
-use janiform::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, materialize_endogenous_anchor_path,
-};
+use janiform::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform::hawkes::HawkesExcitationState;
 use janiform::hourly_factors::HourlyFactorContractOutput;
 use janiform::simulation::{
     CoarseSimulationModelInputs, MeanReversionBoundaryState, SeededTickSimulationDebugTraceOptions,
     SeededTickSimulationModelInputs, SeededTickSimulationRunOptions,
-    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 use janiform::sufficient_statistics::{
     SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
@@ -21,9 +18,6 @@ use super::{ModelSimulationKind, ModelSimulationWorkflowRequest};
 use crate::simulation::direct::{
     CoarseIntervalExportSettings, DirectSimulationJob, SeededTickExportSettings,
 };
-
-const DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE: f64 = 0.0;
-const DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION: f64 = 0.0;
 
 pub(super) fn build_direct_job(
     request: &ModelSimulationWorkflowRequest,
@@ -200,73 +194,12 @@ fn materialize_mean_reversion_runtime_inputs(
     ),
     WorkflowError,
 > {
-    let interval_factors =
-        janiform_calibration_runtime::endogenous_interval_factors_from_hourly_contract(
-            hourly_factor_contract,
-        )
-        .map_err(|source| validation_error("hourly_factor_contract", source))?;
-
-    let interval_alignment_policy = hourly_factor_contract.metadata.interval_alignment_policy;
-
-    let anchor_materialization = materialize_endogenous_anchor_path(
-        interval_alignment_policy,
-        start_anchor_value,
-        ExponentialAffineTransformEquationSpecification::try_new(
-            context.hawkes_fitted_parameters.kernel_parameters,
-            context
-                .return_components_fitted_parameters
-                .news_process_configuration
-                .shared_mark_law
-                .gamma_severity_marks,
-        )
-        .map_err(|source| validation_error("equation_specification", source.to_string()))?,
-        context
-            .return_components_fitted_parameters
-            .nig_shared_plus_shift_configuration,
-        &context
-            .return_components_fitted_parameters
-            .news_process_configuration,
+    crate::model::materialize_mean_reversion_runtime_inputs(
+        context,
+        hourly_factor_contract,
         initial_excitation_state,
-        interval_factors.as_slice(),
+        start_anchor_value,
+        context.interval_delta,
+        request.horizon_interval_count,
     )
-    .map_err(|source| validation_error("mean_reversion_runtime", source.to_string()))?;
-
-    let core_expected_increments = anchor_materialization
-        .interval_expectations
-        .iter()
-        .map(|expectation| expectation.core_expected_increment)
-        .collect::<Vec<_>>();
-
-    let interval_deltas = vec![context.interval_delta; request.horizon_interval_count];
-
-    let runtime_interval_anchors =
-        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            interval_alignment_policy,
-            start_anchor_value,
-            DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE,
-            &context
-                .return_components_fitted_parameters
-                .mean_reversion_fitted_parameters
-                .anchor_model,
-            core_expected_increments.as_slice(),
-            interval_deltas.as_slice(),
-        )
-        .map_err(|source| validation_error("mean_reversion_runtime", source.to_string()))?;
-
-    let initial_boundary_state = match MeanReversionBoundaryState::try_new(
-        runtime_interval_anchors.start_anchor_value,
-        runtime_interval_anchors.start_anchor_value,
-        runtime_interval_anchors.start_pressure_state,
-        DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION,
-    ) {
-        Ok(boundary_state) => boundary_state,
-        Err(source) => {
-            return Err(validation_error(
-                "mean_reversion_boundary_state",
-                source.to_string(),
-            ));
-        }
-    };
-
-    Ok((runtime_interval_anchors, initial_boundary_state))
 }

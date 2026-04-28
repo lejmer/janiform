@@ -3,12 +3,11 @@ use janiform::calibration::{
 };
 use janiform::hawkes::{HawkesEventSide, HawkesExcitationState};
 use janiform::simulation::MeanReversionBoundaryState;
-use serde_json::Value;
 
 use crate::error::WorkflowError;
 
 use super::ModelSimulationWorkflowRequest;
-use super::context::{ModelRuntimeContext, PersistedModelPayload};
+use super::context::ModelRuntimeContext;
 use super::support::validation_error;
 
 pub(super) struct ResolvedInitialState {
@@ -76,7 +75,7 @@ fn estimate_current_state(
             .unwrap_or(0.0)
     });
 
-    let reference_price = model_reference_price(&context.model)?;
+    let reference_price = crate::model::model_reference_price(&context.model)?;
 
     let observed_log_price = (observed_price / reference_price).ln();
 
@@ -119,26 +118,4 @@ fn estimate_current_state(
         observation_trade_sides,
     })
     .map_err(|source| validation_error("continuation_data", source.to_string()))
-}
-
-fn model_reference_price(model: &PersistedModelPayload) -> Result<f64, WorkflowError> {
-    let reference_price = model
-        .metadata
-        .pointer("/simulation_output_preferences/reference_price")
-        .and_then(Value::as_f64)
-        .ok_or_else(|| {
-            validation_error(
-                "model_payload.metadata.simulation_output_preferences.reference_price",
-                "must be present so continuation state can be derived from spot",
-            )
-        })?;
-
-    if !reference_price.is_finite() || reference_price <= 0.0 {
-        return Err(validation_error(
-            "model_payload.metadata.simulation_output_preferences.reference_price",
-            "must be finite and strictly positive",
-        ));
-    }
-
-    Ok(reference_price)
 }

@@ -59,14 +59,6 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
     for arguments in [
         &[
             "price",
-            "fitted-model",
-            "--model-path",
-            "model.jf",
-            "--strike",
-            "5000",
-        ][..],
-        &[
-            "price",
             "observed-options",
             "--model-path",
             "model.jf",
@@ -147,6 +139,43 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn price_fitted_model_validates_model_path_at_rust_boundary() {
+    let output = janiform_command()
+        .args([
+            "--json",
+            "price",
+            "fitted-model",
+            "--model-path",
+            "missing-model.json",
+            "--valuation-time-utc",
+            "2026-01-01T00:00:00Z",
+            "--spot",
+            "101",
+            "--strike",
+            "100",
+            "--tenor",
+            "1d",
+        ])
+        .output()
+        .expect("janiform price fitted-model should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::CommandLineUsage as i32)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write terminal diagnostics to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["code"], "missing_input_file");
 }
 
 #[test]
@@ -843,11 +872,11 @@ fn terminal_diagnostics_follow_color_policy() {
             "--color",
             "always",
             "price",
-            "fitted-model",
+            "observed-options",
             "--model-path",
             "model.jf",
-            "--strike",
-            "5000",
+            "--option-surface-path",
+            "options.parquet",
         ])
         .output()
         .expect("janiform command should execute");
@@ -866,11 +895,11 @@ fn terminal_diagnostics_follow_color_policy() {
             "--color",
             "never",
             "price",
-            "fitted-model",
+            "observed-options",
             "--model-path",
             "model.jf",
-            "--strike",
-            "5000",
+            "--option-surface-path",
+            "options.parquet",
         ])
         .output()
         .expect("janiform command should execute");
@@ -912,11 +941,11 @@ fn toml_configuration_supplies_cli_boundary_defaults() {
                 .to_str()
                 .expect("temporary config path should be valid UTF-8"),
             "price",
-            "fitted-model",
+            "observed-options",
             "--model-path",
             "model.jf",
-            "--strike",
-            "5000",
+            "--option-surface-path",
+            "options.parquet",
         ])
         .output()
         .expect("janiform command should execute");

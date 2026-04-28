@@ -37,6 +37,24 @@ pub enum WorkflowError {
         message: String,
     },
 
+    /// Persisted fitted-model validation failed.
+    #[error("{field}: {message}")]
+    ModelValidationFailed {
+        /// Field that failed validation.
+        field: &'static str,
+        /// User-readable validation message.
+        message: String,
+    },
+
+    /// Pricing workflow input validation failed.
+    #[error("{field}: {message}")]
+    PricingValidationFailed {
+        /// Field that failed validation.
+        field: &'static str,
+        /// User-readable validation message.
+        message: String,
+    },
+
     /// Fit artifact writing failed.
     #[error("failed to write fit artifact `{}`", path.display())]
     FitArtifactWrite {
@@ -64,6 +82,23 @@ pub enum WorkflowError {
         /// Source IO error.
         #[source]
         source: io::Error,
+    },
+
+    /// Pricing artifact writing failed.
+    #[error("failed to write pricing artifact `{}`", path.display())]
+    PricingArtifactWrite {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source IO error.
+        #[source]
+        source: io::Error,
+    },
+
+    /// Pricing execution failed before producing an artifact.
+    #[error("pricing execution failed: {message}")]
+    PricingExecutionFailed {
+        /// User-readable failure reason.
+        message: String,
     },
 
     /// Fit event-log writing failed.

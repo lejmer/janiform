@@ -330,6 +330,19 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                     message,
                 }
             }
+            janiform_workflows::error::WorkflowError::ModelValidationFailed { field, message } => {
+                Self::InvalidCommandArgument {
+                    argument_name: field,
+                    message,
+                }
+            }
+            janiform_workflows::error::WorkflowError::PricingValidationFailed {
+                field,
+                message,
+            } => Self::InvalidCommandArgument {
+                argument_name: field,
+                message,
+            },
             janiform_workflows::error::WorkflowError::SimulationValidationFailed {
                 field,
                 message,
@@ -345,6 +358,19 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                     artifact_name: "simulation artifact",
                     path,
                     source,
+                }
+            }
+            janiform_workflows::error::WorkflowError::PricingArtifactWrite { path, source } => {
+                Self::ArtifactWrite {
+                    artifact_name: "pricing artifact",
+                    path,
+                    source,
+                }
+            }
+            janiform_workflows::error::WorkflowError::PricingExecutionFailed { message } => {
+                Self::InvalidCommandArgument {
+                    argument_name: "price",
+                    message,
                 }
             }
             janiform_workflows::error::WorkflowError::FitEventLog { source } => {
