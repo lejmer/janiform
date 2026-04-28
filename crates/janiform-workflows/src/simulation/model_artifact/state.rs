@@ -6,7 +6,7 @@ use janiform::simulation::MeanReversionBoundaryState;
 
 use crate::error::WorkflowError;
 
-use super::ModelSimulationWorkflowRequest;
+use super::ModelArtifactSimulationWorkflowRequest;
 use super::context::ModelRuntimeContext;
 use super::support::validation_error;
 
@@ -17,7 +17,7 @@ pub(super) struct ResolvedInitialState {
 }
 
 pub(super) fn resolve_initial_state(
-    request: &ModelSimulationWorkflowRequest,
+    request: &ModelArtifactSimulationWorkflowRequest,
     context: &ModelRuntimeContext,
 ) -> Result<ResolvedInitialState, WorkflowError> {
     let estimated_state = if request.continuation_data.is_some()
@@ -59,7 +59,7 @@ pub(super) fn resolve_initial_state(
 }
 
 fn estimate_current_state(
-    request: &ModelSimulationWorkflowRequest,
+    request: &ModelArtifactSimulationWorkflowRequest,
     context: &ModelRuntimeContext,
 ) -> Result<janiform_calibration_runtime::CurrentStateEstimationOutput, WorkflowError> {
     let continuation_data = request

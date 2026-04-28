@@ -1,12 +1,12 @@
 use crate::error::WorkflowError;
 use crate::model::{FittedModelContext, fitted_model_context};
 
-use super::ModelSimulationWorkflowRequest;
+use super::ModelArtifactSimulationWorkflowRequest;
 
 pub(super) use crate::model::FittedModelContext as ModelRuntimeContext;
 
 pub(super) fn runtime_context(
-    request: &ModelSimulationWorkflowRequest,
+    request: &ModelArtifactSimulationWorkflowRequest,
 ) -> Result<FittedModelContext, WorkflowError> {
     fitted_model_context(
         &request.model_payload,

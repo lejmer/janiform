@@ -1125,7 +1125,7 @@ def materialize_endogenous_mean_reversion_runtime_interval_anchors(
 ) -> object: ...
 
 
-def run_model_simulation_workflow(
+def run_simulation_from_model_artifact(
     request: object,
     event_callback: Optional[object] = None,
 ) -> object: ...

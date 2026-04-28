@@ -11,13 +11,13 @@ use super::factors;
 use super::job;
 use super::state;
 use super::support::validation_error;
-use super::{ModelSimulationWorkflowOutput, ModelSimulationWorkflowRequest};
+use super::{ModelArtifactSimulationWorkflowOutput, ModelArtifactSimulationWorkflowRequest};
 
-/// Run a fitted-model simulation workflow from a persisted model payload.
-pub fn run_model_simulation_workflow(
-    request: ModelSimulationWorkflowRequest,
+/// Run a simulation workflow from a persisted model artifact payload.
+pub fn run_simulation_from_model_artifact(
+    request: ModelArtifactSimulationWorkflowRequest,
     observer: &mut dyn FnMut(SimulationProgressEvent),
-) -> Result<ModelSimulationWorkflowOutput, WorkflowError> {
+) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
     validate_request(&request)?;
 
     let started_at = Instant::now();
@@ -31,14 +31,14 @@ pub fn run_model_simulation_workflow(
 
     let export_summary = completed.export(request.output_path.as_deref())?;
 
-    Ok(ModelSimulationWorkflowOutput {
+    Ok(ModelArtifactSimulationWorkflowOutput {
         completed,
         export_summary,
         execution_duration: started_at.elapsed(),
     })
 }
 
-fn validate_request(request: &ModelSimulationWorkflowRequest) -> Result<(), WorkflowError> {
+fn validate_request(request: &ModelArtifactSimulationWorkflowRequest) -> Result<(), WorkflowError> {
     if request.horizon_interval_count == 0 {
         return Err(validation_error(
             "horizon_interval_count",
@@ -67,7 +67,7 @@ fn validate_request(request: &ModelSimulationWorkflowRequest) -> Result<(), Work
     Ok(())
 }
 
-impl ModelSimulationWorkflowOutput {
+impl ModelArtifactSimulationWorkflowOutput {
     /// Serialize the public workflow metadata fields.
     pub fn response_payload(&self) -> Result<Value, WorkflowError> {
         let completion = self.completed.completion();

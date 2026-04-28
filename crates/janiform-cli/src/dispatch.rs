@@ -48,7 +48,7 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
             Some(SimulateSubcommand::CoarseInterval(command)) => {
                 crate::commands::simulation::run_simulate_coarse_interval(context, command)
             }
-            None => crate::commands::simulation::run_simulate_model(context, command),
+            None => crate::commands::simulation::run_simulate_from_model_artifact(context, command),
         },
         RootCommand::Presets(command) => match command.command {
             PresetsSubcommand::List(_) => not_implemented("presets list"),

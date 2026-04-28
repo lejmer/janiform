@@ -4,15 +4,15 @@ use janiform::hourly_factors::{HourlyFactorContractOutput, ONE_HOUR_NANOS};
 
 use crate::error::WorkflowError;
 
-use super::ModelSimulationKind;
-use super::ModelSimulationWorkflowRequest;
+use super::ModelArtifactSimulationKind;
+use super::ModelArtifactSimulationWorkflowRequest;
 use super::context::ModelRuntimeContext;
 use super::support::validation_error;
 
 const CLOSED_INTERVAL_SEASONALITY_FACTOR: f64 = 0.0;
 
 pub(super) fn build_hourly_factor_contract(
-    request: &ModelSimulationWorkflowRequest,
+    request: &ModelArtifactSimulationWorkflowRequest,
     context: &ModelRuntimeContext,
 ) -> Result<HourlyFactorContractOutput, WorkflowError> {
     let mut hourly_factor_contract = crate::model::build_hourly_factor_contract(
@@ -22,7 +22,7 @@ pub(super) fn build_hourly_factor_contract(
         request.interval_duration_nanos,
     )?;
 
-    if request.simulation_kind == ModelSimulationKind::CoarseInterval {
+    if request.simulation_kind == ModelArtifactSimulationKind::CoarseInterval {
         zero_closed_coarse_interval_seasonality_factors(&mut hourly_factor_contract, context)?;
     }
 

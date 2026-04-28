@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use janiform::simulation::SeededTickEventStateSnapshotCapture;
 use janiform_foundations::time::parse_duration_spec_nanos;
 use janiform_workflows::simulation::{
-    ModelSimulationKind, ModelSimulationWorkflowRequest, run_model_simulation_workflow,
-    simulation_output_preferences_from_model_payload,
+    ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest,
+    run_simulation_from_model_artifact, simulation_output_preferences_from_model_payload,
 };
 
 use super::SimulateCommand;
@@ -18,18 +18,19 @@ use crate::commands::shared::output_paths::default_run_output_directory;
 use crate::context::CommandContext;
 use crate::error::CliError;
 
-const DEFAULT_MODEL_SIMULATION_SEED: u64 = 0;
-const MODEL_SEEDED_TICK_SCOPE_LABEL: &str = "model seeded tick simulation";
-const MODEL_COARSE_INTERVAL_SCOPE_LABEL: &str = "model coarse interval simulation";
+const DEFAULT_MODEL_ARTIFACT_SIMULATION_SEED: u64 = 0;
+const MODEL_ARTIFACT_SEEDED_TICK_SCOPE_LABEL: &str = "model artifact seeded tick simulation";
+const MODEL_ARTIFACT_COARSE_INTERVAL_SCOPE_LABEL: &str =
+    "model artifact coarse interval simulation";
 
-pub(crate) fn run_simulate_model(
+pub(crate) fn run_simulate_from_model_artifact(
     context: &CommandContext,
     command: SimulateCommand,
 ) -> Result<(), CliError> {
     let seed = command
         .simulation
         .seed
-        .unwrap_or(DEFAULT_MODEL_SIMULATION_SEED);
+        .unwrap_or(DEFAULT_MODEL_ARTIFACT_SIMULATION_SEED);
 
     let start_time_utc = match command.simulation.start_time_utc.as_deref() {
         Some(start_time_utc) => parse_start_time_utc(start_time_utc, "--start-time-utc")?,
@@ -42,9 +43,9 @@ pub(crate) fn run_simulate_model(
     let interval_duration_nanos = model_interval_duration_nanos(command.interval.as_str())?;
 
     let simulation_kind = if command.coarse {
-        ModelSimulationKind::CoarseInterval
+        ModelArtifactSimulationKind::CoarseInterval
     } else {
-        ModelSimulationKind::SeededTick
+        ModelArtifactSimulationKind::SeededTick
     };
 
     let run_id = direct_simulation_run_id("model");
@@ -58,7 +59,7 @@ pub(crate) fn run_simulate_model(
         output_preferences.default_file_format,
     );
 
-    let scope_label = model_simulation_scope_label(simulation_kind);
+    let scope_label = model_artifact_simulation_scope_label(simulation_kind);
 
     emit_start_summary(
         context,
@@ -75,8 +76,8 @@ pub(crate) fn run_simulate_model(
 
     let mut observer = simulation_progress_observer(progress_adapter.as_mut(), &mut progress_error);
 
-    let output = run_model_simulation_workflow(
-        ModelSimulationWorkflowRequest {
+    let output = run_simulation_from_model_artifact(
+        ModelArtifactSimulationWorkflowRequest {
             model_payload,
             simulation_kind,
             seed,
@@ -109,7 +110,7 @@ pub(crate) fn run_simulate_model(
     write_report_and_manifest(
         output_path.as_path(),
         &run_id,
-        model_simulation_report_kind(simulation_kind),
+        model_artifact_simulation_report_kind(simulation_kind),
         completed_diagnostics(&output.completed, output.export_summary.as_ref()),
     )?;
 
@@ -165,16 +166,20 @@ fn model_interval_duration_nanos(interval: &str) -> Result<i64, CliError> {
     })
 }
 
-fn model_simulation_scope_label(simulation_kind: ModelSimulationKind) -> &'static str {
+fn model_artifact_simulation_scope_label(
+    simulation_kind: ModelArtifactSimulationKind,
+) -> &'static str {
     match simulation_kind {
-        ModelSimulationKind::SeededTick => MODEL_SEEDED_TICK_SCOPE_LABEL,
-        ModelSimulationKind::CoarseInterval => MODEL_COARSE_INTERVAL_SCOPE_LABEL,
+        ModelArtifactSimulationKind::SeededTick => MODEL_ARTIFACT_SEEDED_TICK_SCOPE_LABEL,
+        ModelArtifactSimulationKind::CoarseInterval => MODEL_ARTIFACT_COARSE_INTERVAL_SCOPE_LABEL,
     }
 }
 
-fn model_simulation_report_kind(simulation_kind: ModelSimulationKind) -> &'static str {
+fn model_artifact_simulation_report_kind(
+    simulation_kind: ModelArtifactSimulationKind,
+) -> &'static str {
     match simulation_kind {
-        ModelSimulationKind::SeededTick => "seeded_tick",
-        ModelSimulationKind::CoarseInterval => "coarse_interval",
+        ModelArtifactSimulationKind::SeededTick => "seeded_tick",
+        ModelArtifactSimulationKind::CoarseInterval => "coarse_interval",
     }
 }

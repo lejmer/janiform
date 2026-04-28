@@ -24,9 +24,9 @@ use janiform::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::simulation::{
     DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, DirectSimulationCompleted,
-    ModelSimulationWorkflowRequest, SimulationOutputColumns, export_coarse_simulation,
+    ModelArtifactSimulationWorkflowRequest, SimulationOutputColumns, export_coarse_simulation,
     export_seeded_tick_simulation,
-    run_model_simulation_workflow as run_model_simulation_workflow_core,
+    run_simulation_from_model_artifact as run_simulation_from_model_artifact_core,
 };
 use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
 use pyo3::types::{
@@ -46,34 +46,34 @@ use crate::types::{
 
 #[pyfunction]
 #[pyo3(signature = (request, event_callback = None))]
-fn run_model_simulation_workflow(
+fn run_simulation_from_model_artifact(
     py: Python<'_>,
     request: &Bound<'_, PyAny>,
     event_callback: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<Py<PyAny>> {
-    let request: ModelSimulationWorkflowRequest =
+    let request: ModelArtifactSimulationWorkflowRequest =
         serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
             SimulationExecutionError::new_err(format!(
-                "failed to deserialize model simulation workflow request: {source}"
+                "failed to deserialize simulation-from-model-artifact workflow request: {source}"
             ))
         })?;
 
     let output = run_simulation_with_optional_progress_events(
         py,
-        "running fitted-model simulation workflow",
+        "running simulation from model artifact",
         request,
         event_callback,
         |request| {
-            run_model_simulation_workflow_core(request, &mut |_| {})
+            run_simulation_from_model_artifact_core(request, &mut |_| {})
                 .map_err(workflow_error_to_simulation_error)
         },
         |request, observer| {
-            run_model_simulation_workflow_core(request, observer)
+            run_simulation_from_model_artifact_core(request, observer)
                 .map_err(workflow_error_to_simulation_error)
         },
     )?;
 
-    model_simulation_workflow_output_to_py_object(py, output)
+    simulation_from_model_artifact_output_to_py_object(py, output)
 }
 
 #[pyfunction]
@@ -383,9 +383,9 @@ fn run_seeded_tick_event_simulation(
     Ok(PySeededTickSimulationNativeResult { output: run_result })
 }
 
-fn model_simulation_workflow_output_to_py_object(
+fn simulation_from_model_artifact_output_to_py_object(
     py: Python<'_>,
-    output: janiform_workflows::simulation::ModelSimulationWorkflowOutput,
+    output: janiform_workflows::simulation::ModelArtifactSimulationWorkflowOutput,
 ) -> PyResult<Py<PyAny>> {
     let result = pyo3::types::PyDict::new(py);
 
@@ -982,7 +982,10 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         materialize_endogenous_mean_reversion_runtime_interval_anchors,
         module
     )?)?;
-    module.add_function(wrap_pyfunction!(run_model_simulation_workflow, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        run_simulation_from_model_artifact,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(run_seeded_tick_event_simulation, module)?)?;
 
     Ok(())

@@ -1226,7 +1226,7 @@
     {
       "approved_on": "2026-04-28",
       "docs_updated": [],
-      "rationale": "High-level fit now exposes the same typed progress callback boundary as fitted-model simulation, so users can observe Rust-owned workflow progress without Python owning a second progress implementation.",
+      "rationale": "High-level fit now exposes the same typed progress callback boundary as simulation from a model artifact, so users can observe Rust-owned workflow progress without Python owning a second progress implementation.",
       "snapshot_sha256": "7081d05aeb1f591ccde2db6250e1a6067b797436b0441dfde9fdbd57c9816495",
       "summary": "Approve typed fit progress callback events.",
       "updated_surfaces": [

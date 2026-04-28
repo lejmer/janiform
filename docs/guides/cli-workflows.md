@@ -20,13 +20,13 @@ boundary.
 ## Simulate
 
 - `janiform simulate --model-path MODEL.jf --horizon-interval-count COUNT` is the
-  fitted-model simulation entrypoint.
+  simulation-from-model-artifact entrypoint.
 - `janiform simulate --model-path MODEL.jf --coarse --horizon-interval-count COUNT` runs the
-  fitted-model coarse-interval path.
+  model-artifact coarse-interval path.
 - `janiform simulate seeded-ticks` runs from an explicit seeded-tick request JSON.
 - `janiform simulate coarse-interval` runs from an explicit coarse-interval request JSON.
 
-The fitted-model command defaults to seeded ticks because that is the fine-path simulation most
+The model-artifact command defaults to seeded ticks because that is the fine-path simulation most
 callers want after fitting. `--interval` controls the horizon unit and defaults to `1h`; it does not
 select the path kind. Add `--coarse` when you want direct interval paths without replaying
 fine-scale events.

@@ -7,13 +7,13 @@ use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
 mod execution;
-mod model;
+mod model_artifact;
 mod rendering;
 mod requests;
 
 pub(crate) use execution::run_simulate_coarse_interval;
 pub(crate) use execution::run_simulate_seeded_ticks;
-pub(crate) use model::run_simulate_model;
+pub(crate) use model_artifact::run_simulate_from_model_artifact;
 
 use janiform_workflows::simulation::DEFAULT_SIMULATION_EXPORT_BATCH_SIZE;
 

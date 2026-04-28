@@ -1116,7 +1116,7 @@ def test_high_level_model_simulate_sends_model_payload_to_native_workflow(
     estimator = JaniformEstimator(market_profile="us_equity_cash")
     model = estimator.fit(tick_data_path=tick_data_path)
 
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -1697,7 +1697,7 @@ def test_high_level_model_simulate_sends_coarse_interval_request_to_native_workf
         run_id="high-level-model-closed-seasonality-gating",
     )
 
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -1727,7 +1727,7 @@ def test_high_level_model_simulate_dispatches_by_explicit_coarse_flag(
     tick_result = object()
 
     class _FakeNativeModule:
-        def run_model_simulation_workflow(
+        def run_simulation_from_model_artifact(
             self,
             request_payload: dict[str, Any],
             progress_callback: Any,
@@ -1821,7 +1821,7 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback(
     observed_callback_events: list[tuple[str, int, int]] = []
 
     class _FakeNativeModule:
-        def run_model_simulation_workflow(
+        def run_simulation_from_model_artifact(
             self,
             request_payload: dict[str, Any],
             progress_callback: Any,
@@ -2053,7 +2053,7 @@ def test_high_level_model_simulate_sends_continuation_data_to_native_workflow(
             }
         ),
     )
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2111,7 +2111,7 @@ def test_high_level_model_simulate_sends_hawkes_override_to_native_workflow(
             }
         ),
     )
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2150,7 +2150,7 @@ def test_high_level_model_simulate_sends_mean_reversion_boundary_override_to_nat
             }
         ),
     )
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2177,7 +2177,7 @@ def test_high_level_model_simulate_leaves_state_initialization_to_native_workflo
         monkeypatch,
         run_id="high-level-model-simulate-stationary-default",
     )
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2201,7 +2201,7 @@ def test_high_level_model_coarse_simulation_selects_native_coarse_workflow(
         monkeypatch,
         run_id="high-level-model-coarse-only",
     )
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     observed = model.simulate(
         seed=17,
@@ -2215,7 +2215,7 @@ def test_high_level_model_coarse_simulation_selects_native_coarse_workflow(
     assert captured_requests[0]["simulation_kind"] == "coarse_interval"
 
 
-def test_high_level_model_simulation_sends_mean_reversion_payload_to_native_workflow(
+def test_high_level_model_artifact_simulation_sends_mean_reversion_payload_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2232,7 +2232,7 @@ def test_high_level_model_simulation_sends_mean_reversion_payload_to_native_work
 
     update_model_mean_reversion_payload(model, mean_reversion_payload)
 
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -2271,7 +2271,7 @@ def test_high_level_model_sends_endogenous_mean_reversion_payload_to_native_work
 
     update_model_mean_reversion_payload(model, mean_reversion_payload)
 
-    captured_requests = _capture_native_model_simulation_requests(monkeypatch)
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
     model.simulate(
         seed=17,
@@ -4637,13 +4637,13 @@ def _capture_request(
     return result
 
 
-def _capture_native_model_simulation_requests(
+def _capture_native_model_artifact_simulation_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[dict[str, Any]]:
     captured_requests: list[dict[str, Any]] = []
 
     class _FakeNativeModule:
-        def run_model_simulation_workflow(
+        def run_simulation_from_model_artifact(
             self,
             request_payload: dict[str, Any],
             progress_callback: Any,

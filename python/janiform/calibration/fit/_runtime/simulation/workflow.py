@@ -79,7 +79,7 @@ def simulate_model(
         default_file_format=preferences.file_format,
     )
 
-    request_payload = _build_model_simulation_workflow_request(
+    request_payload = _build_simulation_from_model_artifact_request(
         model,
         run_id=simulation_run_id,
         seed=seed,
@@ -106,7 +106,7 @@ def simulate_model(
 
         native_progress_callback = emit_simulation_progress
 
-    raw_output = native_module().run_model_simulation_workflow(
+    raw_output = native_module().run_simulation_from_model_artifact(
         request_payload,
         native_progress_callback,
     )
@@ -184,7 +184,7 @@ def build_simulation_result(
     return result
 
 
-def _build_model_simulation_workflow_request(
+def _build_simulation_from_model_artifact_request(
     model: JaniformModel,
     *,
     run_id: str,

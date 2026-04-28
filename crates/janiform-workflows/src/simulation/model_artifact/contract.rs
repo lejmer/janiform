@@ -17,13 +17,13 @@ use crate::simulation::direct::DirectSimulationCompleted;
 const DEFAULT_SIMULATION_INTERVAL_DURATION_NANOS: i64 = ONE_HOUR_NANOS;
 const DEFAULT_SEEDED_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1024;
 
-/// Complete fitted-model simulation workflow request.
+/// Complete simulation-from-model-artifact workflow request.
 #[derive(Debug, Deserialize)]
-pub struct ModelSimulationWorkflowRequest {
+pub struct ModelArtifactSimulationWorkflowRequest {
     /// Persisted `JaniformModel` payload.
     pub model_payload: Value,
     /// Simulation kind selected by the public API.
-    pub simulation_kind: ModelSimulationKind,
+    pub simulation_kind: ModelArtifactSimulationKind,
     /// Deterministic run seed.
     pub seed: u64,
     /// First simulated interval start.
@@ -45,7 +45,7 @@ pub struct ModelSimulationWorkflowRequest {
     #[serde(default = "default_simulation_export_batch_size")]
     pub export_batch_size: usize,
     /// Optional continuation observations used to estimate missing initial state.
-    pub continuation_data: Option<ModelSimulationContinuationData>,
+    pub continuation_data: Option<ModelArtifactSimulationContinuationData>,
     /// Optional explicit initial Hawkes state.
     pub initial_excitation_state: Option<HawkesExcitationState>,
     /// Optional explicit initial mean-reversion boundary state.
@@ -64,10 +64,10 @@ pub struct ModelSimulationWorkflowRequest {
     pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
 }
 
-/// Fitted-model simulation kind.
+/// Model-artifact simulation kind.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum ModelSimulationKind {
+pub enum ModelArtifactSimulationKind {
     /// Seeded tick-event simulation.
     SeededTick,
     /// Coarse interval simulation.
@@ -76,7 +76,7 @@ pub enum ModelSimulationKind {
 
 /// Boundary payload for continuation-based current state estimation.
 #[derive(Debug, Deserialize)]
-pub struct ModelSimulationContinuationData {
+pub struct ModelArtifactSimulationContinuationData {
     /// Observation timestamp column in UTC nanoseconds.
     pub observation_timestamp_utc_nanos: Vec<i64>,
     /// Observed trade prices.
@@ -87,8 +87,8 @@ pub struct ModelSimulationContinuationData {
     pub observed_price: Option<f64>,
 }
 
-/// Completed fitted-model simulation workflow.
-pub struct ModelSimulationWorkflowOutput {
+/// Completed simulation-from-model-artifact workflow.
+pub struct ModelArtifactSimulationWorkflowOutput {
     /// Completed native simulation result.
     pub completed: DirectSimulationCompleted,
     /// Optional export summary.

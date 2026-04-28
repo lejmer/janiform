@@ -14,13 +14,13 @@ use crate::error::WorkflowError;
 use super::context::ModelRuntimeContext;
 use super::state::ResolvedInitialState;
 use super::support::validation_error;
-use super::{ModelSimulationKind, ModelSimulationWorkflowRequest};
+use super::{ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest};
 use crate::simulation::direct::{
     CoarseIntervalExportSettings, DirectSimulationJob, SeededTickExportSettings,
 };
 
 pub(super) fn build_direct_job(
-    request: &ModelSimulationWorkflowRequest,
+    request: &ModelArtifactSimulationWorkflowRequest,
     context: &ModelRuntimeContext,
     hourly_factor_contract: HourlyFactorContractOutput,
     initial_state: ResolvedInitialState,
@@ -39,7 +39,7 @@ pub(super) fn build_direct_job(
         .unwrap_or(derived_boundary_state);
 
     match request.simulation_kind {
-        ModelSimulationKind::SeededTick => {
+        ModelArtifactSimulationKind::SeededTick => {
             let run_config = janiform::simulation::SeededTickSimulationRunConfig::try_new(
                 request.seed,
                 request.start_time_utc,
@@ -91,7 +91,7 @@ pub(super) fn build_direct_job(
                 },
             })
         }
-        ModelSimulationKind::CoarseInterval => {
+        ModelArtifactSimulationKind::CoarseInterval => {
             let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
                 context.hawkes_fitted_parameters.kernel_parameters,
                 context
@@ -182,7 +182,7 @@ pub(super) fn build_direct_job(
 }
 
 fn materialize_mean_reversion_runtime_inputs(
-    request: &ModelSimulationWorkflowRequest,
+    request: &ModelArtifactSimulationWorkflowRequest,
     context: &ModelRuntimeContext,
     hourly_factor_contract: &HourlyFactorContractOutput,
     initial_excitation_state: HawkesExcitationState,
