@@ -112,7 +112,27 @@
     \]
     where \(N_t^{\mathrm{known}}\) tracks known-in-advance scheduled times and
     \(N_t^{\mathrm{surprise}}\) captures unscheduled shocks.
-    Use deterministic intensities
+
+    On an implementation interval \(h=[t_h,t_{h+1})\), known arrivals are the
+    persisted scheduled timestamps in that interval.  The known component's
+    interval intensity is therefore the scheduled count divided by the interval
+    duration:
+    \[
+        \nu_h^{\mathrm{known}}
+        =
+        \frac{
+            \#\{\tau_m^{\mathrm{known}}\in[t_h,t_{h+1})\}
+        }{\Delta_h}.
+    \]
+    The surprise component uses a persisted baseline intensity and a
+    non-negative deterministic interval multiplier \(m_h^{\mathrm{surprise}}\):
+    \[
+        \nu_h^{\mathrm{surprise}}
+        =
+        \nu_0^{\mathrm{surprise}}m_h^{\mathrm{surprise}}.
+    \]
+    Equivalently, the deterministic calendar profiles below materialize the
+    interval multipliers consumed by the runtime:
     \[
         \nu_{\mathrm{news}}(t)=\nu_{\mathrm{known}}(t)+\nu_{\mathrm{surprise}}(t),
     \]
@@ -130,11 +150,10 @@
     Trade seasonality \(s(t)\) modulates \(\lambda_t^\pm\) only and does not modulate \(\nu_{\mathrm{news}}(t)\).
 
     \section*{5. News Marks, Activity Shock, and Gap Process}
-    At news times \(\tau_m^{\mathrm{known}}\) and \(\tau_m^{\mathrm{surprise}}\):
+    At news times \(\tau_m^{c}\), with \(c\in\{\mathrm{known},\mathrm{surprise}\}\):
     \[
         U_m\sim\Gamma(k_U,\theta_U),\qquad
-        \varepsilon_m\sim\text{Kou}(p,\eta_+,\eta_-),\qquad
-        Z_m=\sigma_G\sqrt{U_m}\,\varepsilon_m.
+        \varepsilon_m\sim\text{Kou}(p,\eta_+,\eta_-).
     \]
     Here \(\Gamma(k_U,\theta_U)\) is the shape-scale parameterization (shape \(k_U\), scale \(\theta_U\)).
 
@@ -149,10 +168,16 @@
         \eta_+,\eta_->0,\quad p\in(0,1).
     \]
 
+    The shared severity and return mark are component-scaled before dispatch.
+    Let \(a_c\ge0\) denote the activity-coupling scale and \(b_c\ge0\) the
+    return-jump scale for component \(c\).  Then
     \[
-        J_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t} U_m^{\mathrm{known}},
+        Z_m^{c}=b_c\sigma_G\sqrt{U_m^{c}}\,\varepsilon_m^{c},
+    \]
+    \[
+        J_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t} a_{\mathrm{known}}U_m^{\mathrm{known}},
         \qquad
-        J_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t} U_m^{\mathrm{surprise}},
+        J_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t} a_{\mathrm{surprise}}U_m^{\mathrm{surprise}},
         \qquad
         J_t=J_t^{\mathrm{known}}+J_t^{\mathrm{surprise}}.
     \]
@@ -288,7 +313,13 @@
         s_h\bar{\lambda}\big(H_+(\mathbf{D}(\tau))+H_-(\mathbf{D}(\tau))\big)
         +\nu_h\Big(\big(1-\theta_U(\mathbf{D}(\tau)\cdot\mathbf{r})\big)^{-k_U}-1\Big),
     \]
-    and domain condition
+    where \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\).
+    This affine transform is the current aggregate severity-law transform used
+    by the sufficient-statistics and pricing solvers.  Component activity scales
+    \(a_c\) are applied by the simulation dispatch path and by expected-state
+    propagation outside this aggregate transform.
+
+    The domain condition is
     \[
         \mathbf{D}(\tau)\cdot\mathbf{r}<\frac{1}{\theta_U}\quad\forall\tau\in[0,\Delta].
     \]
@@ -299,11 +330,17 @@
         Z_h=(\Sigma_h,p_h^Q,D_h^Q).
     \]
 
-    The risk-neutral local transform is
+    The risk-neutral local characteristic transform is
     \[
-        K_h^Q(u \mid Z_h)
+        \psi_h^Q(u \mid Z_h)
         =
-        K_h^P(u+\theta_h(Z_h)\mid \Sigma_h)-K_h^P(\theta_h(Z_h)\mid \Sigma_h).
+        \psi_h^P(u+i\theta_h(Z_h)\mid \Sigma_h)-\psi_h^P(i\theta_h(Z_h)\mid \Sigma_h).
+    \]
+    Equivalently, for the one-interval log-moment-generating function,
+    \[
+        K_h^Q(v \mid Z_h)
+        =
+        K_h^P(v-\theta_h(Z_h)\mid \Sigma_h)-K_h^P(-\theta_h(Z_h)\mid \Sigma_h).
     \]
 
     Define the risk-neutral expected core increment by
