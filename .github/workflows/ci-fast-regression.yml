@@ -55,7 +55,7 @@ jobs:
             --git-sha "${{ github.sha }}" \
             --run-id "${{ github.run_id }}" \
             --scenario-path "tests/fixtures/benchmarks/benchmark_scenario_catalog.json" \
-            --baseline-path "tests/fixtures/benchmarks/oracle_pricer_risk_performance_baseline_v1_1.json"
+            --baseline-path "tests/fixtures/benchmarks/oracle_pricer_sufficient_statistics_performance_baseline_v1_1.json"
 
       - name: Publish fast-tier summary
         if: always()
