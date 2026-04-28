@@ -1125,6 +1125,11 @@ def materialize_endogenous_mean_reversion_runtime_interval_anchors(
 ) -> object: ...
 
 
+def run_fitted_model_single_option_pricing_workflow(
+    request: object,
+) -> object: ...
+
+
 def run_simulation_from_model_artifact(
     request: object,
     event_callback: Optional[object] = None,

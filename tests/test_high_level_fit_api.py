@@ -95,6 +95,7 @@ from janiform.pricing import (
     AutoActivityCompressedPricingIntervalSchedulePolicy,
     AutoExactSparsePricingIntervalSchedulePolicy,
     VanillaOptionPricingDiagnostics,
+    run_vanilla_option_pricing,
 )
 from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
@@ -111,7 +112,10 @@ from tests.support.calibration import (
     update_model_mean_reversion_payload,
 )
 from tests.support.fit.workflows import patch_fit_workflow_runner
-from tests.support.pricing import build_runtime_interval_schedule
+from tests.support.pricing import (
+    build_anchored_runtime_execution_input_model,
+    build_runtime_interval_schedule,
+)
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -2789,20 +2793,7 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
         run_id="high-level-model-pricing",
     )
 
-    prepared_execution_input = object()
-    captured_execution_inputs: list[Any] = []
-    pricing_result = object()
-
-    monkeypatch.setattr(
-        fit_pricing_workflow_module,
-        "prepare_model_pricing_execution_input",
-        lambda model_value, *args, **kwargs: prepared_execution_input,
-    )
-    monkeypatch.setattr(
-        fit_pricing_workflow_module,
-        "run_vanilla_option_pricing",
-        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
-    )
+    captured_requests, pricing_result = _capture_native_single_option_pricing_requests(monkeypatch)
 
     observed_result = model.price_option(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
@@ -2811,11 +2802,15 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
         expiry_timestamp_utc=datetime(2026, 2, 2, 19, tzinfo=UTC),
     )
 
-    assert observed_result is pricing_result
-    assert captured_execution_inputs == [prepared_execution_input]
+    assert observed_result == pricing_result
+    assert captured_requests[0]["model_payload"]["run_id"] == "high-level-model-pricing"
+    assert captured_requests[0]["valuation_time_utc"] == "2026-02-02T15:00:00+00:00"
+    assert captured_requests[0]["spot"] == 100.0
+    assert captured_requests[0]["strike"] == 105.0
+    assert captured_requests[0]["expiry_timestamp_utc"] == "2026-02-02T19:00:00+00:00"
 
 
-def test_high_level_model_price_option_derives_boundary_state_from_spot_and_model_reference_price(
+def test_high_level_model_price_option_delegates_default_boundary_state_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2824,53 +2819,11 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
         monkeypatch,
         run_id="high-level-model-pricing-derived-boundary",
     )
-    mean_reversion_payload = build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35)
-    derived_boundary_state = MeanReversionBoundaryState(
-        observed_log_price=0.25,
-        anchor_value=0.25,
-        pressure_state=0.1,
-        deviation=0.0,
-    )
-    captured_execution_inputs: list[Any] = []
-    captured_start_anchor_values: list[float] = []
-
     update_model_mean_reversion_payload(
         model,
-        mean_reversion_payload,
+        build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35),
     )
-    reference_price = cast(
-        float,
-        cast(
-            dict[str, Any],
-            cast(dict[str, Any], model.metadata["simulation_output_preferences"]),
-        )["reference_price"],
-    )
-    pricing_result = object()
-
-    monkeypatch.setattr(
-        fit_pricing_workflow_module,
-        "prepare_model_mean_reversion_runtime_inputs",
-        lambda pricing_model, **kwargs: (
-            captured_start_anchor_values.append(cast(float, kwargs["start_anchor_value"]))
-            or (
-                fit_runtime_payloads_module.mean_reversion_fitted_parameters_for_model(pricing_model),
-                MeanReversionRuntimeIntervalAnchors(
-                    interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
-                    start_anchor_value=derived_boundary_state.anchor_value,
-                    start_pressure_state=derived_boundary_state.pressure_state,
-                    end_anchor_values=(derived_boundary_state.anchor_value,),
-                    end_pressure_states=(derived_boundary_state.pressure_state,),
-                    interval_deltas=(1.0,),
-                ),
-                derived_boundary_state,
-            )
-        ),
-    )
-    monkeypatch.setattr(
-        fit_pricing_workflow_module,
-        "run_vanilla_option_pricing",
-        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
-    )
+    captured_requests, pricing_result = _capture_native_single_option_pricing_requests(monkeypatch)
 
     observed_result = model.price_option(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
@@ -2879,14 +2832,10 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
         tenor="4h",
     )
 
-    assert observed_result is pricing_result
-    assert len(captured_execution_inputs) == 1
-    assert captured_start_anchor_values == [pytest.approx(math.log(100.0 / reference_price))]
-
-    pricing_boundary_input = captured_execution_inputs[0].request.boundary_input
-    assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert pricing_boundary_input.observed_boundary_state == derived_boundary_state
-    assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
+    assert observed_result == pricing_result
+    assert captured_requests[0]["spot"] == 100.0
+    assert captured_requests[0]["continuation_data"] is None
+    assert captured_requests[0]["initial_excitation_state"] is None
 
 
 def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
@@ -2983,20 +2932,6 @@ def test_high_level_model_price_option_uses_estimated_current_state_when_observe
         monkeypatch,
         run_id="high-level-model-pricing-estimated-current-state",
     )
-    estimated_state = CurrentStateEstimationResult(
-        hawkes_excitation_state=HawkesExcitationState(
-            y_plus_plus=0.45,
-            y_plus_minus=0.15,
-            y_minus_plus=0.3,
-            y_minus_minus=0.2,
-        ),
-        mean_reversion_boundary_state=MeanReversionBoundaryState(
-            observed_log_price=0.05,
-            anchor_value=0.05,
-            pressure_state=0.0,
-            deviation=0.0,
-        ),
-    )
     observed_data = CurrentStateEstimationRequest(
         observed_tick_data=pandas.DataFrame(
             {
@@ -3006,22 +2941,7 @@ def test_high_level_model_price_option_uses_estimated_current_state_when_observe
             }
         ),
     )
-    captured_execution_inputs: list[Any] = []
-    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
-    pricing_result = object()
-
-    monkeypatch.setattr(
-        fit_model_module,
-        "estimate_current_state_for_model",
-        lambda model_value, *, state_time_utc, request: (
-            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
-        ),
-    )
-    monkeypatch.setattr(
-        fit_pricing_workflow_module,
-        "run_vanilla_option_pricing",
-        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
-    )
+    captured_requests, pricing_result = _capture_native_single_option_pricing_requests(monkeypatch)
 
     observed_result = model.price_option(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
@@ -3031,25 +2951,15 @@ def test_high_level_model_price_option_uses_estimated_current_state_when_observe
         observed_data=observed_data,
     )
 
-    assert observed_result is pricing_result
-    assert captured_estimation_calls == [
-        (
-            datetime(2026, 2, 2, 15, tzinfo=UTC),
-            CurrentStateEstimationRequest(
-                observed_tick_data=observed_data.observed_tick_data,
-                tick_data_column_mapping=observed_data.tick_data_column_mapping,
-                observed_price=100.0,
-            ),
-        )
-    ]
-    assert (
-        captured_execution_inputs[0].request.boundary_input.hawkes_boundary_state
-        == estimated_state.hawkes_excitation_state
-    )
-    assert (
-        captured_execution_inputs[0].request.boundary_input.observed_boundary_state
-        == estimated_state.mean_reversion_boundary_state
-    )
+    assert observed_result == pricing_result
+    assert captured_requests[0]["continuation_data"] == {
+        "observation_timestamp_utc_nanos": (
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 30, tzinfo=UTC)),
+        ),
+        "observation_trade_prices": (100.0,),
+        "observation_trade_sides": ("buy",),
+        "observed_price": 100.0,
+    }
 
 
 def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_default(
@@ -3061,14 +2971,7 @@ def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_
         monkeypatch,
         run_id="high-level-model-pricing-stationary-hawkes-boundary",
     )
-    pricing_result = object()
-    captured_execution_inputs: list[Any] = []
-
-    monkeypatch.setattr(
-        fit_pricing_workflow_module,
-        "run_vanilla_option_pricing",
-        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
-    )
+    captured_requests, pricing_result = _capture_native_single_option_pricing_requests(monkeypatch)
 
     observed_result = model.price_option(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
@@ -3077,19 +2980,9 @@ def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_
         tenor="4h",
     )
 
-    runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
-        model,
-        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
-        horizon_interval_count=4,
-        interval="1h",
-    )
-
-    assert observed_result is pricing_result
-    assert len(captured_execution_inputs) == 1
-    assert (
-        captured_execution_inputs[0].request.boundary_input.hawkes_boundary_state
-        == runtime_factors.kernel_parameters.stationary_excitation_state()
-    )
+    assert observed_result == pricing_result
+    assert captured_requests[0]["continuation_data"] is None
+    assert captured_requests[0]["initial_excitation_state"] is None
 
 
 def test_high_level_model_price_option_requires_reference_price_to_derive_pricing_state(
@@ -3121,7 +3014,7 @@ def test_high_level_model_price_option_requires_reference_price_to_derive_pricin
     )
     assert (
         captured_error.value.failure.message
-        == "must be present so JaniformModel can derive pricing state from spot"
+        == "must be present so runtime state can be derived from spot"
     )
 
 
@@ -3169,18 +3062,7 @@ def test_high_level_model_price_option_resolves_expiry_timestamp_date_and_tenor_
         monkeypatch,
         run_id="high-level-model-pricing-maturity-resolution",
     )
-    captured_maturity_intervals: list[float] = []
-
-    monkeypatch.setattr(
-        fit_pricing_workflow_module,
-        "run_vanilla_option_pricing",
-        lambda execution_input: (
-            captured_maturity_intervals.append(
-                execution_input.request.market_inputs.single_maturity_interval
-            )
-            or object()
-        ),
-    )
+    captured_requests, _pricing_result = _capture_native_single_option_pricing_requests(monkeypatch)
 
     model.price_option(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
@@ -3201,11 +3083,17 @@ def test_high_level_model_price_option_resolves_expiry_timestamp_date_and_tenor_
         tenor="2d",
     )
 
-    assert captured_maturity_intervals == [
-        pytest.approx(4.0),
-        pytest.approx(24.0),
-        pytest.approx(48.0),
+    assert [request["expiry_timestamp_utc"] for request in captured_requests] == [
+        "2026-02-02T19:00:00+00:00",
+        None,
+        None,
     ]
+    assert [request["expiry_date"] for request in captured_requests] == [
+        None,
+        "2026-02-03",
+        None,
+    ]
+    assert [request["tenor"] for request in captured_requests] == [None, None, "2d"]
 
 
 def test_high_level_grid_batch_pricing_resolves_mixed_maturity_axes_to_native_request(
@@ -4676,6 +4564,32 @@ def _capture_native_model_artifact_simulation_requests(
     )
 
     return captured_requests
+
+
+def _capture_native_single_option_pricing_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[list[dict[str, Any]], VanillaOptionPricingRunResult]:
+    captured_requests: list[dict[str, Any]] = []
+    pricing_result = run_vanilla_option_pricing(
+        build_anchored_runtime_execution_input_model()
+    )
+
+    class _FakeNativeModule:
+        def run_fitted_model_single_option_pricing_workflow(
+            self,
+            request_payload: dict[str, Any],
+        ) -> dict[str, Any]:
+            captured_requests.append(request_payload)
+
+            return pricing_result.to_payload()
+
+    monkeypatch.setattr(
+        fit_pricing_workflow_module,
+        "native_module",
+        lambda: _FakeNativeModule(),
+    )
+
+    return captured_requests, pricing_result
 
 
 def _mean_reversion_fitted_parameters_payload_from_model_payload(

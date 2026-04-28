@@ -1,10 +1,8 @@
-use janiform::calibration::{
-    CurrentStateEstimationInput, estimate_current_state_from_observed_data,
-};
-use janiform::hawkes::{HawkesEventSide, HawkesExcitationState};
+use janiform::hawkes::HawkesExcitationState;
 use janiform::simulation::MeanReversionBoundaryState;
 
 use crate::error::WorkflowError;
+use crate::model::{ModelStateObservationData, estimate_current_state_from_observation_data};
 
 use super::ModelArtifactSimulationWorkflowRequest;
 use super::context::ModelRuntimeContext;
@@ -67,55 +65,20 @@ fn estimate_current_state(
         .as_ref()
         .ok_or_else(|| validation_error("continuation_data", "missing continuation data"))?;
 
-    let observed_price = continuation_data.observed_price.unwrap_or_else(|| {
-        continuation_data
-            .observation_trade_prices
-            .last()
-            .copied()
-            .unwrap_or(0.0)
-    });
-
-    let reference_price = crate::model::model_reference_price(&context.model)?;
-
-    let observed_log_price = (observed_price / reference_price).ln();
-
-    let observation_trade_sides = continuation_data
-        .observation_trade_sides
-        .iter()
-        .map(|side| HawkesEventSide::try_from(side.as_str()))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|source| {
-            validation_error(
-                "continuation_data.observation_trade_sides",
-                source.to_string(),
-            )
-        })?;
-
-    let state_time_utc_nanos = request
-        .start_time_utc
-        .timestamp_nanos_opt()
-        .ok_or_else(|| {
-            validation_error(
-                "start_time_utc",
-                "timestamp is outside the supported nanosecond range",
-            )
-        })?;
-
-    estimate_current_state_from_observed_data(CurrentStateEstimationInput {
-        kernel_parameters: context.hawkes_fitted_parameters.kernel_parameters,
-        // Intentional copy because current-state estimation owns the fitted
-        // payload while the runtime context remains available to request builders.
-        mean_reversion_fitted_parameters: context
-            .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
-            .clone(),
-        state_time_utc_nanos,
-        observed_log_price,
-        // Intentional copies because current-state estimation owns observation
-        // columns while the workflow request stays available for error context.
-        observation_timestamp_utc_nanos: continuation_data.observation_timestamp_utc_nanos.clone(),
-        observation_trade_prices: continuation_data.observation_trade_prices.clone(),
-        observation_trade_sides,
-    })
+    estimate_current_state_from_observation_data(
+        context,
+        request.start_time_utc,
+        &ModelStateObservationData {
+            // Intentional copies because the shared model-state estimator owns
+            // observation columns while the workflow request remains borrowed.
+            observation_timestamp_utc_nanos: continuation_data
+                .observation_timestamp_utc_nanos
+                .clone(),
+            observation_trade_prices: continuation_data.observation_trade_prices.clone(),
+            observation_trade_sides: continuation_data.observation_trade_sides.clone(),
+            observed_price: continuation_data.observed_price,
+        },
+        None,
+    )
     .map_err(|source| validation_error("continuation_data", source.to_string()))
 }

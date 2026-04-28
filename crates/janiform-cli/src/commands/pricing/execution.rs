@@ -94,6 +94,8 @@ fn run_fitted_model_pricing(
             option.include_calibration_hooks,
         ),
         pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::default(),
+        continuation_data: None,
+        initial_excitation_state: None,
         output_path: Some(output_path),
     };
 

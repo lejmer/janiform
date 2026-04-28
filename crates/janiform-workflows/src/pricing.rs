@@ -2,38 +2,51 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
+use janiform::hawkes::HawkesExcitationState;
 use janiform::hourly_factors::ONE_HOUR_NANOS;
 use janiform::pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, HighLevelPricingMaturityResolutionRequest,
-    PricingIntervalSchedule, PricingIntervalSchedulePolicy, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingRunResult,
-    materialize_schedule_interval_factors, resolve_high_level_pricing_maturity_inputs,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedulePolicy,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingRunResult, materialize_schedule_interval_factors,
     run_vanilla_option_pricing,
 };
+use janiform_foundations::time::deserialize_utc_datetime;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 mod artifacts;
+mod maturity;
+mod state;
 
+/// Continuation observations used by fitted-model pricing.
+pub use crate::model::ModelStateObservationData as FittedModelPricingContinuationData;
 pub use artifacts::PricingArtifactPaths;
 
 use crate::error::WorkflowError;
 use crate::model::{
-    build_hourly_factor_contract, fitted_model_context, materialize_mean_reversion_runtime_inputs,
-    model_reference_price, pricing_nig_shared_plus_shift_configuration, validation_error,
+    build_hourly_factor_contract, fitted_model_context, model_reference_price,
+    pricing_nig_shared_plus_shift_configuration,
 };
 use artifacts::{pricing_artifact_paths, write_pricing_artifacts};
+use maturity::{
+    finalize_single_maturity_resolution, resolve_single_maturity,
+    runtime_schedule_hourly_factor_contract_coverage,
+};
+use state::resolve_pricing_boundary_state;
 
 const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = ONE_HOUR_NANOS;
 
 /// Explicit fitted-model single-option pricing request.
+#[derive(Debug, Deserialize)]
 pub struct FittedModelSingleOptionPricingRequest {
     /// Persisted `JaniformModel` payload.
     pub model_payload: Value,
     /// Optional stable pricing run id.
     pub run_id: Option<String>,
     /// Pricing valuation timestamp.
+    #[serde(deserialize_with = "deserialize_utc_datetime")]
     pub valuation_time_utc: DateTime<Utc>,
     /// Current spot price.
     pub spot: f64,
@@ -52,9 +65,15 @@ pub struct FittedModelSingleOptionPricingRequest {
     /// Continuously compounded dividend yield.
     pub dividend_yield: f64,
     /// Optional pricing output selections.
+    #[serde(default)]
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     /// Pricing interval schedule policy.
+    #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
+    /// Optional continuation observations used to estimate the pricing boundary state.
+    pub continuation_data: Option<FittedModelPricingContinuationData>,
+    /// Optional explicit initial Hawkes state.
+    pub initial_excitation_state: Option<HawkesExcitationState>,
     /// Primary output path.
     pub output_path: Option<PathBuf>,
 }
@@ -93,9 +112,16 @@ pub fn run_fitted_model_single_option_pricing(
         None => pricing_run_id(&context.model.run_id),
     };
 
-    let maturity_resolution = resolve_single_maturity(&request)?;
-    let runtime_input = prepare_runtime_input(&request, &context, &maturity_resolution)?;
-    let execution_input = build_execution_input(&request, runtime_input, maturity_resolution)?;
+    let initial_maturity_resolution = resolve_single_maturity(&request)?;
+
+    let prepared_pricing_input =
+        prepare_pricing_input(&request, &context, initial_maturity_resolution)?;
+
+    let execution_input = build_execution_input(
+        &request,
+        prepared_pricing_input.runtime_input,
+        prepared_pricing_input.maturity_resolution,
+    )?;
 
     let run_result = run_vanilla_option_pricing(execution_input).map_err(|source| {
         WorkflowError::PricingExecutionFailed {
@@ -153,6 +179,11 @@ struct PreparedPricingRuntimeInput {
     interval_factors: Vec<janiform::pricing::VanillaOptionPricingIntervalFactors>,
 }
 
+struct PreparedPricingInput {
+    runtime_input: PreparedPricingRuntimeInput,
+    maturity_resolution: janiform::pricing::HighLevelPricingMaturityResolution,
+}
+
 fn validate_single_option_request(
     request: &FittedModelSingleOptionPricingRequest,
 ) -> Result<(), WorkflowError> {
@@ -197,34 +228,11 @@ fn validate_single_option_request(
     Ok(())
 }
 
-fn resolve_single_maturity(
-    request: &FittedModelSingleOptionPricingRequest,
-) -> Result<janiform::pricing::HighLevelPricingMaturityResolution, WorkflowError> {
-    resolve_high_level_pricing_maturity_inputs(HighLevelPricingMaturityResolutionRequest {
-        valuation_time_utc: request.valuation_time_utc.to_rfc3339(),
-        expiry_timestamps_utc: request.expiry_timestamp_utc.as_ref().map(|value| {
-            // Intentional copy because the native maturity request owns axes.
-            vec![Some(value.clone())]
-        }),
-        expiry_dates: request.expiry_date.as_ref().map(|value| {
-            // Intentional copy because the native maturity request owns axes.
-            vec![Some(value.clone())]
-        }),
-        tenors: request.tenor.as_ref().map(|value| {
-            // Intentional copy because the native maturity request owns axes.
-            vec![Some(value.clone())]
-        }),
-        // Intentional copy because schedule resolution owns the policy value.
-        pricing_interval_schedule_policy: request.pricing_interval_schedule_policy.clone(),
-    })
-    .map_err(|source| pricing_validation_error("maturity_input", source.to_string()))
-}
-
-fn prepare_runtime_input(
+fn prepare_pricing_input(
     request: &FittedModelSingleOptionPricingRequest,
     context: &crate::model::FittedModelContext,
-    maturity_resolution: &janiform::pricing::HighLevelPricingMaturityResolution,
-) -> Result<PreparedPricingRuntimeInput, WorkflowError> {
+    initial_maturity_resolution: janiform::pricing::HighLevelPricingMaturityResolution,
+) -> Result<PreparedPricingInput, WorkflowError> {
     let boundary_hourly_factor_contract = build_hourly_factor_contract(
         context,
         request.valuation_time_utc,
@@ -235,7 +243,7 @@ fn prepare_runtime_input(
     let (pricing_coverage_start_utc, pricing_coverage_end_utc) =
         runtime_schedule_hourly_factor_contract_coverage(
             request.valuation_time_utc,
-            &maturity_resolution.pricing_interval_schedule,
+            &initial_maturity_resolution.pricing_interval_schedule,
         )?;
 
     let pricing_hourly_factor_contract = build_hourly_factor_contract(
@@ -245,22 +253,19 @@ fn prepare_runtime_input(
         DEFAULT_PRICING_INTERVAL_DURATION_NANOS,
     )?;
 
-    let boundary_state = context
-        .hawkes_fitted_parameters
-        .kernel_parameters
-        .stationary_excitation_state()
-        .map_err(|source| validation_error("kernel_parameters", source.to_string()))?;
+    let maturity_resolution = finalize_single_maturity_resolution(
+        request,
+        initial_maturity_resolution,
+        &pricing_hourly_factor_contract,
+    )?;
 
     let reference_price = model_reference_price(&context.model)?;
     let observed_log_price = (request.spot / reference_price).ln();
-
-    let (_anchors, observed_boundary_state) = materialize_mean_reversion_runtime_inputs(
+    let boundary_state = resolve_pricing_boundary_state(
+        request,
         context,
         &boundary_hourly_factor_contract,
-        boundary_state,
         observed_log_price,
-        context.interval_delta,
-        1,
     )?;
 
     let interval_delta = maturity_resolution
@@ -272,7 +277,7 @@ fn prepare_runtime_input(
 
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
-        boundary_state,
+        boundary_state.excitation_state,
         context
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
@@ -280,7 +285,7 @@ fn prepare_runtime_input(
             // mean-reversion contract independent of the shared model context.
             .clone(),
         interval_delta,
-        observed_boundary_state,
+        boundary_state.mean_reversion_boundary_state,
     )
     .map_err(|source| pricing_validation_error("boundary_input", source.to_string()))?;
 
@@ -302,10 +307,13 @@ fn prepare_runtime_input(
     )
     .map_err(|source| pricing_validation_error("runtime_interval_schedule", source.to_string()))?;
 
-    Ok(PreparedPricingRuntimeInput {
-        boundary_input,
-        model_parameters,
-        interval_factors,
+    Ok(PreparedPricingInput {
+        runtime_input: PreparedPricingRuntimeInput {
+            boundary_input,
+            model_parameters,
+            interval_factors,
+        },
+        maturity_resolution,
     })
 }
 
@@ -354,52 +362,6 @@ fn build_execution_input(
         request.optional_output_selection,
     )
     .map_err(|source| pricing_validation_error("execution_input", source.to_string()))
-}
-
-fn runtime_schedule_hourly_factor_contract_coverage(
-    valuation_time_utc: DateTime<Utc>,
-    runtime_interval_schedule: &PricingIntervalSchedule,
-) -> Result<(DateTime<Utc>, DateTime<Utc>), WorkflowError> {
-    let valuation_time_utc_nanos = valuation_time_utc.timestamp_nanos_opt().ok_or_else(|| {
-        pricing_validation_error(
-            "valuation_time_utc",
-            "timestamp is outside the supported nanosecond range",
-        )
-    })?;
-
-    let terminal_interval_end_utc_nanos = runtime_interval_schedule
-        .interval_end_timestamps_utc_nanos
-        .last()
-        .copied()
-        .ok_or_else(|| {
-            pricing_validation_error("runtime_interval_schedule", "must not be empty")
-        })?;
-
-    let coverage_start_utc_nanos = floor_to_hour_utc_nanos(valuation_time_utc_nanos)?;
-    let coverage_end_utc_nanos = ceil_to_hour_utc_nanos(terminal_interval_end_utc_nanos)?;
-
-    Ok((
-        DateTime::<Utc>::from_timestamp_nanos(coverage_start_utc_nanos),
-        DateTime::<Utc>::from_timestamp_nanos(coverage_end_utc_nanos),
-    ))
-}
-
-fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Result<i64, WorkflowError> {
-    timestamp_utc_nanos
-        .div_euclid(ONE_HOUR_NANOS)
-        .checked_mul(ONE_HOUR_NANOS)
-        .ok_or_else(|| pricing_validation_error("timestamp_utc_nanos", "hour floor overflowed"))
-}
-
-fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Result<i64, WorkflowError> {
-    let floor = floor_to_hour_utc_nanos(timestamp_utc_nanos)?;
-    if floor == timestamp_utc_nanos {
-        return Ok(floor);
-    }
-
-    floor
-        .checked_add(ONE_HOUR_NANOS)
-        .ok_or_else(|| pricing_validation_error("timestamp_utc_nanos", "hour ceiling overflowed"))
 }
 
 fn single_failed_node_count(run_result: &VanillaOptionPricingRunResult) -> usize {

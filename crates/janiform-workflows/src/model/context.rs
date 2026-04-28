@@ -1,5 +1,9 @@
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use janiform::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
+use janiform::calibration::{
+    CurrentStateEstimationInput, estimate_current_state_from_observed_data,
+};
+use janiform::hawkes::HawkesEventSide;
 use janiform::hourly_factors::duration_nanos_to_hours;
 use janiform::nig::NigSharedPlusShiftConfiguration;
 use janiform_calibration_artifacts::{
@@ -20,6 +24,19 @@ pub(crate) struct FittedModelContext {
     pub(crate) range_end_utc: DateTime<Utc>,
     pub(crate) hawkes_fitted_parameters: HawkesStageFittedParameters,
     pub(crate) return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+}
+
+/// Trade observations used to estimate the state at a model workflow boundary.
+#[derive(Debug, Deserialize)]
+pub struct ModelStateObservationData {
+    /// Observation timestamps in UTC nanoseconds.
+    pub observation_timestamp_utc_nanos: Vec<i64>,
+    /// Observed trade prices aligned with `observation_timestamp_utc_nanos`.
+    pub observation_trade_prices: Vec<f64>,
+    /// Trade sides aligned with `observation_timestamp_utc_nanos`.
+    pub observation_trade_sides: Vec<String>,
+    /// Optional observed price at the state boundary.
+    pub observed_price: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,6 +173,63 @@ pub(crate) fn pricing_nig_shared_plus_shift_configuration(
             format!("failed to deserialize pricing block NIG parameters: {source}"),
         )
     })
+}
+
+pub(crate) fn estimate_current_state_from_observation_data(
+    context: &FittedModelContext,
+    state_time_utc: DateTime<Utc>,
+    observation_data: &ModelStateObservationData,
+    observed_price_override: Option<f64>,
+) -> Result<janiform_calibration_runtime::CurrentStateEstimationOutput, WorkflowError> {
+    let observed_price = observed_price_override
+        .or(observation_data.observed_price)
+        .or_else(|| observation_data.observation_trade_prices.last().copied())
+        .ok_or_else(|| {
+            validation_error(
+                "observation_data.observation_trade_prices",
+                "must contain at least one price observation",
+            )
+        })?;
+
+    let reference_price = model_reference_price(&context.model)?;
+    let observed_log_price = (observed_price / reference_price).ln();
+
+    let observation_trade_sides = observation_data
+        .observation_trade_sides
+        .iter()
+        .map(|side| HawkesEventSide::try_from(side.as_str()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|source| {
+            validation_error(
+                "observation_data.observation_trade_sides",
+                source.to_string(),
+            )
+        })?;
+
+    let state_time_utc_nanos = state_time_utc.timestamp_nanos_opt().ok_or_else(|| {
+        validation_error(
+            "state_time_utc",
+            "timestamp is outside the supported nanosecond range",
+        )
+    })?;
+
+    estimate_current_state_from_observed_data(CurrentStateEstimationInput {
+        kernel_parameters: context.hawkes_fitted_parameters.kernel_parameters,
+        // Intentional copy because current-state estimation owns the fitted
+        // payload while the runtime context remains available to request builders.
+        mean_reversion_fitted_parameters: context
+            .return_components_fitted_parameters
+            .mean_reversion_fitted_parameters
+            .clone(),
+        state_time_utc_nanos,
+        observed_log_price,
+        // Intentional copies because current-state estimation owns observation
+        // columns while the workflow request stays available for error context.
+        observation_timestamp_utc_nanos: observation_data.observation_timestamp_utc_nanos.clone(),
+        observation_trade_prices: observation_data.observation_trade_prices.clone(),
+        observation_trade_sides,
+    })
+    .map_err(|source| validation_error("observation_data", source.to_string()))
 }
 
 pub(crate) fn validation_error(field: &'static str, message: impl Into<String>) -> WorkflowError {

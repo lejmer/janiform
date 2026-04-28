@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
+from ....._native_api import native_exception_matches, native_module
+from ....._workflow_outputs import generate_workflow_run_id
+from ....._workflow_progress import AbstractProgress, JaniformOutputController, WorkflowProgressMode
 from .....pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     PricingIntervalSchedule,
@@ -16,42 +19,41 @@ from .....pricing import (
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
     VanillaOptionPricingRunResult,
-    run_vanilla_option_pricing,
 )
 from .....simulation.shared import HawkesExcitationState
-from ....._workflow_outputs import generate_workflow_run_id, write_pricing_artifacts
-from ....._workflow_progress import AbstractProgress, JaniformOutputController, WorkflowProgressMode
 from ....errors import calibration_error
 from ...pricing.grids import (
     JaniformVanillaOptionGridBatch,
     JaniformVanillaOptionGridBatchPricingResult,
-)
-from ...pricing.surface import (
-    JaniformVanillaOptionSurface,
-    JaniformVanillaOptionSurfacePricingResult,
 )
 from ...pricing.internal.maturity import (
     finalize_runtime_pricing_schedule,
     resolve_pricing_maturity_axis,
     resolve_single_pricing_maturity_input,
 )
+from ...pricing.surface import (
+    JaniformVanillaOptionSurface,
+    JaniformVanillaOptionSurfacePricingResult,
+)
 from ...state import CurrentStateEstimationRequest
+from .native import (
+    run_model_vanilla_option_grid_batch_pricing,
+    run_model_vanilla_option_surface_pricing,
+)
 from .support import (
     build_model_pricing_hourly_factor_contract,
     price_observed_log_price_from_spot,
     runtime_schedule_hourly_factor_contract_coverage,
 )
+from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
+from ..metadata import build_model_persistence_payload
 from ..payloads import (
     mean_reversion_fitted_parameters_for_model,
     prepare_model_runtime_factors_for_model,
 )
-from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
-from .native import (
-    run_model_vanilla_option_grid_batch_pricing,
-    run_model_vanilla_option_surface_pricing,
-)
-from ..state import estimate_model_state_from_observed_data
 from ..shared import PreparedModelPricingRuntimeInput
+from ..simulation.workflow import _build_continuation_data_payload
+from ..state import estimate_model_state_from_observed_data
 
 if TYPE_CHECKING:
     from ...model import JaniformModel
@@ -94,46 +96,83 @@ def price_option_for_model(
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> VanillaOptionPricingRunResult:
-    output_controller = JaniformOutputController(
-        suppress_info_output=silent,
-        progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
-        default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
-    )
+    del silent, progress_mode
 
-    execution_input = prepare_model_pricing_execution_input(
-        model,
-        valuation_time_utc=valuation_time_utc,
-        spot=spot,
-        strike=strike,
-        expiry_timestamp_utc=expiry_timestamp_utc,
-        expiry_date=expiry_date,
-        tenor=tenor,
-        payoff_type=payoff_type,
-        risk_free_rate=risk_free_rate,
-        dividend_yield=dividend_yield,
-        observed_data=observed_data,
-        boundary_state=boundary_state,
-        include_transform_diagnostics=include_transform_diagnostics,
-        include_integration_quality_diagnostics=include_integration_quality_diagnostics,
-        include_calibration_hooks=include_calibration_hooks,
-        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
-    )
+    try:
+        normalized_payoff_type = (
+            payoff_type
+            if isinstance(payoff_type, VanillaOptionPayoffType)
+            else VanillaOptionPayoffType(payoff_type)
+        )
+    except ValueError as e:
+        raise calibration_error("payoff_type", "must be one of: call, put") from e
 
-    with output_controller.progress("price") as progress:
-        progress.update(detail="running pricing workflow")
-        pricing_result = run_vanilla_option_pricing(execution_input)
+    continuation_payload: Optional[dict[str, Any]] = None
+    if observed_data is not None:
+        continuation_payload = _build_continuation_data_payload(
+            model,
+            continuation_data=observed_data,
+        )
+        if continuation_payload["observed_price"] is None:
+            continuation_payload["observed_price"] = spot
 
-    if output_path is not None:
-        pricing_run_id = generate_workflow_run_id(f"{model.run_id}_price")
-
-        write_pricing_artifacts(
-            model=model,
-            pricing_result=pricing_result,
-            output_path=output_path,
-            pricing_run_id=pricing_run_id,
+    request_payload: dict[str, Any] = {
+        "model_payload": build_model_persistence_payload(model),
+        "run_id": (
+            None
+            if output_path is None
+            else generate_workflow_run_id(f"{model.run_id}_price")
+        ),
+        "valuation_time_utc": valuation_time_utc.isoformat(),
+        "spot": spot,
+        "strike": strike,
+        "expiry_timestamp_utc": (
+            None if expiry_timestamp_utc is None else expiry_timestamp_utc.isoformat()
+        ),
+        "expiry_date": None if expiry_date is None else expiry_date.isoformat(),
+        "tenor": tenor,
+        "payoff_type": normalized_payoff_type.value,
+        "risk_free_rate": risk_free_rate,
+        "dividend_yield": dividend_yield,
+        "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            include_calibration_hooks=include_calibration_hooks,
+        ).to_payload(),
+        "continuation_data": continuation_payload,
+        "initial_excitation_state": (
+            None if boundary_state is None else boundary_state.to_payload()
+        ),
+        "output_path": None if output_path is None else str(output_path),
+    }
+    if pricing_interval_schedule_policy is not None:
+        request_payload["pricing_interval_schedule_policy"] = (
+            pricing_interval_schedule_policy.to_payload()
         )
 
-    return pricing_result
+    native = native_module()
+    try:
+        raw_result = native.run_fitted_model_single_option_pricing_workflow(request_payload)
+    except Exception as e:
+        # Native extension exception types are matched dynamically by helper.
+        if native_exception_matches(native, e, "PricingExecutionError"):
+            field_path, separator, message = str(e).partition(": ")
+            if separator:
+                raise calibration_error(
+                    field_path.removeprefix("model_payload."),
+                    message,
+                ) from e
+
+            raise calibration_error("pricing", str(e)) from e
+
+        raise
+    if not isinstance(raw_result, dict):
+        raise calibration_error(
+            "pricing_result",
+            "native pricing workflow returned an invalid response payload",
+        )
+
+    return VanillaOptionPricingRunResult.from_mapping(raw_result)
 
 
 def price_option_grid_for_model(

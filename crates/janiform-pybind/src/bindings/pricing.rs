@@ -18,7 +18,11 @@ use janiform::pricing::{
     run_vanilla_option_surface_pricing as run_vanilla_option_surface_pricing_core,
     run_vanilla_option_surface_pricing_with_observer as run_vanilla_option_surface_pricing_core_with_observer,
 };
-use pyo3::prelude::{Bound, Py, PyResult, Python};
+use janiform_workflows::error::WorkflowError;
+use janiform_workflows::pricing::{
+    FittedModelSingleOptionPricingRequest, run_fitted_model_single_option_pricing,
+};
+use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
 use pyo3::types::PyAny;
 use pyo3::types::{PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
@@ -153,6 +157,31 @@ fn hourly_factor_contract_output_from_payload(
             repeated_local_hour_interval_count: 0,
         },
     }
+}
+
+#[pyfunction]
+fn run_fitted_model_single_option_pricing_workflow(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let request: FittedModelSingleOptionPricingRequest =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize fitted-model single-option pricing request: {source}"
+            ))
+        })?;
+
+    let output = py
+        .detach(|| run_fitted_model_single_option_pricing(request))
+        .map_err(workflow_error_to_pricing_error)?;
+
+    let serialized_run_result = serde_json::to_value(&output.run_result).map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize fitted-model single-option pricing result: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &serialized_run_result)
 }
 
 #[pyfunction]
@@ -628,7 +657,29 @@ fn should_emit_pricing_progress_event(
     false
 }
 
+fn workflow_error_to_pricing_error(error: WorkflowError) -> PyErr {
+    match error {
+        WorkflowError::PricingValidationFailed { field, message } => {
+            PricingExecutionError::new_err(format!("{field}: {message}"))
+        }
+        WorkflowError::PricingArtifactWrite { path, source } => {
+            PricingExecutionError::new_err(format!(
+                "failed to write pricing artifact `{}`: {source}",
+                path.display()
+            ))
+        }
+        WorkflowError::ModelValidationFailed { field, message } => {
+            PricingExecutionError::new_err(format!("{field}: {message}"))
+        }
+        _ => PricingExecutionError::new_err(error.to_string()),
+    }
+}
+
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(
+        run_fitted_model_single_option_pricing_workflow,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(
         resolve_high_level_pricing_maturity_inputs,
         module
