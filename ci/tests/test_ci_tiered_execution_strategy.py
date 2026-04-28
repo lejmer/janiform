@@ -27,6 +27,7 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     assert "workflow_dispatch:" in workflow_text
     assert "fast-deterministic-regression:" in workflow_text
     assert "timeout-minutes: 30" in workflow_text
+    assert "set -o pipefail" in workflow_text
     assert "scripts/ci/run_fast_tier.py" in workflow_text
     assert "scripts/ci/parse_fast_tier_output.py" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text

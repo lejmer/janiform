@@ -36,6 +36,7 @@ jobs:
 
       - name: Run fast deterministic regression tier
         run: |
+          set -o pipefail
           mkdir -p .artifacts/fast-tier
           python3 scripts/ci/run_fast_tier.py --output-dir .artifacts/fast-tier | tee .artifacts/fast-tier/runner-output.log
 
