@@ -20,7 +20,7 @@ engines, shared contracts, and most performance-sensitive implementation.
 | Analytics, validation, and governance crates | Analytical reports, regression harnesses, and benchmark governance |
 | Worker and support crates | Process-isolated worker binaries and shared test fixtures |
 
-## Important Workspace Crates
+## Workspace Crates
 
 | Crate | Responsibility |
 | --- | --- |
