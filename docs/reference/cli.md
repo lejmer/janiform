@@ -72,6 +72,19 @@ Root-level options are available to every command.
 include presentation-only `parameter_fits` from the model artifact when available and do not rewrite
 the source `report.json`.
 
+## Presets
+
+| Command | Contract |
+| --- | --- |
+| `janiform presets list` | Shows bundled and user-registered presets. |
+| `janiform presets show CATEGORY NAME` | Shows one resolved preset artifact. Add `--expanded` for known-news event rows or session window rows in human output. |
+| `janiform presets export CATEGORY NAME` | Writes a resolved preset export with nested dependencies. |
+
+Preset commands accept repeatable `--user-preset PATH` flags and repeatable
+`--preset-registry PATH` manifest flags. Registry manifests use
+`schema_version: "preset.user_registry.v1"` and a `preset_artifact_paths` array.
+Manifest artifact paths resolve relative to the manifest file unless absolute.
+
 ## Notes
 
 - `fit plan` defaults to an automation-friendly disk-oriented execution policy.

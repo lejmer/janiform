@@ -6,7 +6,7 @@ use sha2::Sha256;
 use super::contracts::{PresetCategory, PresetResolutionResult};
 use super::payload::{
     array_field_mut, object_field, object_field_mut, object_value, object_value_mut,
-    optional_array_field_mut, optional_object_field_mut, payload_error, string_field,
+    optional_array_field_mut, optional_object_field_mut, payload_error, string_field, string_value,
 };
 
 const PRESET_CONTENT_HASH_ALGORITHM: &str = "sha256";
@@ -468,12 +468,7 @@ fn sort_column_alias_hints(
 
 fn sort_string_array(values: &mut [Value], field_path: &str) -> PresetResolutionResult<()> {
     for (value_index, value) in values.iter().enumerate() {
-        if !value.is_string() {
-            return Err(payload_error(
-                &format!("{field_path}[{value_index}]"),
-                "must be a string",
-            ));
-        }
+        string_value(value, &format!("{field_path}[{value_index}]"))?;
     }
 
     values.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
@@ -553,9 +548,7 @@ fn preset_artifact_content_hash(
         return Ok(None);
     }
 
-    let content_hash = content_hash
-        .as_str()
-        .ok_or_else(|| payload_error("metadata.provenance.content_hash", "must be a string"))?;
+    let content_hash = string_value(content_hash, "metadata.provenance.content_hash")?;
 
     Ok(Some(content_hash.to_string()))
 }

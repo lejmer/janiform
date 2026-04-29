@@ -85,6 +85,62 @@ fn compact_table_uses_plain_table_layout_with_narrow_wrapping() {
 }
 
 #[test]
+fn compact_table_aligns_headers_and_rows_with_shared_column_widths() {
+    let renderer = TerminalRenderer::new(false, None);
+    let table = CompactTable {
+        headers: vec![
+            "Category".to_string(),
+            "Scope".to_string(),
+            "Name".to_string(),
+            "Version".to_string(),
+        ],
+        rows: vec![
+            vec![
+                "known-news".to_string(),
+                "built-in".to_string(),
+                "eu_us_macro_fx_core".to_string(),
+                "2026.03".to_string(),
+            ],
+            vec![
+                "market-profile".to_string(),
+                "built-in".to_string(),
+                "btcusd_spot".to_string(),
+                "2026.03".to_string(),
+            ],
+        ],
+    };
+
+    assert_eq!(
+        table.render(&renderer),
+        "Category        Scope     Name                 Version\nknown-news      built-in  eu_us_macro_fx_core  2026.03\nmarket-profile  built-in  btcusd_spot          2026.03"
+    );
+}
+
+#[test]
+fn compact_table_aligns_ansi_styled_headers_and_plain_rows() {
+    let renderer = TerminalRenderer::new(true, None);
+    let table = CompactTable {
+        headers: vec![
+            "Category".to_string(),
+            "Scope".to_string(),
+            "Name".to_string(),
+            "Version".to_string(),
+        ],
+        rows: vec![vec![
+            "known-news".to_string(),
+            "built-in".to_string(),
+            "eu_us_macro_fx_core".to_string(),
+            "2026.03".to_string(),
+        ]],
+    };
+
+    assert_eq!(
+        console::strip_ansi_codes(&table.render(&renderer)).to_string(),
+        "Category    Scope     Name                 Version\nknown-news  built-in  eu_us_macro_fx_core  2026.03"
+    );
+}
+
+#[test]
 fn stage_checklist_and_artifact_groups_are_plain_text_meaningful() {
     let renderer = TerminalRenderer::new(false, None);
     let checklist = StageChecklist {

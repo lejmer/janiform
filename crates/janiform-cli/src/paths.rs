@@ -74,14 +74,58 @@ impl PathResolver {
         })
     }
 
+    /// Resolve and validate an input file path relative to a known base directory.
+    pub fn input_file_relative_to(
+        &self,
+        argument_name: &'static str,
+        base_directory: &Path,
+        path: &Path,
+    ) -> Result<PathBuf, CliError> {
+        let resolved_path = if path.is_absolute() {
+            PathBuf::from(path)
+        } else {
+            base_directory.join(path)
+        };
+
+        if resolved_path.is_file() {
+            return Ok(resolved_path);
+        }
+
+        Err(CliError::MissingInputFile {
+            argument_name,
+            path: resolved_path,
+        })
+    }
+
     /// Resolve a CLI output directory without creating it.
     pub fn output_directory(&self, path: &Path) -> PathBuf {
         self.resolve_process_path(path)
     }
 
-    /// Resolve a user preset registry path as a process-relative input file.
+    /// Resolve a user preset registry manifest path as a repository-relative input file.
+    pub fn user_preset_registry_file(&self, path: &Path) -> Result<PathBuf, CliError> {
+        let resolved_path = self.resolve_repository_path(path)?;
+        if resolved_path.is_file() {
+            return Ok(resolved_path);
+        }
+
+        Err(CliError::MissingInputFile {
+            argument_name: "--preset-registry",
+            path: resolved_path,
+        })
+    }
+
+    /// Resolve a user preset artifact path as a repository-relative input file.
     pub fn user_preset_file(&self, path: &Path) -> Result<PathBuf, CliError> {
-        self.input_file("--user-preset-json", path)
+        let resolved_path = self.resolve_repository_path(path)?;
+        if resolved_path.is_file() {
+            return Ok(resolved_path);
+        }
+
+        Err(CliError::MissingInputFile {
+            argument_name: "--user-preset",
+            path: resolved_path,
+        })
     }
 }
 

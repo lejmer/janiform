@@ -65,16 +65,6 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             "--option-surface-path",
             "options.parquet",
         ][..],
-        &["presets", "list", "--kind", "session"][..],
-        &["presets", "show", "market-profile", "es_futures_globex"][..],
-        &[
-            "presets",
-            "export",
-            "known-news",
-            "us_macro_core",
-            "--scope",
-            "dependencies",
-        ][..],
         &[
             "seasonality",
             "preprocess-timestamps",
@@ -139,6 +129,298 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn presets_list_json_filters_by_category_and_scope() {
+    let output = janiform_command()
+        .args([
+            "--json",
+            "presets",
+            "list",
+            "--category",
+            "session",
+            "--scope",
+            "built_in",
+        ])
+        .output()
+        .expect("janiform presets list should execute");
+
+    assert!(output.status.success());
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write terminal diagnostics to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(payload["schema_version"], "cli.presets.list.result.v1");
+    assert_eq!(payload["command_id"], "presets.list");
+    assert_eq!(payload["category_filter"], "session");
+    assert_eq!(payload["scope_filter"], "built_in");
+    assert_eq!(payload["preset_count"], 5);
+
+    for entry in payload["presets"]
+        .as_array()
+        .expect("presets should be an array")
+    {
+        assert_eq!(entry["category"], "session");
+        assert_eq!(entry["registry_scope"], "built_in");
+    }
+}
+
+#[test]
+fn presets_list_human_output_aligns_table_columns() {
+    let output = janiform_command()
+        .args(["presets", "list"])
+        .output()
+        .expect("janiform presets list should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    assert!(stdout.contains(
+        "Category        Scope     Name                 Version\nmarket-profile  built-in  btcusd_spot          2026.03"
+    ));
+}
+
+#[test]
+fn presets_show_json_returns_artifact_payload() {
+    let output = janiform_command()
+        .args(["--json", "presets", "show", "market-profile", "eurusd_spot"])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "preset.artifact.market_profile.v1"
+    );
+    assert_eq!(payload["category"], "market_profile");
+    assert_eq!(payload["preset_name"], "eurusd_spot");
+    assert_eq!(
+        payload["configuration"]["session_reference"]["preset_name"],
+        "fx_spot_24_5"
+    );
+}
+
+#[test]
+fn presets_show_market_profile_human_renders_named_references() {
+    let output = janiform_command()
+        .args(["presets", "show", "market-profile", "btcusd_spot"])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    assert!(stdout.contains("Session       : crypto_24_7 (built-in)"));
+    assert!(stdout.contains("Known news    : none (built-in)"));
+}
+
+#[test]
+fn presets_show_known_news_expanded_renders_event_table() {
+    let output = janiform_command()
+        .args([
+            "presets",
+            "show",
+            "known-news",
+            "us_macro_core",
+            "--expanded",
+        ])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    assert!(stdout.contains(
+        "Events\n\nScheduled At               Event ID            Name                             Tags"
+    ));
+    assert!(stdout.contains(
+        "2026-01-09T13:30:00+00:00  employment_2026_01  US Employment Situation Release  employment, macro, nfp, us"
+    ));
+}
+
+#[test]
+fn presets_show_session_expanded_renders_window_tables() {
+    let output = janiform_command()
+        .args(["presets", "show", "session", "fx_spot_24_5", "--expanded"])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    assert!(stdout.contains(
+        "Regular Session Windows\n\nWeekday    Open   Close  Label\nMonday     00:00  24:00  spot"
+    ));
+    assert!(stdout.contains(
+        "Recurring Closed Windows\n\nStart Weekday  Start  End Weekday  End    Reason\nFriday         19:00  Sunday       21:00  weekend_close"
+    ));
+}
+
+#[test]
+fn presets_show_market_profile_rejects_expanded_flag() {
+    let output = janiform_command()
+        .args([
+            "presets",
+            "show",
+            "market-profile",
+            "eurusd_spot",
+            "--expanded",
+        ])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::CommandLineUsage as i32)
+    );
+}
+
+#[test]
+fn presets_show_auto_scope_prefers_user_registered_presets() {
+    let user_preset_path = temporary_run_directory("user-session-preset").with_extension("json");
+    let bundled_session_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../python/janiform/calibration/_bundled_presets/generated/sessions/XNYS.json");
+    let mut user_session: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(bundled_session_path).expect("bundled session should be readable"),
+    )
+    .expect("bundled session should be JSON");
+    user_session["metadata"]["display_name"] = serde_json::Value::String("Desk XNYS".to_string());
+    user_session["metadata"]["provenance"]["content_hash"] = serde_json::Value::Null;
+    std::fs::write(
+        &user_preset_path,
+        serde_json::to_string_pretty(&user_session).expect("user session should serialize"),
+    )
+    .expect("user preset should be writable");
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "presets",
+            "show",
+            "session",
+            "XNYS",
+            "--user-preset",
+            user_preset_path
+                .to_str()
+                .expect("temporary user preset path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["metadata"]["display_name"], "Desk XNYS");
+
+    std::fs::remove_file(user_preset_path).expect("temporary user preset should be removable");
+}
+
+#[test]
+fn presets_show_loads_user_presets_from_registry_manifest() {
+    let registry_directory = temporary_run_directory("preset-registry");
+    let preset_directory = registry_directory.join("presets");
+    std::fs::create_dir_all(&preset_directory).expect("temporary preset directory should exist");
+
+    let user_preset_path = preset_directory.join("XNYS.json");
+    let bundled_session_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../python/janiform/calibration/_bundled_presets/generated/sessions/XNYS.json");
+    let mut user_session: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(bundled_session_path).expect("bundled session should be readable"),
+    )
+    .expect("bundled session should be JSON");
+    user_session["metadata"]["display_name"] =
+        serde_json::Value::String("Manifest XNYS".to_string());
+    user_session["metadata"]["provenance"]["content_hash"] = serde_json::Value::Null;
+    std::fs::write(
+        &user_preset_path,
+        serde_json::to_string_pretty(&user_session).expect("user session should serialize"),
+    )
+    .expect("user preset should be writable");
+
+    let registry_path = registry_directory.join("registry.json");
+    std::fs::write(
+        &registry_path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schema_version": "preset.user_registry.v1",
+            "preset_artifact_paths": ["presets/XNYS.json"],
+        }))
+        .expect("registry manifest should serialize"),
+    )
+    .expect("registry manifest should be writable");
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "presets",
+            "show",
+            "session",
+            "XNYS",
+            "--preset-registry",
+            registry_path
+                .to_str()
+                .expect("temporary registry path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["metadata"]["display_name"], "Manifest XNYS");
+
+    std::fs::remove_dir_all(registry_directory)
+        .expect("temporary registry directory should be removable");
+}
+
+#[test]
+fn presets_export_json_includes_market_profile_dependencies() {
+    let output = janiform_command()
+        .args([
+            "--json",
+            "presets",
+            "export",
+            "market-profile",
+            "eurusd_spot",
+        ])
+        .output()
+        .expect("janiform presets export should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(payload["schema_version"], "preset.runtime.export.v1");
+    assert_eq!(payload["command_id"], "presets.export");
+    assert_eq!(payload["requested_category"], "market_profile");
+    assert_eq!(payload["requested_scope"], "built_in");
+    assert_eq!(payload["preset_name"], "eurusd_spot");
+    assert_eq!(
+        payload["market_profile_preset"]["preset_name"],
+        "eurusd_spot"
+    );
+    assert_eq!(payload["session_preset"]["preset_name"], "fx_spot_24_5");
+    assert_eq!(
+        payload["known_news_preset"]["preset_name"],
+        "eu_us_macro_fx_core"
+    );
 }
 
 #[test]

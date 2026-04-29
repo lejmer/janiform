@@ -225,6 +225,42 @@ pub enum CliError {
         source: io::Error,
     },
 
+    #[error("failed to read user preset `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::preset_user_file_read))]
+    PresetUserFileRead {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("invalid user preset `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::preset_user_file_invalid))]
+    PresetUserFileInvalid {
+        path: PathBuf,
+        #[source]
+        source: janiform::calibration::PresetWorkflowResolutionError,
+    },
+
+    #[error(
+        "preset workflow `{command_path}` failed for category={category} scope={scope} preset={preset_name}: {source}"
+    )]
+    #[diagnostic(code(janiform_cli::preset_workflow_failed))]
+    PresetWorkflowFailed {
+        command_path: &'static str,
+        category: String,
+        scope: String,
+        preset_name: String,
+        #[source]
+        source: janiform::calibration::PresetWorkflowResolutionError,
+    },
+
+    #[error("preset runtime payload for workflow `{command_path}` is malformed: {message}")]
+    #[diagnostic(code(janiform_cli::preset_runtime_payload_malformed))]
+    PresetRuntimePayloadMalformed {
+        command_path: &'static str,
+        message: String,
+    },
+
     #[error(
         "failed to inspect run directory `{}`: {message}. latest-state snapshot `{}`. event log `{}`. replay fallback attempted: {replay_fallback_attempted}",
         run_directory.display(),
@@ -275,6 +311,10 @@ impl CliError {
             | Self::ArtifactParse { .. }
             | Self::ArtifactMalformed { .. }
             | Self::ArtifactWrite { .. }
+            | Self::PresetUserFileRead { .. }
+            | Self::PresetUserFileInvalid { .. }
+            | Self::PresetWorkflowFailed { .. }
+            | Self::PresetRuntimePayloadMalformed { .. }
             | Self::RunInspectionFailed { .. } => CliExitCode::CommandLineUsage,
         }
     }
@@ -308,6 +348,10 @@ impl CliError {
             Self::ArtifactParse { .. } => "artifact_parse",
             Self::ArtifactMalformed { .. } => "artifact_malformed",
             Self::ArtifactWrite { .. } => "artifact_write",
+            Self::PresetUserFileRead { .. } => "preset_user_file_read",
+            Self::PresetUserFileInvalid { .. } => "preset_user_file_invalid",
+            Self::PresetWorkflowFailed { .. } => "preset_workflow_failed",
+            Self::PresetRuntimePayloadMalformed { .. } => "preset_runtime_payload_malformed",
             Self::RunInspectionFailed { .. } => "run_inspection_failed",
         }
     }

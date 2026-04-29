@@ -4,6 +4,7 @@
 
 pub mod complex_math;
 pub mod identifiers;
+pub mod json_payload;
 pub mod low_discrepancy;
 pub mod market_state;
 pub mod matrix2;
