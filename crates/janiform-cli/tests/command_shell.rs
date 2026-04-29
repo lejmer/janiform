@@ -311,7 +311,7 @@ fn presets_show_auto_scope_prefers_user_registered_presets() {
             "show",
             "session",
             "XNYS",
-            "--user-preset-json",
+            "--user-preset",
             user_preset_path
                 .to_str()
                 .expect("temporary user preset path should be valid UTF-8"),
@@ -327,6 +327,65 @@ fn presets_show_auto_scope_prefers_user_registered_presets() {
     assert_eq!(payload["metadata"]["display_name"], "Desk XNYS");
 
     std::fs::remove_file(user_preset_path).expect("temporary user preset should be removable");
+}
+
+#[test]
+fn presets_show_loads_user_presets_from_registry_manifest() {
+    let registry_directory = temporary_run_directory("preset-registry");
+    let preset_directory = registry_directory.join("presets");
+    std::fs::create_dir_all(&preset_directory).expect("temporary preset directory should exist");
+
+    let user_preset_path = preset_directory.join("XNYS.json");
+    let bundled_session_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../python/janiform/calibration/_bundled_presets/generated/sessions/XNYS.json");
+    let mut user_session: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(bundled_session_path).expect("bundled session should be readable"),
+    )
+    .expect("bundled session should be JSON");
+    user_session["metadata"]["display_name"] =
+        serde_json::Value::String("Manifest XNYS".to_string());
+    user_session["metadata"]["provenance"]["content_hash"] = serde_json::Value::Null;
+    std::fs::write(
+        &user_preset_path,
+        serde_json::to_string_pretty(&user_session).expect("user session should serialize"),
+    )
+    .expect("user preset should be writable");
+
+    let registry_path = registry_directory.join("registry.json");
+    std::fs::write(
+        &registry_path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schema_version": "preset.user_registry.v1",
+            "preset_artifact_paths": ["presets/XNYS.json"],
+        }))
+        .expect("registry manifest should serialize"),
+    )
+    .expect("registry manifest should be writable");
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "presets",
+            "show",
+            "session",
+            "XNYS",
+            "--preset-registry",
+            registry_path
+                .to_str()
+                .expect("temporary registry path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform presets show should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["metadata"]["display_name"], "Manifest XNYS");
+
+    std::fs::remove_dir_all(registry_directory)
+        .expect("temporary registry directory should be removable");
 }
 
 #[test]

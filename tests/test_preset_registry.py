@@ -123,7 +123,7 @@ def test_user_registry_can_shadow_built_in_name_without_mutating_built_in_store(
     assert "duplicate" in captured_error.value.failure.message
 
 
-def test_user_preset_json_load_normalizes_order_and_exports_deterministically() -> None:
+def test_user_preset_artifact_load_normalizes_order_and_exports_deterministically() -> None:
     registry = PresetRegistry()
     user_known_news = KnownNewsPresetArtifact(
         schema_version="preset.artifact.known_news.v1",
@@ -177,7 +177,7 @@ def test_user_preset_json_load_normalizes_order_and_exports_deterministically() 
     assert loaded_artifact.configuration.events[0].event_id == "early_event"
 
 
-def test_user_preset_json_rejects_malformed_payload_and_dangling_market_profile_reference() -> None:
+def test_user_preset_artifact_rejects_malformed_payload_and_dangling_market_profile_reference() -> None:
     registry = PresetRegistry()
 
     with pytest.raises(CalibrationValidationError) as malformed_error:

@@ -298,11 +298,11 @@ def required_json_path_option(
     )
 
 
-def user_preset_json_option() -> click.Option:
+def user_preset_option() -> click.Option:
     return click.Option(
-        ["--user-preset-json"],
+        ["--user-preset"],
         help=(
-            "Optional preset artifact JSON to register in the in-memory user registry before "
+            "Optional preset artifact to register in the in-memory user registry before "
             f"command resolution. {CLI_REPOSITORY_RELATIVE_PATH_POLICY}"
         ),
         multiple=True,

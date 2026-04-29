@@ -4,6 +4,7 @@ mod rendering;
 mod run;
 
 pub(crate) use args::PresetCategory;
+pub(crate) use args::PresetRegistryArgs;
 pub(crate) use args::PresetRegistryScope;
 pub(crate) use args::PresetsCommand;
 pub(crate) use args::PresetsExportCommand;

@@ -47,13 +47,8 @@ pub(crate) struct PresetsListCommand {
     #[arg(long, value_enum, help = "Restrict output to one registry scope.")]
     pub(crate) scope: Option<PresetRegistryScope>,
 
-    #[arg(
-        long,
-        value_name = "PATH",
-        action = ArgAction::Append,
-        help = "User preset JSON artifact path."
-    )]
-    pub(crate) user_preset_json: Vec<PathBuf>,
+    #[command(flatten)]
+    pub(crate) registry: PresetRegistryArgs,
 }
 
 #[derive(Debug, Args)]
@@ -108,13 +103,27 @@ pub(crate) struct PresetsShowRegistryArgs {
     )]
     pub(crate) scope: Option<PresetRegistryScope>,
 
+    #[command(flatten)]
+    pub(crate) registry: PresetRegistryArgs,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PresetRegistryArgs {
     #[arg(
         long,
         value_name = "PATH",
         action = ArgAction::Append,
-        help = "User preset JSON artifact path."
+        help = "User preset registry manifest path."
     )]
-    pub(crate) user_preset_json: Vec<PathBuf>,
+    pub(crate) preset_registry: Vec<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        action = ArgAction::Append,
+        help = "User preset artifact path."
+    )]
+    pub(crate) user_preset: Vec<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -135,11 +144,6 @@ pub(crate) struct PresetsExportCommand {
     #[arg(long, value_name = "PATH", help = "Export output path.")]
     pub(crate) output_path: Option<PathBuf>,
 
-    #[arg(
-        long,
-        value_name = "PATH",
-        action = ArgAction::Append,
-        help = "User preset JSON artifact path."
-    )]
-    pub(crate) user_preset_json: Vec<PathBuf>,
+    #[command(flatten)]
+    pub(crate) registry: PresetRegistryArgs,
 }

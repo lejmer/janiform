@@ -225,7 +225,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("failed to read user preset JSON `{}`", path.display())]
+    #[error("failed to read user preset `{}`", path.display())]
     #[diagnostic(code(janiform_cli::preset_user_file_read))]
     PresetUserFileRead {
         path: PathBuf,
@@ -233,7 +233,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("invalid user preset JSON `{}`", path.display())]
+    #[error("invalid user preset `{}`", path.display())]
     #[diagnostic(code(janiform_cli::preset_user_file_invalid))]
     PresetUserFileInvalid {
         path: PathBuf,

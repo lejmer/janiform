@@ -23,7 +23,7 @@ from ..command_runtime import (
     invoke_command_handler,
     output_option,
     preset_scope_option,
-    user_preset_json_option,
+    user_preset_option,
 )
 from ..constants import (
     CLI_PRESET_CATEGORY_CHOICES,
@@ -57,7 +57,7 @@ def _run_presets_list_command(
     *,
     cli_context: CliCommandContext,
     output: str,
-    user_preset_json: tuple[Path, ...],
+    user_preset: tuple[Path, ...],
     category: Optional[str],
     scope: Optional[str],
     **_,
@@ -65,7 +65,7 @@ def _run_presets_list_command(
     try:
         registry = build_cli_preset_registry(
             cli_context=cli_context,
-            user_preset_json=user_preset_json,
+            user_preset=user_preset,
             entrypoint=CLI_PRESETS_LIST_ENTRYPOINT,
             error_id=CLI_PRESETS_LIST_VALIDATION_ERROR_ID,
         )
@@ -95,7 +95,7 @@ def _run_presets_list_command(
                 entrypoint=CLI_PRESETS_LIST_ENTRYPOINT,
                 validation_error_id=CLI_PRESETS_LIST_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_PRESETS_LIST_INTERNAL_ERROR_ID,
-                file_field_path="user_preset_json",
+                file_field_path="user_preset",
                 document_field_path="user_preset_document",
             )
         )
@@ -113,7 +113,7 @@ def _run_presets_show_command(
     *,
     cli_context: CliCommandContext,
     output: str,
-    user_preset_json: tuple[Path, ...],
+    user_preset: tuple[Path, ...],
     category: str,
     preset_name: str,
     scope: Optional[str],
@@ -122,7 +122,7 @@ def _run_presets_show_command(
     try:
         registry = build_cli_preset_registry(
             cli_context=cli_context,
-            user_preset_json=user_preset_json,
+            user_preset=user_preset,
             entrypoint=CLI_PRESETS_SHOW_ENTRYPOINT,
             error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
         )
@@ -165,7 +165,7 @@ def _run_presets_show_command(
                 entrypoint=CLI_PRESETS_SHOW_ENTRYPOINT,
                 validation_error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_PRESETS_SHOW_INTERNAL_ERROR_ID,
-                file_field_path="user_preset_json",
+                file_field_path="user_preset",
                 document_field_path="user_preset_document",
             )
         )
@@ -183,7 +183,7 @@ def _run_presets_export_command(
     *,
     cli_context: CliCommandContext,
     output: str,
-    user_preset_json: tuple[Path, ...],
+    user_preset: tuple[Path, ...],
     category: str,
     preset_name: str,
     scope: Optional[str],
@@ -192,7 +192,7 @@ def _run_presets_export_command(
     try:
         registry = build_cli_preset_registry(
             cli_context=cli_context,
-            user_preset_json=user_preset_json,
+            user_preset=user_preset,
             entrypoint=CLI_PRESETS_EXPORT_ENTRYPOINT,
             error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
         )
@@ -227,7 +227,7 @@ def _run_presets_export_command(
                 entrypoint=CLI_PRESETS_EXPORT_ENTRYPOINT,
                 validation_error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_PRESETS_EXPORT_INTERNAL_ERROR_ID,
-                file_field_path="user_preset_json",
+                file_field_path="user_preset",
                 document_field_path="user_preset_document",
             )
         )
@@ -262,7 +262,7 @@ def build_presets_group(*, environment: Optional[Mapping[str, str]] = None) -> c
         params=[
             command_config_option(),
             output_option(default_output_mode=CliOutputMode.JSON),
-            user_preset_json_option(),
+            user_preset_option(),
             command_option("--category", choice_options=CLI_PRESET_CATEGORY_CHOICES, help_text="Optional preset category filter."),
             preset_scope_option("--scope", help_text="Registry scope filter. Default: auto.", include_auto=True),
         ],
@@ -289,7 +289,7 @@ def build_presets_group(*, environment: Optional[Mapping[str, str]] = None) -> c
             params=[
                 command_config_option(),
                 output_option(default_output_mode=CliOutputMode.JSON),
-                user_preset_json_option(),
+                user_preset_option(),
                 build_argument("category", choice_options=CLI_PRESET_CATEGORY_CHOICES),
                 build_argument("preset_name", metavar="PRESET_NAME"),
                 preset_scope_option(

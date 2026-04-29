@@ -12,6 +12,20 @@ The CLI exposes three preset categories:
 
 Use `janiform presets list` to see what is bundled, `janiform presets show` to inspect one artifact, and `janiform presets export` when you want a resolved preset plus nested dependencies written out. Add `--expanded` to `janiform presets show known-news NAME` or `janiform presets show session NAME` when you want category-specific detail tables in the human terminal view.
 
+User presets are registered explicitly for each command. Pass a single artifact with `--user-preset PATH`, or pass a manifest with `--preset-registry PATH`:
+
+```json
+{
+  "schema_version": "preset.user_registry.v1",
+  "preset_artifact_paths": [
+    "sessions/my_session.json",
+    "market_profiles/my_profile.json"
+  ]
+}
+```
+
+Manifest paths are resolved relative to the manifest file unless they are absolute.
+
 ## Calibration Inputs
 
 ### Tick data

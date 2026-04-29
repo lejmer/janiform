@@ -26,15 +26,15 @@ from ..command_runtime import (
     JaniformCommand,
     JaniformGroup,
     command_config_option,
-    invoke_command_handler,
     command_option,
+    invoke_command_handler,
     invoke_group_default_handler,
     optional_path_option,
     output_option,
     progress_option,
     preset_scope_option,
     required_datetime_option,
-    user_preset_json_option,
+    user_preset_option,
 )
 from ..context import CliCommandContext
 from ..constants import (
@@ -338,19 +338,19 @@ def run_model_simulate_command(
 def build_cli_preset_registry(
     *,
     cli_context: CliCommandContext,
-    user_preset_json: tuple[Path, ...],
+    user_preset: tuple[Path, ...],
     entrypoint: str,
     error_id: str,
 ) -> PresetRegistry:
     registry = PresetRegistry()
 
-    for path in user_preset_json:
+    for path in user_preset:
         resolved_path = resolve_path_from_repository_root(cli_context.repository_root, path)
         try:
             preset_json = resolved_path.read_text(encoding="utf-8")
         except FileNotFoundError as e:
             raise cli_validation_error(
-                "user_preset_json",
+                "user_preset",
                 "input file could not be found",
                 error_id=error_id,
                 entrypoint=entrypoint,
@@ -358,7 +358,7 @@ def build_cli_preset_registry(
             ) from e
         except OSError as e:
             raise cli_validation_error(
-                "user_preset_json",
+                "user_preset",
                 f"input file could not be read: {e}",
                 error_id=error_id,
                 entrypoint=entrypoint,
@@ -424,7 +424,7 @@ def configure_cli_fit_command(
 ) -> ConfiguredCliFitCommand:
     registry = build_cli_preset_registry(
         cli_context=cli_context,
-        user_preset_json=cast(tuple[Path, ...], command_arguments.get("user_preset_json", ())),
+        user_preset=cast(tuple[Path, ...], command_arguments.get("user_preset", ())),
         entrypoint=entrypoint,
         error_id=error_id,
     )
@@ -1397,7 +1397,7 @@ def model_workflow_fit_options(
     return [
         command_config_option(),
         output_option(default_output_mode=CliOutputMode.HUMAN),
-        user_preset_json_option(),
+        user_preset_option(),
         command_option(
             "--market",
             help_text="Optional market-profile preset name used as the high-level workflow baseline.",

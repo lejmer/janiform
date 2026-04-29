@@ -80,6 +80,11 @@ the source `report.json`.
 | `janiform presets show CATEGORY NAME` | Shows one resolved preset artifact. Add `--expanded` for known-news event rows or session window rows in human output. |
 | `janiform presets export CATEGORY NAME` | Writes a resolved preset export with nested dependencies. |
 
+Preset commands accept repeatable `--user-preset PATH` flags and repeatable
+`--preset-registry PATH` manifest flags. Registry manifests use
+`schema_version: "preset.user_registry.v1"` and a `preset_artifact_paths` array.
+Manifest artifact paths resolve relative to the manifest file unless absolute.
+
 ## Notes
 
 - `fit plan` defaults to an automation-friendly disk-oriented execution policy.

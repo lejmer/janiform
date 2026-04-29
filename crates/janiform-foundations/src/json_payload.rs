@@ -137,6 +137,19 @@ pub fn optional_array_field<'a>(
     array_value(value, field_path).map(Some)
 }
 
+/// Return a required JSON object field as an array.
+pub fn array_field<'a>(
+    payload: &'a Map<String, Value>,
+    field_name: &str,
+    field_path: &str,
+) -> Result<&'a Vec<Value>, JsonPayloadError> {
+    let value = payload
+        .get(field_name)
+        .ok_or_else(|| JsonPayloadError::new(field_path, "is required"))?;
+
+    array_value(value, field_path)
+}
+
 /// Return a required JSON object field as a string.
 pub fn string_field<'a>(
     payload: &'a Map<String, Value>,
