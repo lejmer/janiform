@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::path::PathBuf;
 
 use janiform_foundations::numeric::validate_non_negative_number;
@@ -154,13 +155,23 @@ fn optional_or_default_input_file(
     context: &CommandContext,
     argument_name: &'static str,
     path: Option<PathBuf>,
-    default_repository_path: &str,
+    default_fixture_path: &str,
 ) -> Result<PathBuf, CliError> {
     match path {
         Some(path) => context.paths().input_file(argument_name, &path),
         None => {
-            let path = PathBuf::from(default_repository_path);
-            let resolved_path = context.paths().resolve_repository_path(&path)?;
+            let path = PathBuf::from(default_fixture_path);
+            let Some(development_fixture_root) =
+                discover_development_fixture_root(context.paths().process_cwd(), &path)
+            else {
+                return Err(CliError::InvalidCommandArgument {
+                    argument_name,
+                    message: format!(
+                        "default fixture `{default_fixture_path}` is only available when running from the Janiform source tree; pass `{argument_name}` explicitly"
+                    ),
+                });
+            };
+            let resolved_path = development_fixture_root.join(&path);
 
             if resolved_path.is_file() {
                 return Ok(resolved_path);
@@ -172,6 +183,18 @@ fn optional_or_default_input_file(
             })
         }
     }
+}
+
+fn discover_development_fixture_root(start: &Path, fixture_path: &Path) -> Option<PathBuf> {
+    for candidate in start.ancestors() {
+        if candidate.join("crates").join("janiform-cli").is_dir()
+            && candidate.join(fixture_path).is_file()
+        {
+            return Some(PathBuf::from(candidate));
+        }
+    }
+
+    None
 }
 
 fn deterministic_harness_error(error: RegressionHarnessError) -> CliError {

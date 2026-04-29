@@ -92,10 +92,9 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
 #[test]
 fn dev_deterministic_regression_json_runs_native_harness() {
     let calendar_fixture =
-        repository_fixture_path("tests/fixtures/calendar/calendar_service_regression_matrix.json");
-    let hourly_fixture = repository_fixture_path(
-        "tests/fixtures/hourly_factors/hourly_factor_regression_matrix.json",
-    );
+        source_fixture_path("tests/fixtures/calendar/calendar_service_regression_matrix.json");
+    let hourly_fixture =
+        source_fixture_path("tests/fixtures/hourly_factors/hourly_factor_regression_matrix.json");
 
     let output = janiform_command()
         .args([
@@ -160,6 +159,85 @@ fn dev_open_closed_gap_leakage_regression_uses_default_fixtures() {
         "validation.open_closed_gap_leakage_regression_harness.report.v1"
     );
     assert_eq!(payload["summary"]["failed_case_count"], 0);
+}
+
+#[test]
+fn dev_open_closed_gap_leakage_regression_requires_explicit_fixtures_outside_source_tree() {
+    let workspace = temporary_run_directory("dev-regression-outside-source");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
+    let output = janiform_command()
+        .current_dir(&workspace)
+        .args(["--json", "dev", "regression", "open-closed-gap-leakage"])
+        .output()
+        .expect("open/closed gap regression command should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::CommandLineUsage as i32)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write terminal diagnostics to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(payload["code"], "invalid_command_argument");
+    assert!(
+        payload["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("pass `--calendar-fixture-path` explicitly")
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn dev_open_closed_gap_leakage_regression_accepts_explicit_fixtures_outside_source_tree() {
+    let workspace = temporary_run_directory("dev-regression-explicit-fixtures");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let calendar_fixture =
+        source_fixture_path("tests/fixtures/calendar/calendar_service_regression_matrix.json");
+    let gap_behavior_fixture =
+        source_fixture_path("tests/fixtures/gap_behavior/open_closed_gap_behavior_scenarios.json");
+
+    let output = janiform_command()
+        .current_dir(&workspace)
+        .args([
+            "--json",
+            "dev",
+            "regression",
+            "open-closed-gap-leakage",
+            "--calendar-fixture-path",
+            calendar_fixture
+                .to_str()
+                .expect("calendar fixture path should be UTF-8"),
+            "--gap-behavior-fixture-path",
+            gap_behavior_fixture
+                .to_str()
+                .expect("gap behavior fixture path should be UTF-8"),
+        ])
+        .output()
+        .expect("open/closed gap regression command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "validation.open_closed_gap_leakage_regression_harness.report.v1"
+    );
+    assert_eq!(payload["summary"]["failed_case_count"], 0);
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
 }
 
 #[test]
@@ -1911,7 +1989,7 @@ fn temporary_run_directory(label: &str) -> std::path::PathBuf {
     ))
 }
 
-fn repository_fixture_path(path: &str) -> std::path::PathBuf {
+fn source_fixture_path(path: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(path)

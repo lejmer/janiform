@@ -80,7 +80,7 @@ pub(crate) fn prepare_fit_preview(
     };
 
     let output_directory = match &run.output_dir {
-        Some(path) => context.paths().output_directory(path),
+        Some(path) => context.paths().output_path(path),
         None => default_run_output_directory(context, &run_id),
     };
 

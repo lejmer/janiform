@@ -222,7 +222,7 @@ pub(crate) fn run_presets_export(
     );
 
     let output_path = match &command.output_path {
-        Some(path) => Some(context.paths().resolve_repository_path(path)?),
+        Some(path) => Some(context.paths().output_path(path)),
         None => None,
     };
 
