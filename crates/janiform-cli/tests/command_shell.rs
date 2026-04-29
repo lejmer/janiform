@@ -66,36 +66,6 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             "options.parquet",
         ][..],
         &[
-            "seasonality",
-            "preprocess-timestamps",
-            "--input-path",
-            "ticks.parquet",
-        ][..],
-        &[
-            "seasonality",
-            "diagnostics",
-            "--input-path",
-            "ticks.parquet",
-        ][..],
-        &[
-            "hourly-factors",
-            "materialize-seasonality",
-            "--input-path",
-            "ticks.parquet",
-        ][..],
-        &[
-            "hourly-factors",
-            "materialize-news-intensity",
-            "--input-path",
-            "news.json",
-        ][..],
-        &[
-            "hourly-factors",
-            "build-contract",
-            "--seasonality-factor-path",
-            "seasonality.json",
-        ][..],
-        &[
             "stylized-facts",
             "horizon-comparison",
             "--empirical-path",
@@ -129,6 +99,332 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn seasonality_preprocess_timestamps_json_runs_native_workflow() {
+    let workspace = temporary_run_directory("seasonality-preprocess");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let calendar_path = workspace.join("calendar.json");
+    let events_path = workspace.join("events.json");
+    write_calendar_fixture(&calendar_path);
+    write_json_file(
+        &events_path,
+        &serde_json::json!({
+            "event_records": [
+                {"timestamp": "2026-02-02T14:35:00Z"},
+                {"timestamp": "2026-02-02T15:10:00Z"},
+                {"timestamp": "2026-02-02T16:15:00Z"},
+                {"timestamp": "2026-02-02T22:00:00Z"}
+            ]
+        }),
+    );
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            events_path
+                .to_str()
+                .expect("temporary event path should be valid UTF-8"),
+            "--calendar-registry-json",
+            calendar_path
+                .to_str()
+                .expect("temporary calendar path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+        ])
+        .output()
+        .expect("seasonality preprocess command should execute");
+
+    assert!(output.status.success());
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write terminal diagnostics to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "seasonality.timestamp_event.preprocessed.v1"
+    );
+    assert_eq!(payload["exchange_code"], "XNYS");
+    assert_eq!(payload["accepted_record_count"], 3);
+    assert_eq!(payload["filtered_record_count"], 1);
+    assert_eq!(
+        payload["source_record_positions"],
+        serde_json::json!([0, 1, 2])
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn seasonality_diagnostics_json_runs_full_native_pipeline() {
+    let workspace = temporary_run_directory("seasonality-diagnostics");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let calendar_path = workspace.join("calendar.json");
+    let events_path = workspace.join("events.json");
+    write_calendar_fixture(&calendar_path);
+    write_json_file(
+        &events_path,
+        &serde_json::json!({
+            "event_records": [
+                {"timestamp": "2026-02-02T14:35:00Z"},
+                {"timestamp": "2026-02-02T15:10:00Z"},
+                {"timestamp": "2026-02-02T16:15:00Z"}
+            ]
+        }),
+    );
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "seasonality",
+            "diagnostics",
+            "--event-records-json",
+            events_path
+                .to_str()
+                .expect("temporary event path should be valid UTF-8"),
+            "--calendar-registry-json",
+            calendar_path
+                .to_str()
+                .expect("temporary calendar path should be valid UTF-8"),
+            "--dataset-id",
+            "xnys_smoke",
+            "--exchange-code",
+            "XNYS",
+        ])
+        .output()
+        .expect("seasonality diagnostics command should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "seasonality.diagnostics.report.v1"
+    );
+    assert_eq!(payload["dataset_id"], "xnys_smoke");
+    assert_eq!(
+        payload["reproducibility_metadata"]["input_snapshot"]["input_event_count"],
+        3
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn hourly_factor_materialize_seasonality_json_runs_native_workflow() {
+    let workspace = temporary_run_directory("hourly-seasonality");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let calendar_path = workspace.join("calendar.json");
+    let input_path = workspace.join("seasonality_input.json");
+    write_calendar_fixture(&calendar_path);
+    write_json_file(
+        &input_path,
+        &serde_json::json!({
+            "source_timestamps_utc": [
+                "2026-02-02T14:05:00Z",
+                "2026-02-02T14:20:00Z",
+                "2026-02-02T15:10:00Z",
+                "2026-02-02T17:15:00Z"
+            ],
+            "source_seasonality_factors": [1.2, 1.0, 0.8, 1.4],
+            "interpolation_method": "previous_observation_carry_forward.v1",
+            "aggregation_method": "mean_of_observations.v1",
+            "sparse_fallback_policy": "previous_materialized_then_global_mean.v1",
+            "sparse_hour_minimum_observation_count": 2
+        }),
+    );
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "hourly-factors",
+            "materialize-seasonality",
+            "--calendar-registry-json",
+            calendar_path
+                .to_str()
+                .expect("temporary calendar path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T13:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T18:00:00Z",
+            "--materialization-input-json",
+            input_path
+                .to_str()
+                .expect("temporary input path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("hourly seasonality command should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "seasonality.hourly_s_h.materialization.v1"
+    );
+    assert_eq!(payload["s_h"], serde_json::json!([1.1, 1.1, 0.8, 0.8, 1.4]));
+    assert_eq!(payload["interval_count"], 5);
+    assert_eq!(payload["fallback_interval_count"], 1);
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn hourly_factor_materialize_news_intensity_json_runs_native_workflow() {
+    let workspace = temporary_run_directory("hourly-news");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let calendar_path = workspace.join("calendar.json");
+    let input_path = workspace.join("news_input.json");
+    write_calendar_fixture(&calendar_path);
+    write_json_file(
+        &input_path,
+        &serde_json::json!({
+            "known_scheduled_event_timestamps_utc": [
+                "2026-02-02T14:05:00Z",
+                "2026-02-02T15:10:00Z"
+            ],
+            "surprise_baseline_intensity": 0.1,
+            "surprise_deterministic_time_multiplier_by_interval_index": {
+                "0": 1.0,
+                "1": 2.0,
+                "2": 1.0
+            }
+        }),
+    );
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "hourly-factors",
+            "materialize-news-intensity",
+            "--calendar-registry-json",
+            calendar_path
+                .to_str()
+                .expect("temporary calendar path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--materialization-input-json",
+            input_path
+                .to_str()
+                .expect("temporary input path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("hourly news command should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "seasonality.hourly_nu_h.materialization.v1"
+    );
+    assert_eq!(
+        payload["known_component_nu_h"],
+        serde_json::json!([1.0, 1.0, 0.0])
+    );
+    assert_eq!(payload["nu_h"], serde_json::json!([1.1, 1.2, 0.1]));
+    assert_eq!(payload["known_scheduled_arrival_count"], 2);
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn hourly_factor_build_contract_json_supports_explicit_sources() {
+    let workspace = temporary_run_directory("hourly-contract");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let calendar_path = workspace.join("calendar.json");
+    let seasonality_path = workspace.join("seasonality.json");
+    let news_path = workspace.join("news.json");
+    write_calendar_fixture(&calendar_path);
+    write_json_file(
+        &seasonality_path,
+        &serde_json::json!({
+            "hourly_factors": [1.0, 0.9, 1.1],
+            "materialization_method": "explicit.seasonality.test.v1"
+        }),
+    );
+    write_json_file(
+        &news_path,
+        &serde_json::json!({
+            "hourly_factors": [1.1, 1.2, 0.1],
+            "materialization_method": "explicit.news.test.v1"
+        }),
+    );
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "hourly-factors",
+            "build-contract",
+            "--calendar-registry-json",
+            calendar_path
+                .to_str()
+                .expect("temporary calendar path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--seasonality-explicit-source-json",
+            seasonality_path
+                .to_str()
+                .expect("temporary seasonality path should be valid UTF-8"),
+            "--news-intensity-explicit-source-json",
+            news_path
+                .to_str()
+                .expect("temporary news path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("hourly contract command should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "seasonality.hourly_factor.contract.v1"
+    );
+    assert_eq!(payload["s_h"], serde_json::json!([1.0, 0.9, 1.1]));
+    assert_eq!(payload["nu_h"], serde_json::json!([1.1, 1.2, 0.1]));
+    assert_eq!(
+        payload["seasonality_materialization_method"],
+        "explicit.seasonality.test.v1"
+    );
+    assert_eq!(
+        payload["news_intensity_materialization_method"],
+        "explicit.news.test.v1"
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
 }
 
 #[test]
@@ -1280,6 +1576,21 @@ fn write_tick_csv(path: &std::path::Path) {
         "timestamp,price,side\n2026-04-20T14:30:00Z,10.0,buy\n2026-04-20T14:31:00Z,10.1,sell\n2026-04-20T14:32:00Z,10.2,buy\n",
     )
     .expect("tick CSV should be writable");
+}
+
+fn write_calendar_fixture(path: &std::path::Path) {
+    std::fs::write(
+        path,
+        include_str!("../../../tests/fixtures/calendar/calendar_service_regression_matrix.json"),
+    )
+    .expect("calendar fixture should be writable");
+}
+
+fn write_json_file(path: &std::path::Path, payload: &serde_json::Value) {
+    let contents =
+        serde_json::to_string_pretty(payload).expect("test JSON payload should serialize");
+
+    std::fs::write(path, contents).expect("test JSON payload should be writable");
 }
 
 fn write_fx_tick_csv(path: &std::path::Path) {

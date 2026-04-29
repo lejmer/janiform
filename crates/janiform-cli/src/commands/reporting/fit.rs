@@ -9,21 +9,22 @@ use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::format_elapsed_label;
+use janiform_terminal_ui::format_token_as_words;
 use serde_json::Value;
 
 use crate::commands::reporting::ReportFitCommand;
-use crate::commands::shared::artifact_documents::load_json_artifact;
-use crate::commands::shared::artifact_documents::nested_string;
-use crate::commands::shared::artifact_documents::nested_value;
-use crate::commands::shared::artifact_documents::require_json_object;
-use crate::commands::shared::artifact_documents::stage_label;
-use crate::commands::shared::artifact_documents::string_field;
-use crate::commands::shared::artifact_documents::value_to_compact_string;
-use crate::commands::shared::artifact_documents::workflow_scope_label;
+use crate::commands::shared::artifacts::load_json_artifact;
+use crate::commands::shared::artifacts::require_json_object;
 use crate::commands::shared::output::write_json_payload;
 use crate::context::CommandContext;
 use crate::context::OutputMode;
 use crate::error::CliError;
+use janiform_foundations::json::display::compact_value_string;
+use janiform_foundations::json::query::nested_string;
+use janiform_foundations::json::query::nested_value;
+use janiform_foundations::json::query::string_field;
+use janiform_workflows::fit::stage_label_from_token;
+use janiform_workflows::fit::workflow_scope_label_from_token;
 
 mod export;
 mod parameter_fits;
@@ -211,7 +212,7 @@ fn render_fit_summary(report: &Value, renderer: &TerminalRenderer) -> String {
     {
         rows.push(KeyValueRow::new(
             "Workflow scope",
-            workflow_scope_label(workflow_scope),
+            workflow_scope_label_from_token(workflow_scope),
         ));
     }
 
@@ -266,7 +267,7 @@ fn render_failure_summary(
             failed_stage
                 .label
                 .clone()
-                .unwrap_or_else(|| stage_label(&failed_stage.stage_id)),
+                .unwrap_or_else(|| stage_label_from_token(&failed_stage.stage_id)),
         ));
     }
 
@@ -279,7 +280,7 @@ fn render_failure_summary(
             failed_phase
                 .label
                 .clone()
-                .unwrap_or_else(|| failed_phase.phase_id.replace('_', " ")),
+                .unwrap_or_else(|| format_token_as_words(&failed_phase.phase_id)),
         ));
     }
 
@@ -318,7 +319,7 @@ fn failure_reason(report: &Value, run_state: Option<&RunStateSnapshot>) -> Strin
     }
 
     nested_value(report, &["staged_response", "failure"])
-        .map(value_to_compact_string)
+        .map(compact_value_string)
         .filter(|reason| !reason.is_empty() && reason != "not recorded")
         .unwrap_or_else(|| "fit did not complete successfully".to_string())
 }
@@ -331,7 +332,7 @@ fn selected_stage_summary(report: &Value) -> Option<String> {
     let stages = selected_stages
         .iter()
         .filter_map(Value::as_str)
-        .map(stage_label)
+        .map(stage_label_from_token)
         .collect::<Vec<_>>();
 
     if stages.is_empty() {

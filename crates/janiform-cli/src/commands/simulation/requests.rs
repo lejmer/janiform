@@ -1,8 +1,6 @@
-use std::fs;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use janiform::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use janiform::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
@@ -21,13 +19,15 @@ use janiform::simulation::{
     SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
 };
 use janiform::sufficient_statistics::SufficientStatisticsIntervalFactors;
+use janiform_foundations::time::parse_utc_datetime;
 use serde::Deserialize;
-use serde_json::Value;
 
+use crate::commands::shared::artifacts::{
+    load_calendar_registry_artifact, load_typed_json_artifact,
+};
 use crate::error::CliError;
 
 const SIMULATION_ARTIFACT_NAME: &str = "simulation request";
-const CALENDAR_ARTIFACT_NAME: &str = "calendar registry";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -81,7 +81,7 @@ pub(crate) fn load_coarse_simulation_request(
     path: &Path,
 ) -> Result<CoarseSimulationRunRequest, CliError> {
     let document: CoarseSimulationRequestDocument =
-        read_json_document(path, SIMULATION_ARTIFACT_NAME)?;
+        load_typed_json_artifact(path, SIMULATION_ARTIFACT_NAME)?;
 
     let hourly_factor_contract = load_hourly_factor_contract(document.hourly_factor_contract)
         .map_err(|source| CliError::InvalidCommandArgument {
@@ -119,9 +119,9 @@ pub(crate) fn load_seeded_tick_simulation_request(
     calendar_registry_path: &Path,
 ) -> Result<SeededTickSimulationRunConfig, CliError> {
     let document: SeededTickSimulationRequestDocument =
-        read_json_document(request_path, SIMULATION_ARTIFACT_NAME)?;
+        load_typed_json_artifact(request_path, SIMULATION_ARTIFACT_NAME)?;
 
-    let calendar_registry = load_calendar_registry(calendar_registry_path)?;
+    let calendar_registry = load_calendar_registry_artifact(calendar_registry_path)?;
 
     let start_time_utc = parse_start_time_utc(&document.start_time_utc)?;
 
@@ -157,43 +157,6 @@ pub(crate) fn load_seeded_tick_simulation_request(
     .map_err(|source| CliError::InvalidCommandArgument {
         argument_name: "--request-json",
         message: source.to_string(),
-    })
-}
-
-fn read_json_document<T>(path: &Path, artifact_name: &'static str) -> Result<T, CliError>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    let file = fs::File::open(path).map_err(|source| CliError::ArtifactRead {
-        artifact_name,
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    serde_json::from_reader(file).map_err(|source| CliError::ArtifactParse {
-        artifact_name,
-        path: path.to_path_buf(),
-        source,
-    })
-}
-
-fn load_calendar_registry(path: &Path) -> Result<ExchangeCalendarRegistry, CliError> {
-    let payload: Value = read_json_document(path, CALENDAR_ARTIFACT_NAME)?;
-
-    let artifact_value = payload.get("calendar_registry").unwrap_or(&payload);
-    let artifact: ExchangeCalendarRegistryArtifact = serde_json::from_value(artifact_value.clone())
-        .map_err(|source| CliError::ArtifactParse {
-            artifact_name: CALENDAR_ARTIFACT_NAME,
-            path: path.to_path_buf(),
-            source,
-        })?;
-
-    ExchangeCalendarRegistry::from_artifact(artifact).map_err(|source| {
-        CliError::ArtifactMalformed {
-            artifact_name: CALENDAR_ARTIFACT_NAME,
-            path: path.to_path_buf(),
-            message: source.to_string(),
-        }
     })
 }
 
@@ -347,12 +310,10 @@ impl SeededTickHourlyFactorSummary {
 }
 
 fn parse_start_time_utc(value: &str) -> Result<DateTime<Utc>, CliError> {
-    DateTime::parse_from_rfc3339(value)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(|source| CliError::InvalidCommandArgument {
-            argument_name: "--request-json",
-            message: format!("start_time_utc must be an RFC 3339 timestamp: {source}"),
-        })
+    parse_utc_datetime(value).map_err(|source| CliError::InvalidCommandArgument {
+        argument_name: "--request-json",
+        message: format!("start_time_utc must be an RFC 3339 timestamp: {source}"),
+    })
 }
 
 fn default_sample_every_nth_transition() -> u64 {

@@ -5,6 +5,7 @@ use janiform::pricing::{
     PricingIntervalSchedulePolicy, VanillaOptionPayoffType,
     VanillaOptionPricingOptionalOutputSelection,
 };
+use janiform_foundations::time::parse_utc_datetime;
 use janiform_workflows::pricing::{
     FittedModelSingleOptionPricingOutput, FittedModelSingleOptionPricingRequest,
     FittedModelSingleOptionPricingWorkflowRequest, PricingWorkflowObserver,
@@ -15,7 +16,7 @@ use serde_json::Value;
 use super::{
     FittedModelPricingCommand, PriceCommand, PricePayoffType, VanillaOptionPricingOptions,
 };
-use crate::commands::shared::artifact_documents::load_json_artifact;
+use crate::commands::shared::artifacts::load_json_artifact;
 use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::output_paths::default_run_output_directory;
 use crate::commands::shared::terminal::{
@@ -120,12 +121,10 @@ fn required_valuation_time(value: Option<&str>) -> Result<DateTime<Utc>, CliErro
         argument_name: "--valuation-time-utc",
     })?;
 
-    DateTime::parse_from_rfc3339(value)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(|source| CliError::InvalidCommandArgument {
-            argument_name: "--valuation-time-utc",
-            message: format!("must be an RFC 3339 timestamp: {source}"),
-        })
+    parse_utc_datetime(value).map_err(|source| CliError::InvalidCommandArgument {
+        argument_name: "--valuation-time-utc",
+        message: format!("must be an RFC 3339 timestamp: {source}"),
+    })
 }
 
 fn required_f64(argument_name: &'static str, value: Option<f64>) -> Result<f64, CliError> {

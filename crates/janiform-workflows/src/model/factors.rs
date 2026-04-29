@@ -6,6 +6,7 @@ use janiform::hourly_factors::{
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
     HourlySeasonalityFactorSource, ONE_HOUR_NANOS,
 };
+use janiform_foundations::time::parse_utc_datetime;
 use serde_json::Value;
 
 use crate::error::WorkflowError;
@@ -260,14 +261,14 @@ fn known_news_timestamp_utc_nanos(
                     )
                 })?;
 
-            let timestamp = DateTime::parse_from_rfc3339(scheduled_at).map_err(|source| {
+            let timestamp = parse_utc_datetime(scheduled_at).map_err(|source| {
                 validation_error(
                     "model_payload.resolved_configuration.known_news.configuration.events.scheduled_at",
                     source.to_string(),
                 )
             })?;
 
-            timestamp.with_timezone(&Utc).timestamp_nanos_opt().ok_or_else(|| {
+            timestamp.timestamp_nanos_opt().ok_or_else(|| {
                 validation_error(
                     "model_payload.resolved_configuration.known_news.configuration.events.scheduled_at",
                     "timestamp is outside the supported nanosecond range",

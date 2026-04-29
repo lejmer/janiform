@@ -4,6 +4,7 @@ use std::path::Path;
 
 use chrono::Utc;
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
+use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
 use super::loading::column_resolution::{
@@ -381,7 +382,7 @@ fn validate_non_empty(
     value: &str,
     message: &str,
 ) -> Result<(), MarketDataFitInputInferenceError> {
-    if value.trim().is_empty() {
+    if !is_non_empty_string(value) {
         return Err(MarketDataFitInputInferenceError::InvalidValue {
             field_path: field_path.to_string(),
             message: message.to_string(),

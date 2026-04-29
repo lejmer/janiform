@@ -10,19 +10,19 @@ use janiform_terminal_ui::WarningBlock;
 use serde_json::Value;
 
 use crate::commands::inspection::InspectModelCommand;
-use crate::commands::shared::artifact_documents::find_value_by_key;
-use crate::commands::shared::artifact_documents::load_json_artifact;
-use crate::commands::shared::artifact_documents::nested_string;
-use crate::commands::shared::artifact_documents::nested_value;
-use crate::commands::shared::artifact_documents::require_json_object;
-use crate::commands::shared::artifact_documents::stage_label;
-use crate::commands::shared::artifact_documents::string_field;
-use crate::commands::shared::artifact_documents::value_to_compact_string;
-use crate::commands::shared::artifact_documents::workflow_scope_label;
+use crate::commands::shared::artifacts::load_json_artifact;
+use crate::commands::shared::artifacts::require_json_object;
 use crate::commands::shared::output::write_json_payload;
 use crate::context::CommandContext;
 use crate::context::OutputMode;
 use crate::error::CliError;
+use janiform_foundations::json::display::compact_value_string;
+use janiform_foundations::json::query::find_value_by_key;
+use janiform_foundations::json::query::nested_string;
+use janiform_foundations::json::query::nested_value;
+use janiform_foundations::json::query::string_field;
+use janiform_workflows::fit::stage_label_from_token;
+use janiform_workflows::fit::workflow_scope_label_from_token;
 
 pub(crate) fn run_inspect_model(
     context: &CommandContext,
@@ -78,7 +78,7 @@ fn render_model(
 fn render_model_summary(model: &Value, model_path: &Path, renderer: &TerminalRenderer) -> String {
     let workflow_scope = string_field(model, "workflow_scope")
         .or_else(|| nested_string(model, &["metadata", "workflow_scope"]))
-        .map(workflow_scope_label)
+        .map(workflow_scope_label_from_token)
         .unwrap_or_else(|| "not recorded".to_string());
 
     let mut rows = vec![
@@ -145,27 +145,24 @@ fn render_parameter_details(model: &Value, renderer: &TerminalRenderer) -> Strin
     if let Some(hawkes) = find_object_with_key(model, "hawkes_fitted_parameters")
         .or_else(|| nested_value(model, &["parameters", "hawkes", "fitted_parameters"]))
     {
-        rows.push(KeyValueRow::block(
-            "Hawkes",
-            value_to_compact_string(hawkes),
-        ));
+        rows.push(KeyValueRow::block("Hawkes", compact_value_string(hawkes)));
     }
 
     if let Some(nig) = find_object_with_key(model, "nig_shared_plus_shift_configuration") {
-        rows.push(KeyValueRow::block("NIG", value_to_compact_string(nig)));
+        rows.push(KeyValueRow::block("NIG", compact_value_string(nig)));
     }
 
     if let Some(mean_reversion) = find_object_with_key(model, "mean_reversion_fitted_parameters") {
         rows.push(KeyValueRow::block(
             "Mean reversion",
-            value_to_compact_string(mean_reversion),
+            compact_value_string(mean_reversion),
         ));
     }
 
     if let Some(news_process) = find_object_with_key(model, "news_process_configuration") {
         rows.push(KeyValueRow::block(
             "News process",
-            value_to_compact_string(news_process),
+            compact_value_string(news_process),
         ));
     }
 
@@ -176,7 +173,7 @@ fn render_parameter_details(model: &Value, renderer: &TerminalRenderer) -> Strin
     if let Some(option_refinement) = find_object_with_key(model, "option_calibration_diagnostics") {
         rows.push(KeyValueRow::block(
             "Option refinement",
-            value_to_compact_string(option_refinement),
+            compact_value_string(option_refinement),
         ));
     }
 
@@ -270,7 +267,7 @@ fn fitted_components(model: &Value) -> Vec<String> {
     {
         for stage in selected_stages {
             if let Some(stage) = stage.as_str() {
-                components.push(stage_label(stage));
+                components.push(stage_label_from_token(stage));
             }
         }
     }
@@ -279,7 +276,7 @@ fn fitted_components(model: &Value) -> Vec<String> {
         && let Some(parameters) = nested_value(model, &["parameters"]).and_then(Value::as_object)
     {
         for key in parameters.keys() {
-            components.push(stage_label(key));
+            components.push(stage_label_from_token(key));
         }
     }
 
@@ -345,7 +342,7 @@ fn parameter_row(container: Option<&Value>, label: &str, candidate_keys: &[&str]
         .iter()
         .filter_map(|key| container.and_then(|container| find_value_by_key(container, key)))
         .next()
-        .map(value_to_compact_string)
+        .map(compact_value_string)
         .unwrap_or_else(|| "not recorded".to_string());
 
     KeyValueRow::new(label, value)

@@ -2,8 +2,10 @@ use janiform_terminal_ui::{
     ArtifactPathGroup, CompactTable, CompletionSummary, CompletionSummaryStatus, FailureBlock,
     KeyValueRow, SemanticStyle, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, TerminalRenderer, WarningBlock, format_count, format_duration_seconds,
-    format_elapsed_label,
+    format_elapsed_label, format_file_size, format_path_relative_to, format_token_as_kebab,
+    format_token_as_words,
 };
+use std::path::Path;
 
 #[test]
 fn summary_renderer_produces_scan_friendly_monochrome_output() {
@@ -41,6 +43,24 @@ fn renderer_applies_ansi_only_when_color_is_enabled() {
 
     assert!(!warning.render(&monochrome).contains("\u{1b}["));
     assert!(warning.render(&color).contains("\u{1b}["));
+}
+
+#[test]
+fn formatting_helpers_render_paths_and_file_sizes_for_summaries() {
+    assert_eq!(
+        format_path_relative_to(
+            Path::new("run"),
+            &Path::new("run").join("artifacts/model.json"),
+        ),
+        "artifacts/model.json"
+    );
+    assert_eq!(format_file_size(42), "42 B");
+    assert_eq!(format_file_size(2048), "2 KiB");
+    assert_eq!(
+        format_token_as_words("return_components"),
+        "return components"
+    );
+    assert_eq!(format_token_as_kebab("user_registered"), "user-registered");
 }
 
 #[test]

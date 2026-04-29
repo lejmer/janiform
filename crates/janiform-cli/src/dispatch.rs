@@ -9,6 +9,9 @@ use crate::commands::fit::planning::run_fit_inspect;
 use crate::commands::fit::planning::run_fit_plan;
 use crate::commands::fit::planning::run_fit_staged_plan;
 use crate::commands::hourly_factors::HourlyFactorsSubcommand;
+use crate::commands::hourly_factors::run_hourly_factor_build_contract;
+use crate::commands::hourly_factors::run_hourly_factor_materialize_news_intensity;
+use crate::commands::hourly_factors::run_hourly_factor_materialize_seasonality;
 use crate::commands::inspection::InspectSubcommand;
 use crate::commands::inspection::run_inspect_model;
 use crate::commands::inspection::run_inspect_run;
@@ -22,6 +25,8 @@ use crate::commands::pricing::run_price_fitted_model_command;
 use crate::commands::reporting::ReportSubcommand;
 use crate::commands::reporting::run_report_fit;
 use crate::commands::seasonality::SeasonalitySubcommand;
+use crate::commands::seasonality::run_seasonality_diagnostics;
+use crate::commands::seasonality::run_seasonality_preprocess_timestamps;
 use crate::commands::simulation::SimulateSubcommand;
 use crate::commands::stylized_facts::StylizedFactsSubcommand;
 use crate::context::CommandContext;
@@ -61,20 +66,22 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
             PresetsSubcommand::Export(command) => run_presets_export(context, command),
         },
         RootCommand::Seasonality(command) => match command.command {
-            SeasonalitySubcommand::PreprocessTimestamps(_) => {
-                not_implemented("seasonality preprocess-timestamps")
+            SeasonalitySubcommand::PreprocessTimestamps(command) => {
+                run_seasonality_preprocess_timestamps(context, command)
             }
-            SeasonalitySubcommand::Diagnostics(_) => not_implemented("seasonality diagnostics"),
+            SeasonalitySubcommand::Diagnostics(command) => {
+                run_seasonality_diagnostics(context, command)
+            }
         },
         RootCommand::HourlyFactors(command) => match command.command {
-            HourlyFactorsSubcommand::MaterializeSeasonality(_) => {
-                not_implemented("hourly-factors materialize-seasonality")
+            HourlyFactorsSubcommand::MaterializeSeasonality(command) => {
+                run_hourly_factor_materialize_seasonality(context, command)
             }
-            HourlyFactorsSubcommand::MaterializeNewsIntensity(_) => {
-                not_implemented("hourly-factors materialize-news-intensity")
+            HourlyFactorsSubcommand::MaterializeNewsIntensity(command) => {
+                run_hourly_factor_materialize_news_intensity(context, command)
             }
-            HourlyFactorsSubcommand::BuildContract(_) => {
-                not_implemented("hourly-factors build-contract")
+            HourlyFactorsSubcommand::BuildContract(command) => {
+                run_hourly_factor_build_contract(context, command)
             }
         },
         RootCommand::StylizedFacts(command) => match command.command {

@@ -2,8 +2,9 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use janiform_foundations::json_payload;
+use janiform_foundations::json;
 use janiform_terminal_ui::KeyValueRow;
+use janiform_terminal_ui::format_token_as_kebab;
 use serde_json::Value;
 use serde_json::json;
 
@@ -19,8 +20,12 @@ use super::payload::required_array;
 use super::payload::required_string;
 use super::payload::required_value;
 use super::rendering;
+use crate::commands::shared::artifacts::load_json_artifact;
 use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::output::write_pretty_json_file;
+use crate::commands::shared::terminal::{
+    append_output_path_row, render_success_completion_summary, write_terminal_output,
+};
 use crate::context::CommandContext;
 use crate::context::OutputMode;
 use crate::error::CliError;
@@ -78,7 +83,7 @@ pub(crate) fn run_presets_list(
         ),
         OutputMode::Quiet => write_terminal_output(
             context,
-            &rendering::render_presets_completion(
+            &render_success_completion_summary(
                 "Presets listed",
                 vec![KeyValueRow::new("Presets", preset_count.to_string())],
                 &context.stdout_renderer(),
@@ -132,11 +137,11 @@ pub(crate) fn run_presets_show(
         ),
         OutputMode::Quiet => write_terminal_output(
             context,
-            &rendering::render_presets_completion(
+            &render_success_completion_summary(
                 "Preset shown",
                 vec![
                     KeyValueRow::new("Preset", preset_name),
-                    KeyValueRow::new("Scope", resolved_scope.replace('_', "-")),
+                    KeyValueRow::new("Scope", format_token_as_kebab(resolved_scope)),
                 ],
                 &context.stdout_renderer(),
             ),
@@ -243,7 +248,7 @@ pub(crate) fn run_presets_export(
         ),
         OutputMode::Quiet => write_terminal_output(
             context,
-            &rendering::render_presets_completion(
+            &render_success_completion_summary(
                 "Preset exported",
                 export_completion_rows(&payload, output_path.as_deref())?,
                 &context.stdout_renderer(),
@@ -279,19 +284,7 @@ fn append_registry_manifest_presets(
     user_registered_presets: &mut Vec<Value>,
     registry_path: &Path,
 ) -> Result<(), CliError> {
-    let registry_json =
-        fs::read_to_string(registry_path).map_err(|source| CliError::ArtifactRead {
-            artifact_name: "preset registry",
-            path: registry_path.to_path_buf(),
-            source,
-        })?;
-    let registry_payload = serde_json::from_str::<Value>(&registry_json).map_err(|source| {
-        CliError::ArtifactParse {
-            artifact_name: "preset registry",
-            path: registry_path.to_path_buf(),
-            source,
-        }
-    })?;
+    let registry_payload = load_json_artifact(registry_path, "preset registry")?;
 
     let registry = registry_manifest_object(&registry_payload, registry_path)?;
     let schema_version = registry_manifest_string(registry, "schema_version", registry_path)?;
@@ -331,6 +324,7 @@ fn append_user_preset_artifact(
             path: resolved_path.clone(),
             source,
         })?;
+
     let artifact = janiform::calibration::deserialize_preset_artifact_json(&preset_json).map_err(
         |source| CliError::PresetUserFileInvalid {
             path: resolved_path,
@@ -347,7 +341,7 @@ fn registry_manifest_object<'a>(
     value: &'a Value,
     registry_path: &Path,
 ) -> Result<&'a serde_json::Map<String, Value>, CliError> {
-    json_payload::object_value(value, "preset_registry")
+    json::payload::object_value(value, "preset_registry")
         .map_err(|source| preset_registry_manifest_malformed(registry_path, source))
 }
 
@@ -356,7 +350,7 @@ fn registry_manifest_array<'a>(
     field_name: &str,
     registry_path: &Path,
 ) -> Result<&'a Vec<Value>, CliError> {
-    json_payload::array_field(value, field_name, field_name)
+    json::payload::array_field(value, field_name, field_name)
         .map_err(|source| preset_registry_manifest_malformed(registry_path, source))
 }
 
@@ -365,7 +359,7 @@ fn registry_manifest_string<'a>(
     field_name: &str,
     registry_path: &Path,
 ) -> Result<&'a str, CliError> {
-    json_payload::string_field(value, field_name, field_name)
+    json::payload::string_field(value, field_name, field_name)
         .map_err(|source| preset_registry_manifest_malformed(registry_path, source))
 }
 
@@ -374,13 +368,13 @@ fn registry_manifest_value_string<'a>(
     field_path: &str,
     registry_path: &Path,
 ) -> Result<&'a str, CliError> {
-    json_payload::string_value(value, field_path)
+    json::payload::string_value(value, field_path)
         .map_err(|source| preset_registry_manifest_malformed(registry_path, source))
 }
 
 fn preset_registry_manifest_malformed(
     registry_path: &Path,
-    source: json_payload::JsonPayloadError,
+    source: json::payload::JsonPayloadError,
 ) -> CliError {
     CliError::ArtifactMalformed {
         artifact_name: "preset registry",
@@ -492,26 +486,17 @@ fn export_completion_rows(
         ),
         KeyValueRow::new(
             "Scope",
-            required_string(payload, "requested_scope", PRESETS_EXPORT_COMMAND_ID)?
-                .replace('_', "-"),
+            format_token_as_kebab(required_string(
+                payload,
+                "requested_scope",
+                PRESETS_EXPORT_COMMAND_ID,
+            )?),
         ),
     ];
 
-    if let Some(output_path) = output_path {
-        rows.push(KeyValueRow::new(
-            "Output",
-            output_path.display().to_string(),
-        ));
-    }
+    append_output_path_row(&mut rows, output_path);
 
     Ok(rows)
-}
-
-fn write_terminal_output(context: &CommandContext, output: &str) -> Result<(), CliError> {
-    context
-        .stdout_renderer()
-        .write_stdout(output)
-        .map_err(|source| CliError::OutputWrite { source })
 }
 
 impl PresetCategory {

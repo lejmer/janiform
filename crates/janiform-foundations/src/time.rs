@@ -2,7 +2,9 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
+use chrono::ParseError;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer};
 
@@ -68,6 +70,30 @@ pub fn duration_nanos_to_hours(duration_nanos: i64) -> f64 {
     duration_nanos as f64 * HOURS_PER_NANOSECOND
 }
 
+/// Parse an RFC 3339 timestamp string and normalize it to UTC.
+pub fn parse_utc_datetime(value: &str) -> Result<DateTime<Utc>, ParseError> {
+    DateTime::parse_from_rfc3339(value).map(|timestamp| timestamp.with_timezone(&Utc))
+}
+
+/// Return elapsed wall-clock duration between optional RFC 3339 UTC timestamps.
+pub fn elapsed_between_utc_timestamps(start: Option<&str>, end: Option<&str>) -> Option<Duration> {
+    let start = parse_utc_datetime(start?).ok()?;
+    let end = parse_utc_datetime(end?).ok()?;
+    let duration = end.signed_duration_since(start).to_std().ok()?;
+
+    Some(duration)
+}
+
+/// Format UTC nanoseconds since the Unix epoch as an RFC 3339 timestamp when representable.
+pub fn format_utc_nanos(timestamp_nanos: i64) -> String {
+    let seconds = timestamp_nanos.div_euclid(NANOS_PER_SECOND);
+    let nanos = timestamp_nanos.rem_euclid(NANOS_PER_SECOND) as u32;
+
+    DateTime::from_timestamp(seconds, nanos)
+        .map(|timestamp| timestamp.to_rfc3339())
+        .unwrap_or_else(|| timestamp_nanos.to_string())
+}
+
 /// Parse a pandas-style duration spec into an exact UTC nanosecond duration.
 ///
 /// Accepted units are nanoseconds, microseconds, milliseconds, seconds,
@@ -101,9 +127,7 @@ where
     D: Deserializer<'de>,
 {
     let value = String::deserialize(deserializer)?;
-    DateTime::parse_from_rfc3339(value.as_str())
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(serde::de::Error::custom)
+    parse_utc_datetime(value.as_str()).map_err(serde::de::Error::custom)
 }
 
 fn split_duration_spec(value: &str) -> Result<(&str, &str), DurationSpecParseError> {
@@ -237,8 +261,9 @@ pub fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
 mod tests {
     use super::{
         ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
-        duration_nanos_to_hours, floor_to_hour_utc_nanos, floor_to_interval_utc_nanos,
-        parse_duration_spec_nanos, utc_nanos,
+        duration_nanos_to_hours, elapsed_between_utc_timestamps, floor_to_hour_utc_nanos,
+        floor_to_interval_utc_nanos, format_utc_nanos, parse_duration_spec_nanos,
+        parse_utc_datetime, utc_nanos,
     };
 
     #[test]
@@ -270,6 +295,33 @@ mod tests {
     fn duration_nanos_to_hours_matches_hour_boundary_constant() {
         assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS), 1.0);
         assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS / 4), 0.25);
+    }
+
+    #[test]
+    fn parse_utc_datetime_normalizes_rfc3339_offset() {
+        let parsed = parse_utc_datetime("2026-04-29T12:00:00+02:00")
+            .expect("RFC 3339 timestamp should parse");
+
+        assert_eq!(parsed.to_rfc3339(), "2026-04-29T10:00:00+00:00");
+    }
+
+    #[test]
+    fn elapsed_between_utc_timestamps_reports_positive_duration() {
+        let elapsed = elapsed_between_utc_timestamps(
+            Some("2026-04-29T10:00:00Z"),
+            Some("2026-04-29T10:05:00Z"),
+        );
+
+        assert_eq!(elapsed.map(|duration| duration.as_secs()), Some(300));
+    }
+
+    #[test]
+    fn format_utc_nanos_renders_rfc3339_when_representable() {
+        assert_eq!(format_utc_nanos(0), "1970-01-01T00:00:00+00:00");
+        assert_eq!(
+            format_utc_nanos(1_000_000_001),
+            "1970-01-01T00:00:01.000000001+00:00"
+        );
     }
 
     #[test]

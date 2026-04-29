@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
 use super::diagnostics_shared::build_delta_uncertainty_context;
@@ -432,12 +433,14 @@ pub fn run_stylized_fact_horizon_comparison_engine(
     let total_metric_count = metric_decision_counts.pass_count
         + metric_decision_counts.fail_count
         + metric_decision_counts.insufficient_data_count;
+
     let summary = StylizedFactHorizonComparisonBatchSummary {
         total_run_count: run_reports.len(),
         total_metric_count,
         run_decision_counts,
         metric_decision_counts,
     };
+
     let status = aggregate_decision_status(run_decision_counts);
 
     Ok(StylizedFactHorizonComparisonBatchReport {
@@ -482,6 +485,7 @@ fn build_run_report(
         run_input.empirical_metrics.as_slice(),
         &format!("calibration_runs[{run_position}].empirical_metrics"),
     )?;
+
     let simulated_index = index_dataset_metrics(
         run_input.simulated_metrics.as_slice(),
         &format!("calibration_runs[{run_position}].simulated_metrics"),
@@ -503,10 +507,12 @@ fn build_run_report(
             .horizon_duration_by_label
             .get(&horizon_label)
             .copied();
+
         let simulated_horizon_duration_nanos = simulated_index
             .horizon_duration_by_label
             .get(&horizon_label)
             .copied();
+
         let alignment_status = match (
             empirical_horizon_duration_nanos,
             simulated_horizon_duration_nanos,
@@ -527,6 +533,7 @@ fn build_run_report(
             &empirical_index,
             &simulated_index,
         );
+
         let mut metric_reports: Vec<StylizedFactMetricComparison> =
             Vec::with_capacity(metric_dimensions.len());
 
@@ -536,6 +543,7 @@ fn build_run_report(
                 metric_id: metric_dimension.metric_id.clone(),
                 metric_variant: metric_dimension.metric_variant.clone(),
             };
+
             let empirical_metric = empirical_index.metrics_by_key.get(&metric_key);
             let simulated_metric = simulated_index.metrics_by_key.get(&metric_key);
 
@@ -560,6 +568,7 @@ fn build_run_report(
 
         let decision_counts = count_metric_decisions(metric_reports.as_slice());
         let status = aggregate_decision_status(decision_counts);
+
         total_metric_count += metric_reports.len();
 
         horizon_reports.push(StylizedFactHorizonComparison {
@@ -682,9 +691,11 @@ fn build_metric_report(
 
     let mut absolute_delta_exceeds_threshold = None;
     let mut standardized_delta_exceeds_threshold = None;
+
     let status = if status == StylizedFactComparisonDecisionState::Pass {
         absolute_delta_exceeds_threshold =
             absolute_delta.map(|delta| delta > threshold.max_absolute_delta);
+
         standardized_delta_exceeds_threshold = match (
             threshold.max_standardized_delta,
             uncertainty_context.standardized_delta,
@@ -703,6 +714,7 @@ fn build_metric_report(
             decision_reason_codes
                 .push(StylizedFactDecisionReasonCode::AbsoluteDeltaThresholdExceeded);
         }
+
         if standardized_failed {
             decision_reason_codes
                 .push(StylizedFactDecisionReasonCode::StandardizedDeltaThresholdExceeded);
@@ -765,18 +777,21 @@ fn evaluate_present_metric(
         insufficiency_reason_codes
             .push(StylizedFactSampleSufficiencyReasonCode::InsufficientSampleCount);
     }
+
     if metric.observed_counts.effective_sample_count
         < metric.required_minimums.minimum_effective_sample_count
     {
         insufficiency_reason_codes
             .push(StylizedFactSampleSufficiencyReasonCode::InsufficientEffectiveSampleCount);
     }
+
     if metric.observed_counts.tail_observation_count
         < metric.required_minimums.minimum_tail_observation_count
     {
         insufficiency_reason_codes
             .push(StylizedFactSampleSufficiencyReasonCode::InsufficientTailObservationCount);
     }
+
     if horizon_coverage_ratio < metric.required_minimums.minimum_horizon_coverage_ratio {
         insufficiency_reason_codes
             .push(StylizedFactSampleSufficiencyReasonCode::InsufficientHorizonCoverageRatio);
@@ -939,6 +954,7 @@ fn index_dataset_metrics(
 
     for (metric_position, metric) in dataset_metrics.iter().enumerate() {
         let metric_field_prefix = format!("{field_prefix}[{metric_position}]");
+
         validate_metric_input(metric, metric_field_prefix.as_str())?;
 
         let known_horizon_duration = horizon_duration_by_label
@@ -1011,11 +1027,13 @@ fn validate_request(
 
     for (run_position, run) in request.calibration_runs.iter().enumerate() {
         let run_prefix = format!("calibration_runs[{run_position}]");
+
         validate_non_empty_string(
             &format!("{run_prefix}.calibration_run_id"),
             run.calibration_run_id.as_str(),
             "must be non-empty",
         )?;
+
         if !calibration_run_ids.insert(run.calibration_run_id.clone()) {
             return Err(invalid_request(
                 &format!("{run_prefix}.calibration_run_id"),
@@ -1025,6 +1043,7 @@ fn validate_request(
                 ),
             ));
         }
+
         validate_non_empty_string(
             &format!("{run_prefix}.empirical_dataset_id"),
             run.empirical_dataset_id.as_str(),
@@ -1055,11 +1074,11 @@ fn validate_threshold_policy(
         threshold_policy.policy_id.as_str(),
         "must be non-empty",
     )?;
-
     validate_non_negative_finite(
         &format!("{field_prefix}.default_max_absolute_delta"),
         threshold_policy.default_max_absolute_delta,
     )?;
+
     if let Some(default_max_standardized_delta) = threshold_policy.default_max_standardized_delta {
         validate_non_negative_finite(
             &format!("{field_prefix}.default_max_standardized_delta"),
@@ -1068,6 +1087,7 @@ fn validate_threshold_policy(
     }
 
     let mut override_keys: BTreeSet<(String, Option<String>)> = BTreeSet::new();
+
     for (override_position, metric_override) in threshold_policy
         .metric_threshold_overrides
         .iter()
@@ -1075,11 +1095,13 @@ fn validate_threshold_policy(
     {
         let override_prefix =
             format!("{field_prefix}.metric_threshold_overrides[{override_position}]");
+
         validate_non_empty_string(
             &format!("{override_prefix}.metric_id"),
             metric_override.metric_id.as_str(),
             "must be non-empty",
         )?;
+
         if let Some(metric_variant) = metric_override.metric_variant.as_deref() {
             validate_non_empty_string(
                 &format!("{override_prefix}.metric_variant"),
@@ -1087,10 +1109,12 @@ fn validate_threshold_policy(
                 "must be non-empty when provided",
             )?;
         }
+
         validate_non_negative_finite(
             &format!("{override_prefix}.max_absolute_delta"),
             metric_override.max_absolute_delta,
         )?;
+
         if let Some(max_standardized_delta) = metric_override.max_standardized_delta {
             validate_non_negative_finite(
                 &format!("{override_prefix}.max_standardized_delta"),
@@ -1102,11 +1126,13 @@ fn validate_threshold_policy(
             metric_override.metric_id.clone(),
             metric_override.metric_variant.clone(),
         );
+
         if !override_keys.insert(override_key) {
             let metric_variant = metric_override
                 .metric_variant
                 .as_deref()
                 .unwrap_or("<none>");
+
             return Err(invalid_request(
                 &override_prefix,
                 &format!(
@@ -1225,6 +1251,7 @@ fn validate_confidence_interval(
         &format!("{field_prefix}.upper_bound"),
         confidence_interval.upper_bound,
     )?;
+
     if confidence_interval.upper_bound < confidence_interval.lower_bound {
         return Err(invalid_request(
             &format!("{field_prefix}.upper_bound"),
@@ -1234,6 +1261,7 @@ fn validate_confidence_interval(
             ),
         ));
     }
+
     if !confidence_interval.confidence_level.is_finite()
         || confidence_interval.confidence_level <= 0.0
         || confidence_interval.confidence_level >= 1.0
@@ -1260,6 +1288,7 @@ fn validate_sample_sufficiency_requirements(
             "must be greater than 0",
         ));
     }
+
     if requirements.minimum_effective_sample_count == 0
         || requirements.minimum_effective_sample_count > requirements.minimum_sample_count
     {
@@ -1271,6 +1300,7 @@ fn validate_sample_sufficiency_requirements(
             ),
         ));
     }
+
     if requirements.minimum_tail_observation_count > requirements.minimum_effective_sample_count {
         return Err(invalid_request(
             &format!("{field_prefix}.minimum_tail_observation_count"),
@@ -1280,6 +1310,7 @@ fn validate_sample_sufficiency_requirements(
             ),
         ));
     }
+
     if !requirements.minimum_horizon_coverage_ratio.is_finite()
         || requirements.minimum_horizon_coverage_ratio <= 0.0
         || requirements.minimum_horizon_coverage_ratio > 1.0
@@ -1301,9 +1332,10 @@ fn validate_non_empty_string(
     value: &str,
     details: &str,
 ) -> Result<(), StylizedFactHorizonComparisonError> {
-    if value.trim().is_empty() {
+    if !is_non_empty_string(value) {
         return Err(invalid_request(field_path, details));
     }
+
     Ok(())
 }
 
@@ -1317,6 +1349,7 @@ fn validate_non_negative_finite(
             &format!("must be finite and non-negative, found {value}"),
         ));
     }
+
     Ok(())
 }
 
@@ -1327,6 +1360,7 @@ fn validate_finite(field_path: &str, value: f64) -> Result<(), StylizedFactHoriz
             &format!("must be finite, found {value}"),
         ));
     }
+
     Ok(())
 }
 

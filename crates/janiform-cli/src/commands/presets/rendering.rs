@@ -3,12 +3,11 @@ use std::path::Path;
 mod details;
 
 use janiform_terminal_ui::CompactTable;
-use janiform_terminal_ui::CompletionSummary;
-use janiform_terminal_ui::CompletionSummaryStatus;
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::format_artifact_path;
+use janiform_terminal_ui::format_token_as_kebab;
 use serde_json::Value;
 
 use super::payload::malformed_payload;
@@ -32,8 +31,8 @@ pub(super) fn render_presets_list(
         .iter()
         .map(|entry| {
             Ok(vec![
-                display_category(required_string(entry, "category", "presets.list")?),
-                display_scope(required_string(entry, "registry_scope", "presets.list")?),
+                format_token_as_kebab(required_string(entry, "category", "presets.list")?),
+                format_token_as_kebab(required_string(entry, "registry_scope", "presets.list")?),
                 required_string(entry, "preset_name", "presets.list")?.to_string(),
                 required_string(entry, "version_label", "presets.list")?.to_string(),
             ])
@@ -92,12 +91,12 @@ pub(super) fn render_presets_show(
     let category = required_string(artifact, "category", "presets.show")?;
 
     let mut rows = vec![
-        KeyValueRow::new("Category", display_category(category)),
+        KeyValueRow::new("Category", format_token_as_kebab(category)),
         KeyValueRow::new(
             "Name",
             required_string(artifact, "preset_name", "presets.show")?,
         ),
-        KeyValueRow::new("Resolved scope", display_scope(resolved_scope)),
+        KeyValueRow::new("Resolved scope", format_token_as_kebab(resolved_scope)),
         KeyValueRow::new(
             "Version",
             required_object_string(metadata, "version_label", "presets.show")?,
@@ -151,7 +150,7 @@ pub(super) fn render_presets_export(
     let mut rows = vec![
         KeyValueRow::new(
             "Requested category",
-            display_category(required_string(
+            format_token_as_kebab(required_string(
                 payload,
                 "requested_category",
                 "presets.export",
@@ -163,7 +162,7 @@ pub(super) fn render_presets_export(
         ),
         KeyValueRow::new(
             "Resolved scope",
-            display_scope(required_string(
+            format_token_as_kebab(required_string(
                 payload,
                 "requested_scope",
                 "presets.export",
@@ -197,19 +196,6 @@ pub(super) fn render_presets_export(
     .render(renderer))
 }
 
-pub(super) fn render_presets_completion(
-    title: impl Into<String>,
-    rows: Vec<KeyValueRow>,
-    renderer: &TerminalRenderer,
-) -> String {
-    CompletionSummary {
-        title: title.into(),
-        status: CompletionSummaryStatus::Succeeded,
-        rows,
-    }
-    .render(renderer)
-}
-
 fn push_reference_row(
     rows: &mut Vec<KeyValueRow>,
     configuration: &serde_json::Map<String, Value>,
@@ -233,7 +219,7 @@ fn push_reference_row(
 
             rows.push(KeyValueRow::new(
                 label,
-                format!("{} ({})", preset_name, display_scope(scope)),
+                format!("{} ({})", preset_name, format_token_as_kebab(scope)),
             ));
         }
         "explicit" => rows.push(KeyValueRow::new(label, "explicit configuration")),
@@ -264,13 +250,9 @@ fn included_preset_label(
     let category = required_string(artifact, "category", command_path)?;
     let preset_name = required_string(artifact, "preset_name", command_path)?;
 
-    Ok(format!("{}:{}", display_category(category), preset_name))
-}
-
-fn display_category(value: &str) -> String {
-    value.replace('_', "-")
-}
-
-fn display_scope(value: &str) -> String {
-    value.replace('_', "-")
+    Ok(format!(
+        "{}:{}",
+        format_token_as_kebab(category),
+        preset_name
+    ))
 }

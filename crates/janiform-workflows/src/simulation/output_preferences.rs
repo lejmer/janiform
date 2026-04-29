@@ -1,3 +1,4 @@
+use janiform_foundations::json::query::nested_value;
 use serde_json::Value;
 
 use crate::error::WorkflowError;
@@ -193,13 +194,4 @@ fn optional_string(
     }
 
     Ok(Some(string_value.to_string()))
-}
-
-fn nested_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
-    let mut current = value;
-    for field_name in path {
-        current = current.get(*field_name)?;
-    }
-
-    Some(current)
 }

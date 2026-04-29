@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 
+use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
 use super::constants::{
@@ -905,9 +906,10 @@ fn validate_non_empty_field(
     field_name: &'static str,
     value: &str,
 ) -> Result<(), StylizedFactMetricCatalogValidationError> {
-    if !value.trim().is_empty() {
+    if is_non_empty_string(value) {
         return Ok(());
     }
+
     Err(StylizedFactMetricCatalogValidationError::EmptyField { field_name })
 }
 
@@ -942,7 +944,7 @@ fn validate_non_empty_metric_field(
     field_name: &'static str,
     value: &str,
 ) -> Result<(), StylizedFactMetricCatalogValidationError> {
-    if !value.trim().is_empty() {
+    if is_non_empty_string(value) {
         return Ok(());
     }
 
