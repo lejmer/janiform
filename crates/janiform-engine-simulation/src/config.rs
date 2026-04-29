@@ -14,7 +14,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
-    ONE_HOUR_NANOS, SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
+    NANOS_PER_HOUR, SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
 };
 use super::error::SeededTickSimulationRunError;
 use super::runtime::{
@@ -325,7 +325,7 @@ impl SeededTickSimulationRunConfig {
                 [interval_index]
                 - hourly_factor_contract.interval_start_utc_nanos[interval_index])
                 as f64
-                / ONE_HOUR_NANOS as f64;
+                / NANOS_PER_HOUR as f64;
             let observed_interval_delta = runtime_interval_anchors.interval_deltas[interval_index];
             if (observed_interval_delta - expected_interval_delta).abs()
                 > MEAN_REVERSION_ALIGNMENT_TOLERANCE

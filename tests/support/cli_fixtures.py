@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from janiform._timestamps import ONE_HOUR_NANOS
+from janiform._timestamps import NANOS_PER_HOUR
 from janiform.calendar import CalendarRegistry
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
@@ -176,7 +176,7 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
         },
         "hourly_factor_contract": build_hourly_factor_contract(
             request_start_utc_nanos=int(SIMULATION_RANGE_START_UTC.timestamp()) * 1_000_000_000,
-            interval_duration_nanos=int(interval_delta * ONE_HOUR_NANOS),
+            interval_duration_nanos=int(interval_delta * NANOS_PER_HOUR),
             s_h=(1.0, 0.9, 1.1),
             known_component_nu_h=(1.0, 1.0, 0.0),
             surprise_component_nu_h=(0.1, 0.2, 0.1),
@@ -639,7 +639,7 @@ def _build_stylized_fact_observed_metric(
 
     return {
         "horizon_label": horizon_label,
-        "horizon_duration_nanos": ONE_HOUR_NANOS,
+        "horizon_duration_nanos": NANOS_PER_HOUR,
         "metric_id": metric_id,
         "metric_name": metric_name,
         "metric_variant": None,

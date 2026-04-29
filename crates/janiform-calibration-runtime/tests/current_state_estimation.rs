@@ -2,7 +2,7 @@ use janiform_calibration_runtime::{
     CurrentStateEstimationError, CurrentStateEstimationInput,
     estimate_current_state_from_observed_data,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -32,7 +32,7 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
         MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.0, 0.0)
             .expect("test mean-reversion fitted parameters should be valid");
 
-    let state_time_utc_nanos = 15 * ONE_HOUR_NANOS;
+    let state_time_utc_nanos = 15 * NANOS_PER_HOUR;
 
     let estimation_output =
         estimate_current_state_from_observed_data(CurrentStateEstimationInput {
@@ -40,7 +40,7 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
             mean_reversion_fitted_parameters,
             state_time_utc_nanos,
             observed_log_price: 0.05,
-            observation_timestamp_utc_nanos: vec![13 * ONE_HOUR_NANOS, 14 * ONE_HOUR_NANOS],
+            observation_timestamp_utc_nanos: vec![13 * NANOS_PER_HOUR, 14 * NANOS_PER_HOUR],
             observation_trade_prices: vec![100.0, 100.5],
             observation_trade_sides: vec![HawkesEventSide::Buy, HawkesEventSide::Sell],
         })
@@ -112,9 +112,9 @@ fn current_state_estimation_rejects_observation_after_requested_state_time() {
     let error = estimate_current_state_from_observed_data(CurrentStateEstimationInput {
         kernel_parameters,
         mean_reversion_fitted_parameters,
-        state_time_utc_nanos: 14 * ONE_HOUR_NANOS,
+        state_time_utc_nanos: 14 * NANOS_PER_HOUR,
         observed_log_price: 0.05,
-        observation_timestamp_utc_nanos: vec![15 * ONE_HOUR_NANOS],
+        observation_timestamp_utc_nanos: vec![15 * NANOS_PER_HOUR],
         observation_trade_prices: vec![100.0],
         observation_trade_sides: vec![HawkesEventSide::Buy],
     })
@@ -123,9 +123,9 @@ fn current_state_estimation_rejects_observation_after_requested_state_time() {
     assert_eq!(
         error,
         CurrentStateEstimationError::ObservationAfterStateTime {
-            state_time_utc_nanos: 14 * ONE_HOUR_NANOS,
+            state_time_utc_nanos: 14 * NANOS_PER_HOUR,
             observation_index: 0,
-            timestamp_utc_nanos: 15 * ONE_HOUR_NANOS,
+            timestamp_utc_nanos: 15 * NANOS_PER_HOUR,
         }
     );
 }

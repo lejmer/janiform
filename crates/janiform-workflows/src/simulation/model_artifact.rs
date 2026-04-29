@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use janiform::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform::calendar::MarketState;
 use janiform::hawkes::HawkesExcitationState;
-use janiform::hourly_factors::{HourlyFactorContractOutput, ONE_HOUR_NANOS};
+use janiform::hourly_factors::{HourlyFactorContractOutput, NANOS_PER_HOUR};
 use janiform::simulation::{
     CoarseSimulationModelInputs, MeanReversionBoundaryState, SeededTickSimulationDebugTraceOptions,
     SeededTickSimulationModelInputs, SeededTickSimulationRunOptions, SimulationProgressEvent,
@@ -114,7 +114,7 @@ fn zero_closed_coarse_interval_seasonality_factors(
     hourly_factor_contract: &mut HourlyFactorContractOutput,
     context: &FittedModelContext,
 ) -> Result<(), WorkflowError> {
-    if hourly_factor_contract.interval_duration_nanos >= ONE_HOUR_NANOS {
+    if hourly_factor_contract.interval_duration_nanos >= NANOS_PER_HOUR {
         return Ok(());
     }
 

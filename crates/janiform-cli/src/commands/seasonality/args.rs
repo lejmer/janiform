@@ -26,12 +26,16 @@ pub(crate) enum SeasonalitySubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct PreprocessTimestampsCommand {
+    #[arg(long, value_name = "PATH", help = "Timestamp-event source file.")]
+    pub(crate) event_records: Option<PathBuf>,
+
     #[arg(
         long,
-        value_name = "PATH",
-        help = "Event-record JSON document with a top-level event_records list."
+        value_enum,
+        value_name = "FORMAT",
+        help = "Timestamp-event source format."
     )]
-    pub(crate) event_records_json: Option<PathBuf>,
+    pub(crate) event_records_format: Option<TimestampEventRecordsFormatOption>,
 
     #[arg(long, value_name = "PATH", help = "Calendar registry JSON document.")]
     pub(crate) calendar_registry_json: Option<PathBuf>,
@@ -43,9 +47,17 @@ pub(crate) struct PreprocessTimestampsCommand {
         long,
         default_value = "timestamp",
         value_name = "NAME",
-        help = "Timestamp field name inside each event record."
+        help = "Timestamp column or JSONL field name inside the timestamp-event source."
     )]
-    pub(crate) timestamp_field_name: String,
+    pub(crate) timestamp_column: String,
+
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = TimestampEventTimestampUnitOption::Rfc3339,
+        help = "Timestamp value unit: rfc3339, seconds, milliseconds, microseconds, or nanoseconds."
+    )]
+    pub(crate) timestamp_unit: TimestampEventTimestampUnitOption,
 
     #[arg(
         long,
@@ -69,12 +81,16 @@ pub(crate) struct PreprocessTimestampsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct SeasonalityDiagnosticsCommand {
+    #[arg(long, value_name = "PATH", help = "Timestamp-event source file.")]
+    pub(crate) event_records: Option<PathBuf>,
+
     #[arg(
         long,
-        value_name = "PATH",
-        help = "Event-record JSON document with a top-level event_records list."
+        value_enum,
+        value_name = "FORMAT",
+        help = "Timestamp-event source format."
     )]
-    pub(crate) event_records_json: Option<PathBuf>,
+    pub(crate) event_records_format: Option<TimestampEventRecordsFormatOption>,
 
     #[arg(long, value_name = "PATH", help = "Calendar registry JSON document.")]
     pub(crate) calendar_registry_json: Option<PathBuf>,
@@ -89,9 +105,17 @@ pub(crate) struct SeasonalityDiagnosticsCommand {
         long,
         default_value = "timestamp",
         value_name = "NAME",
-        help = "Timestamp field name inside each event record."
+        help = "Timestamp column or JSONL field name inside the timestamp-event source."
     )]
-    pub(crate) timestamp_field_name: String,
+    pub(crate) timestamp_column: String,
+
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = TimestampEventTimestampUnitOption::Rfc3339,
+        help = "Timestamp value unit: rfc3339, seconds, milliseconds, microseconds, or nanoseconds."
+    )]
+    pub(crate) timestamp_unit: TimestampEventTimestampUnitOption,
 
     #[arg(
         long,
@@ -197,4 +221,20 @@ pub(crate) struct SeasonalityDiagnosticsCommand {
 pub(crate) enum IntradaySmoothingKernelOption {
     Gaussian,
     Uniform,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum TimestampEventRecordsFormatOption {
+    Csv,
+    Parquet,
+    Jsonl,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum TimestampEventTimestampUnitOption {
+    Rfc3339,
+    Seconds,
+    Milliseconds,
+    Microseconds,
+    Nanoseconds,
 }

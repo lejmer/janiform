@@ -4,7 +4,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::sufficient_statistics::{
@@ -1318,7 +1318,7 @@ fn interval_delta_to_nanos(interval_delta: f64) -> Result<i64, IntervalDeltaGrid
         });
     }
 
-    let implied_interval_duration_nanos = interval_delta * ONE_HOUR_NANOS as f64;
+    let implied_interval_duration_nanos = interval_delta * NANOS_PER_HOUR as f64;
     let rounded_interval_duration_nanos = implied_interval_duration_nanos.round();
     if !implied_interval_duration_nanos.is_finite()
         || rounded_interval_duration_nanos <= 0.0

@@ -5,7 +5,7 @@ use janiform_model_kernels::hawkes::{
 };
 
 use crate::artifacts::SeededTickEventSide;
-use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, ONE_HOUR_NANOS};
+use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, NANOS_PER_HOUR};
 use crate::error::SeededTickSimulationRunError;
 use janiform_market_time::calendar::MarketState;
 
@@ -37,7 +37,7 @@ where
     SideStream: SimulationRandomnessStream,
 {
     let interval_duration_in_hours =
-        (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / ONE_HOUR_NANOS as f64;
+        (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / NANOS_PER_HOUR as f64;
 
     let estimated_endogenous_capacity = estimate_endogenous_interval_event_capacity(
         kernel_parameters.lambda_bar,
@@ -397,7 +397,7 @@ fn convert_wait_time_hours_to_positive_nanos(wait_time_hours: f64) -> i64 {
         return i64::MAX;
     }
 
-    let wait_time_nanos = (wait_time_hours * ONE_HOUR_NANOS as f64).ceil();
+    let wait_time_nanos = (wait_time_hours * NANOS_PER_HOUR as f64).ceil();
     if !wait_time_nanos.is_finite() || wait_time_nanos >= i64::MAX as f64 {
         return i64::MAX;
     }

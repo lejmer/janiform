@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional, cast
 
-from janiform._timestamps import ONE_HOUR_NANOS
+from janiform._timestamps import NANOS_PER_HOUR
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
@@ -269,10 +269,8 @@ def _summarize_counts_by_interval(
     range_start_utc_seconds = int(datetime.fromisoformat(range_start_utc.replace("Z", "+00:00")).timestamp())
     range_start_utc_nanos = range_start_utc_seconds * 1_000_000_000
 
-    one_hour_nanos = ONE_HOUR_NANOS
-
     for timestamp_utc_nanos, side in zip(observed_timestamps, observed_side_sequence):
-        interval_index = (timestamp_utc_nanos - range_start_utc_nanos) // one_hour_nanos
+        interval_index = (timestamp_utc_nanos - range_start_utc_nanos) // NANOS_PER_HOUR
         if interval_index < 0 or interval_index >= horizon_interval_count:
             raise AssertionError(
                 f"event timestamp {timestamp_utc_nanos} outside [{range_start_utc}, horizon={horizon_interval_count}]",
@@ -306,10 +304,9 @@ def _has_non_grid_arrival(
 ) -> bool:
     range_start_utc_seconds = int(datetime.fromisoformat(range_start_utc.replace("Z", "+00:00")).timestamp())
     range_start_utc_nanos = range_start_utc_seconds * 1_000_000_000
-    one_hour_nanos = ONE_HOUR_NANOS
 
     interval_boundaries = {
-        range_start_utc_nanos + interval_index * one_hour_nanos
+        range_start_utc_nanos + interval_index * NANOS_PER_HOUR
         for interval_index in range(horizon_interval_count + 1)
     }
 

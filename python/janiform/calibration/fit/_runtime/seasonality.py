@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 from ...._native_api import native_module
-from ...._timestamps import ONE_HOUR_NANOS, datetime_to_utc_nanos
+from ...._timestamps import NANOS_PER_HOUR, datetime_to_utc_nanos
 from ....calendar import CalendarRegistry
 from ....hourly_factors import (
     HourlySeasonalityProviderExplicitSource,
@@ -81,7 +81,7 @@ def build_runtime_hourly_seasonality_source_from_model(
             materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
         )
 
-    if interval_duration_nanos < ONE_HOUR_NANOS or not runtime_interval_grid_is_hour_aligned(
+    if interval_duration_nanos < NANOS_PER_HOUR or not runtime_interval_grid_is_hour_aligned(
         range_start_utc=range_start_utc,
         range_end_utc=range_end_utc,
     ):
@@ -164,8 +164,8 @@ def surprise_weekly_hour_utc_multipliers(model: JaniformModel) -> tuple[float, .
 
 def runtime_interval_grid_is_hour_aligned(*, range_start_utc: datetime, range_end_utc: datetime) -> bool:
     return (
-        datetime_to_utc_nanos(range_start_utc) % ONE_HOUR_NANOS == 0
-        and datetime_to_utc_nanos(range_end_utc) % ONE_HOUR_NANOS == 0
+        datetime_to_utc_nanos(range_start_utc) % NANOS_PER_HOUR == 0
+        and datetime_to_utc_nanos(range_end_utc) % NANOS_PER_HOUR == 0
     )
 
 

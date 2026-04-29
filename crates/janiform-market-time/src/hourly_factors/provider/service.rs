@@ -4,7 +4,7 @@ use crate::hourly_factors::{
     materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 use chrono::{DateTime, Utc};
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 
 use super::constants::{
     HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -222,17 +222,17 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
     }
 
     let canonical_hour_start_utc_nanos =
-        range_start_utc_nanos.div_euclid(ONE_HOUR_NANOS) * ONE_HOUR_NANOS;
-    let canonical_hour_end_utc_nanos = if range_end_utc_nanos % ONE_HOUR_NANOS == 0 {
+        range_start_utc_nanos.div_euclid(NANOS_PER_HOUR) * NANOS_PER_HOUR;
+    let canonical_hour_end_utc_nanos = if range_end_utc_nanos % NANOS_PER_HOUR == 0 {
         range_end_utc_nanos
     } else {
         range_end_utc_nanos
-            .div_euclid(ONE_HOUR_NANOS)
+            .div_euclid(NANOS_PER_HOUR)
             .saturating_add(1)
-            .saturating_mul(ONE_HOUR_NANOS)
+            .saturating_mul(NANOS_PER_HOUR)
     };
     let canonical_hour_count =
-        ((canonical_hour_end_utc_nanos - canonical_hour_start_utc_nanos) / ONE_HOUR_NANOS) as usize;
+        ((canonical_hour_end_utc_nanos - canonical_hour_start_utc_nanos) / NANOS_PER_HOUR) as usize;
     if hourly_factors.len() != canonical_hour_count {
         return Err(HourlyFactorContractError::FactorLengthMismatch {
             expected_interval_count: canonical_hour_count,
@@ -251,14 +251,14 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
         let mut weighted_factor_sum = 0.0_f64;
 
         let first_hour_index =
-            ((interval_start_utc_nanos - canonical_hour_start_utc_nanos) / ONE_HOUR_NANOS) as usize;
+            ((interval_start_utc_nanos - canonical_hour_start_utc_nanos) / NANOS_PER_HOUR) as usize;
         let last_hour_index = ((interval_end_utc_nanos - 1 - canonical_hour_start_utc_nanos)
-            / ONE_HOUR_NANOS) as usize;
+            / NANOS_PER_HOUR) as usize;
 
         for hour_index in first_hour_index..=last_hour_index {
             let hour_start_utc_nanos =
-                canonical_hour_start_utc_nanos + hour_index as i64 * ONE_HOUR_NANOS;
-            let hour_end_utc_nanos = hour_start_utc_nanos + ONE_HOUR_NANOS;
+                canonical_hour_start_utc_nanos + hour_index as i64 * NANOS_PER_HOUR;
+            let hour_end_utc_nanos = hour_start_utc_nanos + NANOS_PER_HOUR;
             let overlap_start_utc_nanos = interval_start_utc_nanos.max(hour_start_utc_nanos);
             let overlap_end_utc_nanos = interval_end_utc_nanos.min(hour_end_utc_nanos);
             let overlap_duration_nanos = overlap_end_utc_nanos - overlap_start_utc_nanos;

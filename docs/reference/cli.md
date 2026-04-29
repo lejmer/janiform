@@ -89,14 +89,15 @@ Manifest artifact paths resolve relative to the manifest file unless absolute.
 
 | Command | Contract |
 | --- | --- |
-| `janiform seasonality preprocess-timestamps` | Loads an event-record JSON document, validates the top-level `event_records` list, resolves the calendar registry, and emits preprocessed timestamp diagnostics. |
+| `janiform seasonality preprocess-timestamps` | Loads timestamp events from CSV, parquet, or JSONL, resolves the calendar registry, and emits preprocessed timestamp diagnostics. |
 | `janiform seasonality diagnostics` | Runs timestamp preprocessing, intraday estimation, day-of-week estimation, day-of-year estimation, deterministic signal composition, and diagnostics report generation. |
 | `janiform hourly-factors materialize-seasonality` | Materializes interval-aligned `s_h` factors from source timestamps and seasonality factors. |
 | `janiform hourly-factors materialize-news-intensity` | Materializes interval-aligned `nu_h` factors from scheduled news timestamps and surprise intensity controls. |
 | `janiform hourly-factors build-contract` | Builds a combined hourly factor contract from explicit factor source documents or canonical materialization reports. |
 
-Seasonality commands use `--event-records-json`, `--calendar-registry-json`,
-`--exchange-code`, and optional timestamp/session filtering controls. Hourly-factor
+Seasonality commands use `--event-records`, optional `--event-records-format`,
+`--timestamp-column`, `--timestamp-unit`, `--calendar-registry-json`,
+`--exchange-code`, and optional session filtering controls. Hourly-factor
 commands use `--calendar-registry-json`, `--exchange-code`, `--range-start-utc`,
 `--range-end-utc`, and `--interval`; materialization commands also take
 `--materialization-input-json`.

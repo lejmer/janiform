@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use janiform::hourly_factors::ONE_HOUR_NANOS;
+use janiform::hourly_factors::NANOS_PER_HOUR;
 use janiform::pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingMarketInputs,
@@ -32,7 +32,7 @@ use super::state::resolve_pricing_boundary_state;
 use super::validation::pricing_validation_error;
 use super::workflow::PricingWorkflowObserver;
 
-const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = ONE_HOUR_NANOS;
+const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
 
 /// Run a single vanilla option pricing workflow from a persisted model payload.
 pub fn run_fitted_model_single_option_pricing(

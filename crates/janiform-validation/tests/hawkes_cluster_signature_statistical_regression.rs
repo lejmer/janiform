@@ -9,7 +9,7 @@ use janiform_engine_simulation::{
     SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -1352,7 +1352,7 @@ fn build_run_config(
                 0.0,
                 vec![0.0; interval_count],
                 vec![0.0; interval_count],
-                vec![interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64; interval_count],
+                vec![interval_duration_nanos as f64 / NANOS_PER_HOUR as f64; interval_count],
             )
             .expect("disabled mean-reversion runtime anchors should construct"),
             initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(

@@ -10,7 +10,7 @@ use janiform_calibration_artifacts::{
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
 use janiform_foundations::numeric::coverage_ratio;
-use janiform_foundations::time::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
+use janiform_foundations::time::{NANOS_PER_HOUR_F64, duration_nanos_to_hours};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -1036,7 +1036,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
 }
 
 fn interval_hours_to_nanos(interval_hours: f64) -> Option<i64> {
-    let interval_nanos = interval_hours * ONE_HOUR_NANOS_F64;
+    let interval_nanos = interval_hours * NANOS_PER_HOUR_F64;
     if !interval_nanos.is_finite() || interval_nanos < 1.0 || interval_nanos > i64::MAX as f64 {
         return None;
     }

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 
 use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::hourly_factors::HourlyFactorContractError;
@@ -15,7 +15,7 @@ fn provider_returns_structured_error_for_missing_seasonality_source() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        interval_duration_nanos: NANOS_PER_HOUR,
         seasonality_source: None,
         news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
             hourly_factors: &[0.1, 0.0],
@@ -40,7 +40,7 @@ fn provider_returns_structured_error_for_missing_news_intensity_source() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        interval_duration_nanos: NANOS_PER_HOUR,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.0, 1.0],
             materialization_method: "explicit_hourly_input.v1",
@@ -65,7 +65,7 @@ fn provider_returns_structured_error_for_unsupported_range_requests() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:30:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        interval_duration_nanos: NANOS_PER_HOUR,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.0],
             materialization_method: "explicit_hourly_input.v1",

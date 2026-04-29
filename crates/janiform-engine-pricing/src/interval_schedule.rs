@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_foundations::time::{
-    ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, duration_nanos_to_hours, floor_to_hour_utc_nanos,
+    NANOS_PER_HOUR, ceil_to_hour_utc_nanos, duration_nanos_to_hours, floor_to_hour_utc_nanos,
 };
 use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -242,7 +242,7 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
     hourly_factor_contract: &HourlyFactorContractOutput,
     cpu_count: Option<usize>,
 ) -> Result<Vec<VanillaOptionPricingIntervalFactors>, PricingIntervalScheduleError> {
-    if hourly_factor_contract.interval_duration_nanos != ONE_HOUR_NANOS {
+    if hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR {
         return Err(
             PricingIntervalScheduleError::UnexpectedHourlyContractIntervalDuration {
                 observed_interval_duration_nanos: hourly_factor_contract.interval_duration_nanos,
@@ -311,7 +311,7 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
                 let hour_bucket_start_utc_nanos = floor_to_hour_utc_nanos(interval_start_utc_nanos);
                 let hour_bucket_index = ((hour_bucket_start_utc_nanos
                     - first_contract_start_utc_nanos)
-                    / ONE_HOUR_NANOS) as usize;
+                    / NANOS_PER_HOUR) as usize;
                 let contract_hour_end_utc_nanos =
                     hourly_factor_contract.interval_end_utc_nanos[hour_bucket_index];
                 if interval_end_utc_nanos > contract_hour_end_utc_nanos {
@@ -429,7 +429,7 @@ fn build_auto_exact_sparse_schedule(
         }
 
         current_hour_boundary_utc_nanos = current_hour_boundary_utc_nanos
-            .checked_add(ONE_HOUR_NANOS)
+            .checked_add(NANOS_PER_HOUR)
             .ok_or(PricingIntervalScheduleError::AutomaticScheduleOverflow)?;
     }
 
@@ -453,7 +453,7 @@ fn build_auto_activity_compressed_schedule(
     expiry_timestamps_utc_nanos: &[i64],
     hourly_factor_contract: &HourlyFactorContractOutput,
 ) -> Result<PricingIntervalSchedule, PricingIntervalScheduleError> {
-    if hourly_factor_contract.interval_duration_nanos != ONE_HOUR_NANOS {
+    if hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR {
         return Err(
             PricingIntervalScheduleError::UnexpectedHourlyContractIntervalDuration {
                 observed_interval_duration_nanos: hourly_factor_contract.interval_duration_nanos,
@@ -520,7 +520,7 @@ fn build_auto_activity_compressed_schedule(
             let target_end_utc_nanos = current_start_utc_nanos
                 .checked_add(
                     (target_open_exposure_hours.round() as i64)
-                        .checked_mul(ONE_HOUR_NANOS)
+                        .checked_mul(NANOS_PER_HOUR)
                         .ok_or(PricingIntervalScheduleError::AutomaticScheduleOverflow)?,
                 )
                 .ok_or(PricingIntervalScheduleError::AutomaticScheduleOverflow)?;
@@ -634,7 +634,7 @@ fn locate_hour_bucket_index(
 ) -> Result<usize, PricingIntervalScheduleError> {
     let first_contract_start_utc_nanos = hourly_factor_contract.interval_start_utc_nanos[0];
     let hour_bucket_index =
-        ((timestamp_utc_nanos - first_contract_start_utc_nanos) / ONE_HOUR_NANOS) as usize;
+        ((timestamp_utc_nanos - first_contract_start_utc_nanos) / NANOS_PER_HOUR) as usize;
 
     if hour_bucket_index >= hourly_factor_contract.interval_count() {
         return Err(
@@ -744,9 +744,9 @@ fn build_resampled_pricing_interval_factors(
     let first_contract_start_utc_nanos = hourly_factor_contract.interval_start_utc_nanos[0];
 
     let first_hour_index =
-        ((interval_start_utc_nanos - first_contract_start_utc_nanos) / ONE_HOUR_NANOS) as usize;
+        ((interval_start_utc_nanos - first_contract_start_utc_nanos) / NANOS_PER_HOUR) as usize;
     let last_hour_index =
-        ((interval_end_utc_nanos - 1 - first_contract_start_utc_nanos) / ONE_HOUR_NANOS) as usize;
+        ((interval_end_utc_nanos - 1 - first_contract_start_utc_nanos) / NANOS_PER_HOUR) as usize;
 
     let mut seasonality_factor = 0.0;
     let mut known_news_factor = 0.0;
@@ -976,7 +976,7 @@ impl HourlyFactorContractCount for HourlyFactorContractOutput {
 
 #[cfg(test)]
 mod tests {
-    use janiform_foundations::time::ONE_HOUR_NANOS;
+    use janiform_foundations::time::NANOS_PER_HOUR;
     use janiform_foundations::time::utc_nanos;
     use janiform_market_time::hourly_factors::{
         HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
@@ -996,7 +996,7 @@ mod tests {
             exchange_timezone_name: "UTC".to_string(),
             request_start_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
             request_end_utc_nanos: utc_nanos(2026, 2, 2, 18, 0, 0),
-            interval_duration_nanos: ONE_HOUR_NANOS,
+            interval_duration_nanos: NANOS_PER_HOUR,
             interval_indices: vec![0, 1, 2, 3],
             interval_start_utc_nanos: vec![
                 utc_nanos(2026, 2, 2, 14, 0, 0),
@@ -1027,7 +1027,7 @@ mod tests {
             },
             diagnostics: HourlyFactorContractDiagnostics {
                 interval_count: 4,
-                interval_duration_nanos: ONE_HOUR_NANOS,
+                interval_duration_nanos: NANOS_PER_HOUR,
                 first_interval_start_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
                 last_interval_end_utc_nanos: utc_nanos(2026, 2, 2, 18, 0, 0),
                 skipped_local_hour_interval_count: 0,
@@ -1042,11 +1042,11 @@ mod tests {
     ) -> HourlyFactorContractOutput {
         let interval_count = open_hour_flags.len();
         let interval_start_utc_nanos = (0..interval_count)
-            .map(|interval_index| request_start_utc_nanos + interval_index as i64 * ONE_HOUR_NANOS)
+            .map(|interval_index| request_start_utc_nanos + interval_index as i64 * NANOS_PER_HOUR)
             .collect::<Vec<_>>();
         let interval_end_utc_nanos = interval_start_utc_nanos
             .iter()
-            .map(|interval_start_utc_nanos| interval_start_utc_nanos + ONE_HOUR_NANOS)
+            .map(|interval_start_utc_nanos| interval_start_utc_nanos + NANOS_PER_HOUR)
             .collect::<Vec<_>>();
         let last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
         let s_h = open_hour_flags
@@ -1060,7 +1060,7 @@ mod tests {
             exchange_timezone_name: "UTC".to_string(),
             request_start_utc_nanos,
             request_end_utc_nanos: last_interval_end_utc_nanos,
-            interval_duration_nanos: ONE_HOUR_NANOS,
+            interval_duration_nanos: NANOS_PER_HOUR,
             interval_indices: (0..interval_count as u64).collect(),
             interval_start_utc_nanos,
             interval_end_utc_nanos,
@@ -1081,7 +1081,7 @@ mod tests {
             },
             diagnostics: HourlyFactorContractDiagnostics {
                 interval_count,
-                interval_duration_nanos: ONE_HOUR_NANOS,
+                interval_duration_nanos: NANOS_PER_HOUR,
                 first_interval_start_utc_nanos: request_start_utc_nanos,
                 last_interval_end_utc_nanos,
                 skipped_local_hour_interval_count: 0,

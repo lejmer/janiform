@@ -102,30 +102,30 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
 }
 
 #[test]
-fn seasonality_preprocess_timestamps_json_runs_native_workflow() {
+fn seasonality_preprocess_timestamps_csv_runs_native_workflow() {
     let workspace = temporary_run_directory("seasonality-preprocess");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
     let calendar_path = workspace.join("calendar.json");
-    let events_path = workspace.join("events.json");
+    let events_path = workspace.join("events.csv");
     write_calendar_fixture(&calendar_path);
-    write_json_file(
+    std::fs::write(
         &events_path,
-        &serde_json::json!({
-            "event_records": [
-                {"timestamp": "2026-02-02T14:35:00Z"},
-                {"timestamp": "2026-02-02T15:10:00Z"},
-                {"timestamp": "2026-02-02T16:15:00Z"},
-                {"timestamp": "2026-02-02T22:00:00Z"}
-            ]
-        }),
-    );
+        concat!(
+            "timestamp,price\n",
+            "2026-02-02T14:35:00Z,1.0\n",
+            "2026-02-02T15:10:00Z,1.1\n",
+            "2026-02-02T16:15:00Z,1.2\n",
+            "2026-02-02T22:00:00Z,1.3\n"
+        ),
+    )
+    .expect("event CSV fixture should be written");
 
     let output = janiform_command()
         .args([
             "--json",
             "seasonality",
             "preprocess-timestamps",
-            "--event-records-json",
+            "--event-records",
             events_path
                 .to_str()
                 .expect("temporary event path should be valid UTF-8"),
@@ -166,29 +166,28 @@ fn seasonality_preprocess_timestamps_json_runs_native_workflow() {
 }
 
 #[test]
-fn seasonality_diagnostics_json_runs_full_native_pipeline() {
+fn seasonality_diagnostics_jsonl_runs_full_native_pipeline() {
     let workspace = temporary_run_directory("seasonality-diagnostics");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
     let calendar_path = workspace.join("calendar.json");
-    let events_path = workspace.join("events.json");
+    let events_path = workspace.join("events.jsonl");
     write_calendar_fixture(&calendar_path);
-    write_json_file(
+    std::fs::write(
         &events_path,
-        &serde_json::json!({
-            "event_records": [
-                {"timestamp": "2026-02-02T14:35:00Z"},
-                {"timestamp": "2026-02-02T15:10:00Z"},
-                {"timestamp": "2026-02-02T16:15:00Z"}
-            ]
-        }),
-    );
+        concat!(
+            "{\"timestamp\":\"2026-02-02T14:35:00Z\"}\n",
+            "{\"timestamp\":\"2026-02-02T15:10:00Z\"}\n",
+            "{\"timestamp\":\"2026-02-02T16:15:00Z\"}\n"
+        ),
+    )
+    .expect("event JSONL fixture should be written");
 
     let output = janiform_command()
         .args([
             "--json",
             "seasonality",
             "diagnostics",
-            "--event-records-json",
+            "--event-records",
             events_path
                 .to_str()
                 .expect("temporary event path should be valid UTF-8"),

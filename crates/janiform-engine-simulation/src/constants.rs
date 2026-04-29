@@ -3,7 +3,7 @@
 use janiform_foundations::randomness::{
     SIMULATION_RANDOMNESS_STREAM_POLICY, SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
 };
-pub(crate) use janiform_foundations::time::ONE_HOUR_NANOS;
+pub(crate) use janiform_foundations::time::NANOS_PER_HOUR;
 
 pub const SEEDED_TICK_EVENT_RUN_CONFIG_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.run_config.v1";

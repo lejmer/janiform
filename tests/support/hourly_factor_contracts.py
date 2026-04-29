@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from janiform._timestamps import ONE_HOUR_NANOS
+from janiform._timestamps import NANOS_PER_HOUR
 from janiform.hourly_factors import HourlyFactorContract, load_hourly_factor_contract_payload
 
 
 def build_hourly_factor_contract(
     *,
     request_start_utc_nanos: int,
-    interval_duration_nanos: int = ONE_HOUR_NANOS,
+    interval_duration_nanos: int = NANOS_PER_HOUR,
     exchange_code: str = "XNYS",
     exchange_timezone_name: str = "America/New_York",
     s_h: Iterable[float],

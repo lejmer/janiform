@@ -17,7 +17,7 @@ use crate::artifacts::{
 };
 use crate::config::{SeededTickEventStateSnapshotCapture, SeededTickSimulationRunConfig};
 use crate::constants::{
-    ONE_HOUR_NANOS, SEEDED_TICK_EVENT_DETERMINISM_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
+    NANOS_PER_HOUR, SEEDED_TICK_EVENT_DETERMINISM_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
     SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION, SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
     SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
 };
@@ -289,7 +289,7 @@ fn build_interval_simulation_inputs<'a>(
         interval_start_utc_nanos,
         interval_end_utc_nanos,
         interval_duration_nanos,
-        interval_duration_in_hours: interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64,
+        interval_duration_in_hours: interval_duration_nanos as f64 / NANOS_PER_HOUR as f64,
         interval_seasonality_factor: run_config.model_inputs.hourly_factor_contract.s_h
             [interval_index],
         interval_news_intensity: run_config.model_inputs.hourly_factor_contract.nu_h

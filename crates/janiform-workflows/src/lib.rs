@@ -8,6 +8,7 @@
 pub mod error;
 pub mod fit;
 pub mod pricing;
+pub mod seasonality;
 pub mod simulation;
 pub mod terminal;
 

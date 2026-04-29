@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use janiform::calendar::{
     PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION, TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION,
-    TimestampEventInputRecord, TimestampEventPreprocessingOutput, TimestampEventSessionFilter,
+    TimestampEventPreprocessingOutput, TimestampEventSessionFilter,
 };
 use janiform::seasonality::{
     DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
@@ -12,14 +12,19 @@ use janiform::seasonality::{
     estimate_day_of_year_seasonality, estimate_intraday_seasonality,
     generate_seasonality_diagnostics_report,
 };
-use janiform_foundations::time::{format_utc_nanos, parse_utc_datetime};
+use janiform_foundations::time::format_utc_nanos;
 use janiform_terminal_ui::KeyValueRow;
+use janiform_workflows::seasonality::{
+    TimestampEventSource, TimestampEventSourceFormat, TimestampEventSourceLoadError,
+    TimestampEventTimestampUnit, load_timestamp_event_records,
+};
 use serde_json::{Value, json};
 
 use super::args::{
     IntradaySmoothingKernelOption, PreprocessTimestampsCommand, SeasonalityDiagnosticsCommand,
+    TimestampEventRecordsFormatOption, TimestampEventTimestampUnitOption,
 };
-use crate::commands::shared::artifacts::{load_calendar_registry_artifact, load_json_artifact};
+use crate::commands::shared::artifacts::load_calendar_registry_artifact;
 use crate::commands::shared::inputs::{
     require_non_empty_string, required_input_file, required_non_empty_argument,
 };
@@ -36,7 +41,7 @@ pub(crate) fn run_seasonality_preprocess_timestamps(
     command: PreprocessTimestampsCommand,
 ) -> Result<(), CliError> {
     let event_records_path =
-        required_input_file(context, "--event-records-json", &command.event_records_json)?;
+        required_input_file(context, "--event-records", &command.event_records)?;
 
     let calendar_registry_path = required_input_file(
         context,
@@ -46,10 +51,17 @@ pub(crate) fn run_seasonality_preprocess_timestamps(
 
     let exchange_code = required_non_empty_argument("--exchange-code", command.exchange_code)?;
 
-    let timestamp_field_name =
-        require_non_empty_string("--timestamp-field-name", &command.timestamp_field_name)?;
+    let timestamp_column =
+        require_non_empty_string("--timestamp-column", &command.timestamp_column)?;
 
     let session_filter = parse_session_filter(&command.session_filter)?;
+
+    let event_source = timestamp_event_source(
+        &event_records_path,
+        command.event_records_format,
+        timestamp_column,
+        command.timestamp_unit,
+    )?;
 
     let output_path = command
         .output_path
@@ -62,21 +74,17 @@ pub(crate) fn run_seasonality_preprocess_timestamps(
         2,
         output_path.as_deref(),
         &[
-            "load event records",
+            "load timestamp events",
             "load calendar registry",
             "preprocess timestamps",
         ],
     )?;
 
-    progress.observe("load event records", 1)?;
+    progress.observe("load timestamp events", 1)?;
 
-    let event_records_document = load_json_artifact(&event_records_path, "event records")?;
-
-    let event_records = parse_event_records(
-        &event_records_document,
-        timestamp_field_name,
-        &event_records_path,
-    )?;
+    let event_records = load_timestamp_event_records(event_source)
+        .map_err(timestamp_event_source_load_error)?
+        .records;
 
     progress.observe("load calendar registry", 2)?;
 
@@ -112,7 +120,7 @@ pub(crate) fn run_seasonality_diagnostics(
     command: SeasonalityDiagnosticsCommand,
 ) -> Result<(), CliError> {
     let event_records_path =
-        required_input_file(context, "--event-records-json", &command.event_records_json)?;
+        required_input_file(context, "--event-records", &command.event_records)?;
 
     let calendar_registry_path = required_input_file(
         context,
@@ -124,13 +132,20 @@ pub(crate) fn run_seasonality_diagnostics(
 
     let exchange_code = required_non_empty_argument("--exchange-code", command.exchange_code)?;
 
-    let timestamp_field_name =
-        require_non_empty_string("--timestamp-field-name", &command.timestamp_field_name)?;
+    let timestamp_column =
+        require_non_empty_string("--timestamp-column", &command.timestamp_column)?;
 
     let estimator_version =
         require_non_empty_string("--estimator-version", &command.estimator_version)?;
 
     let session_filter = parse_session_filter(&command.session_filter)?;
+
+    let event_source = timestamp_event_source(
+        &event_records_path,
+        command.event_records_format,
+        timestamp_column,
+        command.timestamp_unit,
+    )?;
 
     let output_path = command
         .output_path
@@ -143,7 +158,7 @@ pub(crate) fn run_seasonality_diagnostics(
         2,
         output_path.as_deref(),
         &[
-            "load event records",
+            "load timestamp events",
             "load calendar registry",
             "preprocess timestamps",
             "estimate intraday",
@@ -154,15 +169,11 @@ pub(crate) fn run_seasonality_diagnostics(
         ],
     )?;
 
-    progress.observe("load event records", 1)?;
+    progress.observe("load timestamp events", 1)?;
 
-    let event_records_document = load_json_artifact(&event_records_path, "event records")?;
-
-    let event_records = parse_event_records(
-        &event_records_document,
-        timestamp_field_name,
-        &event_records_path,
-    )?;
+    let event_records = load_timestamp_event_records(event_source)
+        .map_err(timestamp_event_source_load_error)?
+        .records;
 
     progress.observe("load calendar registry", 2)?;
 
@@ -280,61 +291,6 @@ pub(crate) fn run_seasonality_diagnostics(
     progress.complete()?;
 
     emit_diagnostics_output(context, &report, &preprocessed, output_path.as_deref())
-}
-
-fn parse_event_records(
-    document: &Value,
-    timestamp_field_name: &str,
-    path: &Path,
-) -> Result<Vec<TimestampEventInputRecord>, CliError> {
-    let records = document
-        .get("event_records")
-        .and_then(Value::as_array)
-        .ok_or_else(|| CliError::ArtifactMalformed {
-            artifact_name: "event records",
-            path: path.to_path_buf(),
-            message: "must include list field `event_records`".to_string(),
-        })?;
-
-    let mut parsed_records = Vec::with_capacity(records.len());
-
-    for (record_position, record) in records.iter().enumerate() {
-        let record_object = record
-            .as_object()
-            .ok_or_else(|| CliError::ArtifactMalformed {
-                artifact_name: "event records",
-                path: path.to_path_buf(),
-                message: format!("event_records[{record_position}] must be an object"),
-            })?;
-
-        let timestamp_value = record_object
-            .get(timestamp_field_name)
-            .and_then(Value::as_str)
-            .ok_or_else(|| CliError::ArtifactMalformed {
-                artifact_name: "event records",
-                path: path.to_path_buf(),
-                message: format!(
-                    "event_records[{record_position}].{timestamp_field_name} must be a timestamp string"
-                ),
-            })?;
-
-        let timestamp_utc = parse_utc_datetime(timestamp_value).map_err(|source| {
-            CliError::ArtifactMalformed {
-                artifact_name: "event records",
-                path: path.to_path_buf(),
-                message: format!(
-                    "event_records[{record_position}].{timestamp_field_name} must be a valid RFC 3339 timestamp: {source}"
-                ),
-            }
-        })?;
-
-        parsed_records.push(TimestampEventInputRecord {
-            source_record_position: record_position as u64,
-            timestamp_utc,
-        });
-    }
-
-    Ok(parsed_records)
 }
 
 fn timestamp_preprocessing_payload(output: &TimestampEventPreprocessingOutput) -> Value {
@@ -506,6 +462,83 @@ fn accepted_utc_range(first_nanos: Option<i64>, last_nanos: Option<i64>) -> Stri
             )
         }
         _ => "none".to_string(),
+    }
+}
+
+fn timestamp_event_source(
+    path: &Path,
+    explicit_format: Option<TimestampEventRecordsFormatOption>,
+    timestamp_column: &str,
+    timestamp_unit: TimestampEventTimestampUnitOption,
+) -> Result<TimestampEventSource, CliError> {
+    Ok(TimestampEventSource {
+        path: path.to_path_buf(),
+        file_format: timestamp_event_source_format(path, explicit_format)?,
+        timestamp_column: timestamp_column.to_string(),
+        timestamp_unit: timestamp_event_timestamp_unit(timestamp_unit),
+    })
+}
+
+fn timestamp_event_source_format(
+    path: &Path,
+    explicit_format: Option<TimestampEventRecordsFormatOption>,
+) -> Result<TimestampEventSourceFormat, CliError> {
+    match explicit_format {
+        Some(TimestampEventRecordsFormatOption::Csv) => Ok(TimestampEventSourceFormat::Csv),
+        Some(TimestampEventRecordsFormatOption::Parquet) => Ok(TimestampEventSourceFormat::Parquet),
+        Some(TimestampEventRecordsFormatOption::Jsonl) => Ok(TimestampEventSourceFormat::Jsonl),
+        None => infer_timestamp_event_source_format(path),
+    }
+}
+
+fn infer_timestamp_event_source_format(
+    path: &Path,
+) -> Result<TimestampEventSourceFormat, CliError> {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some(extension) if extension.eq_ignore_ascii_case("csv") => {
+            Ok(TimestampEventSourceFormat::Csv)
+        }
+        Some(extension) if extension.eq_ignore_ascii_case("parquet") => {
+            Ok(TimestampEventSourceFormat::Parquet)
+        }
+        Some(extension) if extension.eq_ignore_ascii_case("jsonl") => {
+            Ok(TimestampEventSourceFormat::Jsonl)
+        }
+        Some(extension) if extension.eq_ignore_ascii_case("json") => {
+            Err(CliError::InvalidCommandArgument {
+                argument_name: "--event-records-format",
+                message:
+                    "JSON document event sources are not supported; use jsonl, csv, or parquet"
+                        .to_string(),
+            })
+        }
+        _ => Err(CliError::InvalidCommandArgument {
+            argument_name: "--event-records-format",
+            message: "file format could not be inferred from the extension".to_string(),
+        }),
+    }
+}
+
+fn timestamp_event_timestamp_unit(
+    timestamp_unit: TimestampEventTimestampUnitOption,
+) -> TimestampEventTimestampUnit {
+    match timestamp_unit {
+        TimestampEventTimestampUnitOption::Rfc3339 => TimestampEventTimestampUnit::Rfc3339,
+        TimestampEventTimestampUnitOption::Seconds => TimestampEventTimestampUnit::Seconds,
+        TimestampEventTimestampUnitOption::Milliseconds => {
+            TimestampEventTimestampUnit::Milliseconds
+        }
+        TimestampEventTimestampUnitOption::Microseconds => {
+            TimestampEventTimestampUnit::Microseconds
+        }
+        TimestampEventTimestampUnitOption::Nanoseconds => TimestampEventTimestampUnit::Nanoseconds,
+    }
+}
+
+fn timestamp_event_source_load_error(source: TimestampEventSourceLoadError) -> CliError {
+    CliError::InvalidCommandArgument {
+        argument_name: "--event-records",
+        message: source.to_string(),
     }
 }
 

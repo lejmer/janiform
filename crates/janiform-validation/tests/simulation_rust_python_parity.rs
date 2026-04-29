@@ -9,7 +9,7 @@ use janiform_engine_simulation::{
     SeededTickEventSide, SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
     run_seeded_tick_event_simulation,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, build_hourly_factor_contract,
@@ -420,7 +420,7 @@ fn run_fixture_case(
         &fixture_case.exchange_code,
         range_start_utc,
         range_end_utc,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         &fixture_case.seasonality_hourly_factors,
         &fixture_case.news_intensity_hourly_factors,
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -458,7 +458,7 @@ fn run_fixture_case(
                 vec![0.0; fixture_case.horizon_interval_count],
                 vec![0.0; fixture_case.horizon_interval_count],
                 vec![
-                    hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+                    hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
                     fixture_case.horizon_interval_count
                 ],
             )
@@ -636,7 +636,7 @@ fn summarize_counts_by_interval(
 
     for (timestamp_utc_nanos, side_label) in observed_timestamps.iter().zip(observed_sides.iter()) {
         let interval_offset = *timestamp_utc_nanos - range_start_utc_nanos;
-        let interval_index = interval_offset / ONE_HOUR_NANOS;
+        let interval_index = interval_offset / NANOS_PER_HOUR;
         if interval_index < 0 || interval_index >= horizon_interval_count as i64 {
             return Err(format!(
                 "timestamp {} is outside configured interval range",
@@ -686,7 +686,7 @@ fn has_non_grid_arrival(
         .timestamp_nanos_opt()
         .ok_or_else(|| "range_start_utc cannot be represented in nanoseconds".to_string())?;
     let interval_boundaries: BTreeSet<i64> = (0..=horizon_interval_count)
-        .map(|interval_index| range_start_utc_nanos + interval_index as i64 * ONE_HOUR_NANOS)
+        .map(|interval_index| range_start_utc_nanos + interval_index as i64 * NANOS_PER_HOUR)
         .collect();
 
     Ok(observed_timestamps

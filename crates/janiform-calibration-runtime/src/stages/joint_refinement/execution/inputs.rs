@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use janiform_foundations::time::{
-    FIFTEEN_MINUTES_NANOS, FIVE_MINUTES_NANOS, ONE_HOUR_NANOS, ceil_to_hour_utc_nanos,
+    NANOS_PER_FIFTEEN_MINUTES, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, ceil_to_hour_utc_nanos,
     floor_to_hour_utc_nanos,
 };
 
@@ -43,7 +43,7 @@ pub(crate) fn build_observed_data(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
-        FIVE_MINUTES_NANOS,
+        NANOS_PER_FIVE_MINUTES,
     );
     let observed_15m_intervals = build_observed_open_session_interval_observations(
         calendar_registry,
@@ -52,7 +52,7 @@ pub(crate) fn build_observed_data(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
-        FIFTEEN_MINUTES_NANOS,
+        NANOS_PER_FIFTEEN_MINUTES,
     );
     let observed_hourly_intervals = build_observed_open_session_interval_observations(
         calendar_registry,
@@ -61,7 +61,7 @@ pub(crate) fn build_observed_data(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
     );
 
     let observed_15m_rv_activity_metric =
@@ -152,7 +152,7 @@ pub(crate) fn build_observed_data(
         - hourly_simulation_start_utc
             .timestamp_nanos_opt()
             .unwrap_or(source_window.window_start_utc_nanos))
-    .div_euclid(ONE_HOUR_NANOS)) as usize;
+    .div_euclid(NANOS_PER_HOUR)) as usize;
 
     let surprise_multiplier_by_hour_index = build_surprise_multipliers_by_hour_index(
         hourly_simulation_start_utc,
@@ -262,7 +262,7 @@ fn build_surprise_multipliers_by_hour_index(
     build_surprise_multipliers_for_interval_grid(
         hourly_simulation_start_utc,
         hourly_simulation_interval_count,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         return_components_fitted_parameters
             .surprise_deterministic_intensity_profile
             .weekly_hour_utc_multipliers

@@ -17,7 +17,7 @@ use janiform_engine_pricing::{
     derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
     materialize_schedule_interval_factors_with_cpu_count,
 };
-use janiform_foundations::time::{ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
+use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
 };
@@ -320,7 +320,7 @@ fn resolve_option_pricing_horizon(
 
     let hourly_coverage_interval_count = ((hourly_coverage_end_utc_nanos
         - hourly_coverage_start_utc_nanos)
-        / ONE_HOUR_NANOS) as usize;
+        / NANOS_PER_HOUR) as usize;
 
     Ok(OptionPricingHorizon {
         hourly_coverage_start_utc_nanos,
@@ -405,7 +405,7 @@ fn build_option_hourly_factor_contract(
                 .as_slice(),
             horizon.hourly_coverage_start_utc_nanos,
             horizon.hourly_coverage_end_utc_nanos,
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
         )
         .map_err(|error_message| {
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -419,7 +419,7 @@ fn build_option_hourly_factor_contract(
         build_surprise_multipliers_for_interval_grid(
             DateTime::<Utc>::from_timestamp_nanos(horizon.hourly_coverage_start_utc_nanos),
             horizon.hourly_coverage_interval_count,
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
             return_components_payload
                 .fitted_parameters
                 .surprise_deterministic_intensity_profile
@@ -437,7 +437,7 @@ fn build_option_hourly_factor_contract(
             range_end_utc: DateTime::<Utc>::from_timestamp_nanos(
                 horizon.hourly_coverage_end_utc_nanos,
             ),
-            interval_duration_nanos: ONE_HOUR_NANOS,
+            interval_duration_nanos: NANOS_PER_HOUR,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
                 materialization_method:
@@ -1145,7 +1145,7 @@ fn build_option_surface_tier_pricing_artifact(
             .entry(format!(
                 "{:.0}",
                 (observed_node.expiry_timestamp_utc_nanos - valuation_time_utc_nanos) as f64
-                    / ONE_HOUR_NANOS as f64
+                    / NANOS_PER_HOUR as f64
             ))
             .or_default()
             .push(spread_normalized_residual);
@@ -1755,7 +1755,7 @@ mod tests {
         VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingStatus,
         materialize_schedule_interval_factors, run_vanilla_option_grid_batch_pricing,
     };
-    use janiform_foundations::time::ONE_HOUR_NANOS;
+    use janiform_foundations::time::NANOS_PER_HOUR;
     use janiform_market_time::calendar::ExchangeCalendarRegistry;
     use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
     use janiform_model_kernels::hawkes::HawkesEventSide;
@@ -1794,9 +1794,9 @@ mod tests {
 
     fn sample_option_pricing_input() -> JointRefinementStageOptionPricingInput {
         let valuation_time_utc_nanos = 0;
-        let first_expiry_utc_nanos = ONE_HOUR_NANOS;
-        let second_expiry_utc_nanos = 2 * ONE_HOUR_NANOS;
-        let third_expiry_utc_nanos = 3 * ONE_HOUR_NANOS;
+        let first_expiry_utc_nanos = NANOS_PER_HOUR;
+        let second_expiry_utc_nanos = 2 * NANOS_PER_HOUR;
+        let third_expiry_utc_nanos = 3 * NANOS_PER_HOUR;
 
         JointRefinementStageOptionPricingInput {
             valuation_time_utc_nanos,
@@ -1933,12 +1933,12 @@ mod tests {
         let interval_count = open_hour_flags.len();
 
         let interval_start_utc_nanos = (0..interval_count)
-            .map(|interval_index| request_start_utc_nanos + interval_index as i64 * ONE_HOUR_NANOS)
+            .map(|interval_index| request_start_utc_nanos + interval_index as i64 * NANOS_PER_HOUR)
             .collect::<Vec<_>>();
 
         let interval_end_utc_nanos = interval_start_utc_nanos
             .iter()
-            .map(|interval_start_utc_nanos| interval_start_utc_nanos + ONE_HOUR_NANOS)
+            .map(|interval_start_utc_nanos| interval_start_utc_nanos + NANOS_PER_HOUR)
             .collect::<Vec<_>>();
 
         let last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
@@ -1949,7 +1949,7 @@ mod tests {
             exchange_timezone_name: "UTC".to_string(),
             request_start_utc_nanos,
             request_end_utc_nanos: last_interval_end_utc_nanos,
-            interval_duration_nanos: ONE_HOUR_NANOS,
+            interval_duration_nanos: NANOS_PER_HOUR,
             interval_indices: (0..interval_count as u64).collect(),
             interval_start_utc_nanos,
             interval_end_utc_nanos,
@@ -1973,7 +1973,7 @@ mod tests {
             },
             diagnostics: HourlyFactorContractDiagnostics {
                 interval_count,
-                interval_duration_nanos: ONE_HOUR_NANOS,
+                interval_duration_nanos: NANOS_PER_HOUR,
                 first_interval_start_utc_nanos: request_start_utc_nanos,
                 last_interval_end_utc_nanos,
                 skipped_local_hour_interval_count: 0,
@@ -2115,7 +2115,7 @@ mod tests {
             spectral_collocation_node_count_override: None,
             observed_nodes: vec![
                 artifact_observed_node(
-                    ONE_HOUR_NANOS,
+                    NANOS_PER_HOUR,
                     100.0,
                     VanillaOptionPayoffType::Call,
                     0,
@@ -2126,7 +2126,7 @@ mod tests {
                     1.1,
                 ),
                 artifact_observed_node(
-                    ONE_HOUR_NANOS,
+                    NANOS_PER_HOUR,
                     110.0,
                     VanillaOptionPayoffType::Call,
                     0,
@@ -2137,7 +2137,7 @@ mod tests {
                     1.75,
                 ),
                 artifact_observed_node(
-                    2 * ONE_HOUR_NANOS,
+                    2 * NANOS_PER_HOUR,
                     95.0,
                     VanillaOptionPayoffType::Put,
                     1,
@@ -2192,13 +2192,13 @@ mod tests {
         assert_eq!(artifact.maturity_scores.len(), 2);
         assert_eq!(
             artifact.maturity_scores[0].expiry_timestamp_utc_nanos,
-            ONE_HOUR_NANOS
+            NANOS_PER_HOUR
         );
         assert_eq!(artifact.maturity_scores[0].maturity_weight, 2);
         assert_eq!(artifact.maturity_scores[0].quote_count, 2);
         assert_eq!(
             artifact.maturity_scores[1].expiry_timestamp_utc_nanos,
-            2 * ONE_HOUR_NANOS
+            2 * NANOS_PER_HOUR
         );
         assert_eq!(artifact.maturity_scores[1].maturity_weight, 1);
         assert_eq!(artifact.aggregate_diagnostics.len(), 5);
@@ -2646,13 +2646,13 @@ mod tests {
                 seasonality_factors_input.day_of_year_factor.as_slice(),
                 hourly_coverage_start_utc_nanos,
                 hourly_coverage_end_utc_nanos,
-                ONE_HOUR_NANOS,
+                NANOS_PER_HOUR,
             )
             .expect("runtime seasonality materialization should succeed");
 
         let hourly_coverage_interval_count = ((hourly_coverage_end_utc_nanos
             - hourly_coverage_start_utc_nanos)
-            / ONE_HOUR_NANOS) as usize;
+            / NANOS_PER_HOUR) as usize;
 
         let surprise_deterministic_time_multiplier_by_interval_index =
             build_surprise_multipliers_for_interval_grid(
@@ -2660,7 +2660,7 @@ mod tests {
                     hourly_coverage_start_utc_nanos,
                 ),
                 hourly_coverage_interval_count,
-                ONE_HOUR_NANOS,
+                NANOS_PER_HOUR,
                 return_components_payload
                     .fitted_parameters
                     .surprise_deterministic_intensity_profile
@@ -2678,7 +2678,7 @@ mod tests {
                 range_end_utc: chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(
                     hourly_coverage_end_utc_nanos,
                 ),
-                interval_duration_nanos: ONE_HOUR_NANOS,
+                interval_duration_nanos: NANOS_PER_HOUR,
                 seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                     hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
                     materialization_method:

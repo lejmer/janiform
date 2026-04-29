@@ -748,7 +748,7 @@ mod tests {
     use janiform_engine_pricing::{
         PricingIntervalSchedulePolicy, VanillaOptionPayoffType, derive_pricing_interval_schedule,
     };
-    use janiform_foundations::time::ONE_HOUR_NANOS;
+    use janiform_foundations::time::NANOS_PER_HOUR;
     use janiform_model_kernels::hawkes::HawkesEventSide;
 
     use super::{build_option_surface_tiers, clean_option_pricing_input};
@@ -786,7 +786,7 @@ mod tests {
     ) -> JointRefinementStageOptionSnapshotNode {
         JointRefinementStageOptionSnapshotNode {
             quote_timestamp_utc_nanos,
-            expiry_timestamp_utc_nanos: expiry_hour * ONE_HOUR_NANOS,
+            expiry_timestamp_utc_nanos: expiry_hour * NANOS_PER_HOUR,
             strike,
             payoff_type,
             bid_price,
@@ -901,7 +901,7 @@ mod tests {
                 .maturity_representatives
                 .iter()
                 .any(|representative| {
-                    representative.expiry_timestamp_utc_nanos == ONE_HOUR_NANOS
+                    representative.expiry_timestamp_utc_nanos == NANOS_PER_HOUR
                 })
         );
         assert!(
@@ -910,7 +910,7 @@ mod tests {
                 .maturity_representatives
                 .iter()
                 .any(|representative| {
-                    representative.expiry_timestamp_utc_nanos == 9 * ONE_HOUR_NANOS
+                    representative.expiry_timestamp_utc_nanos == 9 * NANOS_PER_HOUR
                 })
         );
         assert!(

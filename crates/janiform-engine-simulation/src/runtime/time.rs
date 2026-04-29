@@ -1,12 +1,12 @@
 use chrono::{DateTime, Utc};
 
-use crate::constants::{ONE_HOUR_NANOS, ONE_SECOND_NANOS};
+use crate::constants::{NANOS_PER_HOUR, ONE_SECOND_NANOS};
 
 pub(crate) fn derive_elapsed_hours(
     previous_timestamp_utc_nanos: i64,
     timestamp_utc_nanos: i64,
 ) -> f64 {
-    (timestamp_utc_nanos - previous_timestamp_utc_nanos) as f64 / ONE_HOUR_NANOS as f64
+    (timestamp_utc_nanos - previous_timestamp_utc_nanos) as f64 / NANOS_PER_HOUR as f64
 }
 
 pub(crate) fn timestamp_utc_from_nanos(timestamp_utc_nanos: i64) -> Option<DateTime<Utc>> {

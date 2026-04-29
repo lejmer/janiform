@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from janiform._timestamps import ONE_HOUR_NANOS
+from janiform._timestamps import NANOS_PER_HOUR
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
 from janiform.hourly_factors import (
     DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -66,7 +66,7 @@ def test_build_hourly_factor_contract_exposes_required_schema_fields_and_types(
     assert isinstance(contract.repeated_local_hour_interval_count, int)
     assert contract.interval_boundary_policy == HOURLY_FACTOR_OUTPUT_SCHEMA.interval_boundary_policy
     assert contract.interval_alignment_policy == HOURLY_FACTOR_OUTPUT_SCHEMA.interval_alignment_policy
-    assert contract.interval_duration_nanos == ONE_HOUR_NANOS
+    assert contract.interval_duration_nanos == NANOS_PER_HOUR
     assert contract.timezone_transition_policy == HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
     assert contract.spring_forward_policy == HOURLY_FACTOR_SPRING_FORWARD_POLICY
     assert contract.fall_back_policy == HOURLY_FACTOR_FALL_BACK_POLICY
@@ -97,7 +97,7 @@ def test_build_hourly_factor_contract_indexes_consecutive_non_overlapping_hours(
         interval_start = contract.interval_start_utc_nanos[interval_position]
         interval_end = contract.interval_end_utc_nanos[interval_position]
         assert interval_start < interval_end
-        assert interval_end - interval_start == ONE_HOUR_NANOS
+        assert interval_end - interval_start == NANOS_PER_HOUR
 
 
 def test_build_hourly_factor_contract_supports_sub_hour_interval_grids(

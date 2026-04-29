@@ -47,7 +47,7 @@ from ..._pricing_field_names import (
     PRICING_STATUS_FIELD_NAME,
     STRIKE_FIELD_NAME,
 )
-from ..._timestamps import ONE_HOUR_NANOS, hours_to_exact_nanoseconds
+from ..._timestamps import NANOS_PER_HOUR, hours_to_exact_nanoseconds
 from ...contracts import ContractModel
 from ...contracts.base import (
     require_finite_number,
@@ -472,7 +472,7 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
             if self.cpu_count <= 0:
                 raise _pricing_error("cpu_count", "must be strictly positive")
 
-        if self.hourly_factor_contract.interval_duration_nanos != ONE_HOUR_NANOS:
+        if self.hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR:
             raise _pricing_error(
                 "hourly_factor_contract.interval_duration_nanos",
                 (
@@ -1143,7 +1143,7 @@ def _surface_interval_count_from_maturity_interval(
             field_path,
             (
                 "must be an exact positive multiple of request.interval_delta "
-                f"({maturity_interval} / {interval_duration_nanos / ONE_HOUR_NANOS:.12g})"
+                f"({maturity_interval} / {interval_duration_nanos / NANOS_PER_HOUR:.12g})"
             ),
         )
 

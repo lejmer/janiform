@@ -16,7 +16,7 @@ use janiform_calibration_artifacts::{
 };
 use janiform_foundations::matrix2::solve_two_by_two_linear_system;
 use janiform_foundations::numeric::coverage_ratio;
-use janiform_foundations::time::{ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
+use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
 };
@@ -644,7 +644,7 @@ fn build_endogenous_mean_reversion_calibration_context(
             seasonality_input.day_of_year_factor.as_slice(),
             runtime_hourly_seasonality_range_start_utc_nanos,
             runtime_hourly_seasonality_range_end_utc_nanos,
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
         )
         .map_err(|error_message| {
             MeanReversionStageExecutionFailure::HourlyFactorMaterializationFailed { error_message }
@@ -711,7 +711,7 @@ fn build_endogenous_mean_reversion_calibration_context(
         );
     }
 
-    let interval_delta = interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+    let interval_delta = interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
 
     let interval_factors: Result<Vec<EndogenousAnchorIntervalFactors>, _> = hourly_factor_contract
         .s_h
