@@ -46,7 +46,7 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `janiform-validation` | Validation domains and regression harnesses |
 | `janiform-workflows` | Shared workflow orchestration for Janiform entrypoints |
 
-# Terminal UX Boundary
+## Terminal UX Boundary
 
 Janiform keeps terminal UX ownership split by concern:
 
@@ -59,12 +59,12 @@ Janiform keeps terminal UX ownership split by concern:
 
 This keeps the reusable terminal design system independent from domain workflows while ensuring every entrypoint sees the same workflow execution UX. CLI and Python can choose whether human terminal output is enabled, but the workflows decide what a fit, pricing, or simulation run says when it starts, progresses, and completes.
 
-## Workflow Module Details
+### Workflow Module Details
 
 Fit, pricing, and simulation workflow internals follow the crate-level module conventions in
 [workflow-module-conventions.md](workflow-module-conventions.md).
 
-## Fit Planning Screens
+### Fit Planning Screens
 
 Fit plan, inspect, and staged-plan commands render pre-execution planning screens in `janiform-cli`. Those screens summarize command preparation and resolved inputs before a workflow run exists, so they are classified as CLI shell UX. Once fit execution starts, lifecycle terminal output is owned by `janiform-workflows`.
 
