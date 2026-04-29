@@ -1,6 +1,6 @@
 # Presets And Data
 
-Combine presets with explicit file inputs for high-level workflows. Use [../getting-started/concepts.md](../getting-started/concepts.md) for terms like market profile, session, and known news. Use the reference docs for the full flag list.
+Combine presets with explicit file inputs for high-level workflows. Read [../getting-started/concepts.md](../getting-started/concepts.md) to learn what terms like market profile, session, and known news mean. Use the reference docs for the full flag list.
 
 ## Preset Categories
 
