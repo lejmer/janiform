@@ -130,11 +130,17 @@ impl PathResolver {
 }
 
 fn discover_repository_root(start: &Path) -> Option<PathBuf> {
+    let mut first_cargo_manifest = None;
+
     for candidate in start.ancestors() {
-        if candidate.join(".git").exists() || candidate.join("Cargo.toml").is_file() {
+        if candidate.join(".git").exists() {
             return Some(PathBuf::from(candidate));
+        }
+
+        if first_cargo_manifest.is_none() && candidate.join("Cargo.toml").is_file() {
+            first_cargo_manifest = Some(PathBuf::from(candidate));
         }
     }
 
-    None
+    first_cargo_manifest
 }

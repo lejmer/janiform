@@ -1,6 +1,8 @@
 use crate::cli::RootCommand;
 use crate::commands::dev::DevSubcommand;
 use crate::commands::dev::RegressionSubcommand;
+use crate::commands::dev::run_deterministic_regression;
+use crate::commands::dev::run_open_closed_gap_leakage_regression;
 use crate::commands::fit::FitStagedSubcommand;
 use crate::commands::fit::FitSubcommand;
 use crate::commands::fit::execution::run_fit_command;
@@ -96,11 +98,11 @@ pub(crate) fn dispatch(
         },
         RootCommand::Dev(command) => match command.command {
             DevSubcommand::Regression(command) => match command.command {
-                RegressionSubcommand::Deterministic(_) => {
-                    not_implemented("dev regression deterministic")
+                RegressionSubcommand::Deterministic(command) => {
+                    return run_deterministic_regression(context, command);
                 }
-                RegressionSubcommand::OpenClosedGapLeakage(_) => {
-                    not_implemented("dev regression open-closed-gap-leakage")
+                RegressionSubcommand::OpenClosedGapLeakage(command) => {
+                    return run_open_closed_gap_leakage_regression(context, command);
                 }
             },
         },
