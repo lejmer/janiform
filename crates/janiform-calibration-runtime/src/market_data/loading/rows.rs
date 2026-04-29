@@ -5,66 +5,66 @@ use arrow_array::{
     TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array,
     UInt64Array,
 };
-use csv::StringRecord;
-use parquet::arrow::ProjectionMask;
-use parquet::arrow::arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchReaderBuilder};
-use parquet::file::reader::{FileReader, SerializedFileReader};
+use janiform_foundations::csv::document::{
+    CsvDocumentLoadError, StringRecord, load_csv_column_names, open_csv_reader,
+};
+use janiform_foundations::parquet::batch::column_index as parquet_column_index;
+use janiform_foundations::parquet::document::{
+    ParquetDocumentLoadError, load_parquet_column_names, load_parquet_row_count,
+    open_projected_parquet_record_batch_reader as open_foundation_projected_parquet_record_batch_reader,
+    open_serialized_parquet_reader,
+};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReader;
+use parquet::file::reader::FileReader;
 use parquet::record::Field;
 use std::collections::{BTreeMap, HashSet};
-use std::fs::File;
 
 use super::contracts::{
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataLoadingError,
 };
 use super::shared::{RawRow, RawValue};
 
-const PROJECTED_PARQUET_BATCH_SIZE: usize = 65_536;
 const DECIMAL_RADIX_F64: f64 = 10.0;
+
+fn csv_document_error(error: CsvDocumentLoadError, field_path: &str) -> MarketDataLoadingError {
+    match error {
+        CsvDocumentLoadError::Read { source, .. } => MarketDataLoadingError::Csv {
+            field_path: format!("{field_path}.path"),
+            message: source.to_string(),
+        },
+    }
+}
+
+fn parquet_document_error(
+    error: ParquetDocumentLoadError,
+    field_path: &str,
+) -> MarketDataLoadingError {
+    match error {
+        ParquetDocumentLoadError::Read { source, .. } => MarketDataLoadingError::Io {
+            field_path: format!("{field_path}.path"),
+            message: source.to_string(),
+        },
+        ParquetDocumentLoadError::Parse { source, .. } => MarketDataLoadingError::Parquet {
+            field_path: format!("{field_path}.path"),
+            message: source.to_string(),
+        },
+        ParquetDocumentLoadError::RowCountOutOfRange { .. } => MarketDataLoadingError::Parquet {
+            field_path: format!("{field_path}.path"),
+            message: "row-count metadata exceeds the supported usize range".to_string(),
+        },
+    }
+}
 
 pub(super) fn load_source_columns(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
 ) -> Result<Vec<String>, MarketDataLoadingError> {
     match file_reference.file_format {
-        MarketDataInputFileFormat::Csv => {
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_path(&file_reference.path)
-                .map_err(|error| MarketDataLoadingError::Csv {
-                    field_path: format!("{field_path}.path"),
-                    message: error.to_string(),
-                })?;
-
-            let headers = reader
-                .headers()
-                .map_err(|error| MarketDataLoadingError::Csv {
-                    field_path: format!("{field_path}.path"),
-                    message: error.to_string(),
-                })?;
-
-            Ok(headers.iter().map(ToOwned::to_owned).collect())
-        }
+        MarketDataInputFileFormat::Csv => load_csv_column_names(file_reference.path.as_ref())
+            .map_err(|error| csv_document_error(error, field_path)),
         MarketDataInputFileFormat::Parquet => {
-            let file =
-                File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
-                    field_path: format!("{field_path}.path"),
-                    message: error.to_string(),
-                })?;
-
-            let reader = SerializedFileReader::new(file).map_err(|error| {
-                MarketDataLoadingError::Parquet {
-                    field_path: format!("{field_path}.path"),
-                    message: error.to_string(),
-                }
-            })?;
-
-            let schema = reader.metadata().file_metadata().schema_descr();
-
-            Ok(schema
-                .columns()
-                .iter()
-                .map(|column| column.name().to_string())
-                .collect())
+            load_parquet_column_names(file_reference.path.as_ref())
+                .map_err(|error| parquet_document_error(error, field_path))
         }
         MarketDataInputFileFormat::Json => Err(MarketDataLoadingError::InvalidValue {
             field_path: format!("{field_path}.file_format"),
@@ -79,30 +79,9 @@ pub(super) fn probe_source_row_count_estimate(
 ) -> Result<Option<usize>, MarketDataLoadingError> {
     match file_reference.file_format {
         MarketDataInputFileFormat::Csv => Ok(None),
-        MarketDataInputFileFormat::Parquet => {
-            let file =
-                File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
-                    field_path: format!("{field_path}.path"),
-                    message: error.to_string(),
-                })?;
-
-            let reader = SerializedFileReader::new(file).map_err(|error| {
-                MarketDataLoadingError::Parquet {
-                    field_path: format!("{field_path}.path"),
-                    message: error.to_string(),
-                }
-            })?;
-
-            let row_count =
-                usize::try_from(reader.metadata().file_metadata().num_rows()).map_err(|_| {
-                    MarketDataLoadingError::Parquet {
-                        field_path: format!("{field_path}.path"),
-                        message: "row-count metadata exceeds the supported usize range".to_string(),
-                    }
-                })?;
-
-            Ok(Some(row_count))
-        }
+        MarketDataInputFileFormat::Parquet => load_parquet_row_count(file_reference.path.as_ref())
+            .map(Some)
+            .map_err(|error| parquet_document_error(error, field_path)),
         MarketDataInputFileFormat::Json => Err(MarketDataLoadingError::InvalidValue {
             field_path: format!("{field_path}.file_format"),
             message: "must be one of: csv, parquet".to_string(),
@@ -124,51 +103,24 @@ pub(super) fn load_rows(
     }
 }
 
-pub(super) fn load_projected_parquet_record_batch_reader(
+pub(super) fn open_projected_parquet_record_batch_reader(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
     projected_columns: &[String],
 ) -> Result<ParquetRecordBatchReader, MarketDataLoadingError> {
-    let file = File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
-        field_path: format!("{field_path}.path"),
-        message: error.to_string(),
-    })?;
-
-    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|error| {
-        MarketDataLoadingError::Parquet {
-            field_path: format!("{field_path}.path"),
-            message: error.to_string(),
-        }
-    })?;
-
-    let parquet_schema = builder.metadata().file_metadata().schema_descr_ptr();
-
-    let projection = ProjectionMask::columns(
-        parquet_schema.as_ref(),
+    open_foundation_projected_parquet_record_batch_reader(
+        file_reference.path.as_ref(),
         projected_columns.iter().map(String::as_str),
-    );
-
-    builder
-        .with_projection(projection)
-        .with_batch_size(PROJECTED_PARQUET_BATCH_SIZE)
-        .build()
-        .map_err(|error| MarketDataLoadingError::Parquet {
-            field_path: format!("{field_path}.path"),
-            message: error.to_string(),
-        })
+    )
+    .map_err(|error| parquet_document_error(error, field_path))
 }
 
 pub(super) fn load_csv_rows(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
 ) -> Result<Vec<RawRow>, MarketDataLoadingError> {
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(&file_reference.path)
-        .map_err(|error| MarketDataLoadingError::Csv {
-            field_path: format!("{field_path}.path"),
-            message: error.to_string(),
-        })?;
+    let mut reader = open_csv_reader(file_reference.path.as_ref())
+        .map_err(|error| csv_document_error(error, field_path))?;
 
     let headers = reader
         .headers()
@@ -204,16 +156,8 @@ pub(super) fn load_parquet_rows(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
 ) -> Result<Vec<RawRow>, MarketDataLoadingError> {
-    let file = File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
-        field_path: format!("{field_path}.path"),
-        message: error.to_string(),
-    })?;
-
-    let reader =
-        SerializedFileReader::new(file).map_err(|error| MarketDataLoadingError::Parquet {
-            field_path: format!("{field_path}.path"),
-            message: error.to_string(),
-        })?;
+    let reader = open_serialized_parquet_reader(file_reference.path.as_ref())
+        .map_err(|error| parquet_document_error(error, field_path))?;
 
     let iter = reader
         .get_row_iter(None)
@@ -247,15 +191,14 @@ pub(super) fn column_index(
     field_path: &str,
     source_path: &str,
 ) -> Result<usize, MarketDataLoadingError> {
-    batch
-        .schema_ref()
-        .index_of(column_name)
-        .map_err(|_| MarketDataLoadingError::MissingColumn {
+    parquet_column_index(batch, column_name).ok_or_else(|| {
+        MarketDataLoadingError::MissingColumn {
             field_path: field_path.to_string(),
             message: format!(
                 "references source columns that are not present in the projected parquet batch. Missing columns: {column_name}. Update the explicit column mapping so Janiform does not have to guess the schema. source_path={source_path}"
             ),
-        })
+        }
+    })
 }
 
 pub(super) fn raw_value_from_arrow_array(

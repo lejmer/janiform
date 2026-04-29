@@ -1,8 +1,8 @@
 use serde_json::Map;
 use serde_json::Value;
 
-use crate::commands::shared::artifact_documents::nested_value;
-use crate::commands::shared::artifact_documents::stage_label;
+use janiform_foundations::json::query::nested_value;
+use janiform_workflows::fit::stage_label_from_token;
 
 pub(super) const PARAMETER_FITS_FIELD_NAME: &str = "parameter_fits";
 
@@ -42,7 +42,11 @@ fn parameter_fits(model: Option<&Value>) -> Option<Value> {
         };
 
         let mut stage_fit = Map::new();
-        stage_fit.insert("stage_label".to_string(), Value::String(stage_label(stage)));
+
+        stage_fit.insert(
+            "stage_label".to_string(),
+            Value::String(stage_label_from_token(stage)),
+        );
 
         if let Some(selected_candidate_id) =
             selected_candidate_ids.and_then(|selected| selected.get(stage))

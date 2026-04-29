@@ -13,7 +13,7 @@ import janiform.simulation as simulation_module
 import janiform.simulation.coarse.runtime as simulation_coarse_runtime_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
 from janiform._cli.context import CliCommandContext
-from janiform._timestamps import ONE_HOUR_NANOS
+from janiform._timestamps import NANOS_PER_HOUR
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import run_staged_calibration
 from janiform.mean_reversion import (
@@ -141,7 +141,7 @@ def test_validation_error_string_format_is_stable() -> None:
                 schema_version="seasonality.hourly_factor.contract.v1",
                 exchange_code="XNYS",
                 interval_count=2,
-                interval_duration_nanos=ONE_HOUR_NANOS,
+                interval_duration_nanos=NANOS_PER_HOUR,
                 interval_start_utc_nanos=(1, 2),
                 interval_end_utc_nanos=(2, 3),
                 s_h=(1.0, 1.1),

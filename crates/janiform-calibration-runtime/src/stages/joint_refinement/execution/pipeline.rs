@@ -14,7 +14,7 @@ use janiform_calibration_artifacts::{
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_foundations::splitmix64_output_mixer;
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::{HawkesStageFittedPayload, stationary_open_event_rate_per_hour};
@@ -647,7 +647,7 @@ fn materialize_runtime_state(
                 .as_slice(),
             runtime_range.0,
             runtime_range.1,
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
         )
         .map_err(|error_message| {
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {

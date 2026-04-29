@@ -3,7 +3,7 @@ mod support;
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Utc};
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::{
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
@@ -328,7 +328,7 @@ fn build_contract_for_canonical_case(
                     &fixture_case.exchange_code,
                     range_start_utc,
                     range_end_utc,
-                    ONE_HOUR_NANOS,
+                    NANOS_PER_HOUR,
                     &source_timestamp_utc_nanos,
                     source_seasonality_factors,
                     interpolation_method,
@@ -367,7 +367,7 @@ fn build_contract_for_canonical_case(
                     &fixture_case.exchange_code,
                     range_start_utc,
                     range_end_utc,
-                    ONE_HOUR_NANOS,
+                    NANOS_PER_HOUR,
                     &known_scheduled_event_timestamps_utc_nanos,
                     *surprise_baseline_intensity,
                     &parsed_surprise_time_multipliers,
@@ -385,7 +385,7 @@ fn build_contract_for_canonical_case(
         &fixture_case.exchange_code,
         range_start_utc,
         range_end_utc,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         &seasonality_hourly_factors,
         &news_hourly_factors,
         &seasonality_materialization_method,
@@ -413,7 +413,7 @@ fn materialize_seasonality_for_missing_data_case(
         &fixture_case.exchange_code,
         range_start_utc,
         range_end_utc,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         &source_timestamp_utc_nanos,
         &fixture_case.source_seasonality_factors,
         &fixture_case.settings.interpolation_method,

@@ -6,5 +6,5 @@ pub mod calendar;
 pub mod hourly_factors;
 pub mod seasonality;
 pub mod time {
-    pub use janiform_foundations::time::ONE_HOUR_NANOS;
+    pub use janiform_foundations::time::NANOS_PER_HOUR;
 }

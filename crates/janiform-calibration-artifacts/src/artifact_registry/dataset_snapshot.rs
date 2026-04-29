@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
+use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
 use super::super::contracts::{
@@ -776,7 +777,7 @@ fn validate_non_empty_provenance_field(
     field: &'static str,
     value: &str,
 ) -> Result<(), CalibrationDatasetSnapshotArtifactValidationError> {
-    if value.trim().is_empty() {
+    if !is_non_empty_string(value) {
         return Err(
             CalibrationDatasetSnapshotArtifactValidationError::EmptyProvenanceField { field },
         );

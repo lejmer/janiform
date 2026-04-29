@@ -12,7 +12,7 @@ use janiform_engine_simulation::{
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -280,7 +280,7 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
     let first_timestamp_utc_nanos = first_event_path[0].timestamp_utc_nanos;
     let second_timestamp_utc_nanos = first_event_path[1].timestamp_utc_nanos;
 
-    let boundary_utc_nanos = OPEN_MARKET_START_TIME_UTC_NANOS + ONE_HOUR_NANOS;
+    let boundary_utc_nanos = OPEN_MARKET_START_TIME_UTC_NANOS + NANOS_PER_HOUR;
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
     assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
     assert_ne!(first_timestamp_utc_nanos, boundary_utc_nanos);
@@ -288,7 +288,7 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
     assert!(has_non_grid_event_time(
         &first_event_path,
         OPEN_MARKET_START_TIME_UTC_NANOS,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
     ));
 }
 
@@ -315,8 +315,8 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
     )
     .expect("tied-ordering run config should initialize");
 
-    let tied_offset_nanos = ((ONE_HOUR_NANOS as f64) * 0.3).floor() as i64;
-    let tied_hours = tied_offset_nanos as f64 / ONE_HOUR_NANOS as f64;
+    let tied_offset_nanos = ((NANOS_PER_HOUR as f64) * 0.3).floor() as i64;
+    let tied_hours = tied_offset_nanos as f64 / NANOS_PER_HOUR as f64;
     let tied_wait_draw = (-2.0 * tied_hours).exp();
 
     let scripted_factory = ScriptedRandomnessFactory::new(
@@ -432,7 +432,7 @@ fn seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signat
         &seed_values,
         symmetric_kernel_parameters(),
         72,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         1.0,
         0.02,
     );
@@ -440,7 +440,7 @@ fn seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signat
         &seed_values,
         clustered_kernel_parameters(),
         72,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         1.0,
         0.02,
     );
@@ -499,7 +499,7 @@ fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
             &seed_values,
             scenario.kernel_parameters.clone(),
             72,
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
             1.0,
             0.01,
         );
@@ -507,7 +507,7 @@ fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
             &seed_values,
             scenario.kernel_parameters,
             72,
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
             1.0,
             0.01,
         );
@@ -620,7 +620,7 @@ fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summari
         ),
         (
             "1h",
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
             ScaleConsistencyThresholds {
                 maximum_relative_total_event_count_delta: 0.15,
                 maximum_absolute_buy_share_delta: 0.08,
@@ -689,7 +689,7 @@ fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summari
         sell_asymmetric_kernel_parameters(),
         total_duration_nanos,
         fine_interval_duration_nanos,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         1.0,
         0.01,
     );
@@ -1470,7 +1470,7 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
 ) -> SeededTickSimulationModelInputs {
     let hourly_factor_contract = build_uniform_factor_contract(
         START_TIME_UTC_NANOS,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         interval_count,
         0.0,
         0.0,
@@ -1521,7 +1521,7 @@ fn build_one_interval_ordering_model_inputs(
     news_intensity: f64,
 ) -> SeededTickSimulationModelInputs {
     let hourly_factor_contract =
-        build_uniform_factor_contract(start_time_utc_nanos, ONE_HOUR_NANOS, 1, 1.0, news_intensity);
+        build_uniform_factor_contract(start_time_utc_nanos, NANOS_PER_HOUR, 1, 1.0, news_intensity);
 
     let (
         mean_reversion_fitted_parameters,
@@ -1567,7 +1567,7 @@ fn build_two_interval_boundary_adjacent_model_inputs(
     start_time_utc_nanos: i64,
 ) -> SeededTickSimulationModelInputs {
     let hourly_factor_contract =
-        build_uniform_factor_contract(start_time_utc_nanos, ONE_HOUR_NANOS, 2, 1.0, 0.0);
+        build_uniform_factor_contract(start_time_utc_nanos, NANOS_PER_HOUR, 2, 1.0, 0.0);
 
     let (
         mean_reversion_fitted_parameters,
@@ -1626,7 +1626,7 @@ fn disabled_mean_reversion_runtime_inputs(
             vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![
-                hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+                hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
                 hourly_factor_contract.interval_indices.len()
             ],
         )

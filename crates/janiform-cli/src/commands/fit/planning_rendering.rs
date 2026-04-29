@@ -9,8 +9,8 @@ use janiform_workflows::fit::{market_data_file_format_label, stage_label, workfl
 
 use super::labels::optional_label;
 use super::preparation::{PreparedFitPreview, fit_warnings};
-use crate::commands::shared::artifact_documents::ArtifactListItem;
-use crate::commands::shared::artifact_documents::render_artifact_list;
+use crate::commands::shared::terminal::ArtifactListItem;
+use crate::commands::shared::terminal::render_artifact_list;
 use crate::context::CommandContext;
 
 /// Render human CLI plan and inspection views for prepared fit requests.

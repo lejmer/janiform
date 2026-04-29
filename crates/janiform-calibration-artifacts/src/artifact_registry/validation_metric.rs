@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
+use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
 use super::super::contracts::{
@@ -1282,7 +1283,7 @@ fn validate_threshold_metadata(
     if threshold_metadata
         .threshold_policy_version
         .as_deref()
-        .is_some_and(|value| value.trim().is_empty())
+        .is_some_and(|value| !is_non_empty_string(value))
     {
         return Err(
             CalibrationValidationMetricArtifactValidationError::InvalidThresholdMetadata {
@@ -1296,7 +1297,7 @@ fn validate_threshold_metadata(
     if threshold_metadata
         .threshold_id
         .as_deref()
-        .is_some_and(|value| value.trim().is_empty())
+        .is_some_and(|value| !is_non_empty_string(value))
     {
         return Err(
             CalibrationValidationMetricArtifactValidationError::InvalidThresholdMetadata {
@@ -1310,7 +1311,7 @@ fn validate_threshold_metadata(
     if threshold_metadata
         .threshold_rationale
         .as_deref()
-        .is_some_and(|value| value.trim().is_empty())
+        .is_some_and(|value| !is_non_empty_string(value))
     {
         return Err(
             CalibrationValidationMetricArtifactValidationError::InvalidThresholdMetadata {

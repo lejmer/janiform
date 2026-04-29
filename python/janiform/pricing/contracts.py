@@ -67,7 +67,7 @@ from ..contracts.base import (
 )
 from ..errors import JaniformValidationError
 from ..hourly_factors import HourlyFactorContract
-from .._timestamps import ONE_HOUR_NANOS
+from .._timestamps import NANOS_PER_HOUR
 
 if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
@@ -1249,7 +1249,7 @@ class PricingIntervalSchedule(ContractModel):
     def terminal_maturity_interval_hours(self) -> float:
         return (
             self.interval_end_timestamps_utc_nanos[-1] - self.valuation_time_utc_nanos
-        ) / ONE_HOUR_NANOS
+        ) / NANOS_PER_HOUR
 
     def maturity_interval_hours(self, terminal_interval_index: int) -> float:
         if terminal_interval_index < 0 or terminal_interval_index >= self.interval_count:
@@ -1264,7 +1264,7 @@ class PricingIntervalSchedule(ContractModel):
         return (
             self.interval_end_timestamps_utc_nanos[terminal_interval_index]
             - self.valuation_time_utc_nanos
-        ) / ONE_HOUR_NANOS
+        ) / NANOS_PER_HOUR
 
     def terminal_interval_index_for_maturity_interval(self, maturity_interval: float) -> int:
         for terminal_interval_index in range(self.interval_count):
@@ -1699,7 +1699,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 "must contain at least one interval",
             )
 
-        if self.hourly_factor_contract.interval_duration_nanos != ONE_HOUR_NANOS:
+        if self.hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR:
             raise _pricing_error(
                 "hourly_factor_contract.interval_duration_nanos",
                 (

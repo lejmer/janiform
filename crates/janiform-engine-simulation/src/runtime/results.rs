@@ -5,7 +5,7 @@ use crate::artifacts::{
     SeededTickSimulationTransitionConsumer, SeededTickSimulationTransitionEmission,
 };
 use crate::config::SeededTickSimulationRunConfig;
-use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, ONE_HOUR_NANOS};
+use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, NANOS_PER_HOUR};
 use crate::error::SeededTickSimulationRunError;
 
 use super::buffers::{push_simulation_buffer_value, try_reserve_simulation_buffer};
@@ -121,7 +121,7 @@ pub fn estimate_seeded_result_capacities(
             .interval_end_utc_nanos[interval_index];
 
         let interval_duration_in_hours =
-            (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / ONE_HOUR_NANOS as f64;
+            (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / NANOS_PER_HOUR as f64;
 
         let seasonality_factor = run_config.model_inputs.hourly_factor_contract.s_h[interval_index];
         let interval_news_intensity =

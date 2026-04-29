@@ -1,3 +1,5 @@
+//! Shared JSON payload shape helpers.
+
 use std::error::Error;
 use std::fmt;
 
@@ -58,6 +60,7 @@ pub fn clone_object_field(
     field_path: &str,
 ) -> Result<Value, JsonPayloadError> {
     let value = clone_field(payload, field_name, field_path)?;
+
     object_value(&value, field_path)?;
 
     Ok(value)

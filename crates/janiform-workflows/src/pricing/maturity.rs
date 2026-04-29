@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform::hourly_factors::{HourlyFactorContractOutput, ONE_HOUR_NANOS};
+use janiform::hourly_factors::{HourlyFactorContractOutput, NANOS_PER_HOUR};
 use janiform::pricing::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
     PricingIntervalSchedule, PricingIntervalSchedulePolicy,
@@ -133,8 +133,8 @@ fn maturity_expiry_timestamps_utc_nanos(
 
 fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Result<i64, WorkflowError> {
     timestamp_utc_nanos
-        .div_euclid(ONE_HOUR_NANOS)
-        .checked_mul(ONE_HOUR_NANOS)
+        .div_euclid(NANOS_PER_HOUR)
+        .checked_mul(NANOS_PER_HOUR)
         .ok_or_else(|| pricing_validation_error("timestamp_utc_nanos", "hour floor overflowed"))
 }
 
@@ -145,6 +145,6 @@ fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Result<i64, WorkflowError
     }
 
     floor
-        .checked_add(ONE_HOUR_NANOS)
+        .checked_add(NANOS_PER_HOUR)
         .ok_or_else(|| pricing_validation_error("timestamp_utc_nanos", "hour ceiling overflowed"))
 }

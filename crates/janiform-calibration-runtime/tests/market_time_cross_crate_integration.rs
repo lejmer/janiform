@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 
 use janiform_calibration_runtime::{
     evolve_hawkes_state_for_calibration_step, load_hourly_factor_contract_for_calibration,
@@ -37,7 +37,7 @@ fn pricing_path_consumes_market_time_hourly_factor_provider() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        interval_duration_nanos: NANOS_PER_HOUR,
         seasonality_source: Some(HourlySeasonalityFactorSource::Materialized {
             source_timestamp_utc_nanos: &[
                 parse_timestamp("2026-02-02T14:05:00Z")
@@ -182,7 +182,7 @@ fn calibration_path_consumes_market_time_hourly_factor_provider() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        interval_duration_nanos: NANOS_PER_HOUR,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.3, 0.95, 1.05],
             materialization_method: "shared_precomputed_hourly_s_h.v1",
@@ -314,7 +314,7 @@ fn deterministic_news_intensity_provider_request() -> HourlyFactorProviderReques
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-07T00:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-07T03:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        interval_duration_nanos: NANOS_PER_HOUR,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.0, 1.0, 1.0],
             materialization_method: "shared_precomputed_hourly_s_h.v1",
@@ -333,7 +333,7 @@ fn shared_simulation_hourly_factor_provider_request() -> HourlyFactorProviderReq
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        interval_duration_nanos: NANOS_PER_HOUR,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &SIMULATION_SHARED_SEASONALITY_HOURLY_FACTORS,
             materialization_method: "shared_precomputed_hourly_s_h.v1",

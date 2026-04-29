@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::strings::is_non_empty_string;
 use janiform_foundations::time::duration_nanos_to_hours;
 use serde::{Deserialize, Serialize};
 
@@ -1481,7 +1482,7 @@ impl ReturnComponentsStageObjectiveScoringPolicy {
         if self
             .dominant_scale_driver_order
             .iter()
-            .any(|value| value.trim().is_empty())
+            .any(|value| !is_non_empty_string(value))
         {
             return Err("dominant_scale_driver_order entries must be non-empty".to_string());
         }

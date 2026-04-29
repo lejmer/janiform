@@ -4,8 +4,9 @@ use janiform::hourly_factors::{
     DEFAULT_SEASONALITY_AGGREGATION_METHOD, DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
     DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT,
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-    HourlySeasonalityFactorSource, ONE_HOUR_NANOS,
+    HourlySeasonalityFactorSource, NANOS_PER_HOUR,
 };
+use janiform_foundations::time::parse_utc_datetime;
 use serde_json::Value;
 
 use crate::error::WorkflowError;
@@ -154,7 +155,7 @@ fn hourly_seasonality_source<'a>(
         };
     }
 
-    if interval_duration_nanos < ONE_HOUR_NANOS
+    if interval_duration_nanos < NANOS_PER_HOUR
         || !runtime_interval_grid_is_hour_aligned(range_start_utc, range_end_utc)
     {
         return HourlySeasonalityFactorSource::Materialized {
@@ -260,14 +261,14 @@ fn known_news_timestamp_utc_nanos(
                     )
                 })?;
 
-            let timestamp = DateTime::parse_from_rfc3339(scheduled_at).map_err(|source| {
+            let timestamp = parse_utc_datetime(scheduled_at).map_err(|source| {
                 validation_error(
                     "model_payload.resolved_configuration.known_news.configuration.events.scheduled_at",
                     source.to_string(),
                 )
             })?;
 
-            timestamp.with_timezone(&Utc).timestamp_nanos_opt().ok_or_else(|| {
+            timestamp.timestamp_nanos_opt().ok_or_else(|| {
                 validation_error(
                     "model_payload.resolved_configuration.known_news.configuration.events.scheduled_at",
                     "timestamp is outside the supported nanosecond range",
@@ -438,5 +439,5 @@ fn runtime_interval_grid_is_hour_aligned(
         return false;
     };
 
-    range_start_utc_nanos % ONE_HOUR_NANOS == 0 && range_end_utc_nanos % ONE_HOUR_NANOS == 0
+    range_start_utc_nanos % NANOS_PER_HOUR == 0 && range_end_utc_nanos % NANOS_PER_HOUR == 0
 }

@@ -2,6 +2,7 @@ use janiform_calibration_artifacts::CalibrationStage;
 use janiform_calibration_runtime::{
     CalibrationMarketDataWorkflowScope, MarketDataInputFileFormat, MarketDataTickPriceInputPolicy,
 };
+use janiform_terminal_ui::format_token_as_words;
 
 /// Render a market-data file format for workflow summaries.
 pub const fn market_data_file_format_label(format: MarketDataInputFileFormat) -> &'static str {
@@ -33,6 +34,18 @@ pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> 
     }
 }
 
+/// Render a persisted workflow-scope token for human summaries.
+pub fn workflow_scope_label_from_token(scope: &str) -> String {
+    match scope {
+        "seasonality_only" => "seasonality only".to_string(),
+        "full_without_option_surface" => "full calibration without option snapshot".to_string(),
+        "full_with_option_surface" => "full calibration with option snapshot".to_string(),
+        "underlying_only" => "underlying calibration".to_string(),
+        "joint_option_calibrated" => "joint option calibration".to_string(),
+        other => format_token_as_words(other),
+    }
+}
+
 /// Render a staged calibration stage for progress and event payloads.
 pub const fn stage_label(stage: CalibrationStage) -> &'static str {
     match stage {
@@ -42,4 +55,18 @@ pub const fn stage_label(stage: CalibrationStage) -> &'static str {
         CalibrationStage::MeanReversion => "Fit mean reversion",
         CalibrationStage::JointRefinement => "Refine dynamics",
     }
+}
+
+/// Render a persisted stage token for human summaries.
+pub fn stage_label_from_token(stage: &str) -> String {
+    let label = match stage {
+        "seasonality" => "Fit seasonality",
+        "hawkes" => "Fit event activity",
+        "return_components" => "Fit return distribution",
+        "mean_reversion" => "Fit mean reversion",
+        "joint_refinement" => "Refine dynamics",
+        other => return format_token_as_words(other),
+    };
+
+    label.to_string()
 }

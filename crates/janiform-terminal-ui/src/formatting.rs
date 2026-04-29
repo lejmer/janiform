@@ -1,9 +1,28 @@
 use std::path::Path;
 use std::time::Duration;
 
+const BYTES_PER_KIBIBYTE: u64 = 1024;
+
 /// Render a path for scan-friendly terminal output.
 pub fn format_path(path: &Path) -> String {
     path.display().to_string()
+}
+
+/// Render a path relative to a base directory when possible.
+pub fn format_path_relative_to(base_directory: &Path, path: &Path) -> String {
+    if let Ok(relative_path) = path.strip_prefix(base_directory) {
+        return format_path(relative_path);
+    }
+
+    format_path(path)
+}
+
+/// Render an optional path-like value relative to a base directory when possible.
+pub fn format_optional_path_relative_to(
+    base_directory: &Path,
+    path: Option<&str>,
+) -> Option<String> {
+    path.map(|path| format_path_relative_to(base_directory, Path::new(path)))
 }
 
 /// Render an artifact path using the same stable path contract as ordinary paths.
@@ -27,7 +46,28 @@ pub fn format_warning_count(count: usize) -> String {
 
 /// Render a status label without relying on color for meaning.
 pub fn format_status_label(status: &str) -> String {
-    status.trim().to_ascii_lowercase().replace('_', " ")
+    format_token_as_words(&status.to_ascii_lowercase())
+}
+
+/// Render a machine token as separate words.
+pub fn format_token_as_words(value: &str) -> String {
+    value.trim().replace('_', " ")
+}
+
+/// Render a machine token with hyphen separators.
+pub fn format_token_as_kebab(value: &str) -> String {
+    value.trim().replace('_', "-")
+}
+
+/// Render a file size for compact terminal summaries.
+pub fn format_file_size(byte_count: u64) -> String {
+    if byte_count < BYTES_PER_KIBIBYTE {
+        return format!("{byte_count} B");
+    }
+
+    let kibibytes = byte_count / BYTES_PER_KIBIBYTE;
+
+    format!("{kibibytes} KiB")
 }
 
 /// Render a selected candidate identifier for terminal summaries.

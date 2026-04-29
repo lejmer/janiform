@@ -3,7 +3,7 @@ use serde::Serialize;
 use statrs::function::gamma::ln_gamma;
 
 use janiform_foundations::randomness::SimulationRandomnessStream;
-use janiform_foundations::time::ONE_HOUR_NANOS_F64;
+use janiform_foundations::time::NANOS_PER_HOUR_F64;
 
 use super::errors::{
     CoupledGapMarkConstructionError, DoubleExponentialBaseShockSamplingError,
@@ -162,7 +162,7 @@ impl NewsArrivalConfiguration {
         let interval_duration_in_hours = (intensity_input.interval_end_utc_nanos
             - intensity_input.interval_start_utc_nanos)
             as f64
-            / ONE_HOUR_NANOS_F64;
+            / NANOS_PER_HOUR_F64;
         let known_component_intensity =
             known_scheduled_arrival_count as f64 / interval_duration_in_hours;
         if !known_component_intensity.is_finite() || known_component_intensity < 0.0 {

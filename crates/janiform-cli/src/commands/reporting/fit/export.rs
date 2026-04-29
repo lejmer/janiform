@@ -1,17 +1,15 @@
 use std::fs;
 use std::path::Path;
 
-use janiform_terminal_ui::CompletionSummary;
-use janiform_terminal_ui::CompletionSummaryStatus;
 use janiform_terminal_ui::KeyValueRow;
+use janiform_terminal_ui::format_artifact_path;
 use serde::Serialize;
 use serde_json::Map;
 use serde_json::Value;
 
 use crate::commands::reporting::ReportFitCommand;
-use crate::commands::shared::output::write_json_payload;
+use crate::commands::shared::terminal::emit_json_or_success_summary;
 use crate::context::CommandContext;
-use crate::context::OutputMode;
 use crate::error::CliError;
 
 use super::FIT_REPORT_HTML_EXTENSION;
@@ -53,23 +51,13 @@ pub(super) fn export_fit_report(
         source_report_path: report_context.report_path.display().to_string(),
     };
 
-    match context.output_mode() {
-        OutputMode::Json => write_json_payload(&payload),
-        OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
-            let rendered = CompletionSummary {
-                status: CompletionSummaryStatus::Succeeded,
-                title: "Fit report written".to_string(),
-                rows: vec![KeyValueRow::new("HTML", output_path.display().to_string())],
-            }
-            .render(&context.stdout_renderer());
-
-            context
-                .stdout_renderer()
-                .write_stdout(&rendered)
-                .map_err(|source| CliError::OutputWrite { source })
-        }
-    }
+    emit_json_or_success_summary(
+        context,
+        &payload,
+        "Fit report written",
+        vec![KeyValueRow::new("HTML", format_artifact_path(&output_path))],
+        vec![KeyValueRow::new("HTML", format_artifact_path(&output_path))],
+    )
 }
 
 fn write_html_report(output_path: &Path, report: &Value) -> Result<(), CliError> {

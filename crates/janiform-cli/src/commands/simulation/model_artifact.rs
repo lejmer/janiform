@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use janiform::simulation::SeededTickEventStateSnapshotCapture;
-use janiform_foundations::time::parse_duration_spec_nanos;
+use janiform_foundations::time::parse_utc_datetime;
 use janiform_workflows::simulation::{
     ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest,
     SimulationWorkflowObserver, run_simulation_from_model_artifact_workflow,
@@ -12,7 +12,8 @@ use super::execution::{
     completed_diagnostics, completed_raw_payload, direct_simulation_run_id, emit_completion,
     required_horizon_interval_count, required_input_path, write_report_and_manifest,
 };
-use crate::commands::shared::artifact_documents::load_json_artifact;
+use crate::commands::shared::artifacts::load_json_artifact;
+use crate::commands::shared::inputs::parse_exact_positive_interval_duration_nanos;
 use crate::commands::shared::output_paths::default_run_output_directory;
 use crate::commands::shared::terminal::{
     terminal_output_for_context, terminal_progress_adapter_for_context,
@@ -42,7 +43,8 @@ pub(crate) fn run_simulate_from_model_artifact_command(
     let horizon_interval_count =
         required_horizon_interval_count(command.simulation.horizon_interval_count)?;
 
-    let interval_duration_nanos = model_interval_duration_nanos(command.interval.as_str())?;
+    let interval_duration_nanos =
+        parse_exact_positive_interval_duration_nanos("--interval", command.interval.as_str())?;
 
     let simulation_kind = if command.coarse {
         ModelArtifactSimulationKind::CoarseInterval
@@ -123,12 +125,10 @@ fn parse_start_time_utc(
     value: &str,
     argument_name: &'static str,
 ) -> Result<DateTime<Utc>, CliError> {
-    DateTime::parse_from_rfc3339(value)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(|source| CliError::InvalidCommandArgument {
-            argument_name,
-            message: format!("must be an RFC 3339 timestamp: {source}"),
-        })
+    parse_utc_datetime(value).map_err(|source| CliError::InvalidCommandArgument {
+        argument_name,
+        message: format!("must be an RFC 3339 timestamp: {source}"),
+    })
 }
 
 fn resolve_model_output_path(
@@ -148,13 +148,6 @@ fn resolve_model_output_path(
     }
 
     resolved_path
-}
-
-fn model_interval_duration_nanos(interval: &str) -> Result<i64, CliError> {
-    parse_duration_spec_nanos(interval).map_err(|source| CliError::InvalidCommandArgument {
-        argument_name: "--interval",
-        message: source.to_string(),
-    })
 }
 
 fn model_artifact_simulation_scope_label(

@@ -4,17 +4,18 @@ use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::WarningBlock;
 use janiform_terminal_ui::format_elapsed_label;
+use janiform_terminal_ui::format_optional_path_relative_to;
+use janiform_terminal_ui::format_path_relative_to;
+use janiform_terminal_ui::format_token_as_words;
 use serde_json::Value;
 
-use crate::commands::shared::artifact_documents::ArtifactListItem;
-use crate::commands::shared::artifact_documents::display_optional_path_relative_to;
-use crate::commands::shared::artifact_documents::display_path_relative_to;
-use crate::commands::shared::artifact_documents::nested_string;
-use crate::commands::shared::artifact_documents::nested_value;
-use crate::commands::shared::artifact_documents::render_artifact_list;
-use crate::commands::shared::artifact_documents::resolve_artifact_path;
-use crate::commands::shared::artifact_documents::stage_label;
-use crate::commands::shared::artifact_documents::value_to_compact_string;
+use crate::commands::shared::terminal::ArtifactListItem;
+use crate::commands::shared::terminal::render_artifact_list;
+use janiform_foundations::json::display::compact_value_string;
+use janiform_foundations::json::query::nested_string;
+use janiform_foundations::json::query::nested_value;
+use janiform_foundations::paths::resolve_path_relative_to;
+use janiform_workflows::fit::stage_label_from_token;
 
 use super::FitReportContext;
 use super::timing::stage_duration;
@@ -62,7 +63,10 @@ pub(super) fn render_selected_candidates(
     let rows = selected
         .iter()
         .map(|(stage, candidate)| {
-            KeyValueRow::new(stage_label(stage), value_to_compact_string(candidate))
+            KeyValueRow::new(
+                stage_label_from_token(stage),
+                compact_value_string(candidate),
+            )
         })
         .collect();
 
@@ -101,15 +105,15 @@ pub(super) fn render_diagnostics(
                         .run_directory
                         .as_deref()
                         .map(|run_directory| {
-                            display_path_relative_to(
+                            format_path_relative_to(
                                 run_directory,
-                                &resolve_artifact_path(run_directory, relative_path),
+                                &resolve_path_relative_to(run_directory, relative_path),
                             )
                         })
                 })
                 .unwrap_or_else(|| relative_path.unwrap_or("path not recorded").to_string());
 
-            Some(KeyValueRow::new(family.replace('_', " "), value))
+            Some(KeyValueRow::new(format_token_as_words(family), value))
         })
         .collect::<Vec<_>>();
 
@@ -131,9 +135,11 @@ pub(super) fn render_artifacts(
     renderer: &TerminalRenderer,
 ) -> Option<String> {
     let run_directory = report_context.run_directory.as_deref();
+
     let mut artifacts = Vec::new();
+
     let report_path = match run_directory {
-        Some(run_directory) => display_path_relative_to(run_directory, &report_context.report_path),
+        Some(run_directory) => format_path_relative_to(run_directory, &report_context.report_path),
         None => report_context.report_path.display().to_string(),
     };
 
@@ -143,7 +149,7 @@ pub(super) fn render_artifacts(
         && model_path.is_file()
     {
         let path = match run_directory {
-            Some(run_directory) => display_path_relative_to(run_directory, model_path),
+            Some(run_directory) => format_path_relative_to(run_directory, model_path),
             None => model_path.display().to_string(),
         };
 
@@ -166,7 +172,7 @@ pub(super) fn render_resume(
                 .run_directory
                 .as_deref()
                 .and_then(|run_directory| {
-                    display_optional_path_relative_to(run_directory, Some(path))
+                    format_optional_path_relative_to(run_directory, Some(path))
                 })
                 .or_else(|| Some(path.to_string()))
         });
@@ -264,14 +270,17 @@ fn stage_status_rows(
         .iter()
         .filter_map(|stage| {
             let stage_id = stage.get("stage").and_then(Value::as_str)?;
+
             let status = stage
                 .get("status")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
+
             let duration = run_state.and_then(|state| stage_duration(state, stage_id));
+
             let selected_candidate = selected_candidate_for_stage(model, stage_id);
 
-            let mut details = vec![status.replace('_', " ")];
+            let mut details = vec![format_token_as_words(status)];
 
             if let Some(duration) = duration {
                 details.push(format_elapsed_label(duration));
@@ -281,7 +290,10 @@ fn stage_status_rows(
                 details.push(format!("selected {selected_candidate}"));
             }
 
-            Some(KeyValueRow::new(stage_label(stage_id), details.join(", ")))
+            Some(KeyValueRow::new(
+                stage_label_from_token(stage_id),
+                details.join(", "),
+            ))
         })
         .collect()
 }
@@ -299,7 +311,7 @@ fn selected_candidate_for_stage(model: Option<&Value>, stage_id: &str) -> Option
                 ],
             )
         })
-        .map(value_to_compact_string)
+        .map(compact_value_string)
 }
 
 fn latest_checkpoint_reference(report: &Value) -> Option<String> {

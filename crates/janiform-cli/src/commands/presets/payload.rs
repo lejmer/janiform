@@ -1,4 +1,4 @@
-use janiform_foundations::json_payload;
+use janiform_foundations::json;
 use serde_json::Value;
 
 use crate::error::CliError;
@@ -20,7 +20,7 @@ pub(super) fn required_value_object<'a>(
     field_path: &str,
     command_path: &'static str,
 ) -> Result<&'a serde_json::Map<String, Value>, CliError> {
-    json_payload::object_value(value, field_path)
+    json::payload::object_value(value, field_path)
         .map_err(|source| malformed_payload_from_json(command_path, source))
 }
 
@@ -29,7 +29,7 @@ pub(super) fn required_value_array<'a>(
     field_path: &str,
     command_path: &'static str,
 ) -> Result<&'a Vec<Value>, CliError> {
-    json_payload::array_value(value, field_path)
+    json::payload::array_value(value, field_path)
         .map_err(|source| malformed_payload_from_json(command_path, source))
 }
 
@@ -38,7 +38,7 @@ pub(super) fn required_value_string<'a>(
     field_path: &str,
     command_path: &'static str,
 ) -> Result<&'a str, CliError> {
-    json_payload::string_value(value, field_path)
+    json::payload::string_value(value, field_path)
         .map_err(|source| malformed_payload_from_json(command_path, source))
 }
 
@@ -81,7 +81,7 @@ pub(super) fn required_object_string<'a>(
     field_name: &str,
     command_path: &'static str,
 ) -> Result<&'a str, CliError> {
-    json_payload::string_field(value, field_name, field_name)
+    json::payload::string_field(value, field_name, field_name)
         .map_err(|source| malformed_payload_from_json(command_path, source))
 }
 
@@ -123,7 +123,7 @@ pub(super) fn malformed_payload(command_path: &'static str, message: &str) -> Cl
 
 fn malformed_payload_from_json(
     command_path: &'static str,
-    source: json_payload::JsonPayloadError,
+    source: json::payload::JsonPayloadError,
 ) -> CliError {
     malformed_payload(
         command_path,

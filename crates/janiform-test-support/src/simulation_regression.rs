@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-pub use janiform_market_time::time::ONE_HOUR_NANOS;
+pub use janiform_market_time::time::NANOS_PER_HOUR;
 
 pub fn count_timestamps_in_half_open_interval(
     sorted_timestamps: &[i64],
@@ -15,7 +15,7 @@ pub fn count_timestamps_in_half_open_interval(
 }
 
 pub fn interval_delta_hours_to_nanos(interval_delta_hours: f64) -> i64 {
-    (interval_delta_hours * ONE_HOUR_NANOS as f64).round() as i64
+    (interval_delta_hours * NANOS_PER_HOUR as f64).round() as i64
 }
 
 pub fn population_standard_deviation(values: &[f64]) -> f64 {
@@ -47,14 +47,14 @@ pub fn timestamp_utc_nanos(raw_timestamp_utc: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ONE_HOUR_NANOS, count_timestamps_in_half_open_interval, interval_delta_hours_to_nanos,
+        NANOS_PER_HOUR, count_timestamps_in_half_open_interval, interval_delta_hours_to_nanos,
         population_standard_deviation, timestamp_utc_nanos,
     };
 
     #[test]
     fn interval_delta_hours_to_nanos_matches_one_hour_constant() {
-        assert_eq!(interval_delta_hours_to_nanos(1.0), ONE_HOUR_NANOS);
-        assert_eq!(interval_delta_hours_to_nanos(0.25), ONE_HOUR_NANOS / 4);
+        assert_eq!(interval_delta_hours_to_nanos(1.0), NANOS_PER_HOUR);
+        assert_eq!(interval_delta_hours_to_nanos(0.25), NANOS_PER_HOUR / 4);
     }
 
     #[test]

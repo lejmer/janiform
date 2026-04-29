@@ -17,7 +17,7 @@ import janiform.calibration.staged as calibration_staged_module
 import janiform.cli as cli_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
-from janiform._timestamps import ONE_HOUR_NANOS
+from janiform._timestamps import NANOS_PER_HOUR
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.market_data import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
@@ -2078,7 +2078,7 @@ def test_coarse_simulation_cli_rejects_malformed_request_document(tmp_path: Path
                 "exchange_timezone_name": "America/New_York",
                 "request_start_utc_nanos": _utc_nanos(2026, 2, 2, 14, 0, 0),
                 "request_end_utc_nanos": _utc_nanos(2026, 2, 2, 15, 0, 0),
-                "interval_duration_nanos": ONE_HOUR_NANOS,
+                "interval_duration_nanos": NANOS_PER_HOUR,
                 "interval_indices": [0],
                 "interval_start_utc_nanos": [_utc_nanos(2026, 2, 2, 14, 0, 0)],
                 "interval_end_utc_nanos": [_utc_nanos(2026, 2, 2, 15, 0, 0)],

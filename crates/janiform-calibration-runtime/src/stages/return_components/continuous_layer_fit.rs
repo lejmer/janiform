@@ -120,7 +120,7 @@ pub(crate) fn fit_continuous_return_layer(
 #[cfg(test)]
 mod tests {
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
-    use janiform_foundations::time::ONE_HOUR_NANOS;
+    use janiform_foundations::time::NANOS_PER_HOUR;
 
     use super::{
         build_nig_search_candidates, evaluate_continuous_nig_candidate, fit_continuous_return_layer,
@@ -179,7 +179,7 @@ mod tests {
             combined_gap_magnitudes: Vec::new(),
             source_window: ReturnComponentsStageSignalSourceWindow {
                 window_start_utc_nanos: 0,
-                window_end_utc_nanos: ONE_HOUR_NANOS,
+                window_end_utc_nanos: NANOS_PER_HOUR,
             },
         };
 
@@ -295,7 +295,7 @@ mod tests {
             combined_gap_magnitudes: Vec::new(),
             source_window: ReturnComponentsStageSignalSourceWindow {
                 window_start_utc_nanos: 0,
-                window_end_utc_nanos: ONE_HOUR_NANOS,
+                window_end_utc_nanos: NANOS_PER_HOUR,
             },
         };
 

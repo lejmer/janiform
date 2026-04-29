@@ -1,4 +1,4 @@
-use janiform_foundations::json_payload;
+use janiform_foundations::json;
 use serde_json::Map;
 use serde_json::Value;
 
@@ -27,7 +27,7 @@ pub(super) fn clone_field(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Value> {
-    json_payload::clone_field(payload, field_name, field_path).map_err(payload_error_from_json)
+    json::payload::clone_field(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn clone_object_field(
@@ -35,7 +35,7 @@ pub(super) fn clone_object_field(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Value> {
-    json_payload::clone_object_field(payload, field_name, field_path)
+    json::payload::clone_object_field(payload, field_name, field_path)
         .map_err(payload_error_from_json)
 }
 
@@ -44,7 +44,7 @@ pub(super) fn object_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a Map<String, Value>> {
-    json_payload::object_field(payload, field_name, field_path).map_err(payload_error_from_json)
+    json::payload::object_field(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn object_field_mut<'a>(
@@ -52,7 +52,8 @@ pub(super) fn object_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Map<String, Value>> {
-    json_payload::object_field_mut(payload, field_name, field_path).map_err(payload_error_from_json)
+    json::payload::object_field_mut(payload, field_name, field_path)
+        .map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_object_field<'a>(
@@ -60,7 +61,7 @@ pub(super) fn optional_object_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a Map<String, Value>>> {
-    json_payload::optional_object_field(payload, field_name, field_path)
+    json::payload::optional_object_field(payload, field_name, field_path)
         .map_err(payload_error_from_json)
 }
 
@@ -69,7 +70,7 @@ pub(super) fn optional_object_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a mut Map<String, Value>>> {
-    json_payload::optional_object_field_mut(payload, field_name, field_path)
+    json::payload::optional_object_field_mut(payload, field_name, field_path)
         .map_err(payload_error_from_json)
 }
 
@@ -78,7 +79,7 @@ pub(super) fn optional_array_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a Vec<Value>>> {
-    json_payload::optional_array_field(payload, field_name, field_path)
+    json::payload::optional_array_field(payload, field_name, field_path)
         .map_err(payload_error_from_json)
 }
 
@@ -87,7 +88,7 @@ pub(super) fn string_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a str> {
-    json_payload::string_field(payload, field_name, field_path).map_err(payload_error_from_json)
+    json::payload::string_field(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_string_field<'a>(
@@ -95,7 +96,7 @@ pub(super) fn optional_string_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a str>> {
-    json_payload::optional_string_field(payload, field_name, field_path)
+    json::payload::optional_string_field(payload, field_name, field_path)
         .map_err(payload_error_from_json)
 }
 
@@ -103,21 +104,21 @@ pub(super) fn object_value<'a>(
     value: &'a Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a Map<String, Value>> {
-    json_payload::object_value(value, field_path).map_err(payload_error_from_json)
+    json::payload::object_value(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn object_value_mut<'a>(
     value: &'a mut Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Map<String, Value>> {
-    json_payload::object_value_mut(value, field_path).map_err(payload_error_from_json)
+    json::payload::object_value_mut(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn array_value<'a>(
     value: &'a Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a Vec<Value>> {
-    json_payload::array_value(value, field_path).map_err(payload_error_from_json)
+    json::payload::array_value(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn array_field_mut<'a>(
@@ -125,7 +126,7 @@ pub(super) fn array_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Vec<Value>> {
-    json_payload::array_field_mut(payload, field_name, field_path).map_err(payload_error_from_json)
+    json::payload::array_field_mut(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_array_field_mut<'a>(
@@ -133,7 +134,7 @@ pub(super) fn optional_array_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a mut Vec<Value>>> {
-    json_payload::optional_array_field_mut(payload, field_name, field_path)
+    json::payload::optional_array_field_mut(payload, field_name, field_path)
         .map_err(payload_error_from_json)
 }
 
@@ -141,14 +142,14 @@ pub(super) fn array_value_mut<'a>(
     value: &'a mut Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Vec<Value>> {
-    json_payload::array_value_mut(value, field_path).map_err(payload_error_from_json)
+    json::payload::array_value_mut(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn string_value<'a>(
     value: &'a Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a str> {
-    json_payload::string_value(value, field_path).map_err(payload_error_from_json)
+    json::payload::string_value(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn payload_error(field_path: &str, message: &str) -> PresetWorkflowResolutionError {
@@ -159,7 +160,7 @@ pub(super) fn payload_error(field_path: &str, message: &str) -> PresetWorkflowRe
 }
 
 fn payload_error_from_json(
-    source: json_payload::JsonPayloadError,
+    source: json::payload::JsonPayloadError,
 ) -> PresetWorkflowResolutionError {
     payload_error(source.field_path(), source.message())
 }

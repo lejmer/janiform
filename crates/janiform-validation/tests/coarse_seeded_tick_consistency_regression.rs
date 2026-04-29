@@ -38,7 +38,7 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_test_support::simulation_regression::{
-    ONE_HOUR_NANOS, count_timestamps_in_half_open_interval, interval_delta_hours_to_nanos,
+    NANOS_PER_HOUR, count_timestamps_in_half_open_interval, interval_delta_hours_to_nanos,
     population_standard_deviation, timestamp_utc_nanos,
 };
 use janiform_validation::{
@@ -641,7 +641,7 @@ fn disabled_mean_reversion_runtime_inputs(
             vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![
-                hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+                hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
                 hourly_factor_contract.interval_indices.len()
             ],
         )

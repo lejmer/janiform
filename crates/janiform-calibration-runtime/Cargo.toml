@@ -18,7 +18,6 @@ arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
-csv = { workspace = true }
 janiform-affine-oracle = { path = "../janiform-affine-oracle" }
 janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
 janiform-engine-pricing = { path = "../janiform-engine-pricing" }

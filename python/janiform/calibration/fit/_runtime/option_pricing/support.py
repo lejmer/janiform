@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from math import log
 from typing import TYPE_CHECKING, Any, Mapping, cast
 
-from ....._timestamps import ONE_HOUR_NANOS, datetime_to_utc_nanos
+from ....._timestamps import NANOS_PER_HOUR, datetime_to_utc_nanos
 from .....contracts.base import require_positive_finite_scalar
 from .....hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
@@ -84,7 +84,7 @@ def runtime_schedule_hourly_factor_contract_coverage(
 ) -> tuple[datetime, datetime]:
     valuation_time_utc_nanos = datetime_to_utc_nanos(valuation_time_utc)
     coverage_start_utc_nanos = valuation_time_utc_nanos - (
-        valuation_time_utc_nanos % ONE_HOUR_NANOS
+        valuation_time_utc_nanos % NANOS_PER_HOUR
     )
 
     terminal_interval_end_utc_nanos = (
@@ -92,8 +92,8 @@ def runtime_schedule_hourly_factor_contract_coverage(
     )
 
     coverage_end_utc_nanos = (
-        (terminal_interval_end_utc_nanos + ONE_HOUR_NANOS - 1) // ONE_HOUR_NANOS
-    ) * ONE_HOUR_NANOS
+        (terminal_interval_end_utc_nanos + NANOS_PER_HOUR - 1) // NANOS_PER_HOUR
+    ) * NANOS_PER_HOUR
 
     return (
         _runtime_datetime_from_utc_nanos(coverage_start_utc_nanos),
@@ -104,7 +104,7 @@ def runtime_schedule_hourly_factor_contract_coverage(
 def hourly_interval_count(range_start_utc: datetime, range_end_utc: datetime) -> int:
     interval_count = (
         datetime_to_utc_nanos(range_end_utc) - datetime_to_utc_nanos(range_start_utc)
-    ) // ONE_HOUR_NANOS
+    ) // NANOS_PER_HOUR
     if interval_count <= 0:
         raise calibration_error(
             "runtime_interval_schedule",

@@ -9,6 +9,7 @@ use super::{
 };
 use crate::calendar::definition::resolve_market_state_for_definition_at_utc;
 use chrono::{DateTime, TimeZone, Utc};
+use serde_json::json;
 
 #[test]
 fn missing_timezone_fails_validation() {
@@ -794,6 +795,37 @@ fn preprocessing_rejects_invalid_sparse_hour_threshold() {
                 sparse_hour_event_threshold: 0,
             },
         ),
+    );
+}
+
+#[test]
+fn registry_loader_accepts_wrapper_document() {
+    let document = json!({
+        "calendar_registry": {
+            "schema_version": "calendar.registry.v1",
+            "artifact_date": "2026-01-31",
+            "exchanges": [valid_exchange_artifact()],
+        }
+    });
+
+    let registry = ExchangeCalendarRegistryLoader::load_from_json_value(document)
+        .expect("wrapped registry document should load");
+
+    assert!(registry.get("XNYS").is_some());
+}
+
+#[test]
+fn registry_loader_rejects_wrapper_without_registry_payload() {
+    let result = ExchangeCalendarRegistryLoader::load_from_json_value(json!({
+        "schema_version": "calendar.fixture.v1",
+    }));
+
+    assert_eq!(
+        result,
+        Err(ExchangeCalendarRegistryLoadError::MalformedArtifact {
+            reason: "must be a calendar.registry.v1 object or contain calendar_registry"
+                .to_string(),
+        }),
     );
 }
 

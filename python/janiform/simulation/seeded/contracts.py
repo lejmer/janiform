@@ -33,7 +33,7 @@ from ...contracts.base import (
     require_sequence,
     require_string,
 )
-from ..._timestamps import ONE_HOUR_NANOS
+from ..._timestamps import NANOS_PER_HOUR
 from ...calendar import MarketState
 from ...hourly_factors import HourlyFactorContract
 from ...pricing import NigSharedPlusShiftConfiguration
@@ -1157,7 +1157,7 @@ def build_endogenous_seeded_mean_reversion_runtime_inputs(
     MeanReversionRuntimeIntervalAnchors,
     MeanReversionBoundaryState,
 ]:
-    interval_delta_hours = hourly_factor_contract.interval_duration_nanos / ONE_HOUR_NANOS
+    interval_delta_hours = hourly_factor_contract.interval_duration_nanos / NANOS_PER_HOUR
     interval_count = hourly_factor_contract.interval_count
 
     return (

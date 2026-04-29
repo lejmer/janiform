@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from math import log
 from typing import Any, TypedDict, cast
 
-from janiform._timestamps import ONE_HOUR_NANOS
+from janiform._timestamps import NANOS_PER_HOUR
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
@@ -393,7 +393,7 @@ def _collect_interval_event_counts(
 
     for event_record in event_tape:
         timestamp_utc_nanos = event_record.timestamp_utc_nanos
-        interval_position = (timestamp_utc_nanos - start_time_utc_nanos) // ONE_HOUR_NANOS
+        interval_position = (timestamp_utc_nanos - start_time_utc_nanos) // NANOS_PER_HOUR
 
         if 0 <= interval_position < horizon_interval_count:
             interval_event_counts[int(interval_position)] += 1
@@ -448,7 +448,7 @@ def _has_non_grid_arrival(event_tape: list[Any]) -> bool:
 
     for event_record in event_tape:
         timestamp_utc_nanos = event_record.timestamp_utc_nanos
-        if (timestamp_utc_nanos - start_time_utc_nanos) % ONE_HOUR_NANOS != 0:
+        if (timestamp_utc_nanos - start_time_utc_nanos) % NANOS_PER_HOUR != 0:
             return True
 
     return False

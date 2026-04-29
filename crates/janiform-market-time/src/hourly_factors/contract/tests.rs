@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 
 use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::hourly_factors::{
@@ -15,7 +15,7 @@ use crate::hourly_factors::{
     materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 
-const ONE_HOUR_INTERVAL_NANOS: i64 = ONE_HOUR_NANOS;
+const ONE_HOUR_INTERVAL_NANOS: i64 = NANOS_PER_HOUR;
 
 #[test]
 fn hourly_factor_contract_builds_expected_schema_and_metadata() {
@@ -26,7 +26,7 @@ fn hourly_factor_contract_builds_expected_schema_and_metadata() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T17:00:00Z"),
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         &[1.0, 1.1, 0.9],
         &[0.4, 0.0, 0.2],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -79,7 +79,7 @@ fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T18:00:00Z"),
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         &[1.0, 1.0, 1.0, 1.0],
         &[0.0, 0.0, 0.0, 0.0],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -100,7 +100,7 @@ fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
         let interval_start = output.interval_start_utc_nanos[interval_position];
         let interval_end = output.interval_end_utc_nanos[interval_position];
         assert!(interval_start < interval_end);
-        assert_eq!(interval_end - interval_start, ONE_HOUR_NANOS);
+        assert_eq!(interval_end - interval_start, NANOS_PER_HOUR);
     }
 }
 
@@ -113,7 +113,7 @@ fn hourly_factor_contract_spring_forward_policy_skips_nonexistent_local_hour_lab
         "XNYS",
         parse_timestamp("2026-03-08T06:00:00Z"),
         parse_timestamp("2026-03-08T09:00:00Z"),
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         &[1.0, 1.0, 1.0],
         &[0.0, 0.0, 0.0],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,

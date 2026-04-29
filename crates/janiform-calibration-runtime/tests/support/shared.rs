@@ -300,7 +300,7 @@ pub(crate) use janiform_engine_pricing::{
     intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
 };
 pub(crate) use janiform_foundations::complex_math::ComplexScalar;
-pub(crate) use janiform_foundations::time::{ONE_HOUR_NANOS, utc_nanos};
+pub(crate) use janiform_foundations::time::{NANOS_PER_HOUR, utc_nanos};
 pub(crate) use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
 };
@@ -2107,7 +2107,7 @@ pub(crate) fn staged_run_inputs(
 pub(crate) fn joint_refinement_stage_option_pricing_input_fixture()
 -> JointRefinementStageOptionPricingInput {
     let valuation_time_utc_nanos = 0;
-    let expiry_timestamp_utc_nanos = ONE_HOUR_NANOS;
+    let expiry_timestamp_utc_nanos = NANOS_PER_HOUR;
 
     JointRefinementStageOptionPricingInput {
         valuation_time_utc_nanos,

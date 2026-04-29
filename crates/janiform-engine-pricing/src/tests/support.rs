@@ -18,7 +18,7 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformTelemetryMode,
 };
 use janiform_foundations::complex_math::ComplexScalar;
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -90,7 +90,7 @@ pub(crate) fn build_uniform_runtime_interval_schedule(
     interval_count: usize,
     interval_delta: f64,
 ) -> PricingIntervalSchedule {
-    let interval_duration_nanos_float = interval_delta * ONE_HOUR_NANOS as f64;
+    let interval_duration_nanos_float = interval_delta * NANOS_PER_HOUR as f64;
     let interval_duration_nanos = interval_duration_nanos_float as i64;
     assert_eq!(
         interval_duration_nanos as f64, interval_duration_nanos_float,

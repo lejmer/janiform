@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
+use serde_json::Value;
 
 use crate::calendar::definition::resolve_market_state_for_definition_at_utc;
 use crate::calendar::errors::{
@@ -57,6 +58,7 @@ impl ExchangeCalendarRegistry {
 
         for exchange_artifact in artifact.exchanges {
             let exchange_code = exchange_artifact.exchange_code.trim().to_string();
+
             let definition =
                 ExchangeCalendarDefinition::from_artifact(exchange_artifact).map_err(|source| {
                     ExchangeCalendarRegistryLoadError::InvalidExchangeArtifact {
@@ -64,6 +66,7 @@ impl ExchangeCalendarRegistry {
                         source,
                     }
                 })?;
+
             if definitions_by_exchange
                 .insert(exchange_code.clone(), definition)
                 .is_some()
@@ -149,7 +152,9 @@ impl ExchangeCalendarRegistry {
         let definition = self
             .get_required(exchange_code)
             .map_err(ExchangeCalendarResolveError::from_lookup_error)?;
+
         let timezone_name = definition.timezone_name();
+
         let timezone = Tz::from_str(timezone_name).map_err(|_| {
             ExchangeCalendarResolveError::InvalidTimezoneName {
                 exchange_code: exchange_code.to_string(),
@@ -172,6 +177,59 @@ impl ExchangeCalendarRegistryLoader {
     ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
         let artifact = serde_json::from_str::<ExchangeCalendarRegistryArtifact>(artifact_json)
             .map_err(ExchangeCalendarRegistryLoadError::from_deserialization_error)?;
+
         ExchangeCalendarRegistry::from_artifact(artifact)
+    }
+
+    /// Load a registry from a parsed JSON document.
+    ///
+    /// The document may be either a direct `calendar.registry.v1` artifact or a
+    /// wrapper object containing the artifact in `calendar_registry`.
+    pub fn load_from_json_value(
+        document: Value,
+    ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
+        let artifact = registry_artifact_from_json_value(document)?;
+
+        ExchangeCalendarRegistry::from_artifact(artifact)
+    }
+}
+
+fn registry_artifact_from_json_value(
+    document: Value,
+) -> Result<ExchangeCalendarRegistryArtifact, ExchangeCalendarRegistryLoadError> {
+    serde_json::from_value(registry_artifact_payload(document)?)
+        .map_err(ExchangeCalendarRegistryLoadError::from_deserialization_error)
+}
+
+fn registry_artifact_payload(document: Value) -> Result<Value, ExchangeCalendarRegistryLoadError> {
+    match document {
+        Value::Object(mut fields) => {
+            let is_direct_registry = fields
+                .get("schema_version")
+                .and_then(Value::as_str)
+                .is_some_and(|schema_version| schema_version == CALENDAR_REGISTRY_SCHEMA_VERSION);
+
+            if is_direct_registry {
+                return Ok(Value::Object(fields));
+            }
+
+            let Some(registry_payload) = fields.remove("calendar_registry") else {
+                return Err(ExchangeCalendarRegistryLoadError::MalformedArtifact {
+                    reason: "must be a calendar.registry.v1 object or contain calendar_registry"
+                        .to_string(),
+                });
+            };
+
+            if !registry_payload.is_object() {
+                return Err(ExchangeCalendarRegistryLoadError::MalformedArtifact {
+                    reason: "calendar_registry must be an object".to_string(),
+                });
+            }
+
+            Ok(registry_payload)
+        }
+        _ => Err(ExchangeCalendarRegistryLoadError::MalformedArtifact {
+            reason: "artifact root must be a JSON object".to_string(),
+        }),
     }
 }

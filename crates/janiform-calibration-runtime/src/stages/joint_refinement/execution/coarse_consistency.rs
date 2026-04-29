@@ -9,7 +9,7 @@ use janiform_affine_oracle::sufficient_statistics::{
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, run_coarse_simulation,
 };
-use janiform_foundations::time::{FIVE_MINUTES_NANOS, ONE_HOUR_NANOS};
+use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
 use janiform_market_time::hourly_factors::{
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
     HourlySeasonalityFactorSource,
@@ -103,7 +103,7 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
             context,
             fitted_parameters,
             *simulation_seed,
-            FIVE_MINUTES_NANOS,
+            NANOS_PER_FIVE_MINUTES,
             context
                 .observed_data
                 .simulated_5m_interval_template
@@ -123,7 +123,7 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
             context,
             fitted_parameters,
             *simulation_seed,
-            3 * FIVE_MINUTES_NANOS,
+            3 * NANOS_PER_FIVE_MINUTES,
             context
                 .observed_data
                 .simulated_15m_interval_template
@@ -297,8 +297,8 @@ impl JointRefinementCoarseConsistencyTaskOutput {
 impl JointRefinementCoarseConsistencyHorizon {
     const fn interval_duration_nanos(self) -> i64 {
         match self {
-            Self::FiveMinute => FIVE_MINUTES_NANOS,
-            Self::FifteenMinute => 3 * FIVE_MINUTES_NANOS,
+            Self::FiveMinute => NANOS_PER_FIVE_MINUTES,
+            Self::FifteenMinute => 3 * NANOS_PER_FIVE_MINUTES,
         }
     }
 
@@ -524,7 +524,7 @@ fn build_joint_coarse_interval_observations(
     )
     .ok()?;
 
-    let interval_delta = interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+    let interval_delta = interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
 
     let interval_factors = build_coarse_interval_factors_from_hourly_contract(
         &hourly_factor_contract,

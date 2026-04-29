@@ -30,7 +30,7 @@ use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessStream, derive_simulation_substream_seed,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState,
 };
@@ -647,7 +647,7 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
             .transition_kind,
         SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
     );
-    let expected_interval_end_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
+    let expected_interval_end_utc_nanos = start_utc_nanos + NANOS_PER_HOUR;
     assert_eq!(
         trace_records
             .last()
@@ -752,13 +752,13 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
 
     model_inputs.hourly_factor_contract.request_start_utc_nanos = start_utc_nanos;
     model_inputs.hourly_factor_contract.request_end_utc_nanos =
-        start_utc_nanos + 2 * ONE_HOUR_NANOS;
+        start_utc_nanos + 2 * NANOS_PER_HOUR;
 
     model_inputs.hourly_factor_contract.interval_start_utc_nanos =
-        vec![start_utc_nanos, start_utc_nanos + ONE_HOUR_NANOS];
+        vec![start_utc_nanos, start_utc_nanos + NANOS_PER_HOUR];
     model_inputs.hourly_factor_contract.interval_end_utc_nanos = vec![
-        start_utc_nanos + ONE_HOUR_NANOS,
-        start_utc_nanos + 2 * ONE_HOUR_NANOS,
+        start_utc_nanos + NANOS_PER_HOUR,
+        start_utc_nanos + 2 * NANOS_PER_HOUR,
     ];
 
     model_inputs
@@ -781,7 +781,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
     model_inputs
         .hourly_factor_contract
         .diagnostics
-        .last_interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
+        .last_interval_end_utc_nanos = start_utc_nanos + 2 * NANOS_PER_HOUR;
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         8_115,
@@ -823,7 +823,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
     );
     assert_eq!(
         public_fine_path[0].timestamp_utc_nanos,
-        start_utc_nanos + 2 * ONE_HOUR_NANOS
+        start_utc_nanos + 2 * NANOS_PER_HOUR
     );
 }
 
@@ -835,7 +835,7 @@ fn exogenous_interval_news_scheduler_routes_surprise_news_into_closed_market_gap
     override_hourly_factor_contract(
         &mut model_inputs,
         &[closed_interval_start_utc_nanos],
-        &[closed_interval_start_utc_nanos + ONE_HOUR_NANOS],
+        &[closed_interval_start_utc_nanos + NANOS_PER_HOUR],
         &[1.0],
         &[1.0],
     );
@@ -863,7 +863,7 @@ fn exogenous_interval_news_scheduler_routes_surprise_news_into_closed_market_gap
     let event_inputs = super::runtime::build_interval_news_event_inputs(
         0,
         closed_interval_start_utc_nanos,
-        ONE_HOUR_NANOS,
+        NANOS_PER_HOUR,
         1.0,
         1.0,
         &run_config,
@@ -1048,13 +1048,13 @@ fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
     let mut model_inputs = valid_model_inputs();
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
 
-    model_inputs.hourly_factor_contract.interval_start_utc_nanos[1] += ONE_HOUR_NANOS;
-    model_inputs.hourly_factor_contract.interval_end_utc_nanos[1] += ONE_HOUR_NANOS;
-    model_inputs.hourly_factor_contract.request_end_utc_nanos += ONE_HOUR_NANOS;
+    model_inputs.hourly_factor_contract.interval_start_utc_nanos[1] += NANOS_PER_HOUR;
+    model_inputs.hourly_factor_contract.interval_end_utc_nanos[1] += NANOS_PER_HOUR;
+    model_inputs.hourly_factor_contract.request_end_utc_nanos += NANOS_PER_HOUR;
     model_inputs
         .hourly_factor_contract
         .diagnostics
-        .last_interval_end_utc_nanos += ONE_HOUR_NANOS;
+        .last_interval_end_utc_nanos += NANOS_PER_HOUR;
 
     let error = SeededTickSimulationRunConfig::try_new(
         88,
@@ -1072,8 +1072,8 @@ fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
             previous_interval_end_utc_nanos,
             current_interval_index: 1,
             current_interval_start_utc_nanos,
-        } if previous_interval_end_utc_nanos == start_utc_nanos + ONE_HOUR_NANOS
-            && current_interval_start_utc_nanos == start_utc_nanos + 2 * ONE_HOUR_NANOS
+        } if previous_interval_end_utc_nanos == start_utc_nanos + NANOS_PER_HOUR
+            && current_interval_start_utc_nanos == start_utc_nanos + 2 * NANOS_PER_HOUR
     ));
 }
 
@@ -1179,7 +1179,7 @@ fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
 #[test]
 fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
-    let boundary_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
+    let boundary_utc_nanos = start_utc_nanos + NANOS_PER_HOUR;
 
     let baseline_run_config = SeededTickSimulationRunConfig::try_new(
         10_053,
@@ -1560,8 +1560,8 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
 
     let interval_start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let legacy_uniform_timestamps = vec![
-        interval_start_utc_nanos + ONE_HOUR_NANOS / 4,
-        interval_start_utc_nanos + 3 * ONE_HOUR_NANOS / 4,
+        interval_start_utc_nanos + NANOS_PER_HOUR / 4,
+        interval_start_utc_nanos + 3 * NANOS_PER_HOUR / 4,
     ];
     let observed_timestamps: Vec<i64> = run_result
         .projected_event_path()
@@ -1613,7 +1613,7 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
     let mut aggregated_fine_sell_counts = [0_usize; 2];
     for event_record in run_result.projected_event_path() {
         let interval_index = ((event_record.timestamp_utc_nanos - start_utc_nanos)
-            .div_euclid(ONE_HOUR_NANOS)) as usize;
+            .div_euclid(NANOS_PER_HOUR)) as usize;
         match event_record.side {
             SeededTickEventSide::Buy => {
                 aggregated_fine_buy_counts[interval_index] =
@@ -1658,7 +1658,7 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
 #[test]
 fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy() {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
-    let tied_timestamp_utc_nanos = start_utc_nanos + ((ONE_HOUR_NANOS as f64 * 0.3).floor() as i64);
+    let tied_timestamp_utc_nanos = start_utc_nanos + ((NANOS_PER_HOUR as f64 * 0.3).floor() as i64);
 
     let mut model_inputs = one_interval_model_inputs(1.0, 1.0, 2.0);
     set_known_news_timestamps(&mut model_inputs, vec![tied_timestamp_utc_nanos]);
@@ -1739,20 +1739,20 @@ fn interval_news_arrival_decomposition_scales_known_component_by_interval_durati
 fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_when_known_count_is_fixed()
  {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
-    let interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
+    let interval_end_utc_nanos = start_utc_nanos + 2 * NANOS_PER_HOUR;
 
     let known_timestamp_profiles: Vec<Vec<i64>> = vec![
         vec![
-            start_utc_nanos + ONE_HOUR_NANOS / 10,
-            start_utc_nanos + 3 * ONE_HOUR_NANOS / 2,
+            start_utc_nanos + NANOS_PER_HOUR / 10,
+            start_utc_nanos + 3 * NANOS_PER_HOUR / 2,
         ],
         vec![
-            start_utc_nanos + ONE_HOUR_NANOS / 4,
-            start_utc_nanos + 7 * ONE_HOUR_NANOS / 4,
+            start_utc_nanos + NANOS_PER_HOUR / 4,
+            start_utc_nanos + 7 * NANOS_PER_HOUR / 4,
         ],
         vec![
-            start_utc_nanos + ONE_HOUR_NANOS / 2,
-            start_utc_nanos + 9 * ONE_HOUR_NANOS / 5,
+            start_utc_nanos + NANOS_PER_HOUR / 2,
+            start_utc_nanos + 9 * NANOS_PER_HOUR / 5,
         ],
     ];
 
@@ -1833,8 +1833,8 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
 fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposition_for_controlled_fixture()
  {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
-    let second_interval_start_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
-    let second_interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
+    let second_interval_start_utc_nanos = start_utc_nanos + NANOS_PER_HOUR;
+    let second_interval_end_utc_nanos = start_utc_nanos + 2 * NANOS_PER_HOUR;
 
     let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 0.0);
 
@@ -1852,9 +1852,9 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
     set_known_news_timestamps(
         &mut model_inputs,
         vec![
-            start_utc_nanos + ONE_HOUR_NANOS / 10,
-            start_utc_nanos + 3 * ONE_HOUR_NANOS / 5,
-            second_interval_start_utc_nanos + ONE_HOUR_NANOS / 3,
+            start_utc_nanos + NANOS_PER_HOUR / 10,
+            start_utc_nanos + 3 * NANOS_PER_HOUR / 5,
+            second_interval_start_utc_nanos + NANOS_PER_HOUR / 3,
         ],
     );
 
@@ -1949,14 +1949,14 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
 #[test]
 fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
     let interval_start_utc_nanos = timestamp_utc_nanos("2024-01-22T15:00:00Z");
-    let known_open_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 4;
+    let known_open_timestamp_utc_nanos = interval_start_utc_nanos + NANOS_PER_HOUR / 4;
 
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
 
     override_hourly_factor_contract(
         &mut model_inputs,
         &[interval_start_utc_nanos],
-        &[interval_start_utc_nanos + ONE_HOUR_NANOS],
+        &[interval_start_utc_nanos + NANOS_PER_HOUR],
         &[0.0],
         &[0.0],
     );
@@ -2041,14 +2041,14 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
 #[test]
 fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
     let interval_start_utc_nanos = timestamp_utc_nanos("2024-12-25T15:00:00Z");
-    let known_closed_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 4;
+    let known_closed_timestamp_utc_nanos = interval_start_utc_nanos + NANOS_PER_HOUR / 4;
 
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
 
     override_hourly_factor_contract(
         &mut model_inputs,
         &[interval_start_utc_nanos],
-        &[interval_start_utc_nanos + ONE_HOUR_NANOS],
+        &[interval_start_utc_nanos + NANOS_PER_HOUR],
         &[1.0],
         &[0.0],
     );
@@ -2133,8 +2133,8 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
 #[test]
 fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boundary() {
     let interval_start_utc_nanos = timestamp_utc_nanos("2024-11-29T17:00:00Z");
-    let open_window_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 2;
-    let early_close_boundary_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS;
+    let open_window_timestamp_utc_nanos = interval_start_utc_nanos + NANOS_PER_HOUR / 2;
+    let early_close_boundary_timestamp_utc_nanos = interval_start_utc_nanos + NANOS_PER_HOUR;
 
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
 
@@ -2142,11 +2142,11 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
         &mut model_inputs,
         &[
             interval_start_utc_nanos,
-            interval_start_utc_nanos + ONE_HOUR_NANOS,
+            interval_start_utc_nanos + NANOS_PER_HOUR,
         ],
         &[
-            interval_start_utc_nanos + ONE_HOUR_NANOS,
-            interval_start_utc_nanos + 2 * ONE_HOUR_NANOS,
+            interval_start_utc_nanos + NANOS_PER_HOUR,
+            interval_start_utc_nanos + 2 * NANOS_PER_HOUR,
         ],
         &[0.0, 1.0],
         &[0.0, 0.0],
@@ -2412,7 +2412,7 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
 #[test]
 fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges() {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
-    let boundary_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
+    let boundary_utc_nanos = start_utc_nanos + NANOS_PER_HOUR;
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         10_054,
@@ -3158,14 +3158,14 @@ fn one_interval_model_inputs(
 ) -> SeededTickSimulationModelInputs {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let interval_start_utc_nanos = vec![start_utc_nanos];
-    let interval_end_utc_nanos = vec![start_utc_nanos + ONE_HOUR_NANOS];
+    let interval_end_utc_nanos = vec![start_utc_nanos + NANOS_PER_HOUR];
     let hourly_factor_contract = HourlyFactorContractOutput {
         schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
         exchange_code: "XNYS".to_string(),
         exchange_timezone_name: "America/New_York".to_string(),
         request_start_utc_nanos: start_utc_nanos,
-        request_end_utc_nanos: start_utc_nanos + ONE_HOUR_NANOS,
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        request_end_utc_nanos: start_utc_nanos + NANOS_PER_HOUR,
+        interval_duration_nanos: NANOS_PER_HOUR,
         interval_indices: vec![0],
         interval_start_utc_nanos: interval_start_utc_nanos.clone(),
         interval_end_utc_nanos: interval_end_utc_nanos.clone(),
@@ -3188,7 +3188,7 @@ fn one_interval_model_inputs(
         },
         diagnostics: HourlyFactorContractDiagnostics {
             interval_count: 1,
-            interval_duration_nanos: ONE_HOUR_NANOS,
+            interval_duration_nanos: NANOS_PER_HOUR,
             first_interval_start_utc_nanos: interval_start_utc_nanos[0],
             last_interval_end_utc_nanos: interval_end_utc_nanos[0],
             skipped_local_hour_interval_count: 0,
@@ -3238,7 +3238,7 @@ fn one_interval_model_inputs(
 fn one_interval_closed_market_model_inputs() -> SeededTickSimulationModelInputs {
     let mut model_inputs = one_interval_model_inputs(20.0, 20.0, 0.0);
     let closed_interval_start_utc_nanos = 1_705_928_400_000_000_000;
-    let closed_interval_end_utc_nanos = closed_interval_start_utc_nanos + ONE_HOUR_NANOS;
+    let closed_interval_end_utc_nanos = closed_interval_start_utc_nanos + NANOS_PER_HOUR;
 
     model_inputs.hourly_factor_contract.request_start_utc_nanos = closed_interval_start_utc_nanos;
     model_inputs.hourly_factor_contract.request_end_utc_nanos = closed_interval_end_utc_nanos;
@@ -3432,18 +3432,18 @@ fn timestamp_utc_nanos(raw_timestamp_utc: &str) -> i64 {
 
 fn valid_model_inputs() -> SeededTickSimulationModelInputs {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
-    let interval_start_utc_nanos = vec![start_utc_nanos, start_utc_nanos + ONE_HOUR_NANOS];
+    let interval_start_utc_nanos = vec![start_utc_nanos, start_utc_nanos + NANOS_PER_HOUR];
     let interval_end_utc_nanos = vec![
-        start_utc_nanos + ONE_HOUR_NANOS,
-        start_utc_nanos + 2 * ONE_HOUR_NANOS,
+        start_utc_nanos + NANOS_PER_HOUR,
+        start_utc_nanos + 2 * NANOS_PER_HOUR,
     ];
     let hourly_factor_contract = HourlyFactorContractOutput {
         schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
         exchange_code: "XNYS".to_string(),
         exchange_timezone_name: "America/New_York".to_string(),
         request_start_utc_nanos: start_utc_nanos,
-        request_end_utc_nanos: start_utc_nanos + 2 * ONE_HOUR_NANOS,
-        interval_duration_nanos: ONE_HOUR_NANOS,
+        request_end_utc_nanos: start_utc_nanos + 2 * NANOS_PER_HOUR,
+        interval_duration_nanos: NANOS_PER_HOUR,
         interval_indices: vec![0, 1],
         interval_start_utc_nanos: interval_start_utc_nanos.clone(),
         interval_end_utc_nanos: interval_end_utc_nanos.clone(),
@@ -3472,7 +3472,7 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         },
         diagnostics: HourlyFactorContractDiagnostics {
             interval_count: 2,
-            interval_duration_nanos: ONE_HOUR_NANOS,
+            interval_duration_nanos: NANOS_PER_HOUR,
             first_interval_start_utc_nanos: interval_start_utc_nanos[0],
             last_interval_end_utc_nanos: interval_end_utc_nanos[1],
             skipped_local_hour_interval_count: 0,
@@ -3531,7 +3531,7 @@ fn disabled_mean_reversion_runtime_inputs(
         .iter()
         .zip(hourly_factor_contract.interval_end_utc_nanos.iter())
         .map(|(interval_start_utc_nanos, interval_end_utc_nanos)| {
-            (*interval_end_utc_nanos - *interval_start_utc_nanos) as f64 / ONE_HOUR_NANOS as f64
+            (*interval_end_utc_nanos - *interval_start_utc_nanos) as f64 / NANOS_PER_HOUR as f64
         })
         .collect::<Vec<_>>();
     (
@@ -3590,7 +3590,7 @@ fn configure_mean_reversion_runtime_inputs(
                 )
                 .map(|(interval_start_utc_nanos, interval_end_utc_nanos)| {
                     (*interval_end_utc_nanos - *interval_start_utc_nanos) as f64
-                        / ONE_HOUR_NANOS as f64
+                        / NANOS_PER_HOUR as f64
                 })
                 .collect(),
         )

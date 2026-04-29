@@ -3,7 +3,7 @@ use janiform_affine_oracle::endogenous_anchor::{
     EndogenousAnchorIntervalFactors, materialize_endogenous_anchor_path,
 };
 use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
@@ -26,7 +26,7 @@ pub fn endogenous_interval_factors_from_hourly_contract(
     }
 
     let interval_delta =
-        hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+        hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
 
     hourly_factor_contract
         .s_h

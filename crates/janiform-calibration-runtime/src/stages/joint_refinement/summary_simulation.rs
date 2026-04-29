@@ -19,7 +19,7 @@ use janiform_engine_simulation::{
     SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickSimulationTransitionConsumer,
     estimate_seeded_result_capacities, stream_seeded_tick_event_simulation,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use janiform_market_time::hourly_factors::{
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
@@ -422,7 +422,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
 
             let hour_index = record
                 .timestamp_utc_nanos
-                .div_euclid(ONE_HOUR_NANOS)
+                .div_euclid(NANOS_PER_HOUR)
                 .rem_euclid(24) as usize;
 
             self.trade_absolute_return_sum_by_hour[hour_index] +=
@@ -453,7 +453,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
         build_surprise_multipliers_for_interval_grid(
             hourly_simulation_start_utc,
             session_context.hourly_simulation_interval_count,
-            ONE_HOUR_NANOS,
+            NANOS_PER_HOUR,
             session_context
                 .surprise_weekly_hour_utc_multipliers
                 .as_slice(),
@@ -476,7 +476,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
             exchange_code: session_context.exchange_code.as_str(),
             range_start_utc: hourly_simulation_start_utc,
             range_end_utc: hourly_simulation_end_utc,
-            interval_duration_nanos: ONE_HOUR_NANOS,
+            interval_duration_nanos: NANOS_PER_HOUR,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: session_context
                     .runtime_hourly_seasonality_factors
@@ -826,7 +826,7 @@ pub(crate) mod tests {
         JointRefinementStageFittedParameters,
     };
     use janiform_engine_simulation::run_seeded_tick_event_simulation;
-    use janiform_foundations::time::{ONE_HOUR_NANOS, utc_nanos};
+    use janiform_foundations::time::{NANOS_PER_HOUR, utc_nanos};
     use janiform_market_time::calendar::{
         ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
     };
@@ -976,7 +976,7 @@ pub(crate) mod tests {
                 exchange_code: fixture.session_context.exchange_code.as_str(),
                 range_start_utc: session_state.hourly_simulation_start_utc,
                 range_end_utc: hourly_simulation_end_utc,
-                interval_duration_nanos: ONE_HOUR_NANOS,
+                interval_duration_nanos: NANOS_PER_HOUR,
                 seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                     hourly_factors: fixture
                         .session_context
@@ -1208,7 +1208,7 @@ pub(crate) mod tests {
                 .session_context
                 .simulated_5m_interval_template
                 .as_slice(),
-            janiform_foundations::time::FIVE_MINUTES_NANOS,
+            janiform_foundations::time::NANOS_PER_FIVE_MINUTES,
         );
         let simulated_15m_intervals = aggregate_simulated_path_to_interval_template(
             run_result.fine_path.as_slice(),
@@ -1216,7 +1216,7 @@ pub(crate) mod tests {
                 .session_context
                 .simulated_15m_interval_template
                 .as_slice(),
-            janiform_foundations::time::FIFTEEN_MINUTES_NANOS,
+            janiform_foundations::time::NANOS_PER_FIFTEEN_MINUTES,
         );
         let simulated_hourly_intervals = aggregate_simulated_path_to_interval_template(
             run_result.fine_path.as_slice(),
@@ -1224,7 +1224,7 @@ pub(crate) mod tests {
                 .session_context
                 .simulated_hourly_interval_template
                 .as_slice(),
-            janiform_foundations::time::ONE_HOUR_NANOS,
+            janiform_foundations::time::NANOS_PER_HOUR,
         );
 
         let simulated_5m_log_returns = simulated_5m_intervals
@@ -1342,7 +1342,7 @@ pub(crate) mod tests {
                         .hourly_simulation_end_utc
                         .timestamp_nanos_opt()
                         .expect("hourly simulation end timestamp should fit in i64"),
-                    janiform_foundations::time::ONE_HOUR_NANOS,
+                    janiform_foundations::time::NANOS_PER_HOUR,
                 )
                 .expect("runtime hourly seasonality factors should build");
 

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use janiform::hawkes::HawkesExcitationState;
-use janiform::hourly_factors::ONE_HOUR_NANOS;
+use janiform::hourly_factors::NANOS_PER_HOUR;
 use janiform::simulation::{
     CoarseSimulationRunRequest, MeanReversionBoundaryState, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationRunConfig,
@@ -14,7 +14,7 @@ use serde_json::Value;
 use super::artifacts::{DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, SimulationOutputColumns};
 use super::direct::DirectSimulationJob;
 
-const DEFAULT_SIMULATION_INTERVAL_DURATION_NANOS: i64 = ONE_HOUR_NANOS;
+const DEFAULT_SIMULATION_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
 const DEFAULT_SEEDED_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1024;
 
 /// Complete simulation-from-model-artifact workflow request.

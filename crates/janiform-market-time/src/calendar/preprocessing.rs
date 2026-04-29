@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use chrono::{Datelike, Timelike};
 use chrono_tz::Tz;
-use janiform_foundations::time::{ONE_HOUR_NANOS, floor_to_hour_utc_nanos};
+use janiform_foundations::time::{NANOS_PER_HOUR, floor_to_hour_utc_nanos};
 
 use crate::calendar::definition::resolve_market_state_for_definition_at_local;
 use crate::calendar::errors::TimestampEventPreprocessingError;
@@ -201,7 +201,7 @@ fn build_hour_bucket_diagnostics(
             sparse_hour_bucket_utc_nanos.push(current_bucket_utc_nanos);
         }
 
-        current_bucket_utc_nanos += ONE_HOUR_NANOS;
+        current_bucket_utc_nanos += NANOS_PER_HOUR;
     }
 
     (

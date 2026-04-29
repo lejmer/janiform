@@ -2,26 +2,34 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
+use chrono::ParseError;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer};
 
-/// Exact five-minute UTC duration expressed in nanoseconds.
-pub const FIVE_MINUTES_NANOS: i64 = 5 * 60 * 1_000_000_000;
-/// Exact fifteen-minute UTC duration expressed in nanoseconds.
-pub const FIFTEEN_MINUTES_NANOS: i64 = 15 * 60 * 1_000_000_000;
-/// Exact one-hour UTC duration expressed in nanoseconds.
-pub const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
-/// Floating-point view of the exact one-hour nanosecond duration for unit conversion only.
-pub const ONE_HOUR_NANOS_F64: f64 = ONE_HOUR_NANOS as f64;
-/// Exact reciprocal conversion from nanoseconds to hours derived from `ONE_HOUR_NANOS_F64`.
-pub const HOURS_PER_NANOSECOND: f64 = 1.0 / ONE_HOUR_NANOS_F64;
+/// Exact nanoseconds per microsecond.
+pub const NANOS_PER_MICROSECOND: i64 = 1_000;
+/// Exact nanoseconds per millisecond.
+pub const NANOS_PER_MILLISECOND: i64 = 1_000_000;
+/// Exact nanoseconds per second.
+pub const NANOS_PER_SECOND: i64 = 1_000_000_000;
 
-const NANOS_PER_MICROSECOND: i64 = 1_000;
-const NANOS_PER_MILLISECOND: i64 = 1_000_000;
-const NANOS_PER_SECOND: i64 = 1_000_000_000;
-const NANOS_PER_MINUTE: i64 = 60 * NANOS_PER_SECOND;
-const NANOS_PER_DAY: i64 = 24 * ONE_HOUR_NANOS;
+/// Exact nanoseconds per minute.
+pub const NANOS_PER_MINUTE: i64 = 60 * NANOS_PER_SECOND;
+/// Exact nanoseconds per five-minute interval.
+pub const NANOS_PER_FIVE_MINUTES: i64 = 5 * NANOS_PER_MINUTE;
+/// Exact nanoseconds per fifteen-minute interval.
+pub const NANOS_PER_FIFTEEN_MINUTES: i64 = 15 * NANOS_PER_MINUTE;
+/// Exact nanoseconds per hour.
+pub const NANOS_PER_HOUR: i64 = 60 * NANOS_PER_MINUTE;
+/// Floating-point view of the exact nanoseconds per hour for unit conversion only.
+pub const NANOS_PER_HOUR_F64: f64 = NANOS_PER_HOUR as f64;
+/// Exact reciprocal conversion from nanoseconds to hours derived from `NANOS_PER_HOUR_F64`.
+pub const HOURS_PER_NANOSECOND: f64 = 1.0 / NANOS_PER_HOUR_F64;
+
+/// Exact nanoseconds per day.
+pub const NANOS_PER_DAY: i64 = 24 * NANOS_PER_HOUR;
 
 /// Error returned when a duration spec cannot be represented as UTC nanoseconds.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,6 +76,30 @@ pub fn duration_nanos_to_hours(duration_nanos: i64) -> f64 {
     duration_nanos as f64 * HOURS_PER_NANOSECOND
 }
 
+/// Parse an RFC 3339 timestamp string and normalize it to UTC.
+pub fn parse_utc_datetime(value: &str) -> Result<DateTime<Utc>, ParseError> {
+    DateTime::parse_from_rfc3339(value).map(|timestamp| timestamp.with_timezone(&Utc))
+}
+
+/// Return elapsed wall-clock duration between optional RFC 3339 UTC timestamps.
+pub fn elapsed_between_utc_timestamps(start: Option<&str>, end: Option<&str>) -> Option<Duration> {
+    let start = parse_utc_datetime(start?).ok()?;
+    let end = parse_utc_datetime(end?).ok()?;
+    let duration = end.signed_duration_since(start).to_std().ok()?;
+
+    Some(duration)
+}
+
+/// Format UTC nanoseconds since the Unix epoch as an RFC 3339 timestamp when representable.
+pub fn format_utc_nanos(timestamp_nanos: i64) -> String {
+    let seconds = timestamp_nanos.div_euclid(NANOS_PER_SECOND);
+    let nanos = timestamp_nanos.rem_euclid(NANOS_PER_SECOND) as u32;
+
+    DateTime::from_timestamp(seconds, nanos)
+        .map(|timestamp| timestamp.to_rfc3339())
+        .unwrap_or_else(|| timestamp_nanos.to_string())
+}
+
 /// Parse a pandas-style duration spec into an exact UTC nanosecond duration.
 ///
 /// Accepted units are nanoseconds, microseconds, milliseconds, seconds,
@@ -101,9 +133,7 @@ where
     D: Deserializer<'de>,
 {
     let value = String::deserialize(deserializer)?;
-    DateTime::parse_from_rfc3339(value.as_str())
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(serde::de::Error::custom)
+    parse_utc_datetime(value.as_str()).map_err(serde::de::Error::custom)
 }
 
 fn split_duration_spec(value: &str) -> Result<(&str, &str), DurationSpecParseError> {
@@ -184,7 +214,7 @@ fn duration_unit_nanos(unit: &str) -> Result<i64, DurationSpecParseError> {
         "ms" | "millisecond" | "milliseconds" => NANOS_PER_MILLISECOND,
         "s" | "sec" | "secs" | "second" | "seconds" => NANOS_PER_SECOND,
         "m" | "min" | "mins" | "minute" | "minutes" => NANOS_PER_MINUTE,
-        "h" | "hr" | "hrs" | "hour" | "hours" => ONE_HOUR_NANOS,
+        "h" | "hr" | "hrs" | "hour" | "hours" => NANOS_PER_HOUR,
         "d" | "day" | "days" => NANOS_PER_DAY,
         _ => return Err(DurationSpecParseError::UnsupportedUnit { unit: normalized }),
     };
@@ -225,20 +255,21 @@ pub fn ceil_to_interval_utc_nanos(timestamp_utc_nanos: i64, interval_duration_na
 
 /// Floor a UTC nanosecond timestamp to the containing hour boundary.
 pub fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
-    floor_to_interval_utc_nanos(timestamp_utc_nanos, ONE_HOUR_NANOS)
+    floor_to_interval_utc_nanos(timestamp_utc_nanos, NANOS_PER_HOUR)
 }
 
 /// Ceil a UTC nanosecond timestamp to the next hour boundary.
 pub fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
-    ceil_to_interval_utc_nanos(timestamp_utc_nanos, ONE_HOUR_NANOS)
+    ceil_to_interval_utc_nanos(timestamp_utc_nanos, NANOS_PER_HOUR)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
-        duration_nanos_to_hours, floor_to_hour_utc_nanos, floor_to_interval_utc_nanos,
-        parse_duration_spec_nanos, utc_nanos,
+        NANOS_PER_HOUR, ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
+        duration_nanos_to_hours, elapsed_between_utc_timestamps, floor_to_hour_utc_nanos,
+        floor_to_interval_utc_nanos, format_utc_nanos, parse_duration_spec_nanos,
+        parse_utc_datetime, utc_nanos,
     };
 
     #[test]
@@ -251,32 +282,59 @@ mod tests {
     #[test]
     fn floor_to_hour_utc_nanos_rounds_down() {
         assert_eq!(
-            floor_to_hour_utc_nanos(ONE_HOUR_NANOS + 123),
-            ONE_HOUR_NANOS
+            floor_to_hour_utc_nanos(NANOS_PER_HOUR + 123),
+            NANOS_PER_HOUR
         );
-        assert_eq!(floor_to_hour_utc_nanos(-123), -ONE_HOUR_NANOS);
+        assert_eq!(floor_to_hour_utc_nanos(-123), -NANOS_PER_HOUR);
     }
 
     #[test]
     fn ceil_to_hour_utc_nanos_rounds_up() {
         assert_eq!(
-            ceil_to_hour_utc_nanos(ONE_HOUR_NANOS + 123),
-            2 * ONE_HOUR_NANOS
+            ceil_to_hour_utc_nanos(NANOS_PER_HOUR + 123),
+            2 * NANOS_PER_HOUR
         );
-        assert_eq!(ceil_to_hour_utc_nanos(ONE_HOUR_NANOS), ONE_HOUR_NANOS);
+        assert_eq!(ceil_to_hour_utc_nanos(NANOS_PER_HOUR), NANOS_PER_HOUR);
     }
 
     #[test]
     fn duration_nanos_to_hours_matches_hour_boundary_constant() {
-        assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS), 1.0);
-        assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS / 4), 0.25);
+        assert_eq!(duration_nanos_to_hours(NANOS_PER_HOUR), 1.0);
+        assert_eq!(duration_nanos_to_hours(NANOS_PER_HOUR / 4), 0.25);
+    }
+
+    #[test]
+    fn parse_utc_datetime_normalizes_rfc3339_offset() {
+        let parsed = parse_utc_datetime("2026-04-29T12:00:00+02:00")
+            .expect("RFC 3339 timestamp should parse");
+
+        assert_eq!(parsed.to_rfc3339(), "2026-04-29T10:00:00+00:00");
+    }
+
+    #[test]
+    fn elapsed_between_utc_timestamps_reports_positive_duration() {
+        let elapsed = elapsed_between_utc_timestamps(
+            Some("2026-04-29T10:00:00Z"),
+            Some("2026-04-29T10:05:00Z"),
+        );
+
+        assert_eq!(elapsed.map(|duration| duration.as_secs()), Some(300));
+    }
+
+    #[test]
+    fn format_utc_nanos_renders_rfc3339_when_representable() {
+        assert_eq!(format_utc_nanos(0), "1970-01-01T00:00:00+00:00");
+        assert_eq!(
+            format_utc_nanos(1_000_000_001),
+            "1970-01-01T00:00:01.000000001+00:00"
+        );
     }
 
     #[test]
     fn parse_duration_spec_nanos_accepts_supported_units() {
         assert_eq!(parse_duration_spec_nanos("15min"), Ok(900_000_000_000));
-        assert_eq!(parse_duration_spec_nanos("1h"), Ok(ONE_HOUR_NANOS));
-        assert_eq!(parse_duration_spec_nanos("1D"), Ok(24 * ONE_HOUR_NANOS));
+        assert_eq!(parse_duration_spec_nanos("1h"), Ok(NANOS_PER_HOUR));
+        assert_eq!(parse_duration_spec_nanos("1D"), Ok(24 * NANOS_PER_HOUR));
         assert_eq!(parse_duration_spec_nanos("0.5s"), Ok(500_000_000));
     }
 

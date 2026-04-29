@@ -7,6 +7,7 @@ use janiform_event_log::RunStageRef;
 use janiform_event_log::RunStageStatus;
 use janiform_event_log::RunStateSnapshot;
 use janiform_event_log::RunStatus;
+use janiform_foundations::time::elapsed_between_utc_timestamps;
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StageChecklist;
 use janiform_terminal_ui::StageChecklistItem;
@@ -15,13 +16,12 @@ use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::WarningBlock;
 use janiform_terminal_ui::format_elapsed_label;
+use janiform_terminal_ui::format_file_size;
+use janiform_terminal_ui::format_path_relative_to;
 use janiform_terminal_ui::format_warning_count;
 
-use crate::commands::shared::artifact_documents::ArtifactListItem;
-use crate::commands::shared::artifact_documents::render_artifact_list;
-use crate::commands::shared::artifact_documents::{
-    display_path_relative_to, elapsed_between_timestamps, format_file_size,
-};
+use crate::commands::shared::terminal::ArtifactListItem;
+use crate::commands::shared::terminal::render_artifact_list;
 
 use super::RunStateSource;
 
@@ -94,7 +94,7 @@ fn render_run_summary(state: &RunStateSnapshot, renderer: &TerminalRenderer) -> 
         KeyValueRow::new("Status", run_status_label(state.status)),
     ];
 
-    if let Some(elapsed) = elapsed_between_timestamps(
+    if let Some(elapsed) = elapsed_between_utc_timestamps(
         state.first_event_timestamp_utc.as_deref(),
         state.latest_event_timestamp_utc.as_deref(),
     ) {
@@ -140,13 +140,13 @@ fn render_current_state(
 
     rows.push(KeyValueRow::new(
         "Events",
-        display_path_relative_to(run_directory, event_log_path),
+        format_path_relative_to(run_directory, event_log_path),
     ));
 
     if let Some(latest_path) = &state.checkpoints.latest_path {
         rows.push(KeyValueRow::new(
             "Checkpoint",
-            display_path_relative_to(run_directory, Path::new(latest_path)),
+            format_path_relative_to(run_directory, Path::new(latest_path)),
         ));
     }
 
@@ -183,7 +183,7 @@ fn render_stage_state(
         .map(|stage| {
             let mut value = run_stage_status_label(stage.status).to_string();
 
-            if let Some(elapsed) = elapsed_between_timestamps(
+            if let Some(elapsed) = elapsed_between_utc_timestamps(
                 stage.started_at_utc.as_deref(),
                 stage.completed_at_utc.as_deref(),
             ) {
@@ -220,7 +220,7 @@ fn render_artifacts(
         .artifacts
         .iter()
         .map(|artifact| {
-            let mut path = display_path_relative_to(run_directory, Path::new(&artifact.path));
+            let mut path = format_path_relative_to(run_directory, Path::new(&artifact.path));
 
             if include_events && let Ok(metadata) = fs::metadata(&artifact.path) {
                 path = format!("{path} ({})", format_file_size(metadata.len()));
@@ -232,7 +232,7 @@ fn render_artifacts(
 
     artifacts.push(ArtifactListItem::new(
         "events",
-        display_path_relative_to(run_directory, event_log_path),
+        format_path_relative_to(run_directory, event_log_path),
     ));
 
     render_artifact_list("Artifacts", artifacts, renderer)
@@ -253,7 +253,7 @@ fn render_checkpoints(
     if let Some(latest_path) = &state.checkpoints.latest_path {
         rows.push(KeyValueRow::new(
             "Latest",
-            display_path_relative_to(run_directory, Path::new(latest_path)),
+            format_path_relative_to(run_directory, Path::new(latest_path)),
         ));
 
         if include_events && let Ok(metadata) = fs::metadata(latest_path) {
@@ -294,7 +294,7 @@ fn render_event_log(
         KeyValueRow::new("Events", state.event_count.to_string()),
         KeyValueRow::new(
             "Log",
-            display_path_relative_to(run_directory, event_log_path),
+            format_path_relative_to(run_directory, event_log_path),
         ),
         KeyValueRow::new("State source", run_state_source_label(state_source)),
     ];

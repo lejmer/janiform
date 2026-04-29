@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
+use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
 use super::super::contracts::{
@@ -1374,7 +1375,7 @@ fn validate_stage_parameter_required_string_list(
 }
 
 fn validate_non_empty_artifact_value<E>(value: &str, error: E) -> Result<(), E> {
-    if value.trim().is_empty() {
+    if !is_non_empty_string(value) {
         return Err(error);
     }
 
@@ -1402,7 +1403,7 @@ fn validate_hawkes_stage_parameter_boundary(
             if payload
                 .seasonality_dataset_id
                 .as_ref()
-                .is_none_or(|value| value.trim().is_empty())
+                .is_none_or(|value| !is_non_empty_string(value))
                 || payload.seasonality_artifact_reference.is_some()
             {
                 return Err(
@@ -1416,7 +1417,7 @@ fn validate_hawkes_stage_parameter_boundary(
             if payload
                 .seasonality_artifact_reference
                 .as_ref()
-                .is_none_or(|value| value.trim().is_empty())
+                .is_none_or(|value| !is_non_empty_string(value))
                 || payload.seasonality_dataset_id.is_some()
             {
                 return Err(
@@ -1439,7 +1440,7 @@ fn validate_return_components_stage_parameter_boundary(
             if payload
                 .activity_selected_hawkes_candidate_id
                 .as_ref()
-                .is_none_or(|value| value.trim().is_empty())
+                .is_none_or(|value| !is_non_empty_string(value))
                 || payload.activity_artifact_reference.is_some()
             {
                 return Err(
@@ -1453,7 +1454,7 @@ fn validate_return_components_stage_parameter_boundary(
             if payload
                 .activity_artifact_reference
                 .as_ref()
-                .is_none_or(|value| value.trim().is_empty())
+                .is_none_or(|value| !is_non_empty_string(value))
                 || payload.activity_selected_hawkes_candidate_id.is_some()
             {
                 return Err(
@@ -1476,7 +1477,7 @@ fn validate_mean_reversion_stage_parameter_boundary(
             if payload
                 .return_components_selected_candidate_id
                 .as_ref()
-                .is_none_or(|value| value.trim().is_empty())
+                .is_none_or(|value| !is_non_empty_string(value))
                 || payload.return_components_artifact_reference.is_some()
             {
                 return Err(
@@ -1490,7 +1491,7 @@ fn validate_mean_reversion_stage_parameter_boundary(
             if payload
                 .return_components_artifact_reference
                 .as_ref()
-                .is_none_or(|value| value.trim().is_empty())
+                .is_none_or(|value| !is_non_empty_string(value))
                 || payload.return_components_selected_candidate_id.is_some()
             {
                 return Err(
