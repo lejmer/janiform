@@ -193,7 +193,7 @@ impl CommandContext {
         self.output_mode
     }
 
-    /// Shared portable path resolver for process-relative and repository-relative paths.
+    /// Shared portable path resolver for process-relative CLI paths.
     pub fn paths(&self) -> &PathResolver {
         &self.paths
     }

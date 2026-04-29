@@ -229,6 +229,8 @@
       "layer": "cli_boundary",
       "allowed_internal_dependencies": [
         "janiform-foundations",
+        "janiform-verification",
+        "janiform-governance",
         "janiform-event-log",
         "janiform-terminal-ui",
         "janiform-workflows",

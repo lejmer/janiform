@@ -79,10 +79,6 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("cannot resolve repository-relative path `{}` outside a repository", path.display())]
-    #[diagnostic(code(janiform_cli::repository_root_unavailable))]
-    RepositoryRootUnavailable { path: PathBuf },
-
     #[error("argument `{argument_name}` must reference an existing file: `{}`", path.display())]
     #[diagnostic(code(janiform_cli::missing_input_file))]
     MissingInputFile {
@@ -291,7 +287,6 @@ impl CliError {
             | Self::ConfigParse { .. }
             | Self::ConfigConflict { .. }
             | Self::CurrentDirectory { .. }
-            | Self::RepositoryRootUnavailable { .. }
             | Self::MissingInputFile { .. }
             | Self::MissingRequiredArgument { .. }
             | Self::InvalidCommandArgument { .. }
@@ -328,7 +323,6 @@ impl CliError {
             Self::ConfigParse { .. } => "config_parse",
             Self::ConfigConflict { .. } => "config_conflict",
             Self::CurrentDirectory { .. } => "current_directory",
-            Self::RepositoryRootUnavailable { .. } => "repository_root_unavailable",
             Self::MissingInputFile { .. } => "missing_input_file",
             Self::MissingRequiredArgument { .. } => "missing_required_argument",
             Self::InvalidCommandArgument { .. } => "invalid_command_argument",
