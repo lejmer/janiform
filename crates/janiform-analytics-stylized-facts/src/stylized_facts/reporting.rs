@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
+use janiform_foundations::strings::validate_non_empty_string;
 use serde::{Deserialize, Serialize};
 
 use super::comparison::{
@@ -24,22 +25,22 @@ use super::metric_catalog::{
 };
 
 pub const STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION: &str =
-    "validation.stylized_fact.horizon_comparison.report_bundle.v1";
+    "validation.stylized_fact.interval_comparison.report_bundle.v1";
 pub const STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY: &str =
-    "stable_run_horizon_metric_order_with_metric_catalog_classification.v1";
+    "stable_run_interval_metric_order_with_metric_catalog_classification.v1";
 pub const STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION: &str =
-    "validation.stylized_fact.horizon_comparison.report_bundle.output_schema_metadata.v1";
+    "validation.stylized_fact.interval_comparison.report_bundle.output_schema_metadata.v1";
 pub const STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION: &str =
-    "validation.stylized_fact.horizon_comparison.table_summary.v1";
+    "validation.stylized_fact.interval_comparison.table_summary.v1";
 pub const STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION: &str =
-    "validation.stylized_fact.horizon_comparison.plot_payload.v1";
+    "validation.stylized_fact.interval_comparison.plot_payload.v1";
 
 const TABLE_SUMMARY_REQUIRED_FIELDS: [&str; 3] = ["schema_version", "determinism_policy", "rows"];
 const TABLE_SUMMARY_ROW_REQUIRED_FIELDS: [&str; 24] = [
     "calibration_run_id",
     "empirical_dataset_id",
     "simulated_dataset_id",
-    "horizon_label",
+    "interval_label",
     "metric_id",
     "metric_name",
     "metric_variant",
@@ -56,15 +57,15 @@ const TABLE_SUMMARY_ROW_REQUIRED_FIELDS: [&str; 24] = [
     "simulated_confidence_interval",
     "empirical_sample_coverage",
     "simulated_sample_coverage",
-    "empirical_horizon_coverage_ratio",
-    "simulated_horizon_coverage_ratio",
+    "empirical_interval_coverage_ratio",
+    "simulated_interval_coverage_ratio",
     "insufficient_data_reasons",
     "decision_reason_codes",
 ];
 const PLOT_PAYLOAD_REQUIRED_FIELDS: [&str; 3] = ["schema_version", "determinism_policy", "points"];
 const PLOT_POINT_REQUIRED_FIELDS: [&str; 18] = [
     "calibration_run_id",
-    "horizon_label",
+    "interval_label",
     "metric_id",
     "metric_name",
     "metric_variant",
@@ -78,8 +79,8 @@ const PLOT_POINT_REQUIRED_FIELDS: [&str; 18] = [
     "simulated_confidence_interval",
     "empirical_sample_coverage",
     "simulated_sample_coverage",
-    "empirical_horizon_coverage_ratio",
-    "simulated_horizon_coverage_ratio",
+    "empirical_interval_coverage_ratio",
+    "simulated_interval_coverage_ratio",
     "insufficient_data_reasons",
 ];
 const REPORT_BUNDLE_REQUIRED_FIELDS: [&str; 7] = [
@@ -141,6 +142,7 @@ pub struct StylizedFactHorizonComparisonTableSummaryRow {
     pub calibration_run_id: String,
     pub empirical_dataset_id: String,
     pub simulated_dataset_id: String,
+    #[serde(rename = "interval_label")]
     pub horizon_label: String,
     pub metric_id: String,
     pub metric_name: String,
@@ -158,7 +160,9 @@ pub struct StylizedFactHorizonComparisonTableSummaryRow {
     pub simulated_confidence_interval: Option<StylizedFactMetricIntervalBounds>,
     pub empirical_sample_coverage: StylizedFactMetricCoverageSummary,
     pub simulated_sample_coverage: StylizedFactMetricCoverageSummary,
+    #[serde(rename = "empirical_interval_coverage_ratio")]
     pub empirical_horizon_coverage_ratio: f64,
+    #[serde(rename = "simulated_interval_coverage_ratio")]
     pub simulated_horizon_coverage_ratio: f64,
     pub insufficient_data_reasons: StylizedFactMetricInsufficientDataReasons,
     pub decision_reason_codes: Vec<StylizedFactDecisionReasonCode>,
@@ -174,6 +178,7 @@ pub struct StylizedFactHorizonComparisonPlotPayload {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StylizedFactHorizonComparisonPlotPoint {
     pub calibration_run_id: String,
+    #[serde(rename = "interval_label")]
     pub horizon_label: String,
     pub metric_id: String,
     pub metric_name: String,
@@ -188,7 +193,9 @@ pub struct StylizedFactHorizonComparisonPlotPoint {
     pub simulated_confidence_interval: Option<StylizedFactMetricIntervalBounds>,
     pub empirical_sample_coverage: StylizedFactMetricCoverageSummary,
     pub simulated_sample_coverage: StylizedFactMetricCoverageSummary,
+    #[serde(rename = "empirical_interval_coverage_ratio")]
     pub empirical_horizon_coverage_ratio: f64,
+    #[serde(rename = "simulated_interval_coverage_ratio")]
     pub simulated_horizon_coverage_ratio: f64,
     pub insufficient_data_reasons: StylizedFactMetricInsufficientDataReasons,
 }
@@ -202,6 +209,7 @@ pub struct StylizedFactMetricIntervalBounds {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct StylizedFactMetricCoverageSummary {
+    #[serde(rename = "interval_count")]
     pub horizon_interval_count: usize,
     pub covered_interval_count: usize,
     pub sample_count: usize,
@@ -651,25 +659,28 @@ fn build_output_schema_metadata() -> StylizedFactHorizonComparisonReportBundleOu
 fn validate_artifact_export_config(
     export_config: &StylizedFactHorizonComparisonArtifactExportConfig,
 ) -> Result<(), StylizedFactHorizonComparisonReportGenerationError> {
-    if export_config.export_directory.trim().is_empty() {
-        return Err(
-            StylizedFactHorizonComparisonReportGenerationError::InvalidArtifactExportConfig {
-                field_path: "generation_options.artifact_export.export_directory".to_string(),
-                details: "must be non-empty".to_string(),
-            },
-        );
-    }
-
-    if export_config.file_stem.trim().is_empty() {
-        return Err(
-            StylizedFactHorizonComparisonReportGenerationError::InvalidArtifactExportConfig {
-                field_path: "generation_options.artifact_export.file_stem".to_string(),
-                details: "must be non-empty".to_string(),
-            },
-        );
-    }
+    validate_export_non_empty_field(
+        "generation_options.artifact_export.export_directory",
+        &export_config.export_directory,
+    )?;
+    validate_export_non_empty_field(
+        "generation_options.artifact_export.file_stem",
+        &export_config.file_stem,
+    )?;
 
     Ok(())
+}
+
+fn validate_export_non_empty_field(
+    field_path: &'static str,
+    value: &str,
+) -> Result<(), StylizedFactHorizonComparisonReportGenerationError> {
+    validate_non_empty_string(value, field_path).map_err(|source| {
+        StylizedFactHorizonComparisonReportGenerationError::InvalidArtifactExportConfig {
+            field_path: source.field.to_string(),
+            details: source.message().to_string(),
+        }
+    })
 }
 
 fn build_export_receipt(

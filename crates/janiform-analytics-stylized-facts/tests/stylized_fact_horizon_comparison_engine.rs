@@ -335,12 +335,12 @@ fn run_decision_states_cover_pass_fail_and_insufficient_data() {
 fn threshold_policy() -> StylizedFactHorizonComparisonThresholdPolicy {
     StylizedFactHorizonComparisonThresholdPolicy {
         policy_id: "stylized_fact_delta_policy.v1".to_string(),
-        default_max_absolute_delta: 0.10,
+        default_max_absolute_delta: Some(0.10),
         default_max_standardized_delta: Some(3.0),
         metric_threshold_overrides: vec![StylizedFactMetricThresholdOverride {
             metric_id: "metric_fail".to_string(),
             metric_variant: None,
-            max_absolute_delta: 0.20,
+            max_absolute_delta: Some(0.20),
             max_standardized_delta: Some(2.0),
         }],
     }

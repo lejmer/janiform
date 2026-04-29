@@ -28,18 +28,23 @@ use crate::commands::seasonality::SeasonalitySubcommand;
 use crate::commands::seasonality::run_seasonality_diagnostics;
 use crate::commands::seasonality::run_seasonality_preprocess_timestamps;
 use crate::commands::simulation::SimulateSubcommand;
-use crate::commands::stylized_facts::StylizedFactsSubcommand;
+use crate::commands::validation::ValidateSubcommand;
+use crate::commands::validation::run_validate_stylized_facts;
 use crate::context::CommandContext;
 use crate::error::CliError;
+use crate::error::CliExitCode;
 
-pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result<(), CliError> {
+pub(crate) fn dispatch(
+    context: &CommandContext,
+    command: RootCommand,
+) -> Result<CliExitCode, CliError> {
     tracing::debug!(
         output_mode = ?context.output_mode(),
         event_stream = ?context.event_settings().stream_format,
         "dispatching parsed CLI command"
     );
 
-    match command {
+    let result = match command {
         RootCommand::Fit(command) => dispatch_fit(context, command),
         RootCommand::Inspect(command) => match command.command {
             InspectSubcommand::Run(command) => run_inspect_run(context, command),
@@ -84,9 +89,9 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
                 run_hourly_factor_build_contract(context, command)
             }
         },
-        RootCommand::StylizedFacts(command) => match command.command {
-            StylizedFactsSubcommand::HorizonComparison(_) => {
-                not_implemented("stylized-facts horizon-comparison")
+        RootCommand::Validate(command) => match command.command {
+            ValidateSubcommand::StylizedFacts(command) => {
+                return run_validate_stylized_facts(context, command);
             }
         },
         RootCommand::Dev(command) => match command.command {
@@ -99,7 +104,9 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
                 }
             },
         },
-    }
+    };
+
+    result.map(|()| CliExitCode::Success)
 }
 
 fn dispatch_fit(

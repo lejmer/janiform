@@ -10,7 +10,7 @@ use crate::commands::pricing::PriceCommand;
 use crate::commands::reporting::ReportCommand;
 use crate::commands::seasonality::SeasonalityCommand;
 use crate::commands::simulation::SimulateCommand;
-use crate::commands::stylized_facts::StylizedFactsCommand;
+use crate::commands::validation::ValidateCommand;
 use crate::context::GlobalCliOptions;
 
 #[derive(Debug, Parser)]
@@ -70,8 +70,8 @@ pub(crate) enum RootCommand {
     )]
     HourlyFactors(HourlyFactorsCommand),
 
-    #[command(name = "stylized-facts", about = "Stylized-fact reporting workflows.")]
-    StylizedFacts(StylizedFactsCommand),
+    #[command(about = "Validate fitted Janiform models.")]
+    Validate(ValidateCommand),
 
     #[command(about = "Developer-only Janiform workflows.")]
     Dev(DevCommand),

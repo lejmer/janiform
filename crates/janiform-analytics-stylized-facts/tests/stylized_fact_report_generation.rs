@@ -232,12 +232,12 @@ fn build_generator_request(
                 metric_catalog_version: "1.0.0".to_string(),
                 threshold_policy: StylizedFactHorizonComparisonThresholdPolicy {
                     policy_id: "stylized_fact_delta_policy.v1".to_string(),
-                    default_max_absolute_delta: 0.20,
+                    default_max_absolute_delta: Some(0.20),
                     default_max_standardized_delta: Some(5.0),
                     metric_threshold_overrides: vec![StylizedFactMetricThresholdOverride {
                         metric_id: "returns_l_moment_lambda2".to_string(),
                         metric_variant: None,
-                        max_absolute_delta: 0.25,
+                        max_absolute_delta: Some(0.25),
                         max_standardized_delta: Some(4.0),
                     }],
                 },

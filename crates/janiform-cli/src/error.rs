@@ -13,6 +13,7 @@ use thiserror::Error;
 #[repr(u8)]
 pub enum CliExitCode {
     Success = 0,
+    ReportFailedChecks = 1,
     CommandLineUsage = 2,
     UnimplementedCommand = 78,
 }
@@ -387,6 +388,17 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                 argument_name: field,
                 message,
             },
+            janiform_workflows::error::WorkflowError::ValidationInputFailed { field, message } => {
+                Self::InvalidCommandArgument {
+                    argument_name: field,
+                    message,
+                }
+            }
+            janiform_workflows::error::WorkflowError::ValidationMissingRequired { field } => {
+                Self::MissingRequiredArgument {
+                    argument_name: field,
+                }
+            }
             janiform_workflows::error::WorkflowError::SimulationValidationFailed {
                 field,
                 message,
@@ -407,6 +419,35 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
             janiform_workflows::error::WorkflowError::PricingArtifactWrite { path, source } => {
                 Self::ArtifactWrite {
                     artifact_name: "pricing artifact",
+                    path,
+                    source,
+                }
+            }
+            janiform_workflows::error::WorkflowError::ValidationArtifactRead { path, source } => {
+                Self::ArtifactRead {
+                    artifact_name: "validation",
+                    path,
+                    source,
+                }
+            }
+            janiform_workflows::error::WorkflowError::ValidationArtifactParse { path, source } => {
+                Self::ArtifactParse {
+                    artifact_name: "validation",
+                    path,
+                    source,
+                }
+            }
+            janiform_workflows::error::WorkflowError::ValidationArtifactMalformed {
+                path,
+                message,
+            } => Self::ArtifactMalformed {
+                artifact_name: "validation",
+                path,
+                message,
+            },
+            janiform_workflows::error::WorkflowError::ValidationArtifactWrite { path, source } => {
+                Self::ArtifactWrite {
+                    artifact_name: "validation",
                     path,
                     source,
                 }

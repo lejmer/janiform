@@ -10,7 +10,6 @@ from .constants import CliExitCode, CliOutputMode
 from ..calibration.presets import DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME
 from ..contracts import ContractModel
 from ..errors import JaniformError, JaniformErrorCategory
-from ..stylized_facts import StylizedFactHorizonComparisonReportBundle
 from ..validation import (
     DeterministicRegressionHarnessReport,
     OpenClosedGapLeakageRegressionHarnessReport,
@@ -533,48 +532,6 @@ def render_hourly_factor_build_contract_human_output(payload: dict[str, Any]) ->
             f"repeated_local_hour_interval_count={payload['repeated_local_hour_interval_count']}"
         ),
     ]
-
-    return "\n".join(lines) + "\n"
-
-
-def render_stylized_facts_horizon_comparison_human_output(
-    report_bundle: StylizedFactHorizonComparisonReportBundle,
-    *,
-    execution_mode: str,
-) -> str:
-    comparison_report = report_bundle.comparison_report
-    summary = comparison_report.summary
-    lines: list[str] = [
-        (
-            "stylized-facts horizon-comparison completed: "
-            f"schema_version={report_bundle.schema_version} "
-            f"execution_mode={execution_mode} "
-            f"status={comparison_report.status} "
-            f"metric_catalog_id={comparison_report.metric_catalog_id} "
-            f"run_count={summary.total_run_count} "
-            f"table_row_count={len(report_bundle.table_summary.rows)}"
-        ),
-        (
-            "decision_counts: "
-            f"run_pass={summary.run_decision_counts.pass_count} "
-            f"run_fail={summary.run_decision_counts.fail_count} "
-            f"run_insufficient_data={summary.run_decision_counts.insufficient_data_count} "
-            f"metric_pass={summary.metric_decision_counts.pass_count} "
-            f"metric_fail={summary.metric_decision_counts.fail_count} "
-            f"metric_insufficient_data={summary.metric_decision_counts.insufficient_data_count}"
-        ),
-    ]
-
-    artifact_export = report_bundle.artifact_export
-    if artifact_export is not None:
-        lines.append(
-            (
-                "artifact_export: "
-                f"export_directory={artifact_export.export_directory} "
-                f"file_stem={artifact_export.file_stem} "
-                f"exported_file_count={len(artifact_export.exported_files)}"
-            )
-        )
 
     return "\n".join(lines) + "\n"
 

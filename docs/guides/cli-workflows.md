@@ -66,6 +66,18 @@ rather than "what is the run doing right now?" The default terminal view stays c
 HTML outputs include presentation-only parameter fits extracted from the sibling model artifact
 when available. Those parameter fits are not written back into `report.json`.
 
+## Validate
+
+- `janiform validate stylized-facts plan --model-path MODEL.jf --intervals 5m,1h,1d` shows the validation computation plan, using the model artifact's fitted tick-data source when available.
+- `janiform validate stylized-facts --model-path MODEL.jf --intervals 5m,1h,1d` runs the validation workflow. Add `--empirical-data-path TICKS.parquet` to validate against a different empirical sample or when the model artifact has no tick source reference.
+
+The stylized-facts workflow compares empirical return metrics with metrics computed from seeded
+simulation paths generated from the fitted model. It infers empirical data format from the file
+extension when possible, derives the simulation span from the empirical timestamps, and writes a
+report bundle and lineage file under the validation output directory. Add `--cache` to retain
+derived comparison inputs and metric observations, or `--cache=full` to also retain generated
+seeded tick paths.
+
 ## Presets
 
 Use `janiform presets list`, `show`, and `export` to inspect bundled or user-registered presets before fitting.
@@ -77,7 +89,7 @@ Use `janiform presets list`, `show`, and `export` to inspect bundled or user-reg
 - `janiform hourly-factors materialize-seasonality`
 - `janiform hourly-factors materialize-news-intensity`
 - `janiform hourly-factors build-contract`
-- `janiform stylized-facts horizon-comparison`
+- `janiform validate stylized-facts`
 - `janiform dev regression deterministic`
 
 These commands support preprocessing, factor construction, validation, and regression workflows around the main fit/simulate/price path.

@@ -1,13 +1,15 @@
 use janiform_analytics_stylized_facts::{
-    TailSkewBlockBootstrapConfiguration, TailSkewDatasetInput, TailSkewDiagnosticsRequest,
-    TailSkewHorizonBucket, TailSkewHorizonDiagnostics, TailSkewMetricComparison,
-    TailSkewMetricSampleSufficiencyPolicy, TailSkewMetricStatus, TailSkewReturnObservation,
-    TailSkewSampleSufficiencyPolicy, run_tail_skew_diagnostics,
+    TAIL_SKEW_DATASET_METRIC_TASK_COUNT, TailSkewBlockBootstrapConfiguration, TailSkewDatasetInput,
+    TailSkewDatasetRole, TailSkewDiagnosticsRequest, TailSkewHorizonBucket,
+    TailSkewHorizonDiagnostics, TailSkewMetricComparison, TailSkewMetricSampleSufficiencyPolicy,
+    TailSkewMetricStatus, TailSkewReturnObservation, TailSkewSampleSufficiencyPolicy,
+    run_tail_skew_diagnostics, run_tail_skew_diagnostics_with_observer,
 };
 
 #[test]
 fn tail_skew_metrics_match_symmetric_heavy_tail_fixture() {
     let mut symmetric_heavy_tail_values: Vec<f64> = Vec::new();
+
     for _ in 0..80 {
         symmetric_heavy_tail_values
             .extend_from_slice(&[-4.0, -2.0, -1.0, -0.5, 0.5, 1.0, 2.0, 4.0]);
@@ -33,15 +35,19 @@ fn tail_skew_metrics_match_symmetric_heavy_tail_fixture() {
 
     let abs_quantile_ratio =
         metric_by_id(horizon_report, "returns_abs_quantile_shape_ratio_q99_q95");
+
     let left_tail_ratio = metric_by_id(
         horizon_report,
         "returns_left_tail_expected_shortfall_to_var_ratio",
     );
+
     let bowley_skewness = metric_by_id(horizon_report, "returns_bowley_skewness_quantile");
+
     let signed_tail_imbalance = metric_by_id(
         horizon_report,
         "returns_signed_tail_expected_shortfall_imbalance",
     );
+
     let l_moment_lambda2 = metric_by_id(horizon_report, "returns_l_moment_lambda2");
     let central_variance = metric_by_id(horizon_report, "returns_central_variance");
     let central_skewness = metric_by_id(horizon_report, "returns_central_skewness");
@@ -214,8 +220,67 @@ fn tail_skew_report_is_deterministic_on_fixed_fixture() {
 }
 
 #[test]
+fn tail_skew_observer_emits_each_dataset_metric_task() {
+    let mut values: Vec<f64> = Vec::new();
+
+    for _ in 0..60 {
+        values.extend_from_slice(&[-3.0, -1.0, -0.25, 0.25, 1.0, 3.0]);
+    }
+
+    let mut request = build_request(
+        &values,
+        &values,
+        vec![TailSkewHorizonBucket {
+            horizon_label: "10n".to_string(),
+            horizon_duration_nanos: 10,
+        }],
+        permissive_sample_sufficiency_policy(),
+        9_999,
+    );
+
+    request.cpu_count = Some(2);
+
+    let mut progress_events = Vec::new();
+
+    let report =
+        run_tail_skew_diagnostics_with_observer(request, &mut |event| progress_events.push(event))
+            .expect("observed tail and skew diagnostics should succeed");
+
+    assert_eq!(report.horizons.len(), 1);
+    assert_eq!(progress_events.len(), TAIL_SKEW_DATASET_METRIC_TASK_COUNT);
+    assert_eq!(
+        progress_events
+            .iter()
+            .map(|event| event.completed_units)
+            .collect::<Vec<_>>(),
+        (1..=TAIL_SKEW_DATASET_METRIC_TASK_COUNT).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        progress_events
+            .iter()
+            .filter(|event| event.dataset_role == TailSkewDatasetRole::Empirical)
+            .count(),
+        TAIL_SKEW_DATASET_METRIC_TASK_COUNT / 2
+    );
+    assert_eq!(
+        progress_events
+            .iter()
+            .filter(|event| event.dataset_role == TailSkewDatasetRole::Simulated)
+            .count(),
+        TAIL_SKEW_DATASET_METRIC_TASK_COUNT / 2
+    );
+    assert!(
+        progress_events
+            .iter()
+            .all(|event| event.bucket_label == "10n"
+                && event.total_units == TAIL_SKEW_DATASET_METRIC_TASK_COUNT)
+    );
+}
+
+#[test]
 fn tail_skew_robust_primary_metrics_are_less_outlier_sensitive_than_classical_moments() {
     let mut baseline_values: Vec<f64> = Vec::new();
+
     for _ in 0..100 {
         baseline_values.extend_from_slice(&[-3.0, -2.0, -1.0, -0.5, 0.5, 1.0, 2.0, 3.0]);
     }
@@ -297,6 +362,7 @@ fn build_request(
             random_seed,
         },
         sample_sufficiency_policy,
+        cpu_count: None,
     }
 }
 

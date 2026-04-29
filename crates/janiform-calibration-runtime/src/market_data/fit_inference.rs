@@ -282,10 +282,11 @@ pub fn infer_market_data_input_file_format_from_path(
     {
         Some("csv") => Ok(MarketDataInputFileFormat::Csv),
         Some("parquet") | Some("pq") => Ok(MarketDataInputFileFormat::Parquet),
+        Some("json") => Ok(MarketDataInputFileFormat::Json),
         _ => Err(MarketDataFitInputInferenceError::InvalidValue {
             field_path: "tick_data_format".to_string(),
             message: format!(
-                "could not infer tick-data format from `{}`. Supported extensions are .csv, .parquet, and .pq.",
+                "could not infer tick-data format from `{}`. Supported extensions are .csv, .parquet, .pq, and .json.",
                 path.file_name()
                     .and_then(|file_name| file_name.to_str())
                     .unwrap_or_default()

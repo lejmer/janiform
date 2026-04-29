@@ -52,12 +52,20 @@ impl<K> Default for VolatileProgressGate<K> {
     }
 }
 
+pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> usize {
+    if total_units == 0 {
+        return 0;
+    }
+
+    completed_units.saturating_mul(100) / total_units
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
-    use super::VolatileProgressGate;
+    use super::{VolatileProgressGate, progress_percent};
 
     #[test]
     fn volatile_progress_gate_emits_first_update() {
@@ -83,5 +91,11 @@ mod tests {
         assert!(gate.should_emit(start, "phase-a", 1, 10));
         assert!(gate.should_emit(start + Duration::from_millis(10), "phase-b", 1, 10));
         assert!(gate.should_emit(start + Duration::from_millis(20), "phase-b", 10, 10));
+    }
+
+    #[test]
+    fn progress_percent_uses_bounded_integer_units() {
+        assert_eq!(progress_percent(4, 10), 40);
+        assert_eq!(progress_percent(1, 0), 0);
     }
 }

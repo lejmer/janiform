@@ -100,14 +100,16 @@ pub use reporting::{
     run_stylized_fact_horizon_comparison_report_generator,
 };
 pub use tail_skew::{
-    TAIL_SKEW_DIAGNOSTICS_BOOTSTRAP_POLICY, TAIL_SKEW_DIAGNOSTICS_DETERMINISM_POLICY,
-    TAIL_SKEW_DIAGNOSTICS_REPORT_SCHEMA_VERSION, TailSkewBlockBootstrapConfiguration,
-    TailSkewConfidenceInterval, TailSkewDatasetInput, TailSkewDatasetMetricResult,
-    TailSkewDiagnosticsError, TailSkewDiagnosticsReport, TailSkewDiagnosticsRequest,
+    TAIL_SKEW_DATASET_METRIC_TASK_COUNT, TAIL_SKEW_DIAGNOSTICS_BOOTSTRAP_POLICY,
+    TAIL_SKEW_DIAGNOSTICS_DETERMINISM_POLICY, TAIL_SKEW_DIAGNOSTICS_REPORT_SCHEMA_VERSION,
+    TailSkewBlockBootstrapConfiguration, TailSkewConfidenceInterval, TailSkewDatasetInput,
+    TailSkewDatasetMetricResult, TailSkewDatasetRole, TailSkewDiagnosticsError,
+    TailSkewDiagnosticsProgressEvent, TailSkewDiagnosticsReport, TailSkewDiagnosticsRequest,
     TailSkewHorizonBucket, TailSkewHorizonDiagnostics, TailSkewMetricClass,
     TailSkewMetricComparison, TailSkewMetricSampleSufficiencyPolicy, TailSkewMetricStatus,
     TailSkewObservedCounts, TailSkewReturnObservation, TailSkewSampleCoverage,
     TailSkewSampleSufficiencyPolicy, run_tail_skew_diagnostics,
+    run_tail_skew_diagnostics_with_observer,
 };
 pub use volatility_persistence::{
     VOLATILITY_PERSISTENCE_DIAGNOSTICS_BOOTSTRAP_POLICY,

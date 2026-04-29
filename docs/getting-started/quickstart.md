@@ -13,6 +13,7 @@ janiform simulate --help
 janiform price --help
 janiform inspect --help
 janiform report --help
+janiform validate --help
 janiform presets --help
 ```
 
@@ -23,7 +24,8 @@ The top-level CLI is organized around:
 - `price` for vanilla option pricing
 - `inspect` for persisted run and model artifact inspection
 - `report` for fit report views and rendered report artifacts
-- `presets`, `seasonality`, `hourly-factors`, and `stylized-facts` for supporting workflows
+- `validate` for model validation workflows
+- `presets`, `seasonality`, and `hourly-factors` for supporting workflows
 
 ## Python
 

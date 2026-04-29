@@ -2,9 +2,24 @@
 
 pub use janiform_analytics_stylized_facts::{
     NewsSemanticsScenarioClass, OpenClosedGapDeterministicReplayMetadata,
-    OpenClosedGapIssueTraceabilityMetadata, StylizedFactHorizonComparisonReportGenerationError,
-    StylizedFactHorizonComparisonReportGeneratorRequest,
-    run_stylized_fact_horizon_comparison_report_generator,
+    OpenClosedGapIssueTraceabilityMetadata, StylizedFactCalibrationRunInput,
+    StylizedFactComparisonDecisionState, StylizedFactDecisionReasonCode,
+    StylizedFactHorizonComparisonArtifactExportConfig, StylizedFactHorizonComparisonReportBundle,
+    StylizedFactHorizonComparisonReportGenerationError,
+    StylizedFactHorizonComparisonReportGeneratorOptions,
+    StylizedFactHorizonComparisonReportGeneratorRequest, StylizedFactHorizonComparisonRequest,
+    StylizedFactHorizonComparisonTableSummaryRow, StylizedFactHorizonComparisonThresholdPolicy,
+    StylizedFactMetricCatalog, StylizedFactMetricClass, StylizedFactMetricConfidenceInterval,
+    StylizedFactMetricSampleCoverage, StylizedFactMetricThresholdOverride,
+    StylizedFactObservedCounts, StylizedFactObservedMetricInput,
+    StylizedFactSampleSufficiencyRequirements, TAIL_SKEW_DATASET_METRIC_TASK_COUNT,
+    TailSkewBlockBootstrapConfiguration, TailSkewConfidenceInterval, TailSkewDatasetInput,
+    TailSkewDatasetMetricResult, TailSkewDatasetRole, TailSkewDiagnosticsProgressEvent,
+    TailSkewDiagnosticsReport, TailSkewDiagnosticsRequest, TailSkewHorizonBucket,
+    TailSkewMetricComparison, TailSkewMetricSampleSufficiencyPolicy, TailSkewObservedCounts,
+    TailSkewReturnObservation, TailSkewSampleCoverage, TailSkewSampleSufficiencyPolicy,
+    build_stylized_fact_metric_catalog, run_stylized_fact_horizon_comparison_report_generator,
+    run_tail_skew_diagnostics, run_tail_skew_diagnostics_with_observer,
 };
 pub use janiform_governance::{
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,

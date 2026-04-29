@@ -2,6 +2,7 @@ use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, CalibrationStage, CalibrationStageSolverSettings,
 };
 use janiform_foundations::numeric::strictly_positive_machine_value;
+use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
 
 use super::loading::MarketDataLoadingOutput;
 
@@ -42,8 +43,7 @@ pub(crate) fn resolve_solver_settings_by_stage(
         }
     }
 
-    let resolved_cpu_count =
-        cpu_count.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from));
+    let resolved_cpu_count = resolve_cpu_count(cpu_count);
 
     selected_stages
         .iter()

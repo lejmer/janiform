@@ -7,11 +7,6 @@ from typing import Any
 import pytest
 
 import janiform.cli as cli_module
-from tests.support.cli_fixtures import (
-    build_stylized_fact_artifact_export_config,
-    build_stylized_fact_horizon_comparison_request,
-    build_stylized_fact_metric_catalog,
-)
 from tests.support.calibration import build_valid_execution_input_model
 from tests.support.cli import (
     build_coarse_simulation_request,
@@ -69,10 +64,6 @@ def _smoke_scenarios() -> tuple[CliSmokeScenario, ...]:
         CliSmokeScenario(
             scenario_id="price_json_nominal",
             build_invocation=_build_price_smoke_invocation,
-        ),
-        CliSmokeScenario(
-            scenario_id="stylized_facts_horizon_comparison_disk_export_json_nominal",
-            build_invocation=_build_stylized_facts_smoke_invocation,
         ),
         CliSmokeScenario(
             scenario_id="calibration_market_data_csv_known_news_default_disk",
@@ -348,48 +339,6 @@ def _build_seasonality_diagnostics_smoke_invocation(
             "all",
             "--intraday-minutes-per-bin",
             "30",
-        ],
-        validate_stdout=validate_stdout,
-    )
-
-
-def _build_stylized_facts_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
-    metric_catalog_path = write_json_path(
-        tmp_path / "stylized_fact_metric_catalog.json",
-        build_stylized_fact_metric_catalog(),
-    )
-    comparison_request_path = write_json_path(
-        tmp_path / "stylized_fact_comparison_request.json",
-        build_stylized_fact_horizon_comparison_request(),
-    )
-    export_directory = tmp_path / "stylized-facts-smoke-export"
-    artifact_export_path = write_json_path(
-        tmp_path / "stylized_fact_artifact_export.json",
-        build_stylized_fact_artifact_export_config(
-            export_directory=export_directory,
-            file_stem="smoke_report",
-        ),
-    )
-
-    def validate_stdout(stdout_text: str) -> None:
-        payload = _parse_json_command_output(stdout_text)
-        assert payload["schema_version"] == "validation.stylized_fact.horizon_comparison.report_bundle.v1"
-        assert payload["comparison_report"]["metric_catalog_id"] == "stylized_fact_metric_catalog"
-        assert payload["artifact_export"]["file_stem"] == "smoke_report"
-        assert len(payload["artifact_export"]["exported_files"]) == 3
-
-    return CliSmokeInvocation(
-        command_arguments=[
-            "stylized-facts",
-            "horizon-comparison",
-            "--metric-catalog-json",
-            str(metric_catalog_path),
-            "--comparison-request-json",
-            str(comparison_request_path),
-            "--artifact-export-json",
-            str(artifact_export_path),
-            "--execution-mode",
-            "disk",
         ],
         validate_stdout=validate_stdout,
     )
@@ -851,5 +800,5 @@ def test_cli_regression_matrix_preserves_exit_codes_and_key_argument_paths(
 
 
 def test_cli_smoke_matrix_remains_bounded_for_merge_time_execution() -> None:
-    assert len(CLI_SMOKE_SCENARIOS) == 11
+    assert len(CLI_SMOKE_SCENARIOS) == 10
     assert len(CLI_REGRESSION_SCENARIOS) == 4

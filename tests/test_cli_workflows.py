@@ -18,7 +18,6 @@ def test_cli_help_surfaces_primary_commands_and_options() -> None:
     simulate_help = normalize_help_output(render_help(["simulate"]))
     price_help = normalize_help_output(render_help(["price"]))
     presets_help = normalize_help_output(render_help(["presets"]))
-    stylized_facts_help = normalize_help_output(render_help(["stylized-facts", "horizon-comparison"]))
 
     assert "Primary workflows are the fit, simulate, and price commands." in root_help
     assert "fit" in root_help
@@ -35,8 +34,6 @@ def test_cli_help_surfaces_primary_commands_and_options() -> None:
     assert "list" in presets_help
     assert "show" in presets_help
     assert "export" in presets_help
-    assert "--metric-catalog-json PATH" in stylized_facts_help
-    assert "--comparison-request-json PATH" in stylized_facts_help
 
 
 def test_cli_primary_workflows_smoke(
@@ -228,46 +225,6 @@ def test_cli_primary_workflows_smoke(
     assert pricing_exit_code == int(cli_module.CliExitCode.SUCCESS), pricing_stderr
     pricing_payload = orjson.loads(pricing_stdout)
     assert pricing_payload["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
-
-    stylized_facts_memory_exit_code, stylized_facts_memory_stdout, stylized_facts_memory_stderr = invoke_cli(
-        [
-            "stylized-facts",
-            "horizon-comparison",
-            "--metric-catalog-json",
-            workflow_paths["stylized_fact_metric_catalog_json"],
-            "--comparison-request-json",
-            workflow_paths["stylized_fact_comparison_request_json"],
-            "--execution-mode",
-            "memory",
-            "--output",
-            "json",
-        ]
-    )
-    assert stylized_facts_memory_exit_code == int(cli_module.CliExitCode.SUCCESS), stylized_facts_memory_stderr
-    stylized_facts_memory_payload = orjson.loads(stylized_facts_memory_stdout)
-    assert stylized_facts_memory_payload["schema_version"] == "validation.stylized_fact.horizon_comparison.report_bundle.v1"
-    assert stylized_facts_memory_payload["artifact_export"] is None
-
-    stylized_facts_disk_exit_code, stylized_facts_disk_stdout, stylized_facts_disk_stderr = invoke_cli(
-        [
-            "stylized-facts",
-            "horizon-comparison",
-            "--metric-catalog-json",
-            workflow_paths["stylized_fact_metric_catalog_json"],
-            "--comparison-request-json",
-            workflow_paths["stylized_fact_comparison_request_json"],
-            "--artifact-export-json",
-            workflow_paths["stylized_fact_artifact_export_json"],
-            "--execution-mode",
-            "disk",
-            "--output",
-            "json",
-        ]
-    )
-    assert stylized_facts_disk_exit_code == int(cli_module.CliExitCode.SUCCESS), stylized_facts_disk_stderr
-    stylized_facts_disk_payload = orjson.loads(stylized_facts_disk_stdout)
-    assert stylized_facts_disk_payload["artifact_export"]["file_stem"] == "stylized_fact_horizon_report"
-    assert len(stylized_facts_disk_payload["artifact_export"]["exported_files"]) == 3
 
     market_data_default_exit_code, market_data_default_stdout, market_data_default_stderr = invoke_cli(
         [

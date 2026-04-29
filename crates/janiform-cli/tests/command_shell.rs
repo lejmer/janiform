@@ -3,7 +3,16 @@ use std::process::Command;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use janiform::verification::{
+    StylizedFactCalibrationRunInput, StylizedFactHorizonComparisonRequest,
+    StylizedFactHorizonComparisonThresholdPolicy, StylizedFactMetricConfidenceInterval,
+    StylizedFactMetricSampleCoverage, StylizedFactMetricThresholdOverride,
+    StylizedFactObservedCounts, StylizedFactObservedMetricInput,
+    StylizedFactSampleSufficiencyRequirements, build_stylized_fact_metric_catalog,
+};
 use janiform_cli::CliExitCode;
+
+const HOUR_DURATION_NANOS: i64 = 3_600_000_000_000;
 
 fn janiform_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_janiform"))
@@ -28,7 +37,7 @@ fn root_help_shows_primary_command_tree() {
         "presets",
         "seasonality",
         "hourly-factors",
-        "stylized-facts",
+        "validate",
         "dev",
     ] {
         assert!(
@@ -64,12 +73,6 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             "model.jf",
             "--option-surface-path",
             "options.parquet",
-        ][..],
-        &[
-            "stylized-facts",
-            "horizon-comparison",
-            "--empirical-path",
-            "empirical.parquet",
         ][..],
         &[
             "dev",
@@ -422,6 +425,287 @@ fn hourly_factor_build_contract_json_supports_explicit_sources() {
         payload["news_intensity_materialization_method"],
         "explicit.news.test.v1"
     );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn validate_stylized_facts_json_runs_native_report() {
+    let workspace = temporary_run_directory("stylized-facts-json");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let metric_catalog_path = workspace.join("metric_catalog.json");
+    let comparison_request_path = workspace.join("comparison_request.json");
+    write_stylized_fact_inputs(&metric_catalog_path, &comparison_request_path, 0.20);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "validate",
+            "stylized-facts",
+            "--metric-catalog",
+            metric_catalog_path
+                .to_str()
+                .expect("metric catalog path should be valid UTF-8"),
+            "--comparison-request",
+            comparison_request_path
+                .to_str()
+                .expect("comparison request path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("stylized facts command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write progress to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(
+        payload["schema_version"],
+        "validation.stylized_fact.interval_comparison.report_bundle.v1"
+    );
+    assert_eq!(
+        payload["artifact_export"]["file_stem"],
+        serde_json::json!("stylized_facts")
+    );
+    assert_eq!(
+        payload["comparison_report"]["summary"]["total_run_count"],
+        1
+    );
+    assert_eq!(
+        payload["comparison_report"]["summary"]["metric_decision_counts"]["pass_count"],
+        2
+    );
+    assert_eq!(
+        payload["comparison_report"]["summary"]["metric_decision_counts"]["insufficient_data_count"],
+        1
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn validate_stylized_facts_human_reports_incomplete_coverage() {
+    let workspace = temporary_run_directory("stylized-facts-coverage");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let metric_catalog_path = workspace.join("metric_catalog.json");
+    let comparison_request_path = workspace.join("comparison_request.json");
+    write_stylized_fact_inputs(&metric_catalog_path, &comparison_request_path, 0.20);
+
+    let output = janiform_command()
+        .args([
+            "--color",
+            "never",
+            "validate",
+            "stylized-facts",
+            "--metric-catalog",
+            metric_catalog_path
+                .to_str()
+                .expect("metric catalog path should be valid UTF-8"),
+            "--comparison-request",
+            comparison_request_path
+                .to_str()
+                .expect("comparison request path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("stylized facts command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    for expected in ["Coverage notes", "Not enough data", "Passed checks"] {
+        assert!(
+            stdout.contains(expected),
+            "missing `{expected}` in stylized facts output:\n{stdout}"
+        );
+    }
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn validate_stylized_facts_human_reports_failures_and_artifacts() {
+    let workspace = temporary_run_directory("stylized-facts-human");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let metric_catalog_path = workspace.join("metric_catalog.json");
+    let comparison_request_path = workspace.join("comparison_request.json");
+    write_stylized_fact_inputs(&metric_catalog_path, &comparison_request_path, 0.05);
+
+    let output = janiform_command()
+        .current_dir(&workspace)
+        .args([
+            "--color",
+            "never",
+            "validate",
+            "stylized-facts",
+            "--metric-catalog",
+            metric_catalog_path
+                .to_str()
+                .expect("metric catalog path should be valid UTF-8"),
+            "--comparison-request",
+            comparison_request_path
+                .to_str()
+                .expect("comparison request path should be valid UTF-8"),
+            "--output-dir",
+            workspace
+                .join("exported")
+                .to_str()
+                .expect("output directory path should be valid UTF-8"),
+            "--fail-on-failed-checks",
+        ])
+        .output()
+        .expect("stylized facts command should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::ReportFailedChecks as i32)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    for expected in [
+        "Stylized-fact interval comparison",
+        "Metric checks",
+        "Not enough data",
+        "Failures by interval",
+        "Failures by metric class",
+        "Failed checks",
+        "Passed checks",
+        "Absolute delta",
+        "Standardized delta",
+        "returns_central_variance",
+        "Artifact output",
+        "stylized_facts.report_bundle.json",
+        "stylized_facts.table_summary.json",
+        "stylized_facts.plot_payload.json",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "missing `{expected}` in stylized facts output:\n{stdout}"
+        );
+    }
+
+    for file_name in [
+        "stylized_facts.report_bundle.json",
+        "stylized_facts.table_summary.json",
+        "stylized_facts.plot_payload.json",
+    ] {
+        assert!(
+            workspace.join("exported").join(file_name).is_file(),
+            "expected exported artifact `{file_name}`"
+        );
+    }
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn validate_stylized_facts_plan_json_resolves_computation_contract() {
+    let workspace = temporary_run_directory("stylized-facts-plan");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let model_path = workspace.join("model.jf");
+    let empirical_path = workspace.join("ticks.csv");
+    std::fs::write(&model_path, "{}").expect("model fixture should be written");
+    write_tick_csv(&empirical_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "validate",
+            "stylized-facts",
+            "plan",
+            "--model-path",
+            model_path
+                .to_str()
+                .expect("model path should be valid UTF-8"),
+            "--empirical-data-path",
+            empirical_path
+                .to_str()
+                .expect("empirical path should be valid UTF-8"),
+            "--intervals",
+            "5m,1h",
+            "--simulation-path-count",
+            "2",
+            "--seed",
+            "123",
+            "--cpu-count",
+            "2",
+            "--cache",
+        ])
+        .output()
+        .expect("stylized facts plan command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["schema_version"],
+        "validation.stylized_facts.plan.v1"
+    );
+    assert_eq!(payload["execution_mode"], "raw_data");
+    assert_eq!(payload["empirical_data_format"], "csv");
+    assert_eq!(payload["empirical_timestamp_column"], "timestamp");
+    assert_eq!(payload["empirical_price_column"], "price");
+    assert_eq!(payload["cpu_count"], 2);
+    assert_eq!(
+        payload["generated_seeds"]
+            .as_array()
+            .expect("generated seeds should be an array")
+            .len(),
+        2
+    );
+    assert_eq!(payload["cache_level"], "derived");
+    assert_eq!(payload["intervals"][0]["label"], "5m");
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn validate_stylized_facts_plan_uses_model_tick_source_when_empirical_path_is_omitted() {
+    let workspace = temporary_run_directory("stylized-facts-plan-model-source");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let model_path = workspace.join("model.jf");
+    let empirical_path = workspace.join("ticks.csv");
+    write_tick_csv(&empirical_path);
+    write_model_with_tick_source(&model_path, &empirical_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "validate",
+            "stylized-facts",
+            "plan",
+            "--model-path",
+            model_path
+                .to_str()
+                .expect("model path should be valid UTF-8"),
+            "--intervals",
+            "5m",
+        ])
+        .output()
+        .expect("stylized facts plan command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["empirical_data_path"],
+        empirical_path
+            .to_str()
+            .expect("empirical path should be valid UTF-8")
+    );
+    assert_eq!(payload["empirical_data_format"], "csv");
+    assert_eq!(payload["empirical_timestamp_column"], "timestamp");
+    assert_eq!(payload["empirical_price_column"], "price");
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
 }
@@ -1577,6 +1861,32 @@ fn write_tick_csv(path: &std::path::Path) {
     .expect("tick CSV should be writable");
 }
 
+fn write_model_with_tick_source(model_path: &std::path::Path, tick_path: &std::path::Path) {
+    write_json_file(
+        model_path,
+        &serde_json::json!({
+            "metadata": {
+                "input_inference": {
+                    "tick_data_source": {
+                        "path": tick_path.display().to_string(),
+                        "file_format": "csv",
+                        "provenance_label": "ticks"
+                    },
+                    "tick_data_column_mapping": {
+                        "timestamp_column": "timestamp",
+                        "price_column": "price",
+                        "trade_sign_column": "side"
+                    },
+                    "normalization_policy": {
+                        "timestamp_timezone": "UTC",
+                        "tick_price_input_policy": "explicit_price_column"
+                    }
+                }
+            }
+        }),
+    );
+}
+
 fn write_calendar_fixture(path: &std::path::Path) {
     std::fs::write(
         path,
@@ -1590,6 +1900,126 @@ fn write_json_file(path: &std::path::Path, payload: &serde_json::Value) {
         serde_json::to_string_pretty(payload).expect("test JSON payload should serialize");
 
     std::fs::write(path, contents).expect("test JSON payload should be writable");
+}
+
+fn write_stylized_fact_inputs(
+    metric_catalog_path: &std::path::Path,
+    comparison_request_path: &std::path::Path,
+    default_max_absolute_delta: f64,
+) {
+    write_json_file(
+        metric_catalog_path,
+        &serde_json::to_value(build_stylized_fact_metric_catalog())
+            .expect("metric catalog should serialize"),
+    );
+    write_json_file(
+        comparison_request_path,
+        &serde_json::to_value(build_stylized_fact_comparison_request(
+            default_max_absolute_delta,
+        ))
+        .expect("comparison request should serialize"),
+    );
+}
+
+fn build_stylized_fact_comparison_request(
+    default_max_absolute_delta: f64,
+) -> StylizedFactHorizonComparisonRequest {
+    StylizedFactHorizonComparisonRequest {
+        metric_catalog_id: "stylized_fact_metric_catalog".to_string(),
+        metric_catalog_version: "1.0.0".to_string(),
+        threshold_policy: StylizedFactHorizonComparisonThresholdPolicy {
+            policy_id: "stylized_fact_delta_policy.v1".to_string(),
+            default_max_absolute_delta: Some(default_max_absolute_delta),
+            default_max_standardized_delta: Some(5.0),
+            metric_threshold_overrides: vec![StylizedFactMetricThresholdOverride {
+                metric_id: "returns_l_moment_lambda2".to_string(),
+                metric_variant: None,
+                max_absolute_delta: Some(0.25),
+                max_standardized_delta: Some(4.0),
+            }],
+        },
+        calibration_runs: vec![StylizedFactCalibrationRunInput {
+            calibration_run_id: "run_001".to_string(),
+            empirical_dataset_id: "empirical_set".to_string(),
+            simulated_dataset_id: "simulated_set".to_string(),
+            empirical_metrics: vec![
+                stylized_fact_observed_metric(
+                    "1h",
+                    "returns_abs_quantile_shape_ratio_q99_q95",
+                    "Returns Abs Quantile Shape Ratio Q99 Q95",
+                    Some(1.00),
+                ),
+                stylized_fact_observed_metric(
+                    "1h",
+                    "returns_l_moment_lambda2",
+                    "Returns L Moment Lambda2",
+                    None,
+                ),
+                stylized_fact_observed_metric(
+                    "1h",
+                    "returns_central_variance",
+                    "Returns Central Variance",
+                    Some(2.00),
+                ),
+            ],
+            simulated_metrics: vec![
+                stylized_fact_observed_metric(
+                    "1h",
+                    "returns_abs_quantile_shape_ratio_q99_q95",
+                    "Returns Abs Quantile Shape Ratio Q99 Q95",
+                    Some(1.10),
+                ),
+                stylized_fact_observed_metric(
+                    "1h",
+                    "returns_l_moment_lambda2",
+                    "Returns L Moment Lambda2",
+                    Some(0.40),
+                ),
+                stylized_fact_observed_metric(
+                    "1h",
+                    "returns_central_variance",
+                    "Returns Central Variance",
+                    Some(2.01),
+                ),
+            ],
+        }],
+    }
+}
+
+fn stylized_fact_observed_metric(
+    horizon_label: &str,
+    metric_id: &str,
+    metric_name: &str,
+    value: Option<f64>,
+) -> StylizedFactObservedMetricInput {
+    StylizedFactObservedMetricInput {
+        horizon_label: horizon_label.to_string(),
+        horizon_duration_nanos: HOUR_DURATION_NANOS,
+        metric_id: metric_id.to_string(),
+        metric_name: metric_name.to_string(),
+        metric_variant: None,
+        value,
+        confidence_interval: value.map(|point_estimate| StylizedFactMetricConfidenceInterval {
+            lower_bound: point_estimate - 0.05,
+            upper_bound: point_estimate + 0.05,
+            confidence_level: 0.95,
+        }),
+        sample_coverage: StylizedFactMetricSampleCoverage {
+            horizon_interval_count: 12,
+            covered_interval_count: 10,
+        },
+        observed_counts: StylizedFactObservedCounts {
+            sample_count: 100,
+            effective_sample_count: 80,
+            tail_observation_count: 20,
+        },
+        required_minimums: StylizedFactSampleSufficiencyRequirements {
+            minimum_sample_count: 10,
+            minimum_effective_sample_count: 8,
+            minimum_tail_observation_count: 1,
+            minimum_horizon_coverage_ratio: 0.75,
+        },
+    }
 }
 
 fn write_fx_tick_csv(path: &std::path::Path) {

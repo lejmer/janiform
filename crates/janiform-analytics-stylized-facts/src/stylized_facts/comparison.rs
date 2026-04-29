@@ -11,13 +11,13 @@ use super::diagnostics_shared::build_delta_uncertainty_context;
 use super::metric_catalog::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
 
 pub const STYLIZED_FACT_HORIZON_COMPARISON_REPORT_SCHEMA_VERSION: &str =
-    "validation.stylized_fact.horizon_comparison.report.v1";
+    "validation.stylized_fact.interval_comparison.report.v1";
 pub const STYLIZED_FACT_HORIZON_COMPARISON_DECISION_POLICY: &str =
-    "explicit_horizon_and_metric_key_alignment_without_implicit_interpolation.v1";
+    "explicit_interval_and_metric_key_alignment_without_implicit_interpolation.v1";
 pub const STYLIZED_FACT_HORIZON_COMPARISON_UNCERTAINTY_POLICY: &str =
     "pooled_interval_half_width_standardized_delta_from_input_confidence_intervals.v1";
 pub const STYLIZED_FACT_HORIZON_COMPARISON_OUTPUT_SCHEMA_METADATA_VERSION: &str =
-    "validation.stylized_fact.horizon_comparison.output_schema_metadata.v1";
+    "validation.stylized_fact.interval_comparison.output_schema_metadata.v1";
 
 const REQUIRED_BATCH_REPORT_FIELDS: [&str; 11] = [
     "schema_version",
@@ -38,14 +38,14 @@ const REQUIRED_RUN_REPORT_FIELDS: [&str; 8] = [
     "simulated_dataset_id",
     "status",
     "decision_counts",
-    "total_horizon_count",
+    "total_interval_count",
     "total_metric_count",
-    "horizons",
+    "intervals",
 ];
 const REQUIRED_HORIZON_REPORT_FIELDS: [&str; 7] = [
-    "horizon_label",
-    "empirical_horizon_duration_nanos",
-    "simulated_horizon_duration_nanos",
+    "interval_label",
+    "empirical_interval_duration_nanos",
+    "simulated_interval_duration_nanos",
     "alignment_status",
     "status",
     "decision_counts",
@@ -62,7 +62,7 @@ const REQUIRED_METRIC_REPORT_FIELDS: [&str; 12] = [
     "absolute_delta",
     "uncertainty_context",
     "threshold_context",
-    "horizon_label",
+    "interval_label",
     "decision_reason_codes",
 ];
 const REQUIRED_DATASET_METRIC_FIELDS: [&str; 9] = [
@@ -181,7 +181,7 @@ pub struct StylizedFactHorizonComparisonRequest {
 #[serde(deny_unknown_fields)]
 pub struct StylizedFactHorizonComparisonThresholdPolicy {
     pub policy_id: String,
-    pub default_max_absolute_delta: f64,
+    pub default_max_absolute_delta: Option<f64>,
     pub default_max_standardized_delta: Option<f64>,
     pub metric_threshold_overrides: Vec<StylizedFactMetricThresholdOverride>,
 }
@@ -191,7 +191,7 @@ pub struct StylizedFactHorizonComparisonThresholdPolicy {
 pub struct StylizedFactMetricThresholdOverride {
     pub metric_id: String,
     pub metric_variant: Option<String>,
-    pub max_absolute_delta: f64,
+    pub max_absolute_delta: Option<f64>,
     pub max_standardized_delta: Option<f64>,
 }
 
@@ -306,15 +306,20 @@ pub struct StylizedFactCalibrationRunComparisonReport {
     pub simulated_dataset_id: String,
     pub status: StylizedFactComparisonDecisionState,
     pub decision_counts: StylizedFactDecisionCounts,
+    #[serde(rename = "total_interval_count")]
     pub total_horizon_count: usize,
     pub total_metric_count: usize,
+    #[serde(rename = "intervals")]
     pub horizons: Vec<StylizedFactHorizonComparison>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StylizedFactHorizonComparison {
+    #[serde(rename = "interval_label")]
     pub horizon_label: String,
+    #[serde(rename = "empirical_interval_duration_nanos")]
     pub empirical_horizon_duration_nanos: Option<i64>,
+    #[serde(rename = "simulated_interval_duration_nanos")]
     pub simulated_horizon_duration_nanos: Option<i64>,
     pub alignment_status: StylizedFactHorizonAlignmentStatus,
     pub status: StylizedFactComparisonDecisionState,
@@ -324,6 +329,7 @@ pub struct StylizedFactHorizonComparison {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StylizedFactMetricComparison {
+    #[serde(rename = "interval_label")]
     pub horizon_label: String,
     pub metric_id: String,
     pub metric_name: String,
@@ -346,6 +352,7 @@ pub struct StylizedFactDatasetMetricEvaluation {
     pub sample_coverage: StylizedFactMetricSampleCoverage,
     pub observed_counts: StylizedFactObservedCounts,
     pub required_minimums: StylizedFactSampleSufficiencyRequirements,
+    #[serde(rename = "interval_coverage_ratio")]
     pub horizon_coverage_ratio: f64,
     pub insufficiency_reason_codes: Vec<StylizedFactSampleSufficiencyReasonCode>,
     pub input_present: bool,
@@ -362,7 +369,7 @@ pub struct StylizedFactDeltaUncertaintyContext {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StylizedFactThresholdContext {
     pub policy_id: String,
-    pub max_absolute_delta: f64,
+    pub max_absolute_delta: Option<f64>,
     pub max_standardized_delta: Option<f64>,
     pub absolute_delta_exceeds_threshold: Option<bool>,
     pub standardized_delta_exceeds_threshold: Option<bool>,
@@ -407,7 +414,7 @@ struct IndexedDatasetMetrics {
 
 #[derive(Debug, Clone, Copy)]
 struct ResolvedThreshold {
-    max_absolute_delta: f64,
+    max_absolute_delta: Option<f64>,
     max_standardized_delta: Option<f64>,
 }
 
@@ -693,8 +700,10 @@ fn build_metric_report(
     let mut standardized_delta_exceeds_threshold = None;
 
     let status = if status == StylizedFactComparisonDecisionState::Pass {
-        absolute_delta_exceeds_threshold =
-            absolute_delta.map(|delta| delta > threshold.max_absolute_delta);
+        absolute_delta_exceeds_threshold = match (threshold.max_absolute_delta, absolute_delta) {
+            (Some(max_absolute_delta), Some(delta)) => Some(delta > max_absolute_delta),
+            (Some(_), None) | (None, _) => None,
+        };
 
         standardized_delta_exceeds_threshold = match (
             threshold.max_standardized_delta,
@@ -1074,10 +1083,12 @@ fn validate_threshold_policy(
         threshold_policy.policy_id.as_str(),
         "must be non-empty",
     )?;
-    validate_non_negative_finite(
-        &format!("{field_prefix}.default_max_absolute_delta"),
-        threshold_policy.default_max_absolute_delta,
-    )?;
+    if let Some(default_max_absolute_delta) = threshold_policy.default_max_absolute_delta {
+        validate_non_negative_finite(
+            &format!("{field_prefix}.default_max_absolute_delta"),
+            default_max_absolute_delta,
+        )?;
+    }
 
     if let Some(default_max_standardized_delta) = threshold_policy.default_max_standardized_delta {
         validate_non_negative_finite(
@@ -1110,10 +1121,12 @@ fn validate_threshold_policy(
             )?;
         }
 
-        validate_non_negative_finite(
-            &format!("{override_prefix}.max_absolute_delta"),
-            metric_override.max_absolute_delta,
-        )?;
+        if let Some(max_absolute_delta) = metric_override.max_absolute_delta {
+            validate_non_negative_finite(
+                &format!("{override_prefix}.max_absolute_delta"),
+                max_absolute_delta,
+            )?;
+        }
 
         if let Some(max_standardized_delta) = metric_override.max_standardized_delta {
             validate_non_negative_finite(

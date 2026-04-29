@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
-use std::thread;
 
+use janiform_foundations::parallelism::available_cpu_count;
 use serde_json::to_string_pretty;
 
 use crate::staged_runner::CalibrationStagedRunStageReport;
@@ -765,12 +765,6 @@ fn build_search_surface_manifest_artifact(
         schema_version: "calibration.diagnostics.search_surface_manifest.v1",
         surfaces,
     }
-}
-
-fn available_cpu_count() -> usize {
-    thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1)
 }
 
 fn build_observed_target_entry(

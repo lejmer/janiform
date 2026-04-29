@@ -825,6 +825,7 @@ impl TailSkewRequestPayload {
                 random_seed: self.bootstrap_configuration.random_seed,
             },
             sample_sufficiency_policy: self.sample_sufficiency_policy.into_policy(),
+            cpu_count: None,
         }
     }
 }

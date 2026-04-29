@@ -15,7 +15,6 @@ def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
     assert "presets" in help_output
     assert "seasonality" in help_output
     assert "hourly-factors" in help_output
-    assert "stylized-facts" in help_output
     assert "dev" in help_output
 
 
@@ -59,12 +58,6 @@ def test_price_help_documents_high_level_pricing_workflow() -> None:
     assert "--tenor" in help_output
 
 
-def test_stylized_facts_help_lists_horizon_comparison_workflow() -> None:
-    help_output = _render_help(["stylized-facts"])
-
-    assert "horizon-comparison" in help_output
-
-
 def test_developer_help_lists_regression_namespace() -> None:
     help_output = _render_help(["dev"])
 
@@ -89,7 +82,6 @@ def test_click_app_exposes_the_expected_live_command_tree() -> None:
         "presets",
         "seasonality",
         "hourly-factors",
-        "stylized-facts",
         "dev",
     )
 
