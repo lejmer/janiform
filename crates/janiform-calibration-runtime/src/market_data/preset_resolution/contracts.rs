@@ -73,6 +73,14 @@ impl PresetCategory {
             Self::MarketProfile => "market_profile",
         }
     }
+
+    pub(super) fn index_sort_rank(self) -> u8 {
+        match self {
+            Self::MarketProfile => 0,
+            Self::KnownNews => 1,
+            Self::Session => 2,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]

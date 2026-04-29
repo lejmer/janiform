@@ -10,7 +10,7 @@ The CLI exposes three preset categories:
 - `known-news`
 - `market-profile`
 
-Use `janiform presets list` to see what is bundled, `janiform presets show` to inspect one artifact, and `janiform presets export` when you want a resolved preset plus nested dependencies written out.
+Use `janiform presets list` to see what is bundled, `janiform presets show` to inspect one artifact, and `janiform presets export` when you want a resolved preset plus nested dependencies written out. Add `--expanded` to `janiform presets show known-news NAME` or `janiform presets show session NAME` when you want category-specific detail tables in the human terminal view.
 
 ## Calibration Inputs
 

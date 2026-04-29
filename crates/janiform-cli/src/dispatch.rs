@@ -13,6 +13,9 @@ use crate::commands::inspection::InspectSubcommand;
 use crate::commands::inspection::run_inspect_model;
 use crate::commands::inspection::run_inspect_run;
 use crate::commands::presets::PresetsSubcommand;
+use crate::commands::presets::run_presets_export;
+use crate::commands::presets::run_presets_list;
+use crate::commands::presets::run_presets_show;
 use crate::commands::pricing::PriceSubcommand;
 use crate::commands::pricing::run_price_command;
 use crate::commands::pricing::run_price_fitted_model_command;
@@ -53,9 +56,9 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
             ),
         },
         RootCommand::Presets(command) => match command.command {
-            PresetsSubcommand::List(_) => not_implemented("presets list"),
-            PresetsSubcommand::Show(_) => not_implemented("presets show"),
-            PresetsSubcommand::Export(_) => not_implemented("presets export"),
+            PresetsSubcommand::List(command) => run_presets_list(context, command),
+            PresetsSubcommand::Show(command) => run_presets_show(context, command),
+            PresetsSubcommand::Export(command) => run_presets_export(context, command),
         },
         RootCommand::Seasonality(command) => match command.command {
             SeasonalitySubcommand::PreprocessTimestamps(_) => {

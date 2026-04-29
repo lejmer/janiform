@@ -204,21 +204,26 @@ pub struct CompactTable {
 }
 
 impl CompactTable {
-    /// Render the table with terminal-aware layout and wrapping.
+    /// Render the table with library-managed column alignment.
     pub fn render(&self, renderer: &TerminalRenderer) -> String {
         if self.headers.is_empty() {
             return String::new();
         }
 
         let mut table = Table::new();
-
         table.load_preset(NOTHING);
-        table.set_content_arrangement(ContentArrangement::Dynamic);
 
-        if let Some(terminal_width) = renderer.terminal_width()
-            && let Ok(width) = u16::try_from(terminal_width)
+        match renderer
+            .terminal_width()
+            .and_then(|width| u16::try_from(width).ok())
         {
-            table.set_width(width);
+            Some(width) => {
+                table.set_content_arrangement(ContentArrangement::Dynamic);
+                table.set_width(width);
+            }
+            None => {
+                table.set_content_arrangement(ContentArrangement::Disabled);
+            }
         }
 
         table.set_header(
@@ -240,7 +245,7 @@ impl CompactTable {
             column.set_padding((0, 2));
         }
 
-        trim_table_line_endings(&table.to_string())
+        table.trim_fmt()
     }
 }
 
@@ -418,14 +423,6 @@ fn split_lines(text: &str) -> Vec<String> {
     } else {
         lines
     }
-}
-
-fn trim_table_line_endings(table: &str) -> String {
-    table
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<&str>>()
-        .join("\n")
 }
 
 fn completion_status_text(status: CompletionSummaryStatus) -> &'static str {

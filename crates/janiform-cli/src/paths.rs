@@ -79,9 +79,17 @@ impl PathResolver {
         self.resolve_process_path(path)
     }
 
-    /// Resolve a user preset registry path as a process-relative input file.
+    /// Resolve a user preset registry path as a repository-relative input file.
     pub fn user_preset_file(&self, path: &Path) -> Result<PathBuf, CliError> {
-        self.input_file("--user-preset-json", path)
+        let resolved_path = self.resolve_repository_path(path)?;
+        if resolved_path.is_file() {
+            return Ok(resolved_path);
+        }
+
+        Err(CliError::MissingInputFile {
+            argument_name: "--user-preset-json",
+            path: resolved_path,
+        })
     }
 }
 

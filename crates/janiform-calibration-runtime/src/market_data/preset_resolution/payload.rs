@@ -1,3 +1,4 @@
+use janiform_foundations::json_payload;
 use serde_json::Map;
 use serde_json::Value;
 
@@ -26,10 +27,7 @@ pub(super) fn clone_field(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Value> {
-    payload
-        .get(field_name)
-        .cloned()
-        .ok_or_else(|| payload_error(field_path, "is required"))
+    json_payload::clone_field(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn clone_object_field(
@@ -37,10 +35,8 @@ pub(super) fn clone_object_field(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Value> {
-    let value = clone_field(payload, field_name, field_path)?;
-    object_value(&value, field_path)?;
-
-    Ok(value)
+    json_payload::clone_object_field(payload, field_name, field_path)
+        .map_err(payload_error_from_json)
 }
 
 pub(super) fn object_field<'a>(
@@ -48,11 +44,7 @@ pub(super) fn object_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a Map<String, Value>> {
-    let value = payload
-        .get(field_name)
-        .ok_or_else(|| payload_error(field_path, "is required"))?;
-
-    object_value(value, field_path)
+    json_payload::object_field(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn object_field_mut<'a>(
@@ -60,11 +52,7 @@ pub(super) fn object_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Map<String, Value>> {
-    let value = payload
-        .get_mut(field_name)
-        .ok_or_else(|| payload_error(field_path, "is required"))?;
-
-    object_value_mut(value, field_path)
+    json_payload::object_field_mut(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_object_field<'a>(
@@ -72,14 +60,8 @@ pub(super) fn optional_object_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a Map<String, Value>>> {
-    let Some(value) = payload.get(field_name) else {
-        return Ok(None);
-    };
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    object_value(value, field_path).map(Some)
+    json_payload::optional_object_field(payload, field_name, field_path)
+        .map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_object_field_mut<'a>(
@@ -87,14 +69,8 @@ pub(super) fn optional_object_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a mut Map<String, Value>>> {
-    let Some(value) = payload.get_mut(field_name) else {
-        return Ok(None);
-    };
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    object_value_mut(value, field_path).map(Some)
+    json_payload::optional_object_field_mut(payload, field_name, field_path)
+        .map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_array_field<'a>(
@@ -102,14 +78,8 @@ pub(super) fn optional_array_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a Vec<Value>>> {
-    let Some(value) = payload.get(field_name) else {
-        return Ok(None);
-    };
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    array_value(value, field_path).map(Some)
+    json_payload::optional_array_field(payload, field_name, field_path)
+        .map_err(payload_error_from_json)
 }
 
 pub(super) fn string_field<'a>(
@@ -117,11 +87,7 @@ pub(super) fn string_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a str> {
-    let value = payload
-        .get(field_name)
-        .ok_or_else(|| payload_error(field_path, "is required"))?;
-
-    string_value(value, field_path)
+    json_payload::string_field(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_string_field<'a>(
@@ -129,41 +95,29 @@ pub(super) fn optional_string_field<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a str>> {
-    let Some(value) = payload.get(field_name) else {
-        return Ok(None);
-    };
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    string_value(value, field_path).map(Some)
+    json_payload::optional_string_field(payload, field_name, field_path)
+        .map_err(payload_error_from_json)
 }
 
 pub(super) fn object_value<'a>(
     value: &'a Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a Map<String, Value>> {
-    value
-        .as_object()
-        .ok_or_else(|| payload_error(field_path, "must be an object"))
+    json_payload::object_value(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn object_value_mut<'a>(
     value: &'a mut Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Map<String, Value>> {
-    value
-        .as_object_mut()
-        .ok_or_else(|| payload_error(field_path, "must be an object"))
+    json_payload::object_value_mut(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn array_value<'a>(
     value: &'a Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a Vec<Value>> {
-    value
-        .as_array()
-        .ok_or_else(|| payload_error(field_path, "must be an array"))
+    json_payload::array_value(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn array_field_mut<'a>(
@@ -171,11 +125,7 @@ pub(super) fn array_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Vec<Value>> {
-    let value = payload
-        .get_mut(field_name)
-        .ok_or_else(|| payload_error(field_path, "is required"))?;
-
-    array_value_mut(value, field_path)
+    json_payload::array_field_mut(payload, field_name, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn optional_array_field_mut<'a>(
@@ -183,32 +133,22 @@ pub(super) fn optional_array_field_mut<'a>(
     field_name: &str,
     field_path: &str,
 ) -> PresetResolutionResult<Option<&'a mut Vec<Value>>> {
-    let Some(value) = payload.get_mut(field_name) else {
-        return Ok(None);
-    };
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    array_value_mut(value, field_path).map(Some)
+    json_payload::optional_array_field_mut(payload, field_name, field_path)
+        .map_err(payload_error_from_json)
 }
 
 pub(super) fn array_value_mut<'a>(
     value: &'a mut Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a mut Vec<Value>> {
-    value
-        .as_array_mut()
-        .ok_or_else(|| payload_error(field_path, "must be an array"))
+    json_payload::array_value_mut(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn string_value<'a>(
     value: &'a Value,
     field_path: &str,
 ) -> PresetResolutionResult<&'a str> {
-    value
-        .as_str()
-        .ok_or_else(|| payload_error(field_path, "must be a string"))
+    json_payload::string_value(value, field_path).map_err(payload_error_from_json)
 }
 
 pub(super) fn payload_error(field_path: &str, message: &str) -> PresetWorkflowResolutionError {
@@ -216,4 +156,10 @@ pub(super) fn payload_error(field_path: &str, message: &str) -> PresetWorkflowRe
         field_path: field_path.to_string(),
         message: message.to_string(),
     }
+}
+
+fn payload_error_from_json(
+    source: json_payload::JsonPayloadError,
+) -> PresetWorkflowResolutionError {
+    payload_error(source.field_path(), source.message())
 }

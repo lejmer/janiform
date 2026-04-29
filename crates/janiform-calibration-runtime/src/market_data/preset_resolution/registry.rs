@@ -455,11 +455,15 @@ fn requested_preset(
     Ok((category, preset_name, registry_scope))
 }
 
-fn preset_index_entry_sort_key(entry: &Value) -> PresetResolutionResult<(String, String, String)> {
+fn preset_index_entry_sort_key(entry: &Value) -> PresetResolutionResult<(u8, String, String)> {
     let entry = object_value(entry, "preset_index_entry")?;
+    let category = PresetCategory::from_str(
+        string_field(entry, "category", "preset_index_entry.category")?,
+        "preset_index_entry.category",
+    )?;
 
     Ok((
-        string_field(entry, "category", "preset_index_entry.category")?.to_string(),
+        category.index_sort_rank(),
         string_field(entry, "preset_name", "preset_index_entry.preset_name")?.to_string(),
         string_field(entry, "registry_scope", "preset_index_entry.registry_scope")?.to_string(),
     ))
