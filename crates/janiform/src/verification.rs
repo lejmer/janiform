@@ -1,6 +1,11 @@
-//! Top-level re-exports for analytics, validation, and governance.
+//! Top-level re-exports for validation, verification, and governance.
 
-pub use janiform_analytics_stylized_facts::{
+pub use janiform_governance::{
+    CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
+    HourlySeasonalityRegressionSource, RegressionHarnessError, RegressionHarnessToleranceConfig,
+    run_deterministic_regression_harness,
+};
+pub use janiform_validation::{
     NewsSemanticsScenarioClass, OpenClosedGapDeterministicReplayMetadata,
     OpenClosedGapIssueTraceabilityMetadata, StylizedFactCalibrationRunInput,
     StylizedFactComparisonDecisionState, StylizedFactDecisionReasonCode,
@@ -21,12 +26,7 @@ pub use janiform_analytics_stylized_facts::{
     build_stylized_fact_metric_catalog, run_stylized_fact_horizon_comparison_report_generator,
     run_tail_skew_diagnostics, run_tail_skew_diagnostics_with_observer,
 };
-pub use janiform_governance::{
-    CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
-    HourlySeasonalityRegressionSource, RegressionHarnessError, RegressionHarnessToleranceConfig,
-    run_deterministic_regression_harness,
-};
-pub use janiform_validation::{
+pub use janiform_verification::{
     OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
     OpenClosedGapLeakageRegressionCase, OpenClosedGapLeakageRegressionEventInput,
     OpenClosedGapLeakageRegressionHarnessError,

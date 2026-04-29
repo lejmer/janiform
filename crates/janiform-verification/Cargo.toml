@@ -1,0 +1,124 @@
+[package]
+name = "janiform-verification"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Verification and regression domains for Janiform."
+readme = "README.md"
+autotests = false
+
+[lib]
+name = "janiform_verification"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+janiform-affine-oracle = { path = "../janiform-affine-oracle" }
+janiform-validation = { path = "../janiform-validation" }
+janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
+janiform-engine-pricing = { path = "../janiform-engine-pricing" }
+janiform-engine-sufficient-statistics = { path = "../janiform-engine-sufficient-statistics" }
+janiform-engine-simulation = { path = "../janiform-engine-simulation" }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-governance-bench = { path = "../janiform-governance-bench" }
+janiform-market-time = { path = "../janiform-market-time" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+janiform-test-support = { path = "../janiform-test-support" }
+
+[[test]]
+name = "affine_oracle_solver_consumer_integration"
+path = "tests/affine_oracle_solver_consumer_integration.rs"
+
+[[test]]
+name = "affine_oracle_solver_method_comparison"
+path = "tests/affine_oracle_solver_method_comparison.rs"
+
+[[test]]
+name = "coarse_fine_consistency_regression_harness"
+path = "tests/coarse_fine_consistency_regression_harness.rs"
+
+[[test]]
+name = "coarse_seeded_tick_consistency_regression"
+path = "tests/coarse_seeded_tick_consistency_regression.rs"
+
+[[test]]
+name = "hawkes_cluster_signature_statistical_regression"
+path = "tests/hawkes_cluster_signature_statistical_regression.rs"
+
+[[test]]
+name = "nig_cross_engine_reference_regression"
+path = "tests/nig_cross_engine_reference_regression.rs"
+
+[[test]]
+name = "open_closed_gap_behavior_validation"
+path = "tests/open_closed_gap_behavior_validation.rs"
+
+[[test]]
+name = "open_closed_gap_leakage_regression_harness"
+path = "tests/open_closed_gap_leakage_regression_harness.rs"
+
+[[test]]
+name = "passthrough_adapter_policy_guard"
+path = "tests/passthrough_adapter_policy_guard.rs"
+
+[[test]]
+name = "return_decomposition_cross_engine_interface_integration"
+path = "tests/return_decomposition_cross_engine_interface_integration.rs"
+
+[[test]]
+name = "return_decomposition_regression_diagnostics_reporting"
+path = "tests/return_decomposition_regression_diagnostics_reporting.rs"
+
+[[test]]
+name = "return_decomposition_sign_golden_analytic_regression"
+path = "tests/return_decomposition_sign_golden_analytic_regression.rs"
+
+[[test]]
+name = "scale_consistency_batch_orchestrator"
+path = "tests/scale_consistency_batch_orchestrator.rs"
+
+[[test]]
+name = "scale_consistency_fine_path_aggregation"
+path = "tests/scale_consistency_fine_path_aggregation.rs"
+
+[[test]]
+name = "scale_consistency_metric_deltas"
+path = "tests/scale_consistency_metric_deltas.rs"
+
+[[test]]
+name = "scale_consistency_paired_run_contract"
+path = "tests/scale_consistency_paired_run_contract.rs"
+
+[[test]]
+name = "scale_consistency_regression_fixture_matrix"
+path = "tests/scale_consistency_regression_fixture_matrix.rs"
+
+[[test]]
+name = "scale_consistency_reporting"
+path = "tests/scale_consistency_reporting.rs"
+
+[[test]]
+name = "scale_consistency_threshold_decisions"
+path = "tests/scale_consistency_threshold_decisions.rs"
+
+[[test]]
+name = "seeded_tick_behavior_validation"
+path = "tests/seeded_tick_behavior_validation.rs"
+
+[[test]]
+name = "simulation_rust_python_parity"
+path = "tests/simulation_rust_python_parity.rs"
+
+[[test]]
+name = "sufficient_statistics_multi_interval_validation_suite"
+path = "tests/sufficient_statistics_multi_interval_validation_suite.rs"
+
+[[test]]
+name = "validation_fixture_schema_and_determinism"
+path = "tests/validation_fixture_schema_and_determinism.rs"

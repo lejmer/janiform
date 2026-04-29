@@ -9,7 +9,7 @@ use janiform_governance_bench::benchmarking::{
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING,
     ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_SUFFICIENT_STATISTICS,
 };
-use janiform_validation::CoarseFineConsistencyRegressionReport;
+use janiform_verification::CoarseFineConsistencyRegressionReport;
 use serde::{Deserialize, Serialize};
 
 use super::performance_baseline::OraclePricerSufficientStatisticsPerformanceBaselineComparisonReport;

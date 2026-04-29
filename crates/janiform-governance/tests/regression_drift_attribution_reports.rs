@@ -13,7 +13,7 @@ use janiform_governance::{
     build_regression_drift_attribution_report, render_regression_drift_attribution_report,
 };
 use janiform_governance_bench::benchmarking::BenchmarkWorkloadScale;
-use janiform_validation::{
+use janiform_verification::{
     COARSE_FINE_CONSISTENCY_REGRESSION_DETERMINISM_POLICY,
     COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY,
     COARSE_FINE_CONSISTENCY_REGRESSION_METRIC_POLICY,

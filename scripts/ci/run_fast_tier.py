@@ -36,7 +36,7 @@ def _default_fast_tier_commands() -> list[TierCommand]:
         ),
         TierCommand(
             name="rust_tolerance_regression",
-            command="cargo test -p janiform-validation --test coarse_fine_consistency_regression_harness",
+            command="cargo test -p janiform-verification --test coarse_fine_consistency_regression_harness",
         ),
         TierCommand(
             name="rust_pricing_benchmark_regression",

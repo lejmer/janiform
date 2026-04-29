@@ -17,7 +17,7 @@ chrono = { workspace = true }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-governance-bench = { path = "../janiform-governance-bench" }
 janiform-market-time = { path = "../janiform-market-time" }
-janiform-validation = { path = "../janiform-validation" }
+janiform-verification = { path = "../janiform-verification" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

@@ -13,7 +13,6 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 ## Workspace Crates
 
 - [janiform-affine-oracle](https://github.com/lejmer/janiform/blob/main/crates/janiform-affine-oracle): Shared affine-oracle solver contracts and implementation for Janiform.
-- [janiform-analytics-stylized-facts](https://github.com/lejmer/janiform/blob/main/crates/janiform-analytics-stylized-facts): Stylized-fact analytics for Janiform.
 - [janiform-calibration-artifacts](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-artifacts): Calibration artifact contracts and persistence for Janiform.
 - [janiform-calibration-runtime](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-runtime): Calibration runtime orchestration for Janiform.
 - [janiform-cli](https://github.com/lejmer/janiform/blob/main/crates/janiform-cli): Native Rust command shell with shared configuration, output, path, and diagnostic boundary for Janiform.
@@ -30,7 +29,8 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 - [janiform-pybind](https://github.com/lejmer/janiform/blob/main/crates/janiform-pybind): PyO3 bindings for Janiform.
 - [janiform-terminal-ui](https://github.com/lejmer/janiform/blob/main/crates/janiform-terminal-ui): Shared semantic terminal rendering and progress adapters for Janiform.
 - [janiform-test-support](https://github.com/lejmer/janiform/blob/main/crates/janiform-test-support): Shared Rust test support for Janiform workspace fixtures. Not published independently.
-- [janiform-validation](https://github.com/lejmer/janiform/blob/main/crates/janiform-validation): Validation and regression domains for Janiform.
+- [janiform-validation](https://github.com/lejmer/janiform/blob/main/crates/janiform-validation): Model validation domains for Janiform.
+- [janiform-verification](https://github.com/lejmer/janiform/blob/main/crates/janiform-verification): Verification and regression domains for Janiform.
 - [janiform-workflows](https://github.com/lejmer/janiform/blob/main/crates/janiform-workflows): Shared workflow orchestration for Janiform entrypoints.
 
 Most Janiform workspace crates are internal implementation details and evolve together inside this
