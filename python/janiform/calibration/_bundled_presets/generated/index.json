@@ -3,36 +3,6 @@
   "bundle_version": "v1",
   "entries": [
     {
-      "artifact_path": "known_news/eu_us_macro_fx_core.json",
-      "category": "known_news",
-      "content_hash": "sha256:b5defb53bdf7b0f3593140d8b54a6c0f89ed325c46a197c45819d6c0ce379088",
-      "description": "2026 schedule for US macro core releases plus ECB monetary policy decisions.",
-      "display_name": "EU and US Macro FX Core 2026",
-      "preset_name": "eu_us_macro_fx_core",
-      "registry_scope": "built_in",
-      "version_label": "2026.03"
-    },
-    {
-      "artifact_path": "known_news/none.json",
-      "category": "known_news",
-      "content_hash": "sha256:b4676af7e7e574857864398150de1d939bf40552f060291919c0063d5cf5c898",
-      "description": "Explicitly disables scheduled known-news events.",
-      "display_name": "No Known News",
-      "preset_name": "none",
-      "registry_scope": "built_in",
-      "version_label": "2026.03"
-    },
-    {
-      "artifact_path": "known_news/us_macro_core.json",
-      "category": "known_news",
-      "content_hash": "sha256:6fb760e9d4ccfbeaa05c40e6bf515d22232683efe6d804a9ab4d712bb6700a86",
-      "description": "2026 schedule for BLS CPI, BLS Employment Situation, and FOMC policy statements.",
-      "display_name": "US Macro Core 2026",
-      "preset_name": "us_macro_core",
-      "registry_scope": "built_in",
-      "version_label": "2026.03"
-    },
-    {
       "artifact_path": "market_profiles/btcusd_spot.json",
       "category": "market_profile",
       "content_hash": "sha256:c67ffda92233cbfc2d2beaa8156a7db60ecea0e63581987979fe838c619aa466",
@@ -69,6 +39,36 @@
       "description": "Default US equity cash profile with NYSE weekday hours and suggested US macro releases.",
       "display_name": "US Equity Cash",
       "preset_name": "us_equity_cash",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "known_news/eu_us_macro_fx_core.json",
+      "category": "known_news",
+      "content_hash": "sha256:b5defb53bdf7b0f3593140d8b54a6c0f89ed325c46a197c45819d6c0ce379088",
+      "description": "2026 schedule for US macro core releases plus ECB monetary policy decisions.",
+      "display_name": "EU and US Macro FX Core 2026",
+      "preset_name": "eu_us_macro_fx_core",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "known_news/none.json",
+      "category": "known_news",
+      "content_hash": "sha256:b4676af7e7e574857864398150de1d939bf40552f060291919c0063d5cf5c898",
+      "description": "Explicitly disables scheduled known-news events.",
+      "display_name": "No Known News",
+      "preset_name": "none",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "known_news/us_macro_core.json",
+      "category": "known_news",
+      "content_hash": "sha256:6fb760e9d4ccfbeaa05c40e6bf515d22232683efe6d804a9ab4d712bb6700a86",
+      "description": "2026 schedule for BLS CPI, BLS Employment Situation, and FOMC policy statements.",
+      "display_name": "US Macro Core 2026",
+      "preset_name": "us_macro_core",
       "registry_scope": "built_in",
       "version_label": "2026.03"
     },
@@ -123,6 +123,6 @@
       "version_label": "2026.03"
     }
   ],
-  "generated_on": "2026-03-12",
+  "generated_on": "2026-04-29",
   "schema_version": "preset.runtime.index.v1"
 }

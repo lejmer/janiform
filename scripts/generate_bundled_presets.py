@@ -2,7 +2,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast, Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -11,35 +11,37 @@ PYTHON_ROOT = REPOSITORY_ROOT / "python"
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
-from janiform.contracts import serialize_deterministic_json
+from janiform.calibration.presets.artifacts import (
+    KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION,
+    MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION,
+    SESSION_PRESET_ARTIFACT_SCHEMA_VERSION,
+    KnownNewsPresetArtifact,
+    MarketProfilePresetArtifact,
+    PresetArtifactMetadata,
+    PresetArtifactProvenance,
+    PresetCategory,
+    PresetUpstreamSourceVersion,
+    SessionPresetArtifact,
+    normalize_preset_artifact,
+)
 from janiform.calibration.presets.references import (
     KnownNewsEvent,
     KnownNewsExplicitConfiguration,
+    KnownNewsPresetReference,
     MarketProfileColumnAliasHint,
     MarketProfileExplicitConfiguration,
     MarketProfileKnownNewsPolicy,
     PresetReferenceUsageMode,
     PresetRegistryScope,
-    KnownNewsPresetReference,
     SessionExplicitConfiguration,
     SessionPresetReference,
 )
 from janiform.calibration.presets.registry import (
     BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
     BundledPresetRegistryIndex,
-    KnownNewsPresetArtifact,
-    MarketProfilePresetArtifact,
-    PresetArtifactMetadata,
-    PresetArtifactProvenance,
-    PresetCategory,
     PresetIndexEntry,
-    PresetUpstreamSourceVersion,
-    SessionPresetArtifact,
-    KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION,
-    MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION,
-    SESSION_PRESET_ARTIFACT_SCHEMA_VERSION,
-    normalize_preset_artifact,
 )
+from janiform.contracts import serialize_deterministic_json
 
 SOURCE_ROOT = REPOSITORY_ROOT / "presets" / "sources"
 GENERATED_ROOT = REPOSITORY_ROOT / "python" / "janiform" / "calibration" / "_bundled_presets" / "generated"
@@ -71,7 +73,7 @@ def main() -> None:
         entries=tuple(
             sorted(
                 entries,
-                key=lambda entry: (entry.category.value, entry.preset_name),
+                key=_preset_index_entry_sort_key,
             )
         ),
     )
@@ -80,6 +82,22 @@ def main() -> None:
         _serialize_pretty_json(index),
         encoding="utf-8",
     )
+
+
+def _preset_index_entry_sort_key(entry: PresetIndexEntry) -> tuple[int, str]:
+    return (_preset_category_sort_rank(entry.category), entry.preset_name)
+
+
+def _preset_category_sort_rank(category: PresetCategory) -> int:
+    match category:
+        case PresetCategory.MARKET_PROFILE:
+            return 0
+        case PresetCategory.KNOWN_NEWS:
+            return 1
+        case PresetCategory.SESSION:
+            return 2
+        case _:
+            raise ValueError(f"unsupported preset category: {category}")
 
 
 def _build_session_artifacts(source_document: dict[str, Any]) -> tuple[SessionPresetArtifact, ...]:
