@@ -1028,7 +1028,6 @@ dependencies = [
  "arrow-schema",
  "chrono",
  "chrono-tz",
- "csv",
  "janiform-affine-oracle",
  "janiform-calibration-artifacts",
  "janiform-engine-pricing",
@@ -1125,7 +1124,11 @@ dependencies = [
 name = "janiform-foundations"
 version = "0.0.0"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "chrono",
+ "csv",
+ "parquet",
  "serde",
  "serde_json",
 ]

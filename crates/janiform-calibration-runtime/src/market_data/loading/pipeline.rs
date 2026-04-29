@@ -28,7 +28,7 @@ use super::option_surface::{
     load_option_surface_records, materialize_option_surface_records_for_payload,
 };
 use super::rows::{
-    column_index, load_projected_parquet_record_batch_reader, load_rows, load_source_columns,
+    column_index, load_rows, load_source_columns, open_projected_parquet_record_batch_reader,
     probe_source_row_count_estimate, raw_value_from_arrow_array, validate_columns_exist,
 };
 use super::session_resolution::{
@@ -343,7 +343,7 @@ fn load_parquet_tick_rows(
             message: "parquet source row-count metadata is unavailable".to_string(),
         })?;
 
-    let mut reader = load_projected_parquet_record_batch_reader(
+    let mut reader = open_projected_parquet_record_batch_reader(
         file_reference,
         "tick_data_source",
         projected_columns.as_slice(),

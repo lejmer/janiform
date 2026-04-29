@@ -8,13 +8,16 @@ use arrow_array::{
     TimestampSecondArray, UInt32Array, UInt64Array,
 };
 use chrono::{DateTime, Utc};
-use csv::StringRecord;
 use janiform::calendar::TimestampEventInputRecord;
+use janiform_foundations::csv::document::{CsvDocumentLoadError, StringRecord, open_csv_reader};
+use janiform_foundations::csv::records::column_position;
+use janiform_foundations::parquet::batch::column as parquet_column;
+use janiform_foundations::parquet::document::{
+    ParquetDocumentLoadError, open_projected_parquet_record_batch_reader,
+};
 use janiform_foundations::time::{
     NANOS_PER_MICROSECOND, NANOS_PER_MILLISECOND, NANOS_PER_SECOND, parse_utc_datetime,
 };
-use parquet::arrow::ProjectionMask;
-use parquet::arrow::arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchReaderBuilder};
 use serde_json::Value;
 
 use super::contracts::{
@@ -23,8 +26,39 @@ use super::contracts::{
 };
 use super::error::TimestampEventSourceLoadError;
 
-// IO chunk size only. This does not affect numerical behavior or output contracts.
-const PARQUET_BATCH_SIZE: usize = 65_536;
+fn timestamp_event_csv_document_error(
+    error: CsvDocumentLoadError,
+) -> TimestampEventSourceLoadError {
+    match error {
+        CsvDocumentLoadError::Read { path, source } => TimestampEventSourceLoadError::Csv {
+            path,
+            message: source.to_string(),
+        },
+    }
+}
+
+fn timestamp_event_parquet_document_error(
+    error: ParquetDocumentLoadError,
+) -> TimestampEventSourceLoadError {
+    match error {
+        ParquetDocumentLoadError::Read { path, source } => TimestampEventSourceLoadError::Io {
+            path,
+            message: source.to_string(),
+        },
+        ParquetDocumentLoadError::Parse { path, source } => {
+            TimestampEventSourceLoadError::Parquet {
+                path,
+                message: source.to_string(),
+            }
+        }
+        ParquetDocumentLoadError::RowCountOutOfRange { path } => {
+            TimestampEventSourceLoadError::Parquet {
+                path,
+                message: "row-count metadata exceeds the supported usize range".to_string(),
+            }
+        }
+    }
+}
 
 /// Load timestamp-event records from a CSV, parquet, or JSONL source.
 pub fn load_timestamp_event_records(
@@ -49,13 +83,7 @@ pub fn load_timestamp_event_records(
 fn load_csv_timestamp_events(
     source: &TimestampEventSource,
 ) -> Result<Vec<TimestampEventInputRecord>, TimestampEventSourceLoadError> {
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(&source.path)
-        .map_err(|source_error| TimestampEventSourceLoadError::Csv {
-            path: source.path.clone(),
-            message: source_error.to_string(),
-        })?;
+    let mut reader = open_csv_reader(&source.path).map_err(timestamp_event_csv_document_error)?;
 
     let headers = reader
         .headers()
@@ -99,13 +127,12 @@ fn timestamp_column_position(
     path: &Path,
     timestamp_column: &str,
 ) -> Result<usize, TimestampEventSourceLoadError> {
-    headers
-        .iter()
-        .position(|header| header == timestamp_column)
-        .ok_or_else(|| TimestampEventSourceLoadError::MissingTimestampColumn {
+    column_position(headers, timestamp_column).ok_or_else(|| {
+        TimestampEventSourceLoadError::MissingTimestampColumn {
             path: path.to_path_buf(),
             timestamp_column: timestamp_column.to_string(),
-        })
+        }
+    })
 }
 
 fn load_jsonl_timestamp_events(
@@ -172,7 +199,10 @@ fn load_jsonl_timestamp_events(
 fn load_parquet_timestamp_events(
     source: &TimestampEventSource,
 ) -> Result<Vec<TimestampEventInputRecord>, TimestampEventSourceLoadError> {
-    let mut reader = projected_parquet_reader(source)?;
+    let mut reader =
+        open_projected_parquet_record_batch_reader(&source.path, [&source.timestamp_column])
+            .map_err(timestamp_event_parquet_document_error)?;
+
     let mut records = Vec::new();
     let mut source_record_position = 0_usize;
 
@@ -206,50 +236,16 @@ fn load_parquet_timestamp_events(
     Ok(records)
 }
 
-fn projected_parquet_reader(
-    source: &TimestampEventSource,
-) -> Result<ParquetRecordBatchReader, TimestampEventSourceLoadError> {
-    let file =
-        File::open(&source.path).map_err(|source_error| TimestampEventSourceLoadError::Io {
-            path: source.path.clone(),
-            message: source_error.to_string(),
-        })?;
-
-    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|source_error| {
-        TimestampEventSourceLoadError::Parquet {
-            path: source.path.clone(),
-            message: source_error.to_string(),
-        }
-    })?;
-
-    let parquet_schema = builder.metadata().file_metadata().schema_descr_ptr();
-
-    let projection =
-        ProjectionMask::columns(parquet_schema.as_ref(), [source.timestamp_column.as_str()]);
-
-    builder
-        .with_projection(projection)
-        .with_batch_size(PARQUET_BATCH_SIZE)
-        .build()
-        .map_err(|source_error| TimestampEventSourceLoadError::Parquet {
-            path: source.path.clone(),
-            message: source_error.to_string(),
-        })
-}
-
 fn projected_timestamp_column<'a>(
     batch: &'a RecordBatch,
     source: &TimestampEventSource,
 ) -> Result<&'a dyn Array, TimestampEventSourceLoadError> {
-    let column_position = batch
-        .schema_ref()
-        .index_of(&source.timestamp_column)
-        .map_err(|_| TimestampEventSourceLoadError::MissingTimestampColumn {
+    parquet_column(batch, &source.timestamp_column).ok_or_else(|| {
+        TimestampEventSourceLoadError::MissingTimestampColumn {
             path: source.path.clone(),
             timestamp_column: source.timestamp_column.clone(),
-        })?;
-
-    Ok(batch.column(column_position).as_ref())
+        }
+    })
 }
 
 fn parse_timestamp_json_value(
