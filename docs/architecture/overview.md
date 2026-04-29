@@ -26,7 +26,7 @@ engines, shared contracts, and most performance-sensitive implementation.
 | --- | --- |
 | `janiform` | Umbrella Rust facade |
 | `janiform-affine-oracle` | Shared affine-oracle solver contracts and implementation |
-| `janiform-analytics-stylized-facts` | Stylized-fact analytics |
+| `janiform-validation` | Model validation domains |
 | `janiform-calibration-artifacts` | Calibration artifact contracts and persistence |
 | `janiform-calibration-runtime` | Calibration runtime orchestration |
 | `janiform-cli` | Native Rust command shell with shared configuration, output, path, and diagnostic boundary |
@@ -43,7 +43,7 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `janiform-pybind` | Python binding boundary |
 | `janiform-terminal-ui` | Shared semantic terminal rendering and progress adapters |
 | `janiform-test-support` | Shared Rust test support for workspace fixtures |
-| `janiform-validation` | Validation domains and regression harnesses |
+| `janiform-verification` | Verification and regression domains |
 | `janiform-workflows` | Shared workflow orchestration for Janiform entrypoints |
 
 ## Terminal UX Boundary

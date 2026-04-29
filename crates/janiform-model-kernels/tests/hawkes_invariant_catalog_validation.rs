@@ -369,7 +369,7 @@ fn test_suite_source_path(file_name: &str) -> PathBuf {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .expect("crate directory should live under crates/")
-                .join("janiform-validation")
+                .join("janiform-verification")
                 .join("tests")
                 .join(file_name)
         }

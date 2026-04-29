@@ -128,10 +128,10 @@
         "janiform-calibration-runtime"
       ]
     },
-    "janiform-analytics-stylized-facts": {
+    "janiform-validation": {
       "status": "existing",
       "kind": "production",
-      "layer": "analytics",
+      "layer": "model_validation",
       "allowed_internal_dependencies": [
         "janiform-foundations",
         "janiform-model-kernels",
@@ -141,10 +141,10 @@
         "janiform-test-support"
       ]
     },
-    "janiform-validation": {
+    "janiform-verification": {
       "status": "existing",
       "kind": "production",
-      "layer": "validation",
+      "layer": "verification",
       "allowed_internal_dependencies": [
         "janiform-foundations",
         "janiform-model-kernels",
@@ -154,7 +154,7 @@
         "janiform-engine-sufficient-statistics",
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
-        "janiform-analytics-stylized-facts",
+        "janiform-validation",
         "janiform-governance-bench",
         "janiform-test-support"
       ]
@@ -167,7 +167,7 @@
         "janiform-foundations",
         "janiform-model-kernels",
         "janiform-market-time",
-        "janiform-validation",
+        "janiform-verification",
         "janiform-governance-bench",
         "janiform-test-support"
       ]
@@ -193,7 +193,7 @@
       "layer": "test_support",
       "allowed_internal_dependencies": [
         "janiform-market-time",
-        "janiform-validation"
+        "janiform-verification"
       ]
     },
     "janiform-event-log": {
@@ -249,8 +249,8 @@
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
         "janiform-calibration-runtime",
-        "janiform-analytics-stylized-facts",
         "janiform-validation",
+        "janiform-verification",
         "janiform-governance",
         "janiform-governance-bench",
         "janiform-test-support"

@@ -94,7 +94,7 @@ where
     initialize_tracing(&context);
 
     match dispatch(&context, cli.command) {
-        Ok(()) => CliExitCode::Success.into(),
+        Ok(exit_code) => exit_code.into(),
         Err(error) => {
             let exit_code = error.exit_code();
 

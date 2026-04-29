@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/janiform-affine-oracle",
-    "crates/janiform-analytics-stylized-facts",
+    "crates/janiform-validation",
     "crates/janiform-calibration-artifacts",
     "crates/janiform-calibration-runtime",
     "crates/janiform-cli",
@@ -18,7 +18,7 @@ members = [
     "crates/janiform-model-kernels",
     "crates/janiform-pybind",
     "crates/janiform-test-support",
-    "crates/janiform-validation",
+    "crates/janiform-verification",
     "crates/janiform-workflows",
     "crates/janiform",
 ]

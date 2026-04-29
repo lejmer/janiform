@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use janiform_validation::{
+use janiform_verification::{
     RegressionCaseStatus, SCALE_CONSISTENCY_METRIC_DELTA_BATCH_REPORT_SCHEMA_VERSION,
     SCALE_CONSISTENCY_METRIC_DELTA_ORDERING_POLICY, ScaleConsistencyDecisionReasonCode,
     ScaleConsistencyDriftCategory, ScaleConsistencyEngineBenchmarkInput,

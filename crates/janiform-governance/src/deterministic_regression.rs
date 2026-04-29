@@ -10,7 +10,7 @@ use janiform_market_time::hourly_factors::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
     HourlySeasonalityFactorSource, provide_hourly_factor_contract,
 };
-use janiform_validation::RegressionCaseStatus;
+use janiform_verification::RegressionCaseStatus;
 use serde::Serialize;
 
 pub const DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION: &str =

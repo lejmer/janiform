@@ -2957,7 +2957,8 @@ impl SimulationRandomnessStream for FixtureRandomnessStream {
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
-            SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => {
+            SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
         }
@@ -3082,7 +3083,10 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             }
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
-            | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => Vec::new(),
+            | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
+                Vec::new()
+            }
         };
 
         ScriptedRandomnessStream::new(draws)
@@ -3144,7 +3148,8 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
-            | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => vec![],
+            | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => vec![],
         };
 
         ScriptedRandomnessStream::new(draws)

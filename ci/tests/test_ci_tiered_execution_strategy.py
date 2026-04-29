@@ -37,7 +37,7 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
         in runner_script_text
     )
     assert (
-        "cargo test -p janiform-validation --test coarse_fine_consistency_regression_harness"
+        "cargo test -p janiform-verification --test coarse_fine_consistency_regression_harness"
         in runner_script_text
     )
     assert (

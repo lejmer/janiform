@@ -2,7 +2,7 @@
 
 # janiform-validation
 
-Validation and regression domains for Janiform.
+Model validation domains for Janiform.
 
 This crate is an internal component of [Janiform](https://github.com/lejmer/janiform). Its Rust API may change as the
 workspace evolves.

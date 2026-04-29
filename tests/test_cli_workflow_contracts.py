@@ -116,17 +116,6 @@ def test_price_cli_help_documents_model_driven_workflow_contract() -> None:
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
-def test_stylized_facts_cli_help_documents_report_generation_contract() -> None:
-    help_output = _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"]))
-
-    assert "--output {human,json}" in help_output
-    assert "--metric-catalog-json PATH" in help_output
-    assert "--comparison-request-json PATH" in help_output
-    assert "--artifact-export-json PATH" in help_output
-    assert "--execution-mode {disk,memory}" in help_output
-    assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
-
-
 def test_fit_staged_cli_help_documents_mode_and_runtime_arguments() -> None:
     help_output = _normalize_help_output(_render_help(["fit", "staged"]))
 
@@ -166,7 +155,6 @@ def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() 
         _normalize_help_output(_render_help(["hourly-factors", "materialize-news-intensity"])),
         _normalize_help_output(_render_help(["hourly-factors", "build-contract"])),
         _normalize_help_output(_render_help(["price"])),
-        _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"])),
         _normalize_help_output(_render_help(["fit", "plan"])),
         _normalize_help_output(_render_help(["fit", "staged"])),
         _normalize_help_output(_render_help(["dev", "regression", "deterministic"])),

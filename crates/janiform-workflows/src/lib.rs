@@ -11,6 +11,7 @@ pub mod pricing;
 pub mod seasonality;
 pub mod simulation;
 pub mod terminal;
+pub mod validation;
 
 mod machine_events;
 mod model;

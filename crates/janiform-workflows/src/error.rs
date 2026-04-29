@@ -55,6 +55,22 @@ pub enum WorkflowError {
         message: String,
     },
 
+    /// Validation workflow input validation failed.
+    #[error("{field}: {message}")]
+    ValidationInputFailed {
+        /// Field that failed validation.
+        field: &'static str,
+        /// User-readable validation message.
+        message: String,
+    },
+
+    /// Validation workflow required input was missing.
+    #[error("missing required validation input `{field}`")]
+    ValidationMissingRequired {
+        /// Field that was missing.
+        field: &'static str,
+    },
+
     /// Fit artifact writing failed.
     #[error("failed to write fit artifact `{}`", path.display())]
     FitArtifactWrite {
@@ -87,6 +103,45 @@ pub enum WorkflowError {
     /// Pricing artifact writing failed.
     #[error("failed to write pricing artifact `{}`", path.display())]
     PricingArtifactWrite {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source IO error.
+        #[source]
+        source: io::Error,
+    },
+
+    /// Validation artifact reading failed.
+    #[error("failed to read validation artifact `{}`", path.display())]
+    ValidationArtifactRead {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source IO error.
+        #[source]
+        source: io::Error,
+    },
+
+    /// Validation artifact parsing failed.
+    #[error("failed to parse validation artifact `{}`", path.display())]
+    ValidationArtifactParse {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source JSON error.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// Validation artifact payload was malformed.
+    #[error("validation artifact `{}` was malformed: {message}", path.display())]
+    ValidationArtifactMalformed {
+        /// Artifact path.
+        path: PathBuf,
+        /// User-readable validation message.
+        message: String,
+    },
+
+    /// Validation artifact writing failed.
+    #[error("failed to write validation artifact `{}`", path.display())]
+    ValidationArtifactWrite {
         /// Artifact path.
         path: PathBuf,
         /// Source IO error.

@@ -1,7 +1,9 @@
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
+use janiform_foundations::parallelism::resolved_cpu_count;
+
 pub(crate) fn resolved_pricing_cpu_count(cpu_count: Option<usize>) -> usize {
-    cpu_count.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
+    resolved_cpu_count(cpu_count)
 }
 
 pub(crate) fn build_pricing_thread_pool(cpu_count: Option<usize>) -> Option<ThreadPool> {

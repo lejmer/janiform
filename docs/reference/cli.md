@@ -14,7 +14,7 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 | `janiform presets` | Inspect bundled and user-registered presets |
 | `janiform seasonality` | Seasonality preprocessing workflows |
 | `janiform hourly-factors` | Hourly factor materialization and contract-building workflows |
-| `janiform stylized-facts` | Stylized-fact reporting workflows |
+| `janiform validate` | Model validation workflows |
 | `janiform dev regression deterministic` | Developer deterministic regression harness |
 
 ## High-Level Workflow Selection
@@ -30,6 +30,7 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 | Inspect a fit run directory | `janiform inspect run RUN_DIR` |
 | Inspect a fitted model artifact | `janiform inspect model MODEL_PATH` |
 | Render a fit report | `janiform report fit RUN_OR_REPORT_PATH --html` |
+| Validate fitted model stylized facts | `janiform validate stylized-facts --model-path MODEL.jf --intervals 5m,1h,1d` |
 
 ## Common Flags
 
@@ -101,6 +102,39 @@ Seasonality commands use `--event-records`, optional `--event-records-format`,
 commands use `--calendar-registry-json`, `--exchange-code`, `--range-start-utc`,
 `--range-end-utc`, and `--interval`; materialization commands also take
 `--materialization-input-json`.
+
+## Validation
+
+| Command | Contract |
+| --- | --- |
+| `janiform validate stylized-facts` | Loads a fitted model and empirical tick data, simulates seeded paths over the empirical span, computes return-based stylized-fact metrics, compares empirical and simulated metrics, and emits a validation report bundle. |
+| `janiform validate stylized-facts plan` | Resolves the validation computation plan without simulation or metric computation. Human output shows the compact plan; `--json` emits the resolved plan contract. |
+
+Raw-data mode requires `--model-path` and `--intervals`. When `--empirical-data-path` is omitted,
+the workflow uses `metadata.input_inference.tick_data_source` from the model artifact when present.
+Use `--empirical-data-path` when the model artifact does not carry that source reference or when
+validating against another empirical sample. The empirical format is inferred from `.csv`,
+`.parquet`, `.pq`, or `.json` when `--empirical-data-format` is omitted.
+`--simulation-path-count` defaults to `1`, `--seed` defaults to `0`, and `--output-dir` defaults
+under the fitted model's validation directory.
+
+Use `--comparison-request PATH` for an advanced precomputed comparison request. In that mode the
+command skips empirical loading, simulation, and metric computation. `--metric-catalog PATH`
+overrides the built-in catalog.
+
+Without `--threshold-policy`, decisions use the built-in bootstrap confidence intervals and compare
+the empirical/simulated delta against the pooled interval half-width. `--significance-level`
+overrides the catalog's default confidence level in that statistical mode.
+
+Every report output directory includes `lineage.json`. `--cache`, `--cache=derived`, and
+`--cache=full` retain intermediate validation work products. The derived cache includes the
+generated comparison request, simulation manifest, and derived metric observations. Full cache also
+writes generated seeded tick paths.
+
+Human output is an analytical report with summary counts, failed or closest checks, coverage notes
+when coverage is incomplete, and artifact paths. `--fail-on-failed-checks`
+returns a nonzero process exit when metric checks fail. `--show-checks summary|failed|closest|all`
+and `--max-checks N` control check detail in human output.
 
 ## Notes
 

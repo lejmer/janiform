@@ -9,7 +9,7 @@ use janiform_governance::{
     run_deterministic_regression_harness,
 };
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
-use janiform_validation::RegressionCaseStatus;
+use janiform_verification::RegressionCaseStatus;
 
 use support::validation_fixture::{
     CalendarRegressionCaseFixture, HourlyFactorCanonicalOutputCaseFixture,

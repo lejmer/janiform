@@ -28,6 +28,7 @@ pub enum SimulationRandomnessSubstreamDomain {
     ExogenousNewsMarks = 10,
     CoarseTradingTimeReturn = 11,
     CoarseStatisticsSampling = 12,
+    StylizedFactsValidationSimulationPath = 13,
 }
 
 impl SimulationRandomnessSubstreamDomain {

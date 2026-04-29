@@ -13,7 +13,6 @@ from .commands.model_workflows import build_fit_group, build_simulate_group
 from .commands.presets import build_presets_group
 from .commands.pricing import build_price_command
 from .commands.seasonality import build_seasonality_group
-from .commands.stylized_facts import build_stylized_facts_group
 from .constants import CliExitCode
 from .. import __version__
 
@@ -50,7 +49,6 @@ def build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Comma
         build_presets_group,
         build_seasonality_group,
         build_hourly_factors_group,
-        build_stylized_facts_group,
         build_development_group,
     ):
         root.add_command(group_builder(environment=environment))

@@ -9,4 +9,4 @@ pub(crate) mod reporting;
 pub(crate) mod seasonality;
 pub(crate) mod shared;
 pub(crate) mod simulation;
-pub(crate) mod stylized_facts;
+pub(crate) mod validation;

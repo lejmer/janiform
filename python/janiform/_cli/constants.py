@@ -87,13 +87,6 @@ CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID = "cli.internal.simulate.seeded_ti
 CLI_PRICE_ENTRYPOINT = "price"
 CLI_PRICE_VALIDATION_ERROR_ID = "cli.validation.price.invalid_input"
 CLI_PRICE_INTERNAL_ERROR_ID = "cli.internal.price.failed"
-CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT = "stylized_facts.horizon_comparison"
-CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID = (
-    "cli.validation.stylized_facts.horizon_comparison.invalid_input"
-)
-CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID = (
-    "cli.internal.stylized_facts.horizon_comparison.failed"
-)
 CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT = "seasonality.preprocess_timestamps"
 CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID = (
     "cli.validation.seasonality.preprocess_timestamps.invalid_input"
@@ -207,9 +200,6 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
         "build-contract": {},
     },
     "price": {},
-    "stylized-facts": {
-        "horizon-comparison": {},
-    },
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
     ("fit",): "fit",
@@ -228,7 +218,6 @@ CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
     ("hourly-factors", "materialize-news-intensity"): "hourly-factors.materialize-news-intensity",
     ("hourly-factors", "build-contract"): "hourly-factors.build-contract",
     ("pricing", "vanilla-option"): "pricing.vanilla-option",
-    ("stylized-facts", "horizon-comparison"): "stylized-facts.horizon-comparison",
 }
 
 
