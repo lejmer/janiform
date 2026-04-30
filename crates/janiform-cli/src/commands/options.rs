@@ -5,50 +5,71 @@ use clap::ValueEnum;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum ExecutionMode {
+    #[value(help = "Keep supported intermediate results in memory.")]
     Memory,
+    #[value(help = "Save run outputs and checkpoints to disk.")]
     Disk,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum WorkflowScope {
+    #[value(help = "Fit the full model using the inputs supplied on the command line.")]
     Full,
+    #[value(help = "Prepare only the seasonality portion of the calibration workflow.")]
     SeasonalityOnly,
+    #[value(help = "Fit the full model without an observed option surface.")]
     FullWithoutOptionSurface,
+    #[value(help = "Fit the full model including the observed option surface.")]
     FullWithOptionSurface,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum CalibrationStageOption {
+    #[value(help = "Resume from the seasonality stage.")]
     Seasonality,
+    #[value(help = "Resume from the Hawkes activity stage.")]
     Hawkes,
+    #[value(help = "Resume from the return-component stage.")]
     ReturnComponents,
+    #[value(help = "Resume from the mean-reversion stage.")]
     MeanReversion,
+    #[value(help = "Resume from the joint-refinement stage.")]
     JointRefinement,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum InputFileFormat {
+    #[value(help = "Read comma-separated values.")]
     Csv,
+    #[value(help = "Read Apache Parquet.")]
     Parquet,
+    #[value(help = "Read JSON.")]
     Json,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum TickPriceInputPolicy {
+    #[value(help = "Use the explicit tick price column.")]
     ExplicitPriceColumn,
+    #[value(help = "Use the midpoint of tick bid and ask columns.")]
     BidAskMidpoint,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum OptionQuoteInputPolicy {
+    #[value(help = "Use the explicit option mid-price column.")]
     MidPriceColumn,
+    #[value(help = "Use the midpoint of option bid and ask columns.")]
     BidAskMidpoint,
+    #[value(help = "Use the explicit option implied-volatility column.")]
     ImpliedVolatilityColumn,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum DuplicateRecordPolicy {
+    #[value(help = "Keep the first record for each duplicate key.")]
     KeepFirst,
+    #[value(help = "Keep the last record for each duplicate key.")]
     KeepLast,
 }
 
@@ -57,25 +78,46 @@ pub(crate) struct RunIdentityOptions {
     #[arg(long, value_name = "ID", help = "Stable run identifier.")]
     pub(crate) run_id: Option<String>,
 
-    #[arg(long, value_name = "DIR", help = "Directory for command artifacts.")]
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "Directory for command outputs.",
+        long_help = "Directory for command outputs.
+
+For fit runs this is the run directory. Disk execution writes the fitted model, fit report, progress log, latest status snapshot, and checkpoints under this directory."
+    )]
     pub(crate) output_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct ModelPathOptions {
-    #[arg(long, value_name = "PATH", help = "Persisted Janiform model path.")]
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Saved Janiform model path.",
+        long_help = "Saved Janiform model path.
+
+Most commands read the model.jf file written by janiform fit."
+    )]
     pub(crate) model_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct OutputPathOptions {
-    #[arg(long, value_name = "PATH", help = "Primary command output path.")]
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Primary output path.",
+        long_help = "Primary output path.
+
+When omitted, Janiform chooses a default output path for the command."
+    )]
     pub(crate) output_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct TickDataOptions {
-    #[arg(long, value_name = "PATH", help = "Tick data input path.")]
+    #[arg(long, value_name = "PATH", help = "Tick data input file.")]
     pub(crate) tick_data_path: Option<PathBuf>,
 
     #[arg(long, value_enum, help = "Tick data file format.")]
@@ -99,7 +141,7 @@ pub(crate) struct TickDataOptions {
     #[arg(long, value_name = "COLUMN", help = "Tick ask column.")]
     pub(crate) tick_ask_column: Option<String>,
 
-    #[arg(long, value_enum, help = "Tick price normalization policy.")]
+    #[arg(long, value_enum, help = "Tick price input policy.")]
     pub(crate) tick_price_input_policy: Option<TickPriceInputPolicy>,
 
     #[arg(long, value_name = "TZ", help = "Timezone for naive tick timestamps.")]
@@ -114,7 +156,7 @@ pub(crate) struct TickDataOptions {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Observed option surface input path."
+        help = "Observed option surface input file."
     )]
     pub(crate) option_surface_path: Option<PathBuf>,
 
@@ -152,7 +194,7 @@ pub(crate) struct TickDataOptions {
     )]
     pub(crate) option_implied_volatility_column: Option<String>,
 
-    #[arg(long, value_enum, help = "Option quote normalization policy.")]
+    #[arg(long, value_enum, help = "Option quote input policy.")]
     pub(crate) option_quote_input_policy: Option<OptionQuoteInputPolicy>,
 
     #[arg(
@@ -180,7 +222,7 @@ pub(crate) struct TickDataOptions {
     #[arg(long, value_name = "TZ", help = "Known-news calendar timezone.")]
     pub(crate) known_news_timezone: Option<String>,
 
-    #[arg(long, value_name = "EXCHANGE", help = "Market exchange code.")]
+    #[arg(long, value_name = "CODE", help = "Market exchange code.")]
     pub(crate) exchange_code: Option<String>,
 
     #[arg(long, value_name = "TZ", help = "Market session timezone.")]

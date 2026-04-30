@@ -17,17 +17,26 @@ use crate::context::GlobalCliOptions;
 #[command(
     name = "janiform",
     version,
-    about = "Native Janiform command shell.",
-    long_about = "Primary workflows are the fit, simulate, and price commands.
+    about = "Command-line interface for the Janiform high-frequency return model.",
+    long_about = "Janiform is a high-frequency return model for hyperrealistic simulation of market prices and derivative valuation.
 
-Use the fit command to fit a Janiform model from market data.
-Use the simulate command to simulate from a persisted Janiform model.
-Use the price command to price options from a persisted Janiform model.
+This command-line interface fits the model from market data, then uses fitted models for simulation, derivative valuation, reporting, and validation. Use command help for details on each task.
+
+Output modes:
+  default human output writes summaries to stdout and progress to stderr
+  --quiet limits human output to final status and output paths
+  --silent suppresses normal output while preserving warnings and errors
+  --json writes one final JSON object to stdout
+  --events jsonl writes machine events to stderr
+  --trace-events adds trace-level records to the event stream
 
 See also:
   janiform fit --help
   janiform simulate --help
-  janiform price --help",
+  janiform price --help
+  janiform validate --help
+  janiform inspect --help
+  janiform report --help",
     arg_required_else_help = true
 )]
 pub(crate) struct Cli {
@@ -40,39 +49,39 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum RootCommand {
-    #[command(about = "Fit a Janiform model from market data.")]
+    #[command(about = "Fit Janiform models from market data.")]
     Fit(FitCommand),
 
-    #[command(about = "Inspect persisted runs and fitted models.")]
+    #[command(about = "Inspect saved runs and fitted models.")]
     Inspect(InspectCommand),
 
-    #[command(about = "Build reports from persisted Janiform artifacts.")]
+    #[command(about = "Render reports from saved Janiform outputs.")]
     Report(ReportCommand),
 
     #[command(
-        about = "Price options from a persisted Janiform model.",
+        about = "Price derivatives with a fitted Janiform model.",
         alias = "pricing"
     )]
     Price(PriceCommand),
 
-    #[command(about = "Simulate paths from a persisted Janiform model.")]
+    #[command(about = "Simulate paths from a fitted Janiform model.")]
     Simulate(SimulateCommand),
 
     #[command(about = "Inspect bundled and user-registered presets.")]
     Presets(PresetsCommand),
 
-    #[command(about = "Seasonality preprocessing workflows.")]
+    #[command(about = "Prepare and diagnose seasonality inputs.")]
     Seasonality(SeasonalityCommand),
 
     #[command(
         name = "hourly-factors",
-        about = "Hourly factor materialization and contract-building workflows."
+        about = "Prepare hourly seasonality and news-intensity factors."
     )]
     HourlyFactors(HourlyFactorsCommand),
 
-    #[command(about = "Validate fitted Janiform models.")]
+    #[command(about = "Validate fitted models against empirical behavior.")]
     Validate(ValidateCommand),
 
-    #[command(about = "Developer-only Janiform workflows.")]
+    #[command(about = "Janiform workflows for developers.")]
     Dev(DevCommand),
 }

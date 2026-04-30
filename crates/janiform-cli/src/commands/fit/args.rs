@@ -10,6 +10,20 @@ use crate::commands::options::TickDataOptions;
 use crate::commands::options::WorkflowScope;
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Fit Janiform models from market data.",
+    long_about = "Fit Janiform models from market data.
+
+The default fit command validates the supplied market data, calibrates the Janiform model, and saves the fitted model and fit report.
+
+Workflow split:
+  janiform fit          run the fit workflow
+  janiform fit inspect  preview inferred inputs and configuration
+  janiform fit plan     validate inputs and preview the planned run
+  janiform fit staged   run from a prepared calibration input file
+
+Disk execution writes a run directory with the fitted model, fit report, progress log, latest status snapshot, and checkpoints. Use inspect and report to follow a run in progress or review a completed run."
+)]
 pub(crate) struct FitCommand {
     #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
@@ -17,13 +31,23 @@ pub(crate) struct FitCommand {
     #[command(flatten)]
     pub(crate) run: RunIdentityOptions,
 
-    #[arg(long, value_enum, help = "High-level calibration workflow scope.")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Select which calibration workflow to prepare.",
+        long_help = "Select which calibration workflow to prepare.
+
+Use full for the standard path. Supplying an option surface allows the full workflow to include option-surface calibration. Explicit scope values are useful when automation must pin the intended workflow."
+    )]
     pub(crate) workflow_scope: Option<WorkflowScope>,
 
     #[arg(
         long,
         value_enum,
-        help = "Execution policy for generated fit artifacts."
+        help = "Choose whether fit outputs are saved to disk.",
+        long_help = "Choose whether fit outputs are saved to disk.
+
+Disk execution is the durable mode for long-running calibration. It writes the run directory, fitted model, fit report, progress log, latest status snapshot, and checkpoints. Memory execution is available only for supported preparation and inspection tasks."
     )]
     pub(crate) execution_mode: Option<ExecutionMode>,
 
@@ -44,14 +68,17 @@ pub(crate) struct FitCommand {
     #[arg(
         long,
         value_name = "COUNT",
-        help = "Joint refinement restart candidate budget."
+        help = "Joint-refinement restart candidate budget."
     )]
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
 
     #[arg(
         long,
         value_name = "REFERENCE",
-        help = "Resume disk execution from a persisted checkpoint reference."
+        help = "Resume disk execution from a checkpoint reference.",
+        long_help = "Resume disk execution from a checkpoint reference.
+
+Checkpoint references identify a saved checkpoint, for example checkpoint://RUN_ID/last-success or checkpoint://RUN_ID/STAGE_TOKEN. Resume is only valid for disk execution."
     )]
     pub(crate) resume_checkpoint_reference: Option<String>,
 
@@ -69,17 +96,38 @@ pub(crate) struct FitCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum FitSubcommand {
-    #[command(about = "Inspect inferred fit configuration without running calibration.")]
+    #[command(
+        about = "Inspect inferred fit configuration without running calibration.",
+        long_about = "Inspect inferred fit configuration without running calibration.
+
+This command resolves the supplied market-data inputs and calibration scope, then renders the inferred calibration configuration. It does not run calibration."
+    )]
     Inspect(FitInspectCommand),
 
-    #[command(about = "Validate inputs and derive the high-level fit plan.")]
+    #[command(
+        about = "Validate inputs and derive the fit plan.",
+        long_about = "Validate inputs and derive the fit plan.
+
+This command prepares the same calibration plan used by the default fit command, but stops before execution. Use it to review resolved inputs, output paths, and execution policy."
+    )]
     Plan(FitPlanCommand),
 
-    #[command(about = "Run or prepare explicit staged calibration contracts.")]
+    #[command(
+        about = "Run from prepared calibration inputs.",
+        long_about = "Run from prepared calibration inputs.
+
+This advanced command is useful when a separate process prepares calibration inputs before the fit runs. Use staged plan to create the input file and staged run to execute it."
+    )]
     Staged(FitStagedCommand),
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Inspect inferred fit configuration without running calibration.",
+    long_about = "Inspect inferred fit configuration without running calibration.
+
+The output summarizes resolved market data, known-news inputs, session inputs, calibration scope, and preparation resources. This inspection command does not run calibration and does not write a fitted model, fit report, progress log, or checkpoint."
+)]
 pub(crate) struct FitInspectCommand {
     #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
@@ -87,7 +135,11 @@ pub(crate) struct FitInspectCommand {
     #[command(flatten)]
     pub(crate) run: RunIdentityOptions,
 
-    #[arg(long, value_enum, help = "High-level calibration workflow scope.")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Select which calibration workflow to inspect."
+    )]
     pub(crate) workflow_scope: Option<WorkflowScope>,
 
     #[arg(
@@ -99,6 +151,12 @@ pub(crate) struct FitInspectCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Validate inputs and derive the fit plan.",
+    long_about = "Validate inputs and derive the fit plan.
+
+The plan command validates user inputs, resolves output paths, chooses the calibration scope, and can write a prepared calibration input file with --staged-execution-input-output-path. It does not run calibration."
+)]
 pub(crate) struct FitPlanCommand {
     #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
@@ -109,14 +167,14 @@ pub(crate) struct FitPlanCommand {
     #[arg(
         long,
         value_enum,
-        help = "Execution policy for generated plan artifacts."
+        help = "Choose whether planned fit outputs are disk-backed."
     )]
     pub(crate) execution_mode: Option<ExecutionMode>,
 
     #[arg(
         long,
         value_name = "PATH",
-        help = "Write the prepared staged execution-input contract."
+        help = "Write the prepared calibration input file."
     )]
     pub(crate) staged_execution_input_output_path: Option<PathBuf>,
 
@@ -137,15 +195,21 @@ pub(crate) struct FitPlanCommand {
     #[arg(
         long,
         value_name = "COUNT",
-        help = "Joint refinement restart candidate budget."
+        help = "Joint-refinement restart candidate budget."
     )]
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
 
-    #[arg(long, value_enum, help = "High-level calibration workflow scope.")]
+    #[arg(long, value_enum, help = "Select which calibration workflow to plan.")]
     pub(crate) workflow_scope: Option<WorkflowScope>,
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Run from prepared calibration inputs.",
+    long_about = "Run from prepared calibration inputs.
+
+With no nested subcommand, this command runs a prepared calibration input file. Use janiform fit staged plan to create that file first."
+)]
 pub(crate) struct FitStagedCommand {
     #[command(flatten)]
     pub(crate) staged: StagedExecutionOptions,
@@ -156,14 +220,30 @@ pub(crate) struct FitStagedCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum FitStagedSubcommand {
-    #[command(about = "Build a staged execution-input contract.")]
+    #[command(
+        about = "Create a prepared calibration input file.",
+        long_about = "Create a prepared calibration input file.
+
+This command validates fit inputs and writes the prepared input file consumed by janiform fit staged run. It does not run calibration."
+    )]
     Plan(FitStagedPlanCommand),
 
-    #[command(about = "Run a staged execution-input contract.")]
+    #[command(
+        about = "Run a prepared calibration input file.",
+        long_about = "Run a prepared calibration input file.
+
+This command runs a prepared calibration input file. Disk runs write the fitted model, fit report, progress log, latest status snapshot, and checkpoints."
+    )]
     Run(FitStagedRunCommand),
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Create a prepared calibration input file.",
+    long_about = "Create a prepared calibration input file.
+
+The generated file captures validated inputs, calibration scope, run identity, output paths, and runtime resources for a later fit run."
+)]
 pub(crate) struct FitStagedPlanCommand {
     #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
@@ -174,7 +254,7 @@ pub(crate) struct FitStagedPlanCommand {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Generated staged execution-input path."
+        help = "Path for the prepared calibration input file."
     )]
     pub(crate) execution_input_output_path: Option<PathBuf>,
 
@@ -185,11 +265,21 @@ pub(crate) struct FitStagedPlanCommand {
     )]
     pub(crate) cpu_count: Option<usize>,
 
-    #[arg(long, value_enum, help = "High-level calibration workflow scope.")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Select which calibration workflow to encode."
+    )]
     pub(crate) workflow_scope: Option<WorkflowScope>,
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Run a prepared calibration input file.",
+    long_about = "Run a prepared calibration input file.
+
+The input file contains the prepared calibration run. Command-line checkpoint options can select the disk checkpoint directory or resume from a compatible checkpoint reference."
+)]
 pub(crate) struct FitStagedRunCommand {
     #[command(flatten)]
     pub(crate) staged: StagedExecutionOptions,
@@ -197,20 +287,26 @@ pub(crate) struct FitStagedRunCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct StagedExecutionOptions {
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Prepared staged execution-input contract."
-    )]
+    #[arg(long, value_name = "PATH", help = "Prepared calibration input file.")]
     pub(crate) execution_input_path: Option<PathBuf>,
 
-    #[arg(long, value_name = "DIR", help = "Directory for disk checkpoints.")]
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "Directory for disk checkpoints.",
+        long_help = "Directory for disk checkpoints.
+
+When omitted, disk execution uses the checkpoint directory from the prepared calibration input file or the default run-directory checkpoint path."
+    )]
     pub(crate) disk_checkpoint_directory: Option<PathBuf>,
 
     #[arg(
         long,
         value_name = "REFERENCE",
-        help = "Resume disk execution from a persisted checkpoint reference."
+        help = "Resume disk execution from a checkpoint reference.",
+        long_help = "Resume disk execution from a checkpoint reference.
+
+Checkpoint references identify a saved checkpoint such as checkpoint://RUN_ID/last-success or checkpoint://RUN_ID/STAGE_TOKEN."
     )]
     pub(crate) resume_checkpoint_reference: Option<String>,
 

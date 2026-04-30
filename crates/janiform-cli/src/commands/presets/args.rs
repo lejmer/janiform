@@ -7,21 +7,34 @@ use clap::ValueEnum;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum PresetCategory {
+    #[value(help = "Market profile presets.")]
     MarketProfile,
+    #[value(help = "Market session presets.")]
     Session,
+    #[value(help = "Known-news presets.")]
     KnownNews,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum PresetRegistryScope {
+    #[value(help = "Resolve from built-in and user-registered presets.")]
     Auto,
-    #[value(name = "built_in")]
+    #[value(name = "built_in", help = "Resolve only from built-in presets.")]
     BuiltIn,
-    #[value(name = "user_registered")]
+    #[value(
+        name = "user_registered",
+        help = "Resolve only from user-registered presets."
+    )]
     UserRegistered,
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Inspect bundled and user-registered presets.",
+    long_about = "Inspect bundled and user-registered presets.
+
+Presets provide reusable market-profile, session, and known-news inputs. Use list to discover available names, show to inspect a resolved preset, and export to write a resolved preset plus dependencies."
+)]
 pub(crate) struct PresetsCommand {
     #[command(subcommand)]
     pub(crate) command: PresetsSubcommand,
@@ -29,13 +42,28 @@ pub(crate) struct PresetsCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum PresetsSubcommand {
-    #[command(about = "List bundled and user-registered presets.")]
+    #[command(
+        about = "List bundled and user-registered presets.",
+        long_about = "List bundled and user-registered presets.
+
+Use --category or --scope to narrow discovery. Add --preset-registry or --user-preset to include user-defined presets."
+    )]
     List(PresetsListCommand),
 
-    #[command(about = "Show a resolved preset document.")]
+    #[command(
+        about = "Show a resolved preset document.",
+        long_about = "Show a resolved preset document.
+
+The command resolves the selected preset through the requested registry scope. Session and known-news presets support --expanded for category-specific detail tables in human output."
+    )]
     Show(PresetsShowCommand),
 
-    #[command(about = "Export resolved presets and dependencies.")]
+    #[command(
+        about = "Export resolved presets and dependencies.",
+        long_about = "Export resolved presets and dependencies.
+
+Export writes the selected resolved preset and the nested preset dependencies needed to reuse it outside the current registry context."
+    )]
     Export(PresetsExportCommand),
 }
 
@@ -99,7 +127,7 @@ pub(crate) struct PresetsShowRegistryArgs {
     #[arg(
         long,
         value_enum,
-        help = "Registry scope for the requested preset. Default: automatic."
+        help = "Registry scope for the requested preset. Defaults to automatic."
     )]
     pub(crate) scope: Option<PresetRegistryScope>,
 
@@ -121,7 +149,7 @@ pub(crate) struct PresetRegistryArgs {
         long,
         value_name = "PATH",
         action = ArgAction::Append,
-        help = "User preset artifact path."
+        help = "User preset file path."
     )]
     pub(crate) user_preset: Vec<PathBuf>,
 }
@@ -137,7 +165,7 @@ pub(crate) struct PresetsExportCommand {
     #[arg(
         long,
         value_enum,
-        help = "Registry scope for the requested preset. Default: automatic."
+        help = "Registry scope for the requested preset. Defaults to automatic."
     )]
     pub(crate) scope: Option<PresetRegistryScope>,
 

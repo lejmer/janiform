@@ -15,8 +15,11 @@ use crate::paths::PathResolver;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum ColorChoice {
+    #[value(help = "Use color when the output stream supports it. Respects NO_COLOR.")]
     Auto,
+    #[value(help = "Use color for human output even when terminal detection is inconclusive.")]
     Always,
+    #[value(help = "Disable color in human output.")]
     Never,
 }
 
@@ -34,6 +37,7 @@ pub enum OutputMode {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum EventStreamFormat {
+    #[value(help = "Write one JSON event object per line to stderr.")]
     Jsonl,
 }
 
@@ -58,7 +62,10 @@ pub(crate) struct GlobalCliOptions {
         long,
         global = true,
         value_name = "PATH",
-        help = "TOML CLI configuration document."
+        help = "Load CLI defaults from a TOML document.",
+        long_help = "Load CLI defaults from a TOML document.
+
+Configuration can set output and diagnostic defaults such as color, verbosity, JSON mode, quiet mode, silent mode, and event streaming. Model choices, numerical settings, and command-specific inputs stay explicit on each command."
     )]
     pub(crate) config: Option<PathBuf>,
 
@@ -67,7 +74,15 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         value_enum,
         value_name = "WHEN",
-        help = "ANSI color policy for terminal diagnostics."
+        help = "Control ANSI color for human output.",
+        long_help = "Control ANSI color for human output.
+
+Values:
+  auto    use color when the stream supports it and NO_COLOR is not set
+  always  force color for human output
+  never   disable color
+
+JSON and JSONL output never include ANSI color."
     )]
     pub(crate) color: Option<ColorChoice>,
 
@@ -76,7 +91,10 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         action = ArgAction::SetTrue,
         conflicts_with_all = ["quiet", "verbose", "json"],
-        help = "Suppress normal output while still printing warnings and errors."
+        help = "Suppress normal output while preserving warnings and errors.",
+        long_help = "Suppress normal human output while preserving warnings and errors.
+
+Use --silent when automation only needs the exit code and failure diagnostics. It conflicts with --quiet, --verbose, and --json because those options define different output modes."
     )]
     pub(crate) silent: bool,
 
@@ -85,7 +103,10 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         action = ArgAction::SetTrue,
         conflicts_with_all = ["silent", "verbose", "json"],
-        help = "Print final status and artifact paths only."
+        help = "Print final status and output paths only.",
+        long_help = "Print final status and output paths only.
+
+Use --quiet for logs and CI jobs that should keep a concise human-readable record without live progress tables. It conflicts with --silent, --verbose, and --json."
     )]
     pub(crate) quiet: bool,
 
@@ -95,7 +116,10 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         action = ArgAction::Count,
         conflicts_with_all = ["silent", "quiet"],
-        help = "Increase terminal diagnostic verbosity."
+        help = "Increase human diagnostic verbosity.",
+        long_help = "Increase human diagnostic verbosity.
+
+Use -v for INFO diagnostics and -vv for DEBUG diagnostics. Verbose output affects terminal diagnostics, not the final JSON result. It conflicts with --silent and --quiet."
     )]
     pub(crate) verbose: u8,
 
@@ -104,7 +128,10 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         action = ArgAction::SetTrue,
         conflicts_with_all = ["silent", "quiet"],
-        help = "Emit one final JSON object on stdout."
+        help = "Write one final JSON object to stdout.",
+        long_help = "Write one final JSON object to stdout.
+
+JSON mode is for machine consumption. Human progress and summary output are suppressed so stdout remains a single JSON document. Warnings and errors are written as JSON diagnostics when possible. Use --events jsonl for a streaming machine event log."
     )]
     pub(crate) json: bool,
 
@@ -113,7 +140,10 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         value_enum,
         value_name = "FORMAT",
-        help = "Emit machine events to stderr in the selected format."
+        help = "Write machine events to stderr.",
+        long_help = "Write machine events to stderr in the selected format.
+
+Use --events jsonl for one JSON event object per line. Event streams are separate from the final stdout output, so they can be used with human output, quiet output, or --json."
     )]
     pub(crate) events: Option<EventStreamFormat>,
 
@@ -121,7 +151,10 @@ pub(crate) struct GlobalCliOptions {
         long,
         global = true,
         action = ArgAction::SetTrue,
-        help = "Include trace-level diagnostics in the machine event stream."
+        help = "Include trace-level records in the machine event stream.",
+        long_help = "Include trace-level records in the machine event stream.
+
+This requires --events jsonl or an equivalent configured event stream. Trace records are intended for debugging command execution and are not part of the final stdout result."
     )]
     pub(crate) trace_events: bool,
 }

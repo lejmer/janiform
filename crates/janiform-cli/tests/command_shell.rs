@@ -1176,7 +1176,7 @@ fn price_fitted_model_validates_model_path_at_rust_boundary() {
 }
 
 #[test]
-fn simulate_help_exposes_high_level_interval_option() {
+fn simulate_help_exposes_interval_option() {
     let output = janiform_command()
         .args(["simulate", "--help"])
         .output()
@@ -1187,7 +1187,7 @@ fn simulate_help_exposes_high_level_interval_option() {
     let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
     assert!(
         stdout.contains("--interval"),
-        "simulate help should include high-level interval control:\n{stdout}"
+        "simulate help should include interval control:\n{stdout}"
     );
     assert!(
         stdout.contains("--coarse"),

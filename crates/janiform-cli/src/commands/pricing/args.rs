@@ -9,6 +9,14 @@ use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Price derivatives with a fitted Janiform model.",
+    long_about = "Price derivatives with a fitted Janiform model.
+
+The default price command values an explicit vanilla option using a saved Janiform model, valuation timestamp, spot, strike, expiry, payoff type, risk-free rate, and dividend yield.
+
+Use price fitted-model for explicit vanilla option terms. Use price observed-options when you want to value an observed option snapshot. Pricing writes pricing.json and pricing_report.json when an output path is supplied or a default output path is available."
+)]
 pub(crate) struct PriceCommand {
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
@@ -27,18 +35,30 @@ pub(crate) struct PriceCommand {
 pub(crate) enum PriceSubcommand {
     #[command(
         name = "fitted-model",
-        about = "Price explicit vanilla contracts from a fitted model."
+        about = "Price vanilla options with a fitted model.",
+        long_about = "Price vanilla options with a fitted model.
+
+This command reads a saved Janiform model and the supplied vanilla option terms. It writes pricing.json as the primary pricing result and pricing_report.json for optional diagnostics."
     )]
     FittedModel(FittedModelPricingCommand),
 
     #[command(
         name = "observed-options",
-        about = "Price an observed option snapshot from a fitted model."
+        about = "Price an observed option snapshot with a fitted model.",
+        long_about = "Price an observed option snapshot with a fitted model.
+
+This command reads a saved Janiform model and an observed option snapshot, then writes pricing results for that snapshot."
     )]
     ObservedOptions(ObservedOptionPricingCommand),
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Price vanilla options with a fitted model.",
+    long_about = "Price vanilla options with a fitted model.
+
+Supply either --expiry-timestamp-utc, --expiry-date, or --tenor to define expiry. The valuation timestamp, spot, strike, payoff type, rates, and saved model define the pricing state."
+)]
 pub(crate) struct FittedModelPricingCommand {
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
@@ -51,6 +71,12 @@ pub(crate) struct FittedModelPricingCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Price an observed option snapshot with a fitted model.",
+    long_about = "Price an observed option snapshot with a fitted model.
+
+The option surface input is interpreted as the observed pricing snapshot for the fitted model. This command is useful for pricing or reporting a whole snapshot rather than one manually specified vanilla option."
+)]
 pub(crate) struct ObservedOptionPricingCommand {
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
@@ -58,7 +84,7 @@ pub(crate) struct ObservedOptionPricingCommand {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Observed option snapshot input path."
+        help = "Observed option snapshot input file."
     )]
     pub(crate) option_surface_path: Option<PathBuf>,
 
@@ -68,7 +94,11 @@ pub(crate) struct ObservedOptionPricingCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct VanillaOptionPricingOptions {
-    #[arg(long, value_name = "UTC", help = "Pricing valuation timestamp.")]
+    #[arg(
+        long,
+        value_name = "UTC",
+        help = "Pricing valuation timestamp as RFC 3339 UTC."
+    )]
     pub(crate) valuation_time_utc: Option<String>,
 
     #[arg(long, value_name = "PRICE", help = "Current spot price.")]
@@ -77,7 +107,11 @@ pub(crate) struct VanillaOptionPricingOptions {
     #[arg(long, value_name = "PRICE", help = "Vanilla option strike.")]
     pub(crate) strike: Option<f64>,
 
-    #[arg(long, value_name = "UTC", help = "Exact option expiry timestamp.")]
+    #[arg(
+        long,
+        value_name = "UTC",
+        help = "Exact option expiry timestamp as RFC 3339 UTC."
+    )]
     pub(crate) expiry_timestamp_utc: Option<String>,
 
     #[arg(
@@ -90,7 +124,7 @@ pub(crate) struct VanillaOptionPricingOptions {
     #[arg(
         long,
         value_name = "TENOR",
-        help = "Relative option tenor. Supported units: h, d, w, m, y."
+        help = "Relative option tenor. Supported units are h, d, w, m, and y."
     )]
     pub(crate) tenor: Option<String>,
 
@@ -127,13 +161,15 @@ pub(crate) struct VanillaOptionPricingOptions {
     )]
     pub(crate) include_integration_quality_diagnostics: bool,
 
-    #[arg(long, help = "Include calibration hooks in pricing.json.")]
+    #[arg(long, help = "Include calibration details in pricing.json.")]
     pub(crate) include_calibration_hooks: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum PricePayoffType {
+    #[value(help = "Call payoff.")]
     Call,
+    #[value(help = "Put payoff.")]
     Put,
 }
 
