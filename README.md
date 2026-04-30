@@ -40,17 +40,16 @@ python -m examples.introductory.first_model
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator
+import pandas as pd
 
-model = JaniformEstimator(market_profile="eurusd_spot").fit(
-    tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet",
-)
-simulation = model.simulate(
-    seed=17,
-    start_time_utc="2023-03-28T19:00:00Z",
-    horizon_interval_count=24,
-)
-frame = simulation.to_pandas()
+from janiform.calibration import JaniformEstimator, JaniformModel, JaniformSimulationResult
+
+estimator = JaniformEstimator()
+model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet")
+simulation: JaniformSimulationResult = model.simulate(horizon_interval_count=24)
+
+df: pd.DataFrame = simulation.to_pandas()
+print(df.head())
 ```
 
 Use [docs/getting-started/first-model.md](docs/getting-started/first-model.md) for the full happy-path workflow and pricing notes.
@@ -68,15 +67,20 @@ janiform report --help
 janiform presets list --help
 ```
 
-Use [docs/guides/cli-workflows.md](docs/guides/cli-workflows.md) for workflow selection and [docs/reference/cli.md](docs/reference/cli.md) for the curated command reference.
+Use [docs/interfaces/cli.md](docs/interfaces/cli.md) for CLI mechanics and the workflow pages for task-focused examples.
 
 ## Documentation
 
 - [docs/README.md](docs/README.md)
-- [docs/introduction.md](docs/introduction.md)
 - [docs/getting-started/installation.md](docs/getting-started/installation.md)
-- [docs/getting-started/quickstart.md](docs/getting-started/quickstart.md)
 - [docs/getting-started/concepts.md](docs/getting-started/concepts.md)
+- [docs/getting-started/first-model.md](docs/getting-started/first-model.md)
+- [docs/workflows/fit-models.md](docs/workflows/fit-models.md)
+- [docs/workflows/simulate-paths.md](docs/workflows/simulate-paths.md)
+- [docs/workflows/price-derivatives.md](docs/workflows/price-derivatives.md)
+- [docs/workflows/validate-models.md](docs/workflows/validate-models.md)
+- [docs/interfaces/cli.md](docs/interfaces/cli.md)
+- [docs/interfaces/python.md](docs/interfaces/python.md)
 - [docs/reference/python-api.md](docs/reference/python-api.md)
 - [docs/reference/cli.md](docs/reference/cli.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
