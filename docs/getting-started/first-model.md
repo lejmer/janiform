@@ -1,217 +1,103 @@
-# First Model
+# First model
 
-This walkthrough uses the checked-in synthetic EUR/USD dataset and the high-level Python workflow.
+This walkthrough fits one Janiform model from tick data and uses that model to simulate a short path. The goal is not to tune a production run yet. The goal is to see the basic shape of Janiform: tick data goes in, a fitted model comes out, and the fitted model can generate new paths.
 
-Use [concepts.md](concepts.md) if you want the terms around anchors, reference prices, or seeded
-ticks defined before running the workflow.
+The examples use a realistic synthetic EUR/USD tick dataset:
 
-## Fit
+```text
+data/Synthetic_EURUSD_Data_1M_ticks.parquet
+```
+
+## What this builds
+
+This run has two parts:
+
+1. Fit a Janiform model from tick data.
+2. Simulate a short path from the fitted model.
+
+The fitted model is the important object. It contains the estimated market activity and return structure Janiform learned from the input data. Simulation is the first useful thing to do with that fitted model because it turns the model back into concrete price paths you can inspect.
+
+## Inputs
+
+For this first run, we'll keep the inputs simple:
+
+- one tick data file
+- one market profile
+- one simulation horizon
+
+The market profile tells Janiform which market conventions to use. The sample file name contains `EURUSD`, so Janiform can infer the bundled `eurusd_spot` profile in both Python and the CLI.
+
+Both interfaces default the simulation seed and start time. Pass them explicitly when you need a reproducible run anchored to a specific timestamp.
+
+## Python
+
+Use Python when you want the model inside analysis code, a notebook, or a larger application.
 
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator
-
-data_path = Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet"
-estimator = JaniformEstimator(market_profile="eurusd_spot")
-model = estimator.fit(tick_data_path=data_path)
-```
-
-Start with tick data. If you also want the fit to include options, add an option surface on the
-same call:
-
-- `tick_data_path=...` fits the model to the underlying data
-- `tick_data_path=...` plus `option_surface_path=...` fits the model to the underlying data and the
-  selected option snapshot
-
-## Fit With One Option Snapshot
-
-Use the same `fit(...)` call when you want to include option data.
-
-```python
-from datetime import UTC, datetime
-from pathlib import Path
-
-from janiform.calibration import JaniformEstimator
-from janiform.calibration.market_data import CalibrationFlatCarryInput
-
-tick_data_path = Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet"
-option_surface_path = Path("path/to/your_option_surface.parquet")
-
-model = JaniformEstimator(market_profile="eurusd_spot").fit(
-    tick_data_path=tick_data_path,
-    option_surface_path=option_surface_path,
-    option_surface_valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-    carry=CalibrationFlatCarryInput(discount_rate=0.0, carry_rate=0.0),
-)
-```
-
-When you add an option surface:
-
-- each fit run uses one option quote timestamp
-- pass `option_surface_valuation_time_utc` unless the file contains exactly one quote timestamp
-- include bid and ask quotes together with prices
-
-## Simulate
-
-```python
-from datetime import UTC, datetime
-
-simulation = model.simulate(
-    seed=17,
-    start_time_utc=datetime(2023, 3, 28, 19, 0, tzinfo=UTC),
-    horizon_interval_count=96,
-    interval="15min",
-    coarse=True,
-)
-frame = simulation.to_pandas()
-```
-
-When you already have recent observed continuation trades, pass them through
-`continuation_data`. Janiform estimates the live Hawkes and mean-reversion runtime state before
-continuing the simulation.
-
-```python
-from datetime import UTC, datetime
-
 import pandas as pd
 
-from janiform.calibration.fit.state import CurrentStateEstimationRequest
+from janiform.calibration import JaniformEstimator, JaniformModel, JaniformSimulationResult
 
-simulation = model.simulate(
-    seed=17,
-    start_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-    horizon_interval_count=4,
-    interval="1h",
-    continuation_data=CurrentStateEstimationRequest(
-        observed_tick_data=pd.DataFrame(
-            {
-                "timestamp_utc": [
-                    datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
-                    datetime(2026, 2, 2, 14, 45, tzinfo=UTC),
-                ],
-                "trade_price": [1.0845, 1.0850],
-                "trade_sign": ["buy", "sell"],
-            }
-        ),
-    ),
-)
+estimator = JaniformEstimator()
+model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet")
+simulation: JaniformSimulationResult = model.simulate(horizon_interval_count=24)
+
+df: pd.DataFrame = simulation.to_pandas()
+print(df.head())
 ```
 
-## Price
+This fits the model in memory, simulates 24 one-hour intervals, converts the simulation result to a pandas data frame, and prints the first rows.
 
-`model.price_option(...)` derives the pricing state from the fitted model, the valuation timestamp,
-and the supplied spot. When you also provide observed continuation trades, Janiform estimates the
-live Hawkes and mean-reversion boundary state from those observations before pricing. Without
-observed data, Janiform falls back to the stationary Hawkes state.
+## Plot the simulated data
+
+It is a good idea to inspect the simulated data by plotting it. If you have `matplotlib` installed, you can plot the data frame from the Python example like this:
 
 ```python
-from datetime import UTC, datetime
+import matplotlib.pyplot as plt
 
-result = model.price_option(
-    valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-    spot=1.0850,
-    strike=1.0900,
-    expiry_timestamp_utc=datetime(2026, 2, 2, 16, 0, tzinfo=UTC),
-)
+df.plot(x="time", y="close")
+plt.show()
 ```
 
-To supply observed data explicitly:
+The plot should show a short synthetic EUR/USD path generated by the fitted Janiform model. At this stage, the useful check is simple: make sure the output looks like a timestamped price path, not just a table of numbers.
 
-```python
-from datetime import UTC, date, datetime
+## CLI
 
-import pandas as pd
+Use the CLI when you want the same workflow from a terminal, shell script, scheduler, or automation system.
 
-from janiform.calibration.fit.state import CurrentStateEstimationRequest
-
-result = model.price_option(
-    valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-    spot=1.0850,
-    strike=1.0900,
-    expiry_date=date(2026, 2, 3),
-    observed_data=CurrentStateEstimationRequest(
-        observed_tick_data=pd.DataFrame(
-            {
-                "timestamp_utc": [
-                    datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
-                    datetime(2026, 2, 2, 14, 45, tzinfo=UTC),
-                ],
-                "trade_price": [1.0845, 1.0850],
-                "trade_sign": ["buy", "sell"],
-            }
-        ),
-    ),
-)
+```bash
+janiform fit data/Synthetic_EURUSD_Data_1M_ticks.parquet --run-id first-model
+janiform simulate \
+  --model-path .janiform/runs/first-model/artifacts/model.jf \
+  --horizon-interval-count 24
 ```
 
-If you want the derived live state directly, call `model.estimate_current_state(...)` with the same
-request contract.
+The `--run-id` value gives the fit command a predictable output directory. After the fit completes, the model is saved at:
 
-To price several strike-by-maturity grids from the same fitted-model snapshot without writing a
-loop, use `model.price_option_grid(...)` with `JaniformVanillaOptionGridBatch`.
-
-```python
-from datetime import UTC, datetime
-
-from janiform.calibration.fit.pricing.grids import JaniformVanillaOptionGrid, JaniformVanillaOptionGridBatch
-from janiform.pricing import VanillaOptionPayoffType
-
-grid_result = model.price_option_grid(
-    valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-    batch=JaniformVanillaOptionGridBatch(
-        spot=1.0850,
-        grids=(
-            JaniformVanillaOptionGrid(
-                payoff_type=VanillaOptionPayoffType.CALL,
-                risk_free_rate=0.0,
-                dividend_yield=0.0,
-                strikes=(1.0800, 1.0850, 1.0900),
-                tenors=("1h", "2h", "4h"),
-            ),
-        ),
-    ),
-)
+```text
+.janiform/runs/first-model/artifacts/model.jf
 ```
 
-When your nodes already form a strike-by-expiry grid, use
-`model.price_option_grid_surface(...)` with `JaniformVanillaOptionSurface`.
+The simulate command reads that model and writes its own output using the default simulation output path.
 
-```python
-from datetime import UTC, datetime
+## Outputs
 
-from janiform.calibration.fit.pricing.surface import JaniformVanillaOptionSurface
-from janiform.pricing import VanillaOptionPayoffType
+After the Python example, you have a fitted model object and a simulation result object in memory. You can inspect the simulated rows immediately, and later save the model or simulation output when you need durable artifacts.
 
-surface_result = model.price_option_grid_surface(
-    valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-    surface=JaniformVanillaOptionSurface(
-        spot=1.0850,
-        strikes=(1.0800, 1.0850, 1.0900),
-        tenors=("1h", "2h", "4h"),
-        payoff_type=VanillaOptionPayoffType.CALL,
-        risk_free_rate=0.0,
-        dividend_yield=0.0,
-    ),
-)
-```
+After the CLI example, you have a saved run directory under `.janiform/runs/first-model`. The fitted model lives in `artifacts/model.jf`, and the simulation command writes path data and a small run manifest in the default output location.
 
-Both workflows return Janiform prices together with Janiform-computed implied volatility outputs,
-per-node pricing statuses, and failure diagnostics for any nodes that do not price successfully.
+## Troubleshooting
 
-When your input is an observed option quote file instead of a synthetic pricing grid, use
-`model.price_option_snapshot(...)` for one retained quote snapshot. That workflow loads the
-observed tick and option data, estimates the current state, prices the retained snapshot, and
-returns both tidy rows through `to_pandas()` and a strike-by-expiry frame through
-`to_surface_frame()`.
+If the fit command cannot infer the sample market profile, check that the file name still contains `EURUSD` and that the path points to the synthetic tick file.
 
-Use `model.price_option_surface(...)` when you want the observed quote workflow returned as a
-surface result. For multi-expiry retained quotes, it returns the retained snapshot in the same
-surface-oriented result type. When the retained history shares one expiry, it can also span
-multiple valuation times through `valuation_count` or `use_all_valuation_times`.
+If the simulate command cannot find the model, check that the fit command completed and that the `--model-path` value points to `.janiform/runs/first-model/artifacts/model.jf`.
 
-## Related Example
+If the run takes longer than expected, let it finish. Fitting is the expensive part of the workflow because Janiform is estimating market activity and return behavior from data.
 
-[`examples/high_level/synthetic_eurusd_plot.py`](../../examples/high_level/synthetic_eurusd_plot.py)
-is a good next step when you want the same fit and simulation flow with plotting included.
-Use [`examples/README.md`](../../examples/README.md) for the grouped example index.
+## Next steps
+
+- [Concepts](concepts.md)
+- [Fit models](../workflows/fit-models.md)
+- [Simulate paths](../workflows/simulate-paths.md)
