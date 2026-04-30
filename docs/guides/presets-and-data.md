@@ -1,6 +1,6 @@
 # Presets And Data
 
-Combine presets with explicit file inputs for high-level workflows. Read [../getting-started/concepts.md](../getting-started/concepts.md) to learn what terms like market profile, session, and known news mean. Use the reference docs for the full flag list.
+Combine presets with explicit file inputs for Janiform workflows. Read [../getting-started/concepts.md](../getting-started/concepts.md) to learn what terms like market profile, session, and known news mean. Use the reference docs for the full flag list.
 
 ## Preset Categories
 
@@ -10,9 +10,9 @@ The CLI exposes three preset categories:
 - `known-news`
 - `market-profile`
 
-Use `janiform presets list` to see what is bundled, `janiform presets show` to inspect one artifact, and `janiform presets export` when you want a resolved preset plus nested dependencies written out. Add `--expanded` to `janiform presets show known-news NAME` or `janiform presets show session NAME` when you want category-specific detail tables in the human terminal view.
+Use `janiform presets list` to see what is bundled, `janiform presets show` to inspect one preset, and `janiform presets export` when you want a resolved preset plus nested dependencies written out. Add `--expanded` to `janiform presets show known-news NAME` or `janiform presets show session NAME` when you want category-specific detail tables in the human terminal view.
 
-User presets are registered explicitly for each command. Pass a single artifact with `--user-preset PATH`, or pass a manifest with `--preset-registry PATH`:
+User presets are registered explicitly for each command. Pass a single preset file with `--user-preset PATH`, or pass a manifest with `--preset-registry PATH`:
 
 ```json
 {
@@ -30,13 +30,13 @@ Manifest paths are resolved relative to the manifest file unless they are absolu
 
 ### Tick data
 
-- Required for high-level fitting
+- Required for fitting
 - Supported formats: `csv`, `parquet`
 - Common fields: timestamp, price or bid/ask columns, and trade-sign data for full-model Hawkes calibration
 
 ### Known news
 
-- Optional for high-level fitting
+- Optional for fitting
 - Supported formats: `csv`, `parquet`, `json`
 - Used directly in explicit market-data planning and staged workflows
 

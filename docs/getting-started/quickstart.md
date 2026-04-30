@@ -22,8 +22,8 @@ The top-level CLI is organized around:
 - `fit` for calibration
 - `simulate` for coarse-interval or seeded-tick simulation
 - `price` for vanilla option pricing
-- `inspect` for persisted run and model artifact inspection
-- `report` for fit report views and rendered report artifacts
+- `inspect` for saved run and fitted model inspection
+- `report` for fit report views and rendered HTML reports
 - `validate` for model validation workflows
 - `presets`, `seasonality`, and `hourly-factors` for supporting workflows
 
@@ -49,7 +49,7 @@ an option surface, it fits the model to the underlying data and the selected opt
 (suitable for options pricing).
 
 Use `JaniformEstimator.fit_with_report(...)` when you want the fitted model and the fit report from
-the same high-level call without changing the return type of `fit(...)`.
+one Python call without changing the return type of `fit(...)`.
 
 When you fit with options:
 
