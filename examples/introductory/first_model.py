@@ -1,5 +1,4 @@
 import argparse
-from datetime import UTC, datetime
 from typing import Final
 
 import pandas as pd
@@ -15,8 +14,6 @@ from examples._shared import (
 )
 
 
-SIMULATION_START_UTC: Final[datetime] = datetime(2023, 3, 28, 19, 0, tzinfo=UTC)
-SIMULATION_INTERVAL: Final[str] = "1h"
 SIMULATION_INTERVAL_COUNT: Final[int] = 24
 
 
@@ -29,10 +26,7 @@ def main() -> None:
     )
     model: JaniformModel = persisted_model.model
     simulation: JaniformSimulationResult = model.simulate(
-        seed=17,
-        start_time_utc=SIMULATION_START_UTC,
         horizon_interval_count=SIMULATION_INTERVAL_COUNT,
-        interval=SIMULATION_INTERVAL,
     )
     frame: pd.DataFrame = simulation.to_pandas()
 

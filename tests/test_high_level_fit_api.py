@@ -27,6 +27,7 @@ import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform._timestamps import datetime_to_utc_nanos
+from janiform._workflow_outputs import SimulationArtifactSink
 from janiform._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
@@ -1012,6 +1013,27 @@ def test_high_level_model_simulate_sends_model_payload_to_native_workflow(
     assert captured_requests[0]["simulation_kind"] == "coarse_interval"
     assert captured_requests[0]["model_payload"]["parameters"] == model.parameters
     assert captured_requests[0]["interval_duration_nanos"] == 3_600_000_000_000
+
+
+def test_high_level_model_simulate_defaults_match_cli_model_simulation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-defaults",
+    )
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
+
+    before_simulation = datetime.now(UTC)
+    model.simulate(horizon_interval_count=2)
+    after_simulation = datetime.now(UTC)
+
+    start_time_utc = datetime.fromisoformat(captured_requests[0]["start_time_utc"])
+
+    assert captured_requests[0]["seed"] == 0
+    assert before_simulation <= start_time_utc <= after_simulation
 
 
 def test_janiform_estimator_preserves_duplicate_ticks_by_default(
@@ -2153,7 +2175,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         simulation_result: object,
         output_path: str | Path,
         preferences: Any,
-        sink: Any = None,
+        sink: Optional[SimulationArtifactSink] = None,
         calendar_registry: Any = None,
         exchange_code: Any = None,
     ) -> None:
@@ -2439,7 +2461,7 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
         simulation_result: object,
         output_path: str | Path,
         preferences: Any,
-        sink: Any = None,
+        sink: Optional[SimulationArtifactSink] = None,
     ) -> None:
         del simulation_result, output_path, preferences
 
@@ -2492,7 +2514,7 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
         simulation_result: object,
         output_path: str | Path,
         preferences: Any,
-        sink: Any = None,
+        sink: Optional[SimulationArtifactSink] = None,
     ) -> None:
         del simulation_result, preferences
 
