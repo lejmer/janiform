@@ -320,10 +320,12 @@ def test_prepare_fit_workflow_infers_market_profile_from_synthetic_tick_path(
         prepared_workflow.temporary_directory.cleanup()
 
     market_profile = prepared_workflow.resolved_configuration.market_profile
+    session = prepared_workflow.resolved_configuration.session
 
     assert market_profile is not None
-    assert market_profile.selected_preset is not None
-    assert market_profile.selected_preset.preset_name == "eurusd_spot"
+    assert market_profile.configuration.profile_name == "eurusd_spot"
+    assert session.selected_preset is not None
+    assert session.selected_preset.preset_name == "fx_spot_24_5"
 
 
 def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparation(
