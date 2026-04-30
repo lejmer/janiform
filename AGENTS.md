@@ -169,13 +169,15 @@ In the `python/janiform/` folder where the Python code is located:
   - PyO3 exposes the native entrypoint.
   - Python calls into that native entrypoint and converts inputs and outputs.
 - If you are about to add a Python helper that loops over market observations, evolves model state, computes fitted/runtime state, applies numerical recursions, or reconstructs any model boundary condition, stop and move that logic into Rust.
-- Type hints everywhere: functions, attributes, locals (where it matters, which is most of them).
-- Never use quoted / stringed type hints. Repo requires Python >=3.12 and PEP 649 and PEP 749 is accepted in that version.
-- Imports grouped and alphabetized per guide.
 - `import ...` before `from ... import ...` per group.
+- Imports grouped and alphabetized per guide.
+- Type hints everywhere: functions, attributes, locals (where it matters, which is most of them).
+- Use `Optional` instead of PEP 604-style `None` unions.
+- Use PEP 604-style unions instead of explicit `Union` type hints (except for the case with `Optional` just mentioned).
+- Never use quoted / stringed type hints. Repo requires Python >=3.12 and PEP 649 and PEP 749 is accepted in that version.
 - Use `Any` instead of `object` for most things where inference is hard or impossible. This includes tuples, lists and dicts that take non-builtin types that are hard to infer.
-- Don't be lazy and do `list[Any]` any time we have non-builtin types. That's bad practice. Most of the time types are inferable and should be used explicitly.
 - Never use `object` or `Any` as a cop-out / shortcut to get around specifying a type that is known. Even if it leads to circular imports. Deal with circular imports a different way! Good type hints are a priority! They make bugs less likely.
+- Don't be lazy and do `list[Any]` any time we have non-builtin types. That's bad practice. Most of the time types are inferable and should be used explicitly.
 - Strings: double quotes for paths/logs/UI. Single quotes for enum‑like values and keys.
 - Enums: use `StrEnum`, `IntEnum`, or `IntFlag`. UPPERCASE members.
 - Control flow: prefer `match` over long if/elif chains where suitable.
