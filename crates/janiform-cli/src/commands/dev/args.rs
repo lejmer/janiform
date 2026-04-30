@@ -6,6 +6,12 @@ use janiform_governance::RegressionHarnessToleranceConfig;
 use janiform_verification::OpenClosedGapLeakageRegressionHarnessToleranceConfig;
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Developer-only Janiform workflows.",
+    long_about = "Developer-only Janiform workflows.
+
+These commands are intended for repository diagnostics and regression fixture checks. They are not part of the normal fit, simulate, price, inspect, report, or validate workflow."
+)]
 pub(crate) struct DevCommand {
     #[command(subcommand)]
     pub(crate) command: DevSubcommand,
@@ -13,11 +19,22 @@ pub(crate) struct DevCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum DevSubcommand {
-    #[command(about = "Developer regression harnesses.")]
+    #[command(
+        about = "Developer regression harnesses.",
+        long_about = "Developer regression harnesses.
+
+Regression commands compare deterministic fixtures and semantic validation fixtures against native Rust implementations."
+    )]
     Regression(RegressionCommand),
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Developer regression harnesses.",
+    long_about = "Developer regression harnesses.
+
+Use these commands to validate checked-in regression fixtures for calendar behavior, hourly factors, deterministic outputs, and open/closed gap leakage behavior."
+)]
 pub(crate) struct RegressionCommand {
     #[command(subcommand)]
     pub(crate) command: RegressionSubcommand,
@@ -25,17 +42,31 @@ pub(crate) struct RegressionCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum RegressionSubcommand {
-    #[command(about = "Run deterministic regression checks.")]
+    #[command(
+        about = "Run deterministic regression checks.",
+        long_about = "Run deterministic regression checks.
+
+This command checks calendar and hourly-factor regression cases against the native deterministic harness."
+    )]
     Deterministic(DeterministicRegressionCommand),
 
     #[command(
         name = "open-closed-gap-leakage",
-        about = "Run open/closed gap leakage regression checks."
+        about = "Run open/closed gap leakage regression checks.",
+        long_about = "Run open/closed gap leakage regression checks.
+
+This command checks calendar fixtures and open/closed gap behavior fixtures against the native semantic validation harness."
     )]
     OpenClosedGapLeakage(OpenClosedGapLeakageRegressionCommand),
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Run deterministic regression checks.",
+    long_about = "Run deterministic regression checks.
+
+The command consumes a calendar registry, calendar regression cases, and hourly-factor regression cases. Tolerance options are fixture validation thresholds for this developer harness."
+)]
 pub(crate) struct DeterministicRegressionCommand {
     #[arg(long, value_name = "PATH", help = "Calendar registry JSON document.")]
     pub(crate) calendar_registry_json: Option<PathBuf>,
@@ -70,6 +101,12 @@ pub(crate) struct DeterministicRegressionCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Run open/closed gap leakage regression checks.",
+    long_about = "Run open/closed gap leakage regression checks.
+
+The command consumes a calendar fixture and an open/closed gap behavior fixture. The component tolerance applies to semantic component comparisons in this developer harness."
+)]
 pub(crate) struct OpenClosedGapLeakageRegressionCommand {
     #[arg(
         long,

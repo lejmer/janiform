@@ -8,6 +8,18 @@ use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Simulate paths from a fitted Janiform model.",
+    long_about = "Simulate paths from a fitted Janiform model.
+
+The simulate command uses a saved Janiform model to generate synthetic market paths over the requested horizon. It defaults to seeded tick paths. Add --coarse when you want interval-level paths instead of tick-level output.
+
+Advanced input-file commands are also available:
+  janiform simulate seeded-ticks     run from a prepared seeded-tick input file
+  janiform simulate coarse-interval  run from a prepared interval input file
+
+Simulation writes the exported path data and a simulation report. Use --json for one final machine-readable completion summary."
+)]
 pub(crate) struct SimulateCommand {
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
@@ -25,13 +37,13 @@ pub(crate) struct SimulateCommand {
         long,
         value_name = "INTERVAL",
         default_value = "1h",
-        help = "Horizon interval duration such as `1min`, `15min`, `1h`, or `1D`."
+        help = "Horizon interval duration such as 1min, 15min, 1h, or 1D."
     )]
     pub(crate) interval: String,
 
     #[arg(
         long,
-        help = "Generate a coarse interval path instead of the default seeded tick path."
+        help = "Generate interval-level paths instead of seeded tick paths."
     )]
     pub(crate) coarse: bool,
 
@@ -63,26 +75,44 @@ pub(crate) struct SimulateCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum SimulateSubcommand {
-    #[command(name = "seeded-ticks", about = "Simulate a seeded tick path.")]
+    #[command(
+        name = "seeded-ticks",
+        about = "Run from a prepared seeded-tick simulation input.",
+        long_about = "Run from a prepared seeded-tick simulation input.
+
+Use this when another tool has already prepared the seeded-tick simulation input and calendar file. To simulate from a saved Janiform model, use janiform simulate --model-path instead."
+    )]
     SeededTicks(SeededTicksCommand),
 
-    #[command(name = "coarse-interval", about = "Simulate a coarse interval path.")]
+    #[command(
+        name = "coarse-interval",
+        about = "Run from a prepared interval simulation input.",
+        long_about = "Run from a prepared interval simulation input.
+
+Use this when another tool has already prepared the interval-level simulation input. To simulate interval paths from a saved Janiform model, use janiform simulate --model-path --coarse instead."
+    )]
     CoarseInterval(CoarseIntervalCommand),
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Run from a prepared seeded-tick simulation input.",
+    long_about = "Run from a prepared seeded-tick simulation input.
+
+The command exports synthetic tick records in batches and writes a simulation_report.json file next to the output path. The calendar file is required to recover hourly factors."
+)]
 pub(crate) struct SeededTicksCommand {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Seeded tick simulation request JSON document."
+        help = "Prepared seeded-tick simulation input file."
     )]
     pub(crate) request_json: Option<PathBuf>,
 
     #[arg(
         long,
         value_name = "PATH",
-        help = "Calendar registry JSON document used to rehydrate hourly factors."
+        help = "Calendar file used to recover hourly factors."
     )]
     pub(crate) calendar_registry_json: Option<PathBuf>,
 
@@ -125,11 +155,17 @@ pub(crate) struct SeededTicksCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "Run from a prepared interval simulation input.",
+    long_about = "Run from a prepared interval simulation input.
+
+The command exports interval records in batches and writes a simulation_report.json file next to the output path. Use seeded-ticks when you need tick-level output."
+)]
 pub(crate) struct CoarseIntervalCommand {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Coarse interval simulation request JSON document."
+        help = "Prepared interval simulation input file."
     )]
     pub(crate) request_json: Option<PathBuf>,
 
@@ -170,7 +206,7 @@ pub(crate) struct SimulationExportBatchOptions {
         long = "output-batch-size",
         value_name = "ROWS",
         default_value_t = DEFAULT_SIMULATION_EXPORT_BATCH_SIZE,
-        help = "Number of simulation output rows per exported artifact batch."
+        help = "Number of simulation output rows per exported batch."
     )]
     pub(crate) output_batch_size: usize,
 }
@@ -180,28 +216,28 @@ pub(crate) struct SimulationHorizonOptions {
     #[arg(
         long,
         value_name = "SEED",
-        help = "Simulation random seed. Default: 0."
+        help = "Simulation random seed. Defaults to 0."
     )]
     pub(crate) seed: Option<u64>,
 
     #[arg(
         long,
         value_name = "UTC",
-        help = "Simulation start timestamp. Default: current UTC time."
+        help = "Simulation start timestamp. Defaults to the current UTC time."
     )]
     pub(crate) start_time_utc: Option<String>,
 
     #[arg(
         long,
         value_name = "COUNT",
-        help = "Number of horizon intervals to simulate, using the duration from --interval."
+        help = "Number of horizon intervals to simulate using --interval."
     )]
     pub(crate) horizon_interval_count: Option<u64>,
 
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional simulation debug trace path."
+        help = "Optional seeded-tick debug trace path."
     )]
     pub(crate) debug_trace_path: Option<PathBuf>,
 }

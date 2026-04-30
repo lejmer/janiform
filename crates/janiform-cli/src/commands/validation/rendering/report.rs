@@ -21,9 +21,13 @@ use crate::error::CliError;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum StylizedFactCheckDisplay {
+    #[value(help = "Show summary counts and a compact set of notable checks.")]
     Summary,
+    #[value(help = "Show failed checks.")]
     Failed,
+    #[value(help = "Show checks closest to a threshold.")]
     Closest,
+    #[value(help = "Show all checks up to --max-checks.")]
     All,
 }
 
