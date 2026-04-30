@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Final
+from typing import Any, Final, Optional
 
 import pandas as pd
 
@@ -117,9 +117,9 @@ def hourly_factor_regression_canonical_cases() -> list[dict[str, Any]]:
 
 def load_or_fit_persisted_example_model(
     *,
-    market_profile: str,
     tick_data_path: Path,
-    tail_row_count: int | None = None,
+    market_profile: Optional[str] = None,
+    tail_row_count: Optional[int] = None,
     force_refit: bool = False,
     silent: bool = False,
 ) -> PersistedExampleModel:
@@ -176,13 +176,14 @@ def load_or_fit_persisted_example_model(
 
 def persisted_example_model_path(
     *,
-    market_profile: str,
     tick_data_path: Path,
-    tail_row_count: int | None = None,
+    market_profile: Optional[str] = None,
+    tail_row_count: Optional[int] = None,
 ) -> Path:
     selection_label = "full" if tail_row_count is None else f"tail_{tail_row_count}"
+    market_profile_label = "inferred" if market_profile is None else market_profile
     cache_stem = _cache_token(
-        f"{tick_data_path.stem}_{market_profile}_{selection_label}"
+        f"{tick_data_path.stem}_{market_profile_label}_{selection_label}"
     )
     return EXAMPLE_MODEL_ARTIFACT_ROOT / f"{cache_stem}.json"
 
@@ -218,9 +219,9 @@ def _materialize_tail_slice(
 
 def _persisted_example_model_cache_metadata(
     *,
-    market_profile: str,
     tick_data_path: Path,
-    tail_row_count: int | None,
+    market_profile: Optional[str],
+    tail_row_count: Optional[int],
 ) -> dict[str, Any]:
     source_stat = tick_data_path.stat()
 

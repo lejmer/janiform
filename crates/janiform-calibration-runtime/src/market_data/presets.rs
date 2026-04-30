@@ -128,34 +128,42 @@ struct BundledSessionSourceDocument {
 
 /// Infer a bundled market profile from a tick-data path.
 ///
-/// The inference uses the leading identifier token in the file stem, for
-/// example `EURUSD_665k_ticks.parquet` maps to `eurusd_spot` when that bundled
-/// profile is available.
+/// The inference uses the first bundled instrument token in the file stem, for
+/// example `EURUSD_665k_ticks.parquet` and
+/// `Synthetic_EURUSD_Data_1M_ticks.parquet` both map to `eurusd_spot` when that
+/// bundled profile is available.
 pub fn infer_bundled_market_profile_from_tick_data_path(
     path: &Path,
 ) -> Result<Option<ResolvedMarketProfile>, MarketDataPresetInferenceError> {
-    let Some(instrument_token) = instrument_token_from_path(path) else {
+    let instrument_tokens = instrument_tokens_from_path(path);
+    if instrument_tokens.is_empty() {
         return Ok(None);
-    };
-
-    let profiles = bundled_market_profiles()?;
-    let Some(profile) = profiles.get(instrument_token.as_str()) else {
-        return Ok(None);
-    };
-
-    resolve_bundled_market_profile(profile)
-}
-
-fn instrument_token_from_path(path: &Path) -> Option<String> {
-    let file_stem = path.file_stem()?.to_str()?;
-    let normalized_stem = sanitize_ascii_identifier_component(file_stem)?;
-    let instrument_token = normalized_stem.split('_').next()?;
-
-    if instrument_token.len() < MIN_MARKET_PROFILE_INSTRUMENT_TOKEN_LENGTH {
-        return None;
     }
 
-    Some(instrument_token.to_string())
+    let profiles = bundled_market_profiles()?;
+
+    for instrument_token in instrument_tokens {
+        if let Some(profile) = profiles.get(instrument_token.as_str()) {
+            return resolve_bundled_market_profile(profile);
+        }
+    }
+
+    Ok(None)
+}
+
+fn instrument_tokens_from_path(path: &Path) -> Vec<String> {
+    let Some(file_stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return Vec::new();
+    };
+    let Some(normalized_stem) = sanitize_ascii_identifier_component(file_stem) else {
+        return Vec::new();
+    };
+
+    normalized_stem
+        .split('_')
+        .filter(|token| token.len() >= MIN_MARKET_PROFILE_INSTRUMENT_TOKEN_LENGTH)
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn resolve_bundled_market_profile(
@@ -253,7 +261,7 @@ mod tests {
     #[test]
     fn infers_eurusd_spot_profile_from_tick_path() {
         let inferred_profile = infer_bundled_market_profile_from_tick_data_path(Path::new(
-            "EURUSD_665k_ticks.parquet",
+            "Synthetic_EURUSD_Data_1M_ticks.parquet",
         ))
         .expect("bundled profile inference should succeed")
         .expect("EURUSD token should select a bundled profile");

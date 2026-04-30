@@ -101,7 +101,7 @@ def simulate_model(
     )
 
     callback = progress_callback
-    native_progress_callback: Callable[[dict[str, Any]], None] | None = None
+    native_progress_callback: Optional[Callable[[dict[str, Any]], None]] = None
     if callback is not None:
         def emit_simulation_progress(raw_event: dict[str, Any]) -> None:
             event = simulation_progress_event_from_mapping(raw_event)

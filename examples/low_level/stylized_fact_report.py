@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from janiform.stylized_facts import (
     render_stylized_fact_table_markdown,
@@ -254,7 +254,7 @@ def build_observed_metric(
     horizon_label: str,
     metric_id: str,
     metric_name: str,
-    value: float | None,
+    value: Optional[float],
 ) -> dict[str, Any]:
     return {
         "horizon_label": horizon_label,

@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -111,8 +112,8 @@ def main() -> None:
 
     strikes = surface_context.strikes
 
-    price_rows: list[list[float | None]] = []
-    implied_volatility_rows: list[list[float | None]] = []
+    price_rows: list[list[Optional[float]]] = []
+    implied_volatility_rows: list[list[Optional[float]]] = []
     inversion_status_rows: list[list[str]] = []
     pricing_failure_messages: list[str] = []
 

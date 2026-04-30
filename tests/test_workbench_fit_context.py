@@ -2,7 +2,7 @@ import math
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import numpy as np
 import pandas
@@ -111,8 +111,8 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             _ = progress_callback
@@ -242,8 +242,8 @@ def test_workbench_comparison_reuses_persisted_cache_for_same_model_seed_and_ran
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             _ = progress_callback
@@ -353,8 +353,8 @@ def test_workbench_comparison_cache_does_not_apply_to_edited_models(
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             del progress_callback
@@ -374,8 +374,8 @@ def test_workbench_comparison_cache_does_not_apply_to_edited_models(
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             del progress_callback
@@ -480,8 +480,8 @@ def test_workbench_comparison_uses_canonical_bid_ask_simulation_output_columns(
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             del seed, start_time_utc, horizon_interval_count, interval, progress_callback
@@ -579,8 +579,8 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             del progress_callback
@@ -747,8 +747,8 @@ def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping()
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             del progress_callback
@@ -877,8 +877,8 @@ def test_workbench_comparison_uses_full_observed_range_for_large_inputs() -> Non
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
             del progress_callback
@@ -1459,8 +1459,8 @@ def test_workbench_comparison_builds_seeded_15m_series_from_raw_path(
             *,
             horizon_interval_count: int,
             seed: int = 0,
-            start_time_utc: datetime | None = None,
-            interval: str | None = None,
+            start_time_utc: Optional[datetime] = None,
+            interval: Optional[str] = None,
             progress_callback: Any = None,
         ) -> Any:
             del seed, start_time_utc, horizon_interval_count, progress_callback
@@ -2676,7 +2676,7 @@ def _write_fit_report(
     *,
     tick_data_path: Path,
     run_id: str,
-    duplicate_record_policy: str | None,
+    duplicate_record_policy: Optional[str],
     file_format: str = "csv",
     source_row_count: int = 3,
 ) -> None:

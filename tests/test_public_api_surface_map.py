@@ -1,6 +1,7 @@
 import ast
 from importlib import import_module
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -119,7 +120,7 @@ def test_python_package_all_exports_exclude_private_names() -> None:
 
     for module_path in sorted(python_root.rglob("*.py")):
         module_tree = ast.parse(module_path.read_text(encoding="utf-8"))
-        module_exports: list[str] | None = None
+        module_exports: Optional[list[str]] = None
 
         for statement in module_tree.body:
             if isinstance(statement, ast.Assign):

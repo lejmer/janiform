@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from janiform.calibration.market_data import infer_bundled_market_profile_for_tick_data_path
 from janiform.calibration.presets import (
     KnownNewsConfigurationOverridePatch,
     KnownNewsEvent,
@@ -22,6 +23,17 @@ from janiform.calibration.sessions import (
     MarketDataSessionRegularWindow,
     MarketDataSessionResolution,
 )
+
+
+def test_market_profile_inference_uses_embedded_instrument_token() -> None:
+    inferred_profile = infer_bundled_market_profile_for_tick_data_path(
+        "Synthetic_EURUSD_Data_1M_ticks.parquet"
+    )
+
+    assert inferred_profile is not None
+    assert inferred_profile["profile_name"] == "eurusd_spot"
+    assert inferred_profile["session_preset_name"] == "fx_spot_24_5"
+    assert inferred_profile["exchange_code"] == "FXSPOT"
 
 
 def test_resolution_uses_inferred_session_and_keeps_known_news_none_for_profile_suggestions() -> None:

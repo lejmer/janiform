@@ -96,7 +96,6 @@ def load_synthetic_eurusd_surface_context(
     )
 
     persisted_model = load_or_fit_persisted_example_model(
-        market_profile="eurusd_spot",
         tick_data_path=SYNTHETIC_EURUSD_TICK_DATA_PATH,
         tail_row_count=calibration_row_count,
         force_refit=force_refit,

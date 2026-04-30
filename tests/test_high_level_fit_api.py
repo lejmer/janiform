@@ -288,6 +288,44 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
         prepared_workflow.temporary_directory.cleanup()
 
 
+def test_prepare_fit_workflow_infers_market_profile_from_synthetic_tick_path(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "Synthetic_EURUSD_Data_1M_ticks.parquet"
+    parquet.write_table(
+        pa.table(
+            {
+                "time": [
+                    datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                    datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+                ],
+                "close": [1.0850, 1.0852],
+            }
+        ),
+        tick_data_path,
+    )
+
+    estimator = JaniformEstimator()
+    prepared_workflow = estimator._prepare_fit_workflow(
+        run_id="high-level-inferred-eurusd-profile",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.PARQUET,
+        tick_data_provenance_label="tick_data",
+        option_surface_path=None,
+        option_surface_format=CalibrationInputFileFormat.PARQUET,
+        option_surface_provenance_label="option_surface",
+    )
+
+    if prepared_workflow.temporary_directory is not None:
+        prepared_workflow.temporary_directory.cleanup()
+
+    market_profile = prepared_workflow.resolved_configuration.market_profile
+
+    assert market_profile is not None
+    assert market_profile.selected_preset is not None
+    assert market_profile.selected_preset.preset_name == "eurusd_spot"
+
+
 def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3724,7 +3762,7 @@ def test_high_level_fit_reuses_single_native_preparation_pass_when_session_is_ex
         encoding="utf-8",
     )
 
-    captured_dynamics_search_restart_candidate_budgets: list[int | None] = []
+    captured_dynamics_search_restart_candidate_budgets: list[Optional[int]] = []
 
     def capture_execution_configuration(
         *args,
@@ -3920,7 +3958,7 @@ def test_high_level_fit_uses_native_terminal_progress_only(
         self: Any,
         label: str,
         *,
-        total_steps: int | None = None,
+        total_steps: Optional[int] = None,
     ) -> NoReturn:
         nonlocal progress_call_count
         progress_call_count += 1
