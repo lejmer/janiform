@@ -18,11 +18,11 @@ Common prefixes:
 - `feature/` for everything but bug fixes
 - `bug/` for bug fixes
 
-Include the issue id when there is one:
+Include the GitHub issue number when there is one:
 
 ```text
-feature/jan-439-rework-documentation
-bug/jan-512-fix-session-resolution
+feature/439-rework-documentation
+bug/512-fix-session-resolution
 ```
 
 ## Normal development flow
