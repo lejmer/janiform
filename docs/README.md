@@ -7,7 +7,7 @@ Start with a working installation, then build up from a plain-language overview 
 ## Getting started
 
 - [Installation](getting-started/installation.md)
-- [What Janiform does](getting-started/what-janiform-does.md)
+- [Introduction](getting-started/introduction.md)
 - [First model](getting-started/first-model.md)
 - [Concepts](getting-started/concepts.md)
 

@@ -72,5 +72,5 @@ This usually means the package was installed with one Python interpreter while t
 
 ## Next steps
 
-- [What Janiform does](what-janiform-does.md)
+- [Introduction](introduction.md)
 - [First model](first-model.md)
