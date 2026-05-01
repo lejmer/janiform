@@ -136,7 +136,7 @@ class JaniformObservedOptionSurfacePricingResult:
 
         return pandas.DataFrame.from_records(rows)
 
-    def to_surface_frame(
+    def to_surface_df(
         self,
         *,
         value_column: str = MODEL_IMPLIED_VOLATILITY_FIELD_NAME,
@@ -151,7 +151,7 @@ class JaniformObservedOptionSurfacePricingResult:
         valuation_count = frame[VALUATION_TIME_UTC_FIELD_NAME].nunique(dropna=False)
         expiry_count = frame[EXPIRY_TIMESTAMP_UTC_FIELD_NAME].nunique(dropna=False)
         if expiry_count == 1 and valuation_count > 1:
-            return _build_single_expiry_surface_frame(
+            return _build_single_expiry_surface_df(
                 frame=frame,
                 value_column=value_column,
                 valuation_time_utc=self.valuation_time_utc,
@@ -171,7 +171,7 @@ class JaniformObservedOptionSurfacePricingResult:
         )
 
 
-def _build_single_expiry_surface_frame(
+def _build_single_expiry_surface_df(
     *,
     frame: pandas.DataFrame,
     value_column: str,

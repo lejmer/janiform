@@ -611,7 +611,7 @@ def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
     assert request.normalization_policy.option_quote_input_policy is None
 
 
-def test_price_option_snapshot_returns_tidy_snapshot_and_surface_frame(
+def test_price_option_snapshot_returns_tidy_snapshot_and_surface_df(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -788,11 +788,11 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_frame(
     )
     assert result.nodes[0].log_forward_moneyness is not None
 
-    surface_frame = result.to_surface_frame()
-    assert tuple(surface_frame.columns) == (95.0, 105.0)
-    assert surface_frame.shape == (2, 2)
-    assert surface_frame.iloc[0, 0] == pytest.approx(0.2)
-    assert surface_frame.iloc[1, 1] == pytest.approx(0.26)
+    surface_df = result.to_surface_df()
+    assert tuple(surface_df.columns) == (95.0, 105.0)
+    assert surface_df.shape == (2, 2)
+    assert surface_df.iloc[0, 0] == pytest.approx(0.2)
+    assert surface_df.iloc[1, 1] == pytest.approx(0.26)
 
 
 def test_price_option_surface_returns_single_expiry_evolution_surface(
@@ -929,10 +929,10 @@ def test_price_option_surface_returns_single_expiry_evolution_surface(
     )
     assert frame["expiry_timestamp_utc"].nunique(dropna=False) == 1
 
-    surface_frame = result.to_surface_frame()
-    assert surface_frame.shape[0] == 2
-    assert surface_frame.shape[1] >= 1
-    assert surface_frame.iloc[0, 0] != surface_frame.iloc[1, 0]
+    surface_df = result.to_surface_df()
+    assert surface_df.shape[0] == 2
+    assert surface_df.shape[1] >= 1
+    assert surface_df.iloc[0, 0] != surface_df.iloc[1, 0]
 
 
 def test_vanilla_option_pricing_diagnostics_exposes_log_forward_moneyness() -> None:
