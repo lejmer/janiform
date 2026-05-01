@@ -4,7 +4,7 @@ Use this page as the contributor entrypoint. Janiform keeps user-facing docs in 
 
 ## Start Here
 
-- [docs/contributing/development-environment.md](docs/contributing/development-environment.md)
+- [docs/contributing/setup.md](docs/contributing/setup.md)
 - [docs/contributing/verification-and-automation.md](docs/contributing/verification-and-automation.md)
 - [docs/contributing/repo-layout.md](docs/contributing/repo-layout.md)
 - [docs/contributing/workbench.md](docs/contributing/workbench.md)
