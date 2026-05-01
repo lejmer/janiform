@@ -1,17 +1,11 @@
-# Contributing To Janiform
+# Contributing
 
-Use this page as the contributor entrypoint. Janiform keeps user-facing docs in `docs/` and keeps crate-local or fixture-local context in local `README.md` files.
+## Start here
 
-## Start Here
-
-- [docs/contributing/setup.md](docs/contributing/setup.md)
-- [docs/contributing/verification-and-automation.md](docs/contributing/verification-and-automation.md)
-- [docs/contributing/repo-layout.md](docs/contributing/repo-layout.md)
-- [docs/contributing/workbench.md](docs/contributing/workbench.md)
-- [docs/contributing/python-style.md](docs/contributing/python-conventions.md)
+- [docs/contributing/index.md](docs/contributing/index.md)
 - [RELEASE.md](RELEASE.md)
 
-## Local Setup
+## Local setup
 
 ### Linux and WSL
 
@@ -45,7 +39,7 @@ Run the relevant suites before opening a pull request.
 ./scripts/test-rust-win.ps1 .venv
 ```
 
-## Change Expectations
+## Change expectations
 
 - Keep code, tests, fixtures, generated artifacts, and docs aligned in the same change.
 - Prefer shared implementations to local duplicates.

@@ -11,7 +11,7 @@ A high-frequency return model written in Rust, capable of hyperrealistic simulat
 
 Janiform is pre-v0.1. Install it from a source checkout with the local bootstrap scripts.
 
-## Why The Name
+## Why the name
 
 Janiform is named after Janus, the Roman god of duality, transitions, and thresholds. The name reflects the model's paired structure, natively incorporating buy and sell forces. The "form" part refers to the mathematical form of the model itself. Janiform is a two-sided functional form with invariant structure under transformation, designed to stay coherent across simulation, aggregation, and pricing.
 
@@ -35,7 +35,7 @@ janiform --help
 python -m examples.introductory.first_model
 ```
 
-## Fastest Python Path
+## Fastest Python path
 
 ```python
 from pathlib import Path
@@ -56,7 +56,7 @@ Use [docs/getting-started/first-model.md](docs/getting-started/first-model.md) f
 Use [docs/getting-started/concepts.md](docs/getting-started/concepts.md) when terms like market profile, seeded ticks, or anchor are unfamiliar.
 Use [examples/README.md](examples/README.md) for the grouped example index.
 
-## Fastest CLI Path
+## Fastest CLI path
 
 ```bash
 janiform fit --help
