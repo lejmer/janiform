@@ -871,6 +871,7 @@ def test_calibration_presets_public_submodule_is_supported_domain_import() -> No
         "KnownNewsPresetReference",
         "MarketProfileReference",
         "PresetCategory",
+        "PresetArtifact",
         "PresetReferenceUsageMode",
         "PresetRegistry",
         "PresetRegistryScope",

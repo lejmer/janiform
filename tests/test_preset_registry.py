@@ -58,7 +58,7 @@ def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> 
         entry.preset_name for entry in registry.list_presets(category=PresetCategory.MARKET_PROFILE)
     } == {"btcusd_spot", "es_futures_globex", "eurusd_spot", "us_equity_cash"}
 
-    _, fx_session = registry.resolve(category=PresetCategory.SESSION, preset_name="fx_spot_24_5")
+    _, fx_session = registry.resolve_session(preset_name="fx_spot_24_5")
 
     assert fx_session.configuration.timezone_name == "UTC"
     assert fx_session.configuration.recurring_closed_windows == (
@@ -83,11 +83,22 @@ def test_bundled_registry_runtime_artifacts_match_checked_in_snapshots() -> None
     assert observed_entries == expected_index["entries"]
 
     for entry in registry.list_presets(include_user_registered=False):
-        _, artifact = registry.resolve(
-            category=entry.category,
-            preset_name=entry.preset_name,
-            registry_scope=PresetRegistryScope.BUILT_IN,
-        )
+        match entry.category:
+            case PresetCategory.SESSION:
+                _, artifact = registry.resolve_session(
+                    preset_name=entry.preset_name,
+                    registry_scope=PresetRegistryScope.BUILT_IN,
+                )
+            case PresetCategory.KNOWN_NEWS:
+                _, artifact = registry.resolve_known_news(
+                    preset_name=entry.preset_name,
+                    registry_scope=PresetRegistryScope.BUILT_IN,
+                )
+            case PresetCategory.MARKET_PROFILE:
+                _, artifact = registry.resolve_market_profile(
+                    preset_name=entry.preset_name,
+                    registry_scope=PresetRegistryScope.BUILT_IN,
+                )
         artifact_path = entry.artifact_path
 
         assert artifact_path is not None
@@ -102,12 +113,10 @@ def test_user_registry_can_shadow_built_in_name_without_mutating_built_in_store(
 
     registry.register_user_preset(user_session)
 
-    resolved_scope, resolved_session = registry.resolve(
-        category=PresetCategory.SESSION,
+    resolved_scope, resolved_session = registry.resolve_session(
         preset_name="XNYS",
     )
-    _, bundled_session = registry.resolve(
-        category=PresetCategory.SESSION,
+    _, bundled_session = registry.resolve_session(
         preset_name="XNYS",
         registry_scope=PresetRegistryScope.BUILT_IN,
     )
@@ -167,8 +176,7 @@ def test_user_preset_artifact_load_normalizes_order_and_exports_deterministicall
 
     assert first_export == second_export
     assert serialize_preset_artifact(loaded_artifact) == serialize_preset_artifact(
-        registry.resolve(
-            category=PresetCategory.KNOWN_NEWS,
+        registry.resolve_known_news(
             preset_name="desk_macro",
             registry_scope=PresetRegistryScope.USER_REGISTERED,
         )[1]

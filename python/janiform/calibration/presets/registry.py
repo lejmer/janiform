@@ -357,7 +357,70 @@ class PresetRegistry:
             )
         )
 
-    def resolve(
+    def resolve_session(
+        self,
+        *,
+        preset_name: str,
+        registry_scope: Optional[PresetRegistryScope] = None,
+    ) -> tuple[PresetRegistryScope, SessionPresetArtifact]:
+        from .artifacts import PresetCategory, SessionPresetArtifact
+
+        resolved_scope, artifact = self._resolve(
+            category=PresetCategory.SESSION,
+            preset_name=preset_name,
+            registry_scope=registry_scope,
+        )
+        if not isinstance(artifact, SessionPresetArtifact):
+            raise preset_registry_error(
+                "preset_artifact",
+                "resolved session preset must be a SessionPresetArtifact",
+            )
+
+        return resolved_scope, artifact
+
+    def resolve_known_news(
+        self,
+        *,
+        preset_name: str,
+        registry_scope: Optional[PresetRegistryScope] = None,
+    ) -> tuple[PresetRegistryScope, KnownNewsPresetArtifact]:
+        from .artifacts import KnownNewsPresetArtifact, PresetCategory
+
+        resolved_scope, artifact = self._resolve(
+            category=PresetCategory.KNOWN_NEWS,
+            preset_name=preset_name,
+            registry_scope=registry_scope,
+        )
+        if not isinstance(artifact, KnownNewsPresetArtifact):
+            raise preset_registry_error(
+                "preset_artifact",
+                "resolved known-news preset must be a KnownNewsPresetArtifact",
+            )
+
+        return resolved_scope, artifact
+
+    def resolve_market_profile(
+        self,
+        *,
+        preset_name: str,
+        registry_scope: Optional[PresetRegistryScope] = None,
+    ) -> tuple[PresetRegistryScope, MarketProfilePresetArtifact]:
+        from .artifacts import MarketProfilePresetArtifact, PresetCategory
+
+        resolved_scope, artifact = self._resolve(
+            category=PresetCategory.MARKET_PROFILE,
+            preset_name=preset_name,
+            registry_scope=registry_scope,
+        )
+        if not isinstance(artifact, MarketProfilePresetArtifact):
+            raise preset_registry_error(
+                "preset_artifact",
+                "resolved market-profile preset must be a MarketProfilePresetArtifact",
+            )
+
+        return resolved_scope, artifact
+
+    def _resolve(
         self,
         *,
         category: PresetCategory,

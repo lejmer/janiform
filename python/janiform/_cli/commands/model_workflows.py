@@ -392,7 +392,7 @@ def resolve_named_preset_scope(
     raw_scope: Optional[str],
 ) -> PresetRegistryScope:
     explicit_scope = parse_cli_preset_scope(raw_scope)
-    resolved_scope, _ = registry.resolve(
+    resolved_scope, _ = registry._resolve(
         category=category,
         preset_name=preset_name,
         registry_scope=explicit_scope,
@@ -407,7 +407,7 @@ def resolve_preset_artifact(
     preset_name: str,
     registry_scope: PresetRegistryScope,
 ) -> Any:
-    _, artifact = registry.resolve(
+    _, artifact = registry._resolve(
         category=category,
         preset_name=preset_name,
         registry_scope=registry_scope,

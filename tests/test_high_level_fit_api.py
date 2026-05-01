@@ -1116,8 +1116,7 @@ def test_janiform_estimator_preserves_duplicate_ticks_by_default(
 
 def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> None:
     registry = fit_estimator_module.PresetRegistry()
-    _, session_artifact = registry.resolve(
-        category=PresetCategory.SESSION,
+    _, session_artifact = registry.resolve_session(
         preset_name="fx_spot_24_5",
     )
 
@@ -2336,8 +2335,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
     import janiform._workflow_outputs as workflow_outputs_module
 
     registry = fit_estimator_module.PresetRegistry()
-    _, session_artifact = registry.resolve(
-        category=PresetCategory.SESSION,
+    _, session_artifact = registry.resolve_session(
         preset_name="fx_spot_24_5",
     )
     calendar_registry = CalendarRegistry(
