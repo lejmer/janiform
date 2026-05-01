@@ -276,12 +276,13 @@ Calibration is the expensive part of Janiform and is expected to take a long tim
 
 Check the run id and model path. The default CLI model path is `.janiform/runs/<run-id>/artifacts/model.jf`.
 
-## Reference
+## See also
 
 - [First model](../getting-started/first-model.md)
 - [Concepts](../getting-started/concepts.md)
-- [Presets and market data](presets-and-market-data.md)
+- [Model validation](model-validation.md)
 - [Inspect and report](inspect-and-report.md)
+- [Presets and market data](presets-and-market-data.md)
 - [Command line interface](../interfaces/cli.md)
 - [Python interface](../interfaces/python.md)
 - [CLI reference](../reference/cli.md)
