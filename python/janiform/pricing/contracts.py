@@ -151,8 +151,8 @@ def _parse_news_process_configuration(
 
 
 class VanillaOptionPayoffType(StrEnum):
-    CALL = 'call'
-    PUT = 'put'
+    CALL = "call"
+    PUT = "put"
 
 
 class VanillaOptionImpliedVolatilityInversionStatus(StrEnum):
