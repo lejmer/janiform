@@ -138,6 +138,8 @@ For workspace-level crate guidance, see [Crates](crates.md).
 
 ## Tests
 
+For shared test-writing policy, see [Writing tests](writing-tests.md).
+
 - Prefer fast unit tests in Rust core.
 - Write tests for boundary conversions, including PyO3 bindings when relevant.
 - Use `assert_eq!()` on entire objects instead of checking fields one by one when that is practical.

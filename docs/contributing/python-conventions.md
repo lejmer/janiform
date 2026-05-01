@@ -259,6 +259,8 @@ def foo_bar(param_with_long_name: int,
 
 ## Tests
 
+For shared test-writing policy, see [Writing tests](writing-tests.md).
+
 - Prefer fast unit tests for Python boundary behavior.
 - If you need helpers, look for fixtures in `conftest.py` before writing local helpers.
 - If an existing fixture can be adapted, update it and make sure all other tests logically work with the updated fixture.
