@@ -78,7 +78,7 @@ Use [docs/interfaces/cli.md](docs/interfaces/cli.md) for CLI mechanics and the w
 - [docs/workflows/fit-models.md](docs/workflows/fit-models.md)
 - [docs/workflows/simulate-paths.md](docs/workflows/simulate-paths.md)
 - [docs/workflows/price-derivatives.md](docs/workflows/price-derivatives.md)
-- [docs/workflows/validate-models.md](docs/workflows/validate-models.md)
+- [docs/workflows/validate-models.md](docs/workflows/model-validation.md)
 - [docs/interfaces/cli.md](docs/interfaces/cli.md)
 - [docs/interfaces/python.md](docs/interfaces/python.md)
 - [docs/reference/python-api.md](docs/reference/python-api.md)
