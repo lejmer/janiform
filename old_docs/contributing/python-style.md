@@ -204,13 +204,7 @@ def foo_bar(param_with_long_name: int,
     do_stuff()
 ```
 
-## 11. Refactoring And Maintenance
-
-- Refactor when it improves clarity, maintainability, or correctness.
-- Do not refactor for its own sake.
-- Keep the refactored result aligned with these rules.
-
-## 12. Avoid
+## 11 Avoid
 
 - `getattr` and `setattr` unless dynamic attributes are truly unavoidable
 - deprecated imports and deprecated typing forms
