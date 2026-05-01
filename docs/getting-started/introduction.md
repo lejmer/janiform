@@ -1,4 +1,6 @@
-# What Janiform does
+# Introduction
+
+## What Janiform does
 
 Janiform is a hyperrealistic high-frequency return model for market prices. It is designed to model observed market behavior well enough to allow you to simulate ultra-realistic price paths, and carry the fitted structure into derivative pricing.
 
@@ -15,6 +17,10 @@ The fitted model can then be used to simulate price paths, price derivatives, an
 In practical terms, Janiform tracks activity states for buy and sell pressure. Those states rise when events arrive, decay over time, and determine how much business time passes for the return drivers. Active markets therefore produce larger and more frequent price variation, while quiet markets produce less.
 
 > For the mathematically curious: Janiform is built to be time-scale consistent. The same fitted model can generate tick-level paths and coarser interval paths without switching to a different model. That matters because high-frequency behavior and aggregated behavior should agree with each other, not come from separate approximations.
+
+## Why the name
+
+Janiform takes its name from Janus, the Roman god traditionally depicted with two faces and associated with transitions and thresholds. The name fits the model's paired and asymmetric structure, including buy and sell activity and the contrast between open-market moves and closed-market gaps.
 
 ## What a Janiform model is
 
