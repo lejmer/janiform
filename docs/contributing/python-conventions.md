@@ -185,6 +185,7 @@ class Status(StrEnum):
 - Avoid abbreviations such as `idx`, `col`, and `ts`.
 - Avoid cryptic abbreviations and shorthands outside mathy contexts.
 - Short math-oriented names such as `i` and `j` are acceptable in genuinely mathy contexts and in for-loops.
+- Python abbreviations that have become canonical in the Python community, such as `df` (data frame), `pd` (`pandas`), `dt` (`datetime`), `plt` (`matplotlib.pyplot`) are okay to use.
 - Do not shadow outer-scope names when defining nested functions or local helpers.
 - Follow PEP 8 naming unless the code is directly expressing a mathematical formula.
 
