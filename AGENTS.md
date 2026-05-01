@@ -124,7 +124,7 @@ In the `crates/` folder where the Rust code is located:
     - Convert Python inputs to Rust types ASAP.
     - Convert Rust results/errors back to Python at the boundary.
   - Never hold the GIL longer than necessary. Avoid long CPU work while holding GIL.
-    - Release GIL for heavy work (e.g., `Python::allow_threads`) when safe.
+    - Detach from Python for heavy work with `Python::detach` when safe.
   - Ensure types exposed to Python are stable and documented. Do not leak internal Rust structs by default.
 - Crate README's are never written manually. They are generated from crate metadata from the canonical script `scripts/generate_crate_readmes.py`.
 
