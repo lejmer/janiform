@@ -192,3 +192,7 @@ Before finishing a Rust change:
 - Verify code compiles.
 - Verify tests succeed.
 - Do a final formatting pass to catch issues such as missing blank lines.
+
+## See also
+
+For language-agnostic project rules, see [General conventions](general-conventions.md).
