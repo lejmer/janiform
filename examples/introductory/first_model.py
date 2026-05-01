@@ -27,15 +27,15 @@ def main() -> None:
     simulation: JaniformSimulationResult = model.simulate(
         horizon_interval_count=SIMULATION_INTERVAL_COUNT,
     )
-    frame: pd.DataFrame = simulation.to_pandas()
+    df: pd.DataFrame = simulation.to_pandas()
 
     print(
         f"model cache: {persisted_model.model_path} "
         f"({'loaded' if persisted_model.loaded_from_cache else 'fit'})"
     )
     print(f"fitted run id: {model.run_id}")
-    print(f"simulated rows: {len(frame)}")
-    print(frame.head(5).to_string(index=False))
+    print(f"simulated rows: {len(df)}")
+    print(df.head(5).to_string(index=False))
 
 
 def _parse_args() -> argparse.Namespace:

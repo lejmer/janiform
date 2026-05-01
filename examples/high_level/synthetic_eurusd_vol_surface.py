@@ -163,17 +163,17 @@ def main() -> None:
         print("pricing notes:")
         print("  no nodes produced a successful implied-volatility inversion on this sample")
 
-    implied_volatility_frame = pd.DataFrame(
+    implied_volatility_df = pd.DataFrame(
         implied_volatility_rows,
         index=surface_context.maturity_intervals_hours,
         columns=strikes,
     )
-    price_frame = pd.DataFrame(
+    price_df = pd.DataFrame(
         price_rows,
         index=surface_context.maturity_intervals_hours,
         columns=strikes,
     )
-    inversion_status_frame = pd.DataFrame(
+    inversion_status_df = pd.DataFrame(
         inversion_status_rows,
         index=surface_context.maturity_intervals_hours,
         columns=strikes,
@@ -185,7 +185,7 @@ def main() -> None:
             for implied_volatility in implied_volatility_row
     ):
         print("option price surface:")
-        print(price_frame.to_string(float_format=lambda value: f"{value:.6f}"))
+        print(price_df.to_string(float_format=lambda value: f"{value:.6f}"))
 
     print(
         f"model cache: {persisted_model.model_path} "
@@ -229,7 +229,7 @@ def main() -> None:
     implied_volatility_plot = axes[0]
     if has_any_implied_volatility_node:
         implied_volatility_mesh = implied_volatility_plot.imshow(
-            implied_volatility_frame.astype(float),
+            implied_volatility_df.astype(float),
             aspect="auto",
             origin="lower",
             cmap="viridis",
@@ -267,7 +267,7 @@ def main() -> None:
 
     price_plot = axes[1]
     price_mesh = price_plot.imshow(
-        price_frame.astype(float),
+        price_df.astype(float),
         aspect="auto",
         origin="lower",
         cmap="magma",
@@ -309,7 +309,7 @@ def main() -> None:
             status_plot.text(
                 strike_index,
                 maturity_index,
-                _short_status_label(inversion_status_frame.loc[maturity_interval, strike]),
+                _short_status_label(inversion_status_df.loc[maturity_interval, strike]),
                 ha="center",
                 va="center",
                 color="white",

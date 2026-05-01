@@ -203,9 +203,9 @@ def _materialize_tail_slice(
         )
 
     with TemporaryDirectory(prefix="janiform-example-fit-") as temporary_directory:
-        tail_frame = pd.read_parquet(tick_data_path).tail(tail_row_count)
+        tail_df: pd.DataFrame = pd.read_parquet(tick_data_path).tail(tail_row_count)
         fit_input_path = Path(temporary_directory) / tick_data_path.name
-        tail_frame.to_parquet(fit_input_path)
+        tail_df.to_parquet(fit_input_path)
 
         persisted_fit_input_path = EXAMPLE_MODEL_ARTIFACT_ROOT / (
             f"{_cache_token(f'{tick_data_path.stem}_tail_{tail_row_count}')}.parquet"
