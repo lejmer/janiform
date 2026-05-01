@@ -33,29 +33,6 @@ To fit a model we need the market observations and the context required to inter
 
 For repeatable work, make the context explicit. Market profile inference is convenient for quick runs, but production code should not rely on it.
 
-## CLI preflight checks
-
-Before executing an expensive run from the CLI, it can be useful to first `inspect` and `plan`.
-
-`inspect` resolves market data, column mappings, market context, and workflow scope without running calibration:
-
-```bash
-janiform fit inspect \
-  --tick-data-path data/Synthetic_EURUSD_Data_1M_ticks.parquet
-```
-
-This is useful when you want to check if configuration will be inferred correctly by Janiform.
-
-`plan` validates the same inputs and shows the output paths and execution policy:
-
-```bash
-janiform fit plan \
-  --tick-data-path data/Synthetic_EURUSD_Data_1M_ticks.parquet \
-  --run-id eurusd-fit
-```
-
-Use `plan` when automation needs a dry run before spending time on calibration.
-
 ## Python
 
 When you need the fitted model should stay in memory, use the Python library.
@@ -150,6 +127,29 @@ janiform fit \
 
 Use `--output-dir` when the run directory must be somewhere other than `.janiform/runs/<run-id>`.
 
+## CLI preflight checks
+
+Before executing an expensive run from the CLI, it can be useful to first `inspect` and `plan`.
+
+`inspect` resolves market data, column mappings, market context, and workflow scope without running calibration:
+
+```bash
+janiform fit inspect \
+  --tick-data-path data/Synthetic_EURUSD_Data_1M_ticks.parquet
+```
+
+This is useful when you want to check if configuration will be inferred correctly by Janiform.
+
+`plan` validates the same inputs and shows the output paths and execution policy:
+
+```bash
+janiform fit plan \
+  --tick-data-path data/Synthetic_EURUSD_Data_1M_ticks.parquet \
+  --run-id eurusd-fit
+```
+
+Use `plan` when automation needs a dry run before spending time on calibration.
+
 ## Outputs
 
 The model is the primary output. Everything else exists to explain, audit, resume, or automate the run.
@@ -233,14 +233,14 @@ janiform fit \
 
 Checkpoint references use `checkpoint://<run-id>/<checkpoint-token>`. The run id is the original fit run.
 
-| Checkpoint token | Meaning |
-|------------------|---------|
-| `last-success` | Resume from the latest successfully written checkpoint for the run. |
-| `seasonality` | Resume from the checkpoint written after seasonality calibration. |
-| `hawkes` | Resume from the checkpoint written after event-activity calibration. |
+| Checkpoint token    | Meaning                                                                   |
+|---------------------|---------------------------------------------------------------------------|
+| `last-success`      | Resume from the latest successfully written checkpoint for the run.       |
+| `seasonality`       | Resume from the checkpoint written after seasonality calibration.         |
+| `hawkes`            | Resume from the checkpoint written after event-activity calibration.      |
 | `return_components` | Resume from the checkpoint written after return-distribution calibration. |
-| `mean_reversion` | Resume from the checkpoint written after mean-reversion calibration. |
-| `joint_refinement` | Resume from the checkpoint written after final dynamics refinement. |
+| `mean_reversion`    | Resume from the checkpoint written after mean-reversion calibration.      |
+| `joint_refinement`  | Resume from the checkpoint written after final dynamics refinement.       |
 
 A stage token is valid only after that stage has completed and written its checkpoint. For most resumes, use `last-success` unless you need to force a specific earlier checkpoint.
 
