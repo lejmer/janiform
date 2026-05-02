@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,10 +28,6 @@ from .....calendar import CalendarRegistry
 from .....mean_reversion import MeanReversionBoundaryState
 from .....simulation.coarse import CoarseSimulationPath
 from .....simulation.kinds import SimulationKind
-from .....simulation.progress import (
-    SimulationProgressEvent,
-    simulation_progress_event_from_mapping,
-)
 from .....simulation.seeded import SeededTickSimulationResponse
 from .....simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ....errors import calibration_error
@@ -62,7 +58,7 @@ def simulate_model(
     sample_every_nth_transition: int = 1,
     max_records_per_chunk: int = 1024,
     state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-    progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> JaniformSimulationResult:
     if output_path is not None and sink is not None:
@@ -100,21 +96,12 @@ def simulate_model(
         state_snapshot_capture=state_snapshot_capture,
     )
 
-    callback = progress_callback
-    native_progress_callback: Optional[Callable[[dict[str, Any]], None]] = None
-    if callback is not None:
-        def emit_simulation_progress(raw_event: dict[str, Any]) -> None:
-            event = simulation_progress_event_from_mapping(raw_event)
-            callback(event)
-
-        native_progress_callback = emit_simulation_progress
-
     raw_output = native_module().run_simulation_from_model_artifact(
         request_payload,
-        native_progress_callback,
+        progress_callback,
         progress_mode=(
             "none"
-            if native_progress_callback is not None
+            if progress_callback is not None
             else native_terminal_progress_mode(
                 resolve_workflow_progress_mode(
                     progress_mode,

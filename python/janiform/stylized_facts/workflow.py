@@ -81,6 +81,7 @@ def run_stylized_fact_horizon_comparison_report_generator(
         ) from e
 
     parsed_report_bundle_mapping = cast(Mapping[str, Any], parsed_report_bundle)
+
     return _hydrate_contract_model(
         StylizedFactHorizonComparisonReportBundle,
         parsed_report_bundle_mapping,
@@ -153,6 +154,7 @@ def build_stylized_fact_plotly_figure(
         yaxis_title="Absolute Delta",
         legend_title="Decision Status",
     )
+
     return figure
 
 

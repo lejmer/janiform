@@ -43,10 +43,6 @@ from .contracts import (
     pricing_interval_schedule_policy_from_mapping,
 )
 from .errors import VanillaOptionPricingValidationError
-from .progress import (
-    PricingProgressEvent,
-    PricingProgressPhase,
-)
 from .workflow import (
     run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
@@ -69,8 +65,6 @@ __all__ = [
     "PricingIntervalSchedule",
     "PricingIntervalScheduleMetadata",
     "PricingIntervalSchedulePolicy",
-    "PricingProgressEvent",
-    "PricingProgressPhase",
     "VanillaOptionImpliedVolatilityInversionStatus",
     "VanillaOptionPayoffConfiguration",
     "VanillaOptionPayoffType",

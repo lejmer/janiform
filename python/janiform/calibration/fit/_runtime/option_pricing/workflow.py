@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -22,7 +22,6 @@ from .....pricing import (
     VanillaOptionPricingRequest,
     VanillaOptionPricingRunResult,
 )
-from .....pricing.progress import PricingProgressEvent
 from .....simulation.shared import HawkesExcitationState
 from ....errors import calibration_error
 from ...pricing.grids import (
@@ -178,7 +177,7 @@ def price_option_grid_for_model(
     cpu_count: Optional[int] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-    progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> JaniformVanillaOptionGridBatchPricingResult:
     native_execution_input = prepare_model_grid_batch_pricing_native_input(
         model,
@@ -222,7 +221,7 @@ def price_option_grid_surface_for_model(
     cpu_count: Optional[int] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-    progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> JaniformVanillaOptionSurfacePricingResult:
     native_execution_input = prepare_model_surface_pricing_native_input(
         model,

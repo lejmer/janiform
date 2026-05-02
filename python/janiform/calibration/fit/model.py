@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -17,8 +17,6 @@ from ...pricing import (
     VanillaOptionPayoffType,
     VanillaOptionPricingRunResult,
 )
-from ...pricing.progress import PricingProgressEvent
-from ...simulation.progress import SimulationProgressEvent
 from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ..errors import calibration_error
 from ..market_data.contracts import (
@@ -97,7 +95,7 @@ class JaniformModel:
         sample_every_nth_transition: int = 1,
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-        progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+        progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformSimulationResult:
         resolved_start_time_utc = datetime.now(UTC) if start_time_utc is None else start_time_utc
@@ -179,7 +177,7 @@ class JaniformModel:
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-        progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
+        progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
         return price_option_grid_for_model(
             self,
@@ -224,7 +222,7 @@ class JaniformModel:
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-        progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
+        progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
     ) -> JaniformVanillaOptionSurfacePricingResult:
         return price_option_grid_surface_for_model(
             self,

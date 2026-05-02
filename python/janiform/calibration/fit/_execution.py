@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import nullcontext, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -40,7 +40,6 @@ from ._preparation.contracts import FitExecutionConfiguration
 from ._runtime.metadata import normalize_model_parameters
 from ._runtime.workflow import NativeFitWorkflowOutput, run_fit_workflow
 from .model import JaniformModel
-from .progress import FitProgressEvent
 from .report import JaniformFitReport
 
 
@@ -59,7 +58,7 @@ def fit_with_execution_configuration(
     carry: Optional[CalibrationFlatCarryInput] = None,
     output_dir: Optional[str | Path] = None,
     report: bool = False,
-    progress_callback: Optional[Callable[[FitProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> Union[JaniformModel, tuple[Optional[JaniformModel], JaniformFitReport]]:
     _validate_fit_input_labels(
         tick_data_provenance_label=tick_data_provenance_label,
@@ -126,7 +125,7 @@ def _run_fit_with_native_progress(
     option_surface_provenance_label: str,
     option_surface_valuation_time_utc: Optional[datetime],
     carry: Optional[CalibrationFlatCarryInput],
-    progress_callback: Optional[Callable[[FitProgressEvent], None]],
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]],
 ) -> NativeFitWorkflowOutput:
     suppression_context = redirect_stdout(StringIO()) if configuration.silent else nullcontext()
     native_output: Optional[NativeFitWorkflowOutput] = None

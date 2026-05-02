@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Optional
 
 from .path import (
@@ -8,7 +8,6 @@ from .path import (
     CoarseSimulationRunRequest,
     validate_coarse_simulation_path,
 )
-from ..progress import SimulationProgressEvent, simulation_progress_event_from_mapping
 from ..shared import SeededTickSimulationValidationError
 from ..shared.errors import (
     SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
@@ -25,7 +24,7 @@ from ..._workflow_progress import WorkflowProgressMode, resolve_workflow_progres
 def run_coarse_simulation(
     request: CoarseSimulationRunRequest,
     *,
-    progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> CoarseSimulationPath:
     if not isinstance(request, CoarseSimulationRunRequest):
@@ -44,16 +43,10 @@ def run_coarse_simulation(
         ) from e
 
     try:
-        def native_progress_callback(raw_event: dict[str, Any]) -> None:
-            if progress_callback is None:
-                return
-
-            progress_callback(simulation_progress_event_from_mapping(raw_event))
-
         native_run_kwargs: dict[str, Any] = {}
 
         if progress_callback is not None:
-            native_run_kwargs["event_callback"] = native_progress_callback
+            native_run_kwargs["event_callback"] = progress_callback
         else:
             resolved_progress_mode = resolve_workflow_progress_mode(
                 progress_mode,

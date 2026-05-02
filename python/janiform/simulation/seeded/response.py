@@ -141,16 +141,19 @@ class _NativeBackedSequenceView[T](Sequence[T]):
         if self._materialized_records is not None:
             return self._materialized_records[normalized_index]
 
+        number_of_chunk_records: int = len(self._cached_chunk_records)
+
         if (
             self._cached_chunk_start is not None
-            and normalized_index >= self._cached_chunk_start
-            and normalized_index < self._cached_chunk_start + len(self._cached_chunk_records)
+            and self._cached_chunk_start <= normalized_index < self._cached_chunk_start + number_of_chunk_records
         ):
             return self._cached_chunk_records[normalized_index - self._cached_chunk_start]
 
         chunk_start = (normalized_index // self._chunk_record_count) * self._chunk_record_count
+
         self._cached_chunk_records = self._load_native_chunk(chunk_start)
         self._cached_chunk_start = chunk_start
+
         return self._cached_chunk_records[normalized_index - chunk_start]
 
     def __iter__(self) -> Iterator[T]:
@@ -628,15 +631,11 @@ class SeededTickEventTapeView(_NativeBackedSequenceView[SeededTickEventRecord]):
             index_error_message="seeded event tape index out of range",
             native_chunk_parser=_parse_seeded_event_tape_chunk_columns,
             materialized_records=materialized_records,
-            native_chunk_loader=(
-                native_result.get_event_tape_chunk_columns if native_result is not None else None
-            ),
+            native_chunk_loader=native_result.get_event_tape_chunk_columns if native_result is not None else None,
             record_count=int(native_result.event_count) if native_result is not None else None,
             chunk_record_count=chunk_record_count,
             chunk_transport_estimator=_estimate_typed_chunk_boundary_transport_bytes,
-            chunk_tracker=(
-                tracker.record_event_tape_chunk if tracker is not None else None
-            ),
+            chunk_tracker=tracker.record_event_tape_chunk if tracker is not None else None,
         )
 
 
@@ -672,6 +671,7 @@ class SeededTickSimulationResponse(ContractModel):
             f"{field_path}.fine_path",
             SIMULATION_ERROR_FACTORY,
         )
+
         fine_path_records = tuple(
             SeededFinePathRecord.from_mapping(
                 raw_item,
@@ -686,6 +686,7 @@ class SeededTickSimulationResponse(ContractModel):
             f"{field_path}.event_tape",
             SIMULATION_ERROR_FACTORY,
         )
+
         event_tape_records = tuple(
             SeededTickEventRecord.from_mapping(
                 raw_item,
@@ -693,6 +694,7 @@ class SeededTickSimulationResponse(ContractModel):
             )
             for event_index, raw_item in enumerate(event_tape_items)
         )
+
         projected_event_tape = _project_event_tape_from_fine_path(fine_path_records)
         if event_tape_records != projected_event_tape:
             raise _simulation_error(
@@ -760,6 +762,7 @@ class SeededTickSimulationResponse(ContractModel):
             "seeded_tick_simulation_response.schema_version",
             SIMULATION_ERROR_FACTORY,
         )
+
         transition_count = require_non_negative_integer(
             {
                 "transition_count": _require_native_result_attribute(
@@ -772,6 +775,7 @@ class SeededTickSimulationResponse(ContractModel):
             "seeded_tick_simulation_response.diagnostics.transition_count",
             SIMULATION_ERROR_FACTORY,
         )
+
         event_count = require_non_negative_integer(
             {
                 "event_count": _require_native_result_attribute(
@@ -784,6 +788,7 @@ class SeededTickSimulationResponse(ContractModel):
             "seeded_tick_simulation_response.diagnostics.event_count",
             SIMULATION_ERROR_FACTORY,
         )
+
         native_estimated_retained_bytes = require_non_negative_integer(
             {
                 "estimated_native_retained_bytes": _require_native_result_attribute(
@@ -798,6 +803,7 @@ class SeededTickSimulationResponse(ContractModel):
             "seeded_tick_simulation_response.diagnostics.native_estimated_retained_bytes",
             SIMULATION_ERROR_FACTORY,
         )
+
         diagnostics = SeededTickSimulationDiagnostics(
             schema_version=SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION,
             transition_count=transition_count,
@@ -812,7 +818,9 @@ class SeededTickSimulationResponse(ContractModel):
             boundary_transport_policy=SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY,
             boundary_chunk_record_count=chunk_record_count,
         )
+
         tracker = _SeededTickSimulationMaterializationTracker(diagnostics)
+
         metadata_payload = parse_json_object(
             _require_native_result_json_method(
                 native_result,
@@ -822,6 +830,7 @@ class SeededTickSimulationResponse(ContractModel):
             "seeded fine-path metadata",
             SIMULATION_ERROR_FACTORY,
         )
+
         event_tape_metadata_payload = parse_json_object(
             _require_native_result_json_method(
                 native_result,

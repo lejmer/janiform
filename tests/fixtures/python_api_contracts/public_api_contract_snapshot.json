@@ -210,7 +210,6 @@
     },
     "janiform.calibration.fit": {
       "exports": [
-        "FitProgressEvent",
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformFitResult",
@@ -220,18 +219,6 @@
       "module_name": "janiform.calibration.fit",
       "schema_identifiers": [],
       "symbols": {
-        "FitProgressEvent": {
-          "field_names": [
-            "stage_id",
-            "stage_label",
-            "phase_id",
-            "phase_label",
-            "completed_units",
-            "total_units"
-          ],
-          "kind": "contract_model",
-          "signature": "(stage_id: 'Optional[str]', stage_label: 'Optional[str]', phase_id: 'Optional[str]', phase_label: 'Optional[str]', completed_units: 'int', total_units: 'int') -> 'None'"
-        },
         "JaniformEstimator": {
           "base_classes": [],
           "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
@@ -309,8 +296,8 @@
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
-            "fit": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[FitProgressEvent], None]]' = None) -> 'JaniformModel'",
-            "fit_with_report": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[FitProgressEvent], None]]' = None) -> 'JaniformFitResult'"
+            "fit": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'JaniformModel'",
+            "fit_with_report": "(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'JaniformFitResult'"
           },
           "qualname": "JaniformEstimator"
         }
@@ -5267,8 +5254,6 @@
         "PricingIntervalSchedule",
         "PricingIntervalScheduleMetadata",
         "PricingIntervalSchedulePolicy",
-        "PricingProgressEvent",
-        "PricingProgressPhase",
         "VanillaOptionImpliedVolatilityInversionStatus",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
@@ -5461,47 +5446,6 @@
         "PricingIntervalSchedulePolicy": {
           "kind": "constant",
           "value": "PricingIntervalSchedulePolicy"
-        },
-        "PricingProgressEvent": {
-          "field_names": [
-            "phase",
-            "completed_units",
-            "total_units",
-            "current_group_index",
-            "current_maturity_index",
-            "total_maturities",
-            "current_interval_index",
-            "total_intervals",
-            "current_strike_index",
-            "total_strikes"
-          ],
-          "kind": "contract_model",
-          "signature": "(phase: 'PricingProgressPhase', completed_units: 'int', total_units: 'int', current_group_index: 'Union', current_maturity_index: 'Union', total_maturities: 'Union', current_interval_index: 'Union', total_intervals: 'Union', current_strike_index: 'Union', total_strikes: 'Union') -> 'None'"
-        },
-        "PricingProgressPhase": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "GROUP_PROGRESS",
-              "value": "group_progress"
-            },
-            {
-              "name": "MATURITY_PROGRESS",
-              "value": "maturity_progress"
-            },
-            {
-              "name": "INTERVAL_PROGRESS",
-              "value": "interval_progress"
-            },
-            {
-              "name": "TRANSITION_ROW_PROGRESS",
-              "value": "transition_row_progress"
-            },
-            {
-              "name": "STRIKE_PRICING_PROGRESS",
-              "value": "strike_pricing_progress"
-            }
-          ]
         },
         "VanillaOptionImpliedVolatilityInversionStatus": {
           "kind": "enum",
@@ -5860,7 +5804,7 @@
         },
         "run_vanilla_option_surface_pricing": {
           "kind": "function",
-          "signature": "(execution_input: 'VanillaOptionSurfacePricingExecutionInput', *, progress_callback: 'Optional[Callable[[PricingProgressEvent], None]]' = None) -> 'VanillaOptionSurfacePricingRunResult'"
+          "signature": "(execution_input: 'VanillaOptionSurfacePricingExecutionInput', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'VanillaOptionSurfacePricingRunResult'"
         }
       }
     },
@@ -6989,12 +6933,9 @@
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
         "SimulationKind",
-        "SimulationProgressEvent",
-        "SimulationProgressPhase",
         "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "run_coarse_simulation",
-        "run_seeded_tick_event_simulation",
-        "simulation_progress_phase_detail"
+        "run_seeded_tick_event_simulation"
       ],
       "module_name": "janiform.simulation",
       "schema_identifiers": [],
@@ -7231,43 +7172,17 @@
             }
           ]
         },
-        "SimulationProgressEvent": {
-          "field_names": [
-            "phase",
-            "completed_units",
-            "total_units"
-          ],
-          "kind": "contract_model",
-          "signature": "(phase: 'SimulationProgressPhase', completed_units: 'int', total_units: 'int') -> 'None'"
-        },
-        "SimulationProgressPhase": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "SEEDED_TICK_INTERVALS",
-              "value": "seeded_tick_intervals"
-            },
-            {
-              "name": "COARSE_INTERVALS",
-              "value": "coarse_intervals"
-            }
-          ]
-        },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
           "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
         },
         "run_coarse_simulation": {
           "kind": "function",
-          "signature": "(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'"
+          "signature": "(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'"
         },
         "run_seeded_tick_event_simulation": {
           "kind": "function",
-          "signature": "(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'"
-        },
-        "simulation_progress_phase_detail": {
-          "kind": "function",
-          "signature": "(phase: 'SimulationProgressPhase | str') -> 'str'"
+          "signature": "(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'"
         }
       }
     },
@@ -7300,8 +7215,6 @@
         "NewsComponentMarkScaleConfiguration",
         "NewsProcessConfiguration",
         "SharedNewsMarkLawConfiguration",
-        "SimulationProgressEvent",
-        "SimulationProgressPhase",
         "SurpriseNewsArrivalConfiguration",
         "deserialize_coarse_simulation_path",
         "deserialize_coarse_simulation_run_request",
@@ -7580,28 +7493,6 @@
           "kind": "contract_model",
           "signature": "(gamma_severity_marks: 'Any', double_exponential_base_shock: 'DoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CoupledGapMarkConfiguration') -> 'None'"
         },
-        "SimulationProgressEvent": {
-          "field_names": [
-            "phase",
-            "completed_units",
-            "total_units"
-          ],
-          "kind": "contract_model",
-          "signature": "(phase: 'SimulationProgressPhase', completed_units: 'int', total_units: 'int') -> 'None'"
-        },
-        "SimulationProgressPhase": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "SEEDED_TICK_INTERVALS",
-              "value": "seeded_tick_intervals"
-            },
-            {
-              "name": "COARSE_INTERVALS",
-              "value": "coarse_intervals"
-            }
-          ]
-        },
         "SurpriseNewsArrivalConfiguration": {
           "field_names": [
             "baseline_intensity"
@@ -7619,7 +7510,7 @@
         },
         "run_coarse_simulation": {
           "kind": "function",
-          "signature": "(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'"
+          "signature": "(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'"
         },
         "serialize_coarse_simulation_path": {
           "kind": "function",
@@ -7665,8 +7556,6 @@
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
-        "SimulationProgressEvent",
-        "SimulationProgressPhase",
         "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "deserialize_seeded_tick_simulation_response",
         "run_seeded_tick_event_simulation",
@@ -7984,28 +7873,6 @@
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
-        "SimulationProgressEvent": {
-          "field_names": [
-            "phase",
-            "completed_units",
-            "total_units"
-          ],
-          "kind": "contract_model",
-          "signature": "(phase: 'SimulationProgressPhase', completed_units: 'int', total_units: 'int') -> 'None'"
-        },
-        "SimulationProgressPhase": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "SEEDED_TICK_INTERVALS",
-              "value": "seeded_tick_intervals"
-            },
-            {
-              "name": "COARSE_INTERVALS",
-              "value": "coarse_intervals"
-            }
-          ]
-        },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
           "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
@@ -8016,7 +7883,7 @@
         },
         "run_seeded_tick_event_simulation": {
           "kind": "function",
-          "signature": "(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'"
+          "signature": "(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'"
         },
         "serialize_seeded_tick_simulation_response": {
           "kind": "function",

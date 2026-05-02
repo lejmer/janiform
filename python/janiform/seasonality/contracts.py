@@ -104,11 +104,13 @@ class ScheduledEventOverlayDefinition(ContractModel):
             "scheduled_event_overlay.overlay_id",
             _seasonality_error,
         )
+
         start_timestamp_utc_value = mapping.get("start_timestamp_utc")
         if start_timestamp_utc_value is None:
             raise SeasonalityInputValidationError(
                 "scheduled event overlay configuration record is missing required field 'start_timestamp_utc'"
             )
+
         require_datetime_utc(
             start_timestamp_utc_value,
             "scheduled_event_overlay.start_timestamp_utc",
@@ -120,6 +122,7 @@ class ScheduledEventOverlayDefinition(ContractModel):
             raise SeasonalityInputValidationError(
                 "scheduled event overlay configuration record is missing required field 'end_timestamp_utc'"
             )
+
         require_datetime_utc(
             end_timestamp_utc_value,
             "scheduled_event_overlay.end_timestamp_utc",
@@ -141,11 +144,13 @@ class ScheduledEventOverlayDefinition(ContractModel):
                     "scheduled_event_overlay.precedence",
                     "must be an integer",
                 )
+
             if raw_precedence_value < 0:
                 raise _seasonality_error(
                     "scheduled_event_overlay.precedence",
                     "must be non-negative",
                 )
+
             precedence = raw_precedence_value
 
         enabled = True

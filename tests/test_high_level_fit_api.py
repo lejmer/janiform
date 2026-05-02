@@ -31,7 +31,6 @@ from janiform._workflow_outputs import SimulationArtifactSink
 from janiform._workflow_progress import WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
-    FitProgressEvent,
     JaniformEstimator,
     JaniformFitResult,
     JaniformFitReport,
@@ -181,15 +180,27 @@ def test_janiform_estimator_fit_forwards_progress_events_to_callback(
         encoding="utf-8",
     )
 
-    progress_event = FitProgressEvent(
-        stage_id="fit_return_distribution",
-        stage_label="Fit return distribution",
-        phase_id="estimate_student_t",
-        phase_label="Estimate Student t",
-        completed_units=1,
-        total_units=3,
-    )
-    observed_events: list[FitProgressEvent] = []
+    progress_event = {
+        "event_class": "progress",
+        "payload": {
+            "stage": {
+                "stage_id": "fit_return_distribution",
+                "label": "Fit return distribution",
+            },
+            "phase": {
+                "phase_id": "estimate_student_t",
+                "label": "Estimate Student t",
+            },
+            "measures": [
+                {
+                    "measure_kind": "bounded_count",
+                    "completed_units": 1,
+                    "total_units": 3,
+                },
+            ],
+        },
+    }
+    observed_events: list[dict[str, Any]] = []
 
     patch_fit_workflow_runner(
         monkeypatch,
@@ -1812,12 +1823,16 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback(
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=5,
         progress_callback=lambda event: observed_callback_events.append(
-            (event.detail, event.completed_units, event.total_units)
+            (
+                cast(str, event["phase"]),
+                cast(int, event["completed_units"]),
+                cast(int, event["total_units"]),
+            )
         ),
     )
 
     assert result.raw_result is simulated_result
-    assert observed_callback_events == [("seeded tick path generation", 2, 5)]
+    assert observed_callback_events == [("seeded_tick_intervals", 2, 5)]
 
 
 def test_run_model_vanilla_option_surface_pricing_uses_terminal_progress_native_call(

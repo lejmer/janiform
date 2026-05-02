@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "53a7be7e9696ff1ba9a4a841a0c3362d56a7f40143b95b051c128f559249dfe4",
+  "approved_snapshot_sha256": "2944f101f2348f942178dbf56d2ba78e1f45ee14c1d0aaba1a2ae33f606d9ced",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1308,6 +1308,22 @@
       "summary": "Remove the Python stylized-fact markdown renderer.",
       "updated_surfaces": [
         "janiform.stylized_facts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Rust owns workflow progress event schemas and serializes callback payloads across the Python boundary, so Python no longer exposes duplicate event contracts or phase enums.",
+      "snapshot_sha256": "2944f101f2348f942178dbf56d2ba78e1f45ee14c1d0aaba1a2ae33f606d9ced",
+      "summary": "Remove Python-owned workflow progress event contracts from the public API.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
       ]
     }
   ],

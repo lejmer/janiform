@@ -590,7 +590,6 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
     calibration_fit_module = import_module("janiform.calibration.fit")
 
     expected_exports = {
-        "FitProgressEvent",
         "JaniformEstimator",
         "JaniformFitResult",
         "JaniformFitReport",

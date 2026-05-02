@@ -47,12 +47,6 @@ if "MPLCONFIGDIR" not in os.environ:
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
-from janiform.calibration.staged._progress_policy import (
-    CalibrationLiveProgressSnapshot,
-    calibration_total_progress_fraction as _shared_calibration_total_progress_fraction,
-    progress_bar_display_units as _shared_progress_bar_display_units,
-)
-
 from .artifacts import WorkbenchArtifacts, build_summary_payload
 from .candidate_store import (
     WorkbenchCandidateSnapshot,
@@ -2023,29 +2017,28 @@ class WorkbenchWindow(QMainWindow):
             and subprogress.completed_units is not None
             and subprogress.total_units > 0
         ):
-            display_units = _shared_progress_bar_display_units(
-                subprogress.completed_units,
-                subprogress.total_units,
-            )
             self._run_stage_progress_bar.setRange(0, subprogress.total_units)
-            self._run_stage_progress_bar.setValue(
-                0 if display_units is None else display_units[0]
-            )
+            self._run_stage_progress_bar.setValue(subprogress.completed_units)
         elif run_state.status == "running":
             self._run_stage_progress_bar.setRange(0, 0)
         else:
             self._run_stage_progress_bar.setRange(0, 1)
             self._run_stage_progress_bar.setValue(1 if run_state.status == "completed" else 0)
 
-        total_progress_fraction = _total_run_progress_fraction(run_state)
-        if total_progress_fraction is None and run_state.status == "running":
+        overall_progress = run_state.overall_progress
+        if (
+            run_state.status == "running"
+            and overall_progress.total_units is not None
+            and overall_progress.completed_units is not None
+            and overall_progress.total_units > 0
+        ):
+            self._run_total_progress_bar.setRange(0, overall_progress.total_units)
+            self._run_total_progress_bar.setValue(overall_progress.completed_units)
+        elif run_state.status == "running":
             self._run_total_progress_bar.setRange(0, 0)
-        elif total_progress_fraction is None:
+        else:
             self._run_total_progress_bar.setRange(0, 1)
             self._run_total_progress_bar.setValue(1 if run_state.status == "completed" else 0)
-        else:
-            self._run_total_progress_bar.setRange(0, 1000)
-            self._run_total_progress_bar.setValue(round(total_progress_fraction * 1000))
 
     def _append_event_row(self, event: Any) -> None:
         row_index = self._event_table.rowCount()
@@ -3273,22 +3266,6 @@ def _format_elapsed_duration(elapsed_seconds: float) -> str:
     if total_minutes >= 1.0:
         return f"{int(total_minutes)}m {seconds:04.1f}s"
     return f"{seconds:.1f}s"
-
-
-def _total_run_progress_fraction(run_state: WorkbenchRunState) -> Optional[float]:
-    return _shared_calibration_total_progress_fraction(
-        CalibrationLiveProgressSnapshot(
-            status=run_state.status,
-            stage_sequence=run_state.stage_sequence,
-            stage_index=run_state.stage_progress.completed_units,
-            stage_count=run_state.stage_progress.total_units,
-            current_stage=run_state.current_stage,
-            current_subtask=run_state.current_subtask,
-            current_stage_is_complete=run_state.current_stage_is_complete,
-            subtask_completed_units=run_state.subprogress.completed_units,
-            subtask_total_units=run_state.subprogress.total_units,
-        )
-    )
 
 
 def _lab_result_html(result: WorkbenchReevaluationResult) -> str:

@@ -161,7 +161,7 @@ The model is the primary output. Everything else exists to explain, audit, resum
 | Fitted model     | `JaniformModel` from `fit(...)`                     | `artifacts/model.jf`                             |
 | Fit result       | `JaniformFitResult` from `fit_with_report(...)`     | `artifacts/report.json`                          |
 | Fit report       | `JaniformFitReport` from `JaniformFitResult.report` | `artifacts/model.jf` and `artifacts/report.json` |
-| Progress events  | `FitProgressEvent` through `progress_callback`      | `events.jsonl` in the run directory              |
+| Progress events  | Rust-owned event mappings through `progress_callback` | `events.jsonl` in the run directory              |
 | Latest run state | Not written by the in-memory path                   | `latest-state.json` in the run directory         |
 | Checkpoints      | Available only through disk-backed execution        | `checkpoints/` in the run directory              |
 

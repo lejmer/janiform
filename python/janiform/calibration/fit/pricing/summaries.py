@@ -140,11 +140,13 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
             "deviation_domain_upper_bound",
             calibration_error,
         )
+
         if self.deviation_domain_lower_bound >= self.deviation_domain_upper_bound:
             raise calibration_error(
                 "deviation_domain_lower_bound",
                 "must be strictly less than deviation_domain_upper_bound",
             )
+
         if self.collocation_node_count <= 0:
             raise calibration_error("collocation_node_count", "must be strictly positive")
 

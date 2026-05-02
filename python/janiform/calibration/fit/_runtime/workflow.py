@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,7 +26,6 @@ from ...staged import CalibrationResumeSettings
 from ...staged.results import StagedCalibrationResponse, validate_staged_calibration_response
 from .._inference import normalization_overrides_from_policy
 from .._preparation.contracts import FitExecutionConfiguration
-from ..progress import FitProgressEvent, fit_progress_event_from_mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +55,7 @@ def run_fit_workflow(
     option_surface_valuation_time_utc: Optional[datetime],
     carry: Optional[CalibrationFlatCarryInput],
     progress_mode: WorkflowProgressMode,
-    progress_callback: Optional[Callable[[FitProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> NativeFitWorkflowOutput:
     request_payload = {
         "preparation_request": _fit_preparation_request_payload(
@@ -81,7 +80,7 @@ def run_fit_workflow(
     try:
         raw_output = native.run_fit_workflow(
             request_payload,
-            _native_fit_progress_callback(progress_callback),
+            progress_callback,
         )
     except Exception as error:
         _raise_fit_workflow_error(native, error)
@@ -98,20 +97,6 @@ def run_fit_workflow(
         raw_output,
         temporary_directory=None,
     )
-
-
-def _native_fit_progress_callback(
-    progress_callback: Optional[Callable[[FitProgressEvent], None]],
-) -> Optional[Callable[[dict[str, Any]], None]]:
-    if progress_callback is None:
-        return None
-
-    def emit_fit_progress(raw_event: dict[str, Any]) -> None:
-        event = fit_progress_event_from_mapping(raw_event)
-        if event is not None:
-            progress_callback(event)
-
-    return emit_fit_progress
 
 
 def prepare_fit_workflow(

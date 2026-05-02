@@ -17,7 +17,6 @@ from janiform.pricing import (
     NigSharedPlusShiftConfiguration,
     PricingIntervalSchedule,
     PricingIntervalScheduleMetadata,
-    PricingProgressEvent,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -583,7 +582,7 @@ def test_run_vanilla_option_pricing_executes_native_workflow_with_optional_outpu
 
 
 def test_run_vanilla_option_surface_pricing_executes_native_workflow_with_typed_surface_artifact() -> None:
-    observed_events: list[PricingProgressEvent] = []
+    observed_events: list[dict[str, Any]] = []
 
     run_result = run_vanilla_option_surface_pricing(
         build_anchored_surface_execution_input_model(),
@@ -592,7 +591,7 @@ def test_run_vanilla_option_surface_pricing_executes_native_workflow_with_typed_
 
     assert isinstance(run_result, VanillaOptionSurfacePricingRunResult)
     assert observed_events
-    assert observed_events[-1].completed_units == observed_events[-1].total_units
+    assert observed_events[-1]["completed_units"] == observed_events[-1]["total_units"]
     assert run_result.response.shape == (1, 3)
     assert run_result.response.node_count == 3
     assert run_result.response.node_table.option_types == (

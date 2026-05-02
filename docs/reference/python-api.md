@@ -1993,12 +1993,9 @@
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationfailure) | contract_model | 6 fields |
 | [`SimulationKind`](#python-api-symbol-janiform-simulation-simulationkind) | enum | 2 members |
-| [`SimulationProgressEvent`](#python-api-symbol-janiform-simulation-simulationprogressevent) | contract_model | 3 fields |
-| [`SimulationProgressPhase`](#python-api-symbol-janiform-simulation-simulationprogressphase) | enum | 2 members |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
-| [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
-| [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
-| [`simulation_progress_phase_detail`](#python-api-symbol-janiform-simulation-simulation-progress-phase-detail) | function | (phase: 'SimulationProgressPhase \| str') -> 'str' |
+| [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
+| [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
 
 <a id="python-api-symbol-janiform-simulation-coarsesimulationmodelinputs"></a>
 ### `CoarseSimulationModelInputs`
@@ -2144,23 +2141,6 @@
 | `SEEDED_TICK` | `seeded_tick` |
 | `COARSE_INTERVAL` | `coarse_interval` |
 
-<a id="python-api-symbol-janiform-simulation-simulationprogressevent"></a>
-### `SimulationProgressEvent`
-
-- Kind: `contract_model`
-- Signature: `(phase: 'SimulationProgressPhase', completed_units: 'int', total_units: 'int') -> 'None'`
-- Fields: `phase`, `completed_units`, `total_units`
-
-<a id="python-api-symbol-janiform-simulation-simulationprogressphase"></a>
-### `SimulationProgressPhase`
-
-- Kind: `enum`
-
-| Member | Value |
-|--------|-------|
-| `SEEDED_TICK_INTERVALS` | `seeded_tick_intervals` |
-| `COARSE_INTERVALS` | `coarse_intervals` |
-
 <a id="python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs"></a>
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`
 
@@ -2171,19 +2151,13 @@
 ### `run_coarse_simulation`
 
 - Kind: `function`
-- Signature: `(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'`
+- Signature: `(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'`
 
 <a id="python-api-symbol-janiform-simulation-run-seeded-tick-event-simulation"></a>
 ### `run_seeded_tick_event_simulation`
 
 - Kind: `function`
-- Signature: `(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'`
-
-<a id="python-api-symbol-janiform-simulation-simulation-progress-phase-detail"></a>
-### `simulation_progress_phase_detail`
-
-- Kind: `function`
-- Signature: `(phase: 'SimulationProgressPhase | str') -> 'str'`
+- Signature: `(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'`
 
 <a id="python-api-module-janiform-simulation-coarse"></a>
 ## `janiform.simulation.coarse`
@@ -2229,12 +2203,10 @@
 | [`NewsComponentMarkScaleConfiguration`](#python-api-symbol-janiform-simulation-coarse-newscomponentmarkscaleconfiguration) | contract_model | 2 fields |
 | [`NewsProcessConfiguration`](#python-api-symbol-janiform-simulation-coarse-newsprocessconfiguration) | contract_model | 5 fields |
 | [`SharedNewsMarkLawConfiguration`](#python-api-symbol-janiform-simulation-coarse-sharednewsmarklawconfiguration) | contract_model | 3 fields |
-| [`SimulationProgressEvent`](#python-api-symbol-janiform-simulation-coarse-simulationprogressevent) | contract_model | 3 fields |
-| [`SimulationProgressPhase`](#python-api-symbol-janiform-simulation-coarse-simulationprogressphase) | enum | 2 members |
 | [`SurpriseNewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration) | contract_model | 1 fields |
 | [`deserialize_coarse_simulation_path`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-path) | function | (payload_json: 'str') -> 'CoarseSimulationPath' |
 | [`deserialize_coarse_simulation_run_request`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-run-request) | function | (payload_json: 'str') -> 'CoarseSimulationRunRequest' |
-| [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-coarse-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
+| [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-coarse-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
 | [`serialize_coarse_simulation_path`](#python-api-symbol-janiform-simulation-coarse-serialize-coarse-simulation-path) | function | (path: 'CoarseSimulationPath') -> 'str' |
 | [`serialize_coarse_simulation_run_request`](#python-api-symbol-janiform-simulation-coarse-serialize-coarse-simulation-run-request) | function | (request: 'CoarseSimulationRunRequest') -> 'str' |
 | [`validate_coarse_simulation_path`](#python-api-symbol-janiform-simulation-coarse-validate-coarse-simulation-path) | function | (raw_path: 'dict[str, Any] \| Any') -> 'CoarseSimulationPath' |
@@ -2416,23 +2388,6 @@
 - Signature: `(gamma_severity_marks: 'Any', double_exponential_base_shock: 'DoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CoupledGapMarkConfiguration') -> 'None'`
 - Fields: `gamma_severity_marks`, `double_exponential_base_shock`, `coupled_gap_marks`
 
-<a id="python-api-symbol-janiform-simulation-coarse-simulationprogressevent"></a>
-### `SimulationProgressEvent`
-
-- Kind: `contract_model`
-- Signature: `(phase: 'SimulationProgressPhase', completed_units: 'int', total_units: 'int') -> 'None'`
-- Fields: `phase`, `completed_units`, `total_units`
-
-<a id="python-api-symbol-janiform-simulation-coarse-simulationprogressphase"></a>
-### `SimulationProgressPhase`
-
-- Kind: `enum`
-
-| Member | Value |
-|--------|-------|
-| `SEEDED_TICK_INTERVALS` | `seeded_tick_intervals` |
-| `COARSE_INTERVALS` | `coarse_intervals` |
-
 <a id="python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration"></a>
 ### `SurpriseNewsArrivalConfiguration`
 
@@ -2456,7 +2411,7 @@
 ### `run_coarse_simulation`
 
 - Kind: `function`
-- Signature: `(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'`
+- Signature: `(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath'`
 
 <a id="python-api-symbol-janiform-simulation-coarse-serialize-coarse-simulation-path"></a>
 ### `serialize_coarse_simulation_path`
@@ -2517,11 +2472,9 @@
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationfailure) | contract_model | 6 fields |
-| [`SimulationProgressEvent`](#python-api-symbol-janiform-simulation-seeded-simulationprogressevent) | contract_model | 3 fields |
-| [`SimulationProgressPhase`](#python-api-symbol-janiform-simulation-seeded-simulationprogressphase) | enum | 2 members |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`deserialize_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-deserialize-seeded-tick-simulation-response) | function | (payload_json: 'str') -> 'SeededTickSimulationResponse' |
-| [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-seeded-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
+| [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-seeded-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
 | [`serialize_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-serialize-seeded-tick-simulation-response) | function | (response: 'SeededTickSimulationResponse') -> 'str' |
 | [`validate_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-validate-seeded-tick-simulation-response) | function | (raw_response: 'dict[str, Any] \| Any') -> 'SeededTickSimulationResponse' |
 
@@ -2709,23 +2662,6 @@
 - Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
 - Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
 
-<a id="python-api-symbol-janiform-simulation-seeded-simulationprogressevent"></a>
-### `SimulationProgressEvent`
-
-- Kind: `contract_model`
-- Signature: `(phase: 'SimulationProgressPhase', completed_units: 'int', total_units: 'int') -> 'None'`
-- Fields: `phase`, `completed_units`, `total_units`
-
-<a id="python-api-symbol-janiform-simulation-seeded-simulationprogressphase"></a>
-### `SimulationProgressPhase`
-
-- Kind: `enum`
-
-| Member | Value |
-|--------|-------|
-| `SEEDED_TICK_INTERVALS` | `seeded_tick_intervals` |
-| `COARSE_INTERVALS` | `coarse_intervals` |
-
 <a id="python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs"></a>
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`
 
@@ -2742,7 +2678,7 @@
 ### `run_seeded_tick_event_simulation`
 
 - Kind: `function`
-- Signature: `(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'`
+- Signature: `(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode | str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse'`
 
 <a id="python-api-symbol-janiform-simulation-seeded-serialize-seeded-tick-simulation-response"></a>
 ### `serialize_seeded_tick_simulation_response`
@@ -2879,8 +2815,6 @@
 | [`PricingIntervalSchedule`](#python-api-symbol-janiform-pricing-pricingintervalschedule) | contract_model | 4 fields |
 | [`PricingIntervalScheduleMetadata`](#python-api-symbol-janiform-pricing-pricingintervalschedulemetadata) | contract_model | 3 fields |
 | [`PricingIntervalSchedulePolicy`](#python-api-symbol-janiform-pricing-pricingintervalschedulepolicy) | constant | constant value |
-| [`PricingProgressEvent`](#python-api-symbol-janiform-pricing-pricingprogressevent) | contract_model | 10 fields |
-| [`PricingProgressPhase`](#python-api-symbol-janiform-pricing-pricingprogressphase) | enum | 5 members |
 | [`VanillaOptionImpliedVolatilityInversionStatus`](#python-api-symbol-janiform-pricing-vanillaoptionimpliedvolatilityinversionstatus) | enum | 4 members |
 | [`VanillaOptionPayoffConfiguration`](#python-api-symbol-janiform-pricing-vanillaoptionpayoffconfiguration) | contract_model | 1 fields |
 | [`VanillaOptionPayoffType`](#python-api-symbol-janiform-pricing-vanillaoptionpayofftype) | enum | 2 members |
@@ -2907,7 +2841,7 @@
 | [`default_pricing_interval_schedule_policy`](#python-api-symbol-janiform-pricing-default-pricing-interval-schedule-policy) | function | () -> 'PricingIntervalSchedulePolicy' |
 | [`pricing_interval_schedule_policy_from_mapping`](#python-api-symbol-janiform-pricing-pricing-interval-schedule-policy-from-mapping) | function | (raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'PricingIntervalSchedulePolicy' |
 | [`run_vanilla_option_pricing`](#python-api-symbol-janiform-pricing-run-vanilla-option-pricing) | function | (execution_input: 'VanillaOptionPricingExecutionInput') -> 'VanillaOptionPricingRunResult' |
-| [`run_vanilla_option_surface_pricing`](#python-api-symbol-janiform-pricing-run-vanilla-option-surface-pricing) | function | (execution_input: 'VanillaOptionSurfacePricingExecutionInput', *, progress_callback: 'Optional[Callable[[PricingProgressEvent], None]]' = None) -> 'VanillaOptionSurfacePricingRunResult' |
+| [`run_vanilla_option_surface_pricing`](#python-api-symbol-janiform-pricing-run-vanilla-option-surface-pricing) | function | (execution_input: 'VanillaOptionSurfacePricingExecutionInput', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'VanillaOptionSurfacePricingRunResult' |
 
 <a id="python-api-symbol-janiform-pricing-anchoredlocaltiltadmissibilitystatus"></a>
 ### `AnchoredLocalTiltAdmissibilityStatus`
@@ -3026,26 +2960,6 @@
 
 - Kind: `constant`
 - Value: `PricingIntervalSchedulePolicy`
-
-<a id="python-api-symbol-janiform-pricing-pricingprogressevent"></a>
-### `PricingProgressEvent`
-
-- Kind: `contract_model`
-- Signature: `(phase: 'PricingProgressPhase', completed_units: 'int', total_units: 'int', current_group_index: 'Union', current_maturity_index: 'Union', total_maturities: 'Union', current_interval_index: 'Union', total_intervals: 'Union', current_strike_index: 'Union', total_strikes: 'Union') -> 'None'`
-- Fields: `phase`, `completed_units`, `total_units`, `current_group_index`, `current_maturity_index`, `total_maturities`, `current_interval_index`, `total_intervals`, `current_strike_index`, `total_strikes`
-
-<a id="python-api-symbol-janiform-pricing-pricingprogressphase"></a>
-### `PricingProgressPhase`
-
-- Kind: `enum`
-
-| Member | Value |
-|--------|-------|
-| `GROUP_PROGRESS` | `group_progress` |
-| `MATURITY_PROGRESS` | `maturity_progress` |
-| `INTERVAL_PROGRESS` | `interval_progress` |
-| `TRANSITION_ROW_PROGRESS` | `transition_row_progress` |
-| `STRIKE_PRICING_PROGRESS` | `strike_pricing_progress` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionimpliedvolatilityinversionstatus"></a>
 ### `VanillaOptionImpliedVolatilityInversionStatus`
@@ -3261,7 +3175,7 @@
 ### `run_vanilla_option_surface_pricing`
 
 - Kind: `function`
-- Signature: `(execution_input: 'VanillaOptionSurfacePricingExecutionInput', *, progress_callback: 'Optional[Callable[[PricingProgressEvent], None]]' = None) -> 'VanillaOptionSurfacePricingRunResult'`
+- Signature: `(execution_input: 'VanillaOptionSurfacePricingExecutionInput', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'VanillaOptionSurfacePricingRunResult'`
 
 <a id="python-api-module-janiform-pricing-contracts"></a>
 ## `janiform.pricing.contracts`
@@ -4001,19 +3915,11 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`FitProgressEvent`](#python-api-symbol-janiform-calibration-fit-fitprogressevent) | contract_model | 6 fields |
 | [`JaniformEstimator`](#python-api-symbol-janiform-calibration-fit-janiformestimator) | class | janiform.calibration.fit.estimator |
 | [`JaniformFitReport`](#python-api-symbol-janiform-calibration-fit-janiformfitreport) | contract_model | 12 fields |
 | [`JaniformFitResult`](#python-api-symbol-janiform-calibration-fit-janiformfitresult) | contract_model | 2 fields |
 | [`JaniformModel`](#python-api-symbol-janiform-calibration-fit-janiformmodel) | contract_model | 6 fields |
 | [`JaniformSimulationResult`](#python-api-symbol-janiform-calibration-fit-janiformsimulationresult) | contract_model | 5 fields |
-
-<a id="python-api-symbol-janiform-calibration-fit-fitprogressevent"></a>
-### `FitProgressEvent`
-
-- Kind: `contract_model`
-- Signature: `(stage_id: 'Optional[str]', stage_label: 'Optional[str]', phase_id: 'Optional[str]', phase_label: 'Optional[str]', completed_units: 'int', total_units: 'int') -> 'None'`
-- Fields: `stage_id`, `stage_label`, `phase_id`, `phase_label`, `completed_units`, `total_units`
 
 <a id="python-api-symbol-janiform-calibration-fit-janiformestimator"></a>
 ### `JaniformEstimator`
@@ -4074,8 +3980,8 @@
 
 | Method | Signature |
 |--------|-----------|
-| `fit` | `(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str \| Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str \| Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str \| Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[FitProgressEvent], None]]' = None) -> 'JaniformModel'` |
-| `fit_with_report` | `(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str \| Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str \| Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str \| Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[FitProgressEvent], None]]' = None) -> 'JaniformFitResult'` |
+| `fit` | `(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str \| Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str \| Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str \| Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'JaniformModel'` |
+| `fit_with_report` | `(self, *, run_id: 'Optional[str]' = None, resume_settings: 'Optional[CalibrationResumeSettings]' = None, tick_data_path: 'str \| Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str \| Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_dir: 'Optional[str \| Path]' = None, silent: 'Optional[bool]' = None, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'JaniformFitResult'` |
 
 <a id="python-api-module-janiform-calibration-fit-model"></a>
 ## `janiform.calibration.fit.model`
