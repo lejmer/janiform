@@ -14,6 +14,7 @@ mod dispatch;
 mod error;
 mod logging;
 mod paths;
+mod reference;
 mod rewrite;
 
 pub use application::run;
@@ -25,3 +26,4 @@ pub use context::OutputMode;
 pub use error::CliError;
 pub use error::CliExitCode;
 pub use paths::PathResolver;
+pub use reference::cli_command;

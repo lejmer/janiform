@@ -1,6 +1,6 @@
 import io
 import os
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 
@@ -1001,8 +1001,8 @@ def _render_terminal_output(raw_output: str) -> list[str]:
     current_line: list[str] = []
     cursor_position = 0
     line_index = 0
-    saved_line_index: int | None = None
-    saved_cursor_position: int | None = None
+    saved_line_index: Optional[int] = None
+    saved_cursor_position: Optional[int] = None
     character_index = 0
 
     while character_index < len(raw_output):

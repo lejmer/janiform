@@ -1,17 +1,11 @@
-# Contributing To Janiform
+# Contributing
 
-Use this page as the contributor entrypoint. Janiform keeps user-facing docs in `docs/` and keeps crate-local or fixture-local context in local `README.md` files.
+## Start here
 
-## Start Here
-
-- [docs/contributing/development-environment.md](docs/contributing/development-environment.md)
-- [docs/contributing/verification-and-automation.md](docs/contributing/verification-and-automation.md)
-- [docs/contributing/repo-layout.md](docs/contributing/repo-layout.md)
-- [docs/contributing/workbench.md](docs/contributing/workbench.md)
-- [docs/contributing/python-style.md](docs/contributing/python-style.md)
+- [docs/contributing/index.md](docs/contributing/index.md)
 - [RELEASE.md](RELEASE.md)
 
-## Local Setup
+## Local setup
 
 ### Linux and WSL
 
@@ -45,14 +39,14 @@ Run the relevant suites before opening a pull request.
 ./scripts/test-rust-win.ps1 .venv
 ```
 
-## Change Expectations
+## Change expectations
 
 - Keep code, tests, fixtures, generated artifacts, and docs aligned in the same change.
 - Prefer shared implementations to local duplicates.
 - Keep the public Python and CLI surfaces intentional.
 - Move machine-readable inputs and outputs into fixtures or test data rather than `docs/`.
 - Update the relevant page in `docs/` when you change setup steps, public workflows, repository layout, or contributor expectations.
-- When adding a Rust workspace crate, follow the new-crate checklist in [docs/contributing/repo-layout.md](docs/contributing/repo-layout.md).
+- When adding a Rust workspace crate, follow the new-crate checklist in [docs/contributing/crates.md](docs/contributing/crates.md).
 - Run the owned generation scripts when you change preset sources, checked-in crate `README.md` files, public API snapshots, or benchmark smoke artifacts.
 
 ## Licensing

@@ -1122,7 +1122,10 @@ fn presets_export_json_includes_market_profile_dependencies() {
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
 
-    assert_eq!(payload["schema_version"], "preset.runtime.export.v1");
+    assert_eq!(
+        payload["schema_version"],
+        "preset.runtime.resolved_snapshot.v1"
+    );
     assert_eq!(payload["command_id"], "presets.export");
     assert_eq!(payload["requested_category"], "market_profile");
     assert_eq!(payload["requested_scope"], "built_in");

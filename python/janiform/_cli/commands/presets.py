@@ -212,12 +212,12 @@ def _run_presets_export_command(
             preset_name=normalized_preset_name,
             raw_scope=scope,
         )
-        export_payload = registry.export_resolved_preset(
+        snapshot_payload = registry.resolve_preset_snapshot(
             category=parsed_category,
             preset_name=normalized_preset_name,
             registry_scope=registry_scope,
         ).to_payload()
-        payload = {**export_payload, "command": CLI_PRESETS_EXPORT_ENTRYPOINT}
+        payload = {**snapshot_payload, "command": CLI_PRESETS_EXPORT_ENTRYPOINT}
     except JaniformError as e:
         return write_cli_error(e)
     except Exception as e:

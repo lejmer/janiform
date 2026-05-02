@@ -71,32 +71,31 @@ def load_synthetic_eurusd_surface_context(
     discount_rate: float = DEFAULT_DISCOUNT_RATE,
     carry_rate: float = DEFAULT_CARRY_RATE,
 ) -> SyntheticVanillaOptionSurfaceContext:
-    underlying_frame: pd.DataFrame = pd.read_parquet(SYNTHETIC_EURUSD_TICK_DATA_PATH)
+    underlying_df: pd.DataFrame = pd.read_parquet(SYNTHETIC_EURUSD_TICK_DATA_PATH)
 
     valuation_row_position = valuation_row_position_from_end(
-        underlying_frame,
+        underlying_df,
         valuation_row_offset_from_end=valuation_row_offset_from_end,
     )
 
     valuation_time_utc = timestamp_at_row_position(
-        underlying_frame,
+        underlying_df,
         row_position=valuation_row_position,
     )
 
     spot = spot_at_row_position(
-        underlying_frame,
+        underlying_df,
         row_position=valuation_row_position,
     )
 
     observed_data = build_observed_state_request(
-        underlying_frame,
+        underlying_df,
         row_position=valuation_row_position,
         observed_price=spot,
         observed_state_row_count=observed_state_row_count,
     )
 
     persisted_model = load_or_fit_persisted_example_model(
-        market_profile="eurusd_spot",
         tick_data_path=SYNTHETIC_EURUSD_TICK_DATA_PATH,
         tail_row_count=calibration_row_count,
         force_refit=force_refit,
@@ -123,16 +122,16 @@ def load_synthetic_eurusd_surface_context(
 
 
 def valuation_row_position_from_end(
-    underlying_frame: pd.DataFrame,
+    underlying_df: pd.DataFrame,
     *,
     valuation_row_offset_from_end: int,
 ) -> int:
     if valuation_row_offset_from_end < 0:
         raise ValueError("valuation_row_offset_from_end must be non-negative")
-    if len(underlying_frame.index) == 0:
-        raise ValueError("underlying_frame must contain at least one row")
+    if len(underlying_df.index) == 0:
+        raise ValueError("underlying_df must contain at least one row")
 
-    row_position = len(underlying_frame.index) - 1 - valuation_row_offset_from_end
+    row_position = len(underlying_df.index) - 1 - valuation_row_offset_from_end
     if row_position < 0:
         raise ValueError(
             "valuation_row_offset_from_end exceeds the number of available underlying rows"
@@ -142,11 +141,11 @@ def valuation_row_position_from_end(
 
 
 def timestamp_at_row_position(
-    underlying_frame: pd.DataFrame,
+    underlying_df: pd.DataFrame,
     *,
     row_position: int,
 ) -> datetime:
-    raw_timestamp = underlying_frame.index[row_position]
+    raw_timestamp = underlying_df.index[row_position]
     if not isinstance(raw_timestamp, pd.Timestamp):
         raise TypeError("expected the underlying parquet index to contain pandas Timestamp values")
 
@@ -157,11 +156,11 @@ def timestamp_at_row_position(
 
 
 def spot_at_row_position(
-    underlying_frame: pd.DataFrame,
+    underlying_df: pd.DataFrame,
     *,
     row_position: int,
 ) -> float:
-    raw_price = underlying_frame[PRICE_COLUMN].iloc[row_position]
+    raw_price = underlying_df[PRICE_COLUMN].iloc[row_position]
     if isinstance(raw_price, Decimal):
         return float(raw_price)
 
@@ -169,27 +168,27 @@ def spot_at_row_position(
 
 
 def build_observed_state_request(
-    underlying_frame: pd.DataFrame,
+    underlying_df: pd.DataFrame,
     *,
     row_position: int,
     observed_price: float,
     observed_state_row_count: int = DEFAULT_OBSERVED_STATE_ROW_COUNT,
 ) -> CurrentStateEstimationRequest:
-    observed_frame = (
-        underlying_frame.iloc[: row_position + 1]
+    observed_df: pd.DataFrame = (
+        underlying_df.iloc[: row_position + 1]
         .tail(observed_state_row_count)
         .reset_index(names="timestamp_utc")
         .copy()
     )
-    observed_frame["timestamp_utc"] = pd.to_datetime(observed_frame["timestamp_utc"], utc=True)
-    observed_frame["trade_price"] = observed_frame[PRICE_COLUMN].astype(float)
-    observed_frame = observed_frame[observed_frame[INCREMENT_COLUMN].ne(0.0)].copy()
-    observed_frame["trade_sign"] = observed_frame[INCREMENT_COLUMN].map(
+    observed_df["timestamp_utc"] = pd.to_datetime(observed_df["timestamp_utc"], utc=True)
+    observed_df["trade_price"] = observed_df[PRICE_COLUMN].astype(float)
+    observed_df = observed_df[observed_df[INCREMENT_COLUMN].ne(0.0)].copy()
+    observed_df["trade_sign"] = observed_df[INCREMENT_COLUMN].map(
         lambda increment: "buy" if increment > 0.0 else "sell"
     )
 
     return CurrentStateEstimationRequest(
-        observed_tick_data=observed_frame[["timestamp_utc", "trade_price", "trade_sign"]],
+        observed_tick_data=observed_df[["timestamp_utc", "trade_price", "trade_sign"]],
         tick_data_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             price_column="trade_price",

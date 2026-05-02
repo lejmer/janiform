@@ -158,6 +158,7 @@ pub(crate) struct FitPreparationProgress {
 
 struct EffectiveMarketProfileReference {
     reference: Option<Value>,
+    session_reference: Option<Value>,
     requires_session_inference: bool,
 }
 
@@ -243,7 +244,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
     let resolved_configuration = resolve_preset_workflow_configuration(json!({
         "registry": request.configuration.registry.clone(),
         "market_profile_reference": market_profile_reference.reference,
-        "session_reference": request.configuration.session_reference.clone(),
+        "session_reference": market_profile_reference.session_reference,
         "known_news_reference": request.configuration.known_news_reference.clone(),
         "inferred_session_resolution": inferred_session_resolution,
     }))
@@ -351,6 +352,7 @@ fn resolve_effective_market_profile_reference(
     {
         return Ok(EffectiveMarketProfileReference {
             reference: configuration.market_profile_reference.clone(),
+            session_reference: configuration.session_reference.clone(),
             requires_session_inference: configuration.requires_session_inference,
         });
     }
@@ -368,6 +370,7 @@ fn resolve_effective_market_profile_reference(
 
         return Ok(EffectiveMarketProfileReference {
             reference: None,
+            session_reference: configuration.session_reference.clone(),
             requires_session_inference: configuration.requires_session_inference,
         });
     };
@@ -393,6 +396,7 @@ fn resolve_effective_market_profile_reference(
                 "default_calibration_hint_ids": profile.default_calibration_hint_ids,
             },
         })),
+        session_reference: None,
         requires_session_inference: false,
     })
 }

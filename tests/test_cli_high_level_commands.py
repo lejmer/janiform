@@ -599,6 +599,8 @@ def test_fit_surfaces_staged_failure_details_in_cli_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     tick_data_path = _write_tick_data(
         tmp_path / "failure-debug.csv",
         rows=(
@@ -655,6 +657,8 @@ def test_fit_prefers_failed_stage_message_over_generic_top_level_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     tick_data_path = _write_tick_data(
         tmp_path / "failure-generic-top-level.csv",
         rows=(
@@ -713,6 +717,8 @@ def test_fit_renders_human_error_output_with_labeled_lines(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     tick_data_path = _write_tick_data(
         tmp_path / "failure-human-output.csv",
         rows=(

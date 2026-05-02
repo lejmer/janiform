@@ -229,15 +229,15 @@ class CliExitCode(IntEnum):
 
 
 class CliOutputMode(StrEnum):
-    HUMAN = 'human'
-    JSON = 'json'
+    HUMAN = "human"
+    JSON = "json"
 
 
 class CliProgressMode(StrEnum):
-    AUTO = 'auto'
-    HUMAN = 'human'
-    JSONL = 'jsonl'
-    NONE = 'none'
+    AUTO = "auto"
+    HUMAN = "human"
+    JSONL = "jsonl"
+    NONE = "none"
 
 
 CLI_OUTPUT_MODE_CHOICES: tuple[str, str] = (

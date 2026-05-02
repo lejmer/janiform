@@ -29,6 +29,7 @@ from .artifacts import (
     MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION,
     MarketProfilePresetArtifact,
     PRESET_CONTENT_HASH_ALGORITHM,
+    PresetArtifact,
     PresetArtifactMetadata,
     PresetArtifactProvenance,
     PresetCategory,
@@ -42,11 +43,11 @@ from .artifacts import (
 )
 from .registry import (
     BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
-    RESOLVED_PRESET_EXPORT_SCHEMA_VERSION,
+    RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION,
     BundledPresetRegistryIndex,
     PresetIndexEntry,
     PresetRegistry,
-    ResolvedPresetExport,
+    ResolvedPresetSnapshot,
 )
 from .resolution import (
     DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME,
@@ -80,6 +81,7 @@ __all__ = [
     "MarketProfilePresetArtifact",
     "MarketProfileReference",
     "PRESET_CONTENT_HASH_ALGORITHM",
+    "PresetArtifact",
     "PresetArtifactMetadata",
     "PresetArtifactProvenance",
     "PresetCategory",
@@ -88,11 +90,11 @@ __all__ = [
     "PresetRegistry",
     "PresetRegistryScope",
     "PresetUpstreamSourceVersion",
-    "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+    "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION",
     "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION",
     "ResolvedKnownNewsComponent",
     "ResolvedMarketProfileComponent",
-    "ResolvedPresetExport",
+    "ResolvedPresetSnapshot",
     "ResolvedPresetSelection",
     "ResolvedPresetWorkflowConfiguration",
     "ResolvedSessionComponent",

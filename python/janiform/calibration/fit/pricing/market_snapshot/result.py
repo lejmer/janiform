@@ -115,7 +115,7 @@ class JaniformObservedOptionSnapshotPricingResult:
 
         return pandas.DataFrame.from_records(rows)
 
-    def to_surface_frame(
+    def to_surface_df(
         self,
         *,
         value_column: str = MODEL_IMPLIED_VOLATILITY_FIELD_NAME,

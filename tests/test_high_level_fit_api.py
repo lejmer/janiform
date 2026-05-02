@@ -27,6 +27,7 @@ import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform._timestamps import datetime_to_utc_nanos
+from janiform._workflow_outputs import SimulationArtifactSink
 from janiform._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
@@ -285,6 +286,46 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
 
     if prepared_workflow.temporary_directory is not None:
         prepared_workflow.temporary_directory.cleanup()
+
+
+def test_prepare_fit_workflow_infers_market_profile_from_synthetic_tick_path(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "Synthetic_EURUSD_Data_1M_ticks.parquet"
+    parquet.write_table(
+        pa.table(
+            {
+                "time": [
+                    datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                    datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+                ],
+                "close": [1.0850, 1.0852],
+            }
+        ),
+        tick_data_path,
+    )
+
+    estimator = JaniformEstimator()
+    prepared_workflow = estimator._prepare_fit_workflow(
+        run_id="high-level-inferred-eurusd-profile",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.PARQUET,
+        tick_data_provenance_label="tick_data",
+        option_surface_path=None,
+        option_surface_format=CalibrationInputFileFormat.PARQUET,
+        option_surface_provenance_label="option_surface",
+    )
+
+    if prepared_workflow.temporary_directory is not None:
+        prepared_workflow.temporary_directory.cleanup()
+
+    market_profile = prepared_workflow.resolved_configuration.market_profile
+    session = prepared_workflow.resolved_configuration.session
+
+    assert market_profile is not None
+    assert market_profile.configuration.profile_name == "eurusd_spot"
+    assert session.selected_preset is not None
+    assert session.selected_preset.preset_name == "fx_spot_24_5"
 
 
 def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparation(
@@ -570,7 +611,7 @@ def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
     assert request.normalization_policy.option_quote_input_policy is None
 
 
-def test_price_option_snapshot_returns_tidy_snapshot_and_surface_frame(
+def test_price_option_snapshot_returns_tidy_snapshot_and_surface_df(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -747,11 +788,11 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_frame(
     )
     assert result.nodes[0].log_forward_moneyness is not None
 
-    surface_frame = result.to_surface_frame()
-    assert tuple(surface_frame.columns) == (95.0, 105.0)
-    assert surface_frame.shape == (2, 2)
-    assert surface_frame.iloc[0, 0] == pytest.approx(0.2)
-    assert surface_frame.iloc[1, 1] == pytest.approx(0.26)
+    surface_df = result.to_surface_df()
+    assert tuple(surface_df.columns) == (95.0, 105.0)
+    assert surface_df.shape == (2, 2)
+    assert surface_df.iloc[0, 0] == pytest.approx(0.2)
+    assert surface_df.iloc[1, 1] == pytest.approx(0.26)
 
 
 def test_price_option_surface_returns_single_expiry_evolution_surface(
@@ -888,10 +929,10 @@ def test_price_option_surface_returns_single_expiry_evolution_surface(
     )
     assert frame["expiry_timestamp_utc"].nunique(dropna=False) == 1
 
-    surface_frame = result.to_surface_frame()
-    assert surface_frame.shape[0] == 2
-    assert surface_frame.shape[1] >= 1
-    assert surface_frame.iloc[0, 0] != surface_frame.iloc[1, 0]
+    surface_df = result.to_surface_df()
+    assert surface_df.shape[0] == 2
+    assert surface_df.shape[1] >= 1
+    assert surface_df.iloc[0, 0] != surface_df.iloc[1, 0]
 
 
 def test_vanilla_option_pricing_diagnostics_exposes_log_forward_moneyness() -> None:
@@ -1014,6 +1055,27 @@ def test_high_level_model_simulate_sends_model_payload_to_native_workflow(
     assert captured_requests[0]["interval_duration_nanos"] == 3_600_000_000_000
 
 
+def test_high_level_model_simulate_defaults_match_cli_model_simulation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-defaults",
+    )
+    captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
+
+    before_simulation = datetime.now(UTC)
+    model.simulate(horizon_interval_count=2)
+    after_simulation = datetime.now(UTC)
+
+    start_time_utc = datetime.fromisoformat(captured_requests[0]["start_time_utc"])
+
+    assert captured_requests[0]["seed"] == 0
+    assert before_simulation <= start_time_utc <= after_simulation
+
+
 def test_janiform_estimator_preserves_duplicate_ticks_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1054,8 +1116,7 @@ def test_janiform_estimator_preserves_duplicate_ticks_by_default(
 
 def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> None:
     registry = fit_estimator_module.PresetRegistry()
-    _, session_artifact = registry.resolve(
-        category=PresetCategory.SESSION,
+    _, session_artifact = registry.resolve_session(
         preset_name="fx_spot_24_5",
     )
 
@@ -2153,7 +2214,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         simulation_result: object,
         output_path: str | Path,
         preferences: Any,
-        sink: Any = None,
+        sink: Optional[SimulationArtifactSink] = None,
         calendar_registry: Any = None,
         exchange_code: Any = None,
     ) -> None:
@@ -2274,8 +2335,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
     import janiform._workflow_outputs as workflow_outputs_module
 
     registry = fit_estimator_module.PresetRegistry()
-    _, session_artifact = registry.resolve(
-        category=PresetCategory.SESSION,
+    _, session_artifact = registry.resolve_session(
         preset_name="fx_spot_24_5",
     )
     calendar_registry = CalendarRegistry(
@@ -2439,7 +2499,7 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
         simulation_result: object,
         output_path: str | Path,
         preferences: Any,
-        sink: Any = None,
+        sink: Optional[SimulationArtifactSink] = None,
     ) -> None:
         del simulation_result, output_path, preferences
 
@@ -2492,7 +2552,7 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
         simulation_result: object,
         output_path: str | Path,
         preferences: Any,
-        sink: Any = None,
+        sink: Optional[SimulationArtifactSink] = None,
     ) -> None:
         del simulation_result, preferences
 
@@ -3702,7 +3762,7 @@ def test_high_level_fit_reuses_single_native_preparation_pass_when_session_is_ex
         encoding="utf-8",
     )
 
-    captured_dynamics_search_restart_candidate_budgets: list[int | None] = []
+    captured_dynamics_search_restart_candidate_budgets: list[Optional[int]] = []
 
     def capture_execution_configuration(
         *args,
@@ -3898,7 +3958,7 @@ def test_high_level_fit_uses_native_terminal_progress_only(
         self: Any,
         label: str,
         *,
-        total_steps: int | None = None,
+        total_steps: Optional[int] = None,
     ) -> NoReturn:
         nonlocal progress_call_count
         progress_call_count += 1

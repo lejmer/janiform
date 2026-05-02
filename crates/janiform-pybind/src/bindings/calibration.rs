@@ -22,7 +22,6 @@ use janiform::calibration::{
     evaluate_return_components_exact_candidate_from_bridge,
     exchange_code_from_market_profile_reference as exchange_code_from_market_profile_reference_native,
     exchange_code_from_session_reference as exchange_code_from_session_reference_native,
-    export_resolved_preset as export_resolved_preset_native,
     infer_bundled_market_profile_from_tick_data_path,
     infer_market_data_fit_inputs as infer_market_data_fit_inputs_native,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
@@ -37,6 +36,7 @@ use janiform::calibration::{
     resolve_market_data_session_configuration as resolve_market_data_session_configuration_native,
     resolve_market_profile_configuration as resolve_market_profile_configuration_native,
     resolve_preset_artifact as resolve_preset_artifact_native,
+    resolve_preset_snapshot as resolve_preset_snapshot_native,
     resolve_preset_workflow_configuration as resolve_preset_workflow_configuration_native,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
@@ -144,18 +144,18 @@ fn resolve_preset_artifact(
 }
 
 #[pyfunction]
-#[pyo3(signature = (export_request))]
-fn export_resolved_preset(
+#[pyo3(signature = (snapshot_request))]
+fn resolve_preset_snapshot(
     py: Python<'_>,
-    export_request: &Bound<'_, PyAny>,
+    snapshot_request: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let export_request = py_any_to_json_value(export_request)?;
+    let snapshot_request = py_any_to_json_value(snapshot_request)?;
 
-    let export_payload = py
-        .detach(|| export_resolved_preset_native(export_request))
+    let snapshot_payload = py
+        .detach(|| resolve_preset_snapshot_native(snapshot_request))
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
-    json_value_to_py_object(py, &export_payload)
+    json_value_to_py_object(py, &snapshot_payload)
 }
 
 #[pyfunction]
@@ -1232,7 +1232,7 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(built_in_preset_registry_index, module)?)?;
     module.add_function(wrap_pyfunction!(preset_registry_index, module)?)?;
     module.add_function(wrap_pyfunction!(resolve_preset_artifact, module)?)?;
-    module.add_function(wrap_pyfunction!(export_resolved_preset, module)?)?;
+    module.add_function(wrap_pyfunction!(resolve_preset_snapshot, module)?)?;
     module.add_function(wrap_pyfunction!(serialize_preset_artifact, module)?)?;
     module.add_function(wrap_pyfunction!(deserialize_preset_artifact, module)?)?;
     module.add_function(wrap_pyfunction!(normalize_preset_artifact, module)?)?;

@@ -272,7 +272,6 @@ def build_observed_simulation_comparison_for_fit_context(
         seed=seed,
         start_time_utc=simulation_start_utc,
         horizon_interval_count=horizon_interval_count,
-        silent=True,
         progress_callback=emit_seeded_simulation_progress,
     )
 
@@ -314,7 +313,6 @@ def build_observed_simulation_comparison_for_fit_context(
         start_time_utc=coarse_simulation_start_utc,
         horizon_interval_count=coarse_horizon_interval_count,
         interval="15m",
-        silent=True,
         progress_callback=emit_coarse_simulation_progress,
     )
 

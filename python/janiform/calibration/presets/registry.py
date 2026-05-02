@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 BUNDLED_PRESET_INDEX_SCHEMA_VERSION = "preset.runtime.index.v1"
-RESOLVED_PRESET_EXPORT_SCHEMA_VERSION = "preset.runtime.export.v1"
+RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION = "preset.runtime.resolved_snapshot.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,7 +225,14 @@ class BundledPresetRegistryIndex(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedPresetExport(ContractModel):
+class ResolvedPresetSnapshot(ContractModel):
+    """Self-contained preset snapshot produced by resolving a requested preset.
+
+    Market-profile snapshots include the profile artifact plus any referenced
+    session and known-news artifacts, so the returned object can be serialized
+    as a portable preset snapshot.
+    """
+
     schema_version: str
     requested_category: PresetCategory
     requested_scope: PresetRegistryScope
@@ -237,10 +244,10 @@ class ResolvedPresetExport(ContractModel):
     def __post_init__(self) -> None:
         from .artifacts import PresetCategory
 
-        if self.schema_version != RESOLVED_PRESET_EXPORT_SCHEMA_VERSION:
+        if self.schema_version != RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION:
             raise preset_registry_error(
                 "schema_version",
-                f"must be `{RESOLVED_PRESET_EXPORT_SCHEMA_VERSION}`",
+                f"must be `{RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION}`",
             )
 
         if not self.preset_name.strip():
@@ -274,13 +281,13 @@ class ResolvedPresetExport(ContractModel):
         raw_payload: Mapping[str, Any] | Any,
         *,
         field_path: str,
-    ) -> ResolvedPresetExport:
+    ) -> ResolvedPresetSnapshot:
         from .artifacts import parse_preset_category
 
         if not isinstance(raw_payload, Mapping):
             raise preset_registry_error(field_path, "must be an object")
 
-        return ResolvedPresetExport(
+        return ResolvedPresetSnapshot(
             schema_version=require_non_empty_string(
                 raw_payload,
                 "schema_version",
@@ -357,7 +364,70 @@ class PresetRegistry:
             )
         )
 
-    def resolve(
+    def resolve_session(
+        self,
+        *,
+        preset_name: str,
+        registry_scope: Optional[PresetRegistryScope] = None,
+    ) -> tuple[PresetRegistryScope, SessionPresetArtifact]:
+        from .artifacts import PresetCategory, SessionPresetArtifact
+
+        resolved_scope, artifact = self._resolve(
+            category=PresetCategory.SESSION,
+            preset_name=preset_name,
+            registry_scope=registry_scope,
+        )
+        if not isinstance(artifact, SessionPresetArtifact):
+            raise preset_registry_error(
+                "preset_artifact",
+                "resolved session preset must be a SessionPresetArtifact",
+            )
+
+        return resolved_scope, artifact
+
+    def resolve_known_news(
+        self,
+        *,
+        preset_name: str,
+        registry_scope: Optional[PresetRegistryScope] = None,
+    ) -> tuple[PresetRegistryScope, KnownNewsPresetArtifact]:
+        from .artifacts import KnownNewsPresetArtifact, PresetCategory
+
+        resolved_scope, artifact = self._resolve(
+            category=PresetCategory.KNOWN_NEWS,
+            preset_name=preset_name,
+            registry_scope=registry_scope,
+        )
+        if not isinstance(artifact, KnownNewsPresetArtifact):
+            raise preset_registry_error(
+                "preset_artifact",
+                "resolved known-news preset must be a KnownNewsPresetArtifact",
+            )
+
+        return resolved_scope, artifact
+
+    def resolve_market_profile(
+        self,
+        *,
+        preset_name: str,
+        registry_scope: Optional[PresetRegistryScope] = None,
+    ) -> tuple[PresetRegistryScope, MarketProfilePresetArtifact]:
+        from .artifacts import MarketProfilePresetArtifact, PresetCategory
+
+        resolved_scope, artifact = self._resolve(
+            category=PresetCategory.MARKET_PROFILE,
+            preset_name=preset_name,
+            registry_scope=registry_scope,
+        )
+        if not isinstance(artifact, MarketProfilePresetArtifact):
+            raise preset_registry_error(
+                "preset_artifact",
+                "resolved market-profile preset must be a MarketProfilePresetArtifact",
+            )
+
+        return resolved_scope, artifact
+
+    def _resolve(
         self,
         *,
         category: PresetCategory,
@@ -402,28 +472,36 @@ class PresetRegistry:
 
         return normalized_artifact
 
-    def export_resolved_preset(
+    def resolve_preset_snapshot(
         self,
         *,
         category: PresetCategory,
         preset_name: str,
         registry_scope: Optional[PresetRegistryScope] = None,
-    ) -> ResolvedPresetExport:
+    ) -> ResolvedPresetSnapshot:
+        """
+        Return a self-contained resolved preset snapshot.
+
+        This method resolves the requested preset and includes referenced
+        market-profile dependencies so callers can serialize the returned
+        object when they need a portable preset snapshot.
+        """
+
         native = native_module()
-        export_payload = call_native_preset_object(
+        snapshot_payload = call_native_preset_object(
             native,
-            native.export_resolved_preset,
+            native.resolve_preset_snapshot,
             self._native_preset_request(
                 category=category,
                 preset_name=preset_name,
                 registry_scope=registry_scope,
             ),
-            function_label="resolved preset export",
+            function_label="resolved preset snapshot",
         )
 
-        return ResolvedPresetExport.from_mapping(
-            export_payload,
-            field_path="resolved_preset_export",
+        return ResolvedPresetSnapshot.from_mapping(
+            snapshot_payload,
+            field_path="resolved_preset_snapshot",
         )
 
     def native_resolution_payload(self) -> dict[str, Any]:
@@ -606,9 +684,9 @@ def _optional_market_profile_preset_artifact(
 
 __all__ = [
     "BUNDLED_PRESET_INDEX_SCHEMA_VERSION",
+    "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION",
+    "BundledPresetRegistryIndex",
     "PresetIndexEntry",
     "PresetRegistry",
-    "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
-    "ResolvedPresetExport",
-    "BundledPresetRegistryIndex",
+    "ResolvedPresetSnapshot",
 ]

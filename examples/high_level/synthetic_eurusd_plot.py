@@ -28,7 +28,6 @@ def main() -> None:
 
     arguments = _parse_args()
     persisted_model = load_or_fit_persisted_example_model(
-        market_profile="eurusd_spot",
         tick_data_path=SYNTHETIC_EURUSD_TICK_DATA_PATH,
         force_refit=arguments.refit,
     )
@@ -45,8 +44,8 @@ def main() -> None:
         horizon_interval_count=SEEDED_TICKS_HOURS,
     )
 
-    coarse_frame: pd.DataFrame = coarse_simulation.to_pandas()
-    seeded_frame: pd.DataFrame = seeded_simulation.to_pandas()
+    coarse_df: pd.DataFrame = coarse_simulation.to_pandas()
+    seeded_df: pd.DataFrame = seeded_simulation.to_pandas()
 
     print(
         f"model cache: {persisted_model.model_path} "
@@ -56,8 +55,8 @@ def main() -> None:
     figure, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=False)
 
     axes[0].plot(
-        coarse_frame[TIMESTAMP_COLUMN],
-        coarse_frame[PRICE_COLUMN],
+        coarse_df[TIMESTAMP_COLUMN],
+        coarse_df[PRICE_COLUMN],
         color="tab:blue",
         linewidth=1.5,
     )
@@ -66,8 +65,8 @@ def main() -> None:
     axes[0].grid(True, alpha=0.3)
 
     axes[1].plot(
-        seeded_frame[TIMESTAMP_COLUMN],
-        seeded_frame[PRICE_COLUMN],
+        seeded_df[TIMESTAMP_COLUMN],
+        seeded_df[PRICE_COLUMN],
         color="tab:orange",
         linewidth=1.0,
     )

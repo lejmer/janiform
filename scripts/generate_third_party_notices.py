@@ -9,7 +9,7 @@ import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -39,8 +39,8 @@ class ThirdPartyPackage:
     version: str
     license_expression: str
     source: str
-    repository: str | None
-    homepage: str | None
+    repository: Optional[str]
+    homepage: Optional[str]
     legal_files: tuple[Path, ...]
 
 
@@ -571,7 +571,7 @@ def _group_legal_texts(
     return grouped_entries
 
 
-def _optional_string(value: Any) -> str | None:
+def _optional_string(value: Any) -> Optional[str]:
     if isinstance(value, str) and value.strip():
         return value
 

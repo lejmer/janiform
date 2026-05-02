@@ -4,10 +4,11 @@ import json
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
+from ..._workflow_outputs import SimulationArtifactSink
 from ..._workflow_progress import WorkflowProgressMode
 from ...contracts.base import require_non_empty_string
 from ...mean_reversion import MeanReversionBoundaryState
@@ -57,6 +58,8 @@ from .pricing.surface import (
 from .state import CurrentStateEstimationRequest, CurrentStateEstimationResult
 from .state._estimation import estimate_current_state_for_model
 
+_DEFAULT_SIMULATION_SEED = 0
+
 
 @dataclass(frozen=True, slots=True)
 class JaniformModel:
@@ -80,13 +83,13 @@ class JaniformModel:
     def simulate(
         self,
         *,
-        seed: int,
-        start_time_utc: datetime,
         horizon_interval_count: int,
+        seed: int = _DEFAULT_SIMULATION_SEED,
+        start_time_utc: Optional[datetime] = None,
         interval: Optional[str | timedelta] = None,
         coarse: bool = False,
         output_path: Optional[str | Path] = None,
-        sink: Optional[Any] = None,
+        sink: Optional[SimulationArtifactSink] = None,
         continuation_data: Optional[CurrentStateEstimationRequest] = None,
         initial_excitation_state: Optional[HawkesExcitationState] = None,
         initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState] = None,
@@ -97,10 +100,12 @@ class JaniformModel:
         progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformSimulationResult:
+        resolved_start_time_utc = datetime.now(UTC) if start_time_utc is None else start_time_utc
+
         return simulate_model(
             self,
             seed=seed,
-            start_time_utc=start_time_utc,
+            start_time_utc=resolved_start_time_utc,
             horizon_interval_count=horizon_interval_count,
             interval=interval,
             coarse=coarse,
