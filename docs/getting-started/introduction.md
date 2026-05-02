@@ -26,7 +26,7 @@ Janiform takes its name from Janus, the Roman god traditionally depicted with tw
 
 A Janiform model is a compact description of how prices can move. It is not a copy of the market data. It is a fitted object that captures structure in the data: how price changes behave, how buy and sell activity appear, and how that behavior carries into simulation and pricing.
 
-You do not need to understand the mathematical details behind Janiform in order to run use it. All you need to know is that the model is the thing you fit from data, simulate from, and price with.
+You do not need to understand the mathematical details behind Janiform in order to run it. All you need to know is that the model is the thing you fit from data, simulate from, and price with.
 
 ## What you put in
 
@@ -50,9 +50,9 @@ The exact output depends on the workflow. A Janiform run should leave you with s
 
 Janiform is useful when historical data alone is too narrow, and simple simulated returns aren't enough.
 
-Use it to create realistic market paths for strategy testing, execution testing, risk checks, and system development. A backtest on one historical period only shows one version of the market. Janiform lets you generate many plausible paths where quiet periods, active bursts, directional pressure, jumps, and gaps can appear in varied yet very realistic sequences.
+Janiform can create realistic market paths for strategy testing, execution testing, risk checks, and system development. A backtest on one historical period only shows one version of the market. Janiform lets you generate many plausible paths where quiet periods, active bursts, directional pressure, jumps, and gaps can appear in varied yet very realistic sequences.
 
-Use it when option pricing needs to reflect the way markets actually move. Clustered activity, jumps, gaps, and buy/sell pressure can change the distribution of future prices. Janiform carries those fitted dynamics into derivative pricing, so pricing experiments can be tied to the same market behavior used for simulation.
+Janiform also fits option-pricing workflows that need to reflect the way markets actually move. Clustered activity, jumps, gaps, and buy/sell pressure can change the distribution of future prices. Janiform carries those fitted dynamics into derivative pricing, so pricing experiments can be tied to the same market behavior used for simulation.
 
 Janiform is especially useful for:
 
@@ -65,11 +65,11 @@ Janiform is especially useful for:
 
 ## CLI or Python package?
 
-Use the CLI when you want to run Janiform from a terminal, shell script, scheduler, or automation system.
+The CLI runs Janiform from a terminal, shell script, scheduler, or automation system.
 
-Use Python when Janiform is part of analysis code, notebooks, research scripts, or a larger application.
+The Python library keeps Janiform directly available inside analysis code, notebooks, research scripts, and larger applications.
 
-Both interfaces can run the same Janiform workflows and both can work with saved artifacts. You can learn the workflow first, then choose the interface that fits the job.
+Both interfaces can run the same Janiform workflows and both can work with saved artifacts. The workflow stays the same across both interfaces.
 
 ## Next steps
 

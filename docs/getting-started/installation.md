@@ -30,13 +30,13 @@ python -m pip install janiform
 
 ## Command line interface
 
-The package installation adds `janiform` to the active environment. Use it from the same shell where the environment is activated:
+The package installation adds `janiform` to the active environment. Run it from the same shell where the environment is activated:
 
 ```bash
 janiform --help
 ```
 
-The CLI and Python package are two ways to run the same Janiform workflows. Use the CLI for repeatable shell runs, automation, and saved artifacts. Use Python when Janiform is part of a notebook, research script, or larger application.
+The CLI and Python package are two ways to run the same Janiform workflows. The CLI fits repeatable shell runs, automation, and saved artifacts. The Python library fits notebooks, research scripts, and larger applications.
 
 ## Verify installation
 

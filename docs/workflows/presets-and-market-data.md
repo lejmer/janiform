@@ -8,7 +8,7 @@ This page focuses on choosing presets, registering your own presets, and making 
 
 Janiform has three preset categories:
 
-| Category         | What it contains                                                                             | Use case                                                              |
+| Category         | What it contains                                                                             | Typical role                                                          |
 |------------------|----------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
 | `market_profile` | A high-level profile that points to a session, known-news policy, timezone, and input hints. | Start here when a market profile context should set the fit defaults. |
 | `session`        | Exchange/session windows, timezone, and recurring closed windows.                            | Override or define the trading calendar independently of a profile.   |
@@ -16,17 +16,17 @@ Janiform has three preset categories:
 
 Market profiles are the most convenient entrypoint. They can select a session and recommend or apply a known-news calendar. Session and known-news presets remain available as lower-level overrides when you need precise control.
 
-Bundled presets include common profiles such as `eurusd_spot`, `btcusd_spot`, `us_equity_cash`, and `es_futures_globex`. Use the `PresetRegistry` in Python, or `janiform presets list`, to inspect the exact set available in the installed package.
+Bundled presets include common profiles such as `eurusd_spot`, `btcusd_spot`, `us_equity_cash`, and `es_futures_globex`. The exact set available in the installed package can be inspected with `PresetRegistry` in Python or with `janiform presets list`.
 
 ## Inputs
 
 Market data needed for calibration is split by purpose:
 
-| Input          | Required | Supported file formats  | Notes                                                                                                                     |
-|----------------|----------|-------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| Input          | Required | Supported file formats  | Notes                                                                                                                           |
+|----------------|----------|-------------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | Tick data      | Yes      | `csv`, `parquet`        | Must include timestamps and either a price column or bid/ask columns. Presets can supply column aliases and timestamp defaults. |
-| Option surface | No       | `csv`, `parquet`        | Required for option-aware fitting. Must identify quote time, expiry, strike, option type, and quote values.                |
-| Known news     | No       | preset or explicit JSON | Usually selected through a known-news preset. Staged lower-level contracts can also use calendar files.                    |
+| Option surface | No       | `csv`, `parquet`        | Required for option-aware fitting. Must identify quote time, expiry, strike, option type, and quote values.                     |
+| Known news     | No       | preset or explicit JSON | Usually selected through a known-news preset. Staged lower-level contracts can also use calendar files.                         |
 
 For repeatable work, provide the market profile or session explicitly, specify column mappings when names are not obvious, and keep user presets beside the project configuration that depends on them.
 
@@ -75,7 +75,7 @@ json: str = snapshot.to_json()
 payload: dict[str, Any] = snapshot.to_payload()
 ```
 
-### Use presets in a fit
+### Presets in a fit
 
 For most fits, pass the market profile name to `JaniformEstimator`:
 
@@ -157,7 +157,7 @@ estimator = JaniformEstimator(
 model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "ticks.csv")
 ```
 
-Use bid/ask inputs by changing the column mapping and tick price policy:
+Bid/ask inputs work by changing the column mapping and tick price policy:
 
 ```python
 tick_columns = CalibrationTickDataColumnMapping(
@@ -221,7 +221,7 @@ model: JaniformModel = estimator.fit(
 )
 ```
 
-### Use explicit references
+### Explicit references
 
 String arguments are concise. Reference objects are useful when code needs to choose a registry scope or apply a small override:
 
@@ -276,7 +276,7 @@ janiform presets list \
   --user-preset config/desk_fx_profile.json
 ```
 
-The user registry exists for that command invocation. Use the same `--user-preset` flags on `fit`, `fit inspect`, `fit plan`, and `presets` commands that should resolve those presets.
+The user registry exists for that command invocation. The same `--user-preset` flags need to appear on `fit`, `fit inspect`, `fit plan`, and `presets` commands that should resolve those presets.
 
 ## Fit with presets
 
@@ -300,7 +300,7 @@ janiform fit \
   --run-id explicit-context-fit
 ```
 
-Use explicit JSON when a preset name is not the right boundary for the workflow:
+Explicit JSON works better when a preset name is not the right boundary for the workflow:
 
 ```bash
 janiform fit \
@@ -382,6 +382,6 @@ Market profiles may recommend known news without applying it automatically. Pass
 - [Price derivatives](price-derivatives.md)
 - [Inspect and report](inspect-and-report.md)
 - [Command line interface](../interfaces/cli.md)
-- [Python interface](../interfaces/python.md)
+- [Python library](../interfaces/python.md)
 - [CLI reference](../reference/cli.md)
 - [Python API reference](../reference/python-api.md)

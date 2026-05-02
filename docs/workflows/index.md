@@ -13,7 +13,7 @@ These pages show how to use Janiform: preparing market context, fitting a model,
 
 ## Pages
 
-| Page                                                    | Use it for                                                                                              |
+| Page                                                    | Purpose                                                                                                 |
 |---------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
 | [Presets and market data](presets-and-market-data.md)   | Choosing market profiles, sessions, known-news presets, user presets, and explicit market-data inputs.  |
 | [Fit models](fit-models.md)                             | Calibrating a model from tick data, adding option-surface data, planning fits, and finding run outputs. |

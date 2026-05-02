@@ -1,6 +1,6 @@
 # Inspect and report
 
-Inspection and reporting commands read artifacts that Janiform has already written. Use inspection for status and artifact questions. Use reporting for outcome summaries.
+Inspection and reporting commands read artifacts that Janiform has already written. Inspection answers status and artifact questions. Reporting summarizes outcomes.
 
 ## Inspect a run
 
@@ -38,7 +38,7 @@ Include fuller fitted-parameter summaries with `--parameters`:
 janiform inspect model .janiform/runs/eurusd-fit/artifacts/model.jf --parameters
 ```
 
-Use this to inspect lineage and the model parameters of the saved model.
+This shows the lineage and model parameters of the saved model.
 
 ## Report a fit
 
@@ -54,7 +54,7 @@ The command also accepts the report artifact directly:
 janiform report fit .janiform/runs/eurusd-fit/artifacts/report.json
 ```
 
-Use JSON output when another process should read the summary:
+JSON output works well when another process should read the summary:
 
 ```bash
 janiform --json report fit .janiform/runs/eurusd-fit
@@ -96,7 +96,7 @@ Pass either the run directory or the report file. A run directory is expected to
 
 **The model parameter summary is incomplete**
 
-Use `inspect model --parameters` to include fuller fitted-parameter summaries.
+`inspect model --parameters` includes fuller fitted-parameter summaries.
 
 **The HTML report path is not what you expected**
 

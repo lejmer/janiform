@@ -13,7 +13,7 @@ A fit run has two jobs:
 
 Tick data is always required. Option surface data is optional and changes the calibration target:
 
-| Input set               | Use when                                                                     |
+| Input set               | Best for                                                                     |
 |-------------------------|------------------------------------------------------------------------------|
 | Tick data only          | You need a model for simulation, model validation, or model-implied pricing. |
 | Tick data + option data | You need a model to price options.                                           |
@@ -28,8 +28,8 @@ To fit a model we need the market observations and the context required to inter
 |------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------|
 | Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used. |
 | Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                    |
-| Known-news calendar    | No       | Use when scheduled news should be part of the activity calibration.                                                                             |
-| Option surface         | No       | Use for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                          |
+| Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                      |
+| Option surface         | No       | Needed for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                       |
 
 For repeatable work, make the context explicit. Market profile inference is convenient for quick runs, but production code should not rely on it.
 
@@ -57,6 +57,12 @@ result: JaniformFitResult = estimator.fit_with_report(
 
 model: JaniformModel = result.model
 report: JaniformFitReport = result.report
+```
+
+To keep the fitted model as a file for later Python or CLI work:
+
+```python
+model.save(".janiform/runs/eurusd-fit/artifacts/model.jf")
 ```
 
 For option-aware calibration, pass an option surface as well. The surface can contain multiple strikes, expiries, and option types. If the file contains more than one quote timestamp, pass `option_surface_valuation_time_utc` so the calibration process can know which valuation snapshot to target.
@@ -121,7 +127,7 @@ janiform fit \
   --run-id eurusd-option-fit
 ```
 
-Use `--output-dir` when the run directory must be somewhere other than `.janiform/runs/<run-id>`.
+`--output-dir` places the run directory somewhere other than `.janiform/runs/<run-id>`.
 
 ## CLI preflight checks
 
@@ -144,7 +150,7 @@ janiform fit plan \
   --run-id eurusd-fit
 ```
 
-Use `plan` when automation needs a dry run before spending time on calibration.
+`plan` provides a dry run before spending time on calibration.
 
 ## Outputs
 
@@ -183,7 +189,7 @@ janiform fit \
   --run-id explicit-column-fit
 ```
 
-Use bid/ask columns with `--tick-price-input-policy bid-ask-midpoint` when the fit should derive the tick price from quotes.
+Bid/ask columns work with `--tick-price-input-policy bid-ask-midpoint` when the fit should derive the tick price from quotes.
 
 ### Explicit market context
 
@@ -202,7 +208,7 @@ The same idea applies in Python through `JaniformEstimator(...)` arguments such 
 
 ### Prepared staged runs
 
-Use staged execution when another process needs to prepare the calibration input before the expensive run starts:
+Staged execution is useful when another process needs to prepare the calibration input before the expensive run starts:
 
 ```bash
 janiform fit staged plan \
@@ -266,7 +272,7 @@ Pass `option_surface_valuation_time_utc` in Python or `--option-surface-valuatio
 
 **A fit takes a long time**
 
-Calibration is the expensive part of Janiform and is expected to take a long time, sometimes many hours. Use `fit plan` before starting a long run, and use disk execution for work that should be inspectable and resumable.
+Calibration is the expensive part of Janiform and is expected to take a long time, sometimes many hours. `fit plan` helps before a long run starts, and disk execution keeps the work inspectable and resumable.
 
 **A downstream command cannot find the model**
 
@@ -280,6 +286,6 @@ Check the run id and model path. The default CLI model path is `.janiform/runs/<
 - [Inspect and report](inspect-and-report.md)
 - [Presets and market data](presets-and-market-data.md)
 - [Command line interface](../interfaces/cli.md)
-- [Python interface](../interfaces/python.md)
+- [Python library](../interfaces/python.md)
 - [CLI reference](../reference/cli.md)
 - [Python API reference](../reference/python-api.md)

@@ -142,7 +142,7 @@ The basic Janiform workflow is:
 2. Fit a Janiform model.
 3. Inspect the fitted behavior and simulated paths.
 4. Check whether the fitted behavior is realistic enough for the job.
-5. Use the model for simulation or derivative pricing.
+5. The model can then be used for simulation or derivative pricing.
 
 The important idea is that these are not separate assumptions glued together after the fact. The fitted model provides one shared structure for activity, returns, simulation, and pricing workflows.
 

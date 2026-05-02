@@ -10,7 +10,7 @@ A simulation run generates a new path from a fitted model.
 
 Janiform supports two simulation modes from the same fitted model:
 
-| Mode            | Use when                                                                                                              |
+| Mode            | Best for                                                                                                              |
 |-----------------|-----------------------------------------------------------------------------------------------------------------------|
 | Seeded tick     | You need detailed tick-level synthetic path output. This is the default, but is slower.                               |
 | Coarse interval | You need interval-level paths and do not need generated tick events. This is much faster than seeded tick simulation. |
@@ -23,13 +23,13 @@ To simulate a path we need a fitted model and a horizon.
 
 | Input                  | Required | Notes                                                                                                                                      |
 |------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| Fitted model           | Yes      | Use a `JaniformModel` in Python, or the `model.jf` file produced by `janiform fit` in the CLI.                                             |
+| Fitted model           | Yes      | The usual inputs are a `JaniformModel` in Python or the `model.jf` file produced by `janiform fit` in the CLI.                            |
 | Horizon interval count | Yes      | Number of intervals to simulate.                                                                                                           |
-| Interval duration      | No       | Defaults to `1h`. Use exact duration labels such as `1min`, `15min`, `1h`, or `1D`, or a Python `timedelta`.                               |
+| Interval duration      | No       | Defaults to `1h`. Exact duration labels such as `1min`, `15min`, `1h`, or `1D` also work, as does a Python `timedelta`.                  |
 | Start time             | No       | Defaults to the current UTC time. Pass an aware Python `datetime` or an RFC 3339 CLI timestamp when the run must be repeatable.            |
 | Seed                   | No       | Defaults to `0`. Pass it explicitly when outputs must be reproducible.                                                                     |
 | Output path            | No       | Python can keep the result in memory, export from the result, or write artifacts during simulation. The CLI defaults to a timestamped run. |
-| Simulation mode        | No       | Defaults to seeded tick simulation. Use `coarse=True` in Python or `--coarse` in the CLI for interval-level simulation.                    |
+| Simulation mode        | No       | Defaults to seeded tick simulation. `coarse=True` in Python or `--coarse` in the CLI switches to interval-level simulation.               |
 
 For repeatable work, make the model path, start time, interval, interval count, seed, output path, and simulation mode explicit.
 
@@ -53,7 +53,7 @@ simulation: JaniformSimulationResult = model.simulate(
 df: pd.DataFrame = simulation.to_pandas()
 ```
 
-By default, `simulate(...)` runs seeded tick simulation. Use `coarse=True` when interval-level output is enough:
+By default, `simulate(...)` runs seeded tick simulation. `coarse=True` switches to interval-level output:
 
 ```python
 from datetime import UTC, datetime
@@ -74,7 +74,7 @@ coarse_simulation: JaniformSimulationResult = model.simulate(
 df: pd.DataFrame = coarse_simulation.to_pandas()
 ```
 
-Use `output_path` when the Python workflow should write the same path data, simulation report, and run manifest sidecars that a durable workflow needs:
+`output_path` writes the same path data, simulation report, and run manifest sidecars that a durable workflow needs:
 
 ```python
 from datetime import UTC, datetime
@@ -128,7 +128,7 @@ The simulation report and run manifest are written next to the path data:
 .janiform/runs/simulate_model_<timestamp>/run.json
 ```
 
-Use `--output-path` when the simulation artifacts should live somewhere predictable:
+`--output-path` places the simulation artifacts somewhere predictable:
 
 ```bash
 janiform simulate \
@@ -140,7 +140,7 @@ janiform simulate \
   --output-path .janiform/runs/eurusd-simulation/simulation.parquet
 ```
 
-Use `--coarse` when interval-level output is enough:
+`--coarse` switches to interval-level output:
 
 ```bash
 janiform simulate \
@@ -153,7 +153,7 @@ janiform simulate \
   --output-path .janiform/runs/eurusd-coarse-simulation/simulation.parquet
 ```
 
-Use JSON mode when automation needs the final completion summary:
+JSON mode works well when automation needs the final completion summary:
 
 ```bash
 janiform --json simulate \
@@ -288,7 +288,7 @@ The simulated horizon is the interval duration multiplied by `horizon_interval_c
 
 ### Prepared simulation requests
 
-Most users should simulate directly from a `JaniformModel` in Python or from a saved model with `janiform simulate --model-path`. Prepared request commands are available when another tool has already built a simulation request artifact.
+You will usually simulate directly from a `JaniformModel` in Python or from a saved model with `janiform simulate --model-path`. Prepared request commands are available when another tool has already built a simulation request artifact.
 
 For seeded tick simulation:
 
@@ -321,7 +321,7 @@ Pass a positive interval count with `horizon_interval_count=...` in Python or `-
 
 **Interval parsing fails**
 
-Use exact duration labels such as `5min`, `15min`, `1h`, or `1D`. Intervals must be positive and exactly representable as UTC nanoseconds.
+Exact duration labels such as `5min`, `15min`, `1h`, or `1D` are required. Intervals must be positive and exactly representable as UTC nanoseconds.
 
 **The output path is rejected**
 
@@ -333,7 +333,7 @@ Check whether the start time was omitted. When start time is omitted, Janiform u
 
 **A simulation run takes a long time**
 
-Seeded tick simulation can produce many records. Use `--coarse` when interval-level output is enough, reduce the horizon, or use a larger interval when that matches the analysis requirement.
+Seeded tick simulation can produce many records. `--coarse` reduces the output to intervals, and a shorter horizon or larger interval reduces it further when that matches the analysis requirement.
 
 ## See also
 
@@ -343,6 +343,6 @@ Seeded tick simulation can produce many records. Use `--coarse` when interval-le
 - [Price derivatives](price-derivatives.md)
 - [Inspect and report](inspect-and-report.md)
 - [Command line interface](../interfaces/cli.md)
-- [Python interface](../interfaces/python.md)
+- [Python library](../interfaces/python.md)
 - [CLI reference](../reference/cli.md)
 - [Python API reference](../reference/python-api.md)

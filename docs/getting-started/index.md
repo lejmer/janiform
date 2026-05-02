@@ -11,7 +11,7 @@ These pages introduce Janiform from the outside in: how to install it, what it d
 
 ## Pages
 
-| Page                            | Use it for                                                                                                                                     |
+| Page                            | Purpose                                                                                                                                        |
 |---------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
 | [Installation](installation.md) | Installing Janiform, checking the Python package, and verifying that the CLI is available.                                                     |
 | [Introduction](introduction.md) | A plain-language overview of Janiform, what makes the model different, and when it is useful.                                                  |

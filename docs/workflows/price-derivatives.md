@@ -24,10 +24,10 @@ To price derivatives we need a fitted model, a valuation context, and a contract
 
 | Input                    | Required  | Notes                                                                                                                                            |
 |--------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| Fitted model             | Yes       | Use a `JaniformModel` in Python, or the `model.jf` file produced by `janiform fit` in the CLI.                                                   |
+| Fitted model             | Yes       | The usual inputs are a `JaniformModel` in Python or the `model.jf` file produced by `janiform fit` in the CLI.                                   |
 | Valuation time           | Yes       | UTC timestamp at which the contract is priced.                                                                                                   |
 | Current underlying state | Yes       | Single-contract pricing accepts an explicit spot. Dataset-backed option workflows derive state from tick data and compare against option quotes. |
-| Contract terms           | Yes       | For vanilla options: payoff type, strike, and one expiry representation. Use an expiry timestamp, expiry date, or tenor.                         |
+| Contract terms           | Yes       | For vanilla options: payoff type, strike, and one expiry representation. The expiry can be given as a timestamp, a date, or a tenor.             |
 | Rates and carry          | No        | `risk_free_rate` and `dividend_yield` default to `0.0`. Pass explicit values when valuation depends on them.                                     |
 | Option dataset           | When used | Required for observed option snapshot/surface workflows and option-aware fitting. It is separate from the underlying tick dataset.               |
 | Output path              | No        | Python can keep results in memory or write pricing artifacts. The CLI writes pricing artifacts by default.                                       |
@@ -62,7 +62,7 @@ pricing_result: VanillaOptionPricingRunResult = model.price_option(
 price: float = pricing_result.response.price
 ```
 
-Use `output_path` when the Python workflow should also write durable pricing artifacts:
+`output_path` also writes durable pricing artifacts from the Python workflow:
 
 ```python
 pricing_result: VanillaOptionPricingRunResult = model.price_option(
@@ -100,7 +100,7 @@ surface_result: JaniformObservedOptionSurfacePricingResult = model.price_option_
 df: pd.DataFrame = surface_result.to_pandas()
 ```
 
-`price_option_surface(...)` prices each selected observed option node and returns a tidy table through `to_pandas()`. Use `to_surface_df(...)` when a pivoted strike-by-expiry or strike-by-valuation view is more useful.
+`price_option_surface(...)` prices each selected observed option node and returns a tidy table through `to_pandas()`. `to_surface_df(...)` gives a pivoted strike-by-expiry or strike-by-valuation view.
 
 > **Integrating into a larger application**: option grid and surface pricing methods accept `progress_callback` where the workload can fan out across many nodes.
 
@@ -124,7 +124,7 @@ If `--output-path` is omitted, Janiform writes pricing artifacts to a timestampe
 .janiform/<model-run-id>_price_<timestamp>/run.json
 ```
 
-Use `--output-path` when the pricing artifact should live somewhere predictable:
+`--output-path` places the pricing artifact somewhere predictable:
 
 ```bash
 janiform price \
@@ -137,7 +137,7 @@ janiform price \
   --output-path .janiform/runs/eurusd-option-price/pricing.json
 ```
 
-Use JSON mode when automation needs the final completion summary:
+JSON mode works well when automation needs the final completion summary:
 
 ```bash
 janiform --json price \
@@ -151,21 +151,21 @@ janiform --json price \
 
 The JSON summary includes the run id, model path, artifact paths, pricing response, and run diagnostics.
 
-The CLI currently exposes single vanilla-option pricing. Use Python for observed option snapshot and surface workflows.
+The CLI currently exposes single vanilla-option pricing. Observed option snapshot and surface workflows are available in Python.
 
 ## Outputs
 
 The pricing response is the primary output. Python returns typed result objects and can materialize observed option pricing rows in memory. Durable workflows write the pricing payload, report, and run manifest.
 
-| Output          | Python                                                                 | CLI                   | Notes                                                                 |
-|-----------------|------------------------------------------------------------------------|-----------------------|-----------------------------------------------------------------------|
-| Pricing result  | `VanillaOptionPricingRunResult` or option surface result object        | Not returned in process | Price, status, diagnostics, and optional calibration hooks.           |
-| Observed rows   | `to_pandas()` from observed option snapshot/surface results            | Not available         | Tidy observed quote rows with model prices and implied volatilities.  |
-| Surface view    | `to_surface_df(...)` from observed option snapshot/surface results     | Not available         | Pivoted option result view for review and plotting.                   |
-| Pricing payload | Written when `output_path` is used                                     | `pricing.json`        | Primary pricing result artifact.                                      |
-| Report          | Written when `output_path` is used                                     | `pricing_report.json` | Output path and pricing diagnostics.                                  |
-| Run manifest    | Written when `output_path` is used                                     | `run.json`            | Run id, run directory, primary output path, and report path.          |
-| JSON completion | Not applicable                                                         | Standard output       | Emitted only when `--json` is used.                                   |
+| Output          | Python                                                             | CLI                     | Notes                                                                |
+|-----------------|--------------------------------------------------------------------|-------------------------|----------------------------------------------------------------------|
+| Pricing result  | `VanillaOptionPricingRunResult` or option surface result object    | Not returned in process | Price, status, diagnostics, and optional calibration hooks.          |
+| Observed rows   | `to_pandas()` from observed option snapshot/surface results        | Not available           | Tidy observed quote rows with model prices and implied volatilities. |
+| Surface view    | `to_surface_df(...)` from observed option snapshot/surface results | Not available           | Pivoted option result view for review and plotting.                  |
+| Pricing payload | Written when `output_path` is used                                 | `pricing.json`          | Primary pricing result artifact.                                     |
+| Report          | Written when `output_path` is used                                 | `pricing_report.json`   | Output path and pricing diagnostics.                                 |
+| Run manifest    | Written when `output_path` is used                                 | `run.json`              | Run id, run directory, primary output path, and report path.         |
+| JSON completion | Not applicable                                                     | Standard output         | Emitted only when `--json` is used.                                  |
 
 ## Derivative families
 
@@ -173,7 +173,7 @@ The pricing response is the primary output. Python returns typed result objects 
 
 Vanilla option pricing is available for calls and puts. The contract must define exactly one expiry representation:
 
-| Expiry input           | Use when                                                            |
+| Expiry input           | Best for                                                            |
 |------------------------|---------------------------------------------------------------------|
 | `expiry_timestamp_utc` | The exact UTC expiry timestamp is known.                            |
 | `expiry_date`          | The expiry is date-based and should preserve valuation time of day. |
@@ -181,7 +181,7 @@ Vanilla option pricing is available for calls and puts. The contract must define
 
 For observed option datasets, Janiform can price either one quote snapshot or a valuation-time surface:
 
-| Python method                    | Use when                                                             |
+| Python method                    | Best for                                                             |
 |----------------------------------|----------------------------------------------------------------------|
 | `price_option(...)`              | You have one vanilla option contract and explicit valuation inputs.  |
 | `price_option_snapshot(...)`     | You have one observed option quote snapshot to price and compare.    |
@@ -283,7 +283,7 @@ For observed option workflows, pass explicit option surface columns. Check quote
 
 **The option surface has multiple quote times**
 
-Pass `valuation_time_utc` when the workflow should price one valuation snapshot. Use `use_all_valuation_times=True` in Python when the workflow should price every quote time supported by the dataset.
+`valuation_time_utc` prices one valuation snapshot. `use_all_valuation_times=True` in Python prices every quote time supported by the dataset.
 
 **Pricing fails for some option nodes**
 
@@ -301,6 +301,6 @@ Only vanilla option pricing is currently implemented. Forwards, futures, swaps, 
 - [Model validation](model-validation.md)
 - [Inspect and report](inspect-and-report.md)
 - [Command line interface](../interfaces/cli.md)
-- [Python interface](../interfaces/python.md)
+- [Python library](../interfaces/python.md)
 - [CLI reference](../reference/cli.md)
 - [Python API reference](../reference/python-api.md)

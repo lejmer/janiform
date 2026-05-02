@@ -24,7 +24,7 @@ You can run a stylized facts validation run either from scratch by passing it a 
 
 | Input                 | Required | Notes                                                                                                                                     |
 |-----------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| Fitted model          | Yes      | Use the `model.jf` file produced by `janiform fit`.                                                                                       |
+| Fitted model          | Yes      | The usual CLI input is the `model.jf` file produced by `janiform fit`.                                                                    |
 | Empirical tick data   | Usually  | Can be omitted when the saved model records a usable original tick-data source.                                                           |
 | Return intervals      | Yes      | Comma-separated duration labels such as `5min,1h,1D`.                                                                                     |
 | Metric catalog        | No       | Defaults to the built-in stylized fact catalog. Pass a catalog JSON file when the validation policy is owned outside the default catalog. |
@@ -49,7 +49,7 @@ janiform validate stylized-facts plan \
   --seed 123
 ```
 
-Use JSON mode when automation needs the resolved plan:
+JSON mode works well when automation needs the resolved plan:
 
 ```bash
 janiform --json validate stylized-facts plan \
@@ -94,7 +94,7 @@ The main report artifacts are written to:
 <validation-dir>/lineage.json
 ```
 
-Use `--output-dir` when validation artifacts should live somewhere else:
+`--output-dir` places validation artifacts somewhere else:
 
 ```bash
 janiform validate stylized-facts \
@@ -106,7 +106,7 @@ janiform validate stylized-facts \
   --output-dir .janiform/runs/eurusd-fit/validation/stylized-facts
 ```
 
-Use `--fail-on-failed-checks` in CI or scheduled validation jobs when failed metric checks should produce a nonzero process exit:
+`--fail-on-failed-checks` makes failed metric checks produce a nonzero process exit, which is useful in CI and scheduled validation jobs:
 
 ```bash
 janiform validate stylized-facts \
@@ -136,7 +136,7 @@ The report bundle is the primary output. The table and plot payloads exist so do
 | Lineage              | `lineage.json`                              | Resolved validation plan used for the run.                                   |
 | Python report bundle | `StylizedFactHorizonComparisonReportBundle` | Returned by `run_stylized_fact_horizon_comparison_report_generator(...)`.    |
 
-Janiform summarizes status, metric-check counts, failures by interval, failures by metric class, selected check rows, and artifact paths. Use `--show-checks failed`, `--show-checks closest`, or `--show-checks all` to control which checks are printed. Use `--max-checks` to limit the number of rows.
+Janiform summarizes status, metric-check counts, failures by interval, failures by metric class, selected check rows, and artifact paths. `--show-checks failed`, `--show-checks closest`, and `--show-checks all` control which checks are printed. `--max-checks` limits the number of rows.
 
 ## Advanced configuration
 
@@ -171,7 +171,7 @@ janiform validate stylized-facts \
   --intervals 5min,1h
 ```
 
-Use bid/ask columns with `--empirical-price-input-policy bid-ask-midpoint` when validation should derive the empirical price from quotes.
+Bid/ask columns work with `--empirical-price-input-policy bid-ask-midpoint` when validation should derive the empirical price from quotes.
 
 ### Threshold and significance policy
 
@@ -185,13 +185,13 @@ janiform validate stylized-facts \
   --threshold-policy config/stylized-facts-thresholds.json
 ```
 
-Use `--significance-level` only when Janiform is generating the bootstrap decision policy. It conflicts with `--threshold-policy`.
+`--significance-level` applies only when Janiform is generating the bootstrap decision policy. It conflicts with `--threshold-policy`.
 
 > **Note:** Standardized delta is the absolute metric delta divided by the pooled confidence-interval half-width. It is a scale-normalized comparison against available confidence intervals, not a z-score or a statistical significance test.
 
 ### Caching
 
-Use `--cache` to keep derived validation inputs:
+`--cache` keeps derived validation inputs:
 
 ```bash
 janiform validate stylized-facts \
@@ -209,7 +209,7 @@ janiform validate stylized-facts \
 <validation-dir>/metric_observations.json
 ```
 
-Use `--cache=full` when the generated seeded tick paths should also be retained:
+`--cache=full` also retains the generated seeded tick paths:
 
 ```text
 <validation-dir>/simulation_paths.json
@@ -219,7 +219,7 @@ Full caching can produce larger artifacts because it keeps generated path detail
 
 ### Precomputed comparison mode
 
-Use `--comparison-request` when empirical and simulated metrics have already been computed:
+`--comparison-request` skips directly to comparison and report generation when empirical and simulated metrics have already been computed:
 
 ```bash
 janiform validate stylized-facts \
@@ -258,11 +258,11 @@ Pass explicit empirical column mappings. Check timestamp, price, bid, ask, trade
 
 **Interval parsing fails**
 
-Use exact duration labels such as `5min`, `15min`, `1h`, or `1D`. Intervals must be positive, unique, and exactly representable as UTC nanoseconds.
+Exact duration labels such as `5min`, `15min`, `1h`, or `1D` are required. Intervals must be positive, unique, and exactly representable as UTC nanoseconds.
 
 **A validation run takes a long time**
 
-Raw-data validation simulates seeded paths and computes metrics. Use `validate stylized-facts plan` before starting a long run, keep `--simulation-path-count` tied to the validation policy, and use `--cache` when intermediate artifacts need to be inspected after the run.
+Raw-data validation simulates seeded paths and computes metrics. `validate stylized-facts plan` helps before a long run starts, `--simulation-path-count` should stay tied to the validation policy, and `--cache` keeps intermediate artifacts available after the run.
 
 **The process exits successfully even though checks failed**
 
@@ -276,6 +276,6 @@ This is expected unless `--fail-on-failed-checks` is set. The report records fai
 - [Inspect and report](inspect-and-report.md)
 - [Concepts](../getting-started/concepts.md)
 - [Command line interface](../interfaces/cli.md)
-- [Python interface](../interfaces/python.md)
+- [Python library](../interfaces/python.md)
 - [CLI reference](../reference/cli.md)
 - [Python API reference](../reference/python-api.md)
