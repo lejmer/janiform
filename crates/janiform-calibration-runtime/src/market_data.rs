@@ -51,9 +51,9 @@ pub use preset_resolution::{
     PresetWorkflowResolutionError, built_in_preset_registry_index,
     compute_preset_artifact_content_hash, deserialize_preset_artifact_json,
     exchange_code_from_market_profile_reference, exchange_code_from_session_reference,
-    export_resolved_preset, normalize_preset_artifact, preset_registry_index,
-    resolve_market_profile_configuration, resolve_preset_artifact,
-    resolve_preset_workflow_configuration, serialize_preset_artifact,
+    normalize_preset_artifact, preset_registry_index, resolve_market_profile_configuration,
+    resolve_preset_artifact, resolve_preset_snapshot, resolve_preset_workflow_configuration,
+    serialize_preset_artifact,
 };
 pub use presets::{
     MarketDataColumnAliasHint, MarketDataPresetInferenceError, ResolvedMarketProfile,

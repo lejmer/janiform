@@ -198,7 +198,7 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration.presets.registry": [
                 "PresetRegistry",
-                "ResolvedPresetExport",
+                "ResolvedPresetSnapshot",
             ],
             "janiform.calibration.presets.resolution": [
                 "ResolvedPresetWorkflowConfiguration",

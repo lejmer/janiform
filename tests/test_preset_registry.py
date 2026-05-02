@@ -19,7 +19,7 @@ from janiform.calibration.presets import (
     PresetRegistry,
     PresetRegistryScope,
     PresetUpstreamSourceVersion,
-    RESOLVED_PRESET_EXPORT_SCHEMA_VERSION,
+    RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION,
     SESSION_PRESET_ARTIFACT_SCHEMA_VERSION,
     SessionExplicitConfiguration,
     SessionPresetArtifact,
@@ -27,11 +27,11 @@ from janiform.calibration.presets import (
     deserialize_preset_artifact,
     serialize_preset_artifact,
 )
-from janiform.contracts import serialize_deterministic_json
 from janiform.calibration.sessions import (
     MarketDataSessionRecurringClosedWindow,
     MarketDataSessionRegularWindow,
 )
+from janiform.contracts import serialize_deterministic_json
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 BUNDLED_PRESET_ROOT = (
@@ -160,14 +160,14 @@ def test_user_preset_artifact_load_normalizes_order_and_exports_deterministicall
 
     loaded_artifact = registry.register_user_preset(deserialize_preset_artifact(user_known_news.to_json()))
     first_export = serialize_deterministic_json(
-        registry.export_resolved_preset(
+        registry.resolve_preset_snapshot(
             category=PresetCategory.KNOWN_NEWS,
             preset_name="desk_macro",
             registry_scope=PresetRegistryScope.USER_REGISTERED,
         )
     )
     second_export = serialize_deterministic_json(
-        registry.export_resolved_preset(
+        registry.resolve_preset_snapshot(
             category=PresetCategory.KNOWN_NEWS,
             preset_name="desk_macro",
             registry_scope=PresetRegistryScope.USER_REGISTERED,
@@ -226,7 +226,7 @@ def test_user_preset_artifact_rejects_malformed_payload_and_dangling_market_prof
     )
 
     with pytest.raises(CalibrationValidationError) as dangling_error:
-        registry.export_resolved_preset(
+        registry.resolve_preset_snapshot(
             category=PresetCategory.MARKET_PROFILE,
             preset_name="desk_fx_profile",
             registry_scope=PresetRegistryScope.USER_REGISTERED,
@@ -236,22 +236,22 @@ def test_user_preset_artifact_rejects_malformed_payload_and_dangling_market_prof
     assert "missing_news" in dangling_error.value.failure.message
 
 
-def test_market_profile_export_includes_nested_session_and_known_news_artifacts() -> None:
+def test_market_profile_snapshot_includes_nested_session_and_known_news_artifacts() -> None:
     registry = PresetRegistry()
-    export_payload = json.loads(
+    snapshot_payload = json.loads(
         serialize_deterministic_json(
-            registry.export_resolved_preset(
+            registry.resolve_preset_snapshot(
                 category=PresetCategory.MARKET_PROFILE,
                 preset_name="eurusd_spot",
             )
         )
     )
 
-    assert export_payload["schema_version"] == RESOLVED_PRESET_EXPORT_SCHEMA_VERSION
-    assert export_payload["requested_scope"] == "built_in"
-    assert export_payload["market_profile_preset"]["preset_name"] == "eurusd_spot"
-    assert export_payload["session_preset"]["preset_name"] == "fx_spot_24_5"
-    assert export_payload["known_news_preset"]["preset_name"] == "eu_us_macro_fx_core"
+    assert snapshot_payload["schema_version"] == RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION
+    assert snapshot_payload["requested_scope"] == "built_in"
+    assert snapshot_payload["market_profile_preset"]["preset_name"] == "eurusd_spot"
+    assert snapshot_payload["session_preset"]["preset_name"] == "fx_spot_24_5"
+    assert snapshot_payload["known_news_preset"]["preset_name"] == "eu_us_macro_fx_core"
 
 
 def _build_metadata(*, display_name: str) -> PresetArtifactMetadata:

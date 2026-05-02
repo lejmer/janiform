@@ -199,20 +199,21 @@ pub(crate) fn run_presets_export(
         command.scope.and_then(PresetRegistryScope::registry_value),
     );
 
-    let mut payload = janiform::calibration::export_resolved_preset(request).map_err(|source| {
-        preset_workflow_error(
-            PRESETS_EXPORT_COMMAND_ID,
-            Some(command.category),
-            command.scope,
-            Some(&preset_name),
-            source,
-        )
-    })?;
+    let mut payload =
+        janiform::calibration::resolve_preset_snapshot(request).map_err(|source| {
+            preset_workflow_error(
+                PRESETS_EXPORT_COMMAND_ID,
+                Some(command.category),
+                command.scope,
+                Some(&preset_name),
+                source,
+            )
+        })?;
 
     let payload_object = payload.as_object_mut().ok_or_else(|| {
         malformed_payload(
             PRESETS_EXPORT_COMMAND_ID,
-            "resolved preset export must be a JSON object",
+            "resolved preset snapshot must be a JSON object",
         )
     })?;
 

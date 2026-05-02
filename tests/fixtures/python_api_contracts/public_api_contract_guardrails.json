@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "0d0c0367a8a9b0da7bf94adb3ec30537b54c7b3cc678d25077ac4970a8038b14",
+  "approved_snapshot_sha256": "a8bb472d63c0b591fef76d7a70ccf705e83004d37d39b21ecd2f690f9da2bbfb",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1268,6 +1268,19 @@
       "rationale": "Preset artifact handling now exposes the public PresetArtifact union for generic artifact passing while PresetRegistry exposes typed category-specific resolver methods. The dynamic resolver is private so user code can avoid casts when requesting a known preset category.",
       "snapshot_sha256": "0d0c0367a8a9b0da7bf94adb3ec30537b54c7b3cc678d25077ac4970a8038b14",
       "summary": "Approve typed preset registry resolution methods.",
+      "updated_surfaces": [
+        "janiform.calibration.presets",
+        "janiform.calibration.presets.registry"
+      ]
+    },
+    {
+      "approved_on": "2026-05-02",
+      "docs_updated": [
+        "docs/workflows/presets-and-market-data.md"
+      ],
+      "rationale": "Preset dependency collection now uses snapshot naming in the Python API so callers do not mistake the method for a side-effecting file export. The CLI export command still writes the resolved snapshot payload to stdout.",
+      "snapshot_sha256": "a8bb472d63c0b591fef76d7a70ccf705e83004d37d39b21ecd2f690f9da2bbfb",
+      "summary": "Rename resolved preset export API to resolved preset snapshot API.",
       "updated_surfaces": [
         "janiform.calibration.presets",
         "janiform.calibration.presets.registry"

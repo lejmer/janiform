@@ -14,7 +14,7 @@ use super::payload::{
 use super::support::required_registry_scope;
 
 const BUNDLED_PRESET_INDEX_SCHEMA_VERSION: &str = "preset.runtime.index.v1";
-const RESOLVED_PRESET_EXPORT_SCHEMA_VERSION: &str = "preset.runtime.export.v1";
+const RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION: &str = "preset.runtime.resolved_snapshot.v1";
 
 struct BundledPresetSource {
     artifact_path: &'static str,
@@ -137,9 +137,9 @@ pub fn resolve_preset_artifact(request: Value) -> PresetResolutionResult<Value> 
     }))
 }
 
-/// Export a preset artifact with named market-profile dependencies included.
-pub fn export_resolved_preset(request: Value) -> PresetResolutionResult<Value> {
-    let request = object_value(&request, "preset_export_request")?;
+/// Resolve a preset artifact with named market-profile dependencies included.
+pub fn resolve_preset_snapshot(request: Value) -> PresetResolutionResult<Value> {
+    let request = object_value(&request, "preset_snapshot_request")?;
     let registry = RuntimePresetRegistry::from_request(request)?;
 
     let (category, preset_name, registry_scope) = requested_preset(request)?;
@@ -152,11 +152,11 @@ pub fn export_resolved_preset(request: Value) -> PresetResolutionResult<Value> {
 
     match category {
         PresetCategory::Session => {
-            // Export payloads own artifacts independently from the registry cache.
+            // Snapshot payloads own artifacts independently from the registry cache.
             session_preset = artifact.clone();
         }
         PresetCategory::KnownNews => {
-            // Export payloads own artifacts independently from the registry cache.
+            // Snapshot payloads own artifacts independently from the registry cache.
             known_news_preset = artifact.clone();
         }
         PresetCategory::MarketProfile => {
@@ -195,13 +195,13 @@ pub fn export_resolved_preset(request: Value) -> PresetResolutionResult<Value> {
                 .unwrap_or(Value::Null);
             }
 
-            // Export payloads own artifacts independently from the registry cache.
+            // Snapshot payloads own artifacts independently from the registry cache.
             market_profile_preset = artifact.clone();
         }
     }
 
     Ok(json!({
-        "schema_version": RESOLVED_PRESET_EXPORT_SCHEMA_VERSION,
+        "schema_version": RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION,
         "requested_category": category.as_str(),
         "requested_scope": resolved_scope.as_str(),
         "preset_name": preset_name,
@@ -551,6 +551,6 @@ fn resolve_named_dependency_artifact(
         required_registry_scope(reference, &format!("{field_path}.registry_scope"))?;
     let (_, artifact) = registry.resolve(category, preset_name, Some(registry_scope))?;
 
-    // Export payloads own dependency artifacts independently from the registry cache.
+    // Snapshot payloads own dependency artifacts independently from the registry cache.
     Ok(Some(artifact.clone()))
 }

@@ -43,11 +43,11 @@ from .artifacts import (
 )
 from .registry import (
     BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
-    RESOLVED_PRESET_EXPORT_SCHEMA_VERSION,
+    RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION,
     BundledPresetRegistryIndex,
     PresetIndexEntry,
     PresetRegistry,
-    ResolvedPresetExport,
+    ResolvedPresetSnapshot,
 )
 from .resolution import (
     DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME,
@@ -90,11 +90,11 @@ __all__ = [
     "PresetRegistry",
     "PresetRegistryScope",
     "PresetUpstreamSourceVersion",
-    "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+    "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION",
     "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION",
     "ResolvedKnownNewsComponent",
     "ResolvedMarketProfileComponent",
-    "ResolvedPresetExport",
+    "ResolvedPresetSnapshot",
     "ResolvedPresetSelection",
     "ResolvedPresetWorkflowConfiguration",
     "ResolvedSessionComponent",

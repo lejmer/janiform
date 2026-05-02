@@ -12,8 +12,8 @@ pub use artifacts::{
 };
 pub use contracts::PresetWorkflowResolutionError;
 pub use registry::{
-    built_in_preset_registry_index, export_resolved_preset, preset_registry_index,
-    resolve_preset_artifact,
+    built_in_preset_registry_index, preset_registry_index, resolve_preset_artifact,
+    resolve_preset_snapshot,
 };
 pub use resolution::{
     exchange_code_from_market_profile_reference, exchange_code_from_session_reference,

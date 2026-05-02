@@ -1947,12 +1947,12 @@
         "PresetRegistry",
         "PresetRegistryScope",
         "PresetUpstreamSourceVersion",
-        "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+        "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION",
         "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION",
         "ResolvedKnownNewsComponent",
         "ResolvedMarketProfileComponent",
-        "ResolvedPresetExport",
         "ResolvedPresetSelection",
+        "ResolvedPresetSnapshot",
         "ResolvedPresetWorkflowConfiguration",
         "ResolvedSessionComponent",
         "ResolvedWorkflowComponent",
@@ -1997,9 +1997,9 @@
           "value": "preset.artifact.market_profile.v1"
         },
         {
-          "name": "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+          "name": "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "preset.runtime.export.v1"
+          "value": "preset.runtime.resolved_snapshot.v1"
         },
         {
           "name": "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION",
@@ -2254,9 +2254,9 @@
           "kind": "contract_model",
           "signature": "(source_name: 'str', version_label: 'str') -> 'None'"
         },
-        "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION": {
+        "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "preset.runtime.export.v1"
+          "value": "preset.runtime.resolved_snapshot.v1"
         },
         "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION": {
           "kind": "constant",
@@ -2285,7 +2285,16 @@
           "kind": "contract_model",
           "signature": "(configuration: 'MarketProfileExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, applied_override_fields: 'tuple[str, ...]' = ()) -> 'None'"
         },
-        "ResolvedPresetExport": {
+        "ResolvedPresetSelection": {
+          "field_names": [
+            "category",
+            "registry_scope",
+            "preset_name"
+          ],
+          "kind": "contract_model",
+          "signature": "(category: 'PresetCategory', registry_scope: 'PresetRegistryScope', preset_name: 'str') -> 'None'"
+        },
+        "ResolvedPresetSnapshot": {
           "field_names": [
             "schema_version",
             "requested_category",
@@ -2297,15 +2306,6 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', requested_category: 'PresetCategory', requested_scope: 'PresetRegistryScope', preset_name: 'str', session_preset: 'Optional[SessionPresetArtifact]' = None, known_news_preset: 'Optional[KnownNewsPresetArtifact]' = None, market_profile_preset: 'Optional[MarketProfilePresetArtifact]' = None) -> 'None'"
-        },
-        "ResolvedPresetSelection": {
-          "field_names": [
-            "category",
-            "registry_scope",
-            "preset_name"
-          ],
-          "kind": "contract_model",
-          "signature": "(category: 'PresetCategory', registry_scope: 'PresetRegistryScope', preset_name: 'str') -> 'None'"
         },
         "ResolvedPresetWorkflowConfiguration": {
           "field_names": [
@@ -2728,8 +2728,8 @@
         "BundledPresetRegistryIndex",
         "PresetIndexEntry",
         "PresetRegistry",
-        "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
-        "ResolvedPresetExport"
+        "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION",
+        "ResolvedPresetSnapshot"
       ],
       "module_name": "janiform.calibration.presets.registry",
       "schema_identifiers": [
@@ -2739,9 +2739,9 @@
           "value": "preset.runtime.index.v1"
         },
         {
-          "name": "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+          "name": "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "preset.runtime.export.v1"
+          "value": "preset.runtime.resolved_snapshot.v1"
         }
       ],
       "symbols": {
@@ -2780,21 +2780,21 @@
           "kind": "class",
           "origin_module": "janiform.calibration.presets.registry",
           "public_methods": {
-            "export_resolved_preset": "(self, *, category: 'PresetCategory', preset_name: 'str', registry_scope: 'Optional[PresetRegistryScope]' = None) -> 'ResolvedPresetExport'",
             "list_presets": "(self, *, category: 'Optional[PresetCategory]' = None, include_built_in: 'bool' = True, include_user_registered: 'bool' = True) -> 'tuple[PresetIndexEntry, ...]'",
             "native_resolution_payload": "(self) -> 'dict[str, Any]'",
             "register_user_preset": "(self, artifact: 'PresetArtifact') -> 'PresetArtifact'",
             "resolve_known_news": "(self, *, preset_name: 'str', registry_scope: 'Optional[PresetRegistryScope]' = None) -> 'tuple[PresetRegistryScope, KnownNewsPresetArtifact]'",
             "resolve_market_profile": "(self, *, preset_name: 'str', registry_scope: 'Optional[PresetRegistryScope]' = None) -> 'tuple[PresetRegistryScope, MarketProfilePresetArtifact]'",
+            "resolve_preset_snapshot": "(self, *, category: 'PresetCategory', preset_name: 'str', registry_scope: 'Optional[PresetRegistryScope]' = None) -> 'ResolvedPresetSnapshot'",
             "resolve_session": "(self, *, preset_name: 'str', registry_scope: 'Optional[PresetRegistryScope]' = None) -> 'tuple[PresetRegistryScope, SessionPresetArtifact]'"
           },
           "qualname": "PresetRegistry"
         },
-        "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION": {
+        "RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "preset.runtime.export.v1"
+          "value": "preset.runtime.resolved_snapshot.v1"
         },
-        "ResolvedPresetExport": {
+        "ResolvedPresetSnapshot": {
           "field_names": [
             "schema_version",
             "requested_category",

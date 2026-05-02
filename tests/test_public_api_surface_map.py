@@ -905,7 +905,7 @@ def test_calibration_presets_public_ownership_submodules_are_supported_domain_im
     assert {
         "BundledPresetRegistryIndex",
         "PresetRegistry",
-        "ResolvedPresetExport",
+        "ResolvedPresetSnapshot",
     } <= set(calibration_presets_registry_module.__all__)
     assert {
         "ResolvedPresetWorkflowConfiguration",
