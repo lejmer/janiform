@@ -66,7 +66,6 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.calibration.staged.request",
     "janiform.calibration.staged.results",
     "janiform.calibration.staged.runtime",
-    "janiform.cli",
     "janiform.validation",
     "janiform.validation.contracts",
     "janiform.stylized_facts",

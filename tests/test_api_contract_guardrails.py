@@ -70,17 +70,6 @@ def test_public_api_contract_guardrail_accepts_documented_snapshot_update() -> N
     validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
 
 
-def test_public_api_contract_snapshot_tracks_supported_cli_modules() -> None:
-    current_snapshot = build_public_api_contract_snapshot()
-
-    assert {
-        "janiform.cli",
-    } <= set(current_snapshot["public_modules"])
-
-    cli_exports = current_snapshot["public_modules"]["janiform.cli"]["exports"]
-    assert "CliExitCode" in cli_exports
-
-
 def test_public_api_contract_guardrail_supports_public_domain_submodules() -> None:
     approved_snapshot = _minimal_snapshot(
         public_modules={
@@ -234,27 +223,6 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             "janiform.calibration.staged.runtime": [
                 "run_staged_calibration",
             ],
-            "janiform.cli": [
-                "CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR",
-                "CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR",
-                "CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT",
-                "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
-                "CLI_FIT_ENTRYPOINT",
-                "CLI_FIT_INSPECT_ENTRYPOINT",
-                "CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION",
-                "CLI_FIT_RESULT_SCHEMA_VERSION",
-                "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT",
-                "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY",
-                "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
-                "CLI_OUTPUT_ENV_VAR",
-                "CLI_PRESETS_EXPORT_ENTRYPOINT",
-                "CLI_PRESETS_LIST_ENTRYPOINT",
-                "CLI_PRESET_LIST_SCHEMA_VERSION",
-                "CLI_PRICE_RESULT_SCHEMA_VERSION",
-                "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
-                "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
-                "CliExitCode",
-            ],
             "janiform.validation": [
                 "DeterministicRegressionHarnessReport",
                 "run_deterministic_regression_harness",
@@ -311,7 +279,6 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.staged.request",
         "janiform.calibration.staged.results",
         "janiform.calibration.staged.runtime",
-        "janiform.cli",
         "janiform.validation",
         "janiform.validation.contracts",
         "janiform.stylized_facts",

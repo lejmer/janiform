@@ -6,7 +6,6 @@ from typing import Optional
 import pytest
 
 import janiform
-import janiform.cli as cli_module
 import janiform.contracts as contracts_module
 import janiform.errors as errors_module
 import janiform.hourly_factors as hourly_factors_module
@@ -26,31 +25,6 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
     assert "__version__" in janiform.__dict__
 
 
-def test_cli_public_module_is_a_thin_module_with_curated_root_exports() -> None:
-    assert not hasattr(cli_module, "__path__")
-    assert set(cli_module.__all__) == {
-        "CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR",
-        "CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR",
-        "CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT",
-        "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
-        "CLI_FIT_ENTRYPOINT",
-        "CLI_FIT_INSPECT_ENTRYPOINT",
-        "CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION",
-        "CLI_FIT_RESULT_SCHEMA_VERSION",
-        "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT",
-        "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY",
-        "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
-        "CLI_OUTPUT_ENV_VAR",
-        "CLI_PRESETS_EXPORT_ENTRYPOINT",
-        "CLI_PRESETS_LIST_ENTRYPOINT",
-        "CLI_PRESET_LIST_SCHEMA_VERSION",
-        "CLI_PRICE_RESULT_SCHEMA_VERSION",
-        "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
-        "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
-        "CliExitCode",
-    }
-
-
 def test_public_and_internal_module_intent_is_explicit() -> None:
     public_modules = (
         "janiform.calibration",
@@ -65,7 +39,6 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.fit.state",
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
-        "janiform.cli",
         "janiform.hourly_factors",
         "janiform.hourly_factors.contracts",
         "janiform.mean_reversion",
@@ -91,18 +64,6 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.fit._runtime",
         "janiform.calibration.fit.pricing.internal",
         "janiform.calibration.fit.pricing.market_snapshot._workflow",
-        "janiform._cli.command_tree",
-        "janiform._cli.command_runtime",
-        "janiform._cli.configuration",
-        "janiform._cli.commands.development",
-        "janiform._cli.commands.model_workflows",
-        "janiform._cli.commands.pricing",
-        "janiform._cli.commands.shared",
-        "janiform._cli.context",
-        "janiform._cli.documents",
-        "janiform._cli.errors",
-        "janiform._cli.paths",
-        "janiform._cli.rendering",
     )
 
     for module_name in public_modules:

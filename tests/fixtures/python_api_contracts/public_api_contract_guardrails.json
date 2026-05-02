@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "a8bb472d63c0b591fef76d7a70ccf705e83004d37d39b21ecd2f690f9da2bbfb",
+  "approved_snapshot_sha256": "e9ba113534f0bdcaaf10c436eb23f6ae8355b43cca4890be49d05d0b383d3bd2",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1284,6 +1284,18 @@
       "updated_surfaces": [
         "janiform.calibration.presets",
         "janiform.calibration.presets.registry"
+      ]
+    },
+    {
+      "approved_on": "2026-05-02",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The Python CLI implementation and its public janiform.cli constants module have been retired. The wheel entrypoint now delegates directly into the Rust CLI through the native boundary, so the public Python API snapshot no longer advertises Python-owned CLI constants or exit-code contracts.",
+      "snapshot_sha256": "e9ba113534f0bdcaaf10c436eb23f6ae8355b43cca4890be49d05d0b383d3bd2",
+      "summary": "Remove the retired Python CLI public surface.",
+      "updated_surfaces": [
+        "janiform.cli"
       ]
     }
   ],
