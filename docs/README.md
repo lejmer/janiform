@@ -25,7 +25,7 @@ Start with a working installation, then build up from a plain-language overview 
 - [Command line interface](interfaces/cli.md)
 - [Python library](interfaces/python.md)
 - [Configuration](interfaces/configuration.md)
-- [Output and automation](interfaces/output-and-automation.md)
+- [External integration](interfaces/external-integration.md)
 
 ## Reference
 

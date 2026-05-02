@@ -135,7 +135,7 @@ The Python library covers in-memory objects, notebook integration, application c
 
 - [Python library](python.md)
 - [Configuration](configuration.md)
-- [Output and automation](integrate-externally.md)
+- [External integration](external-integration.md)
 - [Fit models](../workflows/fit-models.md)
 - [Inspect and report](../workflows/inspect-and-report.md)
 - [CLI reference](../reference/cli.md)

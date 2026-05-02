@@ -187,7 +187,7 @@ The CLI fits workflows organized around standalone processes, run directories, `
 
 - [Command line interface](cli.md)
 - [Configuration](configuration.md)
-- [Output and automation](output-and-automation.md)
+- [External integration](external-integration.md)
 - [First model](../getting-started/first-model.md)
 - [Fit models](../workflows/fit-models.md)
 - [Simulate paths](../workflows/simulate-paths.md)
