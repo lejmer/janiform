@@ -9,14 +9,12 @@ from .._native_types import (
     HourlyNewsIntensityMaterializationResultProtocol,
     HourlySeasonalityMaterializationResultProtocol,
 )
-from ..seasonality import SeasonalityInputValidationError
 
 
 class HourlyFactorContract:
     """Hourly `s_h` and `nu_h` values aligned to deterministic `[start, end)` UTC hour buckets."""
 
     def __init__(self, native_result: HourlyFactorContractResultProtocol) -> None:
-        _validate_hourly_factor_contract_result(native_result)
         self._native_result = native_result
 
     def __eq__(self, other: object) -> bool:
@@ -160,41 +158,6 @@ class HourlyFactorContract:
             "seasonality_materialization_method": self.seasonality_materialization_method,
             "news_intensity_materialization_method": self.news_intensity_materialization_method,
         }
-
-
-def _validate_hourly_factor_contract_result(native_result: HourlyFactorContractResultProtocol) -> None:
-    interval_count = int(native_result.interval_count)
-    sequence_lengths = {
-        "interval_indices": len(native_result.interval_indices),
-        "interval_start_utc_nanos": len(native_result.interval_start_utc_nanos),
-        "interval_end_utc_nanos": len(native_result.interval_end_utc_nanos),
-        "interval_start_exchange_local": len(native_result.interval_start_exchange_local),
-        "interval_end_exchange_local": len(native_result.interval_end_exchange_local),
-        "s_h": len(native_result.s_h),
-        "known_component_nu_h": len(native_result.known_component_nu_h),
-        "surprise_component_nu_h": len(native_result.surprise_component_nu_h),
-        "nu_h": len(native_result.nu_h),
-    }
-
-    for field_name, observed_length in sequence_lengths.items():
-        if observed_length != interval_count:
-            raise SeasonalityInputValidationError(
-                (
-                    f"hourly_factor_contract_payload.{field_name} must have length {interval_count} "
-                    f"to match interval_count, found {observed_length}"
-                ),
-            )
-
-    if interval_count > 0:
-        if native_result.first_interval_start_utc_nanos != native_result.interval_start_utc_nanos[0]:
-            raise SeasonalityInputValidationError(
-                "hourly_factor_contract_payload.first_interval_start_utc_nanos must match the first interval start",
-            )
-        if native_result.last_interval_end_utc_nanos != native_result.interval_end_utc_nanos[-1]:
-            raise SeasonalityInputValidationError(
-                "hourly_factor_contract_payload.last_interval_end_utc_nanos must match the last interval end",
-            )
-
 
 class HourlySeasonalityMaterialization:
     """Hourly `s_h` values aligned to deterministic `[start, end)` UTC hour buckets."""

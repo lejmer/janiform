@@ -179,7 +179,6 @@ def exchange_code_from_session_reference(session_reference: SessionPresetReferen
             "registry": registry.native_resolution_payload(),
             "session_reference": session_reference.to_payload(),
         },
-        function_label="exchange_code_from_session_reference",
     )
 
 
@@ -193,7 +192,6 @@ def exchange_code_from_market_profile_reference(market_profile_reference: Market
             "registry": registry.native_resolution_payload(),
             "market_profile_reference": market_profile_reference.to_payload(),
         },
-        function_label="exchange_code_from_market_profile_reference",
     )
 
 
@@ -209,7 +207,6 @@ def resolve_market_profile_configuration(
             "registry": registry.native_resolution_payload(),
             "market_profile_reference": market_profile_reference.to_payload(),
         },
-        function_label="resolve_market_profile_configuration",
     )
     if raw_payload is None:
         raise calibration_error("market_profile", "could not resolve market-profile configuration")

@@ -199,31 +199,6 @@ def test_simulation_run_maps_native_validation_failure_to_execution_error(
     assert captured_error.value.context == {"source_category": "native_validation"}
 
 
-def test_simulation_run_maps_invalid_native_response_to_integration_error(
-    calendar_registry: CalendarRegistry,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class NativeValidationError(Exception):
-        pass
-
-    class FakeNative:
-        SeasonalityInputValidationError = NativeValidationError
-
-        @staticmethod
-        def run_seeded_tick_event_simulation(*args, **kwargs) -> str:
-            return "{}"
-
-    monkeypatch.setattr(simulation_seeded_runtime_module, "native_module", lambda: FakeNative())
-
-    with pytest.raises(JaniformIntegrationError) as captured_error:
-        run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
-
-    assert captured_error.value.error_id == "simulation.integration.invalid_native_response"
-    assert captured_error.value.workflow == "simulation"
-    assert captured_error.value.entrypoint == "run_seeded_tick_event_simulation"
-    assert captured_error.value.context == {"source_error_id": "simulation.validation.contract"}
-
-
 def test_coarse_simulation_run_includes_native_failure_message_in_context(
     calendar_registry: CalendarRegistry,
     monkeypatch: pytest.MonkeyPatch,

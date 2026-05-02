@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -198,35 +198,14 @@ def materialize_runtime_structural_seasonality_grid(
         day_of_year_factors,
     )
     payload_mapping = cast(Mapping[str, Any], native_payload)
-    raw_interval_start_utc_nanos = payload_mapping.get("interval_start_utc_nanos")
-    if not isinstance(raw_interval_start_utc_nanos, list | tuple):
-        raise RuntimeError(
-            "native runtime seasonality materialization must return interval_start_utc_nanos"
-        )
-
-    interval_start_utc_nanos: list[int] = []
-    for value_index, raw_value in enumerate(raw_interval_start_utc_nanos):
-        if not isinstance(raw_value, int) or isinstance(raw_value, bool):
-            raise RuntimeError(
-                "native runtime seasonality interval_start_utc_nanos"
-                f"[{value_index}] must be an integer"
-            )
-        interval_start_utc_nanos.append(raw_value)
-
-    seasonality_factors = require_payload_numeric_sequence(
-        payload_mapping,
-        field_name="seasonality_factors",
-        field_path="native_runtime_seasonality.seasonality_factors",
-    )
-    if len(interval_start_utc_nanos) != len(seasonality_factors):
-        raise RuntimeError(
-            "native runtime seasonality materialization returned misaligned interval_start_utc_nanos "
-            "and seasonality_factors"
-        )
 
     return RuntimeStructuralSeasonalityGrid(
-        interval_start_utc_nanos=tuple(interval_start_utc_nanos),
-        seasonality_factors=seasonality_factors,
+        interval_start_utc_nanos=tuple(
+            cast(Sequence[int], payload_mapping["interval_start_utc_nanos"])
+        ),
+        seasonality_factors=tuple(
+            cast(Sequence[float], payload_mapping["seasonality_factors"])
+        ),
     )
 
 
