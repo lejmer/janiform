@@ -479,12 +479,12 @@ class PresetRegistry:
         preset_name: str,
         registry_scope: Optional[PresetRegistryScope] = None,
     ) -> ResolvedPresetSnapshot:
-        """Return a self-contained resolved preset snapshot.
+        """
+        Return a self-contained resolved preset snapshot.
 
-        This method does not write a file. It resolves the requested preset
-        and includes referenced market-profile dependencies so callers can
-        serialize the returned object when they need a portable preset
-        snapshot.
+        This method resolves the requested preset and includes referenced
+        market-profile dependencies so callers can serialize the returned
+        object when they need a portable preset snapshot.
         """
 
         native = native_module()
