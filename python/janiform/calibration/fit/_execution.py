@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from ..._workflow_progress import (
-    JaniformOutputController,
     WorkflowProgressMode,
     resolve_workflow_progress_mode,
 )
@@ -67,11 +66,8 @@ def fit_with_execution_configuration(
         option_surface_provenance_label=option_surface_provenance_label,
     )
 
-    output_controller = _build_fit_output_controller(silent=configuration.silent)
-
-    native_output = _run_fit_with_output_controller(
+    native_output = _run_fit_with_native_progress(
         configuration,
-        output_controller=output_controller,
         output_dir=output_dir,
         run_id=run_id,
         resume_settings=resume_settings,
@@ -116,20 +112,9 @@ def _validate_fit_input_labels(
         raise calibration_error("option_surface_provenance_label", "must be a non-empty string")
 
 
-def _build_fit_output_controller(
-    *,
-    silent: bool,
-) -> JaniformOutputController:
-    return JaniformOutputController(
-        suppress_info_output=silent,
-        default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
-    )
-
-
-def _run_fit_with_output_controller(
+def _run_fit_with_native_progress(
     configuration: FitExecutionConfiguration,
     *,
-    output_controller: JaniformOutputController,
     output_dir: Optional[str | Path],
     run_id: Optional[str],
     resume_settings: Optional[CalibrationResumeSettings],
@@ -146,8 +131,12 @@ def _run_fit_with_output_controller(
     suppression_context = redirect_stdout(StringIO()) if configuration.silent else nullcontext()
     native_output: Optional[NativeFitWorkflowOutput] = None
     resolved_progress_mode = resolve_workflow_progress_mode(
-        output_controller.progress_mode,
-        default_mode=output_controller.default_progress_mode,
+        WorkflowProgressMode.AUTO,
+        default_mode=(
+            WorkflowProgressMode.NONE
+            if configuration.silent
+            else WorkflowProgressMode.HUMAN
+        ),
     )
 
     with suppression_context:

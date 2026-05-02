@@ -8196,7 +8196,6 @@
         "StylizedFactUncertaintyContext",
         "build_stylized_fact_plotly_figure",
         "build_stylized_fact_plotly_figure_from_report_bundle",
-        "render_stylized_fact_table_markdown",
         "run_stylized_fact_horizon_comparison_report_generator"
       ],
       "module_name": "janiform.stylized_facts",
@@ -8531,10 +8530,6 @@
         "build_stylized_fact_plotly_figure_from_report_bundle": {
           "kind": "function",
           "signature": "(report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
-        },
-        "render_stylized_fact_table_markdown": {
-          "kind": "function",
-          "signature": "(table_summary: 'StylizedFactHorizonComparisonTableSummary', *, max_rows: 'Optional[int]' = None) -> 'str'"
         },
         "run_stylized_fact_horizon_comparison_report_generator": {
           "kind": "function",

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "e9ba113534f0bdcaaf10c436eb23f6ae8355b43cca4890be49d05d0b383d3bd2",
+  "approved_snapshot_sha256": "53a7be7e9696ff1ba9a4a841a0c3362d56a7f40143b95b051c128f559249dfe4",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1296,6 +1296,18 @@
       "summary": "Remove the retired Python CLI public surface.",
       "updated_surfaces": [
         "janiform.cli"
+      ]
+    },
+    {
+      "approved_on": "2026-05-02",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Python no longer owns CLI-oriented stylized-fact markdown rendering. Rust validation and CLI rendering own that output path, while Python keeps the typed report contracts and Plotly figure adapter for library workflows.",
+      "snapshot_sha256": "53a7be7e9696ff1ba9a4a841a0c3362d56a7f40143b95b051c128f559249dfe4",
+      "summary": "Remove the Python stylized-fact markdown renderer.",
+      "updated_surfaces": [
+        "janiform.stylized_facts"
       ]
     }
   ],

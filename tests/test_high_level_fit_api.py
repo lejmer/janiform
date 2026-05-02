@@ -28,7 +28,7 @@ import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform._workflow_outputs import SimulationArtifactSink
-from janiform._workflow_progress import JaniformOutputController, WorkflowProgressMode
+from janiform._workflow_progress import WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
     FitProgressEvent,
@@ -3931,73 +3931,6 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
     )
 
     assert execution_configuration_count == 1
-
-
-@pytest.mark.parametrize("silent", [False, True])
-def test_high_level_fit_uses_native_terminal_progress_only(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    silent: bool,
-) -> None:
-    tick_data_path = tmp_path / "ticks.csv"
-    tick_data_path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc",
-                "2026-02-02T14:30:00Z",
-                "2026-02-02T15:00:00Z",
-                "2026-02-02T20:59:00Z",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    progress_call_count = 0
-
-    def fail_if_python_progress_is_used(
-        self: Any,
-        label: str,
-        *,
-        total_steps: Optional[int] = None,
-    ) -> NoReturn:
-        nonlocal progress_call_count
-        progress_call_count += 1
-
-        _ = self
-        _ = label
-        _ = total_steps
-
-        raise AssertionError("Python fit progress must not render")
-
-    monkeypatch.setattr(JaniformOutputController, "progress", fail_if_python_progress_is_used)
-    patch_fit_workflow_runner(
-        monkeypatch,
-        lambda *args, **kwargs: _successful_staged_runner_payload(
-            "high-level-fit-native-progress"
-        ),
-    )
-
-    estimator = JaniformEstimator(
-        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
-        tick_data_column_mapping=CalibrationTickDataColumnMapping(
-            timestamp_column="timestamp_utc",
-        ),
-        normalization_policy=CalibrationMarketDataNormalizationPolicy(
-            timestamp_timezone="UTC",
-            sort_records_by_timestamp=True,
-        ),
-        session="XNYS",
-        known_news="none",
-        silent=silent,
-    )
-
-    estimator.fit(
-        run_id="high-level-fit-native-progress",
-        tick_data_path=tick_data_path,
-        tick_data_format=CalibrationInputFileFormat.CSV,
-    )
-
-    assert progress_call_count == 0
 
 
 def test_high_level_fit_report_returns_success_details_with_model(

@@ -1,7 +1,6 @@
 from typing import Any, Optional
 
 from janiform.stylized_facts import (
-    render_stylized_fact_table_markdown,
     StylizedFactHorizonComparisonReportBundle,
     run_stylized_fact_horizon_comparison_report_generator,
 )
@@ -286,21 +285,16 @@ def build_observed_metric(
     }
 
 
-def main() -> None:
-    report_bundle: StylizedFactHorizonComparisonReportBundle = (
-        run_stylized_fact_horizon_comparison_report_generator(
-            metric_catalog=build_stylized_fact_metric_catalog(),
-            comparison_request=build_stylized_fact_horizon_comparison_request(),
-            execution_mode="memory",
-        )
-    )
-    markdown_summary: str = render_stylized_fact_table_markdown(
-        report_bundle["table_summary"],
-        max_rows=5,
+def build_stylized_fact_report_bundle() -> StylizedFactHorizonComparisonReportBundle:
+    return run_stylized_fact_horizon_comparison_report_generator(
+        metric_catalog=build_stylized_fact_metric_catalog(),
+        comparison_request=build_stylized_fact_horizon_comparison_request(),
+        execution_mode="memory",
     )
 
-    print(report_bundle["schema_version"])
-    print(markdown_summary)
+
+def main() -> None:
+    build_stylized_fact_report_bundle()
 
 
 if __name__ == "__main__":

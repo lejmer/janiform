@@ -83,7 +83,7 @@ def patch_fit_workflow_runner(
 ) -> None:
     monkeypatch.setattr(
         fit_execution_module,
-        "_run_fit_with_output_controller",
+        "_run_fit_with_native_progress",
         _fit_workflow_runner_from_staged_runner(staged_runner, progress_event=progress_event),
     )
 
@@ -96,7 +96,6 @@ def _fit_workflow_runner_from_staged_runner(
     def run_fit_workflow(
         configuration: FitExecutionConfiguration,
         *,
-        output_controller: Any,
         output_dir: Optional[str | Path],
         run_id: Optional[str],
         resume_settings: Any,
@@ -110,7 +109,6 @@ def _fit_workflow_runner_from_staged_runner(
         carry: Any,
         progress_callback: Any,
     ) -> NativeFitWorkflowOutput:
-        _ = output_controller
         _ = resume_settings
         _ = option_surface_path
         _ = option_surface_format

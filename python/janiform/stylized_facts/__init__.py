@@ -31,7 +31,6 @@ from .workflow import (
     STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION,
     build_stylized_fact_plotly_figure,
     build_stylized_fact_plotly_figure_from_report_bundle,
-    render_stylized_fact_table_markdown,
     run_stylized_fact_horizon_comparison_report_generator,
 )
 
@@ -63,7 +62,6 @@ __all__ = [
     "StylizedFactThresholdContext",
     "StylizedFactUncertaintyContext",
     "run_stylized_fact_horizon_comparison_report_generator",
-    "render_stylized_fact_table_markdown",
     "build_stylized_fact_plotly_figure",
     "build_stylized_fact_plotly_figure_from_report_bundle",
 ]

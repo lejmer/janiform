@@ -7382,7 +7382,6 @@
 | [`StylizedFactUncertaintyContext`](#python-api-symbol-janiform-stylized-facts-stylizedfactuncertaintycontext) | contract_model | 4 fields |
 | [`build_stylized_fact_plotly_figure`](#python-api-symbol-janiform-stylized-facts-build-stylized-fact-plotly-figure) | function | (plot_payload: 'StylizedFactHorizonComparisonPlotPayload', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any' |
 | [`build_stylized_fact_plotly_figure_from_report_bundle`](#python-api-symbol-janiform-stylized-facts-build-stylized-fact-plotly-figure-from-report-bundle) | function | (report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any' |
-| [`render_stylized_fact_table_markdown`](#python-api-symbol-janiform-stylized-facts-render-stylized-fact-table-markdown) | function | (table_summary: 'StylizedFactHorizonComparisonTableSummary', *, max_rows: 'Optional[int]' = None) -> 'str' |
 | [`run_stylized_fact_horizon_comparison_report_generator`](#python-api-symbol-janiform-stylized-facts-run-stylized-fact-horizon-comparison-report-generator) | function | (*, metric_catalog: 'Mapping[str, Any]', comparison_request: 'Mapping[str, Any]', execution_mode: 'str' = 'memory', artifact_export: 'Optional[Mapping[str, Any]]' = None) -> 'StylizedFactHorizonComparisonReportBundle' |
 
 <a id="python-api-symbol-janiform-stylized-facts-stylized-fact-horizon-comparison-plot-payload-schema-version"></a>
@@ -7572,12 +7571,6 @@
 
 - Kind: `function`
 - Signature: `(report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'`
-
-<a id="python-api-symbol-janiform-stylized-facts-render-stylized-fact-table-markdown"></a>
-### `render_stylized_fact_table_markdown`
-
-- Kind: `function`
-- Signature: `(table_summary: 'StylizedFactHorizonComparisonTableSummary', *, max_rows: 'Optional[int]' = None) -> 'str'`
 
 <a id="python-api-symbol-janiform-stylized-facts-run-stylized-fact-horizon-comparison-report-generator"></a>
 ### `run_stylized_fact_horizon_comparison_report_generator`
