@@ -22,23 +22,21 @@ The rest of this page gives concrete instructions only for vanilla options.
 
 To price derivatives we need a fitted model, a valuation context, and a contract definition.
 
-| Input                     | Required | Notes                                                                                                                                      |
-|---------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| Fitted model              | Yes      | Use a `JaniformModel` in Python, or the `model.jf` file produced by `janiform fit` in the CLI.                                             |
-| Valuation time            | Yes      | UTC timestamp at which the contract is priced.                                                                                             |
-| Current underlying state  | Yes      | Single-contract pricing accepts an explicit spot. Dataset-backed option workflows derive state from tick data and compare against option quotes. |
-| Contract terms            | Yes      | For vanilla options: payoff type, strike, and one expiry representation. Use an expiry timestamp, expiry date, or tenor.                   |
-| Rates and carry           | No       | `risk_free_rate` and `dividend_yield` default to `0.0`. Pass explicit values when valuation depends on them.                               |
-| Option dataset            | When used | Required for observed option snapshot/surface workflows and option-aware fitting. It is separate from the underlying tick dataset.          |
-| Output path               | No       | Python can keep results in memory or write pricing artifacts. The CLI writes pricing artifacts by default.                                 |
+| Input                    | Required  | Notes                                                                                                                                            |
+|--------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| Fitted model             | Yes       | Use a `JaniformModel` in Python, or the `model.jf` file produced by `janiform fit` in the CLI.                                                   |
+| Valuation time           | Yes       | UTC timestamp at which the contract is priced.                                                                                                   |
+| Current underlying state | Yes       | Single-contract pricing accepts an explicit spot. Dataset-backed option workflows derive state from tick data and compare against option quotes. |
+| Contract terms           | Yes       | For vanilla options: payoff type, strike, and one expiry representation. Use an expiry timestamp, expiry date, or tenor.                         |
+| Rates and carry          | No        | `risk_free_rate` and `dividend_yield` default to `0.0`. Pass explicit values when valuation depends on them.                                     |
+| Option dataset           | When used | Required for observed option snapshot/surface workflows and option-aware fitting. It is separate from the underlying tick dataset.               |
+| Output path              | No        | Python can keep results in memory or write pricing artifacts. The CLI writes pricing artifacts by default.                                       |
 
 For repeatable work, make the model path, valuation time, contract terms, rates, carry, option dataset path, and output path explicit.
 
 For vanilla option pricing, start from an option-aware fit when the model should be constrained by observed option quotes. Option data is supplied separately from underlying tick data, both when fitting that model and when pricing observed option snapshots or surfaces.
 
 ## Python
-
-Use Python when pricing results should stay in memory for analysis, application workflows, or comparison against observed option data.
 
 ### Vanilla options
 
@@ -108,8 +106,6 @@ df: pd.DataFrame = surface_result.to_pandas()
 
 ## CLI
 
-Use the CLI when a pricing run should produce durable artifacts for review, scripts, schedulers, or automation.
-
 ```bash
 janiform price \
   --model-path .janiform/runs/eurusd-option-fit/artifacts/model.jf \
@@ -177,21 +173,21 @@ The pricing response is the primary output. Python returns typed result objects 
 
 Vanilla option pricing is available for calls and puts. The contract must define exactly one expiry representation:
 
-| Expiry input            | Use when                                                        |
-|-------------------------|-----------------------------------------------------------------|
-| `expiry_timestamp_utc`  | The exact UTC expiry timestamp is known.                        |
-| `expiry_date`           | The expiry is date-based and should preserve valuation time of day. |
-| `tenor`                 | The expiry should be expressed relative to valuation time.       |
+| Expiry input           | Use when                                                            |
+|------------------------|---------------------------------------------------------------------|
+| `expiry_timestamp_utc` | The exact UTC expiry timestamp is known.                            |
+| `expiry_date`          | The expiry is date-based and should preserve valuation time of day. |
+| `tenor`                | The expiry should be expressed relative to valuation time.          |
 
 For observed option datasets, Janiform can price either one quote snapshot or a valuation-time surface:
 
-| Python method              | Use when                                                                 |
-|----------------------------|--------------------------------------------------------------------------|
-| `price_option(...)`        | You have one vanilla option contract and explicit valuation inputs.      |
-| `price_option_snapshot(...)` | You have one observed option quote snapshot to price and compare.       |
-| `price_option_surface(...)`  | You have observed option quotes across valuation times or snapshots.    |
-| `price_option_grid(...)`   | You already have a typed batch of vanilla option grid contracts.         |
-| `price_option_grid_surface(...)` | You already have a typed vanilla option surface contract.          |
+| Python method                    | Use when                                                             |
+|----------------------------------|----------------------------------------------------------------------|
+| `price_option(...)`              | You have one vanilla option contract and explicit valuation inputs.  |
+| `price_option_snapshot(...)`     | You have one observed option quote snapshot to price and compare.    |
+| `price_option_surface(...)`      | You have observed option quotes across valuation times or snapshots. |
+| `price_option_grid(...)`         | You already have a typed batch of vanilla option grid contracts.     |
+| `price_option_grid_surface(...)` | You already have a typed vanilla option surface contract.            |
 
 ### Forwards and futures
 

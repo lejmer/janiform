@@ -6,7 +6,7 @@ This page focuses on running simulation as a workflow after a model has already 
 
 ## Simulation scope
 
-A simulation run generates a new path from a fitted model. In Python, the path can stay in memory for analysis or be exported when needed. In the CLI, simulation writes durable artifacts for downstream commands, scheduled jobs, and audit records.
+A simulation run generates a new path from a fitted model.
 
 Janiform supports two simulation modes from the same fitted model:
 
@@ -34,8 +34,6 @@ To simulate a path we need a fitted model and a horizon.
 For repeatable work, make the model path, start time, interval, interval count, seed, output path, and simulation mode explicit.
 
 ## Python
-
-Use Python when the simulated path should stay in memory for plotting, feature generation, or a larger application workflow.
 
 ```python
 from datetime import UTC, datetime
@@ -105,8 +103,6 @@ simulation.to_parquet(".janiform/runs/eurusd-simulation/simulation.parquet")
 > **Integrating into a larger application**: `simulate(...)` accepts a `progress_callback` for tracking progress.
 
 ## CLI
-
-Use the CLI when simulation should produce durable artifacts for review, downstream analysis, schedulers, or validation inputs.
 
 ```bash
 janiform simulate \

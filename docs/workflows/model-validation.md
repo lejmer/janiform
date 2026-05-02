@@ -64,8 +64,6 @@ The plan includes the resolved output directory, generated per-path seeds, inter
 
 ## CLI
 
-Use the CLI when validation should produce durable artifacts for review, CI, schedulers, or later reporting.
-
 ```bash
 janiform validate stylized-facts \
   --model-path .janiform/runs/eurusd-fit/artifacts/model.jf \

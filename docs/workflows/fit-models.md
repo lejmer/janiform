@@ -35,8 +35,6 @@ For repeatable work, make the context explicit. Market profile inference is conv
 
 ## Python
 
-When you need the fitted model should stay in memory, use the Python library.
-
 ```python
 from pathlib import Path
 
@@ -85,8 +83,6 @@ model: JaniformModel = estimator.fit(
 > **Integrating into a larger application**: Both `fit(...)` and `fit_with_report(...)` accept a `progress_callback` for tracking progress.
 
 ## CLI
-
-Use the CLI when a fit should produce durable run artifacts for scripts, schedulers, or later commands.
 
 ```bash
 janiform fit \
