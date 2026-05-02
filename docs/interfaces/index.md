@@ -15,5 +15,5 @@ These pages describe how you can work with Janiform directly and how other syste
 |-------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
 | [Command line interface](cli.md)                | Running Janiform from a terminal, shell script, scheduler, or CI job with durable saved artifacts.          |
 | [Python library](python.md)                     | Embedding Janiform in notebooks, research code, services, or larger applications with typed result objects. |
-| [Configuration](configuration.md)               | Understanding command configuration files, runtime defaults, and explicit path or preset inputs.            |
+| [Configuration](configuration.md)               | Understanding the CLI configuration file, its fields, defaults, precedence, and validation rules.           |
 | [External integration](external-integration.md) | Integrating Janiform with other tools through JSON output, event streams, callbacks, and written files.     |
