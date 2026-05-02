@@ -1202,6 +1202,7 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform",
+ "janiform-cli",
  "janiform-event-log",
  "janiform-terminal-ui",
  "janiform-workflows",

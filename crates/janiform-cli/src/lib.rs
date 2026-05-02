@@ -18,6 +18,7 @@ mod reference;
 mod rewrite;
 
 pub use application::run;
+pub use application::run_exit_code;
 pub use context::ColorChoice;
 pub use context::CommandContext;
 pub use context::EventSettings;

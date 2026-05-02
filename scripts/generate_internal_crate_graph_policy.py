@@ -18,7 +18,7 @@ POLICY_PATH = (
 
 SCHEMA_VERSION = "v1"
 DOCUMENT_VERSION = "rust.internal_crate_graph_and_umbrella_facade_policy.pre_v0_1.milestone_1"
-POLICY_DOCUMENT = "docs/contributing/architecture/overview.md"
+POLICY_DOCUMENT = "docs/contributing/crates.md"
 UMBRELLA_FACADE_CRATE = "janiform"
 PYBIND_BOUNDARY_CRATE = "janiform-pybind"
 FACADE_ROOT_PATH = REPOSITORY_ROOT / "crates" / UMBRELLA_FACADE_CRATE / "src" / "lib.rs"
