@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from types import ModuleType
 from typing import Any, Optional
 
 from ....._native_api import native_exception_matches, native_module
-from .....pricing.progress import (
-    PricingProgressEvent,
-    _pricing_progress_callback_from_mapping,
-)
 from ....errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -16,10 +12,10 @@ from ....errors import (
     calibration_execution_error,
     calibration_integration_error,
 )
-from ...pricing.grids import (
+from .....pricing.fitted.grids import (
     JaniformVanillaOptionGridBatchPricingResult,
 )
-from ...pricing.surface import (
+from .....pricing.fitted.surface import (
     JaniformVanillaOptionSurfacePricingResult,
 )
 
@@ -28,7 +24,7 @@ def run_model_vanilla_option_grid_batch_pricing(
     native_execution_input: dict[str, Any],
     *,
     progress_mode: str,
-    progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> JaniformVanillaOptionGridBatchPricingResult:
     return _run_native_pricing_entrypoint(
         native_runner=_run_native_grid_batch_pricing,
@@ -45,7 +41,7 @@ def run_model_vanilla_option_surface_pricing(
     native_execution_input: dict[str, Any],
     *,
     progress_mode: str,
-    progress_callback: Optional[Callable[[PricingProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> JaniformVanillaOptionSurfacePricingResult:
     return _run_native_pricing_entrypoint(
         native_runner=_run_native_surface_pricing,
@@ -71,7 +67,7 @@ def _run_native_pricing_entrypoint(
     ],
     native_execution_input: dict[str, Any],
     progress_mode: str,
-    progress_callback: Optional[Callable[[PricingProgressEvent], None]],
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]],
     result_parser: Callable[..., Any],
     entrypoint: str,
     result_field_path: str,
@@ -86,14 +82,12 @@ def _run_native_pricing_entrypoint(
             context={"module_name": "janiform._native"},
         ) from e
 
-    native_progress_callback = _pricing_progress_callback_from_mapping(progress_callback)
-
     try:
         raw_run_result = native_runner(
             native,
             native_execution_input,
             progress_mode,
-            native_progress_callback,
+            progress_callback,
         )
     except Exception as e:
         # Native extension exception types are matched dynamically by helper.

@@ -7,7 +7,7 @@ from dataclasses import fields, is_dataclass
 from datetime import UTC, date, datetime
 from enum import Enum, StrEnum
 from math import isfinite, sqrt
-from typing import Any, Optional, cast
+from typing import Any, Optional, cast, get_args, get_origin, get_type_hints
 
 import orjson
 
@@ -25,6 +25,44 @@ class ContractModel(ABC):
 
     def to_json(self) -> str:
         return serialize_deterministic_json(self)
+
+
+def _hydrate_contract_model[T: ContractModel](
+    contract_type: type[T],
+    payload: Mapping[str, Any],
+) -> T:
+    field_types = get_type_hints(contract_type)
+    field_values: dict[str, Any] = {}
+    for contract_field in fields(contract_type):
+        field_values[contract_field.name] = _hydrate_contract_value(
+            payload[contract_field.name],
+            field_types[contract_field.name],
+        )
+
+    return contract_type(**field_values)
+
+
+def _hydrate_contract_value(raw_value: Any, target_type: Any) -> Any:
+    if raw_value is None:
+        return None
+
+    target_type_arguments = get_args(target_type)
+    if type(None) in target_type_arguments and len(target_type_arguments) == 2:
+        non_null_target_types = [
+            target_type_argument
+            for target_type_argument in target_type_arguments
+            if target_type_argument is not type(None)
+        ]
+        return _hydrate_contract_value(raw_value, non_null_target_types[0])
+
+    if get_origin(target_type) is list:
+        item_type = target_type_arguments[0]
+        return [_hydrate_contract_value(item, item_type) for item in raw_value]
+
+    if isinstance(target_type, type) and issubclass(target_type, ContractModel):
+        return _hydrate_contract_model(target_type, raw_value)
+
+    return raw_value
 
 
 def serialize_deterministic_json(value: object) -> str:

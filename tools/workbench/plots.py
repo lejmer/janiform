@@ -17,26 +17,26 @@ if "MPLCONFIGDIR" not in os.environ:
     matplotlib_cache_directory.mkdir(parents=True, exist_ok=True)
     os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_directory)
 
-from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from janiform._timestamps import datetime_to_utc_microseconds, utc_microseconds_to_datetime
+from janiform.calendar import CalendarRegistry, MarketState
+from janiform.calibration.fit._runtime.mean_reversion import prepare_model_mean_reversion_runtime_inputs
 from janiform.calibration.fit._runtime.payloads import (
     mean_reversion_fitted_parameters_for_model,
     prepare_model_runtime_factors_for_model,
     resolved_known_news_event_timestamps,
     surprise_baseline_intensity,
 )
-from janiform.calibration.fit._runtime.mean_reversion import prepare_model_mean_reversion_runtime_inputs
 from janiform.calibration.fit._runtime.seasonality import build_runtime_hourly_seasonality_source_from_model
 from janiform.calibration.fit._runtime.seasonality import surprise_deterministic_time_multiplier_by_interval_index
-from janiform.calibration import JaniformModel
-from janiform.calendar import CalendarRegistry, MarketState
-from janiform.mean_reversion import MeanReversionFittedParameters
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
     provide_hourly_factor_contract,
 )
+from janiform.mean_reversion import MeanReversionFittedParameters
+from janiform.model import JaniformModel
 from janiform.simulation.shared import HawkesExcitationState
 
 from .artifacts import WorkbenchArtifacts, _artifact_list

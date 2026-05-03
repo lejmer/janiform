@@ -96,6 +96,7 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
             "janiform-event-log".to_string(),
             "janiform-terminal-ui".to_string(),
             "janiform-workflows".to_string(),
+            "janiform-cli".to_string(),
             "janiform".to_string()
         ]
     );

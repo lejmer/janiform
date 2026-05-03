@@ -476,7 +476,6 @@ def serialize_preset_artifact(artifact: PresetArtifact) -> str:
         native,
         native.serialize_preset_artifact,
         {"artifact": artifact.to_payload()},
-        function_label="preset artifact serialization",
     )
 
 
@@ -486,7 +485,6 @@ def deserialize_preset_artifact(payload_json: str) -> PresetArtifact:
         native,
         native.deserialize_preset_artifact,
         {"payload_json": payload_json},
-        function_label="preset artifact deserialization",
     )
 
     return parse_preset_artifact_mapping(raw_payload, field_path="preset_artifact")
@@ -498,7 +496,6 @@ def normalize_preset_artifact(artifact: PresetArtifact) -> PresetArtifact:
         native,
         native.normalize_preset_artifact,
         {"artifact": artifact.to_payload()},
-        function_label="preset artifact normalization",
     )
 
     return parse_preset_artifact_mapping(raw_payload, field_path="preset_artifact")
@@ -511,7 +508,6 @@ def compute_preset_artifact_content_hash(artifact: PresetArtifact) -> str:
         native,
         native.compute_preset_artifact_content_hash,
         {"artifact": artifact.to_payload()},
-        function_label="preset artifact content hash",
     )
 
 

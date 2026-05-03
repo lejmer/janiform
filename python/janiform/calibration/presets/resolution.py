@@ -532,7 +532,6 @@ def _resolve_preset_workflow_configuration_native(request: dict[str, Any]) -> di
         native,
         native.resolve_preset_workflow_configuration,
         request,
-        function_label="resolve_preset_workflow_configuration",
     )
 
 

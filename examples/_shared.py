@@ -9,7 +9,8 @@ from typing import Any, Final, Optional
 
 import pandas as pd
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 
 
 REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[1]

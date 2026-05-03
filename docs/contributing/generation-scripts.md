@@ -15,6 +15,8 @@ Run scripts from the repository root with the project environment active. For se
 | `scripts/generate_third_party_notices.py`         | `THIRD_PARTY_NOTICES.txt`                                                            | Rust dependencies behind the packaged native extension change, or dependency license metadata changes.   |
 | `scripts/update_public_api_contract_snapshot.py`  | `tests/fixtures/python_api_contracts/public_api_contract_snapshot.json`              | The public Python API surface changes intentionally.                                                     |
 
+> **NOTE:** For Rust crate graph work, treat any added, removed, or reordered workspace crate dependency in a `crates/*/Cargo.toml` file as an internal crate dependency change. Run `python scripts/generate_internal_crate_graph_policy.py` in the same change so the checked-in policy fixture records the approved graph.
+
 ## Example and benchmark artifacts
 
 These scripts can do more work than the regular metadata generators. Run them deliberately and avoid running multiple expensive commands at the same time.

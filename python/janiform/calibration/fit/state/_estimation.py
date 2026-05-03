@@ -26,7 +26,7 @@ from .._runtime.option_pricing.support import price_observed_log_price_from_spot
 from .contracts import CurrentStateEstimationRequest, CurrentStateEstimationResult
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ....model import JaniformModel
 
 
 def estimate_current_state_for_model(

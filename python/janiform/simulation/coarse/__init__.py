@@ -38,7 +38,6 @@ from .path import (
     validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
-from ..progress import SimulationProgressEvent, SimulationProgressPhase
 from .runtime import run_coarse_simulation
 
 
@@ -69,8 +68,6 @@ __all__ = [
     "NewsArrivalConfiguration",
     "NewsComponentMarkScaleConfiguration",
     "NewsProcessConfiguration",
-    "SimulationProgressEvent",
-    "SimulationProgressPhase",
     "SharedNewsMarkLawConfiguration",
     "SurpriseNewsArrivalConfiguration",
     "deserialize_coarse_simulation_path",

@@ -15,10 +15,11 @@ use crate::error::CliExitCode;
 use crate::logging::initialize_tracing;
 use crate::rewrite::rewrite_beginner_fit_arguments;
 
-/// Run the Janiform CLI from a complete argument vector.
+/// Run the Janiform CLI from a complete argument vector and return its stable
+/// process exit code.
 ///
 /// The first argument is the executable name, matching `std::env::args_os`.
-pub fn run<I, T>(arguments: I) -> ExitCode
+pub fn run_exit_code<I, T>(arguments: I) -> CliExitCode
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString>,
@@ -50,10 +51,10 @@ where
                         "error: failed to write CLI diagnostic: {write_error}"
                     );
 
-                    return CliExitCode::CommandLineUsage.into();
+                    return CliExitCode::CommandLineUsage;
                 }
 
-                return exit_code.into();
+                return exit_code;
             }
 
             if let Err(print_error) = error.print() {
@@ -64,10 +65,10 @@ where
                     "error: failed to write CLI diagnostic: {print_error}"
                 );
 
-                return CliExitCode::CommandLineUsage.into();
+                return CliExitCode::CommandLineUsage;
             }
 
-            return exit_code.into();
+            return exit_code;
         }
     };
 
@@ -84,17 +85,17 @@ where
                     "error: failed to write CLI diagnostic: {write_error}"
                 );
 
-                return CliExitCode::CommandLineUsage.into();
+                return CliExitCode::CommandLineUsage;
             }
 
-            return exit_code.into();
+            return exit_code;
         }
     };
 
     initialize_tracing(&context);
 
     match dispatch(&context, cli.command) {
-        Ok(exit_code) => exit_code.into(),
+        Ok(exit_code) => exit_code,
         Err(error) => {
             let exit_code = error.exit_code();
 
@@ -106,10 +107,21 @@ where
                     "error: failed to write CLI diagnostic: {write_error}"
                 );
 
-                return CliExitCode::CommandLineUsage.into();
+                return CliExitCode::CommandLineUsage;
             }
 
-            exit_code.into()
+            exit_code
         }
     }
+}
+
+/// Run the Janiform CLI from a complete argument vector.
+///
+/// The first argument is the executable name, matching `std::env::args_os`.
+pub fn run<I, T>(arguments: I) -> ExitCode
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    run_exit_code(arguments).into()
 }

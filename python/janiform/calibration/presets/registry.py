@@ -449,7 +449,6 @@ class PresetRegistry:
                 preset_name=preset_name,
                 registry_scope=registry_scope,
             ),
-            function_label="preset artifact resolution",
         )
 
         return (
@@ -496,7 +495,6 @@ class PresetRegistry:
                 preset_name=preset_name,
                 registry_scope=registry_scope,
             ),
-            function_label="resolved preset snapshot",
         )
 
         return ResolvedPresetSnapshot.from_mapping(
@@ -529,7 +527,6 @@ class PresetRegistry:
             {
                 "registry": self.native_resolution_payload(),
             },
-            function_label="preset registry index",
         )
 
         return BundledPresetRegistryIndex.from_mapping(
@@ -560,7 +557,6 @@ class PresetRegistry:
             {
                 "registry": PresetRegistry._native_registry_payload(registered_artifacts),
             },
-            function_label="preset registry validation",
         )
 
 

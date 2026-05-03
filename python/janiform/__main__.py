@@ -1,8 +1,8 @@
-from ._cli.command_tree import invoke_application
+from ._native_api import run_cli
 
 
 def main() -> None:
-    raise SystemExit(invoke_application())
+    raise SystemExit(run_cli())
 
 
 if __name__ == "__main__":

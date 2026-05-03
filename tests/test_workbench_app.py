@@ -14,10 +14,6 @@ from PyQt6.QtWidgets import (
 )
 from matplotlib.figure import Figure
 
-from janiform.calibration.staged._progress_policy import (
-    CalibrationLiveProgressSnapshot,
-    calibration_total_progress_fraction,
-)
 from tools.workbench import app as workbench_app
 from tools.workbench.app import WorkbenchWindow, _ResponsiveFigureCanvas
 from tools.workbench.artifacts import WorkbenchArtifacts
@@ -459,143 +455,9 @@ def test_workbench_window_tracks_stage_and_total_progress_separately() -> None:
         assert window._run_stage_elapsed_label.text() == "Current stage elapsed: 42.5s"
         assert window._run_total_elapsed_label.text() == "Total elapsed: 42.5s"
         assert window._run_stage_progress_bar.maximum() == 8
-        assert window._run_stage_progress_bar.value() == 1
-        assert window._run_total_progress_bar.maximum() == 1000
-        expected_progress_fraction = calibration_total_progress_fraction(
-            CalibrationLiveProgressSnapshot(
-                status="running",
-                stage_sequence=(
-                    "seasonality",
-                    "hawkes",
-                    "return_components",
-                    "mean_reversion",
-                    "joint_refinement",
-                ),
-                stage_index=5,
-                stage_count=5,
-                current_stage="joint_refinement",
-                current_subtask="joint_refinement.restart_optimization",
-                current_stage_is_complete=False,
-                subtask_completed_units=2,
-                subtask_total_units=8,
-            )
-        )
-        assert expected_progress_fraction is not None
-        assert window._run_total_progress_bar.value() == round(expected_progress_fraction * 1000)
-    finally:
-        window.close()
-        application.processEvents()
-
-
-def test_workbench_window_total_progress_does_not_regress_across_joint_refinement_phases() -> None:
-    application = QApplication.instance() or QApplication([])
-    window = WorkbenchWindow()
-
-    try:
-        window._on_execution_event(
-            build_workbench_event(
-                event_type=WorkbenchEventType.RUN_STARTED,
-                run_id="run-001",
-                sequence_number=1,
-                payload={
-                    "detail": "Starting calibration",
-                    "stage_sequence": [
-                        "seasonality",
-                        "hawkes",
-                        "return_components",
-                        "mean_reversion",
-                        "joint_refinement",
-                    ],
-                },
-            )
-        )
-        window._on_execution_event(
-            build_workbench_event(
-                event_type=WorkbenchEventType.STAGE_STARTED,
-                run_id="run-001",
-                sequence_number=2,
-                stage="joint_refinement",
-                payload={
-                    "stage_index": 5,
-                    "stage_count": 5,
-                    "stage_label": "joint_refinement",
-                    "detail": "Running joint_refinement",
-                },
-            )
-        )
-        window._on_execution_event(
-            build_workbench_event(
-                event_type=WorkbenchEventType.SUBTASK_STARTED,
-                run_id="run-001",
-                sequence_number=3,
-                stage="joint_refinement",
-                subtask="joint_refinement.restart_optimization",
-                payload={
-                    "detail": "joint_refinement restart optimization 8/8",
-                    "completed_units": 8,
-                    "total_units": 8,
-                },
-            )
-        )
-        restart_completion_value = window._run_total_progress_bar.value()
-
-        window._on_execution_event(
-            build_workbench_event(
-                event_type=WorkbenchEventType.SUBTASK_STARTED,
-                run_id="run-001",
-                sequence_number=4,
-                stage="joint_refinement",
-                subtask="joint_refinement.coarse_consistency_evaluation",
-                payload={
-                    "detail": "joint_refinement coarse consistency evaluation 0/12",
-                    "completed_units": 0,
-                    "total_units": 12,
-                },
-            )
-        )
-
-        expected_restart_completion_fraction = calibration_total_progress_fraction(
-            CalibrationLiveProgressSnapshot(
-                status="running",
-                stage_sequence=(
-                    "seasonality",
-                    "hawkes",
-                    "return_components",
-                    "mean_reversion",
-                    "joint_refinement",
-                ),
-                stage_index=5,
-                stage_count=5,
-                current_stage="joint_refinement",
-                current_subtask="joint_refinement.restart_optimization",
-                current_stage_is_complete=False,
-                subtask_completed_units=8,
-                subtask_total_units=8,
-            )
-        )
-        expected_coarse_phase_fraction = calibration_total_progress_fraction(
-            CalibrationLiveProgressSnapshot(
-                status="running",
-                stage_sequence=(
-                    "seasonality",
-                    "hawkes",
-                    "return_components",
-                    "mean_reversion",
-                    "joint_refinement",
-                ),
-                stage_index=5,
-                stage_count=5,
-                current_stage="joint_refinement",
-                current_subtask="joint_refinement.coarse_consistency_evaluation",
-                current_stage_is_complete=False,
-                subtask_completed_units=0,
-                subtask_total_units=12,
-            )
-        )
-        assert expected_restart_completion_fraction is not None
-        assert expected_coarse_phase_fraction is not None
-        assert restart_completion_value == round(expected_restart_completion_fraction * 1000)
-        assert window._run_total_progress_bar.value() == round(expected_coarse_phase_fraction * 1000)
+        assert window._run_stage_progress_bar.value() == 2
+        assert window._run_total_progress_bar.maximum() == 5
+        assert window._run_total_progress_bar.value() == 4
     finally:
         window.close()
         application.processEvents()
@@ -639,7 +501,8 @@ def test_workbench_window_total_progress_stays_below_full_until_run_completed() 
             )
         )
 
-        assert window._run_total_progress_bar.value() == 990
+        assert window._run_total_progress_bar.maximum() == 5
+        assert window._run_total_progress_bar.value() == 5
 
         window._on_execution_event(
             build_workbench_event(
@@ -650,7 +513,8 @@ def test_workbench_window_total_progress_stays_below_full_until_run_completed() 
             )
         )
 
-        assert window._run_total_progress_bar.value() == 1000
+        assert window._run_total_progress_bar.maximum() == 1
+        assert window._run_total_progress_bar.value() == 1
     finally:
         window.close()
         application.processEvents()

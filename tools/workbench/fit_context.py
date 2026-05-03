@@ -2,19 +2,18 @@ import csv
 import hashlib
 import json
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Callable, Optional, cast
+from typing import Any, Optional, cast
 from zoneinfo import ZoneInfo
 
 import numpy as np
 from numpy.typing import NDArray
-
-from pyarrow import RecordBatch, parquet
 from pyarrow import csv as pyarrow_csv
+from pyarrow import RecordBatch, parquet
 
 from janiform._timestamps import (
     datetime_to_utc_microseconds,
@@ -22,11 +21,10 @@ from janiform._timestamps import (
     utc_microseconds_to_datetime,
 )
 from janiform.calendar import CalendarRegistry, MarketState
-from janiform.calibration.fit import JaniformModel
 from janiform.calibration.fit._runtime.input_inference import (
     tick_data_input_inference_from_model_metadata,
 )
-from janiform.simulation import SimulationProgressEvent
+from janiform.model import JaniformModel
 
 from .artifacts import WorkbenchArtifacts
 
@@ -260,12 +258,10 @@ def build_observed_simulation_comparison_for_fit_context(
         completed_units=1,
         total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
     )
-    def emit_seeded_simulation_progress(event: SimulationProgressEvent) -> None:
-        _emit_comparison_build_progress(
+    def emit_seeded_simulation_progress(event: Mapping[str, Any]) -> None:
+        _emit_native_simulation_progress(
             progress_callback,
-            detail=event.detail,
-            completed_units=event.completed_units,
-            total_units=event.total_units,
+            event,
         )
 
     simulation_result = model.simulate(
@@ -300,12 +296,10 @@ def build_observed_simulation_comparison_for_fit_context(
         completed_units=3,
         total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
     )
-    def emit_coarse_simulation_progress(event: SimulationProgressEvent) -> None:
-        _emit_comparison_build_progress(
+    def emit_coarse_simulation_progress(event: Mapping[str, Any]) -> None:
+        _emit_native_simulation_progress(
             progress_callback,
-            detail=event.detail,
-            completed_units=event.completed_units,
-            total_units=event.total_units,
+            event,
         )
 
     coarse_simulation_result = model.simulate(
@@ -410,6 +404,26 @@ def _emit_comparison_build_progress(
             completed_units=completed_units,
             total_units=total_units,
         )
+    )
+
+
+def _emit_native_simulation_progress(
+    progress_callback: Optional[Callable[[WorkbenchComparisonBuildProgress], None]],
+    event: Mapping[str, Any],
+) -> None:
+    raw_completed_units = event.get("completed_units")
+    raw_total_units = event.get("total_units")
+    if not isinstance(raw_completed_units, int) or not isinstance(raw_total_units, int):
+        return
+
+    raw_phase = event.get("phase")
+    detail = raw_phase if isinstance(raw_phase, str) and raw_phase else "simulation"
+
+    _emit_comparison_build_progress(
+        progress_callback,
+        detail=detail,
+        completed_units=raw_completed_units,
+        total_units=raw_total_units,
     )
 
 

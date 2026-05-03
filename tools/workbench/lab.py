@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from janiform.calibration.fit import JaniformModel
+from janiform.model import JaniformModel
 
 from .artifacts import WorkbenchArtifacts
 from .fit_context import (

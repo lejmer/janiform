@@ -1,5 +1,6 @@
 mod calendar;
 mod calibration;
+mod cli;
 mod events;
 mod fit;
 mod hourly;
@@ -14,6 +15,7 @@ use pyo3::types::PyModule;
 
 pub(crate) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     calibration::register_functions(module)?;
+    cli::register_functions(module)?;
     fit::register_functions(module)?;
     seasonality::register_functions(module)?;
     hourly::register_functions(module)?;

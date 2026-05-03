@@ -15,7 +15,7 @@ EXAMPLES_ROOT = REPOSITORY_ROOT / "examples"
 DOCUMENT_PATHS = (
     REPOSITORY_ROOT / "README.md",
     REPOSITORY_ROOT / "examples" / "README.md",
-    REPOSITORY_ROOT / "docs" / "getting-started" / "quickstart.md",
+    REPOSITORY_ROOT / "docs" / "getting-started" / "introduction.md",
     REPOSITORY_ROOT / "docs" / "getting-started" / "first-model.md",
 )
 

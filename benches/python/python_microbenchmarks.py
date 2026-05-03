@@ -7,7 +7,7 @@ from benches.python.support import (
     load_python_microbenchmark_fixture,
     prepare_real_data_seeded_runtime_microbenchmark_case,
 )
-from janiform.calibration.fit import JaniformSimulationResult
+from janiform.simulation import JaniformSimulationResult
 from janiform.simulation.seeded import (
     deserialize_seeded_tick_simulation_response,
     run_seeded_tick_event_simulation,

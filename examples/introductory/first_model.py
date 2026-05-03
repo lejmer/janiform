@@ -3,10 +3,8 @@ from typing import Final
 
 import pandas as pd
 
-from janiform.calibration import (
-    JaniformModel,
-    JaniformSimulationResult,
-)
+from janiform.model import JaniformModel
+from janiform.simulation import JaniformSimulationResult
 
 from examples._shared import (
     SYNTHETIC_EURUSD_TICK_DATA_PATH,

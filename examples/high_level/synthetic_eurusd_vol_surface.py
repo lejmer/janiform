@@ -14,7 +14,7 @@ from examples._synthetic_option_surface import (
     SyntheticVanillaOptionSurfaceContext,
     load_synthetic_eurusd_surface_context,
 )
-from janiform.calibration import JaniformModel
+from janiform.model import JaniformModel
 from janiform.errors import JaniformExecutionError
 from janiform.pricing import VanillaOptionPayoffType
 

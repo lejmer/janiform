@@ -1,5 +1,4 @@
 import json
-import sys
 from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any, Optional, cast
@@ -11,7 +10,6 @@ import janiform.stylized_facts.workflow as stylized_facts_workflow_module
 from janiform.stylized_facts import (
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION,
     build_stylized_fact_plotly_figure_from_report_bundle,
-    render_stylized_fact_table_markdown,
     run_stylized_fact_horizon_comparison_report_generator,
 )
 
@@ -47,14 +45,6 @@ def test_report_generator_wrapper_parses_bundle_and_preserves_metric_class(
     assert cast(str, fake_native.last_request["generation_options"]["execution_mode"]) == "memory"
 
 
-def test_table_markdown_renderer_outputs_deterministic_columns() -> None:
-    report_bundle = _sample_report_bundle()
-    markdown_table = render_stylized_fact_table_markdown(report_bundle.table_summary, max_rows=1)
-
-    assert "| run_id | horizon | metric_id | class | status | abs_delta | standardized_delta |" in markdown_table
-    assert "returns_abs_quantile_shape_ratio_q99_q95" in markdown_table
-
-
 def test_plotly_adapter_preserves_metric_and_insufficient_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -76,7 +66,7 @@ def test_plotly_adapter_preserves_metric_and_insufficient_metadata(
             self.layout_updates.append(kwargs)
 
     fake_graph_objects = SimpleNamespace(Figure=FakeFigure, Scatter=FakeScatter)
-    monkeypatch.setitem(sys.modules, "plotly", SimpleNamespace(graph_objects=fake_graph_objects))
+    monkeypatch.setattr(stylized_facts_workflow_module, "go", fake_graph_objects)
 
     figure = build_stylized_fact_plotly_figure_from_report_bundle(report_bundle)
     assert isinstance(figure, FakeFigure)

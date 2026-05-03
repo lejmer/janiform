@@ -8,6 +8,11 @@ def native_module() -> ModuleType:
     return import_module("janiform._native")
 
 
+def run_cli() -> int:
+    native = native_module()
+    return int(native.run_cli())
+
+
 def native_exception_matches(
     native: ModuleType,
     error: Exception,

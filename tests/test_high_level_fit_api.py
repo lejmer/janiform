@@ -14,31 +14,25 @@ import pytest
 from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
-import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
 import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
 import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
-import janiform.calibration.fit._runtime.simulation.result as fit_simulation_result_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
-import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
+import janiform.model as model_module
+import janiform.pricing.fitted.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
+import janiform.simulation.result as simulation_result_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform._workflow_outputs import SimulationArtifactSink
-from janiform._workflow_progress import JaniformOutputController, WorkflowProgressMode
+from janiform._workflow_progress import WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
-from janiform.calibration.fit import (
-    FitProgressEvent,
-    JaniformEstimator,
-    JaniformFitResult,
-    JaniformFitReport,
-    JaniformModel,
-    JaniformSimulationResult,
-)
-from janiform.calibration.fit.pricing import (
+from janiform.calibration.fit import JaniformEstimator, JaniformFitReport, JaniformFitResult
+from janiform.model import JaniformModel
+from janiform.pricing.fitted import (
     JaniformObservedOptionSurfacePricingResult,
     JaniformVanillaOptionGrid,
     JaniformVanillaOptionGridBatch,
@@ -48,6 +42,7 @@ from janiform.calibration.fit.pricing import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
+from janiform.simulation import JaniformSimulationResult
 from janiform.calibration.fit.state import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
@@ -181,15 +176,27 @@ def test_janiform_estimator_fit_forwards_progress_events_to_callback(
         encoding="utf-8",
     )
 
-    progress_event = FitProgressEvent(
-        stage_id="fit_return_distribution",
-        stage_label="Fit return distribution",
-        phase_id="estimate_student_t",
-        phase_label="Estimate Student t",
-        completed_units=1,
-        total_units=3,
-    )
-    observed_events: list[FitProgressEvent] = []
+    progress_event = {
+        "event_class": "progress",
+        "payload": {
+            "stage": {
+                "stage_id": "fit_return_distribution",
+                "label": "Fit return distribution",
+            },
+            "phase": {
+                "phase_id": "estimate_student_t",
+                "label": "Estimate Student t",
+            },
+            "measures": [
+                {
+                    "measure_kind": "bounded_count",
+                    "completed_units": 1,
+                    "total_units": 3,
+                },
+            ],
+        },
+    }
+    observed_events: list[dict[str, Any]] = []
 
     patch_fit_workflow_runner(
         monkeypatch,
@@ -663,7 +670,7 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_df(
         include_integration_quality_diagnostics: bool = False,
         cpu_count: Optional[int] = None,
         silent: bool = False,
-        progress_mode: Any = fit_model_module.WorkflowProgressMode.AUTO,
+        progress_mode: Any = model_module.WorkflowProgressMode.AUTO,
         progress: Any = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
         _ = model
@@ -845,7 +852,7 @@ def test_price_option_surface_returns_single_expiry_evolution_surface(
         include_integration_quality_diagnostics: bool = False,
         cpu_count: Optional[int] = None,
         silent: bool = False,
-        progress_mode: Any = fit_model_module.WorkflowProgressMode.AUTO,
+        progress_mode: Any = model_module.WorkflowProgressMode.AUTO,
         progress: Any = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
         _ = model
@@ -1812,12 +1819,16 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback(
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=5,
         progress_callback=lambda event: observed_callback_events.append(
-            (event.detail, event.completed_units, event.total_units)
+            (
+                cast(str, event["phase"]),
+                cast(int, event["completed_units"]),
+                cast(int, event["total_units"]),
+            )
         ),
     )
 
     assert result.raw_result is simulated_result
-    assert observed_callback_events == [("seeded tick path generation", 2, 5)]
+    assert observed_callback_events == [("seeded_tick_intervals", 2, 5)]
 
 
 def test_run_model_vanilla_option_surface_pricing_uses_terminal_progress_native_call(
@@ -2242,7 +2253,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         Path(output_path).write_text("parquet placeholder", encoding="utf-8")
 
     monkeypatch.setattr(
-        fit_simulation_result_module,
+        simulation_result_module,
         "persist_coarse_simulation",
         capture_persist_coarse_simulation,
     )
@@ -2507,7 +2518,7 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
             sink.close()
 
     monkeypatch.setattr(
-        fit_simulation_result_module,
+        simulation_result_module,
         "persist_seeded_tick_simulation",
         capture_empty_seeded_simulation,
     )
@@ -2575,7 +2586,7 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
             sink.close()
 
     monkeypatch.setattr(
-        fit_simulation_result_module,
+        simulation_result_module,
         "persist_seeded_tick_simulation",
         capture_seeded_simulation,
     )
@@ -3931,73 +3942,6 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
     )
 
     assert execution_configuration_count == 1
-
-
-@pytest.mark.parametrize("silent", [False, True])
-def test_high_level_fit_uses_native_terminal_progress_only(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    silent: bool,
-) -> None:
-    tick_data_path = tmp_path / "ticks.csv"
-    tick_data_path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc",
-                "2026-02-02T14:30:00Z",
-                "2026-02-02T15:00:00Z",
-                "2026-02-02T20:59:00Z",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    progress_call_count = 0
-
-    def fail_if_python_progress_is_used(
-        self: Any,
-        label: str,
-        *,
-        total_steps: Optional[int] = None,
-    ) -> NoReturn:
-        nonlocal progress_call_count
-        progress_call_count += 1
-
-        _ = self
-        _ = label
-        _ = total_steps
-
-        raise AssertionError("Python fit progress must not render")
-
-    monkeypatch.setattr(JaniformOutputController, "progress", fail_if_python_progress_is_used)
-    patch_fit_workflow_runner(
-        monkeypatch,
-        lambda *args, **kwargs: _successful_staged_runner_payload(
-            "high-level-fit-native-progress"
-        ),
-    )
-
-    estimator = JaniformEstimator(
-        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
-        tick_data_column_mapping=CalibrationTickDataColumnMapping(
-            timestamp_column="timestamp_utc",
-        ),
-        normalization_policy=CalibrationMarketDataNormalizationPolicy(
-            timestamp_timezone="UTC",
-            sort_records_by_timestamp=True,
-        ),
-        session="XNYS",
-        known_news="none",
-        silent=silent,
-    )
-
-    estimator.fit(
-        run_id="high-level-fit-native-progress",
-        tick_data_path=tick_data_path,
-        tick_data_format=CalibrationInputFileFormat.CSV,
-    )
-
-    assert progress_call_count == 0
 
 
 def test_high_level_fit_report_returns_success_details_with_model(

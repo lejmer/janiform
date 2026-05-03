@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC
 from time import perf_counter
 from typing import Any, Optional
@@ -10,7 +10,6 @@ from .contracts import (
     SeededTickSimulationRequest,
 )
 from .response import SeededTickSimulationResponse
-from ..progress import SimulationProgressEvent, simulation_progress_event_from_mapping
 from ..shared import SeededTickSimulationValidationError
 from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,
@@ -29,7 +28,7 @@ from ..._workflow_progress import WorkflowProgressMode, resolve_workflow_progres
 def run_seeded_tick_event_simulation(
     request: SeededTickSimulationRequest,
     *,
-    progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> SeededTickSimulationResponse:
     if not isinstance(request, SeededTickSimulationRequest):
@@ -57,6 +56,7 @@ def run_seeded_tick_event_simulation(
         state_snapshot_capture=request.state_snapshot_capture,
         _hourly_factor_contract=request.hourly_factor_contract,
     )
+
     try:
         native = native_module()
     except ModuleNotFoundError as e:
@@ -69,16 +69,10 @@ def run_seeded_tick_event_simulation(
 
     try:
         native_run_started = perf_counter()
-        def native_progress_callback(raw_event: dict[str, Any]) -> None:
-            if progress_callback is None:
-                return
-
-            progress_callback(simulation_progress_event_from_mapping(raw_event))
-
         native_run_kwargs: dict[str, Any] = {}
 
         if progress_callback is not None:
-            native_run_kwargs["event_callback"] = native_progress_callback
+            native_run_kwargs["event_callback"] = progress_callback
         else:
             resolved_progress_mode = resolve_workflow_progress_mode(
                 progress_mode,

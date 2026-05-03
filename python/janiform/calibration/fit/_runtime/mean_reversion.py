@@ -16,7 +16,7 @@ from .payloads import mean_reversion_fitted_parameters_for_model
 from .shared import PreparedModelRuntimeFactors
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ....model import JaniformModel
 
 
 def prepare_model_mean_reversion_runtime_inputs(

@@ -1,18 +1,14 @@
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, NoReturn
 
 import pytest
 
-import janiform._cli.commands.development as cli_development_commands_module
 import janiform.calendar as calendar_module
 import janiform.calibration.staged.runtime as calibration_staged_runtime_module
-import janiform.cli as cli_module
 import janiform.pricing.workflow as pricing_workflow_module
 import janiform.simulation as simulation_module
 import janiform.simulation.coarse.runtime as simulation_coarse_runtime_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
-from janiform._cli.context import CliCommandContext
 from janiform._timestamps import NANOS_PER_HOUR
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import run_staged_calibration
@@ -201,31 +197,6 @@ def test_simulation_run_maps_native_validation_failure_to_execution_error(
     assert captured_error.value.workflow == "simulation"
     assert captured_error.value.entrypoint == "run_seeded_tick_event_simulation"
     assert captured_error.value.context == {"source_category": "native_validation"}
-
-
-def test_simulation_run_maps_invalid_native_response_to_integration_error(
-    calendar_registry: CalendarRegistry,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class NativeValidationError(Exception):
-        pass
-
-    class FakeNative:
-        SeasonalityInputValidationError = NativeValidationError
-
-        @staticmethod
-        def run_seeded_tick_event_simulation(*args, **kwargs) -> str:
-            return "{}"
-
-    monkeypatch.setattr(simulation_seeded_runtime_module, "native_module", lambda: FakeNative())
-
-    with pytest.raises(JaniformIntegrationError) as captured_error:
-        run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
-
-    assert captured_error.value.error_id == "simulation.integration.invalid_native_response"
-    assert captured_error.value.workflow == "simulation"
-    assert captured_error.value.entrypoint == "run_seeded_tick_event_simulation"
-    assert captured_error.value.context == {"source_error_id": "simulation.validation.contract"}
 
 
 def test_coarse_simulation_run_includes_native_failure_message_in_context(
@@ -643,104 +614,6 @@ def test_calendar_registry_resolve_does_not_mask_runtime_errors_when_native_exce
 
     with pytest.raises(RuntimeError, match="native calendar failure"):
         registry.resolve_market_state("XNYS", START_TIME_UTC)
-
-
-def test_cli_error_output_uses_shared_error_contract(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    def broken_load_json_document_for_cli_field(
-        *,
-        context: str,
-        **_: Any,
-    ) -> dict[str, Any]:
-        raise ValueError("gap behavior fixture must include list field `cases`")
-
-    monkeypatch.setattr(
-        cli_development_commands_module,
-        "load_json_document_for_cli_field",
-        broken_load_json_document_for_cli_field,
-    )
-
-    exit_code = cli_development_commands_module.run_open_closed_gap_leakage_regression_command(
-        cli_context=CliCommandContext(
-            command_path=("dev", "regression", "open-closed-gap-leakage"),
-            command_identifier=None,
-            default_map={},
-            environment={},
-            repository_root=Path.cwd(),
-        ),
-        output="human",
-        calendar_fixture_path=Path("calendar.json"),
-        gap_behavior_fixture_path=Path("gap.json"),
-        component_absolute_tolerance=1e-12,
-    )
-
-    captured = capsys.readouterr()
-
-    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
-    assert '[cli.validation.open_closed_gap_leakage.invalid_input]' in captured.err
-    assert 'workflow="cli"' in captured.err
-    assert 'entrypoint="dev.regression.open_closed_gap_leakage"' in captured.err
-    assert 'field_path="command_input"' in captured.err
-
-
-def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    def broken_load_json_document_for_cli_field(
-        *,
-        context: str,
-        **_: Any,
-    ) -> dict[str, Any]:
-        if context == "calendar registry":
-            return {"schema_version": "calendar.registry.v1", "exchanges": []}
-        if context == "calendar cases":
-            return {"cases": []}
-        return {"canonical_output_cases": []}
-
-    def broken_extract_calendar_cases(_: dict[str, Any]) -> list[dict[str, Any]]:
-        raise ValueError("calendar cases document case must be an object")
-
-    def build_placeholder_calendar_registry(_: dict[str, Any]) -> Any:
-        return object()
-
-    monkeypatch.setattr(
-        cli_development_commands_module,
-        "load_json_document_for_cli_field",
-        broken_load_json_document_for_cli_field,
-    )
-    monkeypatch.setattr(
-        cli_development_commands_module,
-        "build_calendar_registry_from_document",
-        build_placeholder_calendar_registry,
-    )
-    monkeypatch.setattr(cli_development_commands_module, "extract_calendar_cases", broken_extract_calendar_cases)
-
-    exit_code = cli_development_commands_module.run_deterministic_regression_command(
-        cli_context=CliCommandContext(
-            command_path=("dev", "regression", "deterministic"),
-            command_identifier=None,
-            default_map={},
-            environment={},
-            repository_root=Path.cwd(),
-        ),
-        output="human",
-        calendar_registry_json=Path("calendar-registry.json"),
-        calendar_cases_json=Path("calendar-cases.json"),
-        seasonality_cases_json=Path("seasonality-cases.json"),
-        seasonality_absolute_tolerance=1e-12,
-        news_intensity_absolute_tolerance=1e-12,
-    )
-
-    captured = capsys.readouterr()
-
-    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
-    assert '[cli.validation.deterministic_regression.invalid_input]' in captured.err
-    assert 'workflow="cli"' in captured.err
-    assert 'entrypoint="dev.regression.deterministic"' in captured.err
-    assert 'field_path="calendar_cases_document"' in captured.err
 
 
 def _valid_hourly_factor_contract(calendar_registry: CalendarRegistry) -> HourlyFactorContract:

@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "document_version": "rust.internal_crate_graph_and_umbrella_facade_policy.pre_v0_1.milestone_1",
-  "policy_document": "docs/architecture/overview.md",
+  "policy_document": "docs/contributing/crates.md",
   "umbrella_facade_crate": "janiform",
   "pybind_boundary_crate": "janiform-pybind",
   "curated_facade_module_roots": [
@@ -266,6 +266,7 @@
         "janiform-event-log",
         "janiform-terminal-ui",
         "janiform-workflows",
+        "janiform-cli",
         "janiform"
       ]
     }

@@ -137,7 +137,7 @@ That works both after a run completes and while a disk-backed fit is still progr
 
 ## Python progress callbacks
 
-The Python library exposes progress callbacks for in-process integration. These callbacks make it easy to forward progress into logs, notebooks, web sockets, job dashboards, or other application-specific monitoring.
+The Python library exposes progress callbacks for in-process integration. Callback payloads are Rust-owned event mappings, so the same event schema is available to Python callbacks and machine-event streams.
 
 ### Fit callbacks
 
@@ -146,13 +146,15 @@ The Python library exposes progress callbacks for in-process integration. These 
 Example:
 
 ```python
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
-from janiform.calibration import FitProgressEvent, JaniformEstimator
+from janiform.calibration import JaniformEstimator
 
 
-def on_fit_progress(event: FitProgressEvent) -> None:
-    print(event.detail, event.completed_units, event.total_units)
+def on_fit_progress(event: Mapping[str, Any]) -> None:
+    print(event["event_class"], event["payload"])
 
 
 estimator = JaniformEstimator(market_profile="eurusd_spot")
@@ -162,13 +164,11 @@ model = estimator.fit(
 )
 ```
 
-Fit progress events expose:
+Fit progress event mappings expose:
 
 - stage information when available
 - phase information when available
-- `completed_units`
-- `total_units`
-- `detail` for a readable stage or phase label
+- bounded progress measures when available
 
 ### Simulation callbacks
 
@@ -177,12 +177,14 @@ Fit progress events expose:
 Example:
 
 ```python
-from janiform.calibration import JaniformModel
-from janiform.simulation import SimulationProgressEvent
+from collections.abc import Mapping
+from typing import Any
+
+from janiform.model import JaniformModel
 
 
-def on_simulation_progress(event: SimulationProgressEvent) -> None:
-    print(event.detail, event.completed_units, event.total_units)
+def on_simulation_progress(event: Mapping[str, Any]) -> None:
+    print(event["phase"], event["completed_units"], event["total_units"])
 
 
 model = JaniformModel.load(".janiform/runs/eurusd-fit/artifacts/model.jf")
@@ -193,7 +195,7 @@ simulation = model.simulate(
 )
 ```
 
-Simulation progress events report the phase plus bounded progress counts.
+Simulation progress event mappings report the phase plus bounded progress counts.
 
 ### Pricing callbacks
 
@@ -202,14 +204,15 @@ Pricing callbacks are available on the Python pricing workflows that can fan out
 Example:
 
 ```python
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Any
 
-from janiform.calibration import JaniformModel
-from janiform.pricing import PricingProgressEvent
+from janiform.model import JaniformModel
 
 
-def on_pricing_progress(event: PricingProgressEvent) -> None:
-    print(event.phase, event.subdetail, event.completed_units, event.total_units)
+def on_pricing_progress(event: Mapping[str, Any]) -> None:
+    print(event["phase"], event["completed_units"], event["total_units"])
 
 
 model = JaniformModel.load(".janiform/runs/eurusd-option-fit/artifacts/model.jf")
@@ -222,11 +225,11 @@ pricing_result = model.price_option_grid_surface(
 )
 ```
 
-Pricing progress events expose:
+Pricing progress event mappings expose:
 
 - the current pricing phase
 - bounded progress counts
-- optional subdetail such as maturity or strike position
+- optional fields such as maturity or strike position
 
 ## Saving and reusing models
 

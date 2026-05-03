@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any, Optional, cast
+
+import orjson
 
 from .contracts import (
     SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY,
@@ -16,6 +18,7 @@ from .contracts import (
     SeededTickEventRecord,
     SeededTickEventSide,
     SeededTickEventStateSnapshot,
+    SeededTickEventStateSnapshotCapture,
     SeededTickEventTapeMetadata,
     SeededTickSimulationDiagnostics,
     _project_event_tape_from_fine_path,
@@ -30,7 +33,6 @@ from ...contracts.base import (
     ContractModel,
     parse_json_object,
     require_mapping,
-    require_non_negative_integer,
     require_sequence,
     require_string,
     serialize_deterministic_json,
@@ -141,16 +143,19 @@ class _NativeBackedSequenceView[T](Sequence[T]):
         if self._materialized_records is not None:
             return self._materialized_records[normalized_index]
 
+        number_of_chunk_records: int = len(self._cached_chunk_records)
+
         if (
             self._cached_chunk_start is not None
-            and normalized_index >= self._cached_chunk_start
-            and normalized_index < self._cached_chunk_start + len(self._cached_chunk_records)
+            and self._cached_chunk_start <= normalized_index < self._cached_chunk_start + number_of_chunk_records
         ):
             return self._cached_chunk_records[normalized_index - self._cached_chunk_start]
 
         chunk_start = (normalized_index // self._chunk_record_count) * self._chunk_record_count
+
         self._cached_chunk_records = self._load_native_chunk(chunk_start)
         self._cached_chunk_start = chunk_start
+
         return self._cached_chunk_records[normalized_index - chunk_start]
 
     def __iter__(self) -> Iterator[T]:
@@ -247,6 +252,7 @@ def _parse_seeded_event_tape_view_record(
 
 
 def _estimate_typed_chunk_boundary_transport_bytes(chunk_payload: Any) -> int:
+    # PyO3 chunk result classes expose optional transport accounting without a shared Python protocol.
     estimated_transport_bytes = getattr(chunk_payload, "estimated_transport_bytes", None)
     if isinstance(estimated_transport_bytes, int):
         return estimated_transport_bytes
@@ -285,7 +291,7 @@ def _build_state_snapshot(
 
 def _parse_seeded_fine_path_chunk_columns(
     chunk_payload: Any,
-    start_index: int,
+    _start_index: int,
 ) -> tuple[SeededFinePathRecord, ...]:
     transition_index_column = cast(list[int], chunk_payload.transition_index)
     timestamp_column = cast(list[int], chunk_payload.timestamp_utc_nanos)
@@ -342,35 +348,6 @@ def _parse_seeded_fine_path_chunk_columns(
         chunk_payload.state_snapshot_deseasonalized_lambda_minus,
     )
 
-    _validate_native_chunk_column_lengths(
-        "fine_path",
-        start_index,
-        len(transition_index_column),
-        timestamp_column,
-        transition_kind_column,
-        side_column,
-        news_arrival_component_column,
-        market_state_column,
-        buy_side_return_column,
-        sell_side_return_column,
-        trading_time_return_column,
-        open_jump_return_column,
-        closed_gap_return_column,
-        total_return_column,
-        core_total_return_increment_column,
-        observed_log_price_column,
-        anchor_value_column,
-        pressure_state_column,
-        deviation_from_anchor_column,
-        cumulative_core_log_return_column,
-        state_snapshot_y_plus_plus_column,
-        state_snapshot_y_plus_minus_column,
-        state_snapshot_y_minus_plus_column,
-        state_snapshot_y_minus_minus_column,
-        state_snapshot_deseasonalized_lambda_plus_column,
-        state_snapshot_deseasonalized_lambda_minus_column,
-    )
-
     return tuple(
         SeededFinePathRecord(
             transition_index=transition_index_column[chunk_offset],
@@ -424,7 +401,7 @@ def _parse_seeded_fine_path_chunk_columns(
 
 def _parse_seeded_event_tape_chunk_columns(
     chunk_payload: Any,
-    start_index: int,
+    _start_index: int,
 ) -> tuple[SeededTickEventRecord, ...]:
     event_index_column = cast(list[int], chunk_payload.event_index)
     timestamp_column = cast(list[int], chunk_payload.timestamp_utc_nanos)
@@ -465,25 +442,6 @@ def _parse_seeded_event_tape_chunk_columns(
         chunk_payload.state_snapshot_deseasonalized_lambda_minus,
     )
 
-    _validate_native_chunk_column_lengths(
-        "event_tape",
-        start_index,
-        len(event_index_column),
-        timestamp_column,
-        side_column,
-        core_total_return_increment_column,
-        observed_log_price_column,
-        anchor_value_column,
-        pressure_state_column,
-        deviation_from_anchor_column,
-        state_snapshot_y_plus_plus_column,
-        state_snapshot_y_plus_minus_column,
-        state_snapshot_y_minus_plus_column,
-        state_snapshot_y_minus_minus_column,
-        state_snapshot_deseasonalized_lambda_plus_column,
-        state_snapshot_deseasonalized_lambda_minus_column,
-    )
-
     return tuple(
         SeededTickEventRecord(
             event_index=event_index_column[chunk_offset],
@@ -509,77 +467,6 @@ def _parse_seeded_event_tape_chunk_columns(
         )
         for chunk_offset in range(len(event_index_column))
     )
-
-
-def _validate_native_chunk_column_lengths(
-    field_path: str,
-    start_index: int,
-    expected_length: int,
-    *columns: list[Any],
-) -> None:
-    for column_index, column in enumerate(columns, start=1):
-        if len(column) != expected_length:
-            raise _simulation_integration_error(
-                f"native {field_path} chunk columns had inconsistent lengths",
-                entrypoint="run_seeded_tick_event_simulation",
-                error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
-                field_path=field_path,
-                context={
-                    "chunk_start_index": start_index,
-                    "expected_length": expected_length,
-                    "column_index": column_index,
-                    "actual_length": len(column),
-                },
-            )
-
-
-def _require_native_result_attribute(
-    native_result: Any,
-    attribute_name: str,
-    *,
-    field_path: str,
-) -> Any:
-    try:
-        return getattr(native_result, attribute_name)
-    except AttributeError as e:
-        raise _simulation_error(
-            field_path,
-            f"native result handle is missing required attribute `{attribute_name}`",
-        ) from e
-
-
-def _require_native_result_json_method(
-    native_result: Any,
-    method_name: str,
-    *,
-    field_path: str,
-) -> str:
-    raw_method = _require_native_result_attribute(
-        native_result,
-        method_name,
-        field_path=field_path,
-    )
-    if not callable(raw_method):
-        raise _simulation_error(
-            field_path,
-            f"native result attribute `{method_name}` must be callable",
-        )
-
-    try:
-        payload = raw_method()
-    except Exception as e:
-        raise _simulation_error(
-            field_path,
-            f"native result method `{method_name}` failed while building the response",
-        ) from e
-
-    if not isinstance(payload, str):
-        raise _simulation_error(
-            field_path,
-            f"native result method `{method_name}` must return a JSON string",
-        )
-
-    return payload
 
 
 class SeededFinePathView(_NativeBackedSequenceView[SeededFinePathRecord]):
@@ -628,16 +515,64 @@ class SeededTickEventTapeView(_NativeBackedSequenceView[SeededTickEventRecord]):
             index_error_message="seeded event tape index out of range",
             native_chunk_parser=_parse_seeded_event_tape_chunk_columns,
             materialized_records=materialized_records,
-            native_chunk_loader=(
-                native_result.get_event_tape_chunk_columns if native_result is not None else None
-            ),
+            native_chunk_loader=native_result.get_event_tape_chunk_columns if native_result is not None else None,
             record_count=int(native_result.event_count) if native_result is not None else None,
             chunk_record_count=chunk_record_count,
             chunk_transport_estimator=_estimate_typed_chunk_boundary_transport_bytes,
-            chunk_tracker=(
-                tracker.record_event_tape_chunk if tracker is not None else None
-            ),
+            chunk_tracker=tracker.record_event_tape_chunk if tracker is not None else None,
         )
+
+
+def _hydrate_native_seeded_fine_path_metadata(
+    raw_payload: Mapping[str, Any],
+) -> SeededFinePathMetadata:
+    return SeededFinePathMetadata(
+        schema_version=cast(str, raw_payload["schema_version"]),
+        path_record_schema_version=cast(str, raw_payload["path_record_schema_version"]),
+        event_projection_record_schema_version=cast(
+            str,
+            raw_payload["event_projection_record_schema_version"],
+        ),
+        transition_ordering_policy=cast(str, raw_payload["transition_ordering_policy"]),
+        timestamp_representation_policy=cast(
+            str,
+            raw_payload["timestamp_representation_policy"],
+        ),
+        side_encoding_policy=cast(str, raw_payload["side_encoding_policy"]),
+        state_snapshot_capture=SeededTickEventStateSnapshotCapture(
+            raw_payload["state_snapshot_capture"]
+        ),
+        state_snapshot_capture_point_policy=cast(
+            Optional[str],
+            raw_payload.get("state_snapshot_capture_point_policy"),
+        ),
+    )
+
+
+def _hydrate_native_seeded_event_tape_metadata(
+    raw_payload: Mapping[str, Any],
+) -> SeededTickEventTapeMetadata:
+    return SeededTickEventTapeMetadata(
+        schema_version=cast(str, raw_payload["schema_version"]),
+        event_record_schema_version=cast(str, raw_payload["event_record_schema_version"]),
+        state_snapshot_schema_version=cast(
+            str,
+            raw_payload["state_snapshot_schema_version"],
+        ),
+        event_ordering_policy=cast(str, raw_payload["event_ordering_policy"]),
+        timestamp_representation_policy=cast(
+            str,
+            raw_payload["timestamp_representation_policy"],
+        ),
+        side_encoding_policy=cast(str, raw_payload["side_encoding_policy"]),
+        state_snapshot_capture=SeededTickEventStateSnapshotCapture(
+            raw_payload["state_snapshot_capture"]
+        ),
+        state_snapshot_capture_point_policy=cast(
+            Optional[str],
+            raw_payload.get("state_snapshot_capture_point_policy"),
+        ),
+    )
 
 
 @dataclass
@@ -672,6 +607,7 @@ class SeededTickSimulationResponse(ContractModel):
             f"{field_path}.fine_path",
             SIMULATION_ERROR_FACTORY,
         )
+
         fine_path_records = tuple(
             SeededFinePathRecord.from_mapping(
                 raw_item,
@@ -686,6 +622,7 @@ class SeededTickSimulationResponse(ContractModel):
             f"{field_path}.event_tape",
             SIMULATION_ERROR_FACTORY,
         )
+
         event_tape_records = tuple(
             SeededTickEventRecord.from_mapping(
                 raw_item,
@@ -693,6 +630,7 @@ class SeededTickSimulationResponse(ContractModel):
             )
             for event_index, raw_item in enumerate(event_tape_items)
         )
+
         projected_event_tape = _project_event_tape_from_fine_path(fine_path_records)
         if event_tape_records != projected_event_tape:
             raise _simulation_error(
@@ -748,99 +686,41 @@ class SeededTickSimulationResponse(ContractModel):
         python_response_construction_seconds: float,
         chunk_record_count: int,
     ) -> SeededTickSimulationResponse:
-        schema_version = require_string(
-            {
-                "schema_version": _require_native_result_attribute(
-                    native_result,
-                    "schema_version",
-                    field_path="seeded_tick_simulation_response.schema_version",
-                )
-            },
-            "schema_version",
-            "seeded_tick_simulation_response.schema_version",
-            SIMULATION_ERROR_FACTORY,
-        )
-        transition_count = require_non_negative_integer(
-            {
-                "transition_count": _require_native_result_attribute(
-                    native_result,
-                    "transition_count",
-                    field_path="seeded_tick_simulation_response.diagnostics.transition_count",
-                )
-            },
-            "transition_count",
-            "seeded_tick_simulation_response.diagnostics.transition_count",
-            SIMULATION_ERROR_FACTORY,
-        )
-        event_count = require_non_negative_integer(
-            {
-                "event_count": _require_native_result_attribute(
-                    native_result,
-                    "event_count",
-                    field_path="seeded_tick_simulation_response.diagnostics.event_count",
-                )
-            },
-            "event_count",
-            "seeded_tick_simulation_response.diagnostics.event_count",
-            SIMULATION_ERROR_FACTORY,
-        )
-        native_estimated_retained_bytes = require_non_negative_integer(
-            {
-                "estimated_native_retained_bytes": _require_native_result_attribute(
-                    native_result,
-                    "estimated_native_retained_bytes",
-                    field_path=(
-                        "seeded_tick_simulation_response.diagnostics.native_estimated_retained_bytes"
-                    ),
-                )
-            },
-            "estimated_native_retained_bytes",
-            "seeded_tick_simulation_response.diagnostics.native_estimated_retained_bytes",
-            SIMULATION_ERROR_FACTORY,
-        )
         diagnostics = SeededTickSimulationDiagnostics(
             schema_version=SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION,
-            transition_count=transition_count,
-            event_count=event_count,
+            transition_count=cast(int, native_result.transition_count),
+            event_count=cast(int, native_result.event_count),
             native_runtime_seconds=native_runtime_seconds,
             python_response_construction_seconds=python_response_construction_seconds,
             python_materialization_seconds=0.0,
             boundary_transport_bytes=0,
-            native_estimated_retained_bytes=native_estimated_retained_bytes,
+            native_estimated_retained_bytes=cast(
+                int,
+                native_result.estimated_native_retained_bytes,
+            ),
             materialized_transition_count=0,
             materialized_event_count=0,
             boundary_transport_policy=SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY,
             boundary_chunk_record_count=chunk_record_count,
         )
+
         tracker = _SeededTickSimulationMaterializationTracker(diagnostics)
-        metadata_payload = parse_json_object(
-            _require_native_result_json_method(
-                native_result,
-                "fine_path_metadata_json",
-                field_path="seeded_tick_simulation_response.metadata",
-            ),
-            "seeded fine-path metadata",
-            SIMULATION_ERROR_FACTORY,
+
+        metadata_payload = cast(
+            Mapping[str, Any],
+            orjson.loads(native_result.fine_path_metadata_json()),
         )
-        event_tape_metadata_payload = parse_json_object(
-            _require_native_result_json_method(
-                native_result,
-                "event_tape_metadata_json",
-                field_path="seeded_tick_simulation_response.event_tape_metadata",
-            ),
-            "seeded event-tape metadata",
-            SIMULATION_ERROR_FACTORY,
+
+        event_tape_metadata_payload = cast(
+            Mapping[str, Any],
+            orjson.loads(native_result.event_tape_metadata_json()),
         )
 
         response = SeededTickSimulationResponse(
-            schema_version=schema_version,
-            metadata=SeededFinePathMetadata.from_mapping(
-                dict(metadata_payload),
-                field_path="seeded_tick_simulation_response.metadata",
-            ),
-            event_tape_metadata=SeededTickEventTapeMetadata.from_mapping(
-                dict(event_tape_metadata_payload),
-                field_path="seeded_tick_simulation_response.event_tape_metadata",
+            schema_version=cast(str, native_result.schema_version),
+            metadata=_hydrate_native_seeded_fine_path_metadata(metadata_payload),
+            event_tape_metadata=_hydrate_native_seeded_event_tape_metadata(
+                event_tape_metadata_payload,
             ),
             diagnostics=diagnostics,
             fine_path=SeededFinePathView(

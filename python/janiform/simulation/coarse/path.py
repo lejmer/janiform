@@ -10,7 +10,6 @@ from .news import (
     COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY,
     COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY,
     COARSE_SIMULATION_INTERVAL_TIMING_POLICY,
-    NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
@@ -639,7 +638,9 @@ class CoarseSimulationPath(ContractModel):
             "interval_delta",
             SIMULATION_ERROR_FACTORY,
         )
+
         interval_delta_nanos = _interval_delta_to_nanos(interval_delta, field_path="interval_delta")
+
         simulated_interval_count = require_positive_integer(
             raw_payload,
             "simulated_interval_count",

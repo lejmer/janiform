@@ -6,19 +6,23 @@ The Python library lets you fit models, simulate paths, price derivatives, and i
 
 Most workflows start in one of these modules:
 
-- `janiform.calibration` for fitting models and loading saved ones
+- `janiform.calibration` for fitting models
+- `janiform.model` for saved and in-memory fitted models
 - `janiform.simulation` for simulation workflows
 - `janiform.pricing` for pricing workflows
+- `janiform.pricing.fitted` for fitted-model pricing contracts
 
 ## Where to start
 
 | Module                             | Purpose                                                                                                               |
 |------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `janiform.calibration`             | Fit models, read fit reports, load saved models, and start simulation from a fitted model.                            |
+| `janiform.calibration`             | Fit models and read fit reports.                                                                                     |
 | `janiform.calibration.market_data` | Pass explicit market-data settings such as column mappings, normalization choices, workflow scope, and preprocessing. |
 | `janiform.calibration.presets`     | Work with bundled presets and with your own registered presets.                                                       |
+| `janiform.model`                   | Load, save, simulate, and price from a fitted model.                                                                 |
 | `janiform.simulation`              | Run simulation workflows directly when you need more control over simulation inputs or progress reporting.            |
-| `janiform.pricing`                 | Work with pricing requests, pricing results, progress reporting, and schedule policies.                               |
+| `janiform.pricing`                 | Work with standalone pricing requests, pricing results, progress reporting, and schedule policies.                    |
+| `janiform.pricing.fitted`          | Work with pricing inputs and result contracts returned by fitted-model pricing methods.                               |
 | `janiform.validation`              | Run validation workflows and work with validation reports.                                                            |
 
 For most Python workflows, `janiform.calibration` is the starting point.
@@ -40,7 +44,8 @@ The usual pattern is:
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 
 estimator = JaniformEstimator(market_profile="eurusd_spot")
 model: JaniformModel = estimator.fit(
@@ -53,7 +58,8 @@ model: JaniformModel = estimator.fit(
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformFitReport, JaniformFitResult, JaniformModel
+from janiform.calibration import JaniformEstimator, JaniformFitReport, JaniformFitResult
+from janiform.model import JaniformModel
 
 result: JaniformFitResult = JaniformEstimator(market_profile="eurusd_spot").fit_with_report(
     tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet",
@@ -68,7 +74,8 @@ After fitting, keep working from the saved or in-memory model:
 ```python
 from datetime import UTC, datetime
 
-from janiform.calibration import JaniformModel, JaniformSimulationResult
+from janiform.model import JaniformModel
+from janiform.simulation import JaniformSimulationResult
 from janiform.pricing import VanillaOptionPricingRunResult
 
 model = JaniformModel.load(".janiform/runs/eurusd-fit/artifacts/model.jf")

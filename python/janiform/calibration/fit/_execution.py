@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import nullcontext, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from ..._workflow_progress import (
-    JaniformOutputController,
     WorkflowProgressMode,
     resolve_workflow_progress_mode,
 )
@@ -40,9 +39,8 @@ from ..staged.results import build_staged_failure_context, format_staged_failure
 from ._preparation.contracts import FitExecutionConfiguration
 from ._runtime.metadata import normalize_model_parameters
 from ._runtime.workflow import NativeFitWorkflowOutput, run_fit_workflow
-from .model import JaniformModel
-from .progress import FitProgressEvent
 from .report import JaniformFitReport
+from ...model import JaniformModel
 
 
 def fit_with_execution_configuration(
@@ -60,18 +58,15 @@ def fit_with_execution_configuration(
     carry: Optional[CalibrationFlatCarryInput] = None,
     output_dir: Optional[str | Path] = None,
     report: bool = False,
-    progress_callback: Optional[Callable[[FitProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> Union[JaniformModel, tuple[Optional[JaniformModel], JaniformFitReport]]:
     _validate_fit_input_labels(
         tick_data_provenance_label=tick_data_provenance_label,
         option_surface_provenance_label=option_surface_provenance_label,
     )
 
-    output_controller = _build_fit_output_controller(silent=configuration.silent)
-
-    native_output = _run_fit_with_output_controller(
+    native_output = _run_fit_with_native_progress(
         configuration,
-        output_controller=output_controller,
         output_dir=output_dir,
         run_id=run_id,
         resume_settings=resume_settings,
@@ -116,20 +111,9 @@ def _validate_fit_input_labels(
         raise calibration_error("option_surface_provenance_label", "must be a non-empty string")
 
 
-def _build_fit_output_controller(
-    *,
-    silent: bool,
-) -> JaniformOutputController:
-    return JaniformOutputController(
-        suppress_info_output=silent,
-        default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
-    )
-
-
-def _run_fit_with_output_controller(
+def _run_fit_with_native_progress(
     configuration: FitExecutionConfiguration,
     *,
-    output_controller: JaniformOutputController,
     output_dir: Optional[str | Path],
     run_id: Optional[str],
     resume_settings: Optional[CalibrationResumeSettings],
@@ -141,13 +125,17 @@ def _run_fit_with_output_controller(
     option_surface_provenance_label: str,
     option_surface_valuation_time_utc: Optional[datetime],
     carry: Optional[CalibrationFlatCarryInput],
-    progress_callback: Optional[Callable[[FitProgressEvent], None]],
+    progress_callback: Optional[Callable[[Mapping[str, Any]], None]],
 ) -> NativeFitWorkflowOutput:
     suppression_context = redirect_stdout(StringIO()) if configuration.silent else nullcontext()
     native_output: Optional[NativeFitWorkflowOutput] = None
     resolved_progress_mode = resolve_workflow_progress_mode(
-        output_controller.progress_mode,
-        default_mode=output_controller.default_progress_mode,
+        WorkflowProgressMode.AUTO,
+        default_mode=(
+            WorkflowProgressMode.NONE
+            if configuration.silent
+            else WorkflowProgressMode.HUMAN
+        ),
     )
 
     with suppression_context:

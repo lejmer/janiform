@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..._pricing_node_validation import validate_option_pricing_node_payload
-from .common import (
+from ...contracts.collections import (
     grid_of_optional_finite_floats,
     grid_of_scalars,
     grid_shape,
@@ -982,6 +982,8 @@ def _build_node_table(
         discount_factors=tuple(node_discount_factors),
         boundary_state_norms=tuple(node_boundary_state_norms),
     )
+
+
 def _require_inversion_status(
     raw_value: Any,
     *,
