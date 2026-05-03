@@ -13,7 +13,6 @@ struct InternalCrateGraphPolicy {
     umbrella_facade_crate: String,
     pybind_boundary_crate: String,
     curated_facade_module_roots: Vec<String>,
-    transitional_facade_module_roots: Vec<String>,
     crates: BTreeMap<String, InternalCratePolicyEntry>,
 }
 
@@ -63,10 +62,6 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     );
 
     assert_eq!(policy.curated_facade_module_roots, facade_module_roots());
-    assert_eq!(
-        policy.transitional_facade_module_roots,
-        vec!["benchmarking".to_string(), "verification".to_string()]
-    );
 
     assert_eq!(policy.crates["janiform"].status, "existing");
     assert_eq!(policy.crates["janiform"].kind, "facade");

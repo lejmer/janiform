@@ -1,8 +1,8 @@
-use janiform::calendar::ExchangeCalendarRegistry;
-use janiform::hourly_factors::{
+use janiform::model::factors::hourly::{
     HourlyFactorContractOutput, HourlyNewsIntensityMaterializationOutput,
     HourlySeasonalityMaterializationOutput,
 };
+use janiform::time::calendar::ExchangeCalendarRegistry;
 use pyo3::{pyclass, pymethods};
 
 #[pyclass(

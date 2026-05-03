@@ -1,8 +1,8 @@
-use janiform::calendar::TimestampEventPreprocessingOutput;
-use janiform::seasonality::{
+use janiform::model::factors::seasonality::{
     DayOfWeekSeasonalityEstimateOutput, DayOfYearSeasonalityEstimateOutput,
     DeterministicSeasonalityCompositionOutput, IntradaySeasonalityEstimateOutput,
 };
+use janiform::time::calendar::TimestampEventPreprocessingOutput;
 use pyo3::{pyclass, pymethods};
 
 #[pyclass(

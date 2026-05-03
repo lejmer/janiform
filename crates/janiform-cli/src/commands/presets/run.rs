@@ -44,7 +44,7 @@ pub(crate) fn run_presets_list(
     command: PresetsListCommand,
 ) -> Result<(), CliError> {
     let registry = user_preset_registry_payload(context, &command.registry)?;
-    let index_payload = janiform::calibration::preset_registry_index(json!({
+    let index_payload = janiform::calibration::presets::preset_registry_index(json!({
         "registry": registry,
     }))
     .map_err(|source| {
@@ -111,15 +111,16 @@ pub(crate) fn run_presets_show(
             .and_then(PresetRegistryScope::registry_value),
     );
 
-    let resolved = janiform::calibration::resolve_preset_artifact(request).map_err(|source| {
-        preset_workflow_error(
-            PRESETS_SHOW_COMMAND_ID,
-            Some(show_request.category),
-            show_request.scope,
-            Some(&preset_name),
-            source,
-        )
-    })?;
+    let resolved =
+        janiform::calibration::presets::resolve_preset_artifact(request).map_err(|source| {
+            preset_workflow_error(
+                PRESETS_SHOW_COMMAND_ID,
+                Some(show_request.category),
+                show_request.scope,
+                Some(&preset_name),
+                source,
+            )
+        })?;
 
     let resolved_scope = required_string(&resolved, "registry_scope", PRESETS_SHOW_COMMAND_ID)?;
     let artifact = required_value(&resolved, "artifact", PRESETS_SHOW_COMMAND_ID)?.clone();
@@ -200,7 +201,7 @@ pub(crate) fn run_presets_export(
     );
 
     let mut payload =
-        janiform::calibration::resolve_preset_snapshot(request).map_err(|source| {
+        janiform::calibration::presets::resolve_preset_snapshot(request).map_err(|source| {
             preset_workflow_error(
                 PRESETS_EXPORT_COMMAND_ID,
                 Some(command.category),
@@ -326,12 +327,11 @@ fn append_user_preset_artifact(
             source,
         })?;
 
-    let artifact = janiform::calibration::deserialize_preset_artifact_json(&preset_json).map_err(
-        |source| CliError::PresetUserFileInvalid {
-            path: resolved_path,
-            source,
-        },
-    )?;
+    let artifact = janiform::calibration::presets::deserialize_preset_artifact_json(&preset_json)
+        .map_err(|source| CliError::PresetUserFileInvalid {
+        path: resolved_path,
+        source,
+    })?;
 
     user_registered_presets.push(artifact);
 
@@ -459,7 +459,7 @@ fn preset_workflow_error(
     category: Option<PresetCategory>,
     scope: Option<PresetRegistryScope>,
     preset_name: Option<&str>,
-    source: janiform::calibration::PresetWorkflowResolutionError,
+    source: janiform::calibration::presets::PresetWorkflowResolutionError,
 ) -> CliError {
     CliError::PresetWorkflowFailed {
         command_path,

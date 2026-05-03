@@ -5,10 +5,10 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Float64Array, RecordBatch, StringArray, TimestampNanosecondArray};
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use chrono::{DateTime, SecondsFormat, Utc};
-use janiform::calendar::{ExchangeCalendarRegistry, MarketState};
 use janiform::simulation::{
     CoarseSimulationPath, SeededFinePathRecord, SeededTickEventSide, SeededTickSimulationRunResult,
 };
+use janiform::time::calendar::{ExchangeCalendarRegistry, MarketState};
 use parquet::arrow::ArrowWriter;
 use serde::Deserialize;
 

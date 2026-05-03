@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform::hourly_factors::{HourlyFactorContractOutput, NANOS_PER_HOUR};
+use janiform::model::factors::hourly::{HourlyFactorContractOutput, NANOS_PER_HOUR};
 use janiform::pricing::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
     PricingIntervalSchedule, PricingIntervalSchedulePolicy,

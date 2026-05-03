@@ -1,12 +1,16 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use janiform::calibration::{
-    CalibrationExecutionMode, CalibrationMarketDataCarryInput,
-    CalibrationMarketDataMeanReversionConfiguration, CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
-    PreparedMarketDataCalibrationPlan, ResolvedMarketProfile, infer_market_data_run_id_from_path,
+use janiform::calibration::artifacts::CalibrationExecutionMode;
+use janiform::calibration::market_data::{
+    PreparedMarketDataCalibrationPlan, infer_market_data_run_id_from_path,
     prepare_market_data_calibration_plan,
+};
+use janiform::calibration::presets::ResolvedMarketProfile;
+use janiform::calibration::staged::{
+    CalibrationMarketDataCarryInput, CalibrationMarketDataMeanReversionConfiguration,
+    CalibrationMarketDataOutputPreferences, CalibrationMarketDataPreparationRequest,
+    CalibrationMarketDataWorkflowScope,
 };
 use janiform_terminal_ui::format_path;
 use janiform_workflows::fit::{

@@ -1,6 +1,7 @@
-use janiform::calibration::{
-    CalibrationMemoryCheckpointStore, CalibrationStage, CalibrationStagedExecutionInput,
-    MarketDataNormalizedTickOutput,
+use janiform::calibration::artifacts::CalibrationStage;
+use janiform::calibration::market_data::MarketDataNormalizedTickOutput;
+use janiform::calibration::staged::{
+    CalibrationMemoryCheckpointStore, CalibrationStagedExecutionInput,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, Python, pyclass, pymethods};

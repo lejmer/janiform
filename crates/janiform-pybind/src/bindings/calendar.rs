@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform::calendar::{
+use janiform::time::calendar::{
     ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
     ExchangeCalendarResolveError, MarketState, TimestampEventInputRecord,
     TimestampEventPreprocessingError, TimestampEventSessionFilter,

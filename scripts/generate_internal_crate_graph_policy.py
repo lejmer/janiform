@@ -23,11 +23,6 @@ UMBRELLA_FACADE_CRATE = "janiform"
 PYBIND_BOUNDARY_CRATE = "janiform-pybind"
 FACADE_ROOT_PATH = REPOSITORY_ROOT / "crates" / UMBRELLA_FACADE_CRATE / "src" / "lib.rs"
 
-TRANSITIONAL_FACADE_MODULE_ROOTS = [
-    "benchmarking",
-    "verification",
-]
-
 CRATE_ORDER = [
     "janiform-foundations",
     "janiform-model-kernels",
@@ -196,7 +191,6 @@ def build_policy(
         "umbrella_facade_crate": UMBRELLA_FACADE_CRATE,
         "pybind_boundary_crate": PYBIND_BOUNDARY_CRATE,
         "curated_facade_module_roots": list(facade_module_roots),
-        "transitional_facade_module_roots": TRANSITIONAL_FACADE_MODULE_ROOTS,
         "crates": {
             package.name: build_crate_entry(package)
             for package in sorted(packages, key=lambda package: crate_sort_key(package.name))

@@ -1,5 +1,5 @@
-use janiform::hawkes::HawkesExcitationState;
-use janiform::hourly_factors::HourlyFactorContractOutput;
+use janiform::model::factors::hourly::HourlyFactorContractOutput;
+use janiform::model::hawkes::HawkesExcitationState;
 use janiform::simulation::MeanReversionBoundaryState;
 
 use crate::error::WorkflowError;

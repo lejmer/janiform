@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use janiform::calendar::MarketState;
-use janiform::verification::{
+use janiform::governance::deterministic_regression::{
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
     HourlySeasonalityRegressionSource,
 };
+use janiform::time::calendar::MarketState;
 use serde_json::{Map, Value};
 
 use super::shared::{

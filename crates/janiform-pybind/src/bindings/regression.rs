@@ -1,12 +1,15 @@
-use janiform::calendar::MarketState;
-use janiform::news::NewsArrivalComponent;
-use janiform::verification::{
+use janiform::governance::deterministic_regression::{
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
-    HourlySeasonalityRegressionSource, NewsSemanticsScenarioClass,
-    OpenClosedGapDeterministicReplayMetadata, OpenClosedGapIssueTraceabilityMetadata,
-    OpenClosedGapLeakageRegressionCase, OpenClosedGapLeakageRegressionEventInput,
-    OpenClosedGapLeakageRegressionHarnessToleranceConfig, RegressionHarnessToleranceConfig,
+    HourlySeasonalityRegressionSource, RegressionHarnessError, RegressionHarnessToleranceConfig,
     run_deterministic_regression_harness as run_deterministic_regression_harness_core,
+};
+use janiform::model::news::NewsArrivalComponent;
+use janiform::time::calendar::MarketState;
+use janiform::validation::open_closed_gap::{
+    NewsSemanticsScenarioClass, OpenClosedGapDeterministicReplayMetadata,
+    OpenClosedGapIssueTraceabilityMetadata, OpenClosedGapLeakageRegressionCase,
+    OpenClosedGapLeakageRegressionEventInput, OpenClosedGapLeakageRegressionHarnessError,
+    OpenClosedGapLeakageRegressionHarnessToleranceConfig,
     run_open_closed_gap_leakage_regression_harness as run_open_closed_gap_leakage_regression_harness_core,
 };
 use pyo3::prelude::{Bound, PyErr, PyResult, Python};
@@ -779,12 +782,12 @@ fn convert_regression_news_intensity_source(
     }
 }
 
-fn map_regression_harness_error(error: janiform::verification::RegressionHarnessError) -> PyErr {
+fn map_regression_harness_error(error: RegressionHarnessError) -> PyErr {
     SeasonalityInputValidationError::new_err(error.to_string())
 }
 
 fn map_open_closed_gap_leakage_regression_harness_error(
-    error: janiform::verification::OpenClosedGapLeakageRegressionHarnessError,
+    error: OpenClosedGapLeakageRegressionHarnessError,
 ) -> PyErr {
     SeasonalityInputValidationError::new_err(error.to_string())
 }

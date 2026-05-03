@@ -109,7 +109,7 @@ pub enum CliError {
     #[diagnostic(code(janiform_cli::fit_preparation_failed))]
     FitPreparationFailed {
         #[source]
-        source: janiform::calibration::CalibrationMarketDataPreparationError,
+        source: janiform::calibration::staged::CalibrationMarketDataPreparationError,
     },
 
     #[error("failed to write staged execution input `{}`", path.display())]
@@ -140,7 +140,7 @@ pub enum CliError {
     #[diagnostic(code(janiform_cli::staged_execution_plan_failed))]
     StagedExecutionPlanFailed {
         #[source]
-        source: janiform::calibration::CalibrationStagedExecutionBridgeError,
+        source: janiform::calibration::staged::CalibrationStagedExecutionBridgeError,
     },
 
     #[error("fit execution failed: {message}")]
@@ -235,7 +235,7 @@ pub enum CliError {
     PresetUserFileInvalid {
         path: PathBuf,
         #[source]
-        source: janiform::calibration::PresetWorkflowResolutionError,
+        source: janiform::calibration::presets::PresetWorkflowResolutionError,
     },
 
     #[error(
@@ -248,7 +248,7 @@ pub enum CliError {
         scope: String,
         preset_name: String,
         #[source]
-        source: janiform::calibration::PresetWorkflowResolutionError,
+        source: janiform::calibration::presets::PresetWorkflowResolutionError,
     },
 
     #[error("preset runtime payload for workflow `{command_path}` is malformed: {message}")]

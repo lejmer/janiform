@@ -1,4 +1,4 @@
-//! Top-level re-exports for benchmark governance support.
+//! Re-exports for benchmark governance support.
 
 pub use janiform_governance_bench::benchmarking::{
     BENCHMARK_SCENARIO_CATALOG_CONTENT_HASH_ALGORITHM_POLICY,

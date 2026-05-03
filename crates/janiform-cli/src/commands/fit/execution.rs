@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use janiform::calibration::{
+use janiform::calibration::staged::{
     CalibrationStageExecutionStatus, CalibrationStagedExecutionInput,
     CalibrationStagedExecutionRuntimeResources,
 };

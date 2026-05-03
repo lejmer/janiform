@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::path::Path;
 
 use clap::ValueEnum;
-use janiform::calibration::CalibrationExecutionMode;
-use janiform::verification::{
+use janiform::calibration::artifacts::CalibrationExecutionMode;
+use janiform::validation::stylized_facts::{
     StylizedFactComparisonDecisionState, StylizedFactDecisionReasonCode,
     StylizedFactHorizonComparisonReportBundle, StylizedFactHorizonComparisonTableSummaryRow,
     StylizedFactMetricClass,

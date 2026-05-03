@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use janiform::hourly_factors::DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD;
+use janiform::model::factors::hourly::DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD;
 use janiform_foundations::time::parse_utc_datetime;
 use serde_json::{Map, Value};
 

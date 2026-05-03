@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use janiform::calibration::{CalibrationResumeSettings, CalibrationStagedExecutionInput};
+use janiform::calibration::artifacts::CalibrationResumeSettings;
+use janiform::calibration::staged::CalibrationStagedExecutionInput;
 use janiform_workflows::fit::{
     FitPreparationRequest, FitWorkflowPaths, StagedFitExecutionWorkflowRequest,
 };

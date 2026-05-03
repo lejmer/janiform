@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use janiform::hourly_factors::{
+use janiform::model::factors::hourly::{
     HourlyFactorContractOutput, HourlyNewsIntensityMaterializationOutput,
     HourlySeasonalityMaterializationOutput,
 };

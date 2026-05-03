@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use janiform::calendar::ExchangeCalendarRegistry;
 use janiform::simulation::{
     CoarseSimulationPath, CoarseSimulationRunRequest, SeededTickSimulationRunConfig,
     SeededTickSimulationRunResult, SimulationProgressEvent, run_coarse_simulation_with_observer,
     run_seeded_tick_event_simulation_with_observer,
 };
+use janiform::time::calendar::ExchangeCalendarRegistry;
 
 use crate::error::WorkflowError;
 

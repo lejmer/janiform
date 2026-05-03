@@ -1,10 +1,10 @@
-use janiform::news::NewsProcessConfiguration;
+use janiform::model::news::NewsProcessConfiguration;
+use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
 };
-use janiform::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform_workflows::simulation::ModelArtifactSimulationWorkflowRequest;
 use pyo3::prelude::{Bound, PyRef, PyResult};
 use pyo3::types::{PyAny, PyMapping};
@@ -226,10 +226,10 @@ impl<'py> SeededTickSimulationWorkflowRequestPayload<'py> {
 }
 
 struct SeededTickSimulationModelInputsPayload {
-    kernel_parameters: janiform::hawkes::HawkesKernelParameters,
-    nig_shared_plus_shift_configuration: janiform::nig::NigSharedPlusShiftConfiguration,
+    kernel_parameters: janiform::model::hawkes::HawkesKernelParameters,
+    nig_shared_plus_shift_configuration: janiform::model::nig::NigSharedPlusShiftConfiguration,
     news_process_configuration: NewsProcessConfiguration,
-    initial_excitation_state: janiform::hawkes::HawkesExcitationState,
+    initial_excitation_state: janiform::model::hawkes::HawkesExcitationState,
     mean_reversion_fitted_parameters: janiform::simulation::MeanReversionFittedParameters,
     mean_reversion_runtime_interval_anchors:
         janiform::simulation::MeanReversionRuntimeIntervalAnchors,

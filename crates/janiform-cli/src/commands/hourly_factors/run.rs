@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use janiform::hourly_factors::{
+use janiform::model::factors::hourly::{
     DEFAULT_SEASONALITY_AGGREGATION_METHOD, DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
     DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT,
     build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
@@ -308,7 +308,7 @@ pub(crate) fn run_hourly_factor_build_contract(
 
 fn hourly_factor_argument_error(
     command_name: &'static str,
-    source: janiform::hourly_factors::HourlyFactorContractError,
+    source: janiform::model::factors::hourly::HourlyFactorContractError,
 ) -> CliError {
     CliError::InvalidCommandArgument {
         argument_name: command_name,

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use janiform::calendar::TimestampEventInputRecord;
+use janiform::time::calendar::TimestampEventInputRecord;
 
 /// Supported timestamp-event source file formats.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

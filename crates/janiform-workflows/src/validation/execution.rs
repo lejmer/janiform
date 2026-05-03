@@ -3,8 +3,10 @@
 use std::fs;
 use std::path::Path;
 
-use janiform::calibration::normalize_market_data_source;
-use janiform::verification::StylizedFactHorizonComparisonRequest;
+use janiform::calibration::market_data::normalize_market_data_source;
+use janiform::validation::stylized_facts::{
+    StylizedFactHorizonComparisonReportBundle, StylizedFactHorizonComparisonRequest,
+};
 use janiform_foundations::parallelism::resolved_cpu_count;
 
 use super::artifacts::{
@@ -182,7 +184,7 @@ pub fn run_stylized_facts_validation_workflow(
 fn run_precomputed_comparison(
     request: &StylizedFactsValidationWorkflowRequest,
     plan: &StylizedFactsValidationPlan,
-) -> Result<janiform::verification::StylizedFactHorizonComparisonReportBundle, WorkflowError> {
+) -> Result<StylizedFactHorizonComparisonReportBundle, WorkflowError> {
     let comparison_request_path =
         request
             .comparison_request
@@ -214,7 +216,7 @@ fn run_raw_data_validation(
     request: &StylizedFactsValidationWorkflowRequest,
     plan: &StylizedFactsValidationPlan,
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
-) -> Result<janiform::verification::StylizedFactHorizonComparisonReportBundle, WorkflowError> {
+) -> Result<StylizedFactHorizonComparisonReportBundle, WorkflowError> {
     let model_path = request
         .model_path
         .as_ref()

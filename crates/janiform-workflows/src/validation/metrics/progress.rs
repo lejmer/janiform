@@ -1,4 +1,4 @@
-use janiform::verification::TailSkewDatasetRole;
+use janiform::validation::tail_skew::TailSkewDatasetRole;
 use janiform_terminal_ui::{ProgressWorkItemColumn, ProgressWorkItemMetric};
 
 use super::super::progress::{

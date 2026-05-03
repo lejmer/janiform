@@ -3,7 +3,7 @@ use std::process::Command;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use janiform::verification::{
+use janiform::validation::stylized_facts::{
     StylizedFactCalibrationRunInput, StylizedFactHorizonComparisonRequest,
     StylizedFactHorizonComparisonThresholdPolicy, StylizedFactMetricConfidenceInterval,
     StylizedFactMetricSampleCoverage, StylizedFactMetricThresholdOverride,

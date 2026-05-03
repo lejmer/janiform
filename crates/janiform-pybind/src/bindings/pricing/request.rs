@@ -1,4 +1,4 @@
-use janiform::hourly_factors::{
+use janiform::model::factors::hourly::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };

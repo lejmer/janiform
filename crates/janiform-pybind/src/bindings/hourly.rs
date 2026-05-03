@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform::hourly_factors::{
+use janiform::model::factors::hourly::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
     DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HourlyFactorContractError,
@@ -8,7 +8,7 @@ use janiform::hourly_factors::{
     materialize_hourly_news_intensity_factors as materialize_hourly_news_intensity_factors_core,
     materialize_hourly_seasonality_factors as materialize_hourly_seasonality_factors_core,
 };
-use janiform::hourly_factors::{
+use janiform::model::factors::hourly::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
     HourlySeasonalityFactorSource,
     provide_hourly_factor_contract as provide_hourly_factor_contract_core,

@@ -1,4 +1,4 @@
-use janiform::verification::{
+use janiform::validation::stylized_facts::{
     StylizedFactHorizonComparisonReportGeneratorRequest,
     run_stylized_fact_horizon_comparison_report_generator as run_stylized_fact_horizon_comparison_report_generator_core,
 };

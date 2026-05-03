@@ -1,8 +1,8 @@
-use janiform::affine_oracle::{
+use janiform::model::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, materialize_endogenous_anchor_path,
 };
-use janiform::hawkes::HawkesExcitationState;
-use janiform::hourly_factors::HourlyFactorContractOutput;
+use janiform::model::factors::hourly::HourlyFactorContractOutput;
+use janiform::model::hawkes::HawkesExcitationState;
 use janiform::simulation::{
     MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
