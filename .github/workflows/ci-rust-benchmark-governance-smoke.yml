@@ -1,6 +1,9 @@
 name: ci-rust-benchmark-governance-smoke
 
 on:
+  push:
+    branches:
+      - develop
   workflow_call:
     inputs:
       target_ref:
@@ -65,7 +68,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Scope: benchmark smoke validation for wiring, schema stability, and baseline artifact hooks" >> "$GITHUB_STEP_SUMMARY"
           echo "- Workloads: \`benchmark_scenario_catalog\`, \`oracle_pricer_sufficient_statistics_benchmark_harness\`, \`performance_baseline_capture_and_storage\`, \`regression_drift_attribution_reports\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Trigger policy: manual dispatch and reusable from release automation" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger policy: pushes to \`develop\`, manual dispatch, and reusable from release automation" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Emit benchmark smoke failure context with links
         if: failure()
