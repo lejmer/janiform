@@ -1,9 +1,6 @@
-name: ci-tests-multiplatform
+name: multiplatform-verification
 
 on:
-  pull_request:
-    branches:
-      - develop
   workflow_dispatch:
 
 concurrency:

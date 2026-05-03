@@ -17,7 +17,14 @@ def test_multiplatform_ci_rust_shards_cover_workspace_crates(
 
 
 def _ci_rust_shard_package_names(project_root: Path) -> list[str]:
-    workflow_path = project_root / ".github" / "workflows" / "ci-tests-multiplatform.yml"
+    workflow_path = project_root / ".github" / "workflows" / "multiplatform-verification.yml"
+    package_names: list[str] = []
+    for line in workflow_path.read_text(encoding="utf-8").splitlines():
+        package_match = CI_RUST_PACKAGE_ARGUMENT_PATTERN.match(line)
+        if package_match is not None:
+            package_names.append(package_match.group("package_name"))
+
+    workflow_path = project_root / ".github" / "workflows" / "ci-pr-test-rust.yml"
     package_names: list[str] = []
     for line in workflow_path.read_text(encoding="utf-8").splitlines():
         package_match = CI_RUST_PACKAGE_ARGUMENT_PATTERN.match(line)

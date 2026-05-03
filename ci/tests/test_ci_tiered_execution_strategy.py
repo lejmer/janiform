@@ -46,14 +46,12 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     )
 
 
-def test_tests_multiplatform_workflow_has_linux_full_and_windows_smoke_jobs() -> None:
-    workflow_path: Path = _project_root() / ".github" / "workflows" / "ci-tests-multiplatform.yml"
+def test_multiplatform_verification_workflow_has_linux_rust_verification_and_windows_smoke_jobs() -> None:
+    workflow_path: Path = _project_root() / ".github" / "workflows" / "multiplatform-verification.yml"
     workflow_text: str = _load_workflow_text(workflow_path)
 
-    assert "name: ci-tests-multiplatform" in workflow_text
+    assert "name: multiplatform-verification" in workflow_text
     assert "on:" in workflow_text
-    assert "pull_request:" in workflow_text
-    assert "- develop" in workflow_text
     assert "workflow_dispatch:" in workflow_text
     assert "linux-rust-verification:" in workflow_text
     assert "windows-build-smoke:" in workflow_text
@@ -106,7 +104,7 @@ def test_local_python_benchmark_runner_is_documented() -> None:
     assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in testing_guide
     assert "benches/python/python_microbenchmarks.py" in testing_guide
     assert ".artifacts/local-python-benchmarks" in testing_guide
-    assert "ci-tests-multiplatform" in testing_guide
+    assert "multiplatform-verification" in testing_guide
     assert "ci-rust-benchmark-governance-smoke" in testing_guide
 
 

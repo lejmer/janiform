@@ -81,7 +81,7 @@ Use Criterion for Rust benchmarks. Python benchmark support belongs under `bench
 
 Use `scripts/python_benchmark_workloads.py` for local Python benchmark workloads. It runs the representative real-data seeded runtime benchmark through `scripts/ci/run_real_data_seeded_runtime_benchmark.py` and the Python microbenchmark smoke checks in `benches/python/python_microbenchmarks.py`, writing artifacts under `.artifacts/local-python-benchmarks` by default. Use `--skip-real-data-seeded-runtime` or `--skip-microbenchmark-smoke` when a narrower local run is enough.
 
-`ci-tests-multiplatform` owns full platform verification, and `ci-rust-benchmark-governance-smoke` is the manual and reusable Rust benchmark governance smoke workflow for scenario, baseline, and drift artifact checks.
+`multiplatform-verification` owns full platform verification, and `ci-rust-benchmark-governance-smoke` is the manual and reusable Rust benchmark governance smoke workflow for scenario, baseline, and drift artifact checks.
 
 Optimize based on measurement. Do not change numerical policy, model behavior, solver choices, or tolerances merely to improve a benchmark unless that change is explicitly justified as part of the task.
 
