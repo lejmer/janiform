@@ -81,6 +81,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
+      QT_QPA_PLATFORM: offscreen
       TMPDIR: /tmp
     steps:
       - name: Check out repository
@@ -93,6 +94,11 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Install Linux Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1 libgl1 libxkbcommon-x11-0
 
       - name: Bootstrap Linux environment
         run: ./scripts/bootstrap-linux.sh .venv-linux
