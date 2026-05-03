@@ -133,16 +133,26 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Bootstrap Windows environment
+      - name: Install Windows build and smoke test frontend
         shell: pwsh
-        run: ./scripts/bootstrap-win.ps1 .venv
+        run: python -m pip install --upgrade pip maturin pytest
 
-      - name: Run Windows smoke checks
+      - name: Build Windows Python wheel
+        shell: pwsh
+        run: python -m maturin build --manifest-path crates/janiform-pybind/Cargo.toml --out dist
+
+      - name: Run Windows build smoke checks
         shell: pwsh
         run: |
-          . .\.venv\Scripts\Activate.ps1
+          $wheel = Get-ChildItem dist -Filter "*.whl" | Select-Object -First 1
+          if ($null -eq $wheel) {
+            throw "No Windows wheel was built."
+          }
+
+          python -m pip install $wheel.FullName
+          python -c "import janiform; import janiform._native"
           python -m janiform --help
-          python -m pytest `
+          python -m pytest -o pythonpath= `
             tests/test_api_contract_guardrails.py `
             tests/test_public_api_surface_map.py `
             tests/test_experimental_api_surface.py
