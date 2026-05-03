@@ -79,17 +79,9 @@ Benchmarks should measure behavior that is performance-critical or operationally
 
 Use Criterion for Rust benchmarks. Python benchmark support belongs under `benches/python/` when the benchmark is specifically about Python boundary cost, workflow overhead, or user-facing Python behavior.
 
-Use `scripts/python_benchmark_workloads.py` for local Python benchmark workloads. It runs
-the representative real-data seeded runtime benchmark through
-`scripts/ci/run_real_data_seeded_runtime_benchmark.py` and the Python microbenchmark smoke
-checks in `benches/python/python_microbenchmarks.py`, writing artifacts under
-`.artifacts/local-python-benchmarks` by default. Use `--skip-real-data-seeded-runtime` or
-`--skip-microbenchmark-smoke` when a narrower local run is enough.
+Use `scripts/python_benchmark_workloads.py` for local Python benchmark workloads. It runs the representative real-data seeded runtime benchmark through `scripts/ci/run_real_data_seeded_runtime_benchmark.py` and the Python microbenchmark smoke checks in `benches/python/python_microbenchmarks.py`, writing artifacts under `.artifacts/local-python-benchmarks` by default. Use `--skip-real-data-seeded-runtime` or `--skip-microbenchmark-smoke` when a narrower local run is enough.
 
-Benchmark automation is tiered. `ci-pr-fast` keeps fast repository contract checks close to
-pull-request feedback, `ci-platform` owns full platform verification, and
-`ci-rust-benchmark-governance-smoke` is the manual and reusable Rust benchmark governance smoke
-workflow for scenario, baseline, and drift artifact checks.
+`ci-tests-multiplatform` owns full platform verification, and `ci-rust-benchmark-governance-smoke` is the manual and reusable Rust benchmark governance smoke workflow for scenario, baseline, and drift artifact checks.
 
 Optimize based on measurement. Do not change numerical policy, model behavior, solver choices, or tolerances merely to improve a benchmark unless that change is explicitly justified as part of the task.
 
