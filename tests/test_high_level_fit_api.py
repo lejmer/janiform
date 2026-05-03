@@ -4496,7 +4496,7 @@ def _write_stage_parameter_artifacts_for_stage_reports(
     run_id: str,
     raw_stage_reports: list[dict[str, Any]],
 ) -> None:
-    artifact_directory = checkpoint_directory / "artifacts" / "runs" / run_id
+    artifact_directory = checkpoint_directory / "artifacts" / "calibration"
     artifact_directory.mkdir(parents=True, exist_ok=True)
 
     for raw_stage_report in raw_stage_reports:
@@ -4527,8 +4527,7 @@ def _write_stage_parameter_artifacts_for_stage_reports(
         artifact_path = (
             checkpoint_directory
             / "artifacts"
-            / "runs"
-            / run_id
+            / "calibration"
             / f"{stage_kind.value}.stage_parameter.artifact.json"
         )
         artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
@@ -4540,7 +4539,7 @@ def _write_artifact_manifest_for_recovered_disk_run(
     run_id: str,
     selected_stage_kinds: tuple[CalibrationStage, ...],
 ) -> None:
-    artifact_directory = checkpoint_directory / "artifacts" / "runs" / run_id
+    artifact_directory = checkpoint_directory / "artifacts" / "calibration"
     artifact_directory.mkdir(parents=True, exist_ok=True)
 
     artifact_references: list[dict[str, Any]] = [
@@ -4605,7 +4604,7 @@ def _write_diagnostic_artifacts_for_recovered_disk_run(
     checkpoint_directory: Path,
     run_id: str,
 ) -> None:
-    diagnostics_directory = checkpoint_directory / "artifacts" / "runs" / run_id / "diagnostics"
+    diagnostics_directory = checkpoint_directory / "artifacts" / "calibration" / "diagnostics"
     diagnostics_directory.mkdir(parents=True, exist_ok=True)
 
     diagnostic_payloads = {
@@ -4697,7 +4696,7 @@ def _duplicate_manifest_failure_staged_runner_payload(
         "stage": "joint_refinement",
         "error_message": (
             "committed artifact set already exists for run "
-            f"`{run_id}` in `/tmp/{run_id}/artifacts/runs/{run_id}`"
+            f"`{run_id}` in `/tmp/{run_id}/artifacts/calibration`"
         ),
         "run_id": run_id,
     }

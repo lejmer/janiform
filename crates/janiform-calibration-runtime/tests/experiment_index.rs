@@ -120,27 +120,9 @@ fn experiment_index_commit_flow_creates_and_updates_run_records() {
 }
 
 #[test]
-fn experiment_index_rebuild_scans_committed_run_manifests() {
+fn experiment_index_rebuild_reads_committed_calibration_manifest() {
     let persistence_root_directory = temporary_checkpoint_directory("experiment-index-rebuild");
 
-    commit_indexed_run(
-        persistence_root_directory.as_path(),
-        "run-index-b",
-        Utc.with_ymd_and_hms(2026, 3, 5, 11, 0, 0)
-            .single()
-            .expect("fixture timestamp should be valid"),
-        CalibrationArtifactManifestMetricStatus::Fail,
-        "tail_skew.run-index-b",
-    );
-    commit_indexed_run(
-        persistence_root_directory.as_path(),
-        "run-index-a",
-        Utc.with_ymd_and_hms(2026, 3, 5, 11, 0, 0)
-            .single()
-            .expect("fixture timestamp should be valid"),
-        CalibrationArtifactManifestMetricStatus::Pass,
-        "tail_skew.run-index-a",
-    );
     commit_indexed_run(
         persistence_root_directory.as_path(),
         "run-index-c",
@@ -166,14 +148,14 @@ fn experiment_index_rebuild_scans_committed_run_manifests() {
             .iter()
             .map(|record| record.run_id.as_str())
             .collect::<Vec<_>>(),
-        vec!["run-index-c", "run-index-a", "run-index-b"]
+        vec!["run-index-c"]
     );
 
     let _ = fs::remove_dir_all(persistence_root_directory);
 }
 
 #[test]
-fn experiment_index_lookup_applies_filters_and_pagination_deterministically() {
+fn experiment_index_lookup_applies_filters_deterministically() {
     let persistence_root_directory = temporary_checkpoint_directory("experiment-index-lookup");
 
     let run_b_fixture = commit_indexed_run(
@@ -185,25 +167,6 @@ fn experiment_index_lookup_applies_filters_and_pagination_deterministically() {
         CalibrationArtifactManifestMetricStatus::Fail,
         "tail_skew.run-index-b",
     );
-    commit_indexed_run(
-        persistence_root_directory.as_path(),
-        "run-index-a",
-        Utc.with_ymd_and_hms(2026, 3, 5, 11, 0, 0)
-            .single()
-            .expect("fixture timestamp should be valid"),
-        CalibrationArtifactManifestMetricStatus::Pass,
-        "tail_skew.run-index-a",
-    );
-    commit_indexed_run(
-        persistence_root_directory.as_path(),
-        "run-index-c",
-        Utc.with_ymd_and_hms(2026, 3, 6, 8, 0, 0)
-            .single()
-            .expect("fixture timestamp should be valid"),
-        CalibrationArtifactManifestMetricStatus::Fail,
-        "tail_skew.run-index-c",
-    );
-
     let first_page = lookup_calibration_experiment_index_records(
         persistence_root_directory.as_path(),
         &CalibrationExperimentIndexLookupRequest {
@@ -215,37 +178,16 @@ fn experiment_index_lookup_applies_filters_and_pagination_deterministically() {
             diagnostics_overall_status: Some(CalibrationArtifactManifestMetricStatus::Fail),
             committed_at_or_after_unix_nanos: Some(utc_nanos(2026, 3, 5, 0, 0, 0)),
             offset: 0,
-            limit: 1,
+            limit: 10,
             ..CalibrationExperimentIndexLookupRequest::default()
         },
     )
     .expect("filtered lookup should succeed");
 
-    assert_eq!(first_page.total_matching_records, 2);
+    assert_eq!(first_page.total_matching_records, 1);
     assert_eq!(first_page.records.len(), 1);
-    assert_eq!(first_page.records[0].run_id, "run-index-c");
-    assert_eq!(first_page.next_offset, Some(1));
-
-    let second_page = lookup_calibration_experiment_index_records(
-        persistence_root_directory.as_path(),
-        &CalibrationExperimentIndexLookupRequest {
-            trade_events_data_reference: Some("dataset://synthetic/trades/v1".to_string()),
-            run_contract_schema_version: Some(CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION.to_string()),
-            seasonality_estimator_version: Some(
-                CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string(),
-            ),
-            diagnostics_overall_status: Some(CalibrationArtifactManifestMetricStatus::Fail),
-            committed_at_or_after_unix_nanos: Some(utc_nanos(2026, 3, 5, 0, 0, 0)),
-            offset: 1,
-            limit: 1,
-            ..CalibrationExperimentIndexLookupRequest::default()
-        },
-    )
-    .expect("second page lookup should succeed");
-
-    assert_eq!(second_page.records.len(), 1);
-    assert_eq!(second_page.records[0].run_id, "run-index-b");
-    assert_eq!(second_page.next_offset, None);
+    assert_eq!(first_page.records[0].run_id, "run-index-b");
+    assert_eq!(first_page.next_offset, None);
 
     let exact_dataset_lookup = lookup_calibration_experiment_index_records(
         persistence_root_directory.as_path(),

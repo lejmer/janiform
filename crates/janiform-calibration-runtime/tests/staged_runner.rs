@@ -608,8 +608,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         assert!(
             disk_checkpoint_directory
                 .join("artifacts")
-                .join("runs")
-                .join(disk_contract.run_spec.run_id.as_str())
+                .join("calibration")
                 .join(format!(
                     "{}.stage_report.json",
                     calibration_stage_token(stage)
@@ -1174,14 +1173,14 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         checkpoint_directory
             .join("artifacts")
             .join("pending")
-            .join(run_id)
+            .join("calibration")
             .exists()
     );
     assert!(
         checkpoint_directory
             .join("artifacts")
             .join("pending")
-            .join(run_id)
+            .join("calibration")
             .join("seasonality.stage_report.json")
             .exists()
     );
@@ -1189,7 +1188,7 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         checkpoint_directory
             .join("artifacts")
             .join("pending")
-            .join(run_id)
+            .join("calibration")
             .join("hawkes.stage_report.json")
             .exists()
     );
@@ -1226,14 +1225,13 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         !checkpoint_directory
             .join("artifacts")
             .join("pending")
-            .join(run_id)
+            .join("calibration")
             .exists()
     );
     assert!(
         checkpoint_directory
             .join("artifacts")
-            .join("runs")
-            .join(run_id)
+            .join("calibration")
             .join("return_components.stage_report.json")
             .exists()
     );

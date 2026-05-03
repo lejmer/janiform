@@ -158,14 +158,14 @@ janiform fit plan \
 
 The model is the primary output. Everything else exists to explain, audit, resume, or automate the run.
 
-| Output           | Python                                              | CLI                                              |
-|------------------|-----------------------------------------------------|--------------------------------------------------|
-| Fitted model     | `JaniformModel` from `fit(...)`                     | `artifacts/model.jf`                             |
-| Fit result       | `JaniformFitResult` from `fit_with_report(...)`     | `artifacts/report.json`                          |
-| Fit report       | `JaniformFitReport` from `JaniformFitResult.report` | `artifacts/model.jf` and `artifacts/report.json` |
+| Output           | Python                                                | CLI                                              |
+|------------------|-------------------------------------------------------|--------------------------------------------------|
+| Fitted model     | `JaniformModel` from `fit(...)`                       | `artifacts/model.jf`                             |
+| Fit result       | `JaniformFitResult` from `fit_with_report(...)`       | `artifacts/report.json`                          |
+| Fit report       | `JaniformFitReport` from `JaniformFitResult.report`   | `artifacts/model.jf` and `artifacts/report.json` |
 | Progress events  | Rust-owned event mappings through `progress_callback` | `events.jsonl` in the run directory              |
-| Latest run state | Not written by the in-memory path                   | `latest-state.json` in the run directory         |
-| Checkpoints      | Available only through disk-backed execution        | `checkpoints/` in the run directory              |
+| Latest run state | Not written by the in-memory path                     | `latest-state.json` in the run directory         |
+| Checkpoints      | Available only through disk-backed execution          | `checkpoints/` in the run directory              |
 
 Downstream CLI commands usually need the saved model path:
 
@@ -236,6 +236,7 @@ janiform fit \
 ```
 
 Checkpoint references use `checkpoint://<run-id>/<checkpoint-token>`. The run id is the original fit run.
+Disk execution uses the run directory as the persistence root. Checkpoint files live below `checkpoints/`, while staged calibration artifacts live below `artifacts/calibration/`.
 
 | Checkpoint token    | Meaning                                                                   |
 |---------------------|---------------------------------------------------------------------------|

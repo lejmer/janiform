@@ -143,43 +143,45 @@ fn simulate_validation_paths_serial(
         );
 
         let mut path_completed_interval_units = 0usize;
-        let mut progress_observer = |event: SimulationProgressEvent| {
-            let path_event_completed_units = event.completed_units.min(simulated_interval_count);
 
-            if path_event_completed_units <= path_completed_interval_units {
-                return;
-            }
+        let output = {
+            let mut progress_observer = |event: SimulationProgressEvent| {
+                let path_event_completed_units =
+                    event.completed_units.min(simulated_interval_count);
 
-            let completed_delta = path_event_completed_units - path_completed_interval_units;
+                if path_event_completed_units <= path_completed_interval_units {
+                    return;
+                }
 
-            path_completed_interval_units = path_event_completed_units;
-            completed_interval_units += completed_delta;
+                let completed_delta = path_event_completed_units - path_completed_interval_units;
 
-            emit_simulation_interval_progress(
-                observer,
+                path_completed_interval_units = path_event_completed_units;
+                completed_interval_units += completed_delta;
+
+                emit_simulation_interval_progress(
+                    observer,
+                    path_position,
+                    seed,
+                    path_completed_interval_units,
+                    simulated_interval_count,
+                    completed_interval_units,
+                    total_interval_units,
+                    worker_count,
+                );
+            };
+
+            simulate_validation_path(
+                request,
+                // Intentional copy because the simulator request owns its model payload.
+                model_payload.clone(),
+                analysis_window,
+                runtime_interval_duration_nanos,
+                simulated_interval_count,
                 path_position,
                 seed,
-                path_completed_interval_units,
-                simulated_interval_count,
-                completed_interval_units,
-                total_interval_units,
-                worker_count,
-            );
+                &mut progress_observer,
+            )?
         };
-
-        let output = simulate_validation_path(
-            request,
-            // Intentional copy because the simulator request owns its model payload.
-            model_payload.clone(),
-            analysis_window,
-            runtime_interval_duration_nanos,
-            simulated_interval_count,
-            path_position,
-            seed,
-            &mut progress_observer,
-        )?;
-
-        drop(progress_observer);
 
         if path_completed_interval_units < simulated_interval_count {
             completed_interval_units += simulated_interval_count - path_completed_interval_units;

@@ -328,11 +328,11 @@ def _write_disk_artifact_store(
     run_id: str,
     selected_candidate_id: str,
 ) -> None:
-    diagnostics_directory = run_directory / "artifacts" / "runs" / run_id / "diagnostics"
+    diagnostics_directory = run_directory / "artifacts" / "calibration" / "diagnostics"
     diagnostics_directory.mkdir(parents=True)
 
     _write_json(
-        run_directory / "artifacts" / "runs" / run_id / "artifact_manifest.json",
+        run_directory / "artifacts" / "calibration" / "artifact_manifest.json",
         {
             "schema_version": "calibration.artifact_registry.manifest.v1",
             "run_id": run_id,

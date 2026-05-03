@@ -143,21 +143,15 @@ pub fn staged_execution_paths(
     execution_input: &CalibrationStagedExecutionInput,
     default_output_directory: PathBuf,
 ) -> FitWorkflowPaths {
-    let checkpoint_directory = execution_input
+    let persistence_root_directory = execution_input
         .runtime_resources
         .as_ref()
         .and_then(|resources| resources.disk_checkpoint_directory.as_ref())
         .map(PathBuf::from);
 
-    let output_directory = checkpoint_directory
-        .as_ref()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .unwrap_or(default_output_directory);
+    let output_directory = persistence_root_directory.unwrap_or(default_output_directory);
 
-    let checkpoint_directory =
-        checkpoint_directory.unwrap_or_else(|| output_directory.join("checkpoints"));
-
-    fit_workflow_paths_with_checkpoint_directory(output_directory, checkpoint_directory)
+    fit_workflow_paths(output_directory)
 }
 
 /// Apply staged resume settings to an execution input.
@@ -175,18 +169,6 @@ pub fn apply_resume_settings(
     }
 
     execution_input
-}
-
-fn fit_workflow_paths_with_checkpoint_directory(
-    output_directory: PathBuf,
-    checkpoint_directory: PathBuf,
-) -> FitWorkflowPaths {
-    FitWorkflowPaths {
-        model_path: output_directory.join("artifacts").join("model.jf"),
-        report_path: output_directory.join("artifacts").join("report.json"),
-        checkpoint_directory,
-        output_directory,
-    }
 }
 
 fn emit_start_summary(
@@ -260,47 +242,47 @@ fn run_staged_with_observer(
     let mut observer_error: Option<WorkflowError> = None;
     let mut progress_gate = VolatileProgressGate::default();
 
-    let mut staged_observer = |event: CalibrationStagedRunObserverEvent| {
-        if observer_error.is_some() {
-            return;
-        }
-
-        if !should_observe_staged_event(&mut progress_gate, &event) {
-            return;
-        }
-
-        if let Err(error) = observe_progress(&mut observer.progress_adapter, &event) {
-            observer_error = Some(error);
-            return;
-        }
-
-        if let Err(error) = observe_run_events(
-            event_writer,
-            workflow,
-            scope_id.as_str(),
-            scope_label,
-            input_paths,
-            output_directory,
-            &mut observer.machine_event_sink,
-            &event,
-        ) {
-            observer_error = Some(error);
-        }
-    };
-
     let execution_started_at = Instant::now();
 
     // The runtime consumes execution input, while observers and artifact code use
     // the validated request after the run completes.
-    let run_result = run_staged_calibration_from_execution_input_with_observer(
-        execution_input.clone(),
-        calendar_registry,
-        None,
-        &mut staged_observer,
-    );
-    let execution_duration = execution_started_at.elapsed();
+    let run_result = {
+        let mut staged_observer = |event: CalibrationStagedRunObserverEvent| {
+            if observer_error.is_some() {
+                return;
+            }
 
-    drop(staged_observer);
+            if !should_observe_staged_event(&mut progress_gate, &event) {
+                return;
+            }
+
+            if let Err(error) = observe_progress(&mut observer.progress_adapter, &event) {
+                observer_error = Some(error);
+                return;
+            }
+
+            if let Err(error) = observe_run_events(
+                event_writer,
+                workflow,
+                scope_id.as_str(),
+                scope_label,
+                input_paths,
+                output_directory,
+                &mut observer.machine_event_sink,
+                &event,
+            ) {
+                observer_error = Some(error);
+            }
+        };
+
+        run_staged_calibration_from_execution_input_with_observer(
+            execution_input.clone(),
+            calendar_registry,
+            None,
+            &mut staged_observer,
+        )
+    };
+    let execution_duration = execution_started_at.elapsed();
 
     if let Some(observer_error) = observer_error {
         return Err(observer_error);

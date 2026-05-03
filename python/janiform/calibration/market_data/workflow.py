@@ -427,9 +427,9 @@ def _prepare_market_data_calibration_from_translation_result(
     )
 
     if request.output_preferences.emit_derived_staged_execution_input:
-        checkpoint_directory = request.output_preferences.disk_checkpoint_directory
-        if checkpoint_directory is not None:
-            return prepared.persist_prepared_execution_artifacts(checkpoint_directory)
+        persistence_root_directory = request.output_preferences.disk_checkpoint_directory
+        if persistence_root_directory is not None:
+            return prepared.persist_prepared_execution_artifacts(persistence_root_directory)
 
     return prepared
 

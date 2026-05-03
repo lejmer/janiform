@@ -1279,6 +1279,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
     let workspace = temporary_run_directory("fit-run");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
     let tick_data_path = workspace.join("EURUSD_ticks.csv");
+
     write_fx_tick_csv(&tick_data_path);
 
     let output = janiform_command()
@@ -1332,6 +1333,23 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
             .parent()
             .expect("event log should have a parent directory")
             .join("latest-state.json")
+            .is_file()
+    );
+
+    let run_directory = event_log_path
+        .parent()
+        .expect("event log should have a parent directory");
+    assert!(
+        run_directory
+            .join("artifacts")
+            .join("calibration")
+            .join("artifact_manifest.json")
+            .is_file()
+    );
+    assert!(
+        run_directory
+            .join("checkpoints")
+            .join("seasonality.checkpoint.json")
             .is_file()
     );
     let persisted_report_before_export =
@@ -1659,6 +1677,17 @@ fn fit_staged_run_executes_prepared_execution_input() {
         .expect("janiform command should execute");
 
     assert_eq!(plan_output.status.code(), Some(CliExitCode::Success as i32));
+    let staged_payload: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&staged_output_path)
+            .expect("staged execution input should be readable"),
+    )
+    .expect("staged execution input should be JSON");
+    assert_eq!(
+        staged_payload["runtime_resources"]["disk_checkpoint_directory"],
+        output_directory
+            .to_str()
+            .expect("output directory should be valid UTF-8")
+    );
 
     let run_output = janiform_command()
         .args([
@@ -1685,6 +1714,19 @@ fn fit_staged_run_executes_prepared_execution_input() {
         output_directory
             .join("artifacts")
             .join("model.jf")
+            .is_file()
+    );
+    assert!(
+        output_directory
+            .join("artifacts")
+            .join("calibration")
+            .join("artifact_manifest.json")
+            .is_file()
+    );
+    assert!(
+        output_directory
+            .join("checkpoints")
+            .join("seasonality.checkpoint.json")
             .is_file()
     );
 

@@ -124,7 +124,7 @@ pub(crate) fn prepare_fit_preview(
             execution_mode,
             disk_checkpoint_directory: match execution_mode {
                 CalibrationExecutionMode::Disk => {
-                    Some(paths.checkpoint_directory.display().to_string())
+                    Some(paths.output_directory.display().to_string())
                 }
                 CalibrationExecutionMode::Memory => None,
             },
