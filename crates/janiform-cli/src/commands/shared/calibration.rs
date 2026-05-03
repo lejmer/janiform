@@ -1,6 +1,7 @@
-use janiform::calibration::{
-    CalibrationExecutionMode, CalibrationStage, MarketDataDuplicateRecordPolicy,
-    MarketDataInputFileFormat, MarketDataOptionQuoteInputPolicy, MarketDataTickPriceInputPolicy,
+use janiform::calibration::artifacts::{CalibrationExecutionMode, CalibrationStage};
+use janiform::calibration::market_data::{
+    MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataOptionQuoteInputPolicy,
+    MarketDataTickPriceInputPolicy,
 };
 
 use crate::commands::options;

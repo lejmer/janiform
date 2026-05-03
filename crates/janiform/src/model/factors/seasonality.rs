@@ -1,4 +1,4 @@
-//! Top-level re-export for market-time seasonality infrastructure.
+//! Re-exports for deterministic seasonality model factors.
 
 pub use janiform_market_time::seasonality::{
     DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,

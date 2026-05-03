@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 
-use janiform::verification::{
+use janiform::validation::stylized_facts::{
     StylizedFactCalibrationRunInput, StylizedFactHorizonComparisonRequest,
     StylizedFactHorizonComparisonThresholdPolicy, StylizedFactMetricCatalog,
     StylizedFactMetricConfidenceInterval, StylizedFactMetricSampleCoverage,
     StylizedFactMetricThresholdOverride, StylizedFactObservedCounts,
     StylizedFactObservedMetricInput, StylizedFactSampleSufficiencyRequirements,
+};
+use janiform::validation::tail_skew::{
     TAIL_SKEW_DATASET_METRIC_TASK_COUNT, TailSkewBlockBootstrapConfiguration,
     TailSkewConfidenceInterval, TailSkewDatasetInput, TailSkewDatasetMetricResult,
     TailSkewDatasetRole, TailSkewDiagnosticsProgressEvent, TailSkewDiagnosticsRequest,
@@ -529,10 +531,10 @@ fn stylized_fact_required_minimums(
 
 #[cfg(test)]
 mod tests {
-    use janiform::verification::{
-        StylizedFactHorizonComparisonThresholdPolicy, TailSkewBlockBootstrapConfiguration,
-        build_stylized_fact_metric_catalog,
+    use janiform::validation::stylized_facts::{
+        StylizedFactHorizonComparisonThresholdPolicy, build_stylized_fact_metric_catalog,
     };
+    use janiform::validation::tail_skew::TailSkewBlockBootstrapConfiguration;
 
     use super::{build_comparison_request, compact_observed_interval_timeline};
     use crate::validation::empirical::{ParsedInterval, ReturnObservation};

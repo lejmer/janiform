@@ -1,4 +1,4 @@
-//! Top-level re-export for market-time calendar infrastructure.
+//! Re-exports for market-time calendar infrastructure.
 
 pub use janiform_market_time::calendar::{
     CalendarDate, CalendarRuleMetadata, CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact,

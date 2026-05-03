@@ -1,8 +1,8 @@
-use janiform::affine_oracle::{
+use janiform::model::affine_oracle::{
     EndogenousAnchorIntervalFactors, ExponentialAffineTransformEquationSpecification,
     materialize_endogenous_anchor_path,
 };
-use janiform::news::NewsProcessConfiguration;
+use janiform::model::news::NewsProcessConfiguration;
 use janiform::simulation::{
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
     run_coarse_simulation as run_coarse_simulation_core,

@@ -1,8 +1,7 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use janiform::hawkes::{HawkesExcitationState, HawkesKernelParameters};
-use janiform::hourly_factors::{
+use janiform::model::factors::hourly::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
     HOURLY_FACTOR_FALL_BACK_POLICY, HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
     HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY, HOURLY_FACTOR_SPRING_FORWARD_POLICY,
@@ -10,15 +9,16 @@ use janiform::hourly_factors::{
     HourlyFactorContractOutput, HourlyFactorContractPayload, HourlyFactorMaterializationMetadata,
     load_hourly_factor_contract,
 };
-use janiform::news::NewsProcessConfiguration;
-use janiform::nig::NigSharedPlusShiftConfiguration;
+use janiform::model::hawkes::{HawkesExcitationState, HawkesKernelParameters};
+use janiform::model::news::NewsProcessConfiguration;
+use janiform::model::nig::NigSharedPlusShiftConfiguration;
+use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
     SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
 };
-use janiform::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform_foundations::time::parse_utc_datetime;
 use serde::Deserialize;
 

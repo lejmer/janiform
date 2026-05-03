@@ -1,5 +1,7 @@
-use janiform::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
-use janiform::nig::NigSharedPlusShiftConfiguration;
+use janiform::model::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+};
+use janiform::model::nig::NigSharedPlusShiftConfiguration;
 use janiform::simulation::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };

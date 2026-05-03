@@ -8,7 +8,7 @@ use arrow_array::{
     TimestampSecondArray, UInt32Array, UInt64Array,
 };
 use chrono::{DateTime, Utc};
-use janiform::calendar::TimestampEventInputRecord;
+use janiform::time::calendar::TimestampEventInputRecord;
 use janiform_foundations::csv::document::{CsvDocumentLoadError, StringRecord, open_csv_reader};
 use janiform_foundations::csv::records::column_position;
 use janiform_foundations::parquet::batch::column as parquet_column;

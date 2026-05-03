@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use janiform::calibration::CalibrationExecutionMode;
+use janiform::calibration::artifacts::CalibrationExecutionMode;
 
 use super::payloads::{inspect_json, plan_json, staged_plan_json};
 use super::planning_rendering::{

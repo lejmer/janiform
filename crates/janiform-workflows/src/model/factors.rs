@@ -1,6 +1,6 @@
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, Timelike, Utc};
-use janiform::calibration::materialize_runtime_structural_seasonality;
-use janiform::hourly_factors::{
+use janiform::calibration::staged::materialize_runtime_structural_seasonality;
+use janiform::model::factors::hourly::{
     DEFAULT_SEASONALITY_AGGREGATION_METHOD, DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
     DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT,
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,

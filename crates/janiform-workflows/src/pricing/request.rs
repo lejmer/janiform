@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use janiform::hawkes::HawkesExcitationState;
+use janiform::model::hawkes::HawkesExcitationState;
 use janiform::pricing::{
     PricingIntervalSchedulePolicy, VanillaOptionPayoffType,
     VanillaOptionPricingOptionalOutputSelection,

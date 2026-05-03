@@ -1,8 +1,9 @@
 use std::fs;
 use std::path::Path;
 
+use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::simulation::SeededFinePathRecord;
-use janiform::verification::{
+use janiform::validation::stylized_facts::{
     StylizedFactHorizonComparisonArtifactExportConfig,
     StylizedFactHorizonComparisonReportGenerationError,
     StylizedFactHorizonComparisonReportGeneratorOptions,
@@ -27,7 +28,10 @@ pub(super) fn generate_report_bundle(
     metric_catalog: StylizedFactMetricCatalog,
     comparison_request: StylizedFactHorizonComparisonRequest,
     output_dir: &Path,
-) -> Result<janiform::verification::StylizedFactHorizonComparisonReportBundle, WorkflowError> {
+) -> Result<
+    janiform::validation::stylized_facts::StylizedFactHorizonComparisonReportBundle,
+    WorkflowError,
+> {
     fs::create_dir_all(output_dir).map_err(|source| WorkflowError::ValidationArtifactWrite {
         path: output_dir.to_path_buf(),
         source,
@@ -38,7 +42,7 @@ pub(super) fn generate_report_bundle(
             metric_catalog,
             comparison_request,
             generation_options: StylizedFactHorizonComparisonReportGeneratorOptions {
-                execution_mode: janiform::calibration::CalibrationExecutionMode::Disk,
+                execution_mode: CalibrationExecutionMode::Disk,
                 artifact_export: Some(StylizedFactHorizonComparisonArtifactExportConfig {
                     export_directory: output_dir.display().to_string(),
                     file_stem: REPORT_FILE_STEM.to_string(),

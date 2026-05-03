@@ -1,4 +1,4 @@
-use janiform::seasonality::{
+use janiform::model::factors::seasonality::{
     DayOfWeekSeasonalityEstimationError, DayOfWeekSeasonalityEstimatorSettings,
     DayOfYearSeasonalityEstimationError, DayOfYearSeasonalityEstimatorSettings,
     DeterministicSeasonalityCompositionError, IntradaySeasonalityEstimationError,

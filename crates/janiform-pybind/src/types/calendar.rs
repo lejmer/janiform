@@ -1,4 +1,4 @@
-use janiform::calendar::ExchangeCalendarRegistry;
+use janiform::time::calendar::ExchangeCalendarRegistry;
 use pyo3::pyclass;
 
 #[pyclass(module = "janiform._native", name = "CalendarRegistry")]

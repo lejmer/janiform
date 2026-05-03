@@ -786,11 +786,11 @@ fn seeded_fine_path_transition_kind_label(transition_kind: SeededFinePathTransit
 }
 
 fn seeded_news_arrival_component_label(
-    news_arrival_component: janiform::news::NewsArrivalComponent,
+    news_arrival_component: janiform::model::news::NewsArrivalComponent,
 ) -> String {
     match news_arrival_component {
-        janiform::news::NewsArrivalComponent::Known => "known".to_string(),
-        janiform::news::NewsArrivalComponent::Surprise => "surprise".to_string(),
+        janiform::model::news::NewsArrivalComponent::Known => "known".to_string(),
+        janiform::model::news::NewsArrivalComponent::Surprise => "surprise".to_string(),
     }
 }
 

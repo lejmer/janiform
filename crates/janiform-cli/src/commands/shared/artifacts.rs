@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use janiform::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
+use janiform::time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_foundations::json::document::{
     JsonDocumentLoadError, load_json_document, load_json_value,
 };

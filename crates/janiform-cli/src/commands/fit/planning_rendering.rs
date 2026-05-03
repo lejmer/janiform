@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use janiform::calibration::CalibrationExecutionMode;
+use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform_terminal_ui::{
     KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus, StartSummary,
     TerminalRenderer, WarningBlock, format_artifact_path, format_path,

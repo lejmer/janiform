@@ -1,4 +1,4 @@
-//! Top-level re-export for market-time hourly factor infrastructure.
+//! Re-exports for model hourly factor infrastructure.
 
 pub use janiform_foundations::time::{
     HOURS_PER_NANOSECOND, NANOS_PER_HOUR, NANOS_PER_HOUR_F64, duration_nanos_to_hours,

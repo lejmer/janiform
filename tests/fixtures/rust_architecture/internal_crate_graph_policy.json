@@ -5,27 +5,14 @@
   "umbrella_facade_crate": "janiform",
   "pybind_boundary_crate": "janiform-pybind",
   "curated_facade_module_roots": [
-    "affine_oracle",
-    "benchmarking",
-    "calendar",
     "calibration",
-    "complex_math",
-    "hawkes",
-    "hourly_factors",
-    "news",
-    "nig",
+    "foundation",
+    "governance",
+    "model",
     "pricing",
-    "randomness",
-    "return_decomposition",
-    "risk_neutral",
-    "seasonality",
     "simulation",
-    "sufficient_statistics",
-    "verification"
-  ],
-  "transitional_facade_module_roots": [
-    "benchmarking",
-    "verification"
+    "time",
+    "validation"
   ],
   "crates": {
     "janiform-foundations": {

@@ -1,6 +1,6 @@
 //! Validation workflow output contracts.
 
-use janiform::verification::StylizedFactHorizonComparisonReportBundle;
+use janiform::validation::stylized_facts::StylizedFactHorizonComparisonReportBundle;
 use serde::Serialize;
 
 /// Resolved stylized-facts validation plan schema version.

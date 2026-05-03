@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use janiform::calibration::{
+use janiform::calibration::market_data::{
     DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataInputFileFormat,
     MarketDataInputFileReference, MarketDataNormalizationPolicy, MarketDataTickDataColumnMapping,
     infer_market_data_input_file_format_from_path, infer_market_data_tick_price_input_policy,
@@ -138,7 +138,7 @@ pub(super) fn prepare_empirical_input(
 }
 
 pub(super) fn tick_returns(
-    ticks: &[janiform::calibration::MarketDataTranslationTickRecord],
+    ticks: &[janiform::calibration::market_data::MarketDataTranslationTickRecord],
 ) -> Result<Vec<ReturnObservation>, WorkflowError> {
     let mut returns = Vec::new();
     let mut previous_price = None::<f64>;

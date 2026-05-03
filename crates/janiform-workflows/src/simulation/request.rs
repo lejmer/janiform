@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use janiform::hawkes::HawkesExcitationState;
-use janiform::hourly_factors::NANOS_PER_HOUR;
+use janiform::model::factors::hourly::NANOS_PER_HOUR;
+use janiform::model::hawkes::HawkesExcitationState;
 use janiform::simulation::{
     CoarseSimulationRunRequest, MeanReversionBoundaryState, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationRunConfig,

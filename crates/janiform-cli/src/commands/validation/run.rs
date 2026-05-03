@@ -106,7 +106,7 @@ fn run_validation(
     emit_stylized_fact_validation_report_output(
         context,
         &workflow_output.report_bundle,
-        janiform::calibration::CalibrationExecutionMode::Disk,
+        janiform::calibration::artifacts::CalibrationExecutionMode::Disk,
         options.show_checks,
         options.max_checks,
     )?;

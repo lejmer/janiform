@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use janiform::hourly_factors::NANOS_PER_HOUR;
+use janiform::model::factors::hourly::NANOS_PER_HOUR;
 use janiform::pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingMarketInputs,

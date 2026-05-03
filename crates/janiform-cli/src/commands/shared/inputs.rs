@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use chrono::DateTime;
 use chrono::Utc;
-use janiform::calibration::MarketDataInputFileReference;
+use janiform::calibration::market_data::MarketDataInputFileReference;
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
 use janiform_foundations::strings::validate_non_empty_string;
 use janiform_foundations::time::parse_duration_spec_nanos;

@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use janiform::news::NewsArrivalComponent;
-use janiform::verification::{
+use janiform::model::news::NewsArrivalComponent;
+use janiform::validation::open_closed_gap::{
     NewsSemanticsScenarioClass, OpenClosedGapDeterministicReplayMetadata,
     OpenClosedGapIssueTraceabilityMetadata, OpenClosedGapLeakageRegressionCase,
     OpenClosedGapLeakageRegressionEventInput,
