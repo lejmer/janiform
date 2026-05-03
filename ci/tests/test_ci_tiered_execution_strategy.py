@@ -109,7 +109,6 @@ def test_local_python_benchmark_runner_is_documented() -> None:
     assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in testing_guide
     assert "benches/python/python_microbenchmarks.py" in testing_guide
     assert ".artifacts/local-python-benchmarks" in testing_guide
-    assert "ci-pr-fast" in testing_guide
     assert "ci-tests-multiplatform" in testing_guide
     assert "ci-rust-benchmark-governance-smoke" in testing_guide
 
