@@ -40,7 +40,7 @@ from tests.support.fixture_validation import (
 
 @pytest.fixture(scope="session")
 def project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session")

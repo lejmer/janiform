@@ -1,7 +1,7 @@
 name: ci-tests-multiplatform
 
 on:
-  push:
+  pull_request:
     branches:
       - develop
   workflow_dispatch:
@@ -11,11 +11,77 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux-full-verification:
+  linux-rust-verification:
+    name: Linux Rust verification (${{ matrix.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core
+            package_args: >-
+              -p janiform-foundations
+              -p janiform-market-time
+              -p janiform-model-kernels
+              -p janiform-affine-oracle
+              -p janiform-event-log
+              -p janiform-test-support
+          - name: engines-validation
+            package_args: >-
+              -p janiform-engine-pricing
+              -p janiform-engine-simulation
+              -p janiform-engine-sufficient-statistics
+              -p janiform-validation
+          - name: calibration-workflows
+            package_args: >-
+              -p janiform-calibration-artifacts
+              -p janiform-calibration-runtime
+              -p janiform-workflows
+              -p janiform-joint-refinement-worker
+          - name: verification
+            package_args: >-
+              -p janiform-verification
+          - name: interfaces-governance
+            package_args: >-
+              -p janiform
+              -p janiform-cli
+              -p janiform-terminal-ui
+              -p janiform-pybind
+              -p janiform-governance
+              -p janiform-governance-bench
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      TMPDIR: /tmp
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run Rust verification shard
+        run: cargo test --no-fail-fast ${{ matrix.package_args }}
+
+  linux-python-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      TMPDIR: /tmp
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -31,11 +97,8 @@ jobs:
       - name: Bootstrap Linux environment
         run: ./scripts/bootstrap-linux.sh .venv-linux
 
-      - name: Build Linux environment
-        run: ./scripts/build-linux.sh .venv-linux
-
-      - name: Run Rust verification
-        run: ./scripts/test-rust-linux.sh .venv-linux
+      - name: Remove Rust build artifacts before Python tests
+        run: cargo clean
 
       - name: Run Python verification
         run: ./scripts/test-python-linux.sh .venv-linux
@@ -48,9 +111,13 @@ jobs:
 
   windows-build-smoke:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -66,10 +133,6 @@ jobs:
       - name: Bootstrap Windows environment
         shell: pwsh
         run: ./scripts/bootstrap-win.ps1 .venv
-
-      - name: Build Windows environment
-        shell: pwsh
-        run: ./scripts/build-win.ps1 .venv
 
       - name: Run Windows smoke checks
         shell: pwsh

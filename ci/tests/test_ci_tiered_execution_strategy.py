@@ -52,17 +52,14 @@ def test_tests_multiplatform_workflow_has_linux_full_and_windows_smoke_jobs() ->
 
     assert "name: ci-tests-multiplatform" in workflow_text
     assert "on:" in workflow_text
-    assert "push:" in workflow_text
+    assert "pull_request:" in workflow_text
     assert "- develop" in workflow_text
     assert "workflow_dispatch:" in workflow_text
-    assert "linux-full-verification:" in workflow_text
+    assert "linux-rust-verification:" in workflow_text
     assert "windows-build-smoke:" in workflow_text
     assert "./scripts/bootstrap-linux.sh .venv-linux" in workflow_text
-    assert "./scripts/build-linux.sh .venv-linux" in workflow_text
-    assert "./scripts/test-rust-linux.sh .venv-linux" in workflow_text
     assert "./scripts/test-python-linux.sh .venv-linux" in workflow_text
     assert "./scripts/bootstrap-win.ps1 .venv" in workflow_text
-    assert "./scripts/build-win.ps1 .venv" in workflow_text
     assert "python -m janiform --help" in workflow_text
     assert "tests/test_public_api_surface_map.py" in workflow_text
 

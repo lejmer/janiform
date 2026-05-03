@@ -79,6 +79,7 @@ Add a crate only when it creates a clear ownership boundary. Before adding one, 
 When adding the crate:
 
 - add it to the workspace members in `Cargo.toml`
+- add it to the Rust shard matrix in `.github/workflows/ci-tests-multiplatform.yml`
 - give `package.description` the exact crate summary that should appear in generated README files
 - keep `lib.rs` thin and put declarations in focused modules
 - add the crate to `scripts/generate_internal_crate_graph_policy.py` with its classification and layer
