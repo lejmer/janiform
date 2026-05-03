@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from typing import Any, cast
 
 import orjson
@@ -281,24 +282,24 @@ def _case_report_by_fixture_id(
     raise ValueError(f"missing case report for fixture_id: {fixture_id}")
 
 
-def _copy_case_list(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _copy_case_list(cases: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], orjson.loads(json.dumps(cases)))
 
 
 def _threshold_configuration(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     return cast(
-        dict[str, Any],
+        Mapping[str, Any],
         hourly_factor_regression_fixture_document["threshold_configuration"],
     )
 
 
 def _harness_tolerance_config(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> dict[str, float]:
+) -> Mapping[str, float]:
     threshold_configuration = _threshold_configuration(hourly_factor_regression_fixture_document)
     return cast(
-        dict[str, float],
+        Mapping[str, float],
         threshold_configuration["tolerance_config"],
     )
