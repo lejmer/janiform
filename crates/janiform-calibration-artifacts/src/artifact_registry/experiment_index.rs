@@ -1,7 +1,6 @@
 use std::cmp::min;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +15,7 @@ use super::manifest::{
 };
 use super::shared::{
     CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
-    calibration_committed_artifact_runs_root_directory, calibration_experiment_index_path,
+    calibration_committed_artifact_run_directory, calibration_experiment_index_path,
     load_validated_json_artifact, persist_validated_json_artifact,
 };
 
@@ -26,7 +25,7 @@ pub const CALIBRATION_EXPERIMENT_INDEX_SCHEMA_FAMILY: &str =
     "calibration.artifact_registry.experiment_index";
 pub const CALIBRATION_EXPERIMENT_INDEX_SCHEMA_GENERATION: &str = "v1";
 pub const CALIBRATION_EXPERIMENT_INDEX_REBUILD_POLICY: &str =
-    "rebuild_by_scanning_committed_run_manifests_and_rederiving_lookup_records.v1";
+    "rebuild_from_committed_calibration_manifest_and_rederive_lookup_record.v1";
 pub const CALIBRATION_EXPERIMENT_INDEX_ORDERING_POLICY: &str =
     "sort_by_committed_timestamp_desc_then_run_id_asc.v1";
 
@@ -263,53 +262,24 @@ pub fn update_calibration_experiment_index_for_run(
 pub fn rebuild_calibration_experiment_index_from_disk(
     persistence_root_directory: &Path,
 ) -> Result<CalibrationExperimentIndexDocument, CalibrationExperimentIndexError> {
-    let committed_runs_root_directory =
-        calibration_committed_artifact_runs_root_directory(persistence_root_directory);
+    let committed_run_directory =
+        calibration_committed_artifact_run_directory(persistence_root_directory, "");
     let mut document = CalibrationExperimentIndexDocument::empty();
 
-    if !committed_runs_root_directory.exists() {
+    if !committed_run_directory.exists() {
         persist_calibration_experiment_index_to_disk(persistence_root_directory, &document)
             .map_err(CalibrationExperimentIndexError::IndexIo)?;
         return Ok(document);
     }
 
-    let run_directories =
-        fs::read_dir(committed_runs_root_directory.as_path()).map_err(|source| {
-            CalibrationExperimentIndexError::RebuildScanFailed {
-                path: committed_runs_root_directory.display().to_string(),
-                error_message: source.to_string(),
-            }
-        })?;
+    let manifest_path = calibration_artifact_manifest_path(persistence_root_directory, "");
+    let manifest = load_calibration_artifact_manifest_from_disk(manifest_path.as_path())
+        .map_err(CalibrationExperimentIndexError::IndexIo)?;
 
-    for directory_entry in run_directories {
-        let directory_entry = directory_entry.map_err(|source| {
-            CalibrationExperimentIndexError::RebuildScanFailed {
-                path: committed_runs_root_directory.display().to_string(),
-                error_message: source.to_string(),
-            }
-        })?;
+    let record = CalibrationExperimentIndexRecord::from_manifest(&manifest);
+    record.validate()?;
 
-        let file_type = directory_entry.file_type().map_err(|source| {
-            CalibrationExperimentIndexError::RebuildScanFailed {
-                path: directory_entry.path().display().to_string(),
-                error_message: source.to_string(),
-            }
-        })?;
-        if !file_type.is_dir() {
-            continue;
-        }
-
-        let run_id = directory_entry.file_name().to_string_lossy().to_string();
-
-        let manifest_path = calibration_artifact_manifest_path(persistence_root_directory, &run_id);
-        let manifest = load_calibration_artifact_manifest_from_disk(manifest_path.as_path())
-            .map_err(CalibrationExperimentIndexError::IndexIo)?;
-
-        let record = CalibrationExperimentIndexRecord::from_manifest(&manifest);
-        record.validate()?;
-
-        document.records.push(record);
-    }
+    document.records.push(record);
 
     document.sort_records();
     document.validate()?;

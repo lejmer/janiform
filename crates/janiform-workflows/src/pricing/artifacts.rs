@@ -1,11 +1,9 @@
-use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use janiform::pricing::VanillaOptionPricingRunResult;
-use serde::Serialize;
 use serde_json::json;
 
+use crate::artifact_io::write_pretty_json_file;
 use crate::error::WorkflowError;
 
 /// Pricing artifact paths.
@@ -78,26 +76,15 @@ pub(super) fn write_pricing_artifacts(
 
 fn write_json_file<T>(path: &Path, payload: &T) -> Result<(), WorkflowError>
 where
-    T: Serialize + ?Sized,
+    T: serde::Serialize + ?Sized,
 {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| WorkflowError::PricingArtifactWrite {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-
-    let mut file =
-        fs::File::create(path).map_err(|source| WorkflowError::PricingArtifactWrite {
+    write_pretty_json_file(
+        path,
+        payload,
+        |path, source| WorkflowError::PricingArtifactWrite {
             path: path.to_path_buf(),
             source,
-        })?;
-
-    serde_json::to_writer_pretty(&mut file, payload)
-        .map_err(|source| WorkflowError::OutputSerialize { source })?;
-
-    writeln!(file).map_err(|source| WorkflowError::PricingArtifactWrite {
-        path: path.to_path_buf(),
-        source,
-    })
+        },
+        |source| WorkflowError::OutputSerialize { source },
+    )
 }

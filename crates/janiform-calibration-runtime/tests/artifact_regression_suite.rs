@@ -943,8 +943,17 @@ fn assert_regression_reload_error_matches(
     match (corruption_case.expected_error.kind, error) {
         (
             CalibrationArtifactRegressionExpectedErrorKind::MissingArtifactFile,
-            CalibrationArtifactReloadError::MissingArtifactFile { component, path },
+            CalibrationArtifactReloadError::MissingArtifactFile {
+                run_id,
+                component,
+                path,
+            },
         ) => {
+            assert_eq!(
+                run_id, corruption_case.run_id,
+                "fixture_id={} unexpected missing-artifact run id",
+                corruption_case.fixture_id
+            );
             assert_eq!(
                 component, expected_component,
                 "fixture_id={} unexpected reload component",
@@ -960,11 +969,17 @@ fn assert_regression_reload_error_matches(
         (
             CalibrationArtifactRegressionExpectedErrorKind::CorruptedArtifact,
             CalibrationArtifactReloadError::CorruptedArtifact {
+                run_id,
                 component,
                 path,
                 error_message: _,
             },
         ) => {
+            assert_eq!(
+                run_id, corruption_case.run_id,
+                "fixture_id={} unexpected corrupted-artifact run id",
+                corruption_case.fixture_id
+            );
             assert_eq!(
                 component, expected_component,
                 "fixture_id={} unexpected reload component",
@@ -980,12 +995,18 @@ fn assert_regression_reload_error_matches(
         (
             CalibrationArtifactRegressionExpectedErrorKind::UnsupportedSchema,
             CalibrationArtifactReloadError::UnsupportedSchema {
+                run_id,
                 component,
                 path,
                 expected_schema_version,
                 found_schema_version,
             },
         ) => {
+            assert_eq!(
+                run_id, corruption_case.run_id,
+                "fixture_id={} unexpected unsupported-schema run id",
+                corruption_case.fixture_id
+            );
             assert_eq!(
                 component, expected_component,
                 "fixture_id={} unexpected reload component",

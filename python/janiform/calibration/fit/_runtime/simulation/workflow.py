@@ -14,15 +14,11 @@ from ....._workflow_progress import WorkflowProgressMode, resolve_workflow_progr
 from ....._workflow_outputs import (
     SimulationArtifactSink,
     _file_format_for_simulation_path,
-    build_run_manifest,
-    build_simulation_report_payload,
-    ensure_artifact_directory,
+    _resolve_output_path,
     generate_workflow_run_id,
     persist_seeded_tick_simulation,
-    resolve_simulation_artifact_paths,
     simulation_output_preferences_from_model,
     simulation_output_price_column,
-    write_json_document,
 )
 from .....calendar import CalendarRegistry
 from .....mean_reversion import MeanReversionBoundaryState
@@ -132,14 +128,6 @@ def simulate_model(
             output_path=Path("simulation.csv"),
             preferences=preferences,
             sink=sink,
-        )
-
-    if output_path is not None and resolved_output_path is not None:
-        _write_simulation_sidecar_artifacts(
-            model,
-            simulation_result=simulation_result,
-            output_path=resolved_output_path,
-            simulation_run_id=simulation_run_id,
         )
 
     return result
@@ -304,57 +292,11 @@ def _resolve_native_output_path(
 
     interval_label = None if interval is None else normalize_interval_label(interval)
 
-    paths = resolve_simulation_artifact_paths(
+    return _resolve_output_path(
         run_id=run_id,
         output_path=output_path,
+        default_stem="simulation" if interval_label is None else f"simulation_{interval_label}",
         default_file_format=_file_format_for_simulation_path(Path(output_path), default_file_format),
-        interval_label=interval_label,
-    )
-
-    ensure_artifact_directory(paths)
-
-    return paths.primary_output_path
-
-
-def _write_simulation_sidecar_artifacts(
-    model: JaniformModel,
-    *,
-    simulation_result: CoarseSimulationPath | SeededTickSimulationResponse,
-    output_path: Path,
-    simulation_run_id: str,
-) -> None:
-    run_directory = output_path.parent
-
-    report_path = run_directory / "simulation_report.json"
-    manifest_path = run_directory / "run.json"
-
-    diagnostics = simulation_result.diagnostics.to_payload()
-
-    simulation_kind = (
-        SimulationKind.SEEDED_TICK
-        if isinstance(simulation_result, SeededTickSimulationResponse)
-        else SimulationKind.COARSE_INTERVAL
-    )
-
-    write_json_document(
-        report_path,
-        build_simulation_report_payload(
-            simulation_kind=simulation_kind,
-            output_path=output_path,
-            diagnostics=diagnostics,
-        ),
-    )
-
-    write_json_document(
-        manifest_path,
-        build_run_manifest(
-            workflow="simulate",
-            run_id=simulation_run_id,
-            primary_output_path=output_path,
-            report_path=report_path,
-            run_directory=run_directory,
-            additional_artifacts={"model_run_id": model.run_id},
-        ),
     )
 
 

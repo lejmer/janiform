@@ -17,7 +17,11 @@
 - Do not use regression tests as a substitute for stronger API or contract design. When a bug exposes an invalid state, first make that state hard or impossible to express through typed contracts, shared constructors, validators, or narrower public methods. Add or keep a regression test only when the invalid behavior remains genuinely easy to reintroduce after the API shape has been fixed, and document why that test is still necessary.
 - Do not write tests or assertions whose only purpose is to prove that old code, old text, old fields, or removed behavior are absent. Prefer exact positive contract assertions or stronger API shapes that make the unwanted state impossible to express.
 
-### Before finishing a task
+## Readonly Home
+
+You are operating in a sandbox in a virtual machine where `home` is read-only. Therefore, tools like `cargo` fail when trying to unpack crates into that registry. You need to run with environment variables like `CARGO_HOME` and `TMPDIR` pointed towards `/tmp`.
+
+### Before Finishing A Task
 
 - You avoid changing public APIs unintentionally.
 - You update docs/inline comments where behavior changed.

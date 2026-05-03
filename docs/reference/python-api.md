@@ -4301,7 +4301,7 @@
 | [`CalibrationKnownNewsInput`](#python-api-symbol-janiform-calibration-market-data-calibrationknownnewsinput) | contract_model | 2 fields |
 | [`CalibrationMarketDataColumnMapping`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatacolumnmapping) | contract_model | 3 fields |
 | [`CalibrationMarketDataNormalizationPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatanormalizationpolicy) | contract_model | 5 fields |
-| [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataoutputpreferences) | contract_model | 4 fields |
+| [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
@@ -4409,8 +4409,8 @@
 ### `CalibrationMarketDataOutputPreferences`
 
 - Kind: `contract_model`
-- Signature: `(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_derived_staged_execution_input: 'bool' = False, emit_input_provenance_report: 'bool' = True) -> 'None'`
-- Fields: `execution_mode`, `disk_checkpoint_directory`, `emit_derived_staged_execution_input`, `emit_input_provenance_report`
+- Signature: `(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_input_provenance_report: 'bool' = True) -> 'None'`
+- Fields: `execution_mode`, `disk_checkpoint_directory`, `emit_input_provenance_report`
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdatapreprocessingsettings"></a>
 ### `CalibrationMarketDataPreprocessingSettings`
@@ -4625,7 +4625,7 @@
 | [`CalibrationKnownNewsInput`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationknownnewsinput) | contract_model | 2 fields |
 | [`CalibrationMarketDataColumnMapping`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatacolumnmapping) | contract_model | 3 fields |
 | [`CalibrationMarketDataNormalizationPolicy`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatanormalizationpolicy) | contract_model | 5 fields |
-| [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataoutputpreferences) | contract_model | 4 fields |
+| [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
@@ -4730,8 +4730,8 @@
 ### `CalibrationMarketDataOutputPreferences`
 
 - Kind: `contract_model`
-- Signature: `(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_derived_staged_execution_input: 'bool' = False, emit_input_provenance_report: 'bool' = True) -> 'None'`
-- Fields: `execution_mode`, `disk_checkpoint_directory`, `emit_derived_staged_execution_input`, `emit_input_provenance_report`
+- Signature: `(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_input_provenance_report: 'bool' = True) -> 'None'`
+- Fields: `execution_mode`, `disk_checkpoint_directory`, `emit_input_provenance_report`
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatapreprocessingsettings"></a>
 ### `CalibrationMarketDataPreprocessingSettings`

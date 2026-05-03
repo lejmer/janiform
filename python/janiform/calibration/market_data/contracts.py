@@ -788,7 +788,6 @@ class CalibrationMarketDataNormalizationPolicy(ContractModel):
 class CalibrationMarketDataOutputPreferences(ContractModel):
     execution_mode: CalibrationExecutionMode = CalibrationExecutionMode.MEMORY
     disk_checkpoint_directory: Optional[str] = None
-    emit_derived_staged_execution_input: bool = False
     emit_input_provenance_report: bool = True
 
     def __post_init__(self) -> None:
@@ -826,12 +825,6 @@ class CalibrationMarketDataOutputPreferences(ContractModel):
                 field_path=f"{field_path}.execution_mode",
             ),
             disk_checkpoint_directory=raw_disk_checkpoint_directory,
-            emit_derived_staged_execution_input=require_boolean(
-                raw_payload,
-                "emit_derived_staged_execution_input",
-                f"{field_path}.emit_derived_staged_execution_input",
-                calibration_error,
-            ),
             emit_input_provenance_report=require_boolean(
                 raw_payload,
                 "emit_input_provenance_report",

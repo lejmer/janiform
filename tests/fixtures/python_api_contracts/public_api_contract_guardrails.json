@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "f509e861886618954dcae2a56c378c5492ed56e7502aeca9afce5b98ea1f0a09",
+  "approved_snapshot_sha256": "e51e7e11d5b164f455c9eb803f515d5083715d7abb85d63071009c5b5123ca46",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1346,6 +1346,19 @@
         "janiform.pricing.fitted",
         "janiform.simulation",
         "janiform.simulation.result"
+      ]
+    },
+    {
+      "approved_on": "2026-05-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Prepared calibration execution artifact persistence is no longer a Python-owned workflow output. Rust owns persisted workflow artifacts, so the public market-data output preferences contract no longer exposes the staged execution input emission switch.",
+      "snapshot_sha256": "e51e7e11d5b164f455c9eb803f515d5083715d7abb85d63071009c5b5123ca46",
+      "summary": "Remove the Python prepared-execution artifact emission preference.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
       ]
     }
   ],

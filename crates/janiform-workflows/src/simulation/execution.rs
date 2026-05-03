@@ -51,18 +51,18 @@ pub fn run_simulation_from_model_artifact_workflow(
     let mut progress_error = None::<WorkflowError>;
     let mut progress_gate = VolatileProgressGate::default();
 
-    let mut progress_observer = |event: SimulationProgressEvent| {
-        observe_gated_simulation_terminal_event(
-            &mut observer.progress_adapter,
-            &mut progress_gate,
-            &mut progress_error,
-            event,
-        );
+    let output = {
+        let mut progress_observer = |event: SimulationProgressEvent| {
+            observe_gated_simulation_terminal_event(
+                &mut observer.progress_adapter,
+                &mut progress_gate,
+                &mut progress_error,
+                event,
+            );
+        };
+
+        run_simulation_from_model_artifact(request, &mut progress_observer)?
     };
-
-    let output = run_simulation_from_model_artifact(request, &mut progress_observer)?;
-
-    drop(progress_observer);
 
     complete_simulation_progress(observer.progress_adapter, progress_error)?;
 
@@ -102,21 +102,20 @@ pub fn run_direct_simulation_workflow(
     let mut progress_error = None::<WorkflowError>;
     let mut progress_gate = VolatileProgressGate::default();
 
-    let mut progress_observer = |event: SimulationProgressEvent| {
-        observe_gated_simulation_terminal_event(
-            &mut observer.progress_adapter,
-            &mut progress_gate,
-            &mut progress_error,
-            event,
-        );
-    };
-
     let started_at = Instant::now();
-    let completed = request.job.run(&mut progress_observer)?;
+    let completed = {
+        let mut progress_observer = |event: SimulationProgressEvent| {
+            observe_gated_simulation_terminal_event(
+                &mut observer.progress_adapter,
+                &mut progress_gate,
+                &mut progress_error,
+                event,
+            );
+        };
 
+        request.job.run(&mut progress_observer)?
+    };
     let execution_duration = started_at.elapsed();
-
-    drop(progress_observer);
 
     let export_summary = completed.export(request.output_path.as_deref())?;
 

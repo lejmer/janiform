@@ -63,7 +63,6 @@ from ..staged.request import StagedCalibrationRequest
 
 _DEFAULT_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     execution_mode=CalibrationExecutionMode.MEMORY,
-    emit_derived_staged_execution_input=False,
     emit_input_provenance_report=True,
 )
 _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration()

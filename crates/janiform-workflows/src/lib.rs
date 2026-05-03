@@ -13,6 +13,7 @@ pub mod simulation;
 pub mod terminal;
 pub mod validation;
 
+mod artifact_io;
 mod machine_events;
 mod model;
 mod progress;

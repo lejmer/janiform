@@ -17,7 +17,7 @@ fn calibration_artifact_storage_layout_paths_are_deterministic() {
 
     assert_eq!(
         CALIBRATION_ARTIFACT_STORAGE_LAYOUT_POLICY,
-        "root_directory_separates_committed_artifacts_pending_artifacts_quarantine_and_checkpoints.v1"
+        "run_directory_separates_committed_calibration_artifacts_pending_artifacts_quarantine_and_checkpoints.v1"
     );
     assert_eq!(
         CALIBRATION_ARTIFACT_ROOT_CONFIGURATION_POLICY,
@@ -34,16 +34,16 @@ fn calibration_artifact_storage_layout_paths_are_deterministic() {
 
     assert_eq!(
         calibration_committed_artifact_run_directory(persistence_root_directory.as_path(), run_id,),
-        PathBuf::from("/tmp/janiform-persistence-root/artifacts/runs/run-layout-001")
+        PathBuf::from("/tmp/janiform-persistence-root/artifacts/calibration")
     );
     assert_eq!(
         calibration_checkpoint_run_directory(persistence_root_directory.as_path(), run_id),
-        PathBuf::from("/tmp/janiform-persistence-root/checkpoints/run-layout-001")
+        PathBuf::from("/tmp/janiform-persistence-root/checkpoints")
     );
     assert_eq!(
         calibration_dataset_snapshot_artifact_path(persistence_root_directory.as_path(), run_id),
         PathBuf::from(
-            "/tmp/janiform-persistence-root/artifacts/runs/run-layout-001/dataset_snapshot.artifact.json"
+            "/tmp/janiform-persistence-root/artifacts/calibration/dataset_snapshot.artifact.json"
         )
     );
     assert_eq!(
@@ -53,13 +53,13 @@ fn calibration_artifact_storage_layout_paths_are_deterministic() {
             CalibrationStage::Hawkes,
         ),
         PathBuf::from(
-            "/tmp/janiform-persistence-root/artifacts/runs/run-layout-001/hawkes.stage_parameter.artifact.json"
+            "/tmp/janiform-persistence-root/artifacts/calibration/hawkes.stage_parameter.artifact.json"
         )
     );
     assert_eq!(
         calibration_artifact_manifest_path(persistence_root_directory.as_path(), run_id),
         PathBuf::from(
-            "/tmp/janiform-persistence-root/artifacts/runs/run-layout-001/artifact_manifest.json"
+            "/tmp/janiform-persistence-root/artifacts/calibration/artifact_manifest.json"
         )
     );
     assert_eq!(
@@ -74,15 +74,11 @@ fn calibration_artifact_storage_layout_paths_are_deterministic() {
             run_id,
             CalibrationStage::Hawkes,
         ),
-        PathBuf::from(
-            "/tmp/janiform-persistence-root/checkpoints/run-layout-001/hawkes.checkpoint.json"
-        )
+        PathBuf::from("/tmp/janiform-persistence-root/checkpoints/hawkes.checkpoint.json")
     );
     assert_eq!(
         calibration_last_success_checkpoint_path(persistence_root_directory.as_path(), run_id),
-        PathBuf::from(
-            "/tmp/janiform-persistence-root/checkpoints/run-layout-001/last-success.checkpoint.json"
-        )
+        PathBuf::from("/tmp/janiform-persistence-root/checkpoints/last-success.checkpoint.json")
     );
 }
 
@@ -93,7 +89,7 @@ fn calibration_artifact_run_writer_quarantines_stale_pending_runs_before_fresh_r
     let stale_pending_directory = persistence_root_directory
         .join("artifacts")
         .join("pending")
-        .join(run_id);
+        .join("calibration");
     fs::create_dir_all(stale_pending_directory.as_path())
         .expect("stale pending directory should be created");
     fs::write(

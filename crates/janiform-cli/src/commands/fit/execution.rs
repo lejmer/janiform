@@ -91,10 +91,13 @@ pub(crate) fn run_fit_staged_run_command(
             source,
         })?;
 
-    if let Some(checkpoint_directory) = options.disk_checkpoint_directory.as_ref() {
-        let checkpoint_directory = context.paths().resolve_process_path(checkpoint_directory);
+    if let Some(persistence_root_directory) = options.disk_checkpoint_directory.as_ref() {
+        let persistence_root_directory = context
+            .paths()
+            .resolve_process_path(persistence_root_directory);
+
         execution_input.runtime_resources = Some(CalibrationStagedExecutionRuntimeResources {
-            disk_checkpoint_directory: Some(checkpoint_directory.display().to_string()),
+            disk_checkpoint_directory: Some(persistence_root_directory.display().to_string()),
         });
     }
 

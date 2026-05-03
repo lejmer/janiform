@@ -9,15 +9,14 @@ use serde::de::DeserializeOwned;
 
 use super::super::contracts::{CalibrationExecutionMode, CalibrationRunSpec, CalibrationStage};
 
-pub const CALIBRATION_ARTIFACT_STORAGE_LAYOUT_POLICY: &str =
-    "root_directory_separates_committed_artifacts_pending_artifacts_quarantine_and_checkpoints.v1";
+pub const CALIBRATION_ARTIFACT_STORAGE_LAYOUT_POLICY: &str = "run_directory_separates_committed_calibration_artifacts_pending_artifacts_quarantine_and_checkpoints.v1";
 pub const CALIBRATION_ARTIFACT_ROOT_CONFIGURATION_POLICY: &str =
     "caller_supplied_root_directory_supports_local_and_ci_filesystem_contexts.v1";
 
 pub fn calibration_committed_artifact_runs_root_directory(
     persistence_root_directory: &Path,
 ) -> PathBuf {
-    persistence_root_directory.join("artifacts").join("runs")
+    persistence_root_directory.join("artifacts")
 }
 
 pub fn calibration_experiment_index_root_directory(persistence_root_directory: &Path) -> PathBuf {
@@ -45,23 +44,24 @@ pub(crate) fn calibration_quarantine_artifact_runs_root_directory(
 
 pub fn calibration_committed_artifact_run_directory(
     persistence_root_directory: &Path,
-    run_id: &str,
+    _run_id: &str,
 ) -> PathBuf {
-    calibration_committed_artifact_runs_root_directory(persistence_root_directory).join(run_id)
+    calibration_committed_artifact_runs_root_directory(persistence_root_directory)
+        .join("calibration")
 }
 
 pub(crate) fn calibration_pending_artifact_run_directory(
     persistence_root_directory: &Path,
-    run_id: &str,
+    _run_id: &str,
 ) -> PathBuf {
-    calibration_pending_artifact_runs_root_directory(persistence_root_directory).join(run_id)
+    calibration_pending_artifact_runs_root_directory(persistence_root_directory).join("calibration")
 }
 
 pub fn calibration_checkpoint_run_directory(
     persistence_root_directory: &Path,
-    run_id: &str,
+    _run_id: &str,
 ) -> PathBuf {
-    persistence_root_directory.join("checkpoints").join(run_id)
+    persistence_root_directory.join("checkpoints")
 }
 
 pub(crate) fn calibration_execution_mode_token(

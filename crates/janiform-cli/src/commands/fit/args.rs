@@ -278,7 +278,7 @@ pub(crate) struct FitStagedPlanCommand {
     about = "Run a prepared calibration input file.",
     long_about = "Run a prepared calibration input file.
 
-The input file contains the prepared calibration run. Command-line checkpoint options can select the disk checkpoint directory or resume from a compatible checkpoint reference."
+The input file contains the prepared calibration run. Command-line checkpoint options can select the disk persistence root or resume from a compatible checkpoint reference."
 )]
 pub(crate) struct FitStagedRunCommand {
     #[command(flatten)]
@@ -293,10 +293,10 @@ pub(crate) struct StagedExecutionOptions {
     #[arg(
         long,
         value_name = "DIR",
-        help = "Directory for disk checkpoints.",
-        long_help = "Directory for disk checkpoints.
+        help = "Disk persistence root for checkpoints and staged artifacts.",
+        long_help = "Disk persistence root for checkpoints and staged artifacts.
 
-When omitted, disk execution uses the checkpoint directory from the prepared calibration input file or the default run-directory checkpoint path."
+When omitted, disk execution uses the persistence root from the prepared calibration input file or the default run directory."
     )]
     pub(crate) disk_checkpoint_directory: Option<PathBuf>,
 

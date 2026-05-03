@@ -118,6 +118,7 @@ fn reload_resolver_rejects_unsupported_manifest_schema_versions() {
     assert_eq!(
         error,
         CalibrationArtifactReloadError::UnsupportedSchema {
+            run_id: run_id.to_string(),
             component: CalibrationArtifactReloadComponent::Manifest,
             path: manifest_path.display().to_string(),
             expected_schema_version: CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION.to_string(),
@@ -149,10 +150,12 @@ fn reload_resolver_reports_corrupted_stage_artifacts_with_structured_errors() {
 
     match error {
         CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: found_run_id,
             component,
             path,
             error_message,
         } => {
+            assert_eq!(found_run_id, run_id);
             assert_eq!(
                 component,
                 CalibrationArtifactReloadComponent::StageParameter {

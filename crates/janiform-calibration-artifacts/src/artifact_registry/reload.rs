@@ -184,6 +184,7 @@ pub fn reload_calibration_artifact_run_from_disk(
     let manifest_path =
         calibration_artifact_manifest_path(persistence_root_directory, request.run_id.as_str());
     let manifest = load_artifact_with_schema_check::<CalibrationArtifactManifest, _>(
+        request.run_id.as_str(),
         manifest_path.as_path(),
         CalibrationArtifactReloadComponent::Manifest,
         CalibrationArtifactManifest::schema_version(),
@@ -218,6 +219,7 @@ pub fn reload_calibration_artifact_run_from_disk(
         request.run_id.as_str(),
     );
     let dataset_snapshot = load_artifact_with_schema_check::<CalibrationDatasetSnapshotArtifact, _>(
+        request.run_id.as_str(),
         dataset_snapshot_path.as_path(),
         CalibrationArtifactReloadComponent::DatasetSnapshot,
         CALIBRATION_DATASET_SNAPSHOT_ARTIFACT_SCHEMA_VERSION,
@@ -254,6 +256,7 @@ pub fn reload_calibration_artifact_run_from_disk(
         );
         let stage_parameter_artifact =
             load_artifact_with_schema_check::<CalibrationStageParameterArtifact, _>(
+                request.run_id.as_str(),
                 stage_path.as_path(),
                 CalibrationArtifactReloadComponent::StageParameter { stage },
                 CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION,
@@ -320,21 +323,25 @@ pub enum CalibrationArtifactReloadError {
         path: String,
     },
     MissingArtifactFile {
+        run_id: String,
         component: CalibrationArtifactReloadComponent,
         path: String,
     },
     ArtifactReadFailed {
+        run_id: String,
         component: CalibrationArtifactReloadComponent,
         path: String,
         error_message: String,
     },
     UnsupportedSchema {
+        run_id: String,
         component: CalibrationArtifactReloadComponent,
         path: String,
         expected_schema_version: String,
         found_schema_version: String,
     },
     CorruptedArtifact {
+        run_id: String,
         component: CalibrationArtifactReloadComponent,
         path: String,
         error_message: String,
@@ -378,33 +385,41 @@ impl Display for CalibrationArtifactReloadError {
                 formatter,
                 "no committed disk artifacts exist for run `{run_id}` in `{path}`"
             ),
-            Self::MissingArtifactFile { component, path } => {
-                write!(formatter, "missing {component} file at `{path}`")
-            }
+            Self::MissingArtifactFile {
+                run_id,
+                component,
+                path,
+            } => write!(
+                formatter,
+                "missing {component} file for run `{run_id}` at `{path}`"
+            ),
             Self::ArtifactReadFailed {
+                run_id,
                 component,
                 path,
                 error_message,
             } => write!(
                 formatter,
-                "failed to read {component} at `{path}`: {error_message}"
+                "failed to read {component} for run `{run_id}` at `{path}`: {error_message}"
             ),
             Self::UnsupportedSchema {
+                run_id,
                 component,
                 path,
                 expected_schema_version,
                 found_schema_version,
             } => write!(
                 formatter,
-                "{component} at `{path}` uses unsupported schema `{found_schema_version}`, expected `{expected_schema_version}`"
+                "{component} for run `{run_id}` at `{path}` uses unsupported schema `{found_schema_version}`, expected `{expected_schema_version}`"
             ),
             Self::CorruptedArtifact {
+                run_id,
                 component,
                 path,
                 error_message,
             } => write!(
                 formatter,
-                "{component} at `{path}` is corrupted: {error_message}"
+                "{component} for run `{run_id}` at `{path}` is corrupted: {error_message}"
             ),
             Self::MissingRequiredComponent { run_id, component } => {
                 write!(formatter, "run `{run_id}` is missing required {component}")
@@ -526,6 +541,7 @@ fn load_optional_validation_metric_artifact(
         artifact_role,
     );
     let artifact = load_artifact_with_schema_check::<CalibrationValidationMetricArtifact, _>(
+        run_id,
         validation_metric_path.as_path(),
         component,
         CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_VERSION,
@@ -647,6 +663,7 @@ fn maybe_unique_manifest_reference(
                     });
             if missing_stage_entry.is_some() {
                 return Err(CalibrationArtifactReloadError::CorruptedArtifact {
+                    run_id: run_id.to_string(),
                     component: CalibrationArtifactReloadComponent::Manifest,
                     path: manifest_path.display().to_string(),
                     error_message: "stage_output manifest entries must include a stage".to_string(),
@@ -707,6 +724,7 @@ fn ensure_stage_matches(
 }
 
 fn load_artifact_with_schema_check<T, Validate>(
+    run_id: &str,
     artifact_path: &Path,
     component: CalibrationArtifactReloadComponent,
     expected_schema_version: &str,
@@ -718,10 +736,12 @@ where
 {
     let content = fs::read_to_string(artifact_path).map_err(|source| match source.kind() {
         std::io::ErrorKind::NotFound => CalibrationArtifactReloadError::MissingArtifactFile {
+            run_id: run_id.to_string(),
             component,
             path: artifact_path.display().to_string(),
         },
         _ => CalibrationArtifactReloadError::ArtifactReadFailed {
+            run_id: run_id.to_string(),
             component,
             path: artifact_path.display().to_string(),
             error_message: source.to_string(),
@@ -730,15 +750,17 @@ where
 
     let document: Value = serde_json::from_str(content.as_str()).map_err(|source| {
         CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: run_id.to_string(),
             component,
             path: artifact_path.display().to_string(),
             error_message: source.to_string(),
         }
     })?;
 
-    let found_schema_version = extract_schema_version(artifact_path, component, &document)?;
+    let found_schema_version = extract_schema_version(run_id, artifact_path, component, &document)?;
     if found_schema_version != expected_schema_version {
         return Err(CalibrationArtifactReloadError::UnsupportedSchema {
+            run_id: run_id.to_string(),
             component,
             path: artifact_path.display().to_string(),
             expected_schema_version: expected_schema_version.to_string(),
@@ -748,6 +770,7 @@ where
 
     let payload: T = serde_json::from_value(document).map_err(|source| {
         CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: run_id.to_string(),
             component,
             path: artifact_path.display().to_string(),
             error_message: source.to_string(),
@@ -755,6 +778,7 @@ where
     })?;
     validate(&payload).map_err(|error_message| {
         CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: run_id.to_string(),
             component,
             path: artifact_path.display().to_string(),
             error_message,
@@ -765,6 +789,7 @@ where
 }
 
 fn extract_schema_version(
+    run_id: &str,
     artifact_path: &Path,
     component: CalibrationArtifactReloadComponent,
     document: &Value,
@@ -773,6 +798,7 @@ fn extract_schema_version(
         document
             .as_object()
             .ok_or(CalibrationArtifactReloadError::CorruptedArtifact {
+                run_id: run_id.to_string(),
                 component,
                 path: artifact_path.display().to_string(),
                 error_message: "expected a top-level JSON object".to_string(),
@@ -781,6 +807,7 @@ fn extract_schema_version(
         .get("schema_version")
         .and_then(Value::as_str)
         .ok_or(CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: run_id.to_string(),
             component,
             path: artifact_path.display().to_string(),
             error_message: "missing or invalid top-level schema_version".to_string(),

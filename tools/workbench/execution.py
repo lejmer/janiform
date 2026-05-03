@@ -6,7 +6,6 @@ from typing import Any, Optional, Protocol
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from janiform._workflow_outputs import resolve_fit_artifact_paths
 from janiform.calibration.fit._inference import (
     NormalizationPolicyOverrides,
     TickDataColumnOverrides,
@@ -153,25 +152,22 @@ class WorkbenchExecutionWorker(QObject):
 
             model = fit_result.require_model()
             fit_report = fit_result.report
-            artifact_paths = resolve_fit_artifact_paths(
-                run_id=fit_report.run_id,
-                output_dir=self._run_setup.output_directory,
-            )
+            run_directory = self._run_setup.output_directory / fit_report.run_id
 
             self._emit_event(
                 WorkbenchEventType.ARTIFACT_RECORDED,
                 payload={
                     "artifact_kind": "fit_run_directory",
-                    "artifact_path": str(artifact_paths.run_directory),
+                    "artifact_path": str(run_directory),
                     "artifact_label": "Fit artifacts written",
                 },
             )
 
-            artifacts = load_workbench_artifacts(artifact_paths.run_directory)
+            artifacts = load_workbench_artifacts(run_directory)
 
             self.execution_completed.emit(
                 WorkbenchExecutionResult(
-                    run_directory=artifact_paths.run_directory,
+                    run_directory=run_directory,
                     model=model,
                     fit_report=fit_report,
                     artifacts=artifacts,

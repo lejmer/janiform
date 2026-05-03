@@ -96,10 +96,6 @@ def test_workbench_execution_worker_uses_shared_fit_workflow_entrypoint(
         lambda **_: {"run_id": "workbench-run"},
     )
     monkeypatch.setattr(
-        "tools.workbench.execution.resolve_fit_artifact_paths",
-        lambda **_: SimpleNamespace(run_directory=Path("output/workbench-run")),
-    )
-    monkeypatch.setattr(
         "tools.workbench.execution.load_workbench_artifacts",
         lambda path: SimpleNamespace(source_path=path),
     )

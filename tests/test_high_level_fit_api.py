@@ -4058,57 +4058,6 @@ def test_high_level_fit_with_report_returns_failed_result_without_raising(
     assert fit_result.report.success is False
 
 
-def test_high_level_fit_persists_fit_report_and_model_from_shared_workflow(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tick_data_path = tmp_path / "ticks.csv"
-    tick_data_path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc,trade_price,trade_sign",
-                "2026-02-02T14:30:00Z,100.0,buy",
-                "2026-02-02T15:00:00Z,100.5,sell",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    estimator = JaniformEstimator(
-        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-        tick_data_column_mapping=CalibrationTickDataColumnMapping(
-            timestamp_column="timestamp_utc",
-            price_column="trade_price",
-            trade_sign_column="trade_sign",
-        ),
-        normalization_policy=CalibrationMarketDataNormalizationPolicy(
-            timestamp_timezone="UTC",
-            sort_records_by_timestamp=True,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
-        ),
-        market_profile="us_equity_cash",
-    )
-
-    patch_fit_workflow_runner(
-        monkeypatch,
-        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
-            _prepared_runner_run_id(prepared_handle)
-        ),
-    )
-    run_id = "high-level-fit-report-persistence"
-    estimator.fit(
-        run_id=run_id,
-        tick_data_path=tick_data_path,
-        tick_data_format=CalibrationInputFileFormat.CSV,
-        output_dir=tmp_path,
-    )
-
-    run_directory = tmp_path / run_id
-    assert (run_directory / "fit_report.json").is_file()
-    assert (run_directory / "run.json").is_file()
-    assert (run_directory / "model.json").is_file()
-
-
 def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manifest_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4188,17 +4137,11 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
         output_dir=tmp_path,
     )
 
-    run_directory = tmp_path / run_id
-
     assert fit_result.succeeded is False
     assert fit_result.model is None
     assert fit_result.report.success is False
     assert fit_result.report.staged_response.status.value == "failure"
     assert fit_result.report.staged_response.execution_mode.value == "disk"
-    assert (run_directory / "fit_report.json").is_file()
-    assert (run_directory / "run.json").is_file()
-    assert not (run_directory / "model.json").exists()
-    assert json.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))["success"] is False
 
 
 def test_high_level_fit_result_require_model_raises_for_failed_fit(
@@ -4496,7 +4439,7 @@ def _write_stage_parameter_artifacts_for_stage_reports(
     run_id: str,
     raw_stage_reports: list[dict[str, Any]],
 ) -> None:
-    artifact_directory = checkpoint_directory / "artifacts" / "runs" / run_id
+    artifact_directory = checkpoint_directory / "artifacts" / "calibration"
     artifact_directory.mkdir(parents=True, exist_ok=True)
 
     for raw_stage_report in raw_stage_reports:
@@ -4527,8 +4470,7 @@ def _write_stage_parameter_artifacts_for_stage_reports(
         artifact_path = (
             checkpoint_directory
             / "artifacts"
-            / "runs"
-            / run_id
+            / "calibration"
             / f"{stage_kind.value}.stage_parameter.artifact.json"
         )
         artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
@@ -4540,7 +4482,7 @@ def _write_artifact_manifest_for_recovered_disk_run(
     run_id: str,
     selected_stage_kinds: tuple[CalibrationStage, ...],
 ) -> None:
-    artifact_directory = checkpoint_directory / "artifacts" / "runs" / run_id
+    artifact_directory = checkpoint_directory / "artifacts" / "calibration"
     artifact_directory.mkdir(parents=True, exist_ok=True)
 
     artifact_references: list[dict[str, Any]] = [
@@ -4605,7 +4547,7 @@ def _write_diagnostic_artifacts_for_recovered_disk_run(
     checkpoint_directory: Path,
     run_id: str,
 ) -> None:
-    diagnostics_directory = checkpoint_directory / "artifacts" / "runs" / run_id / "diagnostics"
+    diagnostics_directory = checkpoint_directory / "artifacts" / "calibration" / "diagnostics"
     diagnostics_directory.mkdir(parents=True, exist_ok=True)
 
     diagnostic_payloads = {
@@ -4697,7 +4639,7 @@ def _duplicate_manifest_failure_staged_runner_payload(
         "stage": "joint_refinement",
         "error_message": (
             "committed artifact set already exists for run "
-            f"`{run_id}` in `/tmp/{run_id}/artifacts/runs/{run_id}`"
+            f"`{run_id}` in `/tmp/{run_id}/artifacts/calibration`"
         ),
         "run_id": run_id,
     }

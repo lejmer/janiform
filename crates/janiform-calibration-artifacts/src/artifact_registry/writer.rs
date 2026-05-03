@@ -8,7 +8,6 @@ use super::manifest::calibration_artifact_manifest_path_in_run_directory;
 use super::shared::{
     calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_pending_artifact_run_directory,
-    calibration_pending_artifact_runs_root_directory,
     calibration_quarantine_artifact_runs_root_directory,
 };
 
@@ -39,23 +38,15 @@ impl CalibrationArtifactRunWriter {
     ) -> Result<Self, CalibrationArtifactRunWriterError> {
         let committed_runs_root_directory =
             calibration_committed_artifact_runs_root_directory(persistence_root_directory);
-        let pending_runs_root_directory =
-            calibration_pending_artifact_runs_root_directory(persistence_root_directory);
         let quarantine_runs_root_directory =
             calibration_quarantine_artifact_runs_root_directory(persistence_root_directory);
 
-        for directory in [
-            committed_runs_root_directory.as_path(),
-            pending_runs_root_directory.as_path(),
-            quarantine_runs_root_directory.as_path(),
-        ] {
-            fs::create_dir_all(directory).map_err(|source| {
-                CalibrationArtifactRunWriterError::CreateDirectoryFailed {
-                    path: directory.display().to_string(),
-                    error_message: source.to_string(),
-                }
-            })?;
-        }
+        fs::create_dir_all(&committed_runs_root_directory).map_err(|source| {
+            CalibrationArtifactRunWriterError::CreateDirectoryFailed {
+                path: committed_runs_root_directory.display().to_string(),
+                error_message: source.to_string(),
+            }
+        })?;
 
         let committed_run_directory =
             calibration_committed_artifact_run_directory(persistence_root_directory, run_id);
@@ -190,6 +181,13 @@ fn quarantine_run_directory(
     run_id: &str,
     reason_token: &str,
 ) -> Result<PathBuf, CalibrationArtifactRunWriterError> {
+    fs::create_dir_all(quarantine_root_directory).map_err(|source| {
+        CalibrationArtifactRunWriterError::CreateDirectoryFailed {
+            path: quarantine_root_directory.display().to_string(),
+            error_message: source.to_string(),
+        }
+    })?;
+
     let target_directory =
         next_quarantine_run_directory(quarantine_root_directory, run_id, reason_token)?;
     fs::rename(source_directory, &target_directory).map_err(|source| {

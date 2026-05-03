@@ -545,9 +545,9 @@ This advanced command is useful when a separate process prepares calibration inp
 ###### **Options:**
 
 * `--execution-input-path <PATH>` — Prepared calibration input file.
-* `--disk-checkpoint-directory <DIR>` — Directory for disk checkpoints.
+* `--disk-checkpoint-directory <DIR>` — Disk persistence root for checkpoints and staged artifacts.
 
-   When omitted, disk execution uses the checkpoint directory from the prepared calibration input file or the default run-directory checkpoint path.
+   When omitted, disk execution uses the persistence root from the prepared calibration input file or the default run directory.
 * `--resume-checkpoint-reference <REFERENCE>` — Resume disk execution from a checkpoint reference.
 
    Checkpoint references identify a saved checkpoint such as checkpoint://RUN_ID/last-success or checkpoint://RUN_ID/STAGE_TOKEN.
@@ -694,9 +694,9 @@ This command runs a prepared calibration input file. Disk runs write the fitted 
 ###### **Options:**
 
 * `--execution-input-path <PATH>` — Prepared calibration input file.
-* `--disk-checkpoint-directory <DIR>` — Directory for disk checkpoints.
+* `--disk-checkpoint-directory <DIR>` — Disk persistence root for checkpoints and staged artifacts.
 
-   When omitted, disk execution uses the checkpoint directory from the prepared calibration input file or the default run-directory checkpoint path.
+   When omitted, disk execution uses the persistence root from the prepared calibration input file or the default run directory.
 * `--resume-checkpoint-reference <REFERENCE>` — Resume disk execution from a checkpoint reference.
 
    Checkpoint references identify a saved checkpoint such as checkpoint://RUN_ID/last-success or checkpoint://RUN_ID/STAGE_TOKEN.
