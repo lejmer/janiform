@@ -114,10 +114,10 @@ def test_rust_benchmark_governance_smoke_workflow_has_manual_trigger_and_artifac
 
 def test_local_python_benchmark_runner_is_documented() -> None:
     project_root: Path = _project_root()
-    runner_script_path = project_root / "scripts" / "python_benchmark_workloads.py"
-    runner_script_text = _load_workflow_text(runner_script_path)
-    testing_guide = _load_workflow_text(
-        project_root / "docs" / "contributing" / "verification-and-automation.md"
+    runner_script_path: Path = project_root / "scripts" / "python_benchmark_workloads.py"
+    runner_script_text: str = _load_workflow_text(runner_script_path)
+    testing_guide: str = _load_workflow_text(
+        project_root / "docs" / "contributing" / "writing-tests.md"
     )
 
     assert "def _run_real_data_seeded_runtime_benchmark(" in runner_script_text
@@ -125,11 +125,12 @@ def test_local_python_benchmark_runner_is_documented() -> None:
     assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in runner_script_text
     assert "benches/python/python_microbenchmarks.py" in runner_script_text
     assert "scripts/python_benchmark_workloads.py" in testing_guide
+    assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in testing_guide
+    assert "benches/python/python_microbenchmarks.py" in testing_guide
+    assert ".artifacts/local-python-benchmarks" in testing_guide
     assert "ci-pr-fast" in testing_guide
     assert "ci-platform" in testing_guide
     assert "ci-rust-benchmark-governance-smoke" in testing_guide
-    assert "Protect `develop`" in testing_guide
-    assert "stay local-only" in testing_guide
 
 
 def test_release_candidate_workflow_builds_artifacts_and_creates_draft_release() -> None:
