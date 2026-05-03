@@ -271,7 +271,7 @@ class SeededTickSimulationRequest(ContractModel):
     )
 
     def to_payload(self) -> dict[str, Any]:
-        payload = super().to_payload()
+        payload = ContractModel.to_payload(self)
         payload.pop("_hourly_factor_contract", None)
         return payload
 

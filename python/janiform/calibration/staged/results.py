@@ -158,7 +158,7 @@ class StagedCalibrationResponse(ContractModel):
     failure: Optional[CalibrationFailureDetails] = None
 
     def to_payload(self) -> dict[str, Any]:
-        payload = super().to_payload()
+        payload = ContractModel.to_payload(self)
         if not self.diagnostic_artifact_references:
             payload.pop("diagnostic_artifact_references", None)
         if self.diagnostic_artifact_bundle is None:

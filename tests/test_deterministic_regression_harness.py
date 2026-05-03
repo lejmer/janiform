@@ -5,6 +5,7 @@ import orjson
 import pytest
 
 import janiform.validation as validation_module
+from janiform.calendar import CalendarRegistry
 from janiform.seasonality import SeasonalityInputValidationError
 from janiform.validation import (
     DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,

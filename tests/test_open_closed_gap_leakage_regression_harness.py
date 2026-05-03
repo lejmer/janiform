@@ -5,6 +5,7 @@ import orjson
 import pytest
 
 import janiform.validation as validation_module
+from janiform.calendar import CalendarRegistry
 from janiform.seasonality import SeasonalityInputValidationError
 from janiform.validation import (
     OPEN_CLOSED_GAP_BEHAVIOR_BASELINE_EXPECTED_OUTPUT_POLICY,
