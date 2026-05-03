@@ -22,6 +22,7 @@ use crate::simulation::direct::{
     CoarseIntervalExportSettings, DirectSimulationJob, SeededTickExportSettings,
 };
 
+use super::artifacts::write_model_artifact_simulation_sidecars;
 use super::output::ModelArtifactSimulationWorkflowOutput;
 use super::request::{ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest};
 
@@ -45,11 +46,22 @@ pub fn run_simulation_from_model_artifact(
 
     let export_summary = completed.export(request.output_path.as_deref())?;
 
-    Ok(ModelArtifactSimulationWorkflowOutput {
+    let output = ModelArtifactSimulationWorkflowOutput {
         completed,
         export_summary,
         execution_duration: started_at.elapsed(),
-    })
+    };
+
+    if let Some(output_path) = request.output_path.as_deref() {
+        write_model_artifact_simulation_sidecars(
+            request.run_id.as_deref().unwrap_or("simulation"),
+            context.model.run_id.as_str(),
+            output_path,
+            &output.response_payload()?,
+        )?;
+    }
+
+    Ok(output)
 }
 
 fn validate_request(request: &ModelArtifactSimulationWorkflowRequest) -> Result<(), WorkflowError> {

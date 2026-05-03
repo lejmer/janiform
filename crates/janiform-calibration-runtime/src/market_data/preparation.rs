@@ -102,8 +102,6 @@ pub struct CalibrationMarketDataOutputPreferences {
     pub execution_mode: CalibrationExecutionMode,
     #[serde(default)]
     pub disk_checkpoint_directory: Option<String>,
-    #[serde(rename = "emit_derived_staged_execution_input")]
-    pub emit_derived_staged_execution_input: bool,
     #[serde(rename = "emit_input_provenance_report")]
     pub emit_input_provenance_report: bool,
 }

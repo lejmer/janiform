@@ -128,7 +128,6 @@ pub(crate) fn prepare_fit_preview(
                 }
                 CalibrationExecutionMode::Memory => None,
             },
-            emit_derived_staged_execution_input: false,
             emit_input_provenance_report: true,
         },
         optimizer_settings_by_stage: Vec::new(),

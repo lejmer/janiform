@@ -27,8 +27,8 @@ from examples._synthetic_option_surface import (
     SyntheticVanillaOptionSurfaceContext,
     load_synthetic_eurusd_surface_context,
 )
-from janiform.calibration import JaniformVanillaOptionSurfacePricingResult
 from janiform.pricing import VanillaOptionPayoffType
+from janiform.pricing.fitted import JaniformVanillaOptionSurfacePricingResult
 
 
 DEFAULT_RELATIVE_BID_ASK_WIDTH: Final[float] = 0.10

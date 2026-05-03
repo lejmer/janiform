@@ -6,12 +6,12 @@ This page covers the main ways to integrate Janiform with other tools and system
 
 Janiform exposes external integration through four main surfaces:
 
-| Surface | What it provides |
-|---------|------------------|
-| CLI stdout | Final terminal output or one final JSON object with `--json`. |
-| CLI stderr event stream | Line-delimited JSON events with `--events jsonl`. |
-| Written files | Saved models, reports, manifests, event logs, latest-state snapshots, checkpoints, simulations, and pricing payloads. |
-| Python callbacks | In-process progress updates during fitting, simulation, and pricing. |
+| Surface                 | What it provides                                                                                                      |
+|-------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| CLI stdout              | Final terminal output or one final JSON object with `--json`.                                                         |
+| CLI stderr event stream | Line-delimited JSON events with `--events jsonl`.                                                                     |
+| Written files           | Saved models, reports, manifests, event logs, latest-state snapshots, checkpoints, simulations, and pricing payloads. |
+| Python callbacks        | In-process progress updates during fitting, simulation, and pricing.                                                  |
 
 These surfaces can be combined. A long-running fit can emit JSONL events to stderr, write a run directory to disk, and later be inspected again from the CLI or from Python.
 
@@ -107,7 +107,7 @@ Simulation writes the path data itself plus sidecar files beside it:
 .janiform/runs/model_<timestamp>/run.json
 ```
 
-`simulation_report.json` summarizes the simulation kind, output path, and diagnostics. `run.json` records the run id and output locations.
+`simulation_report.json` summarizes the output path, simulation kind, completion data, and export summary. `run.json` records the run id and output locations.
 
 ### Pricing outputs
 

@@ -235,7 +235,6 @@ def test_market_data_calibration_request_constructor_defaults_column_mapping() -
         ),
         output_preferences=CalibrationMarketDataOutputPreferences(
             execution_mode=CalibrationExecutionMode.MEMORY,
-            emit_derived_staged_execution_input=False,
             emit_input_provenance_report=True,
         ),
     )
@@ -743,7 +742,6 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
         ),
         output_preferences=CalibrationMarketDataOutputPreferences(
             execution_mode=CalibrationExecutionMode.MEMORY,
-            emit_derived_staged_execution_input=False,
             emit_input_provenance_report=True,
         ),
         option_surface_source=CalibrationInputFileReference(

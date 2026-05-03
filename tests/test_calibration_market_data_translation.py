@@ -1180,11 +1180,6 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     assert prepared.provenance.derived_trade_events_data_reference == (
         "market_data://market_data_translation_run/ticks/ticks_primary"
     )
-    persisted = prepared.persist_prepared_execution_artifacts(tmp_path / "prepared")
-    assert persisted.prepared_payload_path is not None
-    assert persisted.staged_execution_input_path is not None
-    assert Path(persisted.prepared_payload_path).exists()
-    assert Path(persisted.staged_execution_input_path).exists()
 
 def test_translate_market_data_request_full_with_option_surface_sets_option_reference(
     tmp_path: Path,
@@ -1387,7 +1382,6 @@ def _build_market_data_request(
         normalization_policy=normalization_policy,
         output_preferences=CalibrationMarketDataOutputPreferences(
             execution_mode=CalibrationExecutionMode.MEMORY,
-            emit_derived_staged_execution_input=False,
             emit_input_provenance_report=True,
         ),
         preprocessing_settings=preprocessing_settings,

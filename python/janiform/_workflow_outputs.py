@@ -7,19 +7,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
 
-import pyarrow as pyarrow
+import pyarrow
 from pyarrow import parquet
 
 from ._native_api import native_module
 from .calendar import CalendarRegistry, MarketState
-from .contracts import serialize_pretty_json
 
 if TYPE_CHECKING:
-    from .calibration.fit.report import JaniformFitReport
     from .model import JaniformModel
-    from .pricing.contracts import VanillaOptionPricingRunResult
     from .simulation.coarse import CoarseSimulationPath
-    from .simulation.kinds import SimulationKind
     from .simulation.seeded import SeededTickSimulationResponse
 
 
@@ -27,15 +23,6 @@ class SimulationArtifactSink(Protocol):
     def write_records(self, records: list[dict[str, Any]]) -> None: ...
 
     def close(self) -> None: ...
-
-
-@dataclass(frozen=True, slots=True)
-class WorkflowArtifactPaths:
-    run_id: str
-    run_directory: Path
-    primary_output_path: Path
-    report_path: Path
-    manifest_path: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,219 +43,6 @@ def generate_workflow_run_id(prefix: str) -> str:
     return f"{prefix}_{timestamp}"
 
 
-def resolve_fit_artifact_paths(
-    *,
-    run_id: str,
-    output_dir: Optional[str | Path],
-) -> WorkflowArtifactPaths:
-    run_directory = _resolve_run_directory(run_id=run_id, output_dir=output_dir)
-    return WorkflowArtifactPaths(
-        run_id=run_id,
-        run_directory=run_directory,
-        primary_output_path=run_directory / "model.json",
-        report_path=run_directory / "fit_report.json",
-        manifest_path=run_directory / "run.json",
-    )
-
-
-def resolve_simulation_artifact_paths(
-    *,
-    run_id: str,
-    output_path: Optional[str | Path],
-    default_file_format: str,
-    interval_label: Optional[str],
-) -> WorkflowArtifactPaths:
-    resolved_output_path = _resolve_output_path(
-        run_id=run_id,
-        output_path=output_path,
-        default_stem="simulation" if interval_label is None else f"simulation_{interval_label}",
-        default_file_format=default_file_format,
-    )
-    run_directory = resolved_output_path.parent
-
-    return WorkflowArtifactPaths(
-        run_id=run_id,
-        run_directory=run_directory,
-        primary_output_path=resolved_output_path,
-        report_path=run_directory / "simulation_report.json",
-        manifest_path=run_directory / "run.json",
-    )
-
-
-def resolve_pricing_artifact_paths(
-    *,
-    run_id: str,
-    output_path: Optional[str | Path],
-) -> WorkflowArtifactPaths:
-    resolved_output_path = _resolve_output_path(
-        run_id=run_id,
-        output_path=output_path,
-        default_stem="pricing",
-        default_file_format="json",
-    )
-    run_directory = resolved_output_path.parent
-
-    return WorkflowArtifactPaths(
-        run_id=run_id,
-        run_directory=run_directory,
-        primary_output_path=resolved_output_path,
-        report_path=run_directory / "pricing_report.json",
-        manifest_path=run_directory / "run.json",
-    )
-
-
-def ensure_artifact_directory(paths: WorkflowArtifactPaths) -> None:
-    paths.run_directory.mkdir(parents=True, exist_ok=True)
-
-
-def write_fit_artifacts(
-    *,
-    model: JaniformModel,
-    fit_report: JaniformFitReport,
-    output_dir: str | Path,
-) -> WorkflowArtifactPaths:
-    paths = write_fit_report_artifacts(
-        run_id=model.run_id,
-        fit_report=fit_report,
-        output_dir=output_dir,
-    )
-
-    model.save(paths.primary_output_path)
-
-    write_json_document(
-        paths.manifest_path,
-        build_run_manifest(
-            workflow="fit",
-            run_id=paths.run_id,
-            primary_output_path=paths.primary_output_path,
-            report_path=paths.report_path,
-            run_directory=paths.run_directory,
-            additional_artifacts={"model_path": str(paths.primary_output_path)},
-        ),
-    )
-    return paths
-
-
-def write_fit_report_artifacts(
-    *,
-    run_id: str,
-    fit_report: JaniformFitReport,
-    output_dir: str | Path,
-) -> WorkflowArtifactPaths:
-    paths = resolve_fit_artifact_paths(run_id=run_id, output_dir=output_dir)
-
-    ensure_artifact_directory(paths)
-
-    fit_report.save(paths.report_path)
-
-    write_json_document(
-        paths.manifest_path,
-        build_run_manifest(
-            workflow="fit",
-            run_id=paths.run_id,
-            primary_output_path=paths.primary_output_path,
-            report_path=paths.report_path,
-            run_directory=paths.run_directory,
-        ),
-    )
-    return paths
-
-
-def write_simulation_artifacts(
-    *,
-    model: JaniformModel,
-    simulation_result: CoarseSimulationPath | SeededTickSimulationResponse,
-    output_path: str | Path,
-    simulation_run_id: str,
-    interval_label: Optional[str],
-) -> WorkflowArtifactPaths:
-    from .simulation.kinds import SimulationKind
-    from .simulation.seeded import SeededTickSimulationResponse
-
-    preferences = simulation_output_preferences_from_model(model)
-
-    paths = resolve_simulation_artifact_paths(
-        run_id=simulation_run_id,
-        output_path=output_path,
-        default_file_format=_file_format_for_simulation_path(Path(output_path), preferences.file_format),
-        interval_label=interval_label,
-    )
-
-    ensure_artifact_directory(paths)
-
-    if isinstance(simulation_result, SeededTickSimulationResponse):
-        persist_seeded_tick_simulation(
-            simulation_result=simulation_result,
-            output_path=paths.primary_output_path,
-            preferences=preferences,
-        )
-        report_payload = build_simulation_report_payload(
-            simulation_kind=SimulationKind.SEEDED_TICK,
-            output_path=paths.primary_output_path,
-            diagnostics=simulation_result.diagnostics.to_payload(),
-        )
-    else:
-        persist_coarse_simulation(
-            simulation_result=simulation_result,
-            output_path=paths.primary_output_path,
-            preferences=preferences,
-            calendar_registry=CalendarRegistry(model.session_resolution.resolved_session_definition_json),
-            exchange_code=model.session_resolution.exchange_code,
-        )
-        report_payload = build_simulation_report_payload(
-            simulation_kind=SimulationKind.COARSE_INTERVAL,
-            output_path=paths.primary_output_path,
-            diagnostics=simulation_result.diagnostics.to_payload(),
-        )
-
-    write_json_document(paths.report_path, report_payload)
-    write_json_document(
-        paths.manifest_path,
-        build_run_manifest(
-            workflow="simulate",
-            run_id=paths.run_id,
-            primary_output_path=paths.primary_output_path,
-            report_path=paths.report_path,
-            run_directory=paths.run_directory,
-            additional_artifacts={"model_run_id": model.run_id},
-        ),
-    )
-
-    return paths
-
-
-def write_pricing_artifacts(
-    *,
-    model: JaniformModel,
-    pricing_result: VanillaOptionPricingRunResult,
-    output_path: str | Path,
-    pricing_run_id: str,
-) -> WorkflowArtifactPaths:
-    paths = resolve_pricing_artifact_paths(run_id=pricing_run_id, output_path=output_path)
-
-    ensure_artifact_directory(paths)
-
-    pricing_result.save(paths.primary_output_path)
-
-    write_json_document(
-        paths.report_path,
-        build_pricing_report_payload(output_path=paths.primary_output_path, pricing_result=pricing_result),
-    )
-    write_json_document(
-        paths.manifest_path,
-        build_run_manifest(
-            workflow="price",
-            run_id=paths.run_id,
-            primary_output_path=paths.primary_output_path,
-            report_path=paths.report_path,
-            run_directory=paths.run_directory,
-            additional_artifacts={"model_run_id": model.run_id},
-        ),
-    )
-
-    return paths
-
-
 def simulation_output_preferences_from_model(model: JaniformModel) -> SimulationOutputPreferences:
     # Deferred because fitted-model runtime modules import this artifact module.
     from .calibration.fit._runtime.input_inference import (
@@ -277,9 +51,9 @@ def simulation_output_preferences_from_model(model: JaniformModel) -> Simulation
 
     input_inference = tick_data_input_inference_from_model_metadata(model.metadata)
     reference_price = cast(
-        Optional[float],
-        cast(dict[str, Any], model.metadata.get("simulation_output_preferences", {})).get("reference_price"),
-    )
+        dict[str, Any],
+        model.metadata.get("simulation_output_preferences", {}),
+    ).get("reference_price")
 
     return SimulationOutputPreferences(
         file_format=input_inference.file_format,
@@ -468,77 +242,6 @@ def persist_coarse_simulation(
         effective_sink.close()
 
 
-def build_run_manifest(
-    *,
-    workflow: str,
-    run_id: str,
-    primary_output_path: Path,
-    report_path: Path,
-    run_directory: Path,
-    additional_artifacts: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
-    payload = {
-        "schema_version": "janiform.run_manifest.v1",
-        "workflow": workflow,
-        "run_id": run_id,
-        "created_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "run_directory": str(run_directory),
-        "primary_output_path": str(primary_output_path),
-        "report_path": str(report_path),
-    }
-
-    if additional_artifacts is not None:
-        payload["artifacts"] = additional_artifacts
-
-    return payload
-
-
-def build_simulation_report_payload(
-    *,
-    simulation_kind: SimulationKind,
-    output_path: Path,
-    diagnostics: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "schema_version": "janiform.workflow_report.v1",
-        "workflow": "simulate",
-        "simulation_kind": simulation_kind,
-        "created_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "primary_output_path": str(output_path),
-        "diagnostics": diagnostics,
-    }
-
-
-def build_pricing_report_payload(
-    *,
-    output_path: Path,
-    pricing_result: VanillaOptionPricingRunResult,
-) -> dict[str, Any]:
-    return {
-        "schema_version": "janiform.workflow_report.v1",
-        "workflow": "price",
-        "created_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "primary_output_path": str(output_path),
-        "response": pricing_result.response.to_payload(),
-        "run_diagnostics": None if pricing_result.run_diagnostics is None else pricing_result.run_diagnostics.to_payload(),
-    }
-
-
-def write_json_document(path: str | Path, payload: dict[str, Any]) -> None:
-    Path(path).write_text(serialize_pretty_json(payload), encoding="utf-8")
-
-
-def _resolve_run_directory(
-    *,
-    run_id: str,
-    output_dir: Optional[str | Path],
-) -> Path:
-    if output_dir is None:
-        return Path.cwd() / ".janiform" / run_id
-
-    return Path(output_dir) / run_id
-
-
 def _resolve_output_path(
     *,
     run_id: str,
@@ -694,22 +397,10 @@ def _build_simulation_sink(
 __all__ = [
     "SimulationArtifactSink",
     "SimulationOutputPreferences",
-    "WorkflowArtifactPaths",
-    "build_pricing_report_payload",
-    "build_run_manifest",
-    "build_simulation_report_payload",
-    "ensure_artifact_directory",
     "generate_workflow_run_id",
     "persist_coarse_simulation",
     "persist_seeded_tick_simulation",
-    "resolve_fit_artifact_paths",
-    "resolve_pricing_artifact_paths",
-    "resolve_simulation_artifact_paths",
     "simulation_output_columns",
     "simulation_output_price_column",
     "simulation_output_preferences_from_model",
-    "write_fit_artifacts",
-    "write_json_document",
-    "write_pricing_artifacts",
-    "write_simulation_artifacts",
 ]

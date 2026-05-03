@@ -173,13 +173,13 @@ The JSON summary includes the simulation kind, seed, simulated interval count, o
 
 The path data is the primary output. Python returns a `JaniformSimulationResult` and can materialize rows in memory. Durable workflows also write the report and manifest so downstream tools can audit what was run and where the primary artifact was written.
 
-| Output            | Python                                            | CLI                            | Notes                                                                            |
-|-------------------|---------------------------------------------------|--------------------------------|----------------------------------------------------------------------------------|
-| Simulation result | `JaniformSimulationResult`                        | Not returned in process        | Simulation kind, metadata, provenance, diagnostics, and simulation payload.      |
-| Path data         | `to_pandas()`, `to_numpy()`, or `to_parquet(...)` | `simulation.csv` or `.parquet` | Timestamped simulated prices, optional trade side, and fitted state columns.     |
-| Report            | Written when `output_path` is used                | `simulation_report.json`       | Workflow, simulation kind, primary output path, diagnostics, and export summary. |
-| Run manifest      | Written when `output_path` is used                | `run.json`                     | Run id, run directory, primary output path, and report path.                     |
-| JSON completion   | Not applicable                                    | Standard output                | Emitted only when `--json` is used.                                              |
+| Output            | Python                                            | CLI                            | Notes                                                                                |
+|-------------------|---------------------------------------------------|--------------------------------|--------------------------------------------------------------------------------------|
+| Simulation result | `JaniformSimulationResult`                        | Not returned in process        | Simulation kind, metadata, provenance, diagnostics, and simulation payload.          |
+| Path data         | `to_pandas()`, `to_numpy()`, or `to_parquet(...)` | `simulation.csv` or `.parquet` | Timestamped simulated prices, optional trade side, and fitted state columns.         |
+| Report            | Written when `output_path` is used                | `simulation_report.json`       | Workflow, primary output path, simulation kind, completion data, and export summary. |
+| Run manifest      | Written when `output_path` is used                | `run.json`                     | Run id, run directory, primary output path, and report path.                         |
+| JSON completion   | Not applicable                                    | Standard output                | Emitted only when `--json` is used.                                                  |
 
 Path data includes a timestamp column and a price column. Seeded tick output can also include a side column when the fitted model records an explicit trade-sign column. Both seeded and coarse output include state columns for `observed_log_price`, `anchor_value`, `pressure_state`, and `deviation_from_anchor`.
 

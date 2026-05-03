@@ -11,7 +11,9 @@ use janiform::simulation::{
 use janiform::time::calendar::{ExchangeCalendarRegistry, MarketState};
 use parquet::arrow::ArrowWriter;
 use serde::Deserialize;
+use serde_json::{Value, json};
 
+use crate::artifact_io::write_pretty_json_file;
 use crate::error::WorkflowError;
 
 /// Default number of simulation output rows written per artifact batch.
@@ -124,6 +126,42 @@ pub fn export_coarse_simulation(
     write_simulation_rows(output_path, columns, &rows, batch_size)
 }
 
+pub(super) fn write_model_artifact_simulation_sidecars(
+    run_id: &str,
+    model_run_id: &str,
+    output_path: &Path,
+    response_payload: &Value,
+) -> Result<(), WorkflowError> {
+    let run_directory = output_path.parent().unwrap_or_else(|| Path::new("."));
+    let report_path = run_directory.join("simulation_report.json");
+    let manifest_path = run_directory.join("run.json");
+
+    write_json_file(
+        &report_path,
+        &json!({
+            "schema_version": "janiform.workflow_report.v1",
+            "workflow": "simulate",
+            "primary_output_path": output_path,
+            "response": response_payload,
+        }),
+    )?;
+
+    write_json_file(
+        &manifest_path,
+        &json!({
+            "schema_version": "janiform.run_manifest.v1",
+            "workflow": "simulate",
+            "run_id": run_id,
+            "run_directory": run_directory,
+            "primary_output_path": output_path,
+            "report_path": report_path,
+            "artifacts": {
+                "model_run_id": model_run_id,
+            },
+        }),
+    )
+}
+
 fn seeded_output_row(
     record: &SeededFinePathRecord,
     reference_price: f64,
@@ -170,6 +208,15 @@ fn write_simulation_rows(
     Ok(SimulationExportSummary {
         record_count: rows.len(),
         chunk_count: rows.chunks(batch_size).count(),
+    })
+}
+
+fn write_json_file<T>(path: &Path, payload: &T) -> Result<(), WorkflowError>
+where
+    T: serde::Serialize + ?Sized,
+{
+    write_pretty_json_file(path, payload, artifact_write_error, |source| {
+        artifact_write_error(path, std::io::Error::other(source))
     })
 }
 
@@ -408,5 +455,78 @@ const fn side_label(side: SeededTickEventSide) -> &'static str {
     match side {
         SeededTickEventSide::Buy => "buy",
         SeededTickEventSide::Sell => "sell",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use serde_json::{Value, json};
+
+    use super::write_model_artifact_simulation_sidecars;
+
+    #[test]
+    fn model_artifact_simulation_sidecars_record_output_and_model_context() {
+        let run_directory = std::env::temp_dir().join(format!(
+            "janiform-simulation-sidecars-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        let output_path = run_directory.join("simulation.parquet");
+        let response_payload = json!({
+            "simulation_kind": "seeded_tick",
+            "export_summary": {
+                "record_count": 2,
+                "chunk_count": 1,
+            },
+        });
+
+        write_model_artifact_simulation_sidecars(
+            "simulate-run",
+            "fit-run",
+            output_path.as_path(),
+            &response_payload,
+        )
+        .expect("simulation sidecars should be written");
+
+        let report: Value = serde_json::from_str(
+            &std::fs::read_to_string(run_directory.join("simulation_report.json"))
+                .expect("simulation report should be readable"),
+        )
+        .expect("simulation report should be valid JSON");
+        let manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(run_directory.join("run.json"))
+                .expect("run manifest should be readable"),
+        )
+        .expect("run manifest should be valid JSON");
+
+        assert_eq!(
+            report,
+            json!({
+                "schema_version": "janiform.workflow_report.v1",
+                "workflow": "simulate",
+                "primary_output_path": output_path,
+                "response": response_payload,
+            })
+        );
+        assert_eq!(
+            manifest,
+            json!({
+                "schema_version": "janiform.run_manifest.v1",
+                "workflow": "simulate",
+                "run_id": "simulate-run",
+                "run_directory": run_directory,
+                "primary_output_path": output_path,
+                "report_path": run_directory.join("simulation_report.json"),
+                "artifacts": {
+                    "model_run_id": "fit-run",
+                },
+            })
+        );
+
+        std::fs::remove_dir_all(run_directory).ok();
     }
 }

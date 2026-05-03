@@ -474,11 +474,10 @@
           "field_names": [
             "execution_mode",
             "disk_checkpoint_directory",
-            "emit_derived_staged_execution_input",
             "emit_input_provenance_report"
           ],
           "kind": "contract_model",
-          "signature": "(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_derived_staged_execution_input: 'bool' = False, emit_input_provenance_report: 'bool' = True) -> 'None'"
+          "signature": "(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_input_provenance_report: 'bool' = True) -> 'None'"
         },
         "CalibrationMarketDataPreprocessingSettings": {
           "field_names": [
@@ -911,11 +910,10 @@
           "field_names": [
             "execution_mode",
             "disk_checkpoint_directory",
-            "emit_derived_staged_execution_input",
             "emit_input_provenance_report"
           ],
           "kind": "contract_model",
-          "signature": "(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_derived_staged_execution_input: 'bool' = False, emit_input_provenance_report: 'bool' = True) -> 'None'"
+          "signature": "(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_input_provenance_report: 'bool' = True) -> 'None'"
         },
         "CalibrationMarketDataPreprocessingSettings": {
           "field_names": [

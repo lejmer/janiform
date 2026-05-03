@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Optional
 
 from .contracts import (
@@ -21,17 +20,12 @@ from .translation import (
 from ..errors import calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged.contracts import CalibrationStage
-from ..staged.inputs import (
-    CalibrationPreparedExecutionPayloadFileReference,
-    CalibrationStagedExecutionRuntimeResources,
-    StagedCalibrationExecutionInput,
-)
 from ..staged.request import StagedCalibrationRequest
 from ..staged.results import StagedCalibrationResponse
 from ..staged.runtime import run_prepared_staged_calibration_with_raw_payload
 from ..._native_types import PreparedCalibrationExecutionHandleProtocol
 from ...calendar import CalendarRegistry
-from ...contracts import ContractModel, serialize_pretty_json
+from ...contracts import ContractModel
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,57 +246,6 @@ class PreparedMarketDataCalibration(ContractModel):
         }
         return payload
 
-    def persist_prepared_execution_artifacts(
-        self,
-        output_directory: str | Path,
-    ) -> PreparedMarketDataCalibration:
-        output_dir = Path(output_directory)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        prepared_payload_path = output_dir / f"{self.request.run_id}.prepared_calibration_payload.json"
-
-        serialized_payload = self.prepared_handle.serialize_execution_input_json()
-
-        prepared_payload_path.write_text(serialized_payload, encoding="utf-8")
-
-        staged_execution_input = StagedCalibrationExecutionInput(
-            schema_version="calibration.orchestration.staged_execution_input.v1",
-            request=self.staged_request,
-            prepared_payload_file=CalibrationPreparedExecutionPayloadFileReference(
-                path=str(prepared_payload_path),
-            ),
-            runtime_resources=(
-                CalibrationStagedExecutionRuntimeResources(
-                    disk_checkpoint_directory=self.request.output_preferences.disk_checkpoint_directory,
-                )
-                if self.request.output_preferences.execution_mode.value == "disk"
-                else None
-            ),
-        )
-
-        staged_execution_input_path = output_dir / f"{self.request.run_id}.staged_execution_input.json"
-
-        staged_execution_input_path.write_text(
-            serialize_pretty_json(staged_execution_input.to_payload()),
-            encoding="utf-8",
-        )
-
-        return PreparedMarketDataCalibration(
-            schema_version=self.schema_version,
-            request=self.request,
-            staged_request=self.staged_request,
-            diagnostics=self.diagnostics,
-            provenance=self.provenance,
-            session_resolution=self.session_resolution,
-            fit_warning=self.fit_warning,
-            reference_price=self.reference_price,
-            prepared_data_reference=self.prepared_data_reference,
-            prepared_payload_path=str(prepared_payload_path),
-            staged_execution_input_path=str(staged_execution_input_path),
-            _prepared_handle=self.prepared_handle,
-        )
-
-
 def _build_market_data_source_summary(
     source_summary: LoadedMarketDataSourceSummary,
 ) -> MarketDataCalibrationSourceSummary:
@@ -407,7 +350,7 @@ def _prepare_market_data_calibration_from_translation_result(
     request: MarketDataCalibrationRequest,
     translation_result: MarketDataTranslationResult,
 ) -> PreparedMarketDataCalibration:
-    prepared = PreparedMarketDataCalibration(
+    return PreparedMarketDataCalibration(
         schema_version=CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
         request=request,
         staged_request=translation_result.staged_request,
@@ -418,20 +361,8 @@ def _prepare_market_data_calibration_from_translation_result(
         ),
         fit_warning=translation_result.fit_warning,
         reference_price=translation_result.reference_price,
-        prepared_data_reference=(
-            f"prepared_calibration://{request.run_id}"
-            if request.output_preferences.emit_derived_staged_execution_input
-            else None
-        ),
         _prepared_handle=translation_result.prepared_handle,
     )
-
-    if request.output_preferences.emit_derived_staged_execution_input:
-        persistence_root_directory = request.output_preferences.disk_checkpoint_directory
-        if persistence_root_directory is not None:
-            return prepared.persist_prepared_execution_artifacts(persistence_root_directory)
-
-    return prepared
 
 
 def run_market_data_calibration(request: MarketDataCalibrationRequest) -> StagedCalibrationResponse:

@@ -1,7 +1,6 @@
 import json
 import re
 import shutil
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -61,11 +60,6 @@ def write_json_document(path: Path, document: dict[str, Any]) -> Path:
     return path
 
 
-def write_csv_lines(path: Path, rows: Sequence[str]) -> Path:
-    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
-    return path
-
-
 def repository_relative_path_string(
     path: Path,
     *,
@@ -96,7 +90,7 @@ def calendar_registry_json() -> str:
     return json.dumps(calendar_registry_payload())
 
 
-def calendar_regression_cases() -> list[dict[str, Any]]:
+def calendar_regression_cases() -> list[dict[str | bytes, Any]]:
     raw_cases: Any = calendar_fixture_document()["cases"]
     if not isinstance(raw_cases, list):
         raise ValueError("calendar fixture cases must be a JSON array")
@@ -108,7 +102,7 @@ def hourly_factor_fixture_document() -> dict[str, Any]:
     return load_json_document(HOURLY_FACTOR_FIXTURE_PATH)
 
 
-def hourly_factor_regression_canonical_cases() -> list[dict[str, Any]]:
+def hourly_factor_regression_canonical_cases() -> list[dict[str | bytes, Any]]:
     raw_cases: Any = hourly_factor_fixture_document()["canonical_output_cases"]
     if not isinstance(raw_cases, list):
         raise ValueError("hourly-factor canonical_output_cases must be a JSON array")
@@ -183,9 +177,11 @@ def persisted_example_model_path(
 ) -> Path:
     selection_label = "full" if tail_row_count is None else f"tail_{tail_row_count}"
     market_profile_label = "inferred" if market_profile is None else market_profile
+
     cache_stem = _cache_token(
         f"{tick_data_path.stem}_{market_profile_label}_{selection_label}"
     )
+
     return EXAMPLE_MODEL_ARTIFACT_ROOT / f"{cache_stem}.json"
 
 

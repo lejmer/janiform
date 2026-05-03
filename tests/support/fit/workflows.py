@@ -6,12 +6,7 @@ from typing import Any, Callable, Optional, cast
 import pytest
 
 import janiform.calibration.fit._execution as fit_execution_module
-from janiform._workflow_outputs import (
-    build_run_manifest,
-    generate_workflow_run_id,
-    resolve_fit_artifact_paths,
-    write_json_document,
-)
+from janiform._workflow_outputs import generate_workflow_run_id
 from janiform.calibration.fit import JaniformEstimator
 from janiform.model import JaniformModel
 from janiform.calibration.fit._preparation.contracts import FitExecutionConfiguration
@@ -147,12 +142,7 @@ def _fit_workflow_runner_from_staged_runner(
             configuration=configuration,
         )
 
-        if output_dir is not None:
-            _write_fit_workflow_artifacts(
-                output_dir=output_dir,
-                fit_report_payload=fit_report_payload,
-                model_payload=model_payload,
-            )
+        _ = output_dir
 
         return NativeFitWorkflowOutput(
             staged_response=staged_response,
@@ -770,37 +760,6 @@ def _successful_full_model_metadata_fixture(
             "diagnostic_count": 0,
         },
     }
-
-
-def _write_fit_workflow_artifacts(
-    *,
-    output_dir: str | Path,
-    fit_report_payload: dict[str, Any],
-    model_payload: Optional[dict[str, Any]],
-) -> None:
-    paths = resolve_fit_artifact_paths(
-        run_id=str(fit_report_payload["run_id"]),
-        output_dir=output_dir,
-    )
-    paths.run_directory.mkdir(parents=True, exist_ok=True)
-    write_json_document(paths.report_path, fit_report_payload)
-
-    additional_artifacts = None
-    if model_payload is not None:
-        write_json_document(paths.primary_output_path, model_payload)
-        additional_artifacts = {"model_path": str(paths.primary_output_path)}
-
-    write_json_document(
-        paths.manifest_path,
-        build_run_manifest(
-            workflow="fit",
-            run_id=paths.run_id,
-            primary_output_path=paths.primary_output_path,
-            report_path=paths.report_path,
-            run_directory=paths.run_directory,
-            additional_artifacts=additional_artifacts,
-        ),
-    )
 
 
 def _write_tick_data(path: Path, *, rows: tuple[str, ...]) -> Path:
