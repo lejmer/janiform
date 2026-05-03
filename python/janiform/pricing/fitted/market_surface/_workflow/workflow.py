@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Optional
 
 import pandas
 
-from ......_workflow_progress import WorkflowProgressMode
-from ......contracts.base import require_finite_scalar
-from ......pricing import VanillaOptionPayoffType
-from .....errors import calibration_error
-from .....market_data.contracts import CalibrationOptionSurfaceColumnMapping, CalibrationTickDataColumnMapping
+from ....._workflow_progress import WorkflowProgressMode
+from janiform.contracts.base import require_finite_scalar
+from janiform.pricing import VanillaOptionPayoffType
+from janiform.pricing.errors import _pricing_error
+from janiform.calibration.market_data.contracts import CalibrationOptionSurfaceColumnMapping, CalibrationTickDataColumnMapping
 from ...market_snapshot._workflow.context import (
     PreparedObservedOptionMarketContext,
     prepare_observed_option_market_context,
@@ -34,7 +34,7 @@ from ...market_surface.result import (
 )
 
 if TYPE_CHECKING:
-    from ....model import JaniformModel
+    from .....model import JaniformModel
     from ...market_snapshot.inputs import TabularFrameInput
 
 
@@ -62,21 +62,21 @@ def price_option_surface_for_model(
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> JaniformObservedOptionSurfacePricingResult:
-    require_finite_scalar(risk_free_rate, "risk_free_rate", calibration_error)
-    require_finite_scalar(dividend_yield, "dividend_yield", calibration_error)
+    require_finite_scalar(risk_free_rate, "risk_free_rate", _pricing_error)
+    require_finite_scalar(dividend_yield, "dividend_yield", _pricing_error)
 
     if valuation_count is not None and valuation_count <= 0:
-        raise calibration_error(
+        raise _pricing_error(
             "valuation_count",
             "must be strictly positive when provided",
         )
     if use_all_valuation_times and valuation_count is not None:
-        raise calibration_error(
+        raise _pricing_error(
             "valuation_count",
             "cannot be combined with use_all_valuation_times",
         )
     if cpu_count is not None and cpu_count <= 0:
-        raise calibration_error(
+        raise _pricing_error(
             "cpu_count",
             "must be strictly positive when provided",
         )

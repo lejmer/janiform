@@ -180,7 +180,7 @@ Example:
 from collections.abc import Mapping
 from typing import Any
 
-from janiform.calibration import JaniformModel
+from janiform.model import JaniformModel
 
 
 def on_simulation_progress(event: Mapping[str, Any]) -> None:
@@ -208,7 +208,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from janiform.calibration import JaniformModel
+from janiform.model import JaniformModel
 
 
 def on_pricing_progress(event: Mapping[str, Any]) -> None:

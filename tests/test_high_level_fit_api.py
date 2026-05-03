@@ -14,30 +14,25 @@ import pytest
 from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
-import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
 import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
 import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
-import janiform.calibration.fit._runtime.simulation.result as fit_simulation_result_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
-import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
+import janiform.model as model_module
+import janiform.pricing.fitted.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
+import janiform.simulation.result as simulation_result_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform._workflow_outputs import SimulationArtifactSink
 from janiform._workflow_progress import WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
-from janiform.calibration.fit import (
-    JaniformEstimator,
-    JaniformFitResult,
-    JaniformFitReport,
-    JaniformModel,
-    JaniformSimulationResult,
-)
-from janiform.calibration.fit.pricing import (
+from janiform.calibration.fit import JaniformEstimator, JaniformFitReport, JaniformFitResult
+from janiform.model import JaniformModel
+from janiform.pricing.fitted import (
     JaniformObservedOptionSurfacePricingResult,
     JaniformVanillaOptionGrid,
     JaniformVanillaOptionGridBatch,
@@ -47,6 +42,7 @@ from janiform.calibration.fit.pricing import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
+from janiform.simulation import JaniformSimulationResult
 from janiform.calibration.fit.state import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
@@ -674,7 +670,7 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_df(
         include_integration_quality_diagnostics: bool = False,
         cpu_count: Optional[int] = None,
         silent: bool = False,
-        progress_mode: Any = fit_model_module.WorkflowProgressMode.AUTO,
+        progress_mode: Any = model_module.WorkflowProgressMode.AUTO,
         progress: Any = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
         _ = model
@@ -856,7 +852,7 @@ def test_price_option_surface_returns_single_expiry_evolution_surface(
         include_integration_quality_diagnostics: bool = False,
         cpu_count: Optional[int] = None,
         silent: bool = False,
-        progress_mode: Any = fit_model_module.WorkflowProgressMode.AUTO,
+        progress_mode: Any = model_module.WorkflowProgressMode.AUTO,
         progress: Any = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
         _ = model
@@ -2257,7 +2253,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         Path(output_path).write_text("parquet placeholder", encoding="utf-8")
 
     monkeypatch.setattr(
-        fit_simulation_result_module,
+        simulation_result_module,
         "persist_coarse_simulation",
         capture_persist_coarse_simulation,
     )
@@ -2522,7 +2518,7 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
             sink.close()
 
     monkeypatch.setattr(
-        fit_simulation_result_module,
+        simulation_result_module,
         "persist_seeded_tick_simulation",
         capture_empty_seeded_simulation,
     )
@@ -2590,7 +2586,7 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
             sink.close()
 
     monkeypatch.setattr(
-        fit_simulation_result_module,
+        simulation_result_module,
         "persist_seeded_tick_simulation",
         capture_seeded_simulation,
     )

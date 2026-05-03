@@ -12,7 +12,8 @@ from janiform._workflow_outputs import (
     resolve_fit_artifact_paths,
     write_json_document,
 )
-from janiform.calibration.fit import JaniformEstimator, JaniformModel
+from janiform.calibration.fit import JaniformEstimator
+from janiform.model import JaniformModel
 from janiform.calibration.fit._preparation.contracts import FitExecutionConfiguration
 from janiform.calibration.fit._runtime.workflow import NativeFitWorkflowOutput
 from janiform.calibration.market_data import (

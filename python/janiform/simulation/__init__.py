@@ -14,6 +14,7 @@ from .coarse import (
     run_coarse_simulation,
 )
 from .kinds import SimulationKind
+from .result import JaniformSimulationResult
 from .seeded import (
     HawkesExcitationState,
     HawkesKernelLoadings,
@@ -43,6 +44,7 @@ __all__ = [
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
+    "JaniformSimulationResult",
     "MeanReversionAnchorModel",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",

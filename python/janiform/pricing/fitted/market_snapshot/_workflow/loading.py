@@ -11,14 +11,14 @@ from typing import Any, Optional
 import pandas
 from pyarrow import parquet as pyarrow_parquet
 
-from ......contracts.base import (
+from janiform.contracts.base import (
     require_positive_finite_scalar,
     require_timezone_aware_datetime,
 )
-from ......pricing import VanillaOptionPayoffType
-from .....errors import calibration_error
-from .....market_data.contracts import CalibrationOptionSurfaceColumnMapping, CalibrationTickDataColumnMapping
-from ...._inference.aliases import GENERIC_COLUMN_ALIASES
+from janiform.pricing import VanillaOptionPayoffType
+from janiform.pricing.errors import _pricing_error
+from janiform.calibration.market_data.contracts import CalibrationOptionSurfaceColumnMapping, CalibrationTickDataColumnMapping
+from janiform.calibration.fit._inference.aliases import GENERIC_COLUMN_ALIASES
 from ..inputs import TabularFrameInput
 
 
@@ -172,7 +172,7 @@ def load_source_columns_for_tabular_input(
     if suffix == ".csv":
         return tuple(str(column_name) for column_name in pandas.read_csv(input_path, nrows=0).columns)
 
-    raise calibration_error(
+    raise _pricing_error(
         field_path,
         "must be a pandas.DataFrame, a mapping of column arrays, or a .csv/.parquet path",
     )
@@ -201,7 +201,7 @@ def load_tabular_frame(
         use_columns = list(required_columns) if len(required_columns) > 0 else None
         return pandas.read_csv(input_path, usecols=use_columns)
 
-    raise calibration_error(
+    raise _pricing_error(
         field_path,
         "must be a pandas.DataFrame, a mapping of column arrays, or a .csv/.parquet path",
     )
@@ -323,7 +323,7 @@ def resolve_required_column(
         field_path=field_path,
     )
     if resolved is None:
-        raise calibration_error(
+        raise _pricing_error(
             field_path,
             f"could not resolve a source column from common aliases [{', '.join(aliases)}]",
         )
@@ -352,7 +352,7 @@ def resolve_optional_column(
     if explicit_column is not None:
         resolved_explicit = available_by_normalized.get(normalize_identifier(explicit_column))
         if resolved_explicit is None:
-            raise calibration_error(
+            raise _pricing_error(
                 field_path,
                 f"explicit column `{explicit_column}` is not present in the source data",
             )
@@ -391,7 +391,7 @@ def resolve_snapshot_valuation_time_utc(
         require_timezone_aware_datetime(
             valuation_time_utc,
             field_path="valuation_time_utc",
-            error_factory=calibration_error,
+            error_factory=_pricing_error,
         )
         return valuation_time_utc.astimezone(UTC)
 
@@ -401,7 +401,7 @@ def resolve_snapshot_valuation_time_utc(
     if len(unique_quote_timestamps) == 1:
         return unique_quote_timestamps[0].astimezone(UTC)
 
-    raise calibration_error(
+    raise _pricing_error(
         "valuation_time_utc",
         "is required when option_surface contains more than one quote timestamp",
     )
@@ -414,7 +414,7 @@ def filter_observed_tick_data(
     valuation_time_utc: datetime,
 ) -> pandas.DataFrame:
     if timestamp_column is None:
-        raise calibration_error(
+        raise _pricing_error(
             "tick_data_column_mapping.timestamp_column",
             "is required for current-state estimation",
         )
@@ -426,7 +426,7 @@ def filter_observed_tick_data(
     )
     filtered = tick_data_frame.loc[tick_timestamps <= valuation_time_utc].copy()
     if filtered.empty:
-        raise calibration_error(
+        raise _pricing_error(
             "tick_data",
             "does not contain any observations at or before valuation_time_utc",
         )
@@ -440,18 +440,18 @@ def observed_spot_from_tick_data(
     price_column: Optional[str],
 ) -> float:
     if price_column is None:
-        raise calibration_error(
+        raise _pricing_error(
             "tick_data_column_mapping.price_column",
             "is required to derive observed spot",
         )
 
     if tick_data_frame.empty:
-        raise calibration_error("tick_data", "must contain at least one observation")
+        raise _pricing_error("tick_data", "must contain at least one observation")
 
     return require_positive_finite_scalar(
         tick_data_frame[price_column].iloc[-1],
         "tick_data.last_price",
-        calibration_error,
+        _pricing_error,
     )
 
 
@@ -470,7 +470,7 @@ def normalize_requested_option_type(
     if normalized in ("put", "p"):
         return VanillaOptionPayoffType.PUT
 
-    raise calibration_error("option_type", "must be one of: call, put")
+    raise _pricing_error("option_type", "must be one of: call, put")
 
 
 def normalize_observed_option_type(
@@ -479,7 +479,7 @@ def normalize_observed_option_type(
     field_path: str,
 ) -> VanillaOptionPayoffType:
     if not isinstance(raw_value, str):
-        raise calibration_error(field_path, "must be a string")
+        raise _pricing_error(field_path, "must be a string")
 
     normalized = normalize_requested_option_type(raw_value)
     if normalized is None:

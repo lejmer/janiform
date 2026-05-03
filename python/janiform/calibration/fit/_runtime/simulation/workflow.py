@@ -28,6 +28,7 @@ from .....calendar import CalendarRegistry
 from .....mean_reversion import MeanReversionBoundaryState
 from .....simulation.coarse import CoarseSimulationPath
 from .....simulation.kinds import SimulationKind
+from .....simulation.result import JaniformSimulationResult, normalize_interval_label
 from .....simulation.seeded import SeededTickSimulationResponse
 from .....simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ....errors import calibration_error
@@ -35,10 +36,9 @@ from ...state import CurrentStateEstimationRequest
 from ..metadata import build_model_persistence_payload
 from ..payloads import current_state_tick_data_column_mapping_for_model
 from ..shared import DEFAULT_SIMULATION_INTERVAL
-from .result import JaniformSimulationResult, normalize_interval_label
 
 if TYPE_CHECKING:
-    from ...model import JaniformModel
+    from .....model import JaniformModel
 
 
 def simulate_model(

@@ -24,7 +24,7 @@ from .payloads import (
 from .shared import RuntimeStructuralSeasonalityGrid
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ....model import JaniformModel
 
 
 def build_runtime_hourly_seasonality_source_from_model(

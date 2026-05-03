@@ -8,7 +8,7 @@ from ..staged.results import build_staged_failure_context, format_staged_failure
 from .report import JaniformFitReport
 
 if TYPE_CHECKING:
-    from .model import JaniformModel
+    from ...model import JaniformModel
 
 
 @dataclass(frozen=True, slots=True)

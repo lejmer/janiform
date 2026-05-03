@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Optional
 
-from ....contracts.base import (
+from janiform.contracts.base import (
     ContractModel,
     require_finite_number,
     require_finite_scalar,
@@ -16,15 +16,15 @@ from ....contracts.base import (
     require_sequence,
     require_str_enum_value,
 )
-from ....pricing import (
+from janiform.pricing import (
     PricingIntervalSchedule,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
     VanillaOptionPricingFailureStage,
     VanillaOptionPricingStatus,
 )
-from ....pricing._moneyness import calculate_optional_log_forward_moneyness
-from ...errors import calibration_error
+from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
+from janiform.pricing.errors import _pricing_error
 from ._field_names import (
     BOUNDARY_STATE_NORM_GRID_FIELD_NAME,
     DISCOUNT_FACTOR_GRID_FIELD_NAME,
@@ -83,16 +83,16 @@ class JaniformVanillaOptionSurface(ContractModel):
     dividend_yield: float = 0.0
 
     def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, SPOT_FIELD_NAME, calibration_error)
+        require_positive_finite_scalar(self.spot, SPOT_FIELD_NAME, _pricing_error)
 
         if len(self.strikes) == 0:
-            raise calibration_error(STRIKES_FIELD_NAME, "must contain at least one strike")
+            raise _pricing_error(STRIKES_FIELD_NAME, "must contain at least one strike")
 
-        require_finite_scalar(self.risk_free_rate, RISK_FREE_RATE_FIELD_NAME, calibration_error)
-        require_finite_scalar(self.dividend_yield, DIVIDEND_YIELD_FIELD_NAME, calibration_error)
+        require_finite_scalar(self.risk_free_rate, RISK_FREE_RATE_FIELD_NAME, _pricing_error)
+        require_finite_scalar(self.dividend_yield, DIVIDEND_YIELD_FIELD_NAME, _pricing_error)
 
         for strike_index, strike in enumerate(self.strikes):
-            require_positive_finite_scalar(strike, f"strikes[{strike_index}]", calibration_error)
+            require_positive_finite_scalar(strike, f"strikes[{strike_index}]", _pricing_error)
 
         validate_pricing_maturity_axis_fields(
             expiry_timestamps_utc=self.expiry_timestamps_utc,
@@ -118,7 +118,7 @@ class JaniformVanillaOptionSurface(ContractModel):
         field_path: str = "surface",
     ) -> JaniformVanillaOptionSurface:
         if not isinstance(raw_payload, dict):
-            raise calibration_error(field_path, "must be an object")
+            raise _pricing_error(field_path, "must be an object")
 
         expiry_timestamps_utc = normalize_optional_expiry_timestamps_utc(
             raw_payload.get(EXPIRY_TIMESTAMPS_UTC_FIELD_NAME),
@@ -144,7 +144,7 @@ class JaniformVanillaOptionSurface(ContractModel):
             spot=require_positive_finite_scalar(
                 raw_payload.get(SPOT_FIELD_NAME),
                 f"{field_path}.{SPOT_FIELD_NAME}",
-                calibration_error,
+                _pricing_error,
             ),
             strikes=tuple_of_positive_floats(
                 raw_payload,
@@ -157,7 +157,7 @@ class JaniformVanillaOptionSurface(ContractModel):
             payoff_type=require_str_enum_value(
                 raw_payload.get(PAYOFF_TYPE_FIELD_NAME, VanillaOptionPayoffType.CALL.value),
                 f"{field_path}.{PAYOFF_TYPE_FIELD_NAME}",
-                calibration_error,
+                _pricing_error,
                 enum_type=VanillaOptionPayoffType,
                 allowed_values_message="must be one of: call, put",
             ),
@@ -165,14 +165,14 @@ class JaniformVanillaOptionSurface(ContractModel):
                 raw_payload,
                 RISK_FREE_RATE_FIELD_NAME,
                 f"{field_path}.{RISK_FREE_RATE_FIELD_NAME}",
-                calibration_error,
+                _pricing_error,
                 default_value=0.0,
             ),
             dividend_yield=require_optional_finite_number(
                 raw_payload,
                 DIVIDEND_YIELD_FIELD_NAME,
                 f"{field_path}.{DIVIDEND_YIELD_FIELD_NAME}",
-                calibration_error,
+                _pricing_error,
                 default_value=0.0,
             ),
         )
@@ -206,14 +206,14 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
     maturity_terminal_interval_indices: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, SPOT_FIELD_NAME, calibration_error)
-        require_finite_scalar(self.risk_free_rate, RISK_FREE_RATE_FIELD_NAME, calibration_error)
-        require_finite_scalar(self.dividend_yield, DIVIDEND_YIELD_FIELD_NAME, calibration_error)
+        require_positive_finite_scalar(self.spot, SPOT_FIELD_NAME, _pricing_error)
+        require_finite_scalar(self.risk_free_rate, RISK_FREE_RATE_FIELD_NAME, _pricing_error)
+        require_finite_scalar(self.dividend_yield, DIVIDEND_YIELD_FIELD_NAME, _pricing_error)
 
         expected_shape = (len(self.maturity_intervals), len(self.strikes))
         actual_shape = grid_shape(self.price_grid, field_path=PRICE_GRID_FIELD_NAME)
         if actual_shape != expected_shape:
-            raise calibration_error(
+            raise _pricing_error(
                 PRICE_GRID_FIELD_NAME,
                 f"must have shape {expected_shape}, found {actual_shape}",
             )
@@ -234,7 +234,7 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
         )
 
         if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
-            raise calibration_error(
+            raise _pricing_error(
                 RUNTIME_INTERVAL_SCHEDULE_FIELD_NAME,
                 "must be a PricingIntervalSchedule",
             )
@@ -282,42 +282,42 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
         field_path: str = "surface_pricing_result",
     ) -> JaniformVanillaOptionSurfacePricingResult:
         if not isinstance(raw_payload, dict):
-            raise calibration_error(field_path, "must be an object")
+            raise _pricing_error(field_path, "must be an object")
 
-        from ....contracts.base import require_mapping
+        from janiform.contracts.base import require_mapping
 
         response = require_mapping(
             raw_payload,
             RESPONSE_FIELD_NAME,
             f"{field_path}.{RESPONSE_FIELD_NAME}",
-            calibration_error,
+            _pricing_error,
         )
         raw_maturity_summaries = require_sequence(
             raw_payload,
             MATURITY_SUMMARIES_FIELD_NAME,
             f"{field_path}.{MATURITY_SUMMARIES_FIELD_NAME}",
-            calibration_error,
+            _pricing_error,
         )
         raw_maturity_terminal_interval_indices = require_sequence(
             raw_payload,
             MATURITY_TERMINAL_INTERVAL_INDICES_FIELD_NAME,
             f"{field_path}.{MATURITY_TERMINAL_INTERVAL_INDICES_FIELD_NAME}",
-            calibration_error,
+            _pricing_error,
         )
 
         return JaniformVanillaOptionSurfacePricingResult(
-            spot=require_positive_finite_scalar(response.get(SPOT_FIELD_NAME), f"{field_path}.{RESPONSE_FIELD_NAME}.{SPOT_FIELD_NAME}", calibration_error),
+            spot=require_positive_finite_scalar(response.get(SPOT_FIELD_NAME), f"{field_path}.{RESPONSE_FIELD_NAME}.{SPOT_FIELD_NAME}", _pricing_error),
             strikes=tuple_of_positive_floats(response, field_name=STRIKES_FIELD_NAME, field_path=f"{field_path}.{RESPONSE_FIELD_NAME}.{STRIKES_FIELD_NAME}"),
             maturity_intervals=tuple_of_positive_floats(response, field_name=MATURITY_INTERVALS_FIELD_NAME, field_path=f"{field_path}.{RESPONSE_FIELD_NAME}.{MATURITY_INTERVALS_FIELD_NAME}"),
             payoff_type=require_str_enum_value(
                 response.get(PAYOFF_TYPE_FIELD_NAME),
                 f"{field_path}.{RESPONSE_FIELD_NAME}.{PAYOFF_TYPE_FIELD_NAME}",
-                calibration_error,
+                _pricing_error,
                 enum_type=VanillaOptionPayoffType,
                 allowed_values_message="must be one of: call, put",
             ),
-            risk_free_rate=require_finite_number(response, RISK_FREE_RATE_FIELD_NAME, f"{field_path}.{RESPONSE_FIELD_NAME}.{RISK_FREE_RATE_FIELD_NAME}", calibration_error),
-            dividend_yield=require_finite_number(response, DIVIDEND_YIELD_FIELD_NAME, f"{field_path}.{RESPONSE_FIELD_NAME}.{DIVIDEND_YIELD_FIELD_NAME}", calibration_error),
+            risk_free_rate=require_finite_number(response, RISK_FREE_RATE_FIELD_NAME, f"{field_path}.{RESPONSE_FIELD_NAME}.{RISK_FREE_RATE_FIELD_NAME}", _pricing_error),
+            dividend_yield=require_finite_number(response, DIVIDEND_YIELD_FIELD_NAME, f"{field_path}.{RESPONSE_FIELD_NAME}.{DIVIDEND_YIELD_FIELD_NAME}", _pricing_error),
             price_grid=grid_of_optional_finite_floats(response, field_name=PRICE_GRID_FIELD_NAME, field_path=f"{field_path}.{RESPONSE_FIELD_NAME}.{PRICE_GRID_FIELD_NAME}"),
             implied_volatility_grid=grid_of_optional_finite_floats(response, field_name=IMPLIED_VOLATILITY_GRID_FIELD_NAME, field_path=f"{field_path}.{RESPONSE_FIELD_NAME}.{IMPLIED_VOLATILITY_GRID_FIELD_NAME}"),
             implied_volatility_inversion_status_grid=grid_of_implied_volatility_inversion_statuses(response, field_name=IMPLIED_VOLATILITY_INVERSION_STATUS_GRID_FIELD_NAME, field_path=f"{field_path}.{RESPONSE_FIELD_NAME}.{IMPLIED_VOLATILITY_INVERSION_STATUS_GRID_FIELD_NAME}"),
@@ -343,7 +343,7 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                     raw_payload,
                     RUNTIME_INTERVAL_SCHEDULE_FIELD_NAME,
                     f"{field_path}.{RUNTIME_INTERVAL_SCHEDULE_FIELD_NAME}",
-                    calibration_error,
+                    _pricing_error,
                 ),
                 field_path=f"{field_path}.{RUNTIME_INTERVAL_SCHEDULE_FIELD_NAME}",
             ),
@@ -352,7 +352,7 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                     {VALUE_FIELD_NAME: raw_index},
                     VALUE_FIELD_NAME,
                     f"{field_path}.{MATURITY_TERMINAL_INTERVAL_INDICES_FIELD_NAME}[{index}]",
-                    calibration_error,
+                    _pricing_error,
                 )
                 for index, raw_index in enumerate(raw_maturity_terminal_interval_indices)
             ),

@@ -89,6 +89,9 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "CoarseSimulationRunRequest",
                 "run_coarse_simulation",
             ],
+            "janiform.simulation.result": [
+                "JaniformSimulationResult",
+            ],
             "janiform.simulation.seeded": [
                 "SeededTickSimulationRequest",
                 "run_seeded_tick_event_simulation",
@@ -103,44 +106,40 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "JaniformEstimator",
                 "JaniformFitReport",
                 "JaniformFitResult",
-                "JaniformModel",
-                "JaniformSimulationResult",
             ],
             "janiform.calibration.fit": [
                 "JaniformEstimator",
                 "JaniformFitReport",
                 "JaniformFitResult",
-                "JaniformModel",
-                "JaniformSimulationResult",
             ],
             "janiform.calibration.fit.estimator": [
                 "JaniformEstimator",
             ],
-            "janiform.calibration.fit.model": [
+            "janiform.model": [
                 "JaniformModel",
             ],
-            "janiform.calibration.fit.pricing": [
+            "janiform.pricing.fitted": [
                 "JaniformVanillaOptionGridBatch",
                 "JaniformObservedOptionSurfacePricingResult",
                 "JaniformVanillaOptionSurface",
             ],
-            "janiform.calibration.fit.pricing.grids": [
+            "janiform.pricing.fitted.grids": [
                 "JaniformVanillaOptionGridBatch",
                 "JaniformVanillaOptionGridBatchPricingResult",
             ],
-            "janiform.calibration.fit.pricing.market_snapshot": [
+            "janiform.pricing.fitted.market_snapshot": [
                 "JaniformObservedOptionSnapshotPricingResult",
             ],
-            "janiform.calibration.fit.pricing.market_snapshot.inputs": [
+            "janiform.pricing.fitted.market_snapshot.inputs": [
                 "TabularFrameInput",
             ],
-            "janiform.calibration.fit.pricing.market_surface": [
+            "janiform.pricing.fitted.market_surface": [
                 "JaniformObservedOptionSurfacePricingResult",
             ],
-            "janiform.calibration.fit.pricing.summaries": [
+            "janiform.pricing.fitted.summaries": [
                 "JaniformVanillaOptionMaturitySummary",
             ],
-            "janiform.calibration.fit.pricing.surface": [
+            "janiform.pricing.fitted.surface": [
                 "JaniformVanillaOptionSurface",
                 "JaniformVanillaOptionSurfacePricingResult",
             ],
@@ -250,14 +249,6 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration",
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
-        "janiform.calibration.fit.model",
-        "janiform.calibration.fit.pricing",
-        "janiform.calibration.fit.pricing.grids",
-        "janiform.calibration.fit.pricing.market_snapshot",
-        "janiform.calibration.fit.pricing.market_snapshot.inputs",
-        "janiform.calibration.fit.pricing.market_surface",
-        "janiform.calibration.fit.pricing.summaries",
-        "janiform.calibration.fit.pricing.surface",
         "janiform.calibration.fit.result",
         "janiform.calibration.fit.report",
         "janiform.calibration.market_data",
@@ -279,12 +270,21 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.staged.request",
         "janiform.calibration.staged.results",
         "janiform.calibration.staged.runtime",
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.grids",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.market_snapshot.inputs",
+        "janiform.pricing.fitted.market_surface",
+        "janiform.pricing.fitted.summaries",
+        "janiform.pricing.fitted.surface",
         "janiform.validation",
         "janiform.validation.contracts",
         "janiform.stylized_facts",
         "janiform.stylized_facts.contracts",
         "janiform.simulation",
         "janiform.simulation.coarse",
+        "janiform.simulation.result",
         "janiform.simulation.seeded",
         "janiform.simulation.shared",
     }

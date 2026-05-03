@@ -38,7 +38,8 @@ For repeatable work, make the context explicit. Market profile inference is conv
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 
 estimator = JaniformEstimator(market_profile="eurusd_spot")
 model: JaniformModel = estimator.fit(
@@ -71,7 +72,8 @@ For option-aware calibration, pass an option surface as well. The surface can co
 from datetime import UTC, datetime
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 
 estimator = JaniformEstimator(market_profile="eurusd_spot")
 model: JaniformModel = estimator.fit(

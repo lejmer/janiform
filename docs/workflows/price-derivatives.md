@@ -45,7 +45,7 @@ For a single vanilla option, call `price_option(...)` on a fitted model:
 ```python
 from datetime import UTC, datetime
 
-from janiform.calibration import JaniformModel
+from janiform.model import JaniformModel
 from janiform.pricing import VanillaOptionPayoffType, VanillaOptionPricingRunResult
 
 model = JaniformModel.load(".janiform/runs/eurusd-option-fit/artifacts/model.jf")
@@ -82,8 +82,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from janiform.calibration import JaniformModel
-from janiform.calibration.fit.pricing import JaniformObservedOptionSurfacePricingResult
+from janiform.model import JaniformModel
+from janiform.pricing.fitted import JaniformObservedOptionSurfacePricingResult
 
 model = JaniformModel.load(".janiform/runs/eurusd-option-fit/artifacts/model.jf")
 surface_result: JaniformObservedOptionSurfacePricingResult = model.price_option_surface(
@@ -214,8 +214,8 @@ If Janiform cannot infer the observed option dataset layout, pass an option surf
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformModel
-from janiform.calibration.fit.pricing import JaniformObservedOptionSurfacePricingResult
+from janiform.model import JaniformModel
+from janiform.pricing.fitted import JaniformObservedOptionSurfacePricingResult
 from janiform.calibration.market_data import CalibrationOptionSurfaceColumnMapping
 
 model = JaniformModel.load(".janiform/runs/eurusd-option-fit/artifacts/model.jf")

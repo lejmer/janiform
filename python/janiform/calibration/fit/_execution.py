@@ -39,8 +39,8 @@ from ..staged.results import build_staged_failure_context, format_staged_failure
 from ._preparation.contracts import FitExecutionConfiguration
 from ._runtime.metadata import normalize_model_parameters
 from ._runtime.workflow import NativeFitWorkflowOutput, run_fit_workflow
-from .model import JaniformModel
 from .report import JaniformFitReport
+from ...model import JaniformModel
 
 
 def fit_with_execution_configuration(

@@ -82,7 +82,8 @@ For most fits, pass the market profile name to `JaniformEstimator`:
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 
 estimator = JaniformEstimator(market_profile="eurusd_spot")
 model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet")
@@ -103,7 +104,8 @@ If you need a user-registered preset, create a registry, register the artifact, 
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 from janiform.calibration.presets import (
     PresetArtifact,
     PresetRegistry,
@@ -131,7 +133,8 @@ Janiform can infer common column names, especially when a market profile provide
 ```python
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 from janiform.calibration.market_data import (
     CalibrationMarketDataNormalizationPolicy,
     CalibrationTickDataColumnMapping,
@@ -179,7 +182,8 @@ For option-aware calibration, add the option surface path and option surface col
 from datetime import UTC, datetime
 from pathlib import Path
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
 from janiform.calibration.market_data import (
     CalibrationMarketDataNormalizationPolicy,
     CalibrationOptionQuoteInputPolicy,

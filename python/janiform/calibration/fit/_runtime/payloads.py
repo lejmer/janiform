@@ -22,7 +22,7 @@ from .input_inference import tick_data_input_inference_from_model_metadata
 from .shared import PreparedModelRuntimeFactors
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ....model import JaniformModel
 
 
 def mean_reversion_fitted_parameters_for_model(model: JaniformModel) -> MeanReversionFittedParameters:

@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Optional
 
-from ....._pricing_node_validation import validate_option_pricing_node_payload
-from .....contracts.collections import (
+from ...._pricing_node_validation import validate_option_pricing_node_payload
+from janiform.contracts.collections import (
     grid_of_non_negative_floats as shared_grid_of_non_negative_floats,
     grid_of_optional_finite_floats as shared_grid_of_optional_finite_floats,
     grid_of_positive_floats as shared_grid_of_positive_floats,
@@ -18,18 +18,18 @@ from .....contracts.collections import (
     validate_aligned_count as shared_validate_aligned_count,
     validate_matching_grid_shape as shared_validate_matching_grid_shape,
 )
-from .....contracts.base import (
+from janiform.contracts.base import (
     require_non_negative_finite_scalar,
     require_positive_finite_scalar,
 )
-from .....contracts.base import require_optional_string_value, require_str_enum_value
-from .....pricing import (
+from janiform.contracts.base import require_optional_string_value, require_str_enum_value
+from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPricingFailureStage,
     VanillaOptionPricingStatus,
 )
-from .....pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
-from ....errors import calibration_error
+from janiform.pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
+from janiform.pricing.errors import _pricing_error
 
 
 def tuple_of_positive_floats(
@@ -42,7 +42,7 @@ def tuple_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -56,7 +56,7 @@ def tuple_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -70,7 +70,7 @@ def tuple_of_finite_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -84,7 +84,7 @@ def grid_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -98,7 +98,7 @@ def grid_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -112,7 +112,7 @@ def grid_of_optional_finite_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -126,12 +126,12 @@ def grid_of_implied_volatility_inversion_statuses(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
         scalar_parser=lambda value, location: (
             require_str_enum_value(
                 value,
                 location,
-                calibration_error,
+                _pricing_error,
                 enum_type=VanillaOptionImpliedVolatilityInversionStatus,
                 allowed_values_message=(
                     "must be one of: succeeded, "
@@ -156,11 +156,11 @@ def grid_of_pricing_statuses(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
         scalar_parser=lambda value, location: require_str_enum_value(
             value,
             location,
-            calibration_error,
+            _pricing_error,
             enum_type=VanillaOptionPricingStatus,
             allowed_values_message="must be one of: succeeded, failed",
         ),
@@ -177,12 +177,12 @@ def grid_of_optional_failure_stages(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
         scalar_parser=lambda value, location: (
             require_str_enum_value(
                 value,
                 location,
-                calibration_error,
+                _pricing_error,
                 enum_type=VanillaOptionPricingFailureStage,
                 allowed_values_message=(
                     "must be one of: node_setup, transform_input_build, transform_solve, "
@@ -211,11 +211,11 @@ def grid_of_optional_strings(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
         scalar_parser=lambda value, location: require_optional_string_value(
             value,
             location,
-            calibration_error,
+            _pricing_error,
         ),
     )
 
@@ -245,7 +245,7 @@ def validate_group_node_payload(
         discount_factor=discount_factor,
         boundary_state_norm=boundary_state_norm,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
         require_non_negative_finite_numeric_field=_require_non_negative_finite_numeric_field,
         require_positive_finite_numeric_field=_require_positive_finite_numeric_field,
         validate_optional_implied_volatility_inversion_outcome=(
@@ -258,14 +258,14 @@ def _require_non_negative_finite_numeric_field(
     value: Optional[float],
     field_path: str,
 ) -> None:
-    require_non_negative_finite_scalar(value, field_path, calibration_error)
+    require_non_negative_finite_scalar(value, field_path, _pricing_error)
 
 
 def _require_positive_finite_numeric_field(
     value: Optional[float],
     field_path: str,
 ) -> None:
-    require_positive_finite_scalar(value, field_path, calibration_error)
+    require_positive_finite_scalar(value, field_path, _pricing_error)
 
 
 def _validate_optional_implied_volatility_inversion_outcome_for_group_node(
@@ -288,7 +288,7 @@ def validate_optional_tuple_pair(
     right_field_path: str,
 ) -> None:
     if (left_values is None) != (right_values is None):
-        raise calibration_error(
+        raise _pricing_error(
             left_field_path if left_values is None else right_field_path,
             "must be null when the paired terminal distribution field is null",
         )
@@ -302,7 +302,7 @@ def grid_shape(
     return shared_grid_shape(
         values,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -316,7 +316,7 @@ def validate_aligned_node_count(
         values,
         expected_count,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )
 
 
@@ -330,5 +330,5 @@ def validate_matching_grid_shape(
         values,
         grid_shape_value=grid_shape_value,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     )

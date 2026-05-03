@@ -12,9 +12,8 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 from numpy.typing import NDArray
-
-from pyarrow import RecordBatch, parquet
 from pyarrow import csv as pyarrow_csv
+from pyarrow import RecordBatch, parquet
 
 from janiform._timestamps import (
     datetime_to_utc_microseconds,
@@ -22,10 +21,11 @@ from janiform._timestamps import (
     utc_microseconds_to_datetime,
 )
 from janiform.calendar import CalendarRegistry, MarketState
-from janiform.calibration.fit import JaniformModel
 from janiform.calibration.fit._runtime.input_inference import (
     tick_data_input_inference_from_model_metadata,
 )
+from janiform.model import JaniformModel
+
 from .artifacts import WorkbenchArtifacts
 
 

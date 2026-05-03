@@ -13,12 +13,14 @@ from pyarrow import parquet
 from ._native_api import native_module
 from .calendar import CalendarRegistry, MarketState
 from .contracts import serialize_pretty_json
-from .pricing import VanillaOptionPricingRunResult
-from .simulation import CoarseSimulationPath, SeededTickSimulationResponse, SimulationKind
 
 if TYPE_CHECKING:
-    from .calibration.fit.model import JaniformModel
     from .calibration.fit.report import JaniformFitReport
+    from .model import JaniformModel
+    from .pricing.contracts import VanillaOptionPricingRunResult
+    from .simulation.coarse import CoarseSimulationPath
+    from .simulation.kinds import SimulationKind
+    from .simulation.seeded import SeededTickSimulationResponse
 
 
 class SimulationArtifactSink(Protocol):
@@ -180,6 +182,9 @@ def write_simulation_artifacts(
     simulation_run_id: str,
     interval_label: Optional[str],
 ) -> WorkflowArtifactPaths:
+    from .simulation.kinds import SimulationKind
+    from .simulation.seeded import SeededTickSimulationResponse
+
     preferences = simulation_output_preferences_from_model(model)
 
     paths = resolve_simulation_artifact_paths(
@@ -334,6 +339,8 @@ def persist_seeded_tick_simulation(
     preferences: SimulationOutputPreferences,
     sink: Optional[SimulationArtifactSink] = None,
 ) -> None:
+    from .simulation.seeded import SeededTickSimulationResponse
+
     resolved_output_path = Path(output_path)
     if sink is None:
         native_result = (

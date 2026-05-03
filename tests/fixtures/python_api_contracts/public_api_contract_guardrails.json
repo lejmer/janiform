@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "2944f101f2348f942178dbf56d2ba78e1f45ee14c1d0aaba1a2ae33f606d9ced",
+  "approved_snapshot_sha256": "f509e861886618954dcae2a56c378c5492ed56e7502aeca9afce5b98ea1f0a09",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -624,7 +624,7 @@
       "docs_updated": [
         "docs/reference/python-api.md"
       ],
-      "rationale": "The high-level model loader now reconstructs resolved preset and session contracts through the canonical ownership modules instead of restating those payload parsers inside janiform.calibration.fit.model, and the session-registry materialization helpers now live behind the private janiform.calibration.sessions._resolution module boundary instead of a public-looking helper module.",
+      "rationale": "The high-level model loader now reconstructs resolved preset and session contracts through the canonical ownership modules instead of restating those payload parsers inside janiform.model, and the session-registry materialization helpers now live behind the private janiform.calibration.sessions._resolution module boundary instead of a public-looking helper module.",
       "snapshot_sha256": "d79c8175d37a4f48c49de859a31892f4e5d3de2405981a4f7ef3ae9f27044fee",
       "summary": "Approve the model parser consolidation and the internal sessions helper module rename."
     },
@@ -875,14 +875,14 @@
         "docs/guides/python-workflows.md",
         "docs/reference/python-api.md"
       ],
-      "rationale": "Janiform pricing results now expose package-owned implied-volatility outputs directly on the single-node, batch, and surface pricing contracts, together with explicit inversion-status fields that keep node-level failures aligned inside the same pricing artifacts. The approved snapshot must therefore add the shared inversion-status enum and the new implied-volatility fields across janiform.pricing and janiform.calibration.fit.pricing instead of forcing callers to solve for implied volatility outside Janiform.",
+      "rationale": "Janiform pricing results now expose package-owned implied-volatility outputs directly on the single-node, batch, and surface pricing contracts, together with explicit inversion-status fields that keep node-level failures aligned inside the same pricing artifacts. The approved snapshot must therefore add the shared inversion-status enum and the new implied-volatility fields across janiform.pricing and janiform.pricing.fitted instead of forcing callers to solve for implied volatility outside Janiform.",
       "snapshot_sha256": "250f8ddd6643bddf94c791e2998dddd72c3dea3ea1e3cddb54b97f3ce4523e87",
       "summary": "Approve public implied-volatility outputs on pricing responses and fitted-model pricing surfaces.",
       "updated_surfaces": [
         "janiform.pricing",
         "janiform.pricing.contracts",
         "janiform.calibration.fit",
-        "janiform.calibration.fit.pricing"
+        "janiform.pricing.fitted"
       ]
     },
     {
@@ -893,7 +893,7 @@
       "summary": "Approve grouped fitted-model pricing batches and maturity-summary diagnostics.",
       "updated_surfaces": [
         "janiform.calibration.fit",
-        "janiform.calibration.fit.pricing"
+        "janiform.pricing.fitted"
       ]
     },
     {
@@ -976,7 +976,7 @@
       "summary": "Approve public node-level priceability diagnostics for pricing workflows.",
       "updated_surfaces": [
         "janiform.calibration",
-        "janiform.calibration.fit.pricing",
+        "janiform.pricing.fitted",
         "janiform.pricing",
         "janiform.pricing.contracts",
         "janiform.pricing.surface"
@@ -1003,13 +1003,13 @@
       "docs_updated": [
         "docs/reference/python-api.md"
       ],
-      "rationale": "The high-level fit surface now groups pricing, state-estimation, and fit-inference ownership under dedicated subpackages instead of flat helper modules, and the observed snapshot pricing results are part of the public fit-pricing surface. The approved snapshot must therefore record janiform.calibration.fit.state as the public state-estimation module, keep janiform.calibration.fit.pricing as the canonical pricing ownership package, and align the root calibration exports with the observed snapshot result types that are already part of the supported workflow surface.",
+      "rationale": "The high-level fit surface now groups pricing, state-estimation, and fit-inference ownership under dedicated subpackages instead of flat helper modules, and the observed snapshot pricing results are part of the public fit-pricing surface. The approved snapshot must therefore record janiform.calibration.fit.state as the public state-estimation module, keep janiform.pricing.fitted as the canonical pricing ownership package, and align the root calibration exports with the observed snapshot result types that are already part of the supported workflow surface.",
       "snapshot_sha256": "c3391f66a5e9c807c3685a8ae979b13ab9909bff76e0ef99be12be926056d9d4",
       "summary": "Approve the fit package ownership subpackages and observed snapshot pricing exports.",
       "updated_surfaces": [
         "janiform.calibration",
         "janiform.calibration.fit",
-        "janiform.calibration.fit.pricing",
+        "janiform.pricing.fitted",
         "janiform.calibration.fit.state"
       ]
     },
@@ -1051,7 +1051,7 @@
       "summary": "Shrink the calibration root and remove model-private runtime helper exports.",
       "updated_surfaces": [
         "janiform.calibration",
-        "janiform.calibration.fit.model"
+        "janiform.model"
       ]
     },
     {
@@ -1060,11 +1060,11 @@
       "snapshot_sha256": "b5bfbd27a42e7f0fe670281b271f4922a2d3509a07ee860c6bfa6fac66a04d9c",
       "summary": "Reshape fitted-model pricing around concept modules and subpackages.",
       "updated_surfaces": [
-        "janiform.calibration.fit.pricing",
-        "janiform.calibration.fit.pricing.grids",
-        "janiform.calibration.fit.pricing.market_snapshot",
-        "janiform.calibration.fit.pricing.summaries",
-        "janiform.calibration.fit.pricing.surface"
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.grids",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.summaries",
+        "janiform.pricing.fitted.surface"
       ]
     },
     {
@@ -1075,7 +1075,7 @@
       "summary": "Narrow janiform.calibration.fit to the curated high-level surface.",
       "updated_surfaces": [
         "janiform.calibration.fit",
-        "janiform.calibration.fit.pricing",
+        "janiform.pricing.fitted",
         "janiform.calibration.fit.state"
       ]
     },
@@ -1086,9 +1086,9 @@
       "snapshot_sha256": "5c6a9bb84d0f55f20ebb329734d25349caef47269068e89a4fb051337da27c0d",
       "summary": "Rename grouped-batch option pricing contracts to grid-based names.",
       "updated_surfaces": [
-        "janiform.calibration.fit.pricing",
-        "janiform.calibration.fit.pricing.grids",
-        "janiform.calibration.fit.pricing.market_snapshot"
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.grids",
+        "janiform.pricing.fitted.market_snapshot"
       ]
     },
     {
@@ -1098,8 +1098,8 @@
       "snapshot_sha256": "bfa79063bc9dadd9f2f68844f2111440f729522ea4e472050dfe558278be4efd",
       "summary": "Add market_snapshot.inputs as the public owner of TabularFrameInput and align model imports with owner modules.",
       "updated_surfaces": [
-        "janiform.calibration.fit.model",
-        "janiform.calibration.fit.pricing.market_snapshot.inputs"
+        "janiform.model",
+        "janiform.pricing.fitted.market_snapshot.inputs"
       ]
     },
     {
@@ -1143,15 +1143,15 @@
     {
       "approved_on": "2026-04-21",
       "docs_updated": [],
-      "rationale": "The high-level calibration API now exposes resume settings and pricing-interval schedule policy on JaniformEstimator, simulation results use the shared SimulationKind discriminator, and fitted-model pricing adds public observed option-surface result types under janiform.calibration.fit.pricing and janiform.calibration.fit.pricing.market_surface.",
+      "rationale": "The high-level calibration API now exposes resume settings and pricing-interval schedule policy on JaniformEstimator, simulation results use the shared SimulationKind discriminator, and fitted-model pricing adds public observed option-surface result types under janiform.pricing.fitted and janiform.pricing.fitted.market_surface.",
       "snapshot_sha256": "697ef5fad8f9669595d112dd04ab23697c2fcf2cc19451513257e87b37e23c4f",
       "summary": "Approve the resume-aware high-level calibration surface and public observed option-surface pricing results.",
       "updated_surfaces": [
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
-        "janiform.calibration.fit.model",
-        "janiform.calibration.fit.pricing",
-        "janiform.calibration.fit.pricing.market_surface"
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_surface"
       ]
     },
     {
@@ -1232,7 +1232,7 @@
       "updated_surfaces": [
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
-        "janiform.calibration.fit.model"
+        "janiform.model"
       ]
     },
     {
@@ -1242,7 +1242,7 @@
       "snapshot_sha256": "69eb017ca4dfb4a17f7b00d18e43627e05e9009110a2700db7ad3aa8d7649400",
       "summary": "Approve Rust-owned simulation terminal progress boundaries.",
       "updated_surfaces": [
-        "janiform.calibration.fit.model",
+        "janiform.model",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded"
       ]
@@ -1324,6 +1324,28 @@
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-03",
+      "docs_updated": [
+        "docs/interfaces/python.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md",
+        "docs/workflows/presets-and-market-data.md",
+        "docs/workflows/price-derivatives.md",
+        "docs/workflows/simulate-paths.md"
+      ],
+      "rationale": "The fitted model is now owned by janiform.model, simulation result inspection is owned by janiform.simulation, and fitted-model option pricing contracts live under janiform.pricing.fitted. The calibration fit package now keeps only the estimator, fit report, and fit result surface.",
+      "snapshot_sha256": "f509e861886618954dcae2a56c378c5492ed56e7502aeca9afce5b98ea1f0a09",
+      "summary": "Move model, simulation result, and fitted-pricing API ownership out of calibration fit.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.simulation",
+        "janiform.simulation.result"
       ]
     }
   ],

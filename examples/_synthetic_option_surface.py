@@ -10,7 +10,7 @@ from examples._shared import (
     SYNTHETIC_EURUSD_TICK_DATA_PATH,
     load_or_fit_persisted_example_model,
 )
-from janiform.calibration.fit.pricing.surface import JaniformVanillaOptionSurface
+from janiform.pricing.fitted import JaniformVanillaOptionSurface
 from janiform.calibration.fit.state import CurrentStateEstimationRequest
 from janiform.calibration.market_data import CalibrationTickDataColumnMapping
 from janiform.pricing import VanillaOptionPayoffType

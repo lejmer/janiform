@@ -9,9 +9,9 @@ from typing import Optional
 
 import pandas
 
-from ......contracts.base import require_datetime_utc, require_positive_finite_scalar
-from ......pricing import VanillaOptionPayoffType
-from .....errors import calibration_error
+from janiform.contracts.base import require_datetime_utc, require_positive_finite_scalar
+from janiform.pricing import VanillaOptionPayoffType
+from janiform.pricing.errors import _pricing_error
 from ...grids import JaniformVanillaOptionGridBatchPricingResult
 from ..result import (
     JaniformObservedOptionSnapshotNode,
@@ -60,7 +60,7 @@ def prepare_as_of_snapshot_frame(
 
     snapshot = option_surface_frame.loc[quote_timestamps <= valuation_time_utc].copy()
     if snapshot.empty:
-        raise calibration_error(
+        raise _pricing_error(
             "valuation_time_utc",
             f"could not find option quotes at or before {valuation_time_utc.isoformat()}",
         )
@@ -76,7 +76,7 @@ def prepare_as_of_snapshot_frame(
     if option_type is not None:
         snapshot = snapshot.loc[snapshot["_normalized_option_type"] == option_type].copy()
         if snapshot.empty:
-            raise calibration_error(
+            raise _pricing_error(
                 "option_type",
                 f"snapshot does not contain any `{option_type.value}` options",
             )
@@ -100,7 +100,7 @@ def prepare_as_of_snapshot_frame(
     )
 
     if snapshot.empty:
-        raise calibration_error("option_surface", "snapshot did not retain any option nodes")
+        raise _pricing_error("option_surface", "snapshot did not retain any option nodes")
 
     return snapshot
 
@@ -131,7 +131,7 @@ def prepare_snapshot_groups(
             field_path="option_surface._expiry_timestamp_utc",
         )
 
-        strike = require_positive_finite_scalar(row["_strike"], "option_surface.strike", calibration_error)
+        strike = require_positive_finite_scalar(row["_strike"], "option_surface.strike", _pricing_error)
 
         observed_bid_price = optional_numeric_value(row, column_name=resolved_option_columns.bid_column)
         observed_ask_price = optional_numeric_value(row, column_name=resolved_option_columns.ask_column)
@@ -158,7 +158,7 @@ def prepare_snapshot_groups(
     for (payoff_type, expiry_timestamp_utc), nodes in grouped_nodes.items():
         unique_strikes = {node.strike for node in nodes}
         if len(unique_strikes) != len(nodes):
-            raise calibration_error(
+            raise _pricing_error(
                 "option_surface",
                 (
                     "snapshot contains duplicate nodes for the same "
@@ -199,7 +199,7 @@ def prepare_selected_expiry_history_frame(
     ].copy()
 
     if history.empty:
-        raise calibration_error(
+        raise _pricing_error(
             "valuation_time_utc",
             (
                 "could not find option quotes for the selected expiry at or before "
@@ -219,7 +219,7 @@ def prepare_selected_expiry_history_frame(
     if option_type is not None:
         history = history.loc[history["_normalized_option_type"] == option_type].copy()
         if history.empty:
-            raise calibration_error(
+            raise _pricing_error(
                 "option_type",
                 (
                     "surface history does not contain any "
@@ -268,14 +268,14 @@ def prepare_selected_expiry_snapshot_groups_by_valuation_time(
             current_strike = require_positive_finite_scalar(
                 current_row["_strike"],
                 "option_surface.strike",
-                calibration_error,
+                _pricing_error,
             )
             latest_rows_by_strike[current_strike] = current_row
 
             history_row_index += 1
 
         if len(latest_rows_by_strike) == 0:
-            raise calibration_error(
+            raise _pricing_error(
                 "valuation_time_utc",
                 (
                     "could not find option quotes for the selected expiry at or before "
@@ -367,7 +367,7 @@ def resolved_snapshot_timestamp_utc(
     return require_datetime_utc(
         raw_value,
         field_path=field_path,
-        error_factory=calibration_error,
+        error_factory=_pricing_error,
     ).astimezone(UTC)
 
 
@@ -377,7 +377,7 @@ def build_prepared_snapshot_group_from_rows(
     resolved_option_columns: ResolvedOptionSnapshotColumns,
 ) -> PreparedSnapshotGroupInput:
     if len(rows) == 0:
-        raise calibration_error(
+        raise _pricing_error(
             "option_surface",
             "cannot build a snapshot group from an empty row set",
         )
@@ -399,19 +399,19 @@ def build_prepared_snapshot_group_from_rows(
             field_path="option_surface._expiry_timestamp_utc",
         )
         if current_expiry_timestamp_utc != expiry_timestamp_utc:
-            raise calibration_error(
+            raise _pricing_error(
                 "option_surface",
                 "selected expiry snapshot rows must all share the same expiry",
             )
 
         current_payoff_type = normalize_requested_option_type(row["_normalized_option_type"])
         if current_payoff_type is None or current_payoff_type != normalized_payoff_type:
-            raise calibration_error(
+            raise _pricing_error(
                 "option_surface",
                 "selected expiry snapshot rows must all share the same option type",
             )
 
-        strike = require_positive_finite_scalar(row["_strike"], "option_surface.strike", calibration_error)
+        strike = require_positive_finite_scalar(row["_strike"], "option_surface.strike", _pricing_error)
 
         observed_bid_price = optional_numeric_value(row, column_name=resolved_option_columns.bid_column)
         observed_ask_price = optional_numeric_value(row, column_name=resolved_option_columns.ask_column)

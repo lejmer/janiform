@@ -1,3 +1,5 @@
+"""Public fitted-model representation and workflow methods."""
+
 from __future__ import annotations
 
 import json
@@ -6,55 +8,37 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from ..._workflow_outputs import SimulationArtifactSink
-from ..._workflow_progress import WorkflowProgressMode
-from ...contracts.base import require_non_empty_string
-from ...mean_reversion import MeanReversionBoundaryState
-from ...pricing import (
+from ._workflow_outputs import SimulationArtifactSink
+from ._workflow_progress import WorkflowProgressMode
+from .contracts.base import require_non_empty_string
+from .mean_reversion import MeanReversionBoundaryState
+from .pricing import (
     PricingIntervalSchedulePolicy,
     VanillaOptionPayoffType,
     VanillaOptionPricingRunResult,
 )
-from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
-from ..errors import calibration_error
-from ..market_data.contracts import (
-    CalibrationMarketDataWorkflowScope,
-    CalibrationOptionSurfaceColumnMapping,
-)
-from ..presets.resolution import ResolvedPresetWorkflowConfiguration
-from ..sessions.contracts import MarketDataSessionResolution
-from ._runtime.metadata import (
-    normalize_model_parameters,
-    serialize_model_payload,
-)
-from ._runtime.option_pricing.workflow import (
-    price_option_grid_for_model,
-    price_option_for_model,
-    price_option_grid_surface_for_model,
-)
-from ._runtime.simulation.result import (
-    JaniformSimulationResult,
-)
-from ._runtime.simulation.workflow import (
-    simulate_model,
-)
-from .pricing.grids import (
+from .pricing.fitted import (
+    JaniformObservedOptionSnapshotPricingResult,
+    JaniformObservedOptionSurfacePricingResult,
     JaniformVanillaOptionGridBatch,
     JaniformVanillaOptionGridBatchPricingResult,
-)
-from .pricing.market_snapshot._workflow.workflow import price_option_snapshot_for_model
-from .pricing.market_snapshot.inputs import TabularFrameInput
-from .pricing.market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
-from .pricing.market_surface._workflow.workflow import price_option_surface_for_model
-from .pricing.market_surface.result import JaniformObservedOptionSurfacePricingResult
-from .pricing.surface import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
-from .state import CurrentStateEstimationRequest, CurrentStateEstimationResult
-from .state._estimation import estimate_current_state_for_model
+from .pricing.fitted.market_snapshot.inputs import TabularFrameInput
+from .simulation import JaniformSimulationResult
+from .simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
+
+if TYPE_CHECKING:
+    from .calibration.fit.state import CurrentStateEstimationRequest, CurrentStateEstimationResult
+    from .calibration.market_data.contracts import (
+        CalibrationMarketDataWorkflowScope,
+        CalibrationOptionSurfaceColumnMapping,
+    )
+    from .calibration.presets.resolution import ResolvedPresetWorkflowConfiguration
+    from .calibration.sessions.contracts import MarketDataSessionResolution
 
 _DEFAULT_SIMULATION_SEED = 0
 
@@ -98,6 +82,8 @@ class JaniformModel:
         progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformSimulationResult:
+        from .calibration.fit._runtime.simulation.workflow import simulate_model
+
         resolved_start_time_utc = datetime.now(UTC) if start_time_utc is None else start_time_utc
 
         return simulate_model(
@@ -142,6 +128,8 @@ class JaniformModel:
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> VanillaOptionPricingRunResult:
+        from .calibration.fit._runtime.option_pricing.workflow import price_option_for_model
+
         return price_option_for_model(
             self,
             valuation_time_utc=valuation_time_utc,
@@ -179,6 +167,8 @@ class JaniformModel:
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
         progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
+        from .calibration.fit._runtime.option_pricing.workflow import price_option_grid_for_model
+
         return price_option_grid_for_model(
             self,
             valuation_time_utc=valuation_time_utc,
@@ -224,6 +214,8 @@ class JaniformModel:
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
         progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
     ) -> JaniformVanillaOptionSurfacePricingResult:
+        from .calibration.fit._runtime.option_pricing.workflow import price_option_grid_surface_for_model
+
         return price_option_grid_surface_for_model(
             self,
             valuation_time_utc=valuation_time_utc,
@@ -253,6 +245,8 @@ class JaniformModel:
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformObservedOptionSnapshotPricingResult:
+        from .pricing.fitted.market_snapshot._workflow.workflow import price_option_snapshot_for_model
+
         return price_option_snapshot_for_model(
             self,
             tick_data=tick_data,
@@ -283,6 +277,8 @@ class JaniformModel:
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformObservedOptionSurfacePricingResult:
+        from .pricing.fitted.market_surface._workflow.workflow import price_option_surface_for_model
+
         return price_option_surface_for_model(
             self,
             tick_data=tick_data,
@@ -305,6 +301,8 @@ class JaniformModel:
         state_time_utc: datetime,
         request: CurrentStateEstimationRequest,
     ) -> CurrentStateEstimationResult:
+        from .calibration.fit.state._estimation import estimate_current_state_for_model
+
         return estimate_current_state_for_model(
             self,
             state_time_utc=state_time_utc,
@@ -312,6 +310,8 @@ class JaniformModel:
         )
 
     def save(self, path: str | Path) -> None:
+        from .calibration.fit._runtime.metadata import serialize_model_payload
+
         model_path = Path(path)
         model_path.write_text(
             serialize_model_payload(self),
@@ -320,6 +320,15 @@ class JaniformModel:
 
     @staticmethod
     def load(path: str | Path) -> JaniformModel:
+        from .calibration.errors import calibration_error
+        from .calibration.fit._runtime.metadata import (
+            normalize_model_parameters,
+            validate_model_persistence_schema_version,
+        )
+        from .calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
+        from .calibration.presets.resolution import ResolvedPresetWorkflowConfiguration
+        from .calibration.sessions.contracts import MarketDataSessionResolution
+
         model_path = Path(path)
 
         try:
@@ -342,8 +351,6 @@ class JaniformModel:
 
         if not isinstance(payload, dict):
             raise calibration_error("path", "persisted model payload must be a JSON object")
-
-        from ._runtime.metadata import validate_model_persistence_schema_version
 
         validate_model_persistence_schema_version(payload.get("schema_version"))
 
@@ -389,4 +396,4 @@ class JaniformModel:
         )
 
 
-__all__ = ["JaniformModel", "JaniformSimulationResult"]
+__all__ = ["JaniformModel"]

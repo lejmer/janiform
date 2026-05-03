@@ -8,25 +8,25 @@ from datetime import UTC, date, datetime
 from types import ModuleType
 from typing import Any, Optional
 
-from ....._native_api import native_exception_matches, native_module
-from ....._timestamps import datetime_to_utc_nanos
-from .....contracts.base import (
+from ...._native_api import native_exception_matches, native_module
+from ...._timestamps import datetime_to_utc_nanos
+from janiform.contracts.base import (
     require_date,
     require_datetime_utc,
     require_non_empty_string_value,
 )
-from .....pricing import (
+from janiform.pricing import (
     AutoActivityCompressedPricingIntervalSchedulePolicy,
     AutoExactSparsePricingIntervalSchedulePolicy,
     PricingIntervalSchedule,
     PricingIntervalSchedulePolicy,
     default_pricing_interval_schedule_policy,
 )
-from ....errors import (
-    CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
-    CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
-    calibration_error,
-    calibration_integration_error,
+from janiform.pricing.errors import (
+    PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+    PRICING_INTEGRATION_RESPONSE_ERROR_ID,
+    _pricing_error,
+    _pricing_integration_error,
 )
 
 
@@ -65,10 +65,10 @@ def finalize_runtime_pricing_schedule(
     try:
         native: ModuleType = native_module()
     except ModuleNotFoundError as error:
-        raise calibration_integration_error(
+        raise _pricing_integration_error(
             "native pricing module is unavailable",
             entrypoint="pricing_maturity_resolution",
-            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            error_id=PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID,
             context={"module_name": "janiform._native"},
         ) from error
 
@@ -87,15 +87,15 @@ def finalize_runtime_pricing_schedule(
         )
     except Exception as error:
         if native_exception_matches(native, error, "PricingExecutionError"):
-            raise calibration_error(field_path, str(error)) from error
+            raise _pricing_error(field_path, str(error)) from error
 
-        raise calibration_error(field_path, str(error)) from error
+        raise _pricing_error(field_path, str(error)) from error
 
     if not isinstance(raw_resolution, dict):
-        raise calibration_integration_error(
+        raise _pricing_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
             entrypoint="pricing_maturity_resolution",
-            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
             context={"returned_type": type(raw_resolution).__name__},
         )
 
@@ -107,10 +107,10 @@ def finalize_runtime_pricing_schedule(
         maturity_terminal_interval_indices,
         list,
     ):
-        raise calibration_integration_error(
+        raise _pricing_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
             entrypoint="pricing_maturity_resolution",
-            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
             context={"returned_type": type(raw_resolution).__name__},
         )
 
@@ -138,7 +138,7 @@ def normalize_optional_expiry_timestamps_utc(
         item_parser=lambda value, location: require_datetime_utc(
             value,
             location,
-            calibration_error,
+            _pricing_error,
         ),
     )
 
@@ -154,7 +154,7 @@ def normalize_optional_expiry_dates(
         item_parser=lambda value, location: require_date(
             value,
             location,
-            calibration_error,
+            _pricing_error,
         ),
     )
 
@@ -170,7 +170,7 @@ def normalize_optional_tenors(
         item_parser=lambda value, location: require_non_empty_string_value(
             value,
             location,
-            calibration_error,
+            _pricing_error,
         ),
     )
 
@@ -196,7 +196,7 @@ def validate_pricing_maturity_axis_fields(
             continue
 
         if len(axis) == 0:
-            raise calibration_error(
+            raise _pricing_error(
                 field_path,
                 "must contain at least one maturity input when provided",
             )
@@ -206,13 +206,13 @@ def validate_pricing_maturity_axis_fields(
             continue
 
         if len(axis) != entry_count:
-            raise calibration_error(
+            raise _pricing_error(
                 field_path,
                 f"must contain {entry_count} entries to match the other maturity input axes, found {len(axis)}",
             )
 
     if entry_count is None:
-        raise calibration_error(
+        raise _pricing_error(
             field_prefix or "maturity_inputs",
             "at least one of expiry_timestamps_utc, expiry_dates, or tenors must be provided",
         )
@@ -223,7 +223,7 @@ def validate_pricing_maturity_axis_fields(
             for axis in (expiry_timestamps_utc, expiry_dates, tenors)
         )
         if selected_count != 1:
-            raise calibration_error(
+            raise _pricing_error(
                 field_prefix or "maturity_inputs",
                 (
                     f"exactly one of {expiry_timestamp_field_path}[{index}], "
@@ -246,7 +246,7 @@ def resolve_single_pricing_maturity_input(
         value is not None for value in (expiry_timestamp_utc, expiry_date, tenor)
     )
     if selected_count != 1:
-        raise calibration_error(
+        raise _pricing_error(
             "maturity_input",
             "exactly one of expiry_timestamp_utc, expiry_date, or tenor must be provided",
         )
@@ -257,18 +257,18 @@ def resolve_single_pricing_maturity_input(
         else require_datetime_utc(
             expiry_timestamp_utc,
             "expiry_timestamp_utc",
-            calibration_error,
+            _pricing_error,
         )
     )
 
     normalized_expiry_date = (
-        None if expiry_date is None else require_date(expiry_date, "expiry_date", calibration_error)
+        None if expiry_date is None else require_date(expiry_date, "expiry_date", _pricing_error)
     )
 
     normalized_tenor = (
         None
         if tenor is None
-        else require_non_empty_string_value(tenor, "tenor", calibration_error)
+        else require_non_empty_string_value(tenor, "tenor", _pricing_error)
     )
 
     return _resolve_pricing_maturity_inputs(
@@ -321,7 +321,7 @@ def _normalize_optional_axis[T](
         return None
 
     if isinstance(raw_values, str) or not isinstance(raw_values, Sequence):
-        raise calibration_error(field_path, "must be a sequence or null")
+        raise _pricing_error(field_path, "must be a sequence or null")
 
     return tuple(
         None
@@ -343,16 +343,16 @@ def _resolve_pricing_maturity_inputs(
     normalized_valuation_time_utc = require_datetime_utc(
         valuation_time_utc,
         "valuation_time_utc",
-        calibration_error,
+        _pricing_error,
     )
 
     try:
         native: ModuleType = native_module()
     except ModuleNotFoundError as error:
-        raise calibration_integration_error(
+        raise _pricing_integration_error(
             "native pricing module is unavailable",
             entrypoint="pricing_maturity_resolution",
-            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            error_id=PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID,
             context={"module_name": "janiform._native"},
         ) from error
 
@@ -372,15 +372,15 @@ def _resolve_pricing_maturity_inputs(
         raw_resolution = native.resolve_high_level_pricing_maturity_inputs(request_payload)
     except Exception as error:
         if native_exception_matches(native, error, "PricingExecutionError"):
-            raise calibration_error(field_path, str(error)) from error
+            raise _pricing_error(field_path, str(error)) from error
 
-        raise calibration_error(field_path, str(error)) from error
+        raise _pricing_error(field_path, str(error)) from error
 
     if not isinstance(raw_resolution, dict):
-        raise calibration_integration_error(
+        raise _pricing_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
             entrypoint="pricing_maturity_resolution",
-            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
             context={"returned_type": type(raw_resolution).__name__},
         )
 
@@ -396,10 +396,10 @@ def _resolve_pricing_maturity_inputs(
         maturity_terminal_interval_indices,
         list,
     ):
-        raise calibration_integration_error(
+        raise _pricing_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
             entrypoint="pricing_maturity_resolution",
-            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
             context={"returned_type": type(raw_resolution).__name__},
         )
 
@@ -411,7 +411,7 @@ def _resolve_pricing_maturity_inputs(
             require_datetime_utc(
                 raw_timestamp,
                 f"{field_path}.resolved_expiry_timestamps_utc[{index}]",
-                calibration_error,
+                _pricing_error,
             )
             for index, raw_timestamp in enumerate(resolved_expiry_timestamps_utc)
         ),

@@ -38,7 +38,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from janiform.calibration import JaniformEstimator, JaniformModel, JaniformSimulationResult
+from janiform.calibration import JaniformEstimator
+from janiform.model import JaniformModel
+from janiform.simulation import JaniformSimulationResult
 
 estimator = JaniformEstimator()
 model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet")

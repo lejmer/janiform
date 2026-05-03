@@ -40,7 +40,8 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from janiform.calibration import JaniformModel, JaniformSimulationResult
+from janiform.model import JaniformModel
+from janiform.simulation import JaniformSimulationResult
 
 model = JaniformModel.load(".janiform/runs/eurusd-fit/artifacts/model.jf")
 simulation: JaniformSimulationResult = model.simulate(
@@ -60,7 +61,8 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from janiform.calibration import JaniformModel, JaniformSimulationResult
+from janiform.model import JaniformModel
+from janiform.simulation import JaniformSimulationResult
 
 model = JaniformModel.load(".janiform/runs/eurusd-fit/artifacts/model.jf")
 coarse_simulation: JaniformSimulationResult = model.simulate(
@@ -80,7 +82,8 @@ df: pd.DataFrame = coarse_simulation.to_pandas()
 from datetime import UTC, datetime
 from pathlib import Path
 
-from janiform.calibration import JaniformModel, JaniformSimulationResult
+from janiform.model import JaniformModel
+from janiform.simulation import JaniformSimulationResult
 
 model = JaniformModel.load(".janiform/runs/eurusd-fit/artifacts/model.jf")
 simulation: JaniformSimulationResult = model.simulate(

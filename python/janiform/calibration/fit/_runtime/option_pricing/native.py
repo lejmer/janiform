@@ -12,10 +12,10 @@ from ....errors import (
     calibration_execution_error,
     calibration_integration_error,
 )
-from ...pricing.grids import (
+from .....pricing.fitted.grids import (
     JaniformVanillaOptionGridBatchPricingResult,
 )
-from ...pricing.surface import (
+from .....pricing.fitted.surface import (
     JaniformVanillaOptionSurfacePricingResult,
 )
 

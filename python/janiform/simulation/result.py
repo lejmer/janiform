@@ -1,3 +1,5 @@
+"""Public high-level simulation result adapter."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -5,15 +7,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
 
-from ....._workflow_outputs import (
+from .._workflow_outputs import (
     persist_coarse_simulation,
     persist_seeded_tick_simulation,
     simulation_output_columns,
 )
-from .....calendar import CalendarRegistry
-from .....simulation.coarse import CoarseSimulationPath
-from .....simulation.kinds import SimulationKind
-from .....simulation.seeded import SeededTickSimulationResponse
+from ..calendar import CalendarRegistry
+from .coarse import CoarseSimulationPath
+from .kinds import SimulationKind
+from .seeded import SeededTickSimulationResponse
 
 
 class _MemorySimulationSink:
@@ -48,6 +50,7 @@ class JaniformSimulationResult:
         rows = self._rows()
         if len(rows) == 0:
             return pandas.DataFrame(columns=self._column_names())
+
         return pandas.DataFrame.from_records(rows)
 
     def to_numpy(self) -> Any:
@@ -56,7 +59,9 @@ class JaniformSimulationResult:
         rows = self._rows()
         if len(rows) == 0:
             return numpy.empty((0, len(self._column_names())), dtype=object)
+
         column_names = tuple(rows[0].keys())
+
         return numpy.asarray(
             [tuple(row[column_name] for column_name in column_names) for row in rows],
             dtype=object,
@@ -67,12 +72,15 @@ class JaniformSimulationResult:
         if self.simulation_kind == SimulationKind.SEEDED_TICK:
             if self._preferences is None:
                 raise RuntimeError("seeded simulation exports require output preferences")
+
             persist_seeded_tick_simulation(
                 simulation_result=cast(SeededTickSimulationResponse, self.raw_result),
                 output_path=output_path,
                 preferences=self._preferences,
             )
+
             return
+
         persist_coarse_simulation(
             simulation_result=cast(CoarseSimulationPath, self.raw_result),
             output_path=output_path,
@@ -100,6 +108,7 @@ class JaniformSimulationResult:
         else:
             if self._calendar_registry is None or self._exchange_code is None:
                 raise RuntimeError("coarse simulation rows require calendar context")
+
             persist_coarse_simulation(
                 simulation_result=cast(CoarseSimulationPath, self.raw_result),
                 output_path=Path("simulation.parquet"),
@@ -108,6 +117,7 @@ class JaniformSimulationResult:
                 calendar_registry=self._calendar_registry,
                 exchange_code=self._exchange_code,
             )
+
             rows = sink.rows
 
         self._rows_cache = rows
@@ -130,8 +140,10 @@ class JaniformSimulationResult:
                 "pressure_state",
                 "deviation_from_anchor",
             )
+
         if self._preferences is None:
             raise RuntimeError("simulation exports require output preferences")
+
         return simulation_output_columns(self._preferences)
 
 
@@ -160,6 +172,7 @@ def coarse_simulation_rows(
                 "deviation_from_anchor": interval.deviation_from_anchor,
             }
         )
+
     return rows
 
 
@@ -179,4 +192,8 @@ def normalize_interval_label(interval: str | timedelta) -> str:
         return f"{total_seconds // 3_600}h"
     if total_seconds % 60 == 0:
         return f"{total_seconds // 60}min"
+
     return f"{total_seconds}s"
+
+
+__all__ = ["JaniformSimulationResult"]

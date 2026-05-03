@@ -2,7 +2,7 @@ import argparse
 from datetime import UTC, datetime
 from typing import Final
 
-from janiform.calibration import JaniformModel
+from janiform.model import JaniformModel
 from janiform.pricing import VanillaOptionPricingRunResult
 
 from examples._shared import (

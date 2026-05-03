@@ -5,18 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from ......_workflow_progress import WorkflowProgressMode
-from ......contracts.base import require_finite_scalar
-from ......pricing import VanillaOptionPayoffType
-from .....errors import calibration_error
-from .....market_data.contracts import CalibrationOptionSurfaceColumnMapping
+from ....._workflow_progress import WorkflowProgressMode
+from janiform.contracts.base import require_finite_scalar
+from janiform.pricing import VanillaOptionPayoffType
+from janiform.pricing.errors import _pricing_error
+from janiform.calibration.market_data.contracts import CalibrationOptionSurfaceColumnMapping
 from .context import prepare_observed_option_market_context
 from .pricing import price_prepared_snapshot_groups_for_model
 from .preparation import prepare_snapshot_groups
 from ..result import JaniformObservedOptionSnapshotPricingResult
 
 if TYPE_CHECKING:
-    from ....model import JaniformModel
+    from .....model import JaniformModel
     from ..inputs import TabularFrameInput
 
 
@@ -34,8 +34,8 @@ def price_option_snapshot_for_model(
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> JaniformObservedOptionSnapshotPricingResult:
-    require_finite_scalar(risk_free_rate, "risk_free_rate", calibration_error)
-    require_finite_scalar(dividend_yield, "dividend_yield", calibration_error)
+    require_finite_scalar(risk_free_rate, "risk_free_rate", _pricing_error)
+    require_finite_scalar(dividend_yield, "dividend_yield", _pricing_error)
 
     context = prepare_observed_option_market_context(
         model,

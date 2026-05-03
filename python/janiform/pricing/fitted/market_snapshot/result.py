@@ -30,15 +30,15 @@ from janiform._pricing_field_names import (
     RISK_FREE_RATE_FIELD_NAME,
     STRIKE_FIELD_NAME,
 )
-from .....pricing import (
+from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
     VanillaOptionPricingFailureStage,
     VanillaOptionPricingStatus,
 )
-from .....pricing._moneyness import calculate_optional_log_forward_moneyness
+from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from ..grids import JaniformVanillaOptionGridBatchPricingResult
-from ....errors import calibration_error
+from janiform.pricing.errors import _pricing_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +122,7 @@ class JaniformObservedOptionSnapshotPricingResult:
     ) -> Any:
         frame = self.to_pandas()
         if value_column not in frame.columns:
-            raise calibration_error(
+            raise _pricing_error(
                 "value_column",
                 f"must be one of: {', '.join(str(value) for value in frame.columns)}",
             )

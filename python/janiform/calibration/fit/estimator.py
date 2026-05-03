@@ -25,8 +25,8 @@ from ._preparation.contracts import (
     PreparedFitWorkflow,
 )
 from ._runtime.workflow import prepare_fit_workflow as prepare_native_fit_workflow
-from .model import JaniformModel
 from .result import JaniformFitResult
+from ...model import JaniformModel
 from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
 from ..errors import calibration_error
 from ..market_data.contracts import (

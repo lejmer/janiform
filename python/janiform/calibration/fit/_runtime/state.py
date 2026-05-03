@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 from ..state import CurrentStateEstimationRequest, CurrentStateEstimationResult
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ....model import JaniformModel
 
 
 def estimate_model_state_from_observed_data(

@@ -34,14 +34,14 @@ from janiform._pricing_field_names import (
     TIME_TO_EXPIRY_HOURS_FIELD_NAME,
     VALUATION_TIME_UTC_FIELD_NAME,
 )
-from .....pricing import (
+from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
     VanillaOptionPricingFailureStage,
     VanillaOptionPricingStatus,
 )
-from .....pricing._moneyness import calculate_optional_log_forward_moneyness
-from ....errors import calibration_error
+from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
+from janiform.pricing.errors import _pricing_error
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 
 
@@ -143,7 +143,7 @@ class JaniformObservedOptionSurfacePricingResult:
     ) -> Any:
         frame = self.to_pandas()
         if value_column not in frame.columns:
-            raise calibration_error(
+            raise _pricing_error(
                 MODEL_IMPLIED_VOLATILITY_FIELD_NAME,
                 f"must be one of: {', '.join(str(value) for value in frame.columns)}",
             )
@@ -188,7 +188,7 @@ def _build_single_expiry_surface_df(
         )
     )
     if len(reference_moneyness_grid) == 0:
-        raise calibration_error(
+        raise _pricing_error(
             LOG_FORWARD_MONEYNESS_FIELD_NAME,
             "surface did not retain any finite log-forward moneyness values",
         )
@@ -287,7 +287,7 @@ def _shared_moneyness_support(
     ]
 
     if len(support_by_valuation_time) == 0:
-        raise calibration_error(
+        raise _pricing_error(
             LOG_FORWARD_MONEYNESS_FIELD_NAME,
             "surface did not retain any finite log-forward moneyness values",
         )
@@ -302,7 +302,7 @@ def _shared_moneyness_support(
     )
 
     if len(shared_grid) == 0:
-        raise calibration_error(
+        raise _pricing_error(
             LOG_FORWARD_MONEYNESS_FIELD_NAME,
             "surface did not retain any shared log-forward moneyness support",
         )

@@ -19,7 +19,7 @@ from ..seasonality import (
 )
 
 if TYPE_CHECKING:
-    from ...model import JaniformModel
+    from .....model import JaniformModel
 
 
 def build_model_pricing_hourly_factor_contract(

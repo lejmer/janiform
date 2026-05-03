@@ -14,14 +14,14 @@ from janiform.calibration.fit._inference import (
     infer_fit_inputs,
 )
 from janiform.calibration.fit.estimator import JaniformEstimator
-from janiform.calibration.fit.model import JaniformModel
 from janiform.calibration.fit.report import JaniformFitReport
 from janiform.calibration.market_data.contracts import (
-    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
+    CalibrationMeanReversionConfiguration,
 )
+from janiform.model import JaniformModel
 
 from .artifacts import load_workbench_artifacts
 from .events import WorkbenchEventType, build_workbench_event
