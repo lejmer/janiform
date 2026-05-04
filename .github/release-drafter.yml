@@ -4,31 +4,22 @@ change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
 categories:
   - title: "Breaking Changes"
     labels:
-      - "type: breaking"
+      - "changelog: breaking"
   - title: "Features"
     labels:
-      - "type: feature"
-      - "feat"
+      - "changelog: feature"
   - title: "Fixes"
     labels:
-      - "type: fix"
-      - "fix"
+      - "changelog: fix"
   - title: "Performance"
     labels:
-      - "type: performance"
-      - "performance"
+      - "changelog: performance"
   - title: "Packaging"
     labels:
-      - "type: packaging"
-      - "packaging"
+      - "changelog: packaging"
   - title: "Documentation"
     labels:
-      - "type: docs"
-      - "docs"
-  - title: "CI"
-    labels:
-      - "type: ci"
-      - "ci"
+      - "changelog: docs"
 exclude-labels:
   - "skip-changelog"
 template: |
@@ -38,17 +29,13 @@ template: |
 version-resolver:
   major:
     labels:
-      - "type: breaking"
+      - "changelog: breaking"
   minor:
     labels:
-      - "type: feature"
-      - "feat"
+      - "changelog: feature"
   patch:
     labels:
-      - "type: fix"
-      - "fix"
-      - "type: performance"
-      - "performance"
-      - "type: packaging"
-      - "packaging"
+      - "changelog: fix"
+      - "changelog: performance"
+      - "changelog: packaging"
   default: patch

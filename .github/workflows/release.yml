@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -238,10 +239,22 @@ jobs:
           path: dist
           if-no-files-found: error
 
-      - name: Create draft GitHub Release
+      - name: Draft release notes
+        if: github.event_name == 'push'
+        uses: release-drafter/release-drafter@v6
+        with:
+          name: "${{ needs.validate-tag.outputs.release_tag }}"
+          tag: "${{ needs.validate-tag.outputs.release_tag }}"
+          version: "${{ needs.validate-tag.outputs.version }}"
+          commitish: "${{ github.sha }}"
+          publish: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release artifacts
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          tag_name: "${{ needs.validate-tag.outputs.release_tag }}"
           files: dist/*
-          generate_release_notes: true

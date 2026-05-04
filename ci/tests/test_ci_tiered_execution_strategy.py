@@ -110,9 +110,29 @@ def test_tag_release_workflow_publishes_draft_release_from_ci_artifacts() -> Non
     assert "scripts/ci/write_sha256s.py" in workflow_text
     assert "scripts/ci/build_release_manifest.py" in workflow_text
     assert "release-dry-run-artifacts" in workflow_text
+    assert "release-drafter/release-drafter@v6" in workflow_text
+    assert "publish: false" in workflow_text
     assert "softprops/action-gh-release@v2" in workflow_text
+    assert "tag_name: \"${{ needs.validate-tag.outputs.release_tag }}\"" in workflow_text
+    assert "generate_release_notes: true" not in workflow_text
     assert "if: github.event_name == 'push'" in workflow_text
     assert "draft: true" in workflow_text
+
+
+def test_release_drafter_uses_user_facing_changelog_labels() -> None:
+    config_path: Path = _project_root() / ".github" / "release-drafter.yml"
+    config_text: str = _load_workflow_text(config_path)
+
+    assert '"changelog: breaking"' in config_text
+    assert '"changelog: feature"' in config_text
+    assert '"changelog: fix"' in config_text
+    assert '"changelog: performance"' in config_text
+    assert '"changelog: packaging"' in config_text
+    assert '"changelog: docs"' in config_text
+    assert '"skip-changelog"' in config_text
+    assert '"type: breaking"' not in config_text
+    assert '"type: ci"' not in config_text
+    assert 'title: "CI"' not in config_text
 
 
 def test_rust_benchmark_governance_smoke_workflow_has_manual_trigger_and_artifact_hooks() -> None:
