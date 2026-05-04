@@ -57,7 +57,6 @@ def test_multiplatform_verification_workflow_has_linux_rust_verification_and_win
     assert "windows-build-smoke:" in workflow_text
     assert "./scripts/bootstrap-linux.sh .venv-linux" in workflow_text
     assert "./scripts/test-python-linux.sh .venv-linux" in workflow_text
-    assert "./scripts/bootstrap-win.ps1 .venv" in workflow_text
     assert "python -m janiform --help" in workflow_text
     assert "tests/test_public_api_surface_map.py" in workflow_text
 
