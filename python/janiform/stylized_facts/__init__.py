@@ -9,8 +9,6 @@ from .contracts import (
     StylizedFactHorizonComparisonArtifactExportReceipt,
     StylizedFactHorizonComparisonHorizonReport,
     StylizedFactHorizonComparisonOutputSchemaMetadata,
-    StylizedFactHorizonComparisonPlotPayload,
-    StylizedFactHorizonComparisonPlotPoint,
     StylizedFactHorizonComparisonReport,
     StylizedFactHorizonComparisonReportBundle,
     StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata,
@@ -23,14 +21,11 @@ from .contracts import (
     StylizedFactUncertaintyContext,
 )
 from .workflow import (
-    STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION,
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY,
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION,
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION,
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_SCHEMA_VERSION,
     STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION,
-    build_stylized_fact_plotly_figure,
-    build_stylized_fact_plotly_figure_from_report_bundle,
     run_stylized_fact_horizon_comparison_report_generator,
 )
 
@@ -40,7 +35,6 @@ __all__ = [
     "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY",
     "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION",
     "STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION",
-    "STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION",
     "StylizedFactDecisionCounts",
     "StylizedFactDatasetMetricObservedCounts",
     "StylizedFactDatasetMetricReport",
@@ -55,13 +49,9 @@ __all__ = [
     "StylizedFactHorizonComparisonHorizonReport",
     "StylizedFactHorizonComparisonTableSummary",
     "StylizedFactHorizonComparisonTableSummaryRow",
-    "StylizedFactHorizonComparisonPlotPayload",
-    "StylizedFactHorizonComparisonPlotPoint",
     "StylizedFactHorizonComparisonArtifactExportReceipt",
     "StylizedFactMetricComparisonReport",
     "StylizedFactThresholdContext",
     "StylizedFactUncertaintyContext",
     "run_stylized_fact_horizon_comparison_report_generator",
-    "build_stylized_fact_plotly_figure",
-    "build_stylized_fact_plotly_figure_from_report_bundle",
 ]

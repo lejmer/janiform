@@ -104,11 +104,6 @@ fn build_resolved_stylized_facts_validation_plan(
             .to_string(),
         request
             .output_dir
-            .join(format!("{REPORT_FILE_STEM}.plot_payload.json"))
-            .display()
-            .to_string(),
-        request
-            .output_dir
             .join(LINEAGE_FILE_NAME)
             .display()
             .to_string(),

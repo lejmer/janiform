@@ -1,6 +1,5 @@
 import json
 from collections.abc import Mapping
-from types import SimpleNamespace
 from typing import Any, Optional, cast
 
 import pytest
@@ -9,7 +8,6 @@ import janiform.stylized_facts as stylized_facts_module
 import janiform.stylized_facts.workflow as stylized_facts_workflow_module
 from janiform.stylized_facts import (
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION,
-    build_stylized_fact_plotly_figure_from_report_bundle,
     run_stylized_fact_horizon_comparison_report_generator,
 )
 
@@ -45,43 +43,6 @@ def test_report_generator_wrapper_parses_bundle_and_preserves_metric_class(
     assert cast(str, fake_native.last_request["generation_options"]["execution_mode"]) == "memory"
 
 
-def test_plotly_adapter_preserves_metric_and_insufficient_metadata(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    report_bundle = _sample_report_bundle()
-
-    class FakeScatter:
-        def __init__(self, **kwargs: Any) -> None:
-            self.kwargs: dict[str, Any] = kwargs
-
-    class FakeFigure:
-        def __init__(self) -> None:
-            self.traces: list[FakeScatter] = []
-            self.layout_updates: list[dict[str, Any]] = []
-
-        def add_trace(self, trace: FakeScatter) -> None:
-            self.traces.append(trace)
-
-        def update_layout(self, **kwargs: Any) -> None:
-            self.layout_updates.append(kwargs)
-
-    fake_graph_objects = SimpleNamespace(Figure=FakeFigure, Scatter=FakeScatter)
-    monkeypatch.setattr(stylized_facts_workflow_module, "go", fake_graph_objects)
-
-    figure = build_stylized_fact_plotly_figure_from_report_bundle(report_bundle)
-    assert isinstance(figure, FakeFigure)
-    assert figure.traces, "plot adapter should produce one or more traces"
-
-    first_trace = figure.traces[0]
-    first_custom_data = cast(list[list[str]], first_trace.kwargs["customdata"])[0]
-    assert first_custom_data[0] == "returns_abs_quantile_shape_ratio_q99_q95"
-    assert first_custom_data[1] == "primary_robust"
-
-    parsed_insufficient_data_reasons = cast(dict[str, list[str]], json.loads(first_custom_data[5]))
-    assert parsed_insufficient_data_reasons["empirical"] == []
-    assert parsed_insufficient_data_reasons["simulated"] == []
-
-
 def _sample_report_bundle_payload() -> dict[str, Any]:
     output_schema_metadata: dict[str, Any] = {
         "schema_version": "validation.stylized_fact.horizon_comparison.report_bundle.output_schema_metadata.v1",
@@ -91,7 +52,6 @@ def _sample_report_bundle_payload() -> dict[str, Any]:
             "output_schema_metadata",
             "comparison_report",
             "table_summary",
-            "plot_payload",
             "artifact_export",
         ],
         "required_table_summary_fields": ["schema_version", "determinism_policy", "rows"],
@@ -120,27 +80,6 @@ def _sample_report_bundle_payload() -> dict[str, Any]:
             "simulated_horizon_coverage_ratio",
             "insufficient_data_reasons",
             "decision_reason_codes",
-        ],
-        "required_plot_payload_fields": ["schema_version", "determinism_policy", "points"],
-        "required_plot_point_fields": [
-            "calibration_run_id",
-            "horizon_label",
-            "metric_id",
-            "metric_name",
-            "metric_variant",
-            "metric_class",
-            "status",
-            "absolute_delta",
-            "standardized_delta",
-            "empirical_value",
-            "simulated_value",
-            "empirical_confidence_interval",
-            "simulated_confidence_interval",
-            "empirical_sample_coverage",
-            "simulated_sample_coverage",
-            "empirical_horizon_coverage_ratio",
-            "simulated_horizon_coverage_ratio",
-            "insufficient_data_reasons",
         ],
         "decision_state_vocabulary": ["pass", "fail", "insufficient_data"],
         "metric_class_vocabulary": ["primary_robust", "secondary_moment"],
@@ -410,14 +349,6 @@ def _sample_report_bundle_payload() -> dict[str, Any]:
             "schema_version": "validation.stylized_fact.horizon_comparison.table_summary.v1",
             "determinism_policy": "stable_run_horizon_metric_order_with_metric_catalog_classification.v1",
             "rows": table_rows,
-        },
-        "plot_payload": {
-            "schema_version": "validation.stylized_fact.horizon_comparison.plot_payload.v1",
-            "determinism_policy": "stable_run_horizon_metric_order_with_metric_catalog_classification.v1",
-            "points": [
-                _plot_point_from_table_row(table_rows[0]),
-                _plot_point_from_table_row(table_rows[1]),
-            ],
         },
         "artifact_export": None,
     }

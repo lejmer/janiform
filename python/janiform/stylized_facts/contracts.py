@@ -207,42 +207,11 @@ class StylizedFactHorizonComparisonTableSummary(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class StylizedFactHorizonComparisonPlotPoint(ContractModel):
-    calibration_run_id: str
-    horizon_label: str
-    metric_id: str
-    metric_name: str
-    metric_variant: Optional[str]
-    metric_class: str
-    status: str
-    absolute_delta: Optional[float]
-    standardized_delta: Optional[float]
-    empirical_value: Optional[float]
-    simulated_value: Optional[float]
-    empirical_confidence_interval: Optional[StylizedFactMetricIntervalBounds]
-    simulated_confidence_interval: Optional[StylizedFactMetricIntervalBounds]
-    empirical_sample_coverage: StylizedFactMetricCoverageSummary
-    simulated_sample_coverage: StylizedFactMetricCoverageSummary
-    empirical_horizon_coverage_ratio: float
-    simulated_horizon_coverage_ratio: float
-    insufficient_data_reasons: StylizedFactMetricInsufficientDataReasons
-
-
-@dataclass(frozen=True, slots=True)
-class StylizedFactHorizonComparisonPlotPayload(ContractModel):
-    schema_version: str
-    determinism_policy: str
-    points: list[StylizedFactHorizonComparisonPlotPoint]
-
-
-@dataclass(frozen=True, slots=True)
 class StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata(ContractModel):
     schema_version: str
     required_bundle_fields: list[str]
     required_table_summary_fields: list[str]
     required_table_summary_row_fields: list[str]
-    required_plot_payload_fields: list[str]
-    required_plot_point_fields: list[str]
     decision_state_vocabulary: list[str]
     metric_class_vocabulary: list[str]
     insufficient_data_status_code: str
@@ -269,7 +238,6 @@ class StylizedFactHorizonComparisonReportBundle(ContractModel):
     output_schema_metadata: StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata
     comparison_report: StylizedFactHorizonComparisonReport
     table_summary: StylizedFactHorizonComparisonTableSummary
-    plot_payload: StylizedFactHorizonComparisonPlotPayload
     artifact_export: Optional[StylizedFactHorizonComparisonArtifactExportReceipt]
 
 
@@ -283,8 +251,6 @@ __all__ = [
     "StylizedFactHorizonComparisonExportedArtifactFile",
     "StylizedFactHorizonComparisonHorizonReport",
     "StylizedFactHorizonComparisonOutputSchemaMetadata",
-    "StylizedFactHorizonComparisonPlotPayload",
-    "StylizedFactHorizonComparisonPlotPoint",
     "StylizedFactHorizonComparisonReport",
     "StylizedFactHorizonComparisonReportBundle",
     "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata",

@@ -8003,7 +8003,6 @@
     },
     "janiform.stylized_facts": {
       "exports": [
-        "STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION",
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY",
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION",
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION",
@@ -8017,8 +8016,6 @@
         "StylizedFactHorizonComparisonArtifactExportReceipt",
         "StylizedFactHorizonComparisonHorizonReport",
         "StylizedFactHorizonComparisonOutputSchemaMetadata",
-        "StylizedFactHorizonComparisonPlotPayload",
-        "StylizedFactHorizonComparisonPlotPoint",
         "StylizedFactHorizonComparisonReport",
         "StylizedFactHorizonComparisonReportBundle",
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata",
@@ -8029,17 +8026,10 @@
         "StylizedFactMetricComparisonReport",
         "StylizedFactThresholdContext",
         "StylizedFactUncertaintyContext",
-        "build_stylized_fact_plotly_figure",
-        "build_stylized_fact_plotly_figure_from_report_bundle",
         "run_stylized_fact_horizon_comparison_report_generator"
       ],
       "module_name": "janiform.stylized_facts",
       "schema_identifiers": [
-        {
-          "name": "STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "validation.stylized_fact.horizon_comparison.plot_payload.v1"
-        },
         {
           "name": "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION",
           "public_exported": true,
@@ -8062,10 +8052,6 @@
         }
       ],
       "symbols": {
-        "STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "validation.stylized_fact.horizon_comparison.plot_payload.v1"
-        },
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY": {
           "kind": "constant",
           "value": "stable_run_horizon_metric_order_with_metric_catalog_classification.v1"
@@ -8178,39 +8164,6 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'"
         },
-        "StylizedFactHorizonComparisonPlotPayload": {
-          "field_names": [
-            "schema_version",
-            "determinism_policy",
-            "points"
-          ],
-          "kind": "contract_model",
-          "signature": "(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'"
-        },
-        "StylizedFactHorizonComparisonPlotPoint": {
-          "field_names": [
-            "calibration_run_id",
-            "horizon_label",
-            "metric_id",
-            "metric_name",
-            "metric_variant",
-            "metric_class",
-            "status",
-            "absolute_delta",
-            "standardized_delta",
-            "empirical_value",
-            "simulated_value",
-            "empirical_confidence_interval",
-            "simulated_confidence_interval",
-            "empirical_sample_coverage",
-            "simulated_sample_coverage",
-            "empirical_horizon_coverage_ratio",
-            "simulated_horizon_coverage_ratio",
-            "insufficient_data_reasons"
-          ],
-          "kind": "contract_model",
-          "signature": "(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'"
-        },
         "StylizedFactHorizonComparisonReport": {
           "field_names": [
             "schema_version",
@@ -8235,11 +8188,10 @@
             "output_schema_metadata",
             "comparison_report",
             "table_summary",
-            "plot_payload",
             "artifact_export"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata": {
           "field_names": [
@@ -8247,14 +8199,12 @@
             "required_bundle_fields",
             "required_table_summary_fields",
             "required_table_summary_row_fields",
-            "required_plot_payload_fields",
-            "required_plot_point_fields",
             "decision_state_vocabulary",
             "metric_class_vocabulary",
             "insufficient_data_status_code"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
+          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportSummary": {
           "field_names": [
@@ -8358,14 +8308,6 @@
           "kind": "contract_model",
           "signature": "(empirical_interval_half_width: 'Optional[float]', simulated_interval_half_width: 'Optional[float]', pooled_interval_half_width: 'Optional[float]', standardized_delta: 'Optional[float]') -> 'None'"
         },
-        "build_stylized_fact_plotly_figure": {
-          "kind": "function",
-          "signature": "(plot_payload: 'StylizedFactHorizonComparisonPlotPayload', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
-        },
-        "build_stylized_fact_plotly_figure_from_report_bundle": {
-          "kind": "function",
-          "signature": "(report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
-        },
         "run_stylized_fact_horizon_comparison_report_generator": {
           "kind": "function",
           "signature": "(*, metric_catalog: 'Mapping[str, Any]', comparison_request: 'Mapping[str, Any]', execution_mode: 'str' = 'memory', artifact_export: 'Optional[Mapping[str, Any]]' = None) -> 'StylizedFactHorizonComparisonReportBundle'"
@@ -8383,8 +8325,6 @@
         "StylizedFactHorizonComparisonExportedArtifactFile",
         "StylizedFactHorizonComparisonHorizonReport",
         "StylizedFactHorizonComparisonOutputSchemaMetadata",
-        "StylizedFactHorizonComparisonPlotPayload",
-        "StylizedFactHorizonComparisonPlotPoint",
         "StylizedFactHorizonComparisonReport",
         "StylizedFactHorizonComparisonReportBundle",
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata",
@@ -8503,39 +8443,6 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'"
         },
-        "StylizedFactHorizonComparisonPlotPayload": {
-          "field_names": [
-            "schema_version",
-            "determinism_policy",
-            "points"
-          ],
-          "kind": "contract_model",
-          "signature": "(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'"
-        },
-        "StylizedFactHorizonComparisonPlotPoint": {
-          "field_names": [
-            "calibration_run_id",
-            "horizon_label",
-            "metric_id",
-            "metric_name",
-            "metric_variant",
-            "metric_class",
-            "status",
-            "absolute_delta",
-            "standardized_delta",
-            "empirical_value",
-            "simulated_value",
-            "empirical_confidence_interval",
-            "simulated_confidence_interval",
-            "empirical_sample_coverage",
-            "simulated_sample_coverage",
-            "empirical_horizon_coverage_ratio",
-            "simulated_horizon_coverage_ratio",
-            "insufficient_data_reasons"
-          ],
-          "kind": "contract_model",
-          "signature": "(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'"
-        },
         "StylizedFactHorizonComparisonReport": {
           "field_names": [
             "schema_version",
@@ -8560,11 +8467,10 @@
             "output_schema_metadata",
             "comparison_report",
             "table_summary",
-            "plot_payload",
             "artifact_export"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata": {
           "field_names": [
@@ -8572,14 +8478,12 @@
             "required_bundle_fields",
             "required_table_summary_fields",
             "required_table_summary_row_fields",
-            "required_plot_payload_fields",
-            "required_plot_point_fields",
             "decision_state_vocabulary",
             "metric_class_vocabulary",
             "insufficient_data_status_code"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
+          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportSummary": {
           "field_names": [
