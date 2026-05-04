@@ -61,6 +61,60 @@ def test_multiplatform_verification_workflow_has_linux_rust_verification_and_win
     assert "tests/test_public_api_surface_map.py" in workflow_text
 
 
+def test_generated_workflow_checks_all_generated_release_inputs() -> None:
+    workflow_path: Path = _project_root() / ".github" / "workflows" / "ci-generated.yml"
+    workflow_text: str = _load_workflow_text(workflow_path)
+
+    assert "name: ci-generated" in workflow_text
+    assert "scripts/generate_crate_readmes.py --check" in workflow_text
+    assert "scripts/generate_docs_references.py --check" in workflow_text
+    assert "scripts/generate_internal_crate_graph_policy.py --check" in workflow_text
+    assert "scripts/generate_third_party_notices.py --check" in workflow_text
+    assert "scripts/generate_bundled_presets.py" in workflow_text
+    assert "git diff --exit-code -- python/janiform/calibration/_bundled_presets/generated" in workflow_text
+
+
+def test_release_candidate_workflow_builds_wheels_and_standalone_cli_archives() -> None:
+    workflow_path: Path = _project_root() / ".github" / "workflows" / "ci-release-candidate.yml"
+    workflow_text: str = _load_workflow_text(workflow_path)
+
+    assert "name: ci-release-candidate" in workflow_text
+    assert '"release/v*"' in workflow_text
+    assert "branches:" in workflow_text
+    assert "- main" in workflow_text
+    assert "scripts/ci/check_release_version.py" in workflow_text
+    assert "scripts/ci/check_wheel_contents.py" in workflow_text
+    assert "scripts/ci/smoke_installed_wheel.py" in workflow_text
+    assert "scripts/ci/package_cli_archive.py" in workflow_text
+    assert "scripts/ci/smoke_cli_archive.py" in workflow_text
+    assert "python -m maturin sdist --out dist" in workflow_text
+    assert "python -m pip install dist/*.tar.gz" in workflow_text
+    assert "--target x86_64-unknown-linux-gnu" in workflow_text
+    assert "--target x86_64-pc-windows-msvc" in workflow_text
+
+
+def test_tag_release_workflow_publishes_draft_release_from_ci_artifacts() -> None:
+    workflow_path: Path = _project_root() / ".github" / "workflows" / "release.yml"
+    workflow_text: str = _load_workflow_text(workflow_path)
+
+    assert "name: release" in workflow_text
+    assert "workflow_dispatch:" in workflow_text
+    assert "dry_run:" in workflow_text
+    assert '- "v*.*.*"' in workflow_text
+    assert "dry-run/v${{ inputs.version }}" in workflow_text
+    assert 'git merge-base --is-ancestor "$GITHUB_SHA" origin/main' in workflow_text
+    assert "python scripts/ci/check_release_version.py --version" in workflow_text
+    assert "python -m maturin build --release --locked --out dist" in workflow_text
+    assert "python -m maturin sdist --out dist" in workflow_text
+    assert "python -m pip install dist/*.tar.gz" in workflow_text
+    assert "scripts/ci/write_sha256s.py" in workflow_text
+    assert "scripts/ci/build_release_manifest.py" in workflow_text
+    assert "release-dry-run-artifacts" in workflow_text
+    assert "softprops/action-gh-release@v2" in workflow_text
+    assert "if: github.event_name == 'push'" in workflow_text
+    assert "draft: true" in workflow_text
+
+
 def test_rust_benchmark_governance_smoke_workflow_has_manual_trigger_and_artifact_hooks() -> None:
     workflow_path: Path = (
         _project_root()

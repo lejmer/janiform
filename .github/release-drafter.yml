@@ -1,0 +1,54 @@
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
+categories:
+  - title: "Breaking Changes"
+    labels:
+      - "type: breaking"
+  - title: "Features"
+    labels:
+      - "type: feature"
+      - "feat"
+  - title: "Fixes"
+    labels:
+      - "type: fix"
+      - "fix"
+  - title: "Performance"
+    labels:
+      - "type: performance"
+      - "performance"
+  - title: "Packaging"
+    labels:
+      - "type: packaging"
+      - "packaging"
+  - title: "Documentation"
+    labels:
+      - "type: docs"
+      - "docs"
+  - title: "CI"
+    labels:
+      - "type: ci"
+      - "ci"
+exclude-labels:
+  - "skip-changelog"
+template: |
+  ## Changes
+
+  $CHANGES
+version-resolver:
+  major:
+    labels:
+      - "type: breaking"
+  minor:
+    labels:
+      - "type: feature"
+      - "feat"
+  patch:
+    labels:
+      - "type: fix"
+      - "fix"
+      - "type: performance"
+      - "performance"
+      - "type: packaging"
+      - "packaging"
+  default: patch
