@@ -1,9 +1,6 @@
-param(
-    [Parameter(Position=0)]
-    [string]$VenvDir = ".venv-win"
-)
-
 $ErrorActionPreference = "Stop"
+$ScriptDir = Split-Path -Parent $PSCommandPath
+. (Join-Path $ScriptDir "_build-helpers-win.ps1")
 
 # This build script assumes:
 # - Current dir is repo root
@@ -11,45 +8,74 @@ $ErrorActionPreference = "Stop"
 # - A venv already exists
 # - Either uv or Python is installed
 
-if ($args.Count -gt 0) {
-    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [venv_dir]"
-    exit 1
+function Show-Usage {
+    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [--release-wheel] [venv_dir]"
+}
+
+$ReleaseWheel = $false
+$UseUvPackageInstaller = $false
+$VenvDir = ".venv-win"
+$venvDirSet = $false
+
+foreach ($argumentValue in $args) {
+    if ($argumentValue -eq "--release-wheel" -or $argumentValue -eq "-ReleaseWheel") {
+        $ReleaseWheel = $true
+    }
+    elseif ($argumentValue -eq "--help" -or $argumentValue -eq "-Help" -or $argumentValue -eq "-h") {
+        Show-Usage
+        exit 0
+    }
+    elseif ($argumentValue.StartsWith("-")) {
+        Write-Host "Error: unknown option '$argumentValue'."
+        Show-Usage
+        exit 1
+    }
+    elseif ($venvDirSet) {
+        Show-Usage
+        exit 1
+    }
+    else {
+        $VenvDir = $argumentValue
+        $venvDirSet = $true
+    }
 }
 
 Write-Host "Using virtual environment: $VenvDir"
-
-function Have-Cmd {
-    param([string]$Cmd)
-    return [bool](Get-Command $Cmd -ErrorAction SilentlyContinue)
+if ($ReleaseWheel) {
+    Write-Host "Using package build mode: release wheel"
+}
+else {
+    Write-Host "Using package build mode: editable"
 }
 
-function Activate-Venv {
-    $activate = Join-Path $VenvDir "Scripts\Activate.ps1"
-    if (-not (Test-Path $activate)) {
-        Write-Host "Error: virtual environment not found at '$VenvDir'."
-        Write-Host "Run the bootstrap script instead."
-        exit 1
-    }
-
-    . $activate
-}
-
-Activate-Venv
+Activate-ExistingVenv
 
 if (Have-Cmd "uv") {
     Write-Host "Building using: uv"
+    $UseUvPackageInstaller = $true
     $env:UV_PROJECT_ENVIRONMENT = $VenvDir
-    uv sync --extra dev
+    if ($ReleaseWheel) {
+        uv pip install "maturin>=1.9,<2.0"
+    }
+    else {
+        uv sync --extra dev
+    }
 }
 else {
     Write-Host "Building using: python"
-    python -m ensurepip --upgrade 2>$null
-    python -m pip install --upgrade pip
-    python -m pip install -e ".[dev]"
+    if ($ReleaseWheel) {
+        Install-ReleaseBuildToolWithPip
+    }
+    else {
+        Install-EditableWithPip
+    }
 }
 
-python -m maturin develop
-
-cargo build -p janiform-cli
+if ($ReleaseWheel) {
+    Build-ReleasePackageAndCli
+}
+else {
+    Build-EditablePackageAndCli
+}
 
 python -c "import janiform; print('janiform built correctly.')"

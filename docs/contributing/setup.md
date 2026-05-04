@@ -46,6 +46,24 @@ Use the build scripts after pulling changes, switching branches, or editing Rust
 ./scripts/build-win.ps1 .venv
 ```
 
+## Release wheel mode
+
+Pass `--release-wheel` to install Janiform from a locally built release wheel instead of using an editable install. This mode installs the wheel without development extras and builds the Rust CLI in release mode.
+
+### Linux
+
+```bash
+./scripts/bootstrap-linux.sh --release-wheel .venv
+./scripts/build-linux.sh --release-wheel .venv
+```
+
+### Windows PowerShell
+
+```powershell
+./scripts/bootstrap-win.ps1 --release-wheel .venv
+./scripts/build-win.ps1 --release-wheel .venv
+```
+
 ## Activate the environment
 
 Activation is optional for the project scripts because they receive the environment path directly. It is still useful for editor integration, ad hoc Python commands, and local exploration.
