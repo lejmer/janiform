@@ -67,6 +67,11 @@ jobs:
       - name: Check generated third-party notices
         run: ./.venv-linux/bin/python scripts/generate_third_party_notices.py --check
 
+      - name: Build native extension for bundled preset normalization
+        run: |
+          cargo build -p janiform-pybind --locked
+          cp target/debug/lib_native.so python/janiform/_native.so
+
       - name: Check generated bundled presets
         run: |
           ./.venv-linux/bin/python scripts/generate_bundled_presets.py
