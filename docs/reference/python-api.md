@@ -7256,8 +7256,8 @@
 | [`StylizedFactHorizonComparisonHorizonReport`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonhorizonreport) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonoutputschemametadata) | contract_model | 13 fields |
 | [`StylizedFactHorizonComparisonReport`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreport) | contract_model | 11 fields |
-| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 7 fields |
-| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 9 fields |
+| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 6 fields |
+| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonReportSummary`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportsummary) | contract_model | 4 fields |
 | [`StylizedFactHorizonComparisonRunReport`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonrunreport) | contract_model | 8 fields |
 | [`StylizedFactHorizonComparisonTableSummary`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisontablesummary) | contract_model | 3 fields |
@@ -7444,8 +7444,8 @@
 | [`StylizedFactHorizonComparisonHorizonReport`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonhorizonreport) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonoutputschemametadata) | contract_model | 13 fields |
 | [`StylizedFactHorizonComparisonReport`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreport) | contract_model | 11 fields |
-| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 7 fields |
-| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 9 fields |
+| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 6 fields |
+| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonReportSummary`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportsummary) | contract_model | 4 fields |
 | [`StylizedFactHorizonComparisonRunReport`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonrunreport) | contract_model | 8 fields |
 | [`StylizedFactHorizonComparisonTableSummary`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisontablesummary) | contract_model | 3 fields |
