@@ -118,12 +118,12 @@ pub(crate) fn persist_diagnostic_artifact_bundle(
     ];
 
     let mut references = Vec::with_capacity(families.len());
-    for ((artifact_family, file_name), payload_result) in
-        families.into_iter().zip(payloads.into_iter())
-    {
+
+    for ((artifact_family, file_name), payload_result) in families.into_iter().zip(payloads) {
         let payload = payload_result.map_err(|source| {
             format!("failed to serialize {artifact_family} diagnostics: {source}")
         })?;
+
         let artifact_path = artifacts_directory.join(file_name);
 
         fs::write(&artifact_path, payload)

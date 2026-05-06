@@ -620,7 +620,7 @@ fn build_candidate_diagnostics(
     for ((candidate_input, constraint_violations), optimizer_diagnostic) in generated_candidates
         .candidate_inputs
         .iter()
-        .zip(external_constraint_diagnostics.into_iter())
+        .zip(external_constraint_diagnostics)
         .zip(optimizer_adapter_output.candidate_diagnostics.iter())
     {
         let mut combined_constraint_violations: Vec<
