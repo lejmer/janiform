@@ -38,8 +38,22 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build and install release wheel package
-        run: ./scripts/bootstrap-linux.sh --release-wheel .venv-linux
+      - name: Install generated-check dependencies
+        run: |
+          python -m venv .venv-linux
+          ./.venv-linux/bin/python -m pip install --upgrade pip
+          ./.venv-linux/bin/python - <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          subprocess.run(
+              [sys.executable, "-m", "pip", "install", *project["dependencies"]],
+              check=True,
+          )
+          PY
 
       - name: Check generated crate README files
         run: ./.venv-linux/bin/python scripts/generate_crate_readmes.py --check
