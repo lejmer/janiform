@@ -25,21 +25,38 @@ struct OpenMarketElapsedTimeWeights {
 
 pub(crate) type IntervalOpenMarketSegments = Vec<(i64, i64)>;
 
+pub(crate) struct TransitionTradingTimeReturnInput<'a, R> {
+    pub(crate) driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    pub(crate) state: HawkesExcitationState,
+    pub(crate) lambda_bar: f64,
+    pub(crate) beta: f64,
+    pub(crate) seasonality_factor: f64,
+    pub(crate) interval_open_market_segments: &'a [(i64, i64)],
+    pub(crate) previous_timestamp_utc_nanos: i64,
+    pub(crate) timestamp_utc_nanos: i64,
+    pub(crate) interval_index: usize,
+    pub(crate) randomness_stream: R,
+}
+
 pub(crate) fn sample_transition_trading_time_return<R>(
-    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
-    state: HawkesExcitationState,
-    lambda_bar: f64,
-    beta: f64,
-    seasonality_factor: f64,
-    interval_open_market_segments: &[(i64, i64)],
-    previous_timestamp_utc_nanos: i64,
-    timestamp_utc_nanos: i64,
-    interval_index: usize,
-    mut randomness_stream: R,
+    input: TransitionTradingTimeReturnInput<'_, R>,
 ) -> Result<TradingTimeReturnComponents, SeededTickSimulationRunError>
 where
     R: SimulationRandomnessStream,
 {
+    let TransitionTradingTimeReturnInput {
+        driver_parameters,
+        state,
+        lambda_bar,
+        beta,
+        seasonality_factor,
+        interval_open_market_segments,
+        previous_timestamp_utc_nanos,
+        timestamp_utc_nanos,
+        interval_index,
+        mut randomness_stream,
+    } = input;
+
     let open_market_elapsed_time_weights = integrate_open_market_elapsed_time_weights(
         interval_open_market_segments,
         previous_timestamp_utc_nanos,
@@ -73,7 +90,7 @@ where
         .map_err(
             |source| SeededTickSimulationRunError::TradingTimeSamplingFailure {
                 interval_index,
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -199,6 +216,7 @@ fn interval_open_market_segments_for_range(
             value: interval_start_utc_nanos,
         },
     )?;
+
     let end_timestamp_utc = timestamp_utc_from_nanos(interval_end_utc_nanos - 1).ok_or(
         SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
             value: interval_end_utc_nanos - 1,
@@ -208,6 +226,7 @@ fn interval_open_market_segments_for_range(
     let start_local_date = CalendarDate::from_local_timestamp(
         &start_timestamp_utc.with_timezone(&market_state_resolver.timezone),
     );
+
     let end_local_date = CalendarDate::from_local_timestamp(
         &end_timestamp_utc.with_timezone(&market_state_resolver.timezone),
     );
@@ -260,6 +279,7 @@ fn interval_open_market_segments_for_range(
                 session_window.open_time(),
                 false,
             )?;
+
             let close_timestamp_utc_nanos = session_boundary_timestamp_utc_nanos(
                 market_state_resolver,
                 local_date,
@@ -447,6 +467,7 @@ mod tests {
             .expect("start timestamp should exist")
             .timestamp_nanos_opt()
             .expect("start timestamp should fit in nanos");
+
         let end_timestamp_utc_nanos = Utc
             .with_ymd_and_hms(2025, 3, 22, 13, 0, 0)
             .single()

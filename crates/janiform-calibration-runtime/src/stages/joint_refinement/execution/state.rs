@@ -38,6 +38,19 @@ pub(crate) const JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND: f64 = 1.386_294_361_11
 pub(crate) const JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT: usize = 3;
 pub(crate) const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 
+type JointRefinementSeedSummaryCache = Arc<
+    Mutex<BTreeMap<JointRefinementSeedSummaryCacheKey, Result<JointRefinementSeedSummary, String>>>,
+>;
+
+type JointRefinementOptionPricingCache = Arc<
+    Mutex<
+        BTreeMap<
+            JointRefinementOptionPricingCacheKey,
+            Result<Arc<JointRefinementOptionTierPricingArtifact>, String>,
+        >,
+    >,
+>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum JointRefinementFidelityTier {
     Local,
@@ -317,22 +330,8 @@ pub(crate) struct JointRefinementContext {
             BTreeMap<JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation>,
         >,
     >,
-    pub(crate) seed_summary_cache: Arc<
-        Mutex<
-            BTreeMap<
-                JointRefinementSeedSummaryCacheKey,
-                Result<JointRefinementSeedSummary, String>,
-            >,
-        >,
-    >,
-    pub(crate) option_pricing_cache: Arc<
-        Mutex<
-            BTreeMap<
-                JointRefinementOptionPricingCacheKey,
-                Result<Arc<JointRefinementOptionTierPricingArtifact>, String>,
-            >,
-        >,
-    >,
+    pub(crate) seed_summary_cache: JointRefinementSeedSummaryCache,
+    pub(crate) option_pricing_cache: JointRefinementOptionPricingCache,
     pub(crate) option_pricing_context: Option<JointRefinementOptionPricingContext>,
     pub(crate) profiling_state: Arc<JointRefinementProfilingState>,
 }

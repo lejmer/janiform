@@ -14,8 +14,9 @@ use super::super::empirical::{AnalysisWindow, ReturnObservation};
 use super::super::request::StylizedFactsValidationWorkflowRequest;
 use super::super::workflow::StylizedFactsValidationWorkflowObserver;
 use super::progress::{
-    emit_simulation_completed, emit_simulation_interval_progress, emit_simulation_plan,
-    emit_simulation_started,
+    SimulationCompletedProgressInput, SimulationIntervalProgressInput,
+    SimulationStartedProgressInput, emit_simulation_completed, emit_simulation_interval_progress,
+    emit_simulation_plan, emit_simulation_started,
 };
 use crate::error::WorkflowError;
 use crate::simulation::{
@@ -133,13 +134,15 @@ fn simulate_validation_paths_serial(
     for (path_position, seed) in generated_seeds.iter().copied().enumerate() {
         emit_simulation_started(
             observer,
-            path_position,
-            seed,
-            simulated_interval_count,
-            generated_seeds.len(),
-            completed_interval_units,
-            total_interval_units,
-            worker_count,
+            SimulationStartedProgressInput {
+                path_position,
+                seed,
+                path_total_intervals: simulated_interval_count,
+                total_path_count: generated_seeds.len(),
+                completed_units: completed_interval_units,
+                total_units: total_interval_units,
+                worker_count,
+            },
         );
 
         let mut path_completed_interval_units = 0usize;
@@ -160,13 +163,15 @@ fn simulate_validation_paths_serial(
 
                 emit_simulation_interval_progress(
                     observer,
-                    path_position,
-                    seed,
-                    path_completed_interval_units,
-                    simulated_interval_count,
-                    completed_interval_units,
-                    total_interval_units,
-                    worker_count,
+                    SimulationIntervalProgressInput {
+                        path_position,
+                        seed,
+                        path_completed_intervals: path_completed_interval_units,
+                        path_total_intervals: simulated_interval_count,
+                        completed_units: completed_interval_units,
+                        total_units: total_interval_units,
+                        worker_count,
+                    },
                 );
             };
 
@@ -189,13 +194,15 @@ fn simulate_validation_paths_serial(
 
         emit_simulation_completed(
             observer,
-            &output.manifest,
-            simulated_interval_count,
-            completed_interval_units,
-            total_interval_units,
-            outputs.len() + 1,
-            generated_seeds.len(),
-            worker_count,
+            SimulationCompletedProgressInput {
+                manifest: &output.manifest,
+                path_total_intervals: simulated_interval_count,
+                completed_units: completed_interval_units,
+                total_units: total_interval_units,
+                completed_path_count: outputs.len() + 1,
+                total_path_count: generated_seeds.len(),
+                worker_count,
+            },
         );
 
         outputs.push(output);
@@ -230,13 +237,15 @@ fn simulate_validation_paths_parallel(
     {
         emit_simulation_started(
             observer,
-            path_position,
-            seed,
-            simulated_interval_count,
-            generated_seeds.len(),
-            0,
-            total_interval_units,
-            worker_count,
+            SimulationStartedProgressInput {
+                path_position,
+                seed,
+                path_total_intervals: simulated_interval_count,
+                total_path_count: generated_seeds.len(),
+                completed_units: 0,
+                total_units: total_interval_units,
+                worker_count,
+            },
         );
     }
 
@@ -317,13 +326,15 @@ fn simulate_validation_paths_parallel(
                 if !*path_started_flag {
                     emit_simulation_started(
                         observer,
-                        path_position,
-                        seed,
-                        simulated_interval_count,
-                        generated_seeds.len(),
-                        completed_interval_units,
-                        total_interval_units,
-                        worker_count,
+                        SimulationStartedProgressInput {
+                            path_position,
+                            seed,
+                            path_total_intervals: simulated_interval_count,
+                            total_path_count: generated_seeds.len(),
+                            completed_units: completed_interval_units,
+                            total_units: total_interval_units,
+                            worker_count,
+                        },
                     );
 
                     *path_started_flag = true;
@@ -349,13 +360,15 @@ fn simulate_validation_paths_parallel(
 
                 emit_simulation_interval_progress(
                     observer,
-                    path_position,
-                    seed,
-                    path_event_completed_units,
-                    simulated_interval_count,
-                    completed_interval_units,
-                    total_interval_units,
-                    worker_count,
+                    SimulationIntervalProgressInput {
+                        path_position,
+                        seed,
+                        path_completed_intervals: path_event_completed_units,
+                        path_total_intervals: simulated_interval_count,
+                        completed_units: completed_interval_units,
+                        total_units: total_interval_units,
+                        worker_count,
+                    },
                 );
 
                 continue;
@@ -392,13 +405,15 @@ fn simulate_validation_paths_parallel(
 
         emit_simulation_completed(
             observer,
-            &output.manifest,
-            simulated_interval_count,
-            completed_interval_units,
-            total_interval_units,
-            completed_count,
-            generated_seeds.len(),
-            worker_count,
+            SimulationCompletedProgressInput {
+                manifest: &output.manifest,
+                path_total_intervals: simulated_interval_count,
+                completed_units: completed_interval_units,
+                total_units: total_interval_units,
+                completed_path_count: completed_count,
+                total_path_count: generated_seeds.len(),
+                worker_count,
+            },
         );
 
         while next_started_position < generated_seeds.len() && path_started[next_started_position] {
@@ -408,13 +423,15 @@ fn simulate_validation_paths_parallel(
         if let Some(seed) = generated_seeds.get(next_started_position).copied() {
             emit_simulation_started(
                 observer,
-                next_started_position,
-                seed,
-                simulated_interval_count,
-                generated_seeds.len(),
-                completed_interval_units,
-                total_interval_units,
-                worker_count,
+                SimulationStartedProgressInput {
+                    path_position: next_started_position,
+                    seed,
+                    path_total_intervals: simulated_interval_count,
+                    total_path_count: generated_seeds.len(),
+                    completed_units: completed_interval_units,
+                    total_units: total_interval_units,
+                    worker_count,
+                },
             );
 
             path_started[next_started_position] = true;
@@ -515,7 +532,7 @@ fn simulate_validation_path(
 
     let full_path = (request.cache
         == Some(super::super::output::StylizedFactsValidationCacheLevel::Full))
-    .then(|| FullSimulationPathCache {
+    .then_some(FullSimulationPathCache {
         path_position,
         seed,
         fine_path: result.fine_path,

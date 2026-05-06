@@ -29,7 +29,10 @@ use super::contracts::{
     CalibrationStagedRunReport, CalibrationStagedRunStageReport,
     calibration_last_success_checkpoint_reference,
 };
-use super::dispatch::{expected_stage_output_artifact_reference, run_stage_for_staged_execution};
+use super::dispatch::{
+    RunStageForStagedExecutionInput, expected_stage_output_artifact_reference,
+    run_stage_for_staged_execution,
+};
 use super::observer::emit_observer_event;
 use super::payload_state::{
     restore_in_memory_payload_state_from_stage_parameter_artifact, update_in_memory_payload_state,
@@ -470,17 +473,17 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
 
         let stage_start_time = Instant::now();
 
-        let stage_report = match run_stage_for_staged_execution(
+        let stage_report = match run_stage_for_staged_execution(RunStageForStagedExecutionInput {
             run_spec,
             calendar_registry,
             disk_checkpoint_directory,
             stage,
-            stage_position + 1,
-            execution_stage_order.len(),
-            &mut staged_run_inputs,
-            &payload_state,
-            &mut observer,
-        ) {
+            stage_index: stage_position + 1,
+            stage_count: execution_stage_order.len(),
+            staged_run_inputs: &mut staged_run_inputs,
+            payload_state: &payload_state,
+            observer: &mut observer,
+        }) {
             Ok(stage_report) => stage_report,
             Err(failure) => {
                 let failure_report = build_staged_run_failure_report(
@@ -527,7 +530,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                 stage_index: stage_position + 1,
                 stage_count: execution_stage_order.len(),
                 runtime_seconds: stage_runtime_seconds,
-                stage_report: retained_stage_report.clone(),
+                stage_report: Box::new(retained_stage_report.clone()),
             },
         );
 

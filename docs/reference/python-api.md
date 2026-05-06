@@ -7235,7 +7235,6 @@
 
 | Name | Value | Exported |
 |------|-------|----------|
-| `STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION` | `validation.stylized_fact.horizon_comparison.plot_payload.v1` | true |
 | `STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION` | `validation.stylized_fact.horizon_comparison.report_bundle.output_schema_metadata.v1` | true |
 | `STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION` | `validation.stylized_fact.horizon_comparison.report_bundle.v1` | true |
 | `STYLIZED_FACT_HORIZON_COMPARISON_REPORT_SCHEMA_VERSION` | `validation.stylized_fact.horizon_comparison.report.v1` | true |
@@ -7243,7 +7242,6 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION`](#python-api-symbol-janiform-stylized-facts-stylized-fact-horizon-comparison-plot-payload-schema-version) | constant | constant value |
 | [`STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY`](#python-api-symbol-janiform-stylized-facts-stylized-fact-horizon-comparison-report-bundle-determinism-policy) | constant | constant value |
 | [`STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION`](#python-api-symbol-janiform-stylized-facts-stylized-fact-horizon-comparison-report-bundle-output-schema-metadata-version) | constant | constant value |
 | [`STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION`](#python-api-symbol-janiform-stylized-facts-stylized-fact-horizon-comparison-report-bundle-schema-version) | constant | constant value |
@@ -7257,11 +7255,9 @@
 | [`StylizedFactHorizonComparisonArtifactExportReceipt`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonartifactexportreceipt) | contract_model | 3 fields |
 | [`StylizedFactHorizonComparisonHorizonReport`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonhorizonreport) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonoutputschemametadata) | contract_model | 13 fields |
-| [`StylizedFactHorizonComparisonPlotPayload`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonplotpayload) | contract_model | 3 fields |
-| [`StylizedFactHorizonComparisonPlotPoint`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonplotpoint) | contract_model | 18 fields |
 | [`StylizedFactHorizonComparisonReport`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreport) | contract_model | 11 fields |
-| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 7 fields |
-| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 9 fields |
+| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 6 fields |
+| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonReportSummary`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportsummary) | contract_model | 4 fields |
 | [`StylizedFactHorizonComparisonRunReport`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonrunreport) | contract_model | 8 fields |
 | [`StylizedFactHorizonComparisonTableSummary`](#python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisontablesummary) | contract_model | 3 fields |
@@ -7269,15 +7265,7 @@
 | [`StylizedFactMetricComparisonReport`](#python-api-symbol-janiform-stylized-facts-stylizedfactmetriccomparisonreport) | contract_model | 12 fields |
 | [`StylizedFactThresholdContext`](#python-api-symbol-janiform-stylized-facts-stylizedfactthresholdcontext) | contract_model | 5 fields |
 | [`StylizedFactUncertaintyContext`](#python-api-symbol-janiform-stylized-facts-stylizedfactuncertaintycontext) | contract_model | 4 fields |
-| [`build_stylized_fact_plotly_figure`](#python-api-symbol-janiform-stylized-facts-build-stylized-fact-plotly-figure) | function | (plot_payload: 'StylizedFactHorizonComparisonPlotPayload', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any' |
-| [`build_stylized_fact_plotly_figure_from_report_bundle`](#python-api-symbol-janiform-stylized-facts-build-stylized-fact-plotly-figure-from-report-bundle) | function | (report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any' |
 | [`run_stylized_fact_horizon_comparison_report_generator`](#python-api-symbol-janiform-stylized-facts-run-stylized-fact-horizon-comparison-report-generator) | function | (*, metric_catalog: 'Mapping[str, Any]', comparison_request: 'Mapping[str, Any]', execution_mode: 'str' = 'memory', artifact_export: 'Optional[Mapping[str, Any]]' = None) -> 'StylizedFactHorizonComparisonReportBundle' |
-
-<a id="python-api-symbol-janiform-stylized-facts-stylized-fact-horizon-comparison-plot-payload-schema-version"></a>
-### `STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `validation.stylized_fact.horizon_comparison.plot_payload.v1`
 
 <a id="python-api-symbol-janiform-stylized-facts-stylized-fact-horizon-comparison-report-bundle-determinism-policy"></a>
 ### `STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY`
@@ -7365,20 +7353,6 @@
 - Signature: `(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'`
 - Fields: `schema_version`, `required_batch_report_fields`, `required_run_report_fields`, `required_horizon_report_fields`, `required_metric_report_fields`, `required_dataset_metric_fields`, `required_decision_count_fields`, `decision_state_vocabulary`, `horizon_alignment_status_vocabulary`, `metric_alignment_status_vocabulary`, `dataset_metric_status_vocabulary`, `decision_reason_vocabulary`, `sample_sufficiency_reason_vocabulary`
 
-<a id="python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonplotpayload"></a>
-### `StylizedFactHorizonComparisonPlotPayload`
-
-- Kind: `contract_model`
-- Signature: `(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'`
-- Fields: `schema_version`, `determinism_policy`, `points`
-
-<a id="python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonplotpoint"></a>
-### `StylizedFactHorizonComparisonPlotPoint`
-
-- Kind: `contract_model`
-- Signature: `(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'`
-- Fields: `calibration_run_id`, `horizon_label`, `metric_id`, `metric_name`, `metric_variant`, `metric_class`, `status`, `absolute_delta`, `standardized_delta`, `empirical_value`, `simulated_value`, `empirical_confidence_interval`, `simulated_confidence_interval`, `empirical_sample_coverage`, `simulated_sample_coverage`, `empirical_horizon_coverage_ratio`, `simulated_horizon_coverage_ratio`, `insufficient_data_reasons`
-
 <a id="python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreport"></a>
 ### `StylizedFactHorizonComparisonReport`
 
@@ -7390,15 +7364,15 @@
 ### `StylizedFactHorizonComparisonReportBundle`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'`
-- Fields: `schema_version`, `determinism_policy`, `output_schema_metadata`, `comparison_report`, `table_summary`, `plot_payload`, `artifact_export`
+- Signature: `(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'`
+- Fields: `schema_version`, `determinism_policy`, `output_schema_metadata`, `comparison_report`, `table_summary`, `artifact_export`
 
 <a id="python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata"></a>
 ### `StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'`
-- Fields: `schema_version`, `required_bundle_fields`, `required_table_summary_fields`, `required_table_summary_row_fields`, `required_plot_payload_fields`, `required_plot_point_fields`, `decision_state_vocabulary`, `metric_class_vocabulary`, `insufficient_data_status_code`
+- Signature: `(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'`
+- Fields: `schema_version`, `required_bundle_fields`, `required_table_summary_fields`, `required_table_summary_row_fields`, `decision_state_vocabulary`, `metric_class_vocabulary`, `insufficient_data_status_code`
 
 <a id="python-api-symbol-janiform-stylized-facts-stylizedfacthorizoncomparisonreportsummary"></a>
 ### `StylizedFactHorizonComparisonReportSummary`
@@ -7449,18 +7423,6 @@
 - Signature: `(empirical_interval_half_width: 'Optional[float]', simulated_interval_half_width: 'Optional[float]', pooled_interval_half_width: 'Optional[float]', standardized_delta: 'Optional[float]') -> 'None'`
 - Fields: `empirical_interval_half_width`, `simulated_interval_half_width`, `pooled_interval_half_width`, `standardized_delta`
 
-<a id="python-api-symbol-janiform-stylized-facts-build-stylized-fact-plotly-figure"></a>
-### `build_stylized_fact_plotly_figure`
-
-- Kind: `function`
-- Signature: `(plot_payload: 'StylizedFactHorizonComparisonPlotPayload', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'`
-
-<a id="python-api-symbol-janiform-stylized-facts-build-stylized-fact-plotly-figure-from-report-bundle"></a>
-### `build_stylized_fact_plotly_figure_from_report_bundle`
-
-- Kind: `function`
-- Signature: `(report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'`
-
 <a id="python-api-symbol-janiform-stylized-facts-run-stylized-fact-horizon-comparison-report-generator"></a>
 ### `run_stylized_fact_horizon_comparison_report_generator`
 
@@ -7481,11 +7443,9 @@
 | [`StylizedFactHorizonComparisonExportedArtifactFile`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonexportedartifactfile) | contract_model | 3 fields |
 | [`StylizedFactHorizonComparisonHorizonReport`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonhorizonreport) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonoutputschemametadata) | contract_model | 13 fields |
-| [`StylizedFactHorizonComparisonPlotPayload`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonplotpayload) | contract_model | 3 fields |
-| [`StylizedFactHorizonComparisonPlotPoint`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonplotpoint) | contract_model | 18 fields |
 | [`StylizedFactHorizonComparisonReport`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreport) | contract_model | 11 fields |
-| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 7 fields |
-| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 9 fields |
+| [`StylizedFactHorizonComparisonReportBundle`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundle) | contract_model | 6 fields |
+| [`StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata) | contract_model | 7 fields |
 | [`StylizedFactHorizonComparisonReportSummary`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportsummary) | contract_model | 4 fields |
 | [`StylizedFactHorizonComparisonRunReport`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonrunreport) | contract_model | 8 fields |
 | [`StylizedFactHorizonComparisonTableSummary`](#python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisontablesummary) | contract_model | 3 fields |
@@ -7560,20 +7520,6 @@
 - Signature: `(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'`
 - Fields: `schema_version`, `required_batch_report_fields`, `required_run_report_fields`, `required_horizon_report_fields`, `required_metric_report_fields`, `required_dataset_metric_fields`, `required_decision_count_fields`, `decision_state_vocabulary`, `horizon_alignment_status_vocabulary`, `metric_alignment_status_vocabulary`, `dataset_metric_status_vocabulary`, `decision_reason_vocabulary`, `sample_sufficiency_reason_vocabulary`
 
-<a id="python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonplotpayload"></a>
-### `StylizedFactHorizonComparisonPlotPayload`
-
-- Kind: `contract_model`
-- Signature: `(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'`
-- Fields: `schema_version`, `determinism_policy`, `points`
-
-<a id="python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonplotpoint"></a>
-### `StylizedFactHorizonComparisonPlotPoint`
-
-- Kind: `contract_model`
-- Signature: `(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'`
-- Fields: `calibration_run_id`, `horizon_label`, `metric_id`, `metric_name`, `metric_variant`, `metric_class`, `status`, `absolute_delta`, `standardized_delta`, `empirical_value`, `simulated_value`, `empirical_confidence_interval`, `simulated_confidence_interval`, `empirical_sample_coverage`, `simulated_sample_coverage`, `empirical_horizon_coverage_ratio`, `simulated_horizon_coverage_ratio`, `insufficient_data_reasons`
-
 <a id="python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreport"></a>
 ### `StylizedFactHorizonComparisonReport`
 
@@ -7585,15 +7531,15 @@
 ### `StylizedFactHorizonComparisonReportBundle`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'`
-- Fields: `schema_version`, `determinism_policy`, `output_schema_metadata`, `comparison_report`, `table_summary`, `plot_payload`, `artifact_export`
+- Signature: `(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'`
+- Fields: `schema_version`, `determinism_policy`, `output_schema_metadata`, `comparison_report`, `table_summary`, `artifact_export`
 
 <a id="python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportbundleoutputschemametadata"></a>
 ### `StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'`
-- Fields: `schema_version`, `required_bundle_fields`, `required_table_summary_fields`, `required_table_summary_row_fields`, `required_plot_payload_fields`, `required_plot_point_fields`, `decision_state_vocabulary`, `metric_class_vocabulary`, `insufficient_data_status_code`
+- Signature: `(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'`
+- Fields: `schema_version`, `required_bundle_fields`, `required_table_summary_fields`, `required_table_summary_row_fields`, `decision_state_vocabulary`, `metric_class_vocabulary`, `insufficient_data_status_code`
 
 <a id="python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonreportsummary"></a>
 ### `StylizedFactHorizonComparisonReportSummary`

@@ -1,0 +1,41 @@
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
+categories:
+  - title: "Breaking Changes"
+    labels:
+      - "changelog: breaking"
+  - title: "Features"
+    labels:
+      - "changelog: feature"
+  - title: "Fixes"
+    labels:
+      - "changelog: fix"
+  - title: "Performance"
+    labels:
+      - "changelog: performance"
+  - title: "Packaging"
+    labels:
+      - "changelog: packaging"
+  - title: "Documentation"
+    labels:
+      - "changelog: docs"
+exclude-labels:
+  - "skip-changelog"
+template: |
+  ## Changes
+
+  $CHANGES
+version-resolver:
+  major:
+    labels:
+      - "changelog: breaking"
+  minor:
+    labels:
+      - "changelog: feature"
+  patch:
+    labels:
+      - "changelog: fix"
+      - "changelog: performance"
+      - "changelog: packaging"
+  default: patch

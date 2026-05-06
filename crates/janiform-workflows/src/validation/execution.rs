@@ -19,7 +19,8 @@ use super::empirical::{
     prepare_empirical_plan_summary, tick_returns,
 };
 use super::metrics::{
-    bootstrap_configuration_for_options, build_comparison_request, threshold_policy_for_options,
+    ComparisonRequestBuildInput, bootstrap_configuration_for_options, build_comparison_request,
+    threshold_policy_for_options,
 };
 use super::output::{
     STYLIZED_FACTS_VALIDATION_PLAN_SCHEMA_VERSION, StylizedFactsValidationDecisionMode,
@@ -100,11 +101,6 @@ fn build_resolved_stylized_facts_validation_plan(
         request
             .output_dir
             .join(format!("{REPORT_FILE_STEM}.table_summary.json"))
-            .display()
-            .to_string(),
-        request
-            .output_dir
-            .join(format!("{REPORT_FILE_STEM}.plot_payload.json"))
             .display()
             .to_string(),
         request
@@ -281,16 +277,16 @@ fn run_raw_data_validation(
 
     let threshold_policy = threshold_policy_for_options(request, &metric_catalog)?;
 
-    let comparison_request = build_comparison_request(
-        &metric_catalog,
+    let comparison_request = build_comparison_request(ComparisonRequestBuildInput {
+        metric_catalog: &metric_catalog,
         threshold_policy,
-        &intervals,
-        &empirical_returns,
-        &simulated_paths.returns,
-        bootstrap_configuration_for_options(request, &metric_catalog),
-        resolved_cpu_count(request.cpu_count),
+        intervals: &intervals,
+        empirical_returns: &empirical_returns,
+        simulated_returns: &simulated_paths.returns,
+        bootstrap_configuration: bootstrap_configuration_for_options(request, &metric_catalog),
+        cpu_count: resolved_cpu_count(request.cpu_count),
         observer,
-    )?;
+    })?;
 
     observe(
         observer,
@@ -414,14 +410,15 @@ fn validate_request(request: &StylizedFactsValidationWorkflowRequest) -> Result<
         });
     }
 
-    if let Some(significance_level) = request.significance_level {
-        if !significance_level.is_finite() || significance_level <= 0.0 || significance_level >= 1.0
-        {
-            return Err(WorkflowError::ValidationInputFailed {
-                field: "--significance-level",
-                message: "must be finite and in (0, 1)".to_string(),
-            });
-        }
+    if let Some(significance_level) = request.significance_level
+        && (!significance_level.is_finite()
+            || significance_level <= 0.0
+            || significance_level >= 1.0)
+    {
+        return Err(WorkflowError::ValidationInputFailed {
+            field: "--significance-level",
+            message: "must be finite and in (0, 1)".to_string(),
+        });
     }
 
     Ok(())

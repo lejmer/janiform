@@ -276,26 +276,26 @@ pub enum SufficientStatisticsMultiIntervalValidationError {
         missing_horizon_categories: Vec<SufficientStatisticsValidationHorizonCategory>,
     },
     InvalidThresholds {
-        source: SufficientStatisticsMultiIntervalValidationThresholdsError,
+        source: Box<SufficientStatisticsMultiIntervalValidationThresholdsError>,
     },
     InvalidRunRequest {
         scenario_id: String,
-        source: SufficientStatisticsRunRequestError,
+        source: Box<SufficientStatisticsRunRequestError>,
     },
     TransformSliceSolveFailure {
         scenario_id: String,
         interval_index: usize,
-        source: SufficientStatisticsTransformSliceSolveError,
+        source: Box<SufficientStatisticsTransformSliceSolveError>,
     },
     TransformSliceSamplingFailure {
         scenario_id: String,
         interval_index: usize,
-        source: SufficientStatisticsTransformSliceSamplingError,
+        source: Box<SufficientStatisticsTransformSliceSamplingError>,
     },
     BoundaryStateUpdateFailure {
         scenario_id: String,
         interval_index: usize,
-        source: SufficientStatisticsBoundaryStateUpdateError,
+        source: Box<SufficientStatisticsBoundaryStateUpdateError>,
     },
     InvalidExpectedStatistic {
         scenario_id: String,
@@ -382,11 +382,11 @@ impl Display for SufficientStatisticsMultiIntervalValidationError {
 impl Error for SufficientStatisticsMultiIntervalValidationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidThresholds { source } => Some(source),
-            Self::InvalidRunRequest { source, .. } => Some(source),
-            Self::TransformSliceSolveFailure { source, .. } => Some(source),
-            Self::TransformSliceSamplingFailure { source, .. } => Some(source),
-            Self::BoundaryStateUpdateFailure { source, .. } => Some(source),
+            Self::InvalidThresholds { source } => Some(source.as_ref()),
+            Self::InvalidRunRequest { source, .. } => Some(source.as_ref()),
+            Self::TransformSliceSolveFailure { source, .. } => Some(source.as_ref()),
+            Self::TransformSliceSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::BoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
             _ => None,
         }
     }
@@ -403,8 +403,11 @@ pub fn run_sufficient_statistics_multi_interval_validation_suite(
     }
 
     thresholds.validate().map_err(|source| {
-        SufficientStatisticsMultiIntervalValidationError::InvalidThresholds { source }
+        SufficientStatisticsMultiIntervalValidationError::InvalidThresholds {
+            source: Box::new(source),
+        }
     })?;
+
     validate_multi_interval_scenario_coverage(scenarios)?;
 
     let mut case_reports: Vec<SufficientStatisticsMultiIntervalValidationCaseReport> =
@@ -421,12 +424,16 @@ pub fn run_sufficient_statistics_multi_interval_validation_suite(
         .iter()
         .filter(|case_report| case_report.status == RegressionCaseStatus::Pass)
         .count();
+
     let total_case_count = case_reports.len();
+
     let failed_case_count = total_case_count - passed_case_count;
+
     let deterministic_failed_check_count = case_reports
         .iter()
         .map(|case_report| case_report.deterministic_failed_check_count)
         .sum();
+
     let statistical_failed_check_count = case_reports
         .iter()
         .map(|case_report| case_report.statistical_failed_check_count)
@@ -473,7 +480,7 @@ fn run_multi_interval_validation_case(
         .map_err(
             |source| SufficientStatisticsMultiIntervalValidationError::InvalidRunRequest {
                 scenario_id: validation_scenario.scenario_id.clone(),
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -482,6 +489,7 @@ fn run_multi_interval_validation_case(
 
     let deterministic_checks =
         build_deterministic_invariant_checks(validation_scenario, &first_path, &second_path);
+
     let statistical_checks =
         build_distributional_checks(validation_scenario, thresholds, &first_path)?;
 
@@ -489,10 +497,12 @@ fn run_multi_interval_validation_case(
         .iter()
         .filter(|check| !check.passed)
         .count();
+
     let statistical_failed_check_count = statistical_checks
         .iter()
         .filter(|check| !check.passed)
         .count();
+
     let status = if deterministic_failed_check_count == 0 && statistical_failed_check_count == 0 {
         RegressionCaseStatus::Pass
     } else {
@@ -540,6 +550,7 @@ fn validate_multi_interval_scenario_coverage(
         SufficientStatisticsValidationHorizonCategory::Medium,
         SufficientStatisticsValidationHorizonCategory::Long,
     ];
+
     let missing_horizon_categories: Vec<SufficientStatisticsValidationHorizonCategory> =
         required_horizon_categories
             .into_iter()
@@ -571,15 +582,19 @@ fn execute_sufficient_statistics_validation_path(
     SufficientStatisticsMultiIntervalValidationError,
 > {
     let run_request = &validation_scenario.run_request;
+
     let mut current_state = run_request.model_inputs.initial_excitation_state;
+
     let equation_specification = run_request.model_inputs.equation_specification;
     let kernel_parameters = equation_specification.hawkes_kernel_parameters;
     let slice_settings = SufficientStatisticsTransformSliceSettings::default();
 
     let mut sampled_statistics: Vec<SufficientStatisticsIntervalStatistics> =
         Vec::with_capacity(run_request.horizon_interval_count);
+
     let mut state_after_interval: Vec<HawkesExcitationState> =
         Vec::with_capacity(run_request.horizon_interval_count);
+
     let mut solved_slices: Vec<SufficientStatisticsTransformSlices> =
         Vec::with_capacity(run_request.horizon_interval_count);
 
@@ -597,7 +612,9 @@ fn execute_sufficient_statistics_validation_path(
             SufficientStatisticsMultiIntervalValidationError::TransformSliceSolveFailure {
                 scenario_id: validation_scenario.scenario_id.clone(),
                 interval_index,
-                source: SufficientStatisticsTransformSliceSolveError::InvalidContext { source },
+                source: Box::new(
+                    SufficientStatisticsTransformSliceSolveError::InvalidContext { source },
+                ),
             }
         })?;
 
@@ -610,7 +627,7 @@ fn execute_sufficient_statistics_validation_path(
             SufficientStatisticsMultiIntervalValidationError::TransformSliceSolveFailure {
                 scenario_id: validation_scenario.scenario_id.clone(),
                 interval_index,
-                source,
+                source: Box::new(source),
             }
         })?;
 
@@ -622,7 +639,7 @@ fn execute_sufficient_statistics_validation_path(
             SufficientStatisticsMultiIntervalValidationError::TransformSliceSamplingFailure {
                 scenario_id: validation_scenario.scenario_id.clone(),
                 interval_index,
-                source,
+                source: Box::new(source),
             }
         })?;
 
@@ -639,13 +656,14 @@ fn execute_sufficient_statistics_validation_path(
                     SufficientStatisticsMultiIntervalValidationError::BoundaryStateUpdateFailure {
                         scenario_id: validation_scenario.scenario_id.clone(),
                         interval_index,
-                        source,
+                        source: Box::new(source),
                     }
                 })?;
 
         sampled_statistics.push(sampled_interval_statistics);
         state_after_interval.push(updated_state);
         solved_slices.push(slices);
+
         current_state = updated_state;
     }
 
@@ -669,11 +687,13 @@ fn build_deterministic_invariant_checks(
         .run_request
         .model_inputs
         .initial_excitation_state;
+
     let kernel_parameters = validation_scenario
         .run_request
         .model_inputs
         .equation_specification
         .hawkes_kernel_parameters;
+
     let mut state_transition_replay_matches = true;
 
     for (interval_index, sampled_statistics) in
@@ -738,12 +758,14 @@ fn build_distributional_checks(
     SufficientStatisticsMultiIntervalValidationError,
 > {
     let sample_count_inverse = 1.0 / thresholds.statistical_sample_count as f64;
+
     let mut statistical_checks: Vec<SufficientStatisticsDistributionalCheck> =
         Vec::with_capacity(path_artifacts.solved_slices.len() * 4);
 
     for (interval_index, slices) in path_artifacts.solved_slices.iter().copied().enumerate() {
         let expected_means =
             derive_expected_means_from_slices(validation_scenario, interval_index, slices)?;
+
         let mut cumulative_a_plus = 0.0;
         let mut cumulative_a_minus = 0.0;
         let mut cumulative_n_plus = 0.0;
@@ -754,6 +776,7 @@ fn build_distributional_checks(
                 validation_scenario.run_request.seed,
                 sample_position as u64,
             );
+
             let sampled_statistics = sample_interval_statistics_from_transform_slices(
                 sample_seed,
                 slices,
@@ -762,7 +785,7 @@ fn build_distributional_checks(
                 SufficientStatisticsMultiIntervalValidationError::TransformSliceSamplingFailure {
                     scenario_id: validation_scenario.scenario_id.clone(),
                     interval_index,
-                    source,
+                    source: Box::new(source),
                 }
             })?;
 
@@ -785,6 +808,7 @@ fn build_distributional_checks(
             thresholds.integrated_intensity_mean_absolute_floor,
             thresholds.integrated_intensity_mean_relative_tolerance,
         ));
+
         statistical_checks.push(build_distributional_check(
             "a_minus_mean",
             interval_index,
@@ -793,6 +817,7 @@ fn build_distributional_checks(
             thresholds.integrated_intensity_mean_absolute_floor,
             thresholds.integrated_intensity_mean_relative_tolerance,
         ));
+
         statistical_checks.push(build_distributional_check(
             "n_plus_mean",
             interval_index,
@@ -801,6 +826,7 @@ fn build_distributional_checks(
             thresholds.event_count_mean_absolute_floor,
             thresholds.event_count_mean_relative_tolerance,
         ));
+
         statistical_checks.push(build_distributional_check(
             "n_minus_mean",
             interval_index,
@@ -832,18 +858,21 @@ fn derive_expected_means_from_slices(
         "a_plus_transform",
         slices.a_plus_transform,
     )?;
+
     let a_minus_transform = extract_real_transform_component(
         validation_scenario,
         interval_index,
         "a_minus_transform",
         slices.a_minus_transform,
     )?;
+
     let n_plus_transform = extract_real_transform_component(
         validation_scenario,
         interval_index,
         "n_plus_transform",
         slices.n_plus_transform,
     )?;
+
     let n_minus_transform = extract_real_transform_component(
         validation_scenario,
         interval_index,
@@ -857,18 +886,21 @@ fn derive_expected_means_from_slices(
         "a_plus_mean",
         (baseline_transform - a_plus_transform) / slices.settings.a_plus_u,
     )?;
+
     let expected_a_minus = normalize_expected_statistic(
         validation_scenario,
         interval_index,
         "a_minus_mean",
         (baseline_transform - a_minus_transform) / slices.settings.a_minus_u,
     )?;
+
     let expected_n_plus = normalize_expected_statistic(
         validation_scenario,
         interval_index,
         "n_plus_mean",
         (n_plus_transform - baseline_transform) / (slices.settings.n_plus_z - 1.0),
     )?;
+
     let expected_n_minus = normalize_expected_statistic(
         validation_scenario,
         interval_index,
@@ -948,6 +980,7 @@ fn build_distributional_check(
 ) -> SufficientStatisticsDistributionalCheck {
     let absolute_difference = (expected_mean - observed_mean).abs();
     let absolute_tolerance = absolute_floor + relative_tolerance * expected_mean.abs();
+
     let passed = absolute_difference.is_finite() && absolute_difference <= absolute_tolerance;
 
     SufficientStatisticsDistributionalCheck {

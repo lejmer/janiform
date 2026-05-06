@@ -33,23 +33,25 @@ use crate::stages::return_components::{
     prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
 };
 use crate::stages::seasonality::{
-    CalibrationStageExecutionStatus, build_runtime_hourly_seasonality_factors_from_components,
+    CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
+    build_runtime_hourly_seasonality_factors_from_components,
     maximum_realizable_runtime_hourly_seasonality_factor_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::evaluate_joint_fitted_parameters;
 use super::super::setup::{
-    build_active_parameter_layout, build_baseline_parameter_vector, build_parameter_bounds,
-    build_restart_seeds, joint_refinement_final_simulation_seed_count, observed_activity_log_shift,
-    selected_hawkes_observed_open_event_rate_per_hour, selected_return_components_candidate,
-    stage_input_to_activity_input,
+    RestartSeedsBuildInput, build_active_parameter_layout, build_baseline_parameter_vector,
+    build_parameter_bounds, build_restart_seeds, joint_refinement_final_simulation_seed_count,
+    observed_activity_log_shift, selected_hawkes_observed_open_event_rate_per_hour,
+    selected_return_components_candidate, stage_input_to_activity_input,
 };
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementBaselineBuckets,
     JointRefinementCandidateEvaluation, JointRefinementContext, JointRefinementFidelityTier,
     JointRefinementProfilingState, JointRefinementRestartOutcome, JointRefinementResumeStore,
+    OptionPricingProgressInput, OptionSurfaceTierPricingArtifactResolutionInput,
     PersistedRestartSelectionArtifacts, baseline_buckets_from_evaluation,
     build_joint_candidate_coarse_consistency_artifacts, build_joint_candidate_frontier_diagnostics,
     build_joint_finalist_seed_summaries, build_joint_refinement_stage_failure_report,
@@ -437,7 +439,7 @@ fn prepare_bootstrap_context(
         &baseline_return_components_fitted_parameters,
     )?;
 
-    let bootstrap_context = build_bootstrap_context(
+    let bootstrap_context = build_bootstrap_context(BootstrapContextBuildInput {
         run_spec,
         calendar_registry,
         resolved_stage_payloads,
@@ -449,7 +451,7 @@ fn prepare_bootstrap_context(
         option_pricing_context,
         runtime_materialization,
         baseline_return_components_fitted_parameters,
-    )?;
+    })?;
 
     Ok(PreparedBootstrapContext {
         bootstrap_context,
@@ -552,18 +554,22 @@ fn prepare_parameterization(
 }
 
 fn build_bootstrap_context(
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    resolved_stage_payloads: &ResolvedStagePayloads<'_>,
-    observed_data: super::JointRefinementObservedData,
-    active_parameter_layout: JointRefinementActiveParameterLayout,
-    lower_bounds: Vec<f64>,
-    upper_bounds: Vec<f64>,
-    option_pricing_refinement_enabled: bool,
-    option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
-    runtime_materialization: RuntimeMaterialization,
-    baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+    input: BootstrapContextBuildInput<'_>,
 ) -> Result<JointRefinementContext, JointRefinementStageExecutionFailure> {
+    let BootstrapContextBuildInput {
+        run_spec,
+        calendar_registry,
+        resolved_stage_payloads,
+        observed_data,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        option_pricing_refinement_enabled,
+        option_pricing_context,
+        runtime_materialization,
+        baseline_return_components_fitted_parameters,
+    } = input;
+
     Ok(JointRefinementContext {
         stage_thread_pool: build_stage_thread_pool(
             resolved_stage_payloads.stage_solver_settings.cpu_count,
@@ -609,6 +615,20 @@ fn build_bootstrap_context(
     })
 }
 
+struct BootstrapContextBuildInput<'a> {
+    run_spec: &'a CalibrationRunSpec,
+    calendar_registry: &'a ExchangeCalendarRegistry,
+    resolved_stage_payloads: &'a ResolvedStagePayloads<'a>,
+    observed_data: super::JointRefinementObservedData,
+    active_parameter_layout: JointRefinementActiveParameterLayout,
+    lower_bounds: Vec<f64>,
+    upper_bounds: Vec<f64>,
+    option_pricing_refinement_enabled: bool,
+    option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
+    runtime_materialization: RuntimeMaterialization,
+    baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+}
+
 struct RuntimeMaterialization {
     runtime_hourly_seasonality_factors: Vec<f64>,
     max_runtime_hourly_seasonality_factor: f64,
@@ -628,26 +648,28 @@ fn materialize_runtime_state(
 
     let runtime_hourly_seasonality_factors =
         build_runtime_hourly_seasonality_factors_from_components(
-            calendar_registry,
-            run_spec.data_inputs.exchange_code.as_str(),
-            stage_input
-                .seasonality_factors_input
-                .intraday_minutes_per_bin,
-            stage_input
-                .seasonality_factors_input
-                .intraday_factor_by_bin
-                .as_slice(),
-            stage_input
-                .seasonality_factors_input
-                .day_of_week_factor
-                .as_slice(),
-            stage_input
-                .seasonality_factors_input
-                .day_of_year_factor
-                .as_slice(),
-            runtime_range.0,
-            runtime_range.1,
-            NANOS_PER_HOUR,
+            RuntimeHourlySeasonalityFactorsBuildInput {
+                calendar_registry,
+                exchange_code: run_spec.data_inputs.exchange_code.as_str(),
+                intraday_minutes_per_bin: stage_input
+                    .seasonality_factors_input
+                    .intraday_minutes_per_bin,
+                intraday_factor_by_bin: stage_input
+                    .seasonality_factors_input
+                    .intraday_factor_by_bin
+                    .as_slice(),
+                day_of_week_factor: stage_input
+                    .seasonality_factors_input
+                    .day_of_week_factor
+                    .as_slice(),
+                day_of_year_factor: stage_input
+                    .seasonality_factors_input
+                    .day_of_year_factor
+                    .as_slice(),
+                range_start_utc_nanos: runtime_range.0,
+                range_end_utc_nanos: runtime_range.1,
+                interval_duration_nanos: NANOS_PER_HOUR,
+            },
         )
         .map_err(|error_message| {
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -1183,34 +1205,36 @@ fn build_restart_search_plan(
     prepared_bootstrap: &PreparedBootstrapContext,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> RestartSearchPlan {
-    let restart_seeds = build_restart_seeds(
-        prepared_bootstrap.baseline_parameter_vector.as_slice(),
-        &prepared_bootstrap.bootstrap_context.active_parameter_layout,
-        prepared_bootstrap.bootstrap_context.lower_bounds.as_slice(),
-        prepared_bootstrap.bootstrap_context.upper_bounds.as_slice(),
-        &prepared_bootstrap.baseline_15m_calibration_sample,
-        selected_return_components_candidate(resolved_stage_payloads.return_components_payload)
-            .map(|candidate| {
-                candidate
-                    .continuous_distribution_fit_breakdown
-                    .optimizer_basin_diagnostics
-                    .as_slice()
-            })
-            .unwrap_or(&[]),
-        observed_activity_log_shift(
+    let restart_seeds = build_restart_seeds(RestartSeedsBuildInput {
+        baseline_parameter_vector: prepared_bootstrap.baseline_parameter_vector.as_slice(),
+        active_parameter_layout: &prepared_bootstrap.bootstrap_context.active_parameter_layout,
+        lower_bounds: prepared_bootstrap.bootstrap_context.lower_bounds.as_slice(),
+        upper_bounds: prepared_bootstrap.bootstrap_context.upper_bounds.as_slice(),
+        baseline_15m_calibration_sample: &prepared_bootstrap.baseline_15m_calibration_sample,
+        return_component_basin_diagnostics: selected_return_components_candidate(
+            resolved_stage_payloads.return_components_payload,
+        )
+        .map(|candidate| {
+            candidate
+                .continuous_distribution_fit_breakdown
+                .optimizer_basin_diagnostics
+                .as_slice()
+        })
+        .unwrap_or(&[]),
+        activity_log_shift: observed_activity_log_shift(
             prepared_bootstrap
                 .bootstrap_context
                 .observed_data
                 .observed_open_event_rate_per_hour,
             resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
         ),
-        &prepared_bootstrap.bootstrap_context,
-        &resolved_stage_payloads.stage_solver_settings,
-        desired_joint_refinement_restart_candidate_budget(
+        joint_context: &prepared_bootstrap.bootstrap_context,
+        solver_settings: &resolved_stage_payloads.stage_solver_settings,
+        restart_candidate_budget: desired_joint_refinement_restart_candidate_budget(
             stage_input.restart_candidate_budget_override,
         ),
         progress_sender,
-    );
+    });
 
     let budget_schedule = joint_refinement_budget_schedule(
         &resolved_stage_payloads.stage_solver_settings,
@@ -1293,21 +1317,19 @@ fn run_option_refinement_if_enabled(
         resume_store.selected_restart_id(),
         resume_store.selected_search_tier_pricing_artifact(),
         resume_store.selected_selection_tier_pricing_artifact(),
-    ) {
-        if let Some(selected_restart_outcome) = restart_search_artifacts
-            .option_refinement_candidate_frontier
-            .iter()
-            .find(|restart_outcome| restart_outcome.restart_id == selected_restart_id)
-            .cloned()
-        {
-            restart_search_artifacts.best_restart = selected_restart_outcome;
-            restart_search_artifacts.selected_option_search_tier_pricing_artifact =
-                Some(search_tier_artifact);
-            restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
-                Some(selection_tier_artifact);
+    ) && let Some(selected_restart_outcome) = restart_search_artifacts
+        .option_refinement_candidate_frontier
+        .iter()
+        .find(|restart_outcome| restart_outcome.restart_id == selected_restart_id)
+        .cloned()
+    {
+        restart_search_artifacts.best_restart = selected_restart_outcome;
+        restart_search_artifacts.selected_option_search_tier_pricing_artifact =
+            Some(search_tier_artifact);
+        restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
+            Some(selection_tier_artifact);
 
-            return Ok(());
-        }
+        return Ok(());
     }
 
     let option_refinement_result = run_option_refinement(
@@ -1372,33 +1394,31 @@ fn run_audit_option_pricing_if_enabled(
         })?;
 
     let audit_artifact = resolve_option_surface_tier_pricing_artifact(
-        bootstrap_context,
-        &restart_search_artifacts
-            .best_restart
-            .final_evaluation
-            .fitted_parameters,
-        JointRefinementOptionSurfaceTierKind::Audit,
-        selection_artifact
-            .cache_key
-            .source_dynamics_parameter_bits
-            .as_slice(),
-        selection_artifact
-            .cache_key
-            .pricing_parameter_bits
-            .as_slice(),
-        false,
-        None,
-        progress_sender,
-        Some(JointRefinementStageProgressPhase::OptionAuditTierEvaluation),
-        Some(0),
-        Some(1),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        OptionSurfaceTierPricingArtifactResolutionInput {
+            context: bootstrap_context,
+            fitted_parameters: &restart_search_artifacts
+                .best_restart
+                .final_evaluation
+                .fitted_parameters,
+            tier_kind: JointRefinementOptionSurfaceTierKind::Audit,
+            source_dynamics_parameter_bits: selection_artifact
+                .cache_key
+                .source_dynamics_parameter_bits
+                .as_slice(),
+            pricing_parameter_bits: selection_artifact
+                .cache_key
+                .pricing_parameter_bits
+                .as_slice(),
+            include_node_price_sensitivities: false,
+            theta_warm_start_state: None,
+            progress: OptionPricingProgressInput {
+                progress_sender,
+                progress_phase: Some(JointRefinementStageProgressPhase::OptionAuditTierEvaluation),
+                completed_units: Some(0),
+                total_units: Some(1),
+                ..OptionPricingProgressInput::none()
+            },
+        },
     )
     .map_err(|error_message| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
@@ -1689,33 +1709,25 @@ fn assemble_final_stage_outputs(
         .as_deref()
         .map(|selection_artifact| {
             resolve_option_surface_tier_pricing_artifact(
-                bootstrap_context,
-                &restart_search_artifacts
-                    .best_restart
-                    .final_evaluation
-                    .fitted_parameters,
-                JointRefinementOptionSurfaceTierKind::Selection,
-                selection_artifact
-                    .cache_key
-                    .source_dynamics_parameter_bits
-                    .as_slice(),
-                selection_artifact
-                    .cache_key
-                    .pricing_parameter_bits
-                    .as_slice(),
-                true,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
+                OptionSurfaceTierPricingArtifactResolutionInput {
+                    context: bootstrap_context,
+                    fitted_parameters: &restart_search_artifacts
+                        .best_restart
+                        .final_evaluation
+                        .fitted_parameters,
+                    tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
+                    source_dynamics_parameter_bits: selection_artifact
+                        .cache_key
+                        .source_dynamics_parameter_bits
+                        .as_slice(),
+                    pricing_parameter_bits: selection_artifact
+                        .cache_key
+                        .pricing_parameter_bits
+                        .as_slice(),
+                    include_node_price_sensitivities: true,
+                    theta_warm_start_state: None,
+                    progress: OptionPricingProgressInput::none(),
+                },
             )
         })
         .transpose()

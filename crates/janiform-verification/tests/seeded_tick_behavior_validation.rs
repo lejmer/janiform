@@ -1,6 +1,7 @@
 mod support;
 
 use chrono::{DateTime, Utc};
+
 use janiform_engine_simulation::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
@@ -319,16 +320,16 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
     let tied_hours = tied_offset_nanos as f64 / NANOS_PER_HOUR as f64;
     let tied_wait_draw = (-2.0 * tied_hours).exp();
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![tied_wait_draw],
-        vec![0.0],
-        vec![0.0],
-        vec![0.3],
-        vec![0.5, 0.25, 0.5],
-        vec![0.25, 0.5],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![tied_wait_draw],
+        sell_timestamp_draws: vec![0.0],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![0.3],
+        news_severity_draws: vec![0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.25, 0.5],
+    });
 
     let first_run_result = run_seeded_tick_event_simulation_with_randomness_factory(
         run_config.clone(),
@@ -383,16 +384,16 @@ fn seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ord
     )
     .expect("near-tie ordering run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.9, 0.1],
-        vec![0.0],
-        vec![0.95, 0.949_999_999],
-        vec![0.0, 0.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.9, 0.1],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.95, 0.949_999_999],
+        sell_timestamp_draws: vec![0.0, 0.0],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -497,7 +498,7 @@ fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
     for scenario in scenarios {
         let first_metrics = compute_batch_asymmetry_metrics(
             &seed_values,
-            scenario.kernel_parameters.clone(),
+            scenario.kernel_parameters,
             72,
             NANOS_PER_HOUR,
             1.0,
@@ -893,7 +894,7 @@ fn collect_scale_consistency_summaries(
             *seed,
             fine_interval_duration_nanos,
             fine_interval_count,
-            kernel_parameters.clone(),
+            kernel_parameters,
             HawkesExcitationState {
                 y_plus_plus: 0.0,
                 y_plus_minus: 0.0,
@@ -909,7 +910,7 @@ fn collect_scale_consistency_summaries(
             *seed,
             coarse_interval_duration_nanos,
             coarse_interval_count,
-            kernel_parameters.clone(),
+            kernel_parameters,
             HawkesExcitationState {
                 y_plus_plus: 0.0,
                 y_plus_minus: 0.0,
@@ -1236,7 +1237,7 @@ fn build_run_config(
     seasonality_factor: f64,
     news_intensity: f64,
 ) -> SeededTickSimulationRunConfig {
-    build_run_config_with_options(
+    build_run_config_with_options(SeededTickRunConfigBuildInput {
         seed,
         interval_duration_nanos,
         interval_count,
@@ -1244,11 +1245,11 @@ fn build_run_config(
         initial_excitation_state,
         seasonality_factor,
         news_intensity,
-        None,
-    )
+        options: None,
+    })
 }
 
-fn build_run_config_with_options(
+struct SeededTickRunConfigBuildInput {
     seed: u64,
     interval_duration_nanos: i64,
     interval_count: usize,
@@ -1257,7 +1258,22 @@ fn build_run_config_with_options(
     seasonality_factor: f64,
     news_intensity: f64,
     options: Option<SeededTickSimulationRunOptions>,
+}
+
+fn build_run_config_with_options(
+    input: SeededTickRunConfigBuildInput,
 ) -> SeededTickSimulationRunConfig {
+    let SeededTickRunConfigBuildInput {
+        seed,
+        interval_duration_nanos,
+        interval_count,
+        kernel_parameters,
+        initial_excitation_state,
+        seasonality_factor,
+        news_intensity,
+        options,
+    } = input;
+
     let hourly_factor_contract = build_uniform_factor_contract(
         START_TIME_UTC_NANOS,
         interval_duration_nanos,
@@ -1758,17 +1774,31 @@ struct ScriptedRandomnessFactory {
     news_return_jump_draws: Vec<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct ScriptedRandomnessFactoryDraws {
+    buy_count_draws: Vec<f64>,
+    sell_count_draws: Vec<f64>,
+    buy_timestamp_draws: Vec<f64>,
+    sell_timestamp_draws: Vec<f64>,
+    news_count_draws: Vec<f64>,
+    news_timestamp_draws: Vec<f64>,
+    news_severity_draws: Vec<f64>,
+    news_return_jump_draws: Vec<f64>,
+}
+
 impl ScriptedRandomnessFactory {
-    fn new(
-        buy_count_draws: Vec<f64>,
-        sell_count_draws: Vec<f64>,
-        buy_timestamp_draws: Vec<f64>,
-        sell_timestamp_draws: Vec<f64>,
-        news_count_draws: Vec<f64>,
-        news_timestamp_draws: Vec<f64>,
-        news_severity_draws: Vec<f64>,
-        news_return_jump_draws: Vec<f64>,
-    ) -> Self {
+    fn new(draws: ScriptedRandomnessFactoryDraws) -> Self {
+        let ScriptedRandomnessFactoryDraws {
+            buy_count_draws,
+            sell_count_draws,
+            buy_timestamp_draws,
+            sell_timestamp_draws,
+            news_count_draws,
+            news_timestamp_draws,
+            news_severity_draws,
+            news_return_jump_draws,
+        } = draws;
+
         Self {
             buy_count_draws,
             sell_count_draws,

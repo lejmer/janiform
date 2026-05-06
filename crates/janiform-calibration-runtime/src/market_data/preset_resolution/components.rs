@@ -382,9 +382,11 @@ pub(super) fn resolve_known_news_component(
     }
 }
 
+type KnownNewsReferenceProfile<'a> = (Option<&'a Map<String, Value>>, Option<&'a str>);
+
 pub(super) fn profile_known_news_reference(
     market_profile: Option<&Value>,
-) -> PresetResolutionResult<(Option<&Map<String, Value>>, Option<&str>)> {
+) -> PresetResolutionResult<KnownNewsReferenceProfile<'_>> {
     let Some(market_profile) = market_profile else {
         return Ok((None, None));
     };

@@ -211,14 +211,15 @@ mod tests {
 
         let epsilon = 1.0e-6;
 
-        for coordinate_index in 0..gradient.len() {
+        for (coordinate_index, gradient_value) in gradient.iter().copied().enumerate() {
             let forward_score =
                 perturbed_tier_score(node_sensitivities.as_slice(), coordinate_index, epsilon);
             let backward_score =
                 perturbed_tier_score(node_sensitivities.as_slice(), coordinate_index, -epsilon);
+
             let finite_difference = (forward_score - backward_score) / (2.0 * epsilon);
 
-            assert_close(gradient[coordinate_index], finite_difference);
+            assert_close(gradient_value, finite_difference);
         }
     }
 

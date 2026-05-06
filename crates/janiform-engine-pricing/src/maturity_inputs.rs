@@ -361,7 +361,7 @@ fn resolve_entry_expiry_timestamp(
     resolve_tenor_expiry_timestamp(index, raw_value, valuation_time_utc)
 }
 
-fn axis_entry_value<'a>(values: Option<&'a Vec<Option<String>>>, index: usize) -> Option<&'a str> {
+fn axis_entry_value(values: Option<&Vec<Option<String>>>, index: usize) -> Option<&str> {
     values
         .and_then(|entries| entries.get(index))
         .and_then(Option::as_deref)

@@ -28,18 +28,15 @@ pub const SCALE_CONSISTENCY_BATCH_RESUME_POLICY: &str = "memory_mode_uses_same_p
 pub const SCALE_CONSISTENCY_BATCH_CHECKPOINT_REFERENCE_POLICY: &str = "persisted_checkpoint_reference_is_a_json_checkpoint_file_path_and_memory_resume_uses_run_id_lookup.v1";
 pub const SCALE_CONSISTENCY_BATCH_ARTIFACT_PERSISTENCE_POLICY: &str = "disk_mode_optionally_persists_checkpoint_and_report_json_files_when_artifact_output_is_configured.v1";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScaleConsistencyBatchScenarioSelection {
+    #[default]
     All,
     FailedFromResume,
-    ScenarioIds { scenario_ids: Vec<String> },
-}
-
-impl Default for ScaleConsistencyBatchScenarioSelection {
-    fn default() -> Self {
-        Self::All
-    }
+    ScenarioIds {
+        scenario_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1057,7 +1054,7 @@ where
         run_contract,
         report.scenario_reports.clone(),
     );
-    if let Some(checkpoint_store) = memory_checkpoint_store.as_deref_mut() {
+    if let Some(checkpoint_store) = memory_checkpoint_store {
         checkpoint_store.record_checkpoint(checkpoint.clone());
     }
 

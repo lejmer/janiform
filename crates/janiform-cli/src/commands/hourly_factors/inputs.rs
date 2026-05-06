@@ -380,7 +380,7 @@ fn parse_timestamp_array_values(
         .enumerate()
         .map(|(value_position, value)| match value {
             Value::String(timestamp) => parse_utc_datetime(timestamp)
-                .map(|timestamp| utc_nanos(timestamp))
+                .map(utc_nanos)
                 .map_err(|source| CliError::ArtifactMalformed {
                     artifact_name,
                     path: path.to_path_buf(),

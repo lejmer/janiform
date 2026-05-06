@@ -163,12 +163,12 @@ pub(crate) fn validate_integrated_intensity(
     if !value.is_finite() || value < 0.0 {
         return Err(SeededTickSimulationRunError::InvalidReturnDecomposition {
             interval_index,
-            source: ReturnDecompositionValidationError::DomainViolation {
+            source: Box::new(ReturnDecompositionValidationError::DomainViolation {
                 field,
                 constraint:
                     janiform_model_kernels::return_decomposition::ReturnDecompositionConstraint::FiniteAndNonNegative,
                 value,
-            },
+            }),
         });
     }
 

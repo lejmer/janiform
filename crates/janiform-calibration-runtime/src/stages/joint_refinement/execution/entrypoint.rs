@@ -26,10 +26,10 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: JointRefinementStageExecutionInput,
-    mut progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
+    progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
 ) -> JointRefinementStageExecutionReport {
-    let Some(progress_observer) = progress_observer.as_deref_mut() else {
+    let Some(progress_observer) = progress_observer else {
         return super::pipeline::run_joint_refinement_calibration_stage_internal(
             run_spec,
             calendar_registry,

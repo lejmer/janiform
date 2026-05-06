@@ -42,13 +42,12 @@ impl ModelArtifactSimulationWorkflowOutput {
             DirectSimulationCompleted::CoarseInterval { .. } => "coarse_interval",
         };
 
-        let export_summary = match &self.export_summary {
-            Some(summary) => Some(json!({
+        let export_summary = self.export_summary.as_ref().map(|summary| {
+            json!({
                 "record_count": summary.record_count,
                 "chunk_count": summary.chunk_count,
-            })),
-            None => None,
-        };
+            })
+        });
 
         Ok(json!({
             "simulation_kind": simulation_kind,

@@ -267,12 +267,10 @@ fn render_check_sections(
                 .metric_decision_counts
                 .fail_count
                 > 0
-            {
-                if let Some(section) =
+                && let Some(section) =
                     render_failed_check_section(report_bundle, max_checks, renderer)
-                {
-                    sections.push(section);
-                }
+            {
+                sections.push(section);
             }
 
             if let Some(section) = render_passed_check_section(report_bundle, max_checks, renderer)

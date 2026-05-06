@@ -4,7 +4,9 @@ use janiform_calibration_artifacts::JointRefinementStageCarryInput;
 use janiform_engine_pricing::{
     INTRADAY_PRICING_HOURS_PER_YEAR, PricingIntervalSchedule, VanillaOptionPayoffType,
 };
-use janiform_foundations::numeric::integer_square_root;
+use janiform_foundations::numeric::{
+    ceil_integer_square_root, compute_median_f64_or_zero, compute_median_i64_or_zero,
+};
 use serde::{Deserialize, Serialize};
 
 use super::contracts::{
@@ -424,19 +426,23 @@ fn maturity_quality_summaries(
                 distinct_strike_count,
                 two_sided_moneyness_coverage: usize::from(has_left_moneyness)
                     + usize::from(has_right_moneyness),
-                median_relative_spread: median_f64(
-                    quote_indices
+                median_relative_spread: {
+                    let mut relative_spreads = quote_indices
                         .iter()
                         .map(|quote_index| canonical_quotes[*quote_index].relative_spread)
-                        .collect::<Vec<_>>(),
-                ),
+                        .collect::<Vec<_>>();
+
+                    compute_median_f64_or_zero(relative_spreads.as_mut_slice())
+                },
                 static_bound_violation_share: violation_count as f64 / quote_indices.len() as f64,
-                median_staleness_nanos: median_i64(
-                    quote_indices
+                median_staleness_nanos: {
+                    let mut staleness_values = quote_indices
                         .iter()
                         .map(|quote_index| canonical_quotes[*quote_index].staleness_nanos)
-                        .collect::<Vec<_>>(),
-                ),
+                        .collect::<Vec<_>>();
+
+                    compute_median_i64_or_zero(staleness_values.as_mut_slice())
+                },
                 quote_indices,
             }
         })
@@ -699,35 +705,6 @@ fn violates_static_option_bounds(
             observed_mid_price < (discounted_strike - discounted_spot).max(0.0)
                 || observed_mid_price > discounted_strike
         }
-    }
-}
-
-fn median_f64(mut values: Vec<f64>) -> f64 {
-    values.sort_by(f64::total_cmp);
-    let middle = values.len() / 2;
-    if values.len() % 2 == 0 {
-        0.5 * (values[middle - 1] + values[middle])
-    } else {
-        values[middle]
-    }
-}
-
-fn median_i64(mut values: Vec<i64>) -> i64 {
-    values.sort();
-    let middle = values.len() / 2;
-    if values.len() % 2 == 0 {
-        values[middle - 1] / 2 + values[middle] / 2
-    } else {
-        values[middle]
-    }
-}
-
-fn ceil_integer_square_root(value: usize) -> usize {
-    let root = integer_square_root(value);
-    if root.saturating_mul(root) == value {
-        root
-    } else {
-        root + 1
     }
 }
 

@@ -135,7 +135,7 @@ jobs:
 
       - name: Install Windows build and smoke test frontend
         shell: pwsh
-        run: python -m pip install --upgrade pip maturin pytest
+        run: python -m pip install --upgrade pip maturin pytest pytest-benchmark
 
       - name: Build Windows Python wheel
         shell: pwsh

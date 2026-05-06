@@ -94,7 +94,6 @@ def main() -> None:
             ),
             output_preferences=CalibrationMarketDataOutputPreferences(
                 execution_mode=CalibrationExecutionMode.MEMORY,
-                emit_derived_staged_execution_input=False,
                 emit_input_provenance_report=True,
             ),
         )

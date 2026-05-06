@@ -186,11 +186,11 @@ pub struct JointRefinementStageParameterPayload {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "payload_kind", content = "payload", rename_all = "snake_case")]
 pub enum CalibrationStageParameterPayload {
-    Seasonality(SeasonalityStageParameterPayload),
-    Hawkes(HawkesStageParameterPayload),
-    ReturnComponents(ReturnComponentsStageParameterPayload),
-    MeanReversion(MeanReversionStageParameterPayload),
-    JointRefinement(JointRefinementStageParameterPayload),
+    Seasonality(Box<SeasonalityStageParameterPayload>),
+    Hawkes(Box<HawkesStageParameterPayload>),
+    ReturnComponents(Box<ReturnComponentsStageParameterPayload>),
+    MeanReversion(Box<MeanReversionStageParameterPayload>),
+    JointRefinement(Box<JointRefinementStageParameterPayload>),
 }
 
 impl CalibrationStageParameterPayload {
@@ -684,11 +684,11 @@ pub struct MeanReversionStageParameterArtifactInput {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CalibrationStageParameterArtifactInput {
-    Seasonality(SeasonalityStageParameterArtifactInput),
-    Hawkes(HawkesStageParameterArtifactInput),
-    ReturnComponents(ReturnComponentsStageParameterArtifactInput),
-    MeanReversion(MeanReversionStageParameterArtifactInput),
-    JointRefinement(JointRefinementStageParameterArtifactInput),
+    Seasonality(Box<SeasonalityStageParameterArtifactInput>),
+    Hawkes(Box<HawkesStageParameterArtifactInput>),
+    ReturnComponents(Box<ReturnComponentsStageParameterArtifactInput>),
+    MeanReversion(Box<MeanReversionStageParameterArtifactInput>),
+    JointRefinement(Box<JointRefinementStageParameterArtifactInput>),
 }
 
 pub fn build_calibration_stage_parameter_artifact(
@@ -723,7 +723,7 @@ pub fn build_calibration_stage_parameter_artifact(
             build_seasonality_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
-                input,
+                *input,
                 artifact_reference,
             )
         }
@@ -731,7 +731,7 @@ pub fn build_calibration_stage_parameter_artifact(
             build_hawkes_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
-                input,
+                *input,
                 artifact_reference,
             )
         }
@@ -739,7 +739,7 @@ pub fn build_calibration_stage_parameter_artifact(
             build_return_components_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
-                input,
+                *input,
                 artifact_reference,
             )
         }
@@ -747,7 +747,7 @@ pub fn build_calibration_stage_parameter_artifact(
             build_mean_reversion_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
-                input,
+                *input,
                 artifact_reference,
             )
         }
@@ -755,7 +755,7 @@ pub fn build_calibration_stage_parameter_artifact(
             build_joint_refinement_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
-                input,
+                *input,
                 artifact_reference,
             )
         }
@@ -1128,7 +1128,7 @@ fn build_seasonality_stage_parameter_artifact(
         ),
         solver_settings: input.metadata.solver_settings,
         optimizer_state: None,
-        stage_parameters: CalibrationStageParameterPayload::Seasonality(
+        stage_parameters: CalibrationStageParameterPayload::Seasonality(Box::new(
             SeasonalityStageParameterPayload {
                 dataset_id: input.dataset_id,
                 exchange_code: input.exchange_code,
@@ -1147,7 +1147,7 @@ fn build_seasonality_stage_parameter_artifact(
                 day_of_year_factor: input.day_of_year_factor,
                 normalization_metadata: input.normalization_metadata,
             },
-        ),
+        )),
     })
 }
 
@@ -1179,13 +1179,15 @@ fn build_hawkes_stage_parameter_artifact(
         ),
         solver_settings: input.metadata.solver_settings,
         optimizer_state: Some(build_optimizer_state(input.optimizer_state)),
-        stage_parameters: CalibrationStageParameterPayload::Hawkes(HawkesStageParameterPayload {
-            selected_candidate_id: input.selected_candidate_id,
-            fitted_parameters: input.fitted_parameters,
-            seasonality_input_transport: input.seasonality_input_transport,
-            seasonality_dataset_id: input.seasonality_dataset_id,
-            seasonality_artifact_reference: input.seasonality_artifact_reference,
-        }),
+        stage_parameters: CalibrationStageParameterPayload::Hawkes(Box::new(
+            HawkesStageParameterPayload {
+                selected_candidate_id: input.selected_candidate_id,
+                fitted_parameters: input.fitted_parameters,
+                seasonality_input_transport: input.seasonality_input_transport,
+                seasonality_dataset_id: input.seasonality_dataset_id,
+                seasonality_artifact_reference: input.seasonality_artifact_reference,
+            },
+        )),
     })
 }
 
@@ -1217,7 +1219,7 @@ fn build_return_components_stage_parameter_artifact(
         ),
         solver_settings: input.metadata.solver_settings,
         optimizer_state: Some(build_optimizer_state(input.optimizer_state)),
-        stage_parameters: CalibrationStageParameterPayload::ReturnComponents(
+        stage_parameters: CalibrationStageParameterPayload::ReturnComponents(Box::new(
             ReturnComponentsStageParameterPayload {
                 selected_candidate_id: input.selected_candidate_id,
                 fitted_parameters: input.fitted_parameters,
@@ -1228,7 +1230,7 @@ fn build_return_components_stage_parameter_artifact(
                 activity_selected_hawkes_candidate_id: input.activity_selected_hawkes_candidate_id,
                 activity_artifact_reference: input.activity_artifact_reference,
             },
-        ),
+        )),
     })
 }
 
@@ -1260,7 +1262,7 @@ fn build_mean_reversion_stage_parameter_artifact(
         ),
         solver_settings: input.metadata.solver_settings,
         optimizer_state: None,
-        stage_parameters: CalibrationStageParameterPayload::MeanReversion(
+        stage_parameters: CalibrationStageParameterPayload::MeanReversion(Box::new(
             MeanReversionStageParameterPayload {
                 fitted_parameters: input.fitted_parameters,
                 diagnostics: input.diagnostics,
@@ -1269,7 +1271,7 @@ fn build_mean_reversion_stage_parameter_artifact(
                     .return_components_selected_candidate_id,
                 return_components_artifact_reference: input.return_components_artifact_reference,
             },
-        ),
+        )),
     })
 }
 
@@ -1301,7 +1303,7 @@ fn build_joint_refinement_stage_parameter_artifact(
         ),
         solver_settings: input.metadata.solver_settings,
         optimizer_state: Some(build_optimizer_state(input.optimizer_state)),
-        stage_parameters: CalibrationStageParameterPayload::JointRefinement(
+        stage_parameters: CalibrationStageParameterPayload::JointRefinement(Box::new(
             JointRefinementStageParameterPayload {
                 selected_candidate_id: input.selected_candidate_id,
                 fitted_parameters: input.fitted_parameters,
@@ -1311,7 +1313,7 @@ fn build_joint_refinement_stage_parameter_artifact(
                 objective_breakdown: input.objective_breakdown,
                 optimizer_diagnostics: input.optimizer_diagnostics,
             },
-        ),
+        )),
     })
 }
 

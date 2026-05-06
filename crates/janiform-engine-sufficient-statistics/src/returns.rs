@@ -20,7 +20,7 @@ use janiform_model_kernels::return_decomposition::{
 };
 
 /// Optional controls for interval return generation from sampled sufficient statistics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SufficientStatisticsReturnGenerationOptions {
     pub include_component_breakdown: bool,
 }
@@ -28,14 +28,6 @@ pub struct SufficientStatisticsReturnGenerationOptions {
 impl SufficientStatisticsReturnGenerationOptions {
     pub const fn component_breakdown_policy() -> &'static str {
         SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY
-    }
-}
-
-impl Default for SufficientStatisticsReturnGenerationOptions {
-    fn default() -> Self {
-        Self {
-            include_component_breakdown: false,
-        }
     }
 }
 

@@ -79,6 +79,7 @@ def render_cli_reference_page(workspace_root: Path) -> str:
         capture_output=True,
         check=True,
         cwd=workspace_root,
+        encoding="utf-8",
         text=True,
     )
 

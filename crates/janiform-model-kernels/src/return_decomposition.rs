@@ -27,9 +27,10 @@ pub const RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY: &str = "additive_only
 /// Explicit component-disable modes for test and debug workflows.
 ///
 /// `Disabled` preserves the canonical decomposition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReturnDecompositionEdgeMode {
+    #[default]
     Disabled,
     BuyOnly,
     SellOnly,
@@ -56,12 +57,6 @@ impl ReturnDecompositionEdgeMode {
 
     pub const fn closed_gap_component_enabled(self) -> bool {
         matches!(self, Self::Disabled | Self::ClosedGapOnly)
-    }
-}
-
-impl Default for ReturnDecompositionEdgeMode {
-    fn default() -> Self {
-        Self::Disabled
     }
 }
 

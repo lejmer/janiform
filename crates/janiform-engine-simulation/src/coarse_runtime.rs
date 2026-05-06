@@ -95,27 +95,38 @@ where
 {
     run_request
         .validate()
-        .map_err(|source| CoarseSimulationRunError::InvalidRunRequest { source })?;
+        .map_err(|source| CoarseSimulationRunError::InvalidRunRequest {
+            source: Box::new(source),
+        })?;
 
     let model_inputs = &run_request.model_inputs;
 
-    let calendar_registry = model_inputs
-        .load_calendar_registry()
-        .map_err(|source| CoarseSimulationRunError::CalendarRegistryLoadFailure { source })?;
+    let calendar_registry = model_inputs.load_calendar_registry().map_err(|source| {
+        CoarseSimulationRunError::CalendarRegistryLoadFailure {
+            source: Box::new(source),
+        }
+    })?;
 
     let kernel_parameters = model_inputs
         .sufficient_statistics_model_inputs
         .equation_specification
         .hawkes_kernel_parameters;
+
     let driver_parameters = model_inputs
         .sufficient_statistics_model_inputs
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
-        .map_err(|source| CoarseSimulationRunError::InvalidNigDriverConfiguration { source })?;
+        .map_err(
+            |source| CoarseSimulationRunError::InvalidNigDriverConfiguration {
+                source: Box::new(source),
+            },
+        )?;
 
-    let interval_delta_nanos = run_request
-        .interval_delta_nanos()
-        .map_err(|source| CoarseSimulationRunError::InvalidIntervalDelta { source })?;
+    let interval_delta_nanos = run_request.interval_delta_nanos().map_err(|source| {
+        CoarseSimulationRunError::InvalidIntervalDelta {
+            source: Box::new(source),
+        }
+    })?;
 
     let mut terminal_state = model_inputs
         .sufficient_statistics_model_inputs
@@ -139,7 +150,9 @@ where
     let market_state_resolver =
         SeededSimulationMarketStateResolver::new(&calendar_registry, &model_inputs.exchange_code)
             .map_err(
-            |source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure { source },
+            |source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure {
+                source: Box::new(source),
+            },
         )?;
 
     let interval_start_utc_nanos = (0..run_request.horizon_interval_count)
@@ -167,7 +180,11 @@ where
         interval_start_utc_nanos.as_slice(),
         interval_end_utc_nanos.as_slice(),
     )
-    .map_err(|source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure { source })?;
+    .map_err(
+        |source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure {
+            source: Box::new(source),
+        },
+    )?;
 
     emit_progress_event(
         &mut observer,
@@ -198,7 +215,7 @@ where
         .map_err(
             |source| CoarseSimulationRunError::InvalidTransformSliceContext {
                 interval_index,
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -212,7 +229,7 @@ where
         .map_err(
             |source| CoarseSimulationRunError::TransformSliceSolveFailure {
                 interval_index,
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -232,7 +249,7 @@ where
             .map_err(|source| {
                 CoarseSimulationRunError::TransformSliceSamplingFailure {
                     interval_index,
-                    source,
+                    source: Box::new(source),
                 }
             })?;
 
@@ -290,7 +307,7 @@ where
         .map_err(
             |source| CoarseSimulationRunError::InvalidReturnDecomposition {
                 interval_index,
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -299,13 +316,14 @@ where
             .map_err(
                 |source| CoarseSimulationRunError::TradingTimeSamplingFailure {
                     interval_index,
-                    source,
+                    source: Box::new(source),
                 },
             )?;
 
         let buy_side_return = trading_time_contributions.buy_side_increment;
         let sell_side_return = -trading_time_contributions.sell_side_increment;
         let trading_time_return = trading_time_contributions.combined_increment;
+
         let total_return = trading_time_return
             + interval_direct_jump_totals.open_jump_return
             + interval_direct_jump_totals.closed_gap_return;
@@ -320,7 +338,7 @@ where
         )
         .map_err(|source| CoarseSimulationRunError::InvalidReturnComponents {
             interval_index,
-            source,
+            source: Box::new(source),
         })?;
 
         let updated_observed_boundary_state =
@@ -345,7 +363,7 @@ where
             .map_err(|source| {
                 CoarseSimulationRunError::MeanReversionBoundaryStateUpdateFailure {
                     interval_index,
-                    source,
+                    source: Box::new(source),
                 }
             })?;
 
@@ -367,10 +385,11 @@ where
         )
         .map_err(|source| CoarseSimulationRunError::InvalidPathRecord {
             interval_index,
-            source,
+            source: Box::new(source),
         })?;
 
         records.push(path_record);
+
         observed_boundary_state = updated_observed_boundary_state;
 
         let boundary_update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
@@ -387,7 +406,7 @@ where
         .map_err(
             |source| CoarseSimulationRunError::BoundaryStateUpdateFailure {
                 interval_index,
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -419,37 +438,41 @@ where
         terminal_state,
         records,
     )
-    .map_err(|source| CoarseSimulationRunError::InvalidPathArtifact { source })
+    .map_err(|source| CoarseSimulationRunError::InvalidPathArtifact {
+        source: Box::new(source),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoarseSimulationRunError {
     InvalidRunRequest {
-        source: CoarseSimulationRunRequestError,
+        source: Box<CoarseSimulationRunRequestError>,
     },
     CalendarRegistryLoadFailure {
-        source: janiform_market_time::calendar::ExchangeCalendarRegistryLoadError,
+        source: Box<janiform_market_time::calendar::ExchangeCalendarRegistryLoadError>,
     },
     InvalidNigDriverConfiguration {
-        source: janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError,
+        source: Box<janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError>,
     },
     InvalidIntervalDelta {
-        source: super::coarse::IntervalDeltaGridError,
+        source: Box<super::coarse::IntervalDeltaGridError>,
     },
     IntervalBoundaryOverflow {
         interval_index: usize,
     },
     InvalidTransformSliceContext {
         interval_index: usize,
-        source: janiform_affine_oracle::sufficient_statistics::SufficientStatisticsTransformSliceContextError,
+        source: Box<
+            janiform_affine_oracle::sufficient_statistics::SufficientStatisticsTransformSliceContextError,
+        >,
     },
     TransformSliceSolveFailure {
         interval_index: usize,
-        source: SufficientStatisticsTransformSliceSolveError,
+        source: Box<SufficientStatisticsTransformSliceSolveError>,
     },
     TransformSliceSamplingFailure {
         interval_index: usize,
-        source: SufficientStatisticsTransformSliceSamplingError,
+        source: Box<SufficientStatisticsTransformSliceSamplingError>,
     },
     KnownNewsFactorAlignmentFailure {
         interval_index: usize,
@@ -458,49 +481,49 @@ pub enum CoarseSimulationRunError {
     },
     NewsProcessConfigurationFailure {
         interval_index: usize,
-        source: NewsProcessConfigurationError,
+        source: Box<NewsProcessConfigurationError>,
     },
     NewsMarkSamplingFailure {
         interval_index: usize,
-        source: NewsMarkInterfaceError,
+        source: Box<NewsMarkInterfaceError>,
     },
     SharedNewsDispatchFailure {
         interval_index: usize,
-        source: SharedNewsEventDispatchError,
+        source: Box<SharedNewsEventDispatchError>,
     },
     InvalidReturnDecomposition {
         interval_index: usize,
-        source: janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError,
+        source: Box<janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError>,
     },
     TradingTimeSamplingFailure {
         interval_index: usize,
-        source: janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError,
+        source: Box<janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError>,
     },
     InvalidReturnComponents {
         interval_index: usize,
-        source: SufficientStatisticsReturnComponentsError,
+        source: Box<SufficientStatisticsReturnComponentsError>,
     },
     InvalidPathRecord {
         interval_index: usize,
-        source: super::coarse::CoarseSimulationPathRecordError,
+        source: Box<super::coarse::CoarseSimulationPathRecordError>,
     },
     MeanReversionBoundaryStateUpdateFailure {
         interval_index: usize,
-        source: janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateEvolutionError,
+        source: Box<janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateEvolutionError>,
     },
     OpenMarketExposureResolutionFailure {
-        source: super::error::SeededTickSimulationRunError,
+        source: Box<super::error::SeededTickSimulationRunError>,
     },
     BoundaryStateUpdateFailure {
         interval_index: usize,
-        source: SufficientStatisticsBoundaryStateUpdateError,
+        source: Box<SufficientStatisticsBoundaryStateUpdateError>,
     },
     NewsBoundaryStateUpdateFailure {
         interval_index: usize,
-        source: HawkesTransitionError,
+        source: Box<HawkesTransitionError>,
     },
     InvalidPathArtifact {
-        source: CoarseSimulationPathError,
+        source: Box<CoarseSimulationPathError>,
     },
 }
 
@@ -647,25 +670,25 @@ impl Display for CoarseSimulationRunError {
 impl Error for CoarseSimulationRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidRunRequest { source } => Some(source),
-            Self::CalendarRegistryLoadFailure { source } => Some(source),
-            Self::InvalidNigDriverConfiguration { source } => Some(source),
-            Self::InvalidIntervalDelta { source } => Some(source),
-            Self::InvalidTransformSliceContext { source, .. } => Some(source),
-            Self::TransformSliceSolveFailure { source, .. } => Some(source),
-            Self::TransformSliceSamplingFailure { source, .. } => Some(source),
-            Self::NewsProcessConfigurationFailure { source, .. } => Some(source),
-            Self::NewsMarkSamplingFailure { source, .. } => Some(source),
-            Self::SharedNewsDispatchFailure { source, .. } => Some(source),
-            Self::InvalidReturnDecomposition { source, .. } => Some(source),
-            Self::TradingTimeSamplingFailure { source, .. } => Some(source),
-            Self::InvalidReturnComponents { source, .. } => Some(source),
-            Self::InvalidPathRecord { source, .. } => Some(source),
-            Self::MeanReversionBoundaryStateUpdateFailure { source, .. } => Some(source),
-            Self::OpenMarketExposureResolutionFailure { source } => Some(source),
-            Self::BoundaryStateUpdateFailure { source, .. } => Some(source),
-            Self::NewsBoundaryStateUpdateFailure { source, .. } => Some(source),
-            Self::InvalidPathArtifact { source } => Some(source),
+            Self::InvalidRunRequest { source } => Some(source.as_ref()),
+            Self::CalendarRegistryLoadFailure { source } => Some(source.as_ref()),
+            Self::InvalidNigDriverConfiguration { source } => Some(source.as_ref()),
+            Self::InvalidIntervalDelta { source } => Some(source.as_ref()),
+            Self::InvalidTransformSliceContext { source, .. } => Some(source.as_ref()),
+            Self::TransformSliceSolveFailure { source, .. } => Some(source.as_ref()),
+            Self::TransformSliceSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::NewsProcessConfigurationFailure { source, .. } => Some(source.as_ref()),
+            Self::NewsMarkSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
+            Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
+            Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
+            Self::InvalidPathRecord { source, .. } => Some(source.as_ref()),
+            Self::MeanReversionBoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
+            Self::OpenMarketExposureResolutionFailure { source } => Some(source.as_ref()),
+            Self::BoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
+            Self::NewsBoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
+            Self::InvalidPathArtifact { source } => Some(source.as_ref()),
             Self::IntervalBoundaryOverflow { .. }
             | Self::KnownNewsFactorAlignmentFailure { .. } => None,
         }
@@ -692,13 +715,14 @@ where
     F: SimulationRandomnessFactory,
 {
     let model_inputs = &run_request.model_inputs;
+
     model_inputs
         .news_process_configuration
         .validate()
         .map_err(
             |source| CoarseSimulationRunError::NewsProcessConfigurationFailure {
                 interval_index,
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -707,11 +731,13 @@ where
         SimulationRandomnessSubstreamDomain::ExogenousNewsCount,
         interval_index as u64,
     );
+
     let mut news_timestamp_stream = randomness_factory.create_substream(
         run_request.seed,
         SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp,
         interval_index as u64,
     );
+
     let mut news_mark_stream = randomness_factory.create_substream(
         run_request.seed,
         SimulationRandomnessSubstreamDomain::ExogenousNewsMarks,
@@ -742,7 +768,7 @@ where
             )
             .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
                 interval_index,
-                source,
+                source: Box::new(source),
             })?,
         );
 
@@ -751,6 +777,7 @@ where
 
     let interval_surprise_expected_count =
         run_request.interval_factors.nu_h_surprise[interval_index] * run_request.interval_delta;
+
     let interval_surprise_news_count =
         sample_count_from_expectation(interval_surprise_expected_count, &mut news_count_stream);
 
@@ -777,7 +804,7 @@ where
             )
             .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
                 interval_index,
-                source,
+                source: Box::new(source),
             })?,
         );
 
@@ -793,7 +820,7 @@ where
     .map_err(
         |source| CoarseSimulationRunError::SharedNewsDispatchFailure {
             interval_index,
-            source,
+            source: Box::new(source),
         },
     )?;
 
@@ -824,7 +851,7 @@ fn apply_interval_news_activity_coupling_at_boundary(
     .map_err(
         |source| CoarseSimulationRunError::NewsBoundaryStateUpdateFailure {
             interval_index,
-            source,
+            source: Box::new(source),
         },
     )
 }
@@ -853,6 +880,7 @@ fn adaptive_transform_slice_settings(
     interval_delta: f64,
 ) -> SufficientStatisticsTransformSliceSettings {
     let expected_side_scale = (lambda_bar * seasonality_factor.max(0.0) * interval_delta).max(1.0);
+
     let probe_distance = (TARGET_TRANSFORM_PROBE_SHIFT / expected_side_scale).clamp(
         MIN_TRANSFORM_PROBE_DISTANCE,
         SufficientStatisticsTransformSliceSettings::default().a_plus_u,

@@ -184,6 +184,7 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
     let artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
         CalibrationStageParameterArtifactInput::MeanReversion(
+            Box::new(
             MeanReversionStageParameterArtifactInput {
                 metadata: CalibrationStageParameterBuildMetadata {
                     stage_output_schema_version:
@@ -205,6 +206,7 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
                 ),
                 return_components_artifact_reference: None,
             },
+            ),
         ),
     )
     .expect("mean-reversion stage parameter artifact should build");

@@ -51,7 +51,9 @@ impl TerminalCommandProgress {
 
             adapter
                 .draw_latest()
-                .map_err(|source| CliError::OutputProgress { source })?;
+                .map_err(|source| CliError::OutputProgress {
+                    source: Box::new(source),
+                })?;
         }
 
         Ok(Self {
@@ -86,8 +88,11 @@ impl TerminalCommandProgress {
         }
 
         let stage_number = update.stage_number;
-        ProgressMeasure::bounded(stage_number, self.total_units)
-            .map_err(|source| CliError::OutputProgress { source })?;
+        ProgressMeasure::bounded(stage_number, self.total_units).map_err(|source| {
+            CliError::OutputProgress {
+                source: Box::new(source),
+            }
+        })?;
 
         if self
             .active_stage
@@ -103,11 +108,17 @@ impl TerminalCommandProgress {
 
         let measure = match (update.completed_units, update.total_units) {
             (Some(completed_units), Some(total_units)) => {
-                ProgressMeasure::bounded(completed_units, total_units)
-                    .map_err(|source| CliError::OutputProgress { source })?
+                ProgressMeasure::bounded(completed_units, total_units).map_err(|source| {
+                    CliError::OutputProgress {
+                        source: Box::new(source),
+                    }
+                })?
             }
-            _ => ProgressMeasure::bounded(self.completed_stage_count, self.total_units)
-                .map_err(|source| CliError::OutputProgress { source })?,
+            _ => ProgressMeasure::bounded(self.completed_stage_count, self.total_units).map_err(
+                |source| CliError::OutputProgress {
+                    source: Box::new(source),
+                },
+            )?,
         };
 
         let Some(adapter) = self.adapter.as_mut() else {
@@ -131,7 +142,9 @@ impl TerminalCommandProgress {
 
         adapter
             .draw_latest()
-            .map_err(|source| CliError::OutputProgress { source })
+            .map_err(|source| CliError::OutputProgress {
+                source: Box::new(source),
+            })
     }
 
     pub(crate) fn complete(&mut self) -> Result<(), CliError> {
@@ -150,7 +163,9 @@ impl TerminalCommandProgress {
         adapter.observe(ProgressEvent::RunProgress {
             phase: "completed".to_string(),
             measure: ProgressMeasure::bounded(self.completed_stage_count, self.total_units)
-                .map_err(|source| CliError::OutputProgress { source })?,
+                .map_err(|source| CliError::OutputProgress {
+                    source: Box::new(source),
+                })?,
             latest_signal: Some("completed".to_string()),
         });
 
@@ -199,7 +214,9 @@ impl TerminalCommandProgress {
 
         adapter
             .draw_latest()
-            .map_err(|source| CliError::OutputProgress { source })
+            .map_err(|source| CliError::OutputProgress {
+                source: Box::new(source),
+            })
     }
 }
 

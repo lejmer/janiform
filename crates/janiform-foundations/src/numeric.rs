@@ -174,6 +174,16 @@ pub fn integer_square_root(value: usize) -> usize {
     (value as f64).sqrt().floor() as usize
 }
 
+/// Compute the integer square root by ceiling the real square root.
+pub fn ceil_integer_square_root(value: usize) -> usize {
+    let root = integer_square_root(value);
+    if root.saturating_mul(root) == value {
+        root
+    } else {
+        root + 1
+    }
+}
+
 /// Round while preserving a strictly positive domain after quantization.
 pub fn round_positive_to_domain(value: f64, digits: i32) -> f64 {
     round_to(value.max(strictly_positive_machine_value()), digits)
@@ -500,6 +510,33 @@ pub fn compute_sorted_quantile_or_zero(sorted_values: &[f64], quantile_level: f6
     if quantile.is_nan() { 0.0 } else { quantile }
 }
 
+/// Compute the median after sorting the sample and use zero for empty input.
+pub fn compute_median_f64_or_zero(values: &mut [f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+
+    values.sort_by(f64::total_cmp);
+
+    compute_sorted_median(values)
+}
+
+/// Compute the integer median after sorting the sample and use zero for empty input.
+pub fn compute_median_i64_or_zero(values: &mut [i64]) -> i64 {
+    if values.is_empty() {
+        return 0;
+    }
+
+    values.sort();
+
+    let middle = values.len() / 2;
+    if values.len().is_multiple_of(2) {
+        values[middle - 1] / 2 + values[middle] / 2
+    } else {
+        values[middle]
+    }
+}
+
 /// Compute the median from an already sorted sample.
 pub fn compute_sorted_median(sorted_values: &[f64]) -> f64 {
     compute_sorted_quantile(sorted_values, 0.5)
@@ -766,8 +803,9 @@ fn combination_ratio(
 mod tests {
     use super::{
         arithmetic_mean, arithmetic_mean_or_zero, bowley_skewness_from_sorted,
-        central_skewness_or_zero, clamp_to_open_unit_interval, clamp_to_unit_interval,
-        coefficient_of_variation, compute_finite_median_or_zero, compute_finite_quantile_or_zero,
+        ceil_integer_square_root, central_skewness_or_zero, clamp_to_open_unit_interval,
+        clamp_to_unit_interval, coefficient_of_variation, compute_finite_median_or_zero,
+        compute_finite_quantile_or_zero, compute_median_f64_or_zero, compute_median_i64_or_zero,
         compute_probability_weighted_moment, compute_sorted_median, compute_sorted_quantile,
         compute_sorted_quantile_or_zero, coverage_ratio, finite_arithmetic_mean_or_zero,
         integer_square_root, l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted, logistic,
@@ -807,23 +845,31 @@ mod tests {
         assert_eq!(coverage_ratio(2, 5), 0.4);
         assert_eq!(coverage_ratio(0, 0), 0.0);
         assert_eq!(validate_finite_number(1.0, "field"), Ok(()));
+
         let error = validate_finite_number(f64::NAN, "field")
             .expect_err("non-finite values must fail validation");
+
         assert_eq!(error.field, "field");
         assert!(error.value.is_nan());
         assert_eq!(validate_positive_number(1.0, "field"), Ok(()));
+
         let error = validate_positive_number(0.0, "field")
             .expect_err("non-positive values must fail validation");
+
         assert_eq!(error.field, "field");
         assert_eq!(error.value, 0.0);
         assert_eq!(validate_non_negative_number(0.0, "field"), Ok(()));
+
         let error = validate_non_negative_number(-1.0, "field")
             .expect_err("negative values must fail validation");
+
         assert_eq!(error.field, "field");
         assert_eq!(error.value, -1.0);
         assert_eq!(validate_negative_number(-1.0, "field"), Ok(()));
+
         let error = validate_negative_number(0.0, "field")
             .expect_err("non-negative values must fail validation");
+
         assert_eq!(error.field, "field");
         assert_eq!(error.value, 0.0);
         assert_eq!(coefficient_of_variation(&[2.0, 2.0, 2.0]), 0.0);
@@ -833,6 +879,8 @@ mod tests {
         assert_eq!(round_to(1.23456, 3), 1.235);
         assert_eq!(integer_square_root(15), 3);
         assert_eq!(integer_square_root(16), 4);
+        assert_eq!(ceil_integer_square_root(15), 4);
+        assert_eq!(ceil_integer_square_root(16), 4);
         assert_eq!(
             sorted_finite_values(&[3.0, f64::NAN, 1.0, 2.0]),
             vec![1.0, 2.0, 3.0]
@@ -850,6 +898,21 @@ mod tests {
         assert_eq!(compute_sorted_quantile(&[1.0, 2.0, 4.0], 0.5), 2.0);
         assert_eq!(compute_sorted_quantile_or_zero(&[], 0.5), 0.0);
         assert_eq!(compute_finite_median_or_zero(&[1.0, f64::NAN, 3.0]), 2.0);
+
+        let mut median_values = vec![4.0, 1.0, 3.0, 2.0];
+
+        assert_eq!(
+            compute_median_f64_or_zero(median_values.as_mut_slice()),
+            2.5
+        );
+
+        let mut integer_median_values = vec![5, 1, 3];
+
+        assert_eq!(
+            compute_median_i64_or_zero(integer_median_values.as_mut_slice()),
+            3
+        );
+
         assert_eq!(
             compute_finite_quantile_or_zero(&[1.0, f64::NAN, 3.0], 0.5),
             2.0

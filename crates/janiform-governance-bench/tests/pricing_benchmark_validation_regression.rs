@@ -801,7 +801,9 @@ fn run_benchmark_case(
             diagnostics: pricing_result.diagnostics,
         },
         Err(FourierInversionPricingError::NumericQualityFailure { diagnostics }) => {
-            PricingBenchmarkObservedOutcome::NumericQualityFailure { diagnostics }
+            PricingBenchmarkObservedOutcome::NumericQualityFailure {
+                diagnostics: *diagnostics,
+            }
         }
         Err(source) => panic!(
             "fixture {} ({}) failed with unexpected pricing error: {}",

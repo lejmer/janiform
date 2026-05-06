@@ -1,12 +1,12 @@
 use std::cmp::Ordering;
 
 use super::super::objective::{
-    business_time_bucket_return_scale_fit, compare_joint_candidate_breakdowns,
-    intraday_return_level_horizon_fit, joint_primary_metrics_from_breakdown,
-    return_asymmetry_horizon_fit, root_mean_square,
+    JointCandidateBreakdownComparisonInput, business_time_bucket_return_scale_fit,
+    compare_joint_candidate_breakdowns, intraday_return_level_horizon_fit,
+    joint_primary_metrics_from_breakdown, return_asymmetry_horizon_fit, root_mean_square,
 };
 use super::super::setup::{
-    build_restart_seeds_with_halton_acceptance,
+    RestartSeedsWithHaltonAcceptanceBuildInput, build_restart_seeds_with_halton_acceptance,
     project_basin_diagnostic_into_joint_nig_coordinates,
     restart_candidate_screening_max_parallelism_for_test,
 };
@@ -340,6 +340,7 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
     let solver_settings = build_test_solver_settings(64);
 
     let single_restart_schedule = joint_refinement_budget_schedule(&solver_settings, 1);
+
     assert_eq!(single_restart_schedule.restart_count, 1);
     assert_eq!(
         single_restart_schedule.outer_cycle_count,
@@ -347,10 +348,12 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
     );
 
     let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15);
+
     assert_eq!(default_frontier_schedule.restart_count, 15);
     assert_eq!(default_frontier_schedule.outer_cycle_count, 1);
 
     let broad_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 50);
+
     assert_eq!(broad_frontier_schedule.restart_count, 50);
     assert_eq!(broad_frontier_schedule.outer_cycle_count, 1);
 }
@@ -358,6 +361,7 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
 #[test]
 fn joint_refinement_restart_block_budget_is_dimension_minimal() {
     let solver_settings = build_test_solver_settings(64);
+
     let four_dimensional_block_settings =
         joint_refinement_restart_block_powell_settings(&solver_settings, 4);
 
@@ -380,34 +384,39 @@ fn joint_refinement_restart_block_budget_is_dimension_minimal() {
 #[test]
 fn joint_refinement_restart_seed_generation_is_deterministic() {
     let active_parameter_layout = build_test_active_parameter_layout();
+
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+
     let baseline_15m_calibration_sample = build_test_calibration_sample();
 
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
 
-    let first_restart_seeds = build_restart_seeds_with_halton_acceptance(
-        baseline_parameter_vector.as_slice(),
-        &active_parameter_layout,
-        lower_bounds.as_slice(),
-        upper_bounds.as_slice(),
-        &baseline_15m_calibration_sample,
-        &[],
-        0.25,
-        8,
-        |_| true,
-    );
-    let second_restart_seeds = build_restart_seeds_with_halton_acceptance(
-        baseline_parameter_vector.as_slice(),
-        &active_parameter_layout,
-        lower_bounds.as_slice(),
-        upper_bounds.as_slice(),
-        &baseline_15m_calibration_sample,
-        &[],
-        0.25,
-        8,
-        |_| true,
-    );
+    let first_restart_seeds =
+        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+            baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+            active_parameter_layout: &active_parameter_layout,
+            lower_bounds: lower_bounds.as_slice(),
+            upper_bounds: upper_bounds.as_slice(),
+            baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+            return_component_basin_diagnostics: &[],
+            activity_log_shift: 0.25,
+            restart_candidate_budget: 8,
+            halton_seed_is_accepted: Box::new(|_| true),
+        });
+
+    let second_restart_seeds =
+        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+            baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+            active_parameter_layout: &active_parameter_layout,
+            lower_bounds: lower_bounds.as_slice(),
+            upper_bounds: upper_bounds.as_slice(),
+            baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+            return_component_basin_diagnostics: &[],
+            activity_log_shift: 0.25,
+            restart_candidate_budget: 8,
+            halton_seed_is_accepted: Box::new(|_| true),
+        });
 
     assert_eq!(first_restart_seeds, second_restart_seeds);
     assert_eq!(first_restart_seeds.len(), 8);
@@ -420,26 +429,31 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
 #[test]
 fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
     let active_parameter_layout = build_test_active_parameter_layout();
+
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+
     let baseline_15m_calibration_sample = build_test_calibration_sample();
+
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+
     let mut score_call_count = 0usize;
 
-    let restart_seeds = build_restart_seeds_with_halton_acceptance(
-        baseline_parameter_vector.as_slice(),
-        &active_parameter_layout,
-        lower_bounds.as_slice(),
-        upper_bounds.as_slice(),
-        &baseline_15m_calibration_sample,
-        &[],
-        0.25,
-        6,
-        |_| {
-            score_call_count += 1;
-            score_call_count % 3 == 0
-        },
-    );
+    let restart_seeds =
+        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+            baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+            active_parameter_layout: &active_parameter_layout,
+            lower_bounds: lower_bounds.as_slice(),
+            upper_bounds: upper_bounds.as_slice(),
+            baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+            return_component_basin_diagnostics: &[],
+            activity_log_shift: 0.25,
+            restart_candidate_budget: 6,
+            halton_seed_is_accepted: Box::new(|_| {
+                score_call_count += 1;
+                score_call_count.is_multiple_of(3)
+            }),
+        });
 
     assert_eq!(restart_seeds.len(), 5);
     assert_eq!(restart_seeds[3].0, "halton_03");
@@ -450,26 +464,31 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
 #[test]
 fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_budget() {
     let active_parameter_layout = build_test_active_parameter_layout();
+
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+
     let baseline_15m_calibration_sample = build_test_calibration_sample();
+
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+
     let mut score_call_count = 0usize;
 
-    let restart_seeds = build_restart_seeds_with_halton_acceptance(
-        baseline_parameter_vector.as_slice(),
-        &active_parameter_layout,
-        lower_bounds.as_slice(),
-        upper_bounds.as_slice(),
-        &baseline_15m_calibration_sample,
-        &[],
-        0.25,
-        6,
-        |_| {
-            score_call_count += 1;
-            false
-        },
-    );
+    let restart_seeds =
+        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+            baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+            active_parameter_layout: &active_parameter_layout,
+            lower_bounds: lower_bounds.as_slice(),
+            upper_bounds: upper_bounds.as_slice(),
+            baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+            return_component_basin_diagnostics: &[],
+            activity_log_shift: 0.25,
+            restart_candidate_budget: 6,
+            halton_seed_is_accepted: Box::new(|_| {
+                score_call_count += 1;
+                false
+            }),
+        });
 
     assert_eq!(restart_seeds.len(), 3);
     assert_eq!(score_call_count, 6);
@@ -485,10 +504,14 @@ fn joint_refinement_restart_candidate_screening_uses_configured_parallelism() {
 #[test]
 fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
     let active_parameter_layout = build_test_active_parameter_layout();
+
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+
     let baseline_15m_calibration_sample = build_test_calibration_sample();
+
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+
     let basin_diagnostics = vec![build_test_basin_diagnostic(
         "skew_heavy",
         0.4,
@@ -497,22 +520,25 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         -0.6,
     )];
 
-    let restart_seeds = build_restart_seeds_with_halton_acceptance(
-        baseline_parameter_vector.as_slice(),
-        &active_parameter_layout,
-        lower_bounds.as_slice(),
-        upper_bounds.as_slice(),
-        &baseline_15m_calibration_sample,
-        basin_diagnostics.as_slice(),
-        0.25,
-        8,
-        |_| true,
-    );
+    let restart_seeds =
+        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+            baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+            active_parameter_layout: &active_parameter_layout,
+            lower_bounds: lower_bounds.as_slice(),
+            upper_bounds: upper_bounds.as_slice(),
+            baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+            return_component_basin_diagnostics: basin_diagnostics.as_slice(),
+            activity_log_shift: 0.25,
+            restart_candidate_budget: 8,
+            halton_seed_is_accepted: Box::new(|_| true),
+        });
+
     let projected_search_point = project_basin_diagnostic_into_joint_nig_coordinates(
         &baseline_15m_calibration_sample,
         &basin_diagnostics[0],
     )
     .expect("basin diagnostic should project into joint coordinates");
+
     let clamped_projected_coordinates = [
         projected_search_point.log_alpha.clamp(
             lower_bounds[active_parameter_layout.nig_block[0]],
@@ -626,7 +652,9 @@ fn business_time_bucket_return_scale_fit_penalizes_oversized_returns_within_same
             absolute_return_quantile_q90: 0.002,
         }); 4],
     };
+
     let matched_summaries = observed_summaries;
+
     let amplified_summaries = JointRefinementBusinessTimeBucketReturnScaleSummaries {
         bucket_summaries: [Some(JointRefinementReturnScaleSummary {
             mean_absolute_return: 0.004,
@@ -636,6 +664,7 @@ fn business_time_bucket_return_scale_fit_penalizes_oversized_returns_within_same
     };
 
     let matched_fit = business_time_bucket_return_scale_fit(matched_summaries, observed_summaries);
+
     let amplified_fit =
         business_time_bucket_return_scale_fit(amplified_summaries, observed_summaries);
 
@@ -652,6 +681,7 @@ fn business_time_bucket_return_scale_fit_penalizes_missing_supported_buckets() {
             absolute_return_quantile_q90: 0.002,
         }); 4],
     };
+
     let candidate_summaries = JointRefinementBusinessTimeBucketReturnScaleSummaries {
         bucket_summaries: [
             None,
@@ -674,6 +704,7 @@ fn business_time_bucket_return_scale_fit_penalizes_missing_supported_buckets() {
     };
 
     let matched_fit = business_time_bucket_return_scale_fit(observed_summaries, observed_summaries);
+
     let missing_bucket_fit =
         business_time_bucket_return_scale_fit(candidate_summaries, observed_summaries);
 
@@ -699,6 +730,7 @@ fn intraday_return_level_horizon_fit_penalizes_uniformly_oversized_hourly_profil
 
     let matched_fit =
         intraday_return_level_horizon_fit(matched_profile.as_slice(), observed_profile.as_slice());
+
     let amplified_fit = intraday_return_level_horizon_fit(
         amplified_profile.as_slice(),
         observed_profile.as_slice(),
@@ -785,17 +817,17 @@ fn admissible_candidate_ordering_uses_direct_tick_terms_before_weighted_tie_brea
     let better_tick_fit = build_test_joint_breakdown(0.8, 0.7, 1.4);
     let worse_tick_fit = build_test_joint_breakdown(1.4, 1.5, 1.1);
 
-    let ordering = compare_joint_candidate_breakdowns(
-        1,
-        &better_tick_fit,
-        true,
-        "better_tick_fit",
-        1,
-        &worse_tick_fit,
-        true,
-        "worse_tick_fit",
-        true,
-    );
+    let ordering = compare_joint_candidate_breakdowns(JointCandidateBreakdownComparisonInput {
+        left_pareto_rank: 1,
+        left_breakdown: &better_tick_fit,
+        left_admissible: true,
+        left_restart_id: "better_tick_fit",
+        right_pareto_rank: 1,
+        right_breakdown: &worse_tick_fit,
+        right_admissible: true,
+        right_restart_id: "worse_tick_fit",
+        has_admissible_candidate: true,
+    });
 
     assert_eq!(ordering, Ordering::Less);
 }
@@ -805,17 +837,17 @@ fn admissible_candidate_ordering_uses_weighted_objective_after_primary_metrics_t
     let lower_objective = build_test_joint_breakdown(1.0, 1.0, 0.9);
     let higher_objective = build_test_joint_breakdown(1.0, 1.0, 1.1);
 
-    let ordering = compare_joint_candidate_breakdowns(
-        1,
-        &lower_objective,
-        true,
-        "lower_objective",
-        1,
-        &higher_objective,
-        true,
-        "higher_objective",
-        true,
-    );
+    let ordering = compare_joint_candidate_breakdowns(JointCandidateBreakdownComparisonInput {
+        left_pareto_rank: 1,
+        left_breakdown: &lower_objective,
+        left_admissible: true,
+        left_restart_id: "lower_objective",
+        right_pareto_rank: 1,
+        right_breakdown: &higher_objective,
+        right_admissible: true,
+        right_restart_id: "higher_objective",
+        has_admissible_candidate: true,
+    });
 
     assert_eq!(ordering, Ordering::Less);
 }
@@ -825,17 +857,17 @@ fn admissible_candidate_ordering_rejects_inadmissible_restart_when_available() {
     let admissible_baseline = build_test_joint_breakdown(1.0, 1.0, 1.2);
     let inadmissible_restart = build_test_joint_breakdown(0.8, 0.8, 0.7);
 
-    let ordering = compare_joint_candidate_breakdowns(
-        1,
-        &admissible_baseline,
-        true,
-        "baseline",
-        1,
-        &inadmissible_restart,
-        false,
-        "restart_refined",
-        true,
-    );
+    let ordering = compare_joint_candidate_breakdowns(JointCandidateBreakdownComparisonInput {
+        left_pareto_rank: 1,
+        left_breakdown: &admissible_baseline,
+        left_admissible: true,
+        left_restart_id: "baseline",
+        right_pareto_rank: 1,
+        right_breakdown: &inadmissible_restart,
+        right_admissible: false,
+        right_restart_id: "restart_refined",
+        has_admissible_candidate: true,
+    });
 
     assert_eq!(ordering, Ordering::Less);
 }
@@ -843,7 +875,9 @@ fn admissible_candidate_ordering_rejects_inadmissible_restart_when_available() {
 #[test]
 fn coarse_consistency_admissibility_is_baseline_relative() {
     let breakdown = build_test_joint_breakdown(1.0, 1.0, 1.0);
+
     let metric_count = 24;
+
     let admissibility_threshold = admissibility_threshold_from_sample_count(metric_count);
 
     let admissible_summary = JointRefinementCoarseConsistencySummary {
@@ -851,6 +885,7 @@ fn coarse_consistency_admissibility_is_baseline_relative() {
         normalized_fit: admissibility_threshold,
         admissibility_threshold,
     };
+
     let inadmissible_summary = JointRefinementCoarseConsistencySummary {
         raw_fit: 1.0,
         normalized_fit: admissibility_threshold + 1.0e-6,
@@ -880,12 +915,14 @@ fn coarse_consistency_admissibility_is_baseline_relative() {
 #[test]
 fn dynamics_feasibility_targets_activity_and_runtime_families_only() {
     let thresholds = build_test_admissibility_thresholds();
+
     let dynamics_feasible_breakdown = JointRefinementStageObjectiveBreakdown {
         aggregated_return_shape_fit: thresholds.aggregated_return_shape_fit + 0.5,
         return_asymmetry_fit: thresholds.return_asymmetry_fit + 0.5,
         aggregated_return_scale_fit: thresholds.aggregated_return_scale_fit + 0.5,
         ..build_test_joint_breakdown(1.0, 1.0, 1.0)
     };
+
     let dynamics_infeasible_breakdown = JointRefinementStageObjectiveBreakdown {
         activity_level_fit: thresholds.activity_level_fit + 0.5,
         ..build_test_joint_breakdown(1.0, 1.0, 1.0)
@@ -921,14 +958,17 @@ fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
             absolute_return_quantile_q90: 0.08,
         },
     );
+
     let coarse_5m_intervals = vec![
         build_test_interval_observation(0, 300, 0.04, 2, 0.5),
         build_test_interval_observation(300, 600, 0.04, 2, 0.5),
         build_test_interval_observation(600, 900, 0.04, 2, 0.5),
     ];
+
     let coarse_15m_intervals = vec![build_test_interval_observation(0, 900, 0.25, 11, 0.5)];
 
     let mut metrics = Vec::new();
+
     extend_joint_coarse_tick_consistency_metrics_for_seed(
         &mut metrics,
         17,
@@ -952,6 +992,7 @@ fn selected_restart_validation_rejects_inadmissible_candidate() {
         "joint_refinement_midpoint",
         build_test_joint_breakdown(1.0, 1.0, 0.8),
     );
+
     let coarse_consistency_summary = JointRefinementCoarseConsistencySummary {
         raw_fit: 1.0,
         normalized_fit: 3.0,

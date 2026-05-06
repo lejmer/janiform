@@ -141,24 +141,24 @@ pub struct CloseSessionResponse {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JointRefinementSummarySimulationWorkerRequest {
-    InitializeSession(InitializeSessionRequest),
-    RunCandidate(RunCandidateRequest),
-    CloseSession(CloseSessionRequest),
+    InitializeSession(Box<InitializeSessionRequest>),
+    RunCandidate(Box<RunCandidateRequest>),
+    CloseSession(Box<CloseSessionRequest>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JointRefinementSummarySimulationWorkerResponse {
     InitializeSession {
         schema_version: String,
-        response: InitializeSessionResponse,
+        response: Box<InitializeSessionResponse>,
     },
     RunCandidate {
         schema_version: String,
-        response: RunCandidateResponse,
+        response: Box<RunCandidateResponse>,
     },
     CloseSession {
         schema_version: String,
-        response: CloseSessionResponse,
+        response: Box<CloseSessionResponse>,
     },
 }
 
@@ -201,6 +201,7 @@ pub fn read_joint_refinement_worker_frame<T: DeserializeOwned>(
 ) -> Result<Option<T>, String> {
     let mut frame_length_prefix =
         [0_u8; JOINT_REFINEMENT_SUMMARY_SIMULATION_FRAME_LENGTH_PREFIX_BYTES];
+
     let first_prefix_byte_count = reader
         .read(&mut frame_length_prefix[..1])
         .map_err(|source| format!("failed to read worker frame length prefix: {source}"))?;
@@ -211,10 +212,13 @@ pub fn read_joint_refinement_worker_frame<T: DeserializeOwned>(
     reader
         .read_exact(&mut frame_length_prefix[1..])
         .map_err(|source| format!("failed to read worker frame length prefix: {source}"))?;
+
     let frame_length_u64 = u64::from_le_bytes(frame_length_prefix);
     let frame_length = usize::try_from(frame_length_u64)
         .map_err(|_| "worker frame length exceeds usize".to_string())?;
+
     let mut payload = vec![0_u8; frame_length];
+
     reader
         .read_exact(payload.as_mut_slice())
         .map_err(|source| format!("failed to read worker frame payload: {source}"))?;
@@ -281,6 +285,7 @@ impl JointRefinementSummaryCollector {
             .iter()
             .map(|interval| interval.log_return)
             .collect::<Vec<_>>();
+
         let simulated_15m_log_returns = self
             .simulated_15m_intervals
             .iter()
@@ -296,20 +301,24 @@ impl JointRefinementSummaryCollector {
             return_scale_summary(self.simulated_5m_intervals.as_slice());
         let simulated_15m_return_scale_summary =
             return_scale_summary(self.simulated_15m_intervals.as_slice());
+
         let simulated_5m_business_time_return_scale_summaries =
             return_scale_summaries_by_business_time_bucket(
                 self.simulated_5m_intervals.as_slice(),
                 observed_5m_business_time_bucket_thresholds,
             );
+
         let simulated_15m_business_time_return_scale_summaries =
             return_scale_summaries_by_business_time_bucket(
                 self.simulated_15m_intervals.as_slice(),
                 observed_15m_business_time_bucket_thresholds,
             );
+
         let simulated_tick_intraday_mean_absolute_returns = mean_absolute_trade_return_profile(
             self.trade_absolute_return_sum_by_hour,
             self.trade_count_by_hour,
         );
+
         let simulated_5m_intraday_mean_absolute_returns =
             mean_absolute_return_by_utc_hour(self.simulated_5m_intervals.as_slice());
         let simulated_15m_intraday_mean_absolute_returns =
@@ -367,6 +376,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
                     }
                 })?;
         }
+
         Ok(())
     }
 
@@ -440,8 +450,10 @@ pub fn initialize_joint_refinement_summary_simulation_session(
     let calendar_registry =
         ExchangeCalendarRegistry::from_artifact(session_context.calendar_registry_artifact.clone())
             .map_err(|source| source.to_string())?;
+
     let hourly_simulation_start_utc =
         DateTime::<Utc>::from_timestamp_nanos(session_context.hourly_simulation_start_utc_nanos);
+
     let _hourly_simulation_end_utc = hourly_simulation_start_utc
         .checked_add_signed(Duration::hours(
             session_context.hourly_simulation_interval_count as i64,
@@ -449,6 +461,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
         .ok_or_else(|| {
             "joint refinement hourly simulation end timestamp is out of range".to_string()
         })?;
+
     let surprise_deterministic_time_multiplier_by_interval_index =
         build_surprise_multipliers_for_interval_grid(
             hourly_simulation_start_utc,
@@ -458,11 +471,13 @@ pub fn initialize_joint_refinement_summary_simulation_session(
                 .surprise_weekly_hour_utc_multipliers
                 .as_slice(),
         );
+
     let surprise_deterministic_time_multipliers =
         surprise_deterministic_time_multiplier_by_interval_index
             .iter()
             .map(|(_, multiplier)| *multiplier)
             .collect::<Vec<_>>();
+
     let hourly_simulation_end_utc = hourly_simulation_start_utc
         .checked_add_signed(Duration::hours(
             session_context.hourly_simulation_interval_count as i64,
@@ -470,6 +485,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
         .ok_or_else(|| {
             "joint refinement hourly simulation end timestamp is out of range".to_string()
         })?;
+
     let hourly_factor_contract_template = load_hourly_factor_contract_for_calibration(
         &calendar_registry,
         HourlyFactorProviderRequest {
@@ -534,6 +550,7 @@ pub fn simulate_joint_refinement_seed_summary_in_process(
 
     let (estimated_transition_capacity, estimated_event_capacity) =
         estimate_seeded_result_capacities(&run_config);
+
     let memory_estimate =
         summary_simulation_memory_estimate_from_session(session_state, estimated_event_capacity);
 
@@ -542,6 +559,7 @@ pub fn simulate_joint_refinement_seed_summary_in_process(
         session_state.simulated_15m_interval_template.as_slice(),
         session_state.simulated_hourly_interval_template.as_slice(),
     );
+
     collector
         .reserve_transition_capacity(estimated_transition_capacity, estimated_event_capacity)
         .map_err(|source| source.to_string())?;
@@ -572,6 +590,7 @@ pub fn run_joint_refinement_candidate_in_session(
             ),
         };
     }
+
     let (summary, memory_estimate) = match simulate_joint_refinement_seed_summary_in_process(
         session_state,
         &request.fitted_parameters,
@@ -587,6 +606,7 @@ pub fn run_joint_refinement_candidate_in_session(
             };
         }
     };
+
     let seed_summary = JointRefinementSummarySimulationSeedSummary {
         simulation_seed: request.requested_seed,
         summary,
@@ -624,8 +644,10 @@ pub(crate) fn estimate_summary_simulation_workload(
         fitted_parameters,
         simulation_seed,
     )?;
+
     let (estimated_transition_capacity, estimated_event_capacity) =
         estimate_seeded_result_capacities(&run_config);
+
     let memory_estimate =
         summary_simulation_memory_estimate_from_session(session_state, estimated_event_capacity);
 
@@ -647,6 +669,7 @@ fn build_seeded_summary_simulation_run_config(
         .arrivals
         .surprise
         .baseline_intensity;
+
     let surprise_component_nu_h = session_state
         .surprise_deterministic_time_multipliers
         .iter()
@@ -654,6 +677,7 @@ fn build_seeded_summary_simulation_run_config(
             surprise_baseline_intensity * deterministic_time_multiplier
         })
         .collect::<Vec<_>>();
+
     let nu_h = session_state
         .hourly_factor_contract_template
         .known_component_nu_h
@@ -663,7 +687,9 @@ fn build_seeded_summary_simulation_run_config(
             known_component_nu_h + surprise_component_nu_h
         })
         .collect::<Vec<_>>();
+
     let mut hourly_factor_contract = session_state.hourly_factor_contract_template.clone();
+
     hourly_factor_contract.surprise_component_nu_h = surprise_component_nu_h;
     hourly_factor_contract.nu_h = nu_h;
 
@@ -673,8 +699,10 @@ fn build_seeded_summary_simulation_run_config(
         y_minus_plus: 0.0,
         y_minus_minus: 0.0,
     };
+
     let endogenous_interval_factors =
         endogenous_interval_factors_from_hourly_contract(&hourly_factor_contract)?;
+
     let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
         materialize_joint_refinement_mean_reversion_runtime_inputs(
             hourly_factor_contract.metadata.interval_alignment_policy,
@@ -736,7 +764,9 @@ fn summary_simulation_memory_estimate_from_session(
                 .len()
                 .saturating_mul(size_of::<JointRefinementAggregatedIntervalObservation>()),
         );
+
     let estimated_hourly_statistics_bytes = size_of::<[f64; 24]>() + size_of::<[usize; 24]>();
+
     let estimated_trade_return_capacity_bytes =
         estimated_event_capacity.saturating_mul(size_of::<f64>());
 
@@ -808,8 +838,8 @@ pub(crate) mod tests {
         run_return_components_calibration_stage,
     };
     use crate::stages::seasonality::{
-        CalibrationStageExecutionStatus, SeasonalityStageExecutionInput,
-        SeasonalityStageNormalizedPayload,
+        CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
+        SeasonalityStageExecutionInput, SeasonalityStageNormalizedPayload,
         build_runtime_hourly_seasonality_factors_from_components,
         run_seasonality_calibration_stage,
     };
@@ -853,6 +883,7 @@ pub(crate) mod tests {
     #[test]
     fn summary_only_seed_simulation_matches_full_path_derived_summary() {
         let fixture = joint_refinement_summary_fixture();
+
         let session_state =
             initialize_joint_refinement_summary_simulation_session(&fixture.session_context)
                 .expect("summary simulation session should initialize");
@@ -863,6 +894,7 @@ pub(crate) mod tests {
             fixture.simulation_seed,
         )
         .expect("summary-only simulation should succeed");
+
         let (full_path_summary, full_path_native_diagnostics) =
             full_path_seed_summary_fixture(&fixture, &session_state);
 
@@ -877,9 +909,11 @@ pub(crate) mod tests {
     #[test]
     fn worker_process_summary_matches_in_process_summary() {
         let fixture = joint_refinement_summary_fixture();
+
         let session_state =
             initialize_joint_refinement_summary_simulation_session(&fixture.session_context)
                 .expect("summary simulation session should initialize");
+
         let (expected_summary, expected_memory_estimate) =
             simulate_joint_refinement_seed_summary_in_process(
                 &session_state,
@@ -900,6 +934,7 @@ pub(crate) mod tests {
         let round_tripped_request: RunCandidateRequest =
             deserialize_joint_refinement_worker_payload(serialized_request.as_slice())
                 .expect("summary simulation run-candidate request should deserialize");
+
         assert_eq!(round_tripped_request, run_candidate_request);
 
         let (round_tripped_summary, round_tripped_memory_estimate) =
@@ -918,7 +953,7 @@ pub(crate) mod tests {
 
         match worker_response {
             JointRefinementSummarySimulationWorkerResponse::RunCandidate { response, .. } => {
-                match response {
+                match *response {
                     RunCandidateResponse::ExactSummaryWithDiagnostics {
                         seed_summary,
                         diagnostics,
@@ -947,21 +982,25 @@ pub(crate) mod tests {
     #[test]
     fn run_config_hourly_factor_contract_matches_materialized_provider_output() {
         let fixture = joint_refinement_summary_fixture();
+
         let session_state =
             initialize_joint_refinement_summary_simulation_session(&fixture.session_context)
                 .expect("summary simulation session should initialize");
+
         let run_config = build_seeded_summary_simulation_run_config(
             &session_state,
             &fixture.fitted_parameters,
             fixture.simulation_seed,
         )
         .expect("summary simulation run config should build");
+
         let hourly_simulation_end_utc = session_state
             .hourly_simulation_start_utc
             .checked_add_signed(Duration::hours(
                 session_state.hourly_simulation_interval_count as i64,
             ))
             .expect("hourly simulation end should stay in range");
+
         let surprise_deterministic_time_multiplier_by_interval_index = fixture
             .session_context
             .surprise_weekly_hour_utc_multipliers
@@ -970,6 +1009,7 @@ pub(crate) mod tests {
             .enumerate()
             .map(|(interval_index, multiplier)| (interval_index as u64, multiplier))
             .collect::<Vec<_>>();
+
         let expected_hourly_factor_contract = load_hourly_factor_contract_for_calibration(
             &session_state.calendar_registry,
             HourlyFactorProviderRequest {
@@ -1027,7 +1067,7 @@ pub(crate) mod tests {
         match worker_response {
             JointRefinementSummarySimulationWorkerResponse::RunCandidate { response, .. } => {
                 assert!(matches!(
-                    response,
+                    response.as_ref(),
                     RunCandidateResponse::ExactSummaryOnly { .. }
                 ));
             }
@@ -1066,89 +1106,103 @@ pub(crate) mod tests {
     fn worker_session_reuses_initialized_state_across_multiple_candidate_requests() {
         let fixture = joint_refinement_summary_fixture();
         let worker_executable = worker_executable_path();
+
         let mut child = spawn_worker_process(worker_executable.as_path());
         let (mut stdin, mut stdout) = worker_stdio(&mut child);
 
         write_joint_refinement_worker_frame(
             &mut stdin,
-            &JointRefinementSummarySimulationWorkerRequest::InitializeSession(
+            &JointRefinementSummarySimulationWorkerRequest::InitializeSession(Box::new(
                 InitializeSessionRequest {
                     schema_version:
                         JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                             .to_string(),
                     session_context: fixture.session_context.clone(),
                 },
-            ),
+            )),
         )
         .expect("initialize-session request should write");
+
         let initialize_response = read_joint_refinement_worker_frame::<
             JointRefinementSummarySimulationWorkerResponse,
         >(&mut stdout)
         .expect("initialize-session response should deserialize")
         .expect("initialize-session response should exist");
+
         match initialize_response {
             JointRefinementSummarySimulationWorkerResponse::InitializeSession {
                 response, ..
             } => {
                 assert!(matches!(
-                    response,
+                    response.as_ref(),
                     InitializeSessionResponse::Success { .. }
                 ));
             }
             _ => panic!("initialize-session should return initialize-session response"),
         }
 
-        let run_request =
-            JointRefinementSummarySimulationWorkerRequest::RunCandidate(RunCandidateRequest {
+        let run_request = JointRefinementSummarySimulationWorkerRequest::RunCandidate(Box::new(
+            RunCandidateRequest {
                 schema_version: JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                     .to_string(),
                 fitted_parameters: fixture.fitted_parameters.clone(),
                 requested_seed: fixture.simulation_seed,
                 requested_output: JointRefinementWorkerRequestedOutput::ExactSummaryOnly,
-            });
+            },
+        ));
+
         write_joint_refinement_worker_frame(&mut stdin, &run_request)
             .expect("first run-candidate request should write");
+
         let first_response = read_joint_refinement_worker_frame::<
             JointRefinementSummarySimulationWorkerResponse,
         >(&mut stdout)
         .expect("first run-candidate response should deserialize")
         .expect("first run-candidate response should exist");
+
         assert!(matches!(
             first_response,
             JointRefinementSummarySimulationWorkerResponse::RunCandidate {
-                response: RunCandidateResponse::ExactSummaryOnly { .. },
+                response,
                 ..
-            }
+            } if matches!(response.as_ref(), RunCandidateResponse::ExactSummaryOnly { .. })
         ));
 
         write_joint_refinement_worker_frame(&mut stdin, &run_request)
             .expect("second run-candidate request should write");
+
         let second_response = read_joint_refinement_worker_frame::<
             JointRefinementSummarySimulationWorkerResponse,
         >(&mut stdout)
         .expect("second run-candidate response should deserialize")
         .expect("second run-candidate response should exist");
+
         assert!(matches!(
             second_response,
             JointRefinementSummarySimulationWorkerResponse::RunCandidate {
-                response: RunCandidateResponse::ExactSummaryOnly { .. },
+                response,
                 ..
-            }
+            } if matches!(response.as_ref(), RunCandidateResponse::ExactSummaryOnly { .. })
         ));
 
         write_joint_refinement_worker_frame(
             &mut stdin,
-            &JointRefinementSummarySimulationWorkerRequest::CloseSession(CloseSessionRequest {
-                schema_version: JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
-                    .to_string(),
-            }),
+            &JointRefinementSummarySimulationWorkerRequest::CloseSession(Box::new(
+                CloseSessionRequest {
+                    schema_version:
+                        JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
+                            .to_string(),
+                },
+            )),
         )
         .expect("close-session request should write");
+
         let close_response = read_joint_refinement_worker_frame::<
             JointRefinementSummarySimulationWorkerResponse,
         >(&mut stdout)
         .expect("close-session response should deserialize")
         .expect("close-session response should exist");
+
         assert!(matches!(
             close_response,
             JointRefinementSummarySimulationWorkerResponse::CloseSession { .. }
@@ -1300,10 +1354,13 @@ pub(crate) mod tests {
     fn joint_refinement_summary_fixture() -> JointRefinementSummarySimulationFixture {
         static FIXTURE: LazyLock<JointRefinementSummarySimulationFixture> = LazyLock::new(|| {
             let calendar_registry = calibration_stage_test_registry();
+
             let candidate_generation_input = return_components_stage_candidate_generation_fixture();
+
             let seasonality_payload = seasonality_stage_success_payload();
             let hawkes_payload = hawkes_stage_success_payload();
             let return_components_payload = return_components_stage_success_payload();
+
             let observed_signal_preparation = prepare_observed_signal_inputs_for_joint_refinement(
                 "XNYS",
                 &calendar_registry,
@@ -1315,9 +1372,11 @@ pub(crate) mod tests {
                 ),
             )
             .expect("joint refinement observed signal preparation should succeed");
+
             let observed_open_event_rate_per_hour =
                 selected_hawkes_observed_open_event_rate_per_hour(&hawkes_payload)
                     .expect("selected hawkes observed open-session event rate should resolve");
+
             let observed_data = build_observed_data(
                 &calendar_registry,
                 "XNYS",
@@ -1326,23 +1385,28 @@ pub(crate) mod tests {
                 &candidate_generation_input,
                 observed_open_event_rate_per_hour,
             );
+
             let runtime_hourly_seasonality_factors =
                 build_runtime_hourly_seasonality_factors_from_components(
-                    &calendar_registry,
-                    "XNYS",
-                    seasonality_payload.intraday_minutes_per_bin,
-                    seasonality_payload.intraday_factor_by_bin.as_slice(),
-                    seasonality_payload.day_of_week_factor.as_slice(),
-                    seasonality_payload.day_of_year_factor.as_slice(),
-                    observed_data
-                        .hourly_simulation_start_utc
-                        .timestamp_nanos_opt()
-                        .expect("hourly simulation start timestamp should fit in i64"),
-                    observed_data
-                        .hourly_simulation_end_utc
-                        .timestamp_nanos_opt()
-                        .expect("hourly simulation end timestamp should fit in i64"),
-                    janiform_foundations::time::NANOS_PER_HOUR,
+                    RuntimeHourlySeasonalityFactorsBuildInput {
+                        calendar_registry: &calendar_registry,
+                        exchange_code: "XNYS",
+                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                        intraday_factor_by_bin: seasonality_payload
+                            .intraday_factor_by_bin
+                            .as_slice(),
+                        day_of_week_factor: seasonality_payload.day_of_week_factor.as_slice(),
+                        day_of_year_factor: seasonality_payload.day_of_year_factor.as_slice(),
+                        range_start_utc_nanos: observed_data
+                            .hourly_simulation_start_utc
+                            .timestamp_nanos_opt()
+                            .expect("hourly simulation start timestamp should fit in i64"),
+                        range_end_utc_nanos: observed_data
+                            .hourly_simulation_end_utc
+                            .timestamp_nanos_opt()
+                            .expect("hourly simulation end timestamp should fit in i64"),
+                        interval_duration_nanos: janiform_foundations::time::NANOS_PER_HOUR,
+                    },
                 )
                 .expect("runtime hourly seasonality factors should build");
 
@@ -1412,41 +1476,45 @@ pub(crate) mod tests {
         run_candidate_request: &RunCandidateRequest,
     ) -> JointRefinementSummarySimulationWorkerResponse {
         let worker_executable = worker_executable_path();
+
         let mut child = spawn_worker_process(worker_executable.as_path());
         let (mut stdin, mut stdout) = worker_stdio(&mut child);
 
         write_joint_refinement_worker_frame(
             &mut stdin,
-            &JointRefinementSummarySimulationWorkerRequest::InitializeSession(
+            &JointRefinementSummarySimulationWorkerRequest::InitializeSession(Box::new(
                 InitializeSessionRequest {
                     schema_version:
                         JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                             .to_string(),
                     session_context: session_context.clone(),
                 },
-            ),
+            )),
         )
         .expect("initialize-session request should write");
+
         let initialize_response = read_joint_refinement_worker_frame::<
             JointRefinementSummarySimulationWorkerResponse,
         >(&mut stdout)
         .expect("initialize-session response should deserialize")
         .expect("initialize-session response should exist");
+
         assert!(matches!(
             initialize_response,
             JointRefinementSummarySimulationWorkerResponse::InitializeSession {
-                response: InitializeSessionResponse::Success { .. },
+                response,
                 ..
-            }
+            } if matches!(response.as_ref(), InitializeSessionResponse::Success { .. })
         ));
 
         write_joint_refinement_worker_frame(
             &mut stdin,
-            &JointRefinementSummarySimulationWorkerRequest::RunCandidate(
+            &JointRefinementSummarySimulationWorkerRequest::RunCandidate(Box::new(
                 run_candidate_request.clone(),
-            ),
+            )),
         )
         .expect("run-candidate request should write");
+
         let run_candidate_response = read_joint_refinement_worker_frame::<
             JointRefinementSummarySimulationWorkerResponse,
         >(&mut stdout)
@@ -1455,17 +1523,22 @@ pub(crate) mod tests {
 
         write_joint_refinement_worker_frame(
             &mut stdin,
-            &JointRefinementSummarySimulationWorkerRequest::CloseSession(CloseSessionRequest {
-                schema_version: JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
-                    .to_string(),
-            }),
+            &JointRefinementSummarySimulationWorkerRequest::CloseSession(Box::new(
+                CloseSessionRequest {
+                    schema_version:
+                        JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
+                            .to_string(),
+                },
+            )),
         )
         .expect("close-session request should write");
+
         let close_response = read_joint_refinement_worker_frame::<
             JointRefinementSummarySimulationWorkerResponse,
         >(&mut stdout)
         .expect("close-session response should deserialize")
         .expect("close-session response should exist");
+
         assert!(matches!(
             close_response,
             JointRefinementSummarySimulationWorkerResponse::CloseSession { .. }

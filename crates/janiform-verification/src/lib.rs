@@ -1,7 +1,6 @@
 //! Verification and regression harness domains for Janiform.
 
 #![forbid(unsafe_code)]
-
 mod affine_oracle_method_comparison;
 mod coarse_fine_consistency;
 mod coarse_seeded_tick_consistency;

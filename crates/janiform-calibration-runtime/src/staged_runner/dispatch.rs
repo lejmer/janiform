@@ -3,7 +3,8 @@ use std::path::Path;
 use super::{
     CalibrationExecutionMode, CalibrationInMemoryStagePayloadState, CalibrationRunSpec,
     CalibrationStage, CalibrationStageHandoffTransport, CalibrationStagedRunFailure,
-    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent, CalibrationStagedRunStageReport,
+    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
     ExchangeCalendarRegistry, HawkesStageExecutionInput, HawkesStageSeasonalityInput,
     JointRefinementStageExecutionInput, JointRefinementStageHawkesInput,
     JointRefinementStageReturnComponentsInput, MeanReversionStageReturnComponentsInput,
@@ -17,16 +18,20 @@ use super::{
 use crate::JointRefinementStageMeanReversionInput;
 
 pub(super) fn run_stage_for_staged_execution(
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    disk_checkpoint_directory: Option<&Path>,
-    stage: CalibrationStage,
-    stage_index: usize,
-    stage_count: usize,
-    staged_run_inputs: &mut CalibrationStagedRunInputs,
-    payload_state: &CalibrationInMemoryStagePayloadState,
-    observer: &mut Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
+    input: RunStageForStagedExecutionInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
+    let RunStageForStagedExecutionInput {
+        run_spec,
+        calendar_registry,
+        disk_checkpoint_directory,
+        stage,
+        stage_index,
+        stage_count,
+        staged_run_inputs,
+        payload_state,
+        observer,
+    } = input;
+
     match stage {
         CalibrationStage::Seasonality => {
             let Some(seasonality_stage_input) = staged_run_inputs.seasonality_stage_input.take()
@@ -36,13 +41,13 @@ pub(super) fn run_stage_for_staged_execution(
                 });
             };
 
-            Ok(CalibrationStagedRunStageReport::Seasonality(
+            Ok(CalibrationStagedRunStageReport::Seasonality(Box::new(
                 run_seasonality_calibration_stage(
                     run_spec,
                     calendar_registry,
                     seasonality_stage_input,
                 ),
-            ))
+            )))
         }
         CalibrationStage::Hawkes => {
             let Some(candidate_inputs) = staged_run_inputs.hawkes_candidate_inputs.take() else {
@@ -97,7 +102,7 @@ pub(super) fn run_stage_for_staged_execution(
                 }
             };
 
-            Ok(CalibrationStagedRunStageReport::Hawkes(
+            Ok(CalibrationStagedRunStageReport::Hawkes(Box::new(
                 run_hawkes_calibration_stage(
                     run_spec,
                     calendar_registry,
@@ -106,7 +111,7 @@ pub(super) fn run_stage_for_staged_execution(
                         candidate_inputs,
                     },
                 ),
-            ))
+            )))
         }
         CalibrationStage::ReturnComponents => {
             let Some(candidate_generation_input) = staged_run_inputs
@@ -158,61 +163,65 @@ pub(super) fn run_stage_for_staged_execution(
             };
 
             if observer.is_none() {
-                return Ok(CalibrationStagedRunStageReport::ReturnComponents(
+                return Ok(CalibrationStagedRunStageReport::ReturnComponents(Box::new(
                     run_return_components_calibration_stage(
                         run_spec,
                         calendar_registry,
                         stage_input,
                     ),
-                ));
+                )));
             }
 
             let mut progress_forwarder =
                 |progress_update: super::ReturnComponentsStageProgressUpdate| {
                     if let Some(observer) = observer.as_deref_mut() {
-                        observer(CalibrationStagedRunObserverEvent::StageProgress {
-                            run_id: run_spec.run_id.clone(),
-                            stage: CalibrationStage::ReturnComponents,
-                            stage_index,
-                            stage_count,
-                            progress_phase: progress_update.phase.into(),
-                            completed_units: progress_update.completed_units,
-                            total_units: progress_update.total_units,
-                            stage_progress_percent: None,
-                            aggregate_progress_percent: progress_update.aggregate_progress_percent,
-                            current_item_label: progress_update.current_item_label,
-                            current_restart_id: None,
-                            planned_work_item_labels: Vec::new(),
-                            active_restart_count: None,
-                            current_parameter_block: None,
-                            completed_outer_cycles: None,
-                            total_outer_cycles: None,
-                            current_evaluation_count: progress_update.current_evaluation_count,
-                            total_evaluation_budget: progress_update.total_evaluation_budget,
-                            evaluation_progress_percent: progress_update
-                                .evaluation_progress_percent,
-                            valid_completed_units: None,
-                            cumulative_local_evaluation_count: None,
-                            current_weighted_objective: None,
-                            current_restart_best_weighted_objective: None,
-                            current_candidate_assessment: None,
-                            best_restart_id: None,
-                            best_weighted_objective: None,
-                            current_coarse_consistency_fit: None,
-                            best_coarse_consistency_fit: None,
-                            current_convergence_ratio: progress_update.current_convergence_ratio,
-                        });
+                        observer(CalibrationStagedRunObserverEvent::StageProgress(Box::new(
+                            CalibrationStagedRunStageProgressEvent {
+                                run_id: run_spec.run_id.clone(),
+                                stage: CalibrationStage::ReturnComponents,
+                                stage_index,
+                                stage_count,
+                                progress_phase: progress_update.phase.into(),
+                                completed_units: progress_update.completed_units,
+                                total_units: progress_update.total_units,
+                                stage_progress_percent: None,
+                                aggregate_progress_percent: progress_update
+                                    .aggregate_progress_percent,
+                                current_item_label: progress_update.current_item_label,
+                                current_restart_id: None,
+                                planned_work_item_labels: Vec::new(),
+                                active_restart_count: None,
+                                current_parameter_block: None,
+                                completed_outer_cycles: None,
+                                total_outer_cycles: None,
+                                current_evaluation_count: progress_update.current_evaluation_count,
+                                total_evaluation_budget: progress_update.total_evaluation_budget,
+                                evaluation_progress_percent: progress_update
+                                    .evaluation_progress_percent,
+                                valid_completed_units: None,
+                                cumulative_local_evaluation_count: None,
+                                current_weighted_objective: None,
+                                current_restart_best_weighted_objective: None,
+                                current_candidate_assessment: None,
+                                best_restart_id: None,
+                                best_weighted_objective: None,
+                                current_coarse_consistency_fit: None,
+                                best_coarse_consistency_fit: None,
+                                current_convergence_ratio: progress_update
+                                    .current_convergence_ratio,
+                            },
+                        )));
                     }
                 };
 
-            Ok(CalibrationStagedRunStageReport::ReturnComponents(
+            Ok(CalibrationStagedRunStageReport::ReturnComponents(Box::new(
                 run_return_components_calibration_stage_with_progress_observer(
                     run_spec,
                     calendar_registry,
                     stage_input,
                     Some(&mut progress_forwarder),
                 ),
-            ))
+            )))
         }
         CalibrationStage::MeanReversion => {
             let Some(mut stage_input) = staged_run_inputs.mean_reversion_stage_input.take() else {
@@ -263,9 +272,9 @@ pub(super) fn run_stage_for_staged_execution(
             stage_input.return_components_stage_payload =
                 payload_state.return_components_stage_payload.clone();
 
-            Ok(CalibrationStagedRunStageReport::MeanReversion(
+            Ok(CalibrationStagedRunStageReport::MeanReversion(Box::new(
                 run_mean_reversion_calibration_stage(run_spec, calendar_registry, stage_input),
-            ))
+            )))
         }
         CalibrationStage::JointRefinement => {
             let Some(seasonality_factors_input) = payload_state
@@ -410,7 +419,7 @@ pub(super) fn run_stage_for_staged_execution(
             };
 
             if observer.is_none() {
-                return Ok(CalibrationStagedRunStageReport::JointRefinement(
+                return Ok(CalibrationStagedRunStageReport::JointRefinement(Box::new(
                     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
                         run_spec,
                         calendar_registry,
@@ -418,53 +427,59 @@ pub(super) fn run_stage_for_staged_execution(
                         None,
                         disk_checkpoint_directory,
                     ),
-                ));
+                )));
             }
 
             let mut progress_forwarder =
                 |progress_update: super::JointRefinementStageProgressUpdate| {
                     if let Some(observer) = observer.as_deref_mut() {
-                        observer(CalibrationStagedRunObserverEvent::StageProgress {
-                            run_id: run_spec.run_id.clone(),
-                            stage: CalibrationStage::JointRefinement,
-                            stage_index,
-                            stage_count,
-                            progress_phase: progress_update.phase.into(),
-                            completed_units: progress_update.completed_units,
-                            total_units: progress_update.total_units,
-                            stage_progress_percent: Some(progress_update.stage_progress_percent()),
-                            aggregate_progress_percent: progress_update.aggregate_progress_percent,
-                            current_item_label: progress_update.current_item_label,
-                            current_restart_id: progress_update.current_restart_id,
-                            planned_work_item_labels: progress_update.planned_work_item_labels,
-                            active_restart_count: progress_update.active_restart_count,
-                            current_parameter_block: progress_update.current_parameter_block,
-                            completed_outer_cycles: progress_update.completed_outer_cycles,
-                            total_outer_cycles: progress_update.total_outer_cycles,
-                            current_evaluation_count: progress_update.current_evaluation_count,
-                            total_evaluation_budget: progress_update.total_evaluation_budget,
-                            evaluation_progress_percent: progress_update
-                                .evaluation_progress_percent,
-                            valid_completed_units: progress_update.valid_completed_units,
-                            cumulative_local_evaluation_count: progress_update
-                                .cumulative_local_evaluation_count,
-                            current_weighted_objective: progress_update.current_weighted_objective,
-                            current_restart_best_weighted_objective: progress_update
-                                .current_restart_best_weighted_objective,
-                            current_candidate_assessment: progress_update
-                                .current_candidate_assessment,
-                            best_restart_id: progress_update.best_restart_id,
-                            best_weighted_objective: progress_update.best_weighted_objective,
-                            current_coarse_consistency_fit: progress_update
-                                .current_coarse_consistency_fit,
-                            best_coarse_consistency_fit: progress_update
-                                .best_coarse_consistency_fit,
-                            current_convergence_ratio: None,
-                        });
+                        observer(CalibrationStagedRunObserverEvent::StageProgress(Box::new(
+                            CalibrationStagedRunStageProgressEvent {
+                                run_id: run_spec.run_id.clone(),
+                                stage: CalibrationStage::JointRefinement,
+                                stage_index,
+                                stage_count,
+                                progress_phase: progress_update.phase.into(),
+                                completed_units: progress_update.completed_units,
+                                total_units: progress_update.total_units,
+                                stage_progress_percent: Some(
+                                    progress_update.stage_progress_percent(),
+                                ),
+                                aggregate_progress_percent: progress_update
+                                    .aggregate_progress_percent,
+                                current_item_label: progress_update.current_item_label,
+                                current_restart_id: progress_update.current_restart_id,
+                                planned_work_item_labels: progress_update.planned_work_item_labels,
+                                active_restart_count: progress_update.active_restart_count,
+                                current_parameter_block: progress_update.current_parameter_block,
+                                completed_outer_cycles: progress_update.completed_outer_cycles,
+                                total_outer_cycles: progress_update.total_outer_cycles,
+                                current_evaluation_count: progress_update.current_evaluation_count,
+                                total_evaluation_budget: progress_update.total_evaluation_budget,
+                                evaluation_progress_percent: progress_update
+                                    .evaluation_progress_percent,
+                                valid_completed_units: progress_update.valid_completed_units,
+                                cumulative_local_evaluation_count: progress_update
+                                    .cumulative_local_evaluation_count,
+                                current_weighted_objective: progress_update
+                                    .current_weighted_objective,
+                                current_restart_best_weighted_objective: progress_update
+                                    .current_restart_best_weighted_objective,
+                                current_candidate_assessment: progress_update
+                                    .current_candidate_assessment,
+                                best_restart_id: progress_update.best_restart_id,
+                                best_weighted_objective: progress_update.best_weighted_objective,
+                                current_coarse_consistency_fit: progress_update
+                                    .current_coarse_consistency_fit,
+                                best_coarse_consistency_fit: progress_update
+                                    .best_coarse_consistency_fit,
+                                current_convergence_ratio: None,
+                            },
+                        )));
                     }
                 };
 
-            Ok(CalibrationStagedRunStageReport::JointRefinement(
+            Ok(CalibrationStagedRunStageReport::JointRefinement(Box::new(
                 run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
                     run_spec,
                     calendar_registry,
@@ -472,9 +487,22 @@ pub(super) fn run_stage_for_staged_execution(
                     Some(&mut progress_forwarder),
                     disk_checkpoint_directory,
                 ),
-            ))
+            )))
         }
     }
+}
+
+pub(super) struct RunStageForStagedExecutionInput<'a, 'observer> {
+    pub(super) run_spec: &'a CalibrationRunSpec,
+    pub(super) calendar_registry: &'a ExchangeCalendarRegistry,
+    pub(super) disk_checkpoint_directory: Option<&'a Path>,
+    pub(super) stage: CalibrationStage,
+    pub(super) stage_index: usize,
+    pub(super) stage_count: usize,
+    pub(super) staged_run_inputs: &'a mut CalibrationStagedRunInputs,
+    pub(super) payload_state: &'a CalibrationInMemoryStagePayloadState,
+    pub(super) observer:
+        &'a mut Option<&'observer mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
 }
 
 pub(super) fn expected_stage_handoff_transport(

@@ -1,7 +1,10 @@
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::hourly_factors::{
-    HourlyFactorContractError, HourlyFactorContractOutput, build_hourly_factor_contract,
-    materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
+    HourlyFactorContractBuildInput, HourlyFactorContractError, HourlyFactorContractOutput,
+    HourlyNewsIntensityMaterializationInput, HourlySeasonalityMaterializationInput,
+    HourlySeasonalityMaterializationPolicy, HourlySeasonalitySourceSignal,
+    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
+    materialize_hourly_seasonality_factors,
 };
 use chrono::{DateTime, Utc};
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -57,20 +60,25 @@ pub fn provide_hourly_factor_contract(
                 sparse_fallback_policy,
                 sparse_hour_minimum_observation_count,
             } => {
-                let seasonality_materialization_output = materialize_hourly_seasonality_factors(
-                    calendar_registry,
-                    exchange_code,
-                    range_start_utc,
-                    range_end_utc,
-                    interval_duration_nanos,
-                    source_timestamp_utc_nanos,
-                    source_seasonality_factors,
-                    interpolation_method,
-                    aggregation_method,
-                    sparse_fallback_policy,
-                    sparse_hour_minimum_observation_count,
-                )
-                .map_err(map_seasonality_source_error)?;
+                let seasonality_materialization_output =
+                    materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+                        calendar_registry,
+                        exchange_code,
+                        range_utc: range_start_utc..range_end_utc,
+                        interval_duration_nanos,
+                        source_signal: HourlySeasonalitySourceSignal {
+                            timestamp_utc_nanos: source_timestamp_utc_nanos,
+                            seasonality_factors: source_seasonality_factors,
+                        },
+                        policy: HourlySeasonalityMaterializationPolicy {
+                            interpolation_method,
+                            aggregation_method,
+                            sparse_fallback_policy,
+                            sparse_hour_minimum_observation_count,
+                        },
+                    })
+                    .map_err(map_seasonality_source_error)?;
+
                 (
                     seasonality_materialization_output.s_h,
                     HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD.to_string(),
@@ -95,6 +103,7 @@ pub fn provide_hourly_factor_contract(
                 hourly_factors,
             )
             .map_err(map_contract_validation_error)?;
+
             (
                 resampled_hourly_factors.clone(),
                 vec![0.0; resampled_hourly_factors.len()],
@@ -108,16 +117,18 @@ pub fn provide_hourly_factor_contract(
             surprise_deterministic_time_multiplier_by_interval_index,
         } => {
             let news_materialization_output = materialize_hourly_news_intensity_factors(
-                calendar_registry,
-                exchange_code,
-                range_start_utc,
-                range_end_utc,
-                interval_duration_nanos,
-                known_scheduled_event_timestamps_utc_nanos,
-                surprise_baseline_intensity,
-                surprise_deterministic_time_multiplier_by_interval_index,
+                HourlyNewsIntensityMaterializationInput {
+                    calendar_registry,
+                    exchange_code,
+                    range_utc: range_start_utc..range_end_utc,
+                    interval_duration_nanos,
+                    known_scheduled_event_timestamps_utc_nanos,
+                    surprise_baseline_intensity,
+                    surprise_deterministic_time_multiplier_by_interval_index,
+                },
             )
             .map_err(map_news_source_error)?;
+
             (
                 news_materialization_output.nu_h,
                 news_materialization_output.known_component_nu_h,
@@ -127,18 +138,18 @@ pub fn provide_hourly_factor_contract(
         }
     };
 
-    let mut hourly_factor_contract = build_hourly_factor_contract(
+    let mut hourly_factor_contract = build_hourly_factor_contract(HourlyFactorContractBuildInput {
         calendar_registry,
         exchange_code,
-        range_start_utc,
-        range_end_utc,
+        range_utc: range_start_utc..range_end_utc,
         interval_duration_nanos,
-        &seasonality_hourly_factors,
-        &news_intensity_hourly_factors,
-        &seasonality_materialization_method,
-        &news_intensity_materialization_method,
-    )
+        seasonality_factors: &seasonality_hourly_factors,
+        news_intensity_factors: &news_intensity_hourly_factors,
+        seasonality_materialization_method: &seasonality_materialization_method,
+        news_intensity_materialization_method: &news_intensity_materialization_method,
+    })
     .map_err(map_contract_validation_error)?;
+
     hourly_factor_contract.known_component_nu_h = known_component_nu_h;
     hourly_factor_contract.surprise_component_nu_h = surprise_component_nu_h;
 
@@ -196,11 +207,13 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
             field: "range_start_utc",
         },
     )?;
+
     let range_end_utc_nanos = range_end_utc.timestamp_nanos_opt().ok_or(
         HourlyFactorContractError::TimestampOutOfRange {
             field: "range_end_utc",
         },
     )?;
+
     if range_start_utc_nanos >= range_end_utc_nanos {
         return Err(HourlyFactorContractError::NonIncreasingRange {
             range_start_utc_nanos,
@@ -210,6 +223,7 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
 
     let request_duration_nanos = range_end_utc_nanos - range_start_utc_nanos;
     let request_remainder_nanos = request_duration_nanos.rem_euclid(interval_duration_nanos);
+
     if request_remainder_nanos != 0 {
         return Err(
             HourlyFactorContractError::RangeDurationNotDivisibleByInterval {
@@ -223,6 +237,7 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
 
     let canonical_hour_start_utc_nanos =
         range_start_utc_nanos.div_euclid(NANOS_PER_HOUR) * NANOS_PER_HOUR;
+
     let canonical_hour_end_utc_nanos = if range_end_utc_nanos % NANOS_PER_HOUR == 0 {
         range_end_utc_nanos
     } else {
@@ -231,6 +246,7 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
             .saturating_add(1)
             .saturating_mul(NANOS_PER_HOUR)
     };
+
     let canonical_hour_count =
         ((canonical_hour_end_utc_nanos - canonical_hour_start_utc_nanos) / NANOS_PER_HOUR) as usize;
     if hourly_factors.len() != canonical_hour_count {
@@ -242,32 +258,43 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
     }
 
     let requested_interval_count = (request_duration_nanos / interval_duration_nanos) as usize;
+
     let mut resampled_factors: Vec<f64> = Vec::with_capacity(requested_interval_count);
 
     for interval_index in 0..requested_interval_count {
         let interval_start_utc_nanos =
             range_start_utc_nanos + interval_index as i64 * interval_duration_nanos;
         let interval_end_utc_nanos = interval_start_utc_nanos + interval_duration_nanos;
+
         let mut weighted_factor_sum = 0.0_f64;
 
         let first_hour_index =
             ((interval_start_utc_nanos - canonical_hour_start_utc_nanos) / NANOS_PER_HOUR) as usize;
+
         let last_hour_index = ((interval_end_utc_nanos - 1 - canonical_hour_start_utc_nanos)
             / NANOS_PER_HOUR) as usize;
 
-        for hour_index in first_hour_index..=last_hour_index {
+        for (hour_index, hourly_factor) in hourly_factors
+            .iter()
+            .copied()
+            .enumerate()
+            .take(last_hour_index + 1)
+            .skip(first_hour_index)
+        {
             let hour_start_utc_nanos =
                 canonical_hour_start_utc_nanos + hour_index as i64 * NANOS_PER_HOUR;
             let hour_end_utc_nanos = hour_start_utc_nanos + NANOS_PER_HOUR;
+
             let overlap_start_utc_nanos = interval_start_utc_nanos.max(hour_start_utc_nanos);
             let overlap_end_utc_nanos = interval_end_utc_nanos.min(hour_end_utc_nanos);
             let overlap_duration_nanos = overlap_end_utc_nanos - overlap_start_utc_nanos;
+
             if overlap_duration_nanos <= 0 {
                 continue;
             }
 
-            weighted_factor_sum += hourly_factors[hour_index]
-                * (overlap_duration_nanos as f64 / interval_duration_nanos as f64);
+            weighted_factor_sum +=
+                hourly_factor * (overlap_duration_nanos as f64 / interval_duration_nanos as f64);
         }
 
         resampled_factors.push(weighted_factor_sum);

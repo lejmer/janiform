@@ -1014,10 +1014,8 @@ pub(crate) fn solve_exponential_affine_transform_with_internal_selection(
             ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
         })?;
 
-        // Intentional clone. Internal step refinement reruns the same validated transform input
-        // at finer dyadic resolutions until the RK4 truncation estimate reaches the roundoff scale.
         let current_result =
-            solve_exponential_affine_transform_core(transform_input.clone(), solver_settings)?;
+            solve_exponential_affine_transform_core(transform_input, solver_settings)?;
 
         if current_result.status != ExponentialAffineTransformIntegrationStatus::Completed {
             last_incomplete_result = Some(current_result);

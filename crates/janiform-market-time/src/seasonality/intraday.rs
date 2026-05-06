@@ -211,8 +211,8 @@ fn build_intraday_smoothing_kernel(
         IntradaySmoothingKernel::Gaussian => (smoothing_bandwidth_bins * 3.0).ceil() as isize,
         IntradaySmoothingKernel::Uniform => smoothing_bandwidth_bins.floor() as isize,
     };
-    let radius = raw_radius.max(0).min(max_radius);
 
+    let radius = raw_radius.max(0).min(max_radius);
     if radius == 0 {
         return (vec![0], vec![1.0]);
     }
@@ -250,7 +250,7 @@ fn circular_smooth_values(
     let mut smoothed_values: Vec<f64> = vec![0.0; values.len()];
     let value_count = values.len() as isize;
 
-    for target_position in 0..values.len() {
+    for (target_position, smoothed_value_slot) in smoothed_values.iter_mut().enumerate() {
         let mut smoothed_value = 0.0;
 
         for (kernel_position, kernel_offset) in kernel_offsets.iter().enumerate() {
@@ -259,7 +259,7 @@ fn circular_smooth_values(
             smoothed_value += values[source_position] * kernel_weights[kernel_position];
         }
 
-        smoothed_values[target_position] = smoothed_value;
+        *smoothed_value_slot = smoothed_value;
     }
 
     smoothed_values

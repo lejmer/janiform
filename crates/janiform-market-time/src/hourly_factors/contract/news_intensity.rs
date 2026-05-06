@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use chrono::{DateTime, Utc};
 
 use crate::calendar::ExchangeCalendarRegistry;
@@ -29,16 +31,30 @@ use super::types::{
 /// - Surprise component intensity is `surprise_baseline_intensity *
 ///   surprise_deterministic_time_multiplier`, where the multiplier defaults to `1.0`.
 /// - Total interval intensity is `known_component + surprise_component`.
+#[derive(Debug, Clone)]
+pub struct HourlyNewsIntensityMaterializationInput<'a> {
+    pub calendar_registry: &'a ExchangeCalendarRegistry,
+    pub exchange_code: &'a str,
+    pub range_utc: Range<DateTime<Utc>>,
+    pub interval_duration_nanos: i64,
+    pub known_scheduled_event_timestamps_utc_nanos: &'a [i64],
+    pub surprise_baseline_intensity: f64,
+    pub surprise_deterministic_time_multiplier_by_interval_index: &'a [(u64, f64)],
+}
+
 pub fn materialize_hourly_news_intensity_factors(
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
-    range_start_utc: DateTime<Utc>,
-    range_end_utc: DateTime<Utc>,
-    interval_duration_nanos: i64,
-    known_scheduled_event_timestamps_utc_nanos: &[i64],
-    surprise_baseline_intensity: f64,
-    surprise_deterministic_time_multiplier_by_interval_index: &[(u64, f64)],
+    input: HourlyNewsIntensityMaterializationInput<'_>,
 ) -> Result<HourlyNewsIntensityMaterializationOutput, HourlyFactorContractError> {
+    let HourlyNewsIntensityMaterializationInput {
+        calendar_registry,
+        exchange_code,
+        range_utc,
+        interval_duration_nanos,
+        known_scheduled_event_timestamps_utc_nanos,
+        surprise_baseline_intensity,
+        surprise_deterministic_time_multiplier_by_interval_index,
+    } = input;
+
     let arrival_configuration = NewsArrivalConfiguration {
         known: KnownNewsArrivalConfiguration {
             scheduled_event_timestamps_utc_nanos: known_scheduled_event_timestamps_utc_nanos
@@ -48,6 +64,7 @@ pub fn materialize_hourly_news_intensity_factors(
             baseline_intensity: surprise_baseline_intensity,
         },
     };
+
     arrival_configuration
         .validate()
         .map_err(map_news_arrival_configuration_error)?;
@@ -55,13 +72,14 @@ pub fn materialize_hourly_news_intensity_factors(
     let interval_indexing = build_fixed_interval_indexing(
         calendar_registry,
         exchange_code,
-        range_start_utc,
-        range_end_utc,
+        range_utc.start,
+        range_utc.end,
         interval_duration_nanos,
     )?;
 
     let mut surprise_deterministic_time_multipliers: Vec<f64> =
         vec![1.0; interval_indexing.interval_count];
+
     let mut surprise_multiplier_override_flags: Vec<bool> =
         vec![false; interval_indexing.interval_count];
 
@@ -95,20 +113,27 @@ pub fn materialize_hourly_news_intensity_factors(
     let mut surprise_component_nu_h: Vec<f64> =
         Vec::with_capacity(interval_indexing.interval_count);
     let mut materialized_nu_h: Vec<f64> = Vec::with_capacity(interval_indexing.interval_count);
+
     let mut known_component_non_zero_interval_count: usize = 0;
     let mut surprise_component_non_zero_interval_count: usize = 0;
     let mut combined_component_non_zero_interval_count: usize = 0;
+
     let mut known_scheduled_arrival_count: u64 = 0;
+
     let mut arrival_intensity_policy: &'static str = NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY;
 
-    for interval_index in 0..interval_indexing.interval_count {
+    for (interval_index, surprise_deterministic_time_multiplier) in
+        surprise_deterministic_time_multipliers
+            .iter()
+            .copied()
+            .enumerate()
+    {
         let interval_intensity_output = arrival_configuration
             .evaluate_with_deterministic_time_multiplier(NewsArrivalIntensityEvaluationInput {
                 interval_start_utc_nanos: interval_indexing.interval_start_utc_nanos
                     [interval_index],
                 interval_end_utc_nanos: interval_indexing.interval_end_utc_nanos[interval_index],
-                surprise_deterministic_time_multiplier: surprise_deterministic_time_multipliers
-                    [interval_index],
+                surprise_deterministic_time_multiplier,
             })
             .map_err(|source| {
                 map_news_component_intensity_evaluation_error(interval_index, source)
@@ -118,9 +143,11 @@ pub fn materialize_hourly_news_intensity_factors(
         if interval_intensity_output.known_component_intensity > 0.0 {
             known_component_non_zero_interval_count += 1;
         }
+
         if interval_intensity_output.surprise_component_intensity > 0.0 {
             surprise_component_non_zero_interval_count += 1;
         }
+
         if interval_intensity_output.total_intensity > 0.0 {
             combined_component_non_zero_interval_count += 1;
         }

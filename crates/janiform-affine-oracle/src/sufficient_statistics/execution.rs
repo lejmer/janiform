@@ -72,51 +72,65 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     let baseline_transform = solve_transform_slice_value(
         equation_specification,
         context,
-        "baseline",
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
+        TransformSliceEvaluationPoint::new(
+            "baseline",
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+        ),
         solver_settings,
     )?;
+
     let a_plus_transform = solve_transform_slice_value(
         equation_specification,
         context,
-        "a_plus",
-        ComplexScalar::new(settings.a_plus_u, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
+        TransformSliceEvaluationPoint::new(
+            "a_plus",
+            ComplexScalar::new(settings.a_plus_u, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+        ),
         solver_settings,
     )?;
+
     let a_minus_transform = solve_transform_slice_value(
         equation_specification,
         context,
-        "a_minus",
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(settings.a_minus_u, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
+        TransformSliceEvaluationPoint::new(
+            "a_minus",
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(settings.a_minus_u, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+        ),
         solver_settings,
     )?;
+
     let n_plus_transform = solve_transform_slice_value(
         equation_specification,
         context,
-        "n_plus",
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(settings.n_plus_z, 0.0),
-        ComplexScalar::new(1.0, 0.0),
+        TransformSliceEvaluationPoint::new(
+            "n_plus",
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(settings.n_plus_z, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+        ),
         solver_settings,
     )?;
+
     let n_minus_transform = solve_transform_slice_value(
         equation_specification,
         context,
-        "n_minus",
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(settings.n_minus_z, 0.0),
+        TransformSliceEvaluationPoint::new(
+            "n_minus",
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(settings.n_minus_z, 0.0),
+        ),
         solver_settings,
     )?;
 
@@ -280,7 +294,11 @@ where
         randomness_factory,
         emit_chunk,
     )
-    .map_err(|source| SufficientStatisticsTransformSliceExecutionError::SamplingFailure { source })
+    .map_err(
+        |source| SufficientStatisticsTransformSliceExecutionError::SamplingFailure {
+            source: Box::new(source),
+        },
+    )
 }
 
 /// Stream multi-path sampled interval statistics with deterministic path-seed partitioning.
@@ -342,7 +360,7 @@ where
         .map_err(|source| {
             SufficientStatisticsTransformSliceExecutionError::PathSamplingFailure {
                 path_index,
-                source,
+                source: Box::new(source),
             }
         })?;
     }
@@ -475,22 +493,45 @@ fn flush_interval_statistics_chunk<C>(
     *chunk_index = chunk_index.saturating_add(1);
 }
 
-fn solve_transform_slice_value(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
-    context: SufficientStatisticsTransformSliceContext,
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TransformSliceEvaluationPoint {
     slice_name: &'static str,
     u_plus: ComplexScalar,
     u_minus: ComplexScalar,
     z_plus: ComplexScalar,
     z_minus: ComplexScalar,
+}
+
+impl TransformSliceEvaluationPoint {
+    fn new(
+        slice_name: &'static str,
+        u_plus: ComplexScalar,
+        u_minus: ComplexScalar,
+        z_plus: ComplexScalar,
+        z_minus: ComplexScalar,
+    ) -> Self {
+        Self {
+            slice_name,
+            u_plus,
+            u_minus,
+            z_plus,
+            z_minus,
+        }
+    }
+}
+
+fn solve_transform_slice_value(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    context: SufficientStatisticsTransformSliceContext,
+    evaluation_point: TransformSliceEvaluationPoint,
     solver_settings: Option<ExponentialAffineTransformSolverSettings>,
 ) -> Result<ComplexScalar, SufficientStatisticsTransformSliceSolveError> {
     let transform_input = ExponentialAffineTransformInput::try_new(
         equation_specification,
-        u_plus,
-        u_minus,
-        z_plus,
-        z_minus,
+        evaluation_point.u_plus,
+        evaluation_point.u_minus,
+        evaluation_point.z_plus,
+        evaluation_point.z_minus,
         context.s_h,
         context.news_intensity,
         context.delta,
@@ -499,7 +540,7 @@ fn solve_transform_slice_value(
     .map_err(
         |source| SufficientStatisticsTransformSliceSolveError::InvalidTransformInput {
             interval_index: context.interval_index,
-            slice_name,
+            slice_name: evaluation_point.slice_name,
             source,
         },
     )?;
@@ -509,7 +550,7 @@ fn solve_transform_slice_value(
             .map_err(
                 |source| SufficientStatisticsTransformSliceSolveError::SolverFailure {
                     interval_index: context.interval_index,
-                    slice_name,
+                    slice_name: evaluation_point.slice_name,
                     source,
                 },
             )?;
@@ -518,7 +559,7 @@ fn solve_transform_slice_value(
         return Err(
             SufficientStatisticsTransformSliceSolveError::IncompleteSolverOutput {
                 interval_index: context.interval_index,
-                slice_name,
+                slice_name: evaluation_point.slice_name,
                 status: solve_result.status,
                 guard_failure_code: solve_result
                     .metadata
@@ -531,7 +572,7 @@ fn solve_transform_slice_value(
     let output = solve_result.output.ok_or(
         SufficientStatisticsTransformSliceSolveError::IncompleteSolverOutput {
             interval_index: context.interval_index,
-            slice_name,
+            slice_name: evaluation_point.slice_name,
             status: solve_result.status,
             guard_failure_code: solve_result
                 .metadata
@@ -685,41 +726,6 @@ fn extract_real_transform_value(
     }
 
     Ok(modulus)
-}
-
-#[cfg(test)]
-mod tests {
-    use janiform_foundations::complex_math::ComplexScalar;
-    use janiform_model_kernels::hawkes::HawkesExcitationState;
-
-    use super::extract_real_transform_value;
-    use crate::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
-    use crate::sufficient_statistics::SufficientStatisticsTransformSliceContext;
-
-    #[test]
-    fn extract_real_transform_value_uses_modulus_for_positive_transform_values() {
-        let context = SufficientStatisticsTransformSliceContext::try_new(
-            0,
-            1.0,
-            ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
-                .expect("news intensity should construct"),
-            1.0,
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-        )
-        .expect("slice context should construct");
-
-        let transform_value = ComplexScalar::new(0.9999964795005776, -6.097094342473048e-6);
-        let recovered =
-            extract_real_transform_value(context, "baseline_transform", transform_value)
-                .expect("finite positive transform should recover");
-
-        assert_eq!(recovered, transform_value.norm());
-    }
 }
 
 fn derive_non_negative_expectation(
@@ -998,4 +1004,39 @@ pub fn solve_exponential_affine_transform_for_sufficient_statistics_sampling_wit
         transform_input,
         Some(solver_settings),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform_foundations::complex_math::ComplexScalar;
+    use janiform_model_kernels::hawkes::HawkesExcitationState;
+
+    use super::extract_real_transform_value;
+    use crate::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+    use crate::sufficient_statistics::SufficientStatisticsTransformSliceContext;
+
+    #[test]
+    fn extract_real_transform_value_uses_modulus_for_positive_transform_values() {
+        let context = SufficientStatisticsTransformSliceContext::try_new(
+            0,
+            1.0,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+                .expect("news intensity should construct"),
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        )
+        .expect("slice context should construct");
+
+        let transform_value = ComplexScalar::new(0.9999964795005776, -6.097094342473048e-6);
+        let recovered =
+            extract_real_transform_value(context, "baseline_transform", transform_value)
+                .expect("finite positive transform should recover");
+
+        assert_eq!(recovered, transform_value.norm());
+    }
 }

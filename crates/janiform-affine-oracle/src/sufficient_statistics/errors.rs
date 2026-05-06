@@ -350,11 +350,11 @@ pub enum SufficientStatisticsTransformSliceExecutionError {
         source: SufficientStatisticsStreamingChunkingSettingsError,
     },
     SamplingFailure {
-        source: SufficientStatisticsTransformSliceSamplingError,
+        source: Box<SufficientStatisticsTransformSliceSamplingError>,
     },
     PathSamplingFailure {
         path_index: usize,
-        source: SufficientStatisticsTransformSliceSamplingError,
+        source: Box<SufficientStatisticsTransformSliceSamplingError>,
     },
 }
 
@@ -383,8 +383,8 @@ impl Error for SufficientStatisticsTransformSliceExecutionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidChunkingSettings { source } => Some(source),
-            Self::SamplingFailure { source } => Some(source),
-            Self::PathSamplingFailure { source, .. } => Some(source),
+            Self::SamplingFailure { source } => Some(source.as_ref()),
+            Self::PathSamplingFailure { source, .. } => Some(source.as_ref()),
         }
     }
 }

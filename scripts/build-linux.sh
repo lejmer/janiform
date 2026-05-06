@@ -7,44 +7,77 @@ set -euo pipefail
 # - A venv already exists
 # - Either uv or Python is installed
 
-if [ "$#" -gt 1 ]; then
-    echo "Usage: $0 [venv_dir]"
-    exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=scripts/_build-helpers-linux.sh
+source "${SCRIPT_DIR}/_build-helpers-linux.sh"
+
+usage() {
+    echo "Usage: $0 [--release-wheel] [venv_dir]"
+}
+
+RELEASE_WHEEL=false
+USE_UV_PACKAGE_INSTALLER=false
+VENV_DIR=".venv-linux"
+VENV_DIR_SET=false
+
+for ARGUMENT in "$@"; do
+    case "${ARGUMENT}" in
+        --release-wheel)
+            RELEASE_WHEEL=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Error: unknown option '${ARGUMENT}'."
+            usage
+            exit 1
+            ;;
+        *)
+            if [ "${VENV_DIR_SET}" = true ]; then
+                usage
+                exit 1
+            fi
+
+            VENV_DIR="${ARGUMENT}"
+            VENV_DIR_SET=true
+            ;;
+    esac
+done
+
+echo "Using virtual environment: ${VENV_DIR}"
+if [ "${RELEASE_WHEEL}" = true ]; then
+    echo "Using package build mode: release wheel"
+else
+    echo "Using package build mode: editable"
 fi
 
-VENV_DIR="${1:-.venv-linux}"
-echo "Using virtual environment: ${VENV_DIR}"
-
-have_cmd() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-activate_venv() {
-    if [ ! -f "${VENV_DIR}/bin/activate" ]; then
-        echo "Error: virtual environment not found at '${VENV_DIR}'."
-        echo "Run the bootstrap script instead."
-        exit 1
-    fi
-
-    # shellcheck disable=SC1091
-    source "${VENV_DIR}/bin/activate"
-}
-
-activate_venv
+activate_existing_venv
 
 if have_cmd uv; then
     echo "Building using: uv"
+    USE_UV_PACKAGE_INSTALLER=true
     export UV_PROJECT_ENVIRONMENT="${VENV_DIR}"
-    uv sync --extra dev
+    if [ "${RELEASE_WHEEL}" = true ]; then
+        uv pip install "maturin>=1.9,<2.0"
+    else
+        uv sync --extra dev
+    fi
 else
     echo "Building using: python"
-    python -m ensurepip --upgrade || true
-    python -m pip install --upgrade pip
-    python -m pip install -e ".[dev]"
+    if [ "${RELEASE_WHEEL}" = true ]; then
+        install_release_build_tool_with_pip
+    else
+        install_editable_with_pip
+    fi
 fi
 
-python -m maturin develop
-
-cargo build -p janiform-cli
+if [ "${RELEASE_WHEEL}" = true ]; then
+    build_release_package_and_cli
+else
+    build_editable_package_and_cli
+fi
 
 python -c "import janiform; print('janiform built correctly.')"

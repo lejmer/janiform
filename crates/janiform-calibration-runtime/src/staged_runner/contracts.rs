@@ -36,11 +36,11 @@ pub struct CalibrationStagedRunInputs {
     rename_all = "snake_case"
 )]
 pub enum CalibrationStagedRunStageReport {
-    Seasonality(SeasonalityStageExecutionReport),
-    Hawkes(HawkesStageExecutionReport),
-    ReturnComponents(ReturnComponentsStageExecutionReport),
-    MeanReversion(MeanReversionStageExecutionReport),
-    JointRefinement(JointRefinementStageExecutionReport),
+    Seasonality(Box<SeasonalityStageExecutionReport>),
+    Hawkes(Box<HawkesStageExecutionReport>),
+    ReturnComponents(Box<ReturnComponentsStageExecutionReport>),
+    MeanReversion(Box<MeanReversionStageExecutionReport>),
+    JointRefinement(Box<JointRefinementStageExecutionReport>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -381,61 +381,9 @@ pub enum CalibrationStagedRunObserverEvent {
         stage_index: usize,
         stage_count: usize,
         runtime_seconds: f64,
-        stage_report: CalibrationStagedRunStageReport,
+        stage_report: Box<CalibrationStagedRunStageReport>,
     },
-    StageProgress {
-        run_id: String,
-        stage: CalibrationStage,
-        stage_index: usize,
-        stage_count: usize,
-        progress_phase: CalibrationStageProgressPhase,
-        completed_units: usize,
-        total_units: usize,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        stage_progress_percent: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        aggregate_progress_percent: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_item_label: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_restart_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        planned_work_item_labels: Vec<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        active_restart_count: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_parameter_block: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        completed_outer_cycles: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        total_outer_cycles: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_evaluation_count: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        total_evaluation_budget: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        evaluation_progress_percent: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        valid_completed_units: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        cumulative_local_evaluation_count: Option<usize>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_weighted_objective: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_restart_best_weighted_objective: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        best_restart_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        best_weighted_objective: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_coarse_consistency_fit: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        best_coarse_consistency_fit: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        current_convergence_ratio: Option<f64>,
-    },
+    StageProgress(Box<CalibrationStagedRunStageProgressEvent>),
     RunCompleted {
         run_id: String,
         execution_mode: CalibrationExecutionMode,
@@ -451,6 +399,61 @@ pub enum CalibrationStagedRunObserverEvent {
         failed_stage: Option<CalibrationStage>,
         failure: CalibrationStagedRunFailure,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationStagedRunStageProgressEvent {
+    pub run_id: String,
+    pub stage: CalibrationStage,
+    pub stage_index: usize,
+    pub stage_count: usize,
+    pub progress_phase: CalibrationStageProgressPhase,
+    pub completed_units: usize,
+    pub total_units: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stage_progress_percent: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregate_progress_percent: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_item_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_restart_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub planned_work_item_labels: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_restart_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_parameter_block: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_outer_cycles: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_outer_cycles: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_evaluation_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_evaluation_budget: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evaluation_progress_percent: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub valid_completed_units: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cumulative_local_evaluation_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_weighted_objective: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_restart_best_weighted_objective: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best_restart_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best_weighted_objective: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_coarse_consistency_fit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best_coarse_consistency_fit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_convergence_ratio: Option<f64>,
 }
 
 pub fn calibration_checkpoint_reference_for_stage(run_id: &str, stage: CalibrationStage) -> String {

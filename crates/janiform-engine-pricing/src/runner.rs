@@ -55,8 +55,8 @@ use super::contracts::{
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResult,
-    VanillaOptionPricingRunResultBuildError, VanillaOptionPricingStatus,
-    build_vanilla_option_pricing_run_result,
+    VanillaOptionPricingRunResultBuildError, VanillaOptionPricingRunResultBuildInput,
+    VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
 };
 use super::fourier::{
     FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
@@ -474,7 +474,9 @@ impl LocalTransitionRequestContext {
     ) -> Result<Self, VanillaOptionPricingRunError> {
         let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
             VanillaOptionPricingRunError::InvalidExecutionInput {
-                source: VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source },
+                source: Box::new(
+                    VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source },
+                ),
             }
         })?;
 
@@ -482,6 +484,7 @@ impl LocalTransitionRequestContext {
             .boundary_input
             .mean_reversion_fitted_parameters
             .clone();
+
         let deviation_decay_factor =
             (-mean_reversion_fitted_parameters.kappa * interval_delta).exp();
 
@@ -602,7 +605,7 @@ impl<'a> IntervalTiltCurve<'a> {
                 VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
                     interval_index: transition_context.interval_index,
                     deviation: 0.0,
-                    source,
+                    source: Box::new(source),
                 }
             })?;
 
@@ -636,6 +639,7 @@ impl<'a> IntervalTiltCurve<'a> {
             self.pricing_thread_pool,
             self.cpu_count,
         )?;
+
         self.core_log_moment_cache.insert(cache_key, evaluation);
 
         Ok(evaluation)
@@ -669,9 +673,11 @@ pub fn run_vanilla_option_pricing_with_observer(
     execution_input: VanillaOptionPricingExecutionInput,
     _observer: Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunError> {
-    execution_input
-        .validate()
-        .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput { source })?;
+    execution_input.validate().map_err(|source| {
+        VanillaOptionPricingRunError::InvalidExecutionInput {
+            source: Box::new(source),
+        }
+    })?;
 
     let pricing_request = execution_input.request.clone();
     let output_selection = execution_input.optional_output_selection;
@@ -691,14 +697,16 @@ pub fn run_vanilla_option_pricing_with_observer(
                 .single_maturity_interval()
                 .map_err(
                     |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                        source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                        source: Box::new(VanillaOptionPricingExecutionInputError::InvalidRequest {
                             source: VanillaOptionPricingRequestError::InvalidMarketInputs {
                                 source,
                             },
-                        },
+                        }),
                     },
                 )?;
+
             let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+
             let response = VanillaOptionPricingResponse::try_new(
                 VanillaOptionPricingStatus::Succeeded,
                 None,
@@ -718,13 +726,17 @@ pub fn run_vanilla_option_pricing_with_observer(
                         ),
                     )
                     .map_err(|source| {
-                        VanillaOptionPricingRunError::InvalidResponseDiagnostics { source }
+                        VanillaOptionPricingRunError::InvalidResponseDiagnostics {
+                            source: Box::new(source),
+                        }
                     })?,
                 ),
                 spectral_outcome.implied_volatility,
                 Some(spectral_outcome.implied_volatility_inversion_status),
             )
-            .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })?;
+            .map_err(|source| VanillaOptionPricingRunError::InvalidResponse {
+                source: Box::new(source),
+            })?;
 
             (
                 response,
@@ -743,17 +755,21 @@ pub fn run_vanilla_option_pricing_with_observer(
         }
     };
 
-    build_vanilla_option_pricing_run_result(
+    build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
         response,
         output_selection,
-        Some(market_inputs_for_calibration_hooks),
-        representative_transform_diagnostics,
-        integration_quality_diagnostics,
-        spectral_diagnostics,
-        execution_input.runtime_interval_schedule.clone(),
-        vec![execution_input.runtime_interval_schedule.interval_count() - 1],
-    )
-    .map_err(|source| VanillaOptionPricingRunError::InvalidRunResult { source })
+        market_inputs_for_calibration_hooks: Some(market_inputs_for_calibration_hooks),
+        transform_diagnostics_source: representative_transform_diagnostics,
+        integration_quality_source: integration_quality_diagnostics,
+        spectral_source: spectral_diagnostics,
+        runtime_interval_schedule: execution_input.runtime_interval_schedule.clone(),
+        maturity_terminal_interval_indices: vec![
+            execution_input.runtime_interval_schedule.interval_count() - 1,
+        ],
+    })
+    .map_err(|source| VanillaOptionPricingRunError::InvalidRunResult {
+        source: Box::new(source),
+    })
 }
 
 fn hawkes_boundary_state_norm(boundary_state: HawkesExcitationState) -> f64 {
@@ -771,8 +787,11 @@ pub(crate) fn build_spectral_compatibility_integration_diagnostics(
 ) -> FourierInversionDiagnostics {
     let domain_width = spectral_diagnostics.deviation_domain_upper_bound
         - spectral_diagnostics.deviation_domain_lower_bound;
+
     let integration_step_count = spectral_diagnostics.collocation_node_count.max(1);
+
     let integration_interval_width = domain_width / integration_step_count as f64;
+
     let terminal_abs_integrand = 0.0;
 
     FourierInversionDiagnostics {
@@ -845,6 +864,7 @@ pub(crate) fn evaluate_core_pure_imaginary_log_moment_exponent_for_tilt(
                 message: error.to_string(),
             }
         })?;
+
     let observed_log_moment_exponent =
         recover_pure_imaginary_log_moment_exponent(evaluation.value, theta)?;
 
@@ -868,6 +888,7 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
             driver_parameters,
             shifted_argument,
         )?;
+
     let denominator_sensitivity =
         evaluate_pricing_log_return_characteristic_function_shared_plus_shift_sensitivity_for_context(
             transition_context,
@@ -894,6 +915,7 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
             denominator_sensitivity.alpha_derivative,
         )?,
     )?;
+
     let beta_0_derivative = log_characteristic_modulus_derivative(
         risk_neutral_value,
         pricing_ratio_derivative(
@@ -903,6 +925,7 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
             denominator_sensitivity.beta_0_derivative,
         )?,
     )?;
+
     let delta_derivative = log_characteristic_modulus_derivative(
         risk_neutral_value,
         pricing_ratio_derivative(
@@ -912,6 +935,7 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
             denominator_sensitivity.delta_derivative,
         )?,
     )?;
+
     let mu_derivative = log_characteristic_modulus_derivative(
         risk_neutral_value,
         pricing_ratio_derivative(
@@ -921,6 +945,7 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
             denominator_sensitivity.mu_derivative,
         )?,
     )?;
+
     let delta_beta_derivative = log_characteristic_modulus_derivative(
         risk_neutral_value,
         pricing_ratio_derivative(
@@ -930,6 +955,7 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
             denominator_sensitivity.delta_beta_derivative,
         )?,
     )?;
+
     let theta_derivative = log_characteristic_modulus_derivative(
         risk_neutral_value,
         pricing_ratio_derivative(
@@ -972,6 +998,7 @@ pub(crate) fn differentiate_core_local_tilt_theta_for_tilt(
     }
 
     let inverse_theta_derivative = -1.0 / sensitivity.theta_derivative;
+
     Ok(CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
         alpha_derivative: sensitivity.alpha_derivative * inverse_theta_derivative,
         beta_0_derivative: sensitivity.beta_0_derivative * inverse_theta_derivative,
@@ -1020,6 +1047,7 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
                         previous_theta,
                         previous_evaluation,
                     );
+
                     return Ok((previous_theta, Some(diagnostics)));
                 }
             }
@@ -1031,7 +1059,7 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
                     VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
                         interval_index: interval_tilt_curve.transition_context.interval_index,
                         deviation: transition_row.boundary_state.deviation,
-                        source,
+                        source: Box::new(source),
                     },
                 );
             }
@@ -1048,6 +1076,7 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
             |theta| {
                 let core_log_moment_evaluation =
                     interval_tilt_curve.evaluate_core_log_moment(theta)?;
+
                 Ok(LocalTiltResidualEvaluation {
                     observed_log_moment_exponent: core_log_moment_evaluation
                         .observed_log_moment_exponent,
@@ -1060,9 +1089,10 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
             |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
                 interval_index: interval_tilt_curve.transition_context.interval_index,
                 deviation: transition_row.boundary_state.deviation,
-                source,
+                source: Box::new(source),
             },
         )?;
+
     interval_tilt_curve.last_solved_theta = Some(theta);
 
     let evaluation = LocalTiltResidualEvaluation {
@@ -1070,6 +1100,7 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
             + transition_row.local_martingale_deviation_adjustment,
         residual: core_evaluation.residual,
     };
+
     let diagnostics = build_local_tilt_diagnostics_for_row(
         interval_tilt_curve.transition_context,
         transition_row,
@@ -1103,6 +1134,7 @@ pub(crate) fn resolve_local_transition_theta_with_parallelism(
 ) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
     let transition_context =
         LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
+
     let transition_row = transition_context.build_row_state(
         pricing_request
             .boundary_input
@@ -1150,7 +1182,9 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_parallelism_and_hint(
         pricing_thread_pool,
         cpu_count,
     )?;
+
     interval_tilt_curve.last_solved_theta = initial_theta_hint;
+
     resolve_local_transition_theta_for_row_with_curve(&mut interval_tilt_curve, transition_row)
 }
 
@@ -1176,7 +1210,7 @@ pub(crate) fn certify_local_transition_theta_for_row_with_parallelism(
             VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
                 interval_index: transition_context.interval_index,
                 deviation: transition_row.boundary_state.deviation,
-                source,
+                source: Box::new(source),
             },
         ),
     }
@@ -1189,6 +1223,7 @@ pub(crate) fn prepare_transition_row_kernel_with_curve(
 ) -> Result<PreparedTransitionRowKernel, VanillaOptionPricingRunError> {
     let (theta, tilt_diagnostics) =
         resolve_local_transition_theta_for_row_with_curve(interval_tilt_curve, &transition_row)?;
+
     let local_expectations = derive_local_tilted_interval_expectations_for_row_with_parallelism(
         interval_tilt_curve.transition_context,
         &transition_row,
@@ -1197,6 +1232,7 @@ pub(crate) fn prepare_transition_row_kernel_with_curve(
         interval_tilt_curve.pricing_thread_pool,
         interval_tilt_curve.cpu_count,
     )?;
+
     let representative_transform_diagnostics = if transition_row.uses_nested_transition_measure() {
         None
     } else {
@@ -1207,7 +1243,7 @@ pub(crate) fn prepare_transition_row_kernel_with_curve(
                     |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
                         interval_index: interval_tilt_curve.transition_context.interval_index,
                         deviation: transition_row.boundary_state.deviation,
-                        source,
+                        source: Box::new(source),
                     },
                 )?
                 .transform_diagnostics,
@@ -1398,6 +1434,7 @@ pub(crate) fn derive_local_tilted_interval_expectations_with_parallelism(
 ) -> Result<LocalTiltedIntervalExpectations, VanillaOptionPricingRunError> {
     let transition_context =
         LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
+
     let transition_row = transition_context.build_row_state(
         pricing_request
             .boundary_input
@@ -1437,6 +1474,7 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
         tilted_statistics,
         theta,
     )?;
+
     let expected_news_loading = infer_expected_news_loading_under_local_measure_for_row(
         transition_context,
         transition_row,
@@ -1700,11 +1738,12 @@ fn solve_local_tilted_transform_slice_value(
     let buy_side_shift = driver_parameters
         .buy_side_characteristic_exponent(shifted_argument)
         .scale(-1.0)
-        .add(extra_u_plus);
+        .plus(extra_u_plus);
+
     let sell_side_shift = driver_parameters
         .sell_side_characteristic_exponent_for_return_composition(shifted_argument)
         .scale(-1.0)
-        .add(extra_u_minus);
+        .plus(extra_u_minus);
 
     let transform_input =
         transition_context.build_transform_input(buy_side_shift, sell_side_shift, z_plus, z_minus);
@@ -1713,7 +1752,7 @@ fn solve_local_tilted_transform_slice_value(
         solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
             |source| VanillaOptionPricingRunError::TransformSolveFailure {
                 argument: shifted_argument,
-                source,
+                source: Box::new(source),
             },
         )?;
 
@@ -1746,6 +1785,7 @@ fn tilted_core_expected_increment_from_statistics(
         expected_statistics.expected_a_plus,
         theta,
     )?;
+
     let tilted_sell_expected_increment = tilted_nig_expected_increment(
         driver_parameters.sell_side_parameters,
         expected_statistics.expected_a_minus,
@@ -1879,6 +1919,7 @@ pub(crate) fn infer_expected_news_loading_under_local_measure_for_row(
     let base_source_plus = endogenous_factors.s_h
         * kernel_parameters.lambda_bar
         * (kernel_parameters.alpha.plus_plus + kernel_parameters.alpha.plus_minus);
+
     let base_source_minus = endogenous_factors.s_h
         * kernel_parameters.lambda_bar
         * (kernel_parameters.alpha.minus_plus + kernel_parameters.alpha.minus_minus);
@@ -1894,6 +1935,7 @@ pub(crate) fn infer_expected_news_loading_under_local_measure_for_row(
         base_source_minus,
         endogenous_factors.delta,
     );
+
     let unit_loading_solution = solve_two_by_two_linear_source_system(
         matrix_a,
         matrix_b,
@@ -1932,6 +1974,7 @@ fn expected_scaled_news_loading(
             .known_component_mark_scales
             .activity_coupling_scale
         * expected_severity_mark;
+
     let surprise_loading = interval_factors.expected_surprise_arrival_count()
         * model_parameters
             .news_process_configuration
@@ -1949,6 +1992,7 @@ fn evolve_expected_hawkes_state_under_local_measure(
     local_expectations: LocalTiltedIntervalExpectations,
 ) -> Result<HawkesExcitationState, VanillaOptionPricingRunError> {
     let kernel_parameters = pricing_request.model_parameters.hawkes_kernel_parameters;
+
     let drifted_state = state_before_update
         .apply_shared_decay_drift(kernel_parameters.beta, pricing_request.interval_delta);
 
@@ -1957,6 +2001,7 @@ fn evolve_expected_hawkes_state_under_local_measure(
         kernel_parameters.alpha,
         local_expectations.expected_statistics.expected_n_plus,
     );
+
     let post_sell_state = post_buy_state.apply_expected_endogenous_event_jump(
         janiform_model_kernels::hawkes::HawkesEventSide::Sell,
         kernel_parameters.alpha,
@@ -2064,11 +2109,11 @@ pub(crate) fn build_local_pricing_request(
                 .single_strike()
                 .map_err(
                     |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                        source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                        source: Box::new(VanillaOptionPricingExecutionInputError::InvalidRequest {
                             source: VanillaOptionPricingRequestError::InvalidMarketInputs {
                                 source,
                             },
-                        },
+                        }),
                     },
                 )?,
             interval_delta,
@@ -2077,9 +2122,9 @@ pub(crate) fn build_local_pricing_request(
         )
         .map_err(
             |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                source: Box::new(VanillaOptionPricingExecutionInputError::InvalidRequest {
                     source: VanillaOptionPricingRequestError::InvalidMarketInputs { source },
-                },
+                }),
             },
         )?,
         pricing_request.payoff,
@@ -2089,7 +2134,7 @@ pub(crate) fn build_local_pricing_request(
     )
     .map_err(
         |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: VanillaOptionPricingExecutionInputError::InvalidRequest { source },
+            source: Box::new(VanillaOptionPricingExecutionInputError::InvalidRequest { source }),
         },
     )
 }
@@ -2175,7 +2220,9 @@ fn build_failed_pricing_response(
                 None,
                 None,
             )
-            .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })
+            .map_err(|source| VanillaOptionPricingRunError::InvalidResponse {
+                source: Box::new(source),
+            })
         }
     }
 }
@@ -2251,6 +2298,7 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
 ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
     let buy_side_characteristic_exponent =
         driver_parameters.buy_side_characteristic_exponent(argument);
+
     let sell_side_characteristic_exponent =
         driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
 
@@ -2261,10 +2309,13 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
         ComplexScalar::new(1.0, 0.0),
     );
 
-    let transform_diagnostics = solve_exponential_affine_transform_with_internal_selection(
-        transform_input,
-    )
-    .map_err(|source| VanillaOptionPricingRunError::TransformSolveFailure { argument, source })?;
+    let transform_diagnostics =
+        solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
+            |source| VanillaOptionPricingRunError::TransformSolveFailure {
+                argument,
+                source: Box::new(source),
+            },
+        )?;
 
     let transform_output = transform_diagnostics.output.ok_or(
         VanillaOptionPricingRunError::MissingTransformOutput {
@@ -2286,15 +2337,17 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
         },
     )?;
 
-    let assembled =
-        compose_total_return_characteristic_function_from_oracle_output(
-            transform_output,
-            ComplexScalar::new(1.0, 0.0),
-            ComplexScalar::new(1.0, 0.0),
-        )
-        .map_err(|source| {
-            VanillaOptionPricingRunError::CharacteristicFunctionAssemblyFailure { argument, source }
-        })?;
+    let assembled = compose_total_return_characteristic_function_from_oracle_output(
+        transform_output,
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+    )
+    .map_err(
+        |source| VanillaOptionPricingRunError::CharacteristicFunctionAssemblyFailure {
+            argument,
+            source: Box::new(source),
+        },
+    )?;
 
     Ok(PricingCharacteristicFunctionEvaluation {
         value: assembled.combined_characteristic_factor,
@@ -2327,13 +2380,15 @@ fn solve_affine_transform_value_input_sensitivities_for_context(
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
     );
+
     let transform_diagnostics =
         solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
             |source| VanillaOptionPricingRunError::TransformSolveFailure {
                 argument: ComplexScalar::new(0.0, 0.0),
-                source,
+                source: Box::new(source),
             },
         )?;
+
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         transform_diagnostics.metadata.integrator_method,
         transform_diagnostics.metadata.configured_step_count,
@@ -2382,6 +2437,7 @@ pub(crate) fn pricing_ratio_derivative(
             denominator,
         },
     )?;
+
     let adjusted_numerator =
         numerator_derivative.subtract(complex_multiply(ratio, denominator_derivative));
 
@@ -2431,6 +2487,7 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
                 "buy-side characteristic-exponent sensitivity failed for shifted_argument={shifted_argument:?}: {source}"
             ),
         })?;
+
     let sell_side_sensitivity = driver_parameters
         .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
             shifted_argument,
@@ -2443,6 +2500,7 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
 
     let buy_side_shift = buy_side_sensitivity.exponent.scale(-1.0);
     let sell_side_shift = sell_side_sensitivity.exponent.scale(-1.0);
+
     let transform_sensitivities = solve_affine_transform_value_input_sensitivities_for_context(
         transition_context,
         buy_side_shift,
@@ -2455,67 +2513,72 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
             .transform_value_derivative,
         buy_side_sensitivity.alpha_derivative.scale(-1.0),
     )
-    .add(complex_multiply(
+    .plus(complex_multiply(
         transform_sensitivities
             .u_minus_sensitivity
             .transform_value_derivative,
         sell_side_sensitivity.alpha_derivative.scale(-1.0),
     ));
+
     let beta_0_derivative = complex_multiply(
         transform_sensitivities
             .u_plus_sensitivity
             .transform_value_derivative,
         buy_side_sensitivity.beta_0_derivative.scale(-1.0),
     )
-    .add(complex_multiply(
+    .plus(complex_multiply(
         transform_sensitivities
             .u_minus_sensitivity
             .transform_value_derivative,
         sell_side_sensitivity.beta_0_derivative.scale(-1.0),
     ));
+
     let delta_derivative = complex_multiply(
         transform_sensitivities
             .u_plus_sensitivity
             .transform_value_derivative,
         buy_side_sensitivity.delta_derivative.scale(-1.0),
     )
-    .add(complex_multiply(
+    .plus(complex_multiply(
         transform_sensitivities
             .u_minus_sensitivity
             .transform_value_derivative,
         sell_side_sensitivity.delta_derivative.scale(-1.0),
     ));
+
     let mu_derivative = complex_multiply(
         transform_sensitivities
             .u_plus_sensitivity
             .transform_value_derivative,
         buy_side_sensitivity.mu_derivative.scale(-1.0),
     )
-    .add(complex_multiply(
+    .plus(complex_multiply(
         transform_sensitivities
             .u_minus_sensitivity
             .transform_value_derivative,
         sell_side_sensitivity.mu_derivative.scale(-1.0),
     ));
+
     let delta_beta_derivative = complex_multiply(
         transform_sensitivities
             .u_plus_sensitivity
             .transform_value_derivative,
         buy_side_sensitivity.delta_beta_derivative.scale(-1.0),
     )
-    .add(complex_multiply(
+    .plus(complex_multiply(
         transform_sensitivities
             .u_minus_sensitivity
             .transform_value_derivative,
         sell_side_sensitivity.delta_beta_derivative.scale(-1.0),
     ));
+
     let theta_derivative = complex_multiply(
         transform_sensitivities
             .u_plus_sensitivity
             .transform_value_derivative,
         buy_side_sensitivity.theta_shift_derivative.scale(-1.0),
     )
-    .add(complex_multiply(
+    .plus(complex_multiply(
         transform_sensitivities
             .u_minus_sensitivity
             .transform_value_derivative,
@@ -2604,21 +2667,21 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function(
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionPricingRunError {
     InvalidExecutionInput {
-        source: VanillaOptionPricingExecutionInputError,
+        source: Box<VanillaOptionPricingExecutionInputError>,
     },
     InternalNumericsFailure {
         message: String,
     },
     InvalidDriverParameters {
-        source: NigSharedPlusShiftConfigurationError,
+        source: Box<NigSharedPlusShiftConfigurationError>,
     },
     TransformInputBuildFailure {
         argument: ComplexScalar,
-        source: PricingTransformInputBuildError,
+        source: Box<PricingTransformInputBuildError>,
     },
     TransformSolveFailure {
         argument: ComplexScalar,
-        source: ExponentialAffineTransformSolverError,
+        source: Box<ExponentialAffineTransformSolverError>,
     },
     MissingTransformOutput {
         argument: ComplexScalar,
@@ -2627,10 +2690,10 @@ pub enum VanillaOptionPricingRunError {
     },
     CharacteristicFunctionAssemblyFailure {
         argument: ComplexScalar,
-        source: super::characteristic::ReturnCharacteristicFunctionAssemblyError,
+        source: Box<super::characteristic::ReturnCharacteristicFunctionAssemblyError>,
     },
     FourierPricingFailure {
-        source: FourierInversionPricingError,
+        source: Box<FourierInversionPricingError>,
     },
     InvalidRiskNeutralCharacteristicFunction {
         numerator: ComplexScalar,
@@ -2645,7 +2708,7 @@ pub enum VanillaOptionPricingRunError {
     AnchoredLocalTiltSolveFailure {
         interval_index: usize,
         deviation: f64,
-        source: super::characteristic::AnchoredLocalTiltSolveError,
+        source: Box<super::characteristic::AnchoredLocalTiltSolveError>,
     },
     InvalidObservedBoundaryStateDuringRecursion {
         interval_index: usize,
@@ -2653,21 +2716,21 @@ pub enum VanillaOptionPricingRunError {
         message: String,
     },
     InvalidSpectralDiagnostics {
-        source: super::contracts::SpectralPricingDiagnosticsError,
+        source: Box<super::contracts::SpectralPricingDiagnosticsError>,
     },
     InvalidGridInterpolationShape {
         expected_node_count: usize,
         found_value_count: usize,
     },
     InvalidResponseDiagnostics {
-        source: super::contracts::VanillaOptionPricingDiagnosticsError,
+        source: Box<super::contracts::VanillaOptionPricingDiagnosticsError>,
     },
     InvalidResponse {
-        source: VanillaOptionPricingResponseError,
+        source: Box<VanillaOptionPricingResponseError>,
     },
     MissingRepresentativeTransformDiagnostics,
     InvalidRunResult {
-        source: VanillaOptionPricingRunResultBuildError,
+        source: Box<VanillaOptionPricingRunResultBuildError>,
     },
 }
 
@@ -2776,17 +2839,17 @@ impl Display for VanillaOptionPricingRunError {
 impl Error for VanillaOptionPricingRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidExecutionInput { source } => Some(source),
-            Self::InvalidDriverParameters { source } => Some(source),
-            Self::TransformInputBuildFailure { source, .. } => Some(source),
-            Self::TransformSolveFailure { source, .. } => Some(source),
-            Self::CharacteristicFunctionAssemblyFailure { source, .. } => Some(source),
-            Self::FourierPricingFailure { source } => Some(source),
-            Self::AnchoredLocalTiltSolveFailure { source, .. } => Some(source),
-            Self::InvalidSpectralDiagnostics { source } => Some(source),
-            Self::InvalidResponseDiagnostics { source } => Some(source),
-            Self::InvalidResponse { source } => Some(source),
-            Self::InvalidRunResult { source } => Some(source),
+            Self::InvalidExecutionInput { source } => Some(source.as_ref()),
+            Self::InvalidDriverParameters { source } => Some(source.as_ref()),
+            Self::TransformInputBuildFailure { source, .. } => Some(source.as_ref()),
+            Self::TransformSolveFailure { source, .. } => Some(source.as_ref()),
+            Self::CharacteristicFunctionAssemblyFailure { source, .. } => Some(source.as_ref()),
+            Self::FourierPricingFailure { source } => Some(source.as_ref()),
+            Self::AnchoredLocalTiltSolveFailure { source, .. } => Some(source.as_ref()),
+            Self::InvalidSpectralDiagnostics { source } => Some(source.as_ref()),
+            Self::InvalidResponseDiagnostics { source } => Some(source.as_ref()),
+            Self::InvalidResponse { source } => Some(source.as_ref()),
+            Self::InvalidRunResult { source } => Some(source.as_ref()),
             _ => None,
         }
     }

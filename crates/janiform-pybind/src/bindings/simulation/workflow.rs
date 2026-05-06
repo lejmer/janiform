@@ -89,6 +89,10 @@ fn run_simulation_from_model_artifact(
 
 #[pyfunction]
 #[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     py: Python<'_>,
     kernel_parameters: &Bound<'_, PyAny>,

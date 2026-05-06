@@ -57,7 +57,8 @@ pub(super) use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 pub use contracts::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
+    CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
     calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
 };
 pub use execution::{

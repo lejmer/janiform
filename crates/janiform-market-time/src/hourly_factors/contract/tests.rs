@@ -10,8 +10,11 @@ use crate::hourly_factors::{
     HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
     HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
-    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
-    HourlyFactorContractPayload, build_hourly_factor_contract, load_hourly_factor_contract,
+    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractBuildInput,
+    HourlyFactorContractError, HourlyFactorContractPayload,
+    HourlyNewsIntensityMaterializationInput, HourlySeasonalityMaterializationInput,
+    HourlySeasonalityMaterializationPolicy, HourlySeasonalitySourceSignal,
+    build_hourly_factor_contract, load_hourly_factor_contract,
     materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 
@@ -21,17 +24,16 @@ const ONE_HOUR_INTERVAL_NANOS: i64 = NANOS_PER_HOUR;
 fn hourly_factor_contract_builds_expected_schema_and_metadata() {
     let registry = build_calendar_registry();
 
-    let output = build_hourly_factor_contract(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T17:00:00Z"),
-        NANOS_PER_HOUR,
-        &[1.0, 1.1, 0.9],
-        &[0.4, 0.0, 0.2],
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        "calendar_closed_window_baseline.v1",
-    )
+    let output = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T17:00:00Z"),
+        interval_duration_nanos: NANOS_PER_HOUR,
+        seasonality_factors: &[1.0, 1.1, 0.9],
+        news_intensity_factors: &[0.4, 0.0, 0.2],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: "calendar_closed_window_baseline.v1",
+    })
     .expect("hourly factor contract build should succeed");
 
     assert_eq!(output.schema_version, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION);
@@ -74,17 +76,16 @@ fn hourly_factor_contract_builds_expected_schema_and_metadata() {
 fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
     let registry = build_calendar_registry();
 
-    let output = build_hourly_factor_contract(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T18:00:00Z"),
-        NANOS_PER_HOUR,
-        &[1.0, 1.0, 1.0, 1.0],
-        &[0.0, 0.0, 0.0, 0.0],
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-    )
+    let output = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T18:00:00Z"),
+        interval_duration_nanos: NANOS_PER_HOUR,
+        seasonality_factors: &[1.0, 1.0, 1.0, 1.0],
+        news_intensity_factors: &[0.0, 0.0, 0.0, 0.0],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
     .expect("hourly factor contract build should succeed");
 
     assert_eq!(output.interval_indices, vec![0, 1, 2, 3]);
@@ -108,17 +109,16 @@ fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
 fn hourly_factor_contract_spring_forward_policy_skips_nonexistent_local_hour_labels() {
     let registry = build_calendar_registry();
 
-    let output = build_hourly_factor_contract(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-03-08T06:00:00Z"),
-        parse_timestamp("2026-03-08T09:00:00Z"),
-        NANOS_PER_HOUR,
-        &[1.0, 1.0, 1.0],
-        &[0.0, 0.0, 0.0],
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-    )
+    let output = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-03-08T06:00:00Z")..parse_timestamp("2026-03-08T09:00:00Z"),
+        interval_duration_nanos: NANOS_PER_HOUR,
+        seasonality_factors: &[1.0, 1.0, 1.0],
+        news_intensity_factors: &[0.0, 0.0, 0.0],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
     .expect("hourly factor contract build should succeed");
 
     assert_eq!(
@@ -149,17 +149,16 @@ fn hourly_factor_contract_spring_forward_policy_skips_nonexistent_local_hour_lab
 fn hourly_factor_contract_fall_back_policy_preserves_repeated_local_hour_labels() {
     let registry = build_calendar_registry();
 
-    let output = build_hourly_factor_contract(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-11-01T05:00:00Z"),
-        parse_timestamp("2026-11-01T08:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[1.0, 1.0, 1.0],
-        &[0.0, 0.0, 0.0],
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-    )
+    let output = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-11-01T05:00:00Z")..parse_timestamp("2026-11-01T08:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+        seasonality_factors: &[1.0, 1.0, 1.0],
+        news_intensity_factors: &[0.0, 0.0, 0.0],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
     .expect("hourly factor contract build should succeed");
 
     assert_eq!(
@@ -190,17 +189,16 @@ fn hourly_factor_contract_fall_back_policy_preserves_repeated_local_hour_labels(
 fn hourly_factor_contract_rejects_invalid_ranges_and_unknown_exchange_ids() {
     let registry = build_calendar_registry();
 
-    let non_increasing_range_error = build_hourly_factor_contract(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[],
-        &[],
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-    )
+    let non_increasing_range_error = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T14:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+        seasonality_factors: &[],
+        news_intensity_factors: &[],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
     .expect_err("non-increasing range must fail");
 
     assert!(matches!(
@@ -208,35 +206,35 @@ fn hourly_factor_contract_rejects_invalid_ranges_and_unknown_exchange_ids() {
         HourlyFactorContractError::NonIncreasingRange { .. }
     ));
 
-    let invalid_interval_grid_error = build_hourly_factor_contract(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:30:00Z"),
-        parse_timestamp("2026-02-02T16:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[1.0],
-        &[0.0],
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-    )
-    .expect_err("range must be divisible by interval width");
+    let invalid_interval_grid_error =
+        build_hourly_factor_contract(HourlyFactorContractBuildInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:30:00Z")
+                ..parse_timestamp("2026-02-02T16:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            seasonality_factors: &[1.0],
+            news_intensity_factors: &[0.0],
+            seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+            news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        })
+        .expect_err("range must be divisible by interval width");
 
     assert!(matches!(
         invalid_interval_grid_error,
         HourlyFactorContractError::RangeDurationNotDivisibleByInterval { .. }
     ));
 
-    let missing_exchange_error = build_hourly_factor_contract(
-        &registry,
-        "MISSING",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T16:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[1.0, 1.0],
-        &[0.0, 0.0],
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-    )
+    let missing_exchange_error = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "MISSING",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T16:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+        seasonality_factors: &[1.0, 1.0],
+        news_intensity_factors: &[0.0, 0.0],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
     .expect_err("missing exchange id must fail");
 
     assert!(matches!(
@@ -249,32 +247,35 @@ fn hourly_factor_contract_rejects_invalid_ranges_and_unknown_exchange_ids() {
 fn seasonality_materializer_handles_sparse_and_missing_intervals_with_fallback_policy() {
     let registry = build_calendar_registry();
 
-    let output = materialize_hourly_seasonality_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T13:00:00Z"),
-        parse_timestamp("2026-02-02T18:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[
-            parse_timestamp("2026-02-02T14:05:00Z")
-                .timestamp_nanos_opt()
-                .unwrap(),
-            parse_timestamp("2026-02-02T14:20:00Z")
-                .timestamp_nanos_opt()
-                .unwrap(),
-            parse_timestamp("2026-02-02T15:10:00Z")
-                .timestamp_nanos_opt()
-                .unwrap(),
-            parse_timestamp("2026-02-02T17:15:00Z")
-                .timestamp_nanos_opt()
-                .unwrap(),
-        ],
-        &[1.2, 1.0, 0.8, 1.4],
-        "previous_observation_carry_forward.v1",
-        "mean_of_observations.v1",
-        "previous_materialized_then_global_mean.v1",
-        2,
-    )
+    let output = materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T13:00:00Z")..parse_timestamp("2026-02-02T18:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+        source_signal: HourlySeasonalitySourceSignal {
+            timestamp_utc_nanos: &[
+                parse_timestamp("2026-02-02T14:05:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+                parse_timestamp("2026-02-02T14:20:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+                parse_timestamp("2026-02-02T15:10:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+                parse_timestamp("2026-02-02T17:15:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+            ],
+            seasonality_factors: &[1.2, 1.0, 0.8, 1.4],
+        },
+        policy: HourlySeasonalityMaterializationPolicy {
+            interpolation_method: "previous_observation_carry_forward.v1",
+            aggregation_method: "mean_of_observations.v1",
+            sparse_fallback_policy: "previous_materialized_then_global_mean.v1",
+            sparse_hour_minimum_observation_count: 2,
+        },
+    })
     .expect("seasonality materialization should succeed");
 
     assert_eq!(
@@ -325,35 +326,45 @@ fn seasonality_materializer_is_deterministic_for_identical_inputs() {
     ];
     let source_seasonality_factors = vec![0.9, 1.2, 1.4, 1.1, 1.0, 1.6];
 
-    let first_output = materialize_hourly_seasonality_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T17:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &source_timestamp_utc_nanos,
-        &source_seasonality_factors,
-        "linear_between_observations.v1",
-        "last_observation.v1",
-        "global_mean.v1",
-        2,
-    )
-    .expect("seasonality materialization should succeed");
+    let first_output =
+        materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T17:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            source_signal: HourlySeasonalitySourceSignal {
+                timestamp_utc_nanos: &source_timestamp_utc_nanos,
+                seasonality_factors: &source_seasonality_factors,
+            },
+            policy: HourlySeasonalityMaterializationPolicy {
+                interpolation_method: "linear_between_observations.v1",
+                aggregation_method: "last_observation.v1",
+                sparse_fallback_policy: "global_mean.v1",
+                sparse_hour_minimum_observation_count: 2,
+            },
+        })
+        .expect("seasonality materialization should succeed");
 
-    let second_output = materialize_hourly_seasonality_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T17:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &source_timestamp_utc_nanos,
-        &source_seasonality_factors,
-        "linear_between_observations.v1",
-        "last_observation.v1",
-        "global_mean.v1",
-        2,
-    )
-    .expect("seasonality materialization should succeed");
+    let second_output =
+        materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T17:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            source_signal: HourlySeasonalitySourceSignal {
+                timestamp_utc_nanos: &source_timestamp_utc_nanos,
+                seasonality_factors: &source_seasonality_factors,
+            },
+            policy: HourlySeasonalityMaterializationPolicy {
+                interpolation_method: "linear_between_observations.v1",
+                aggregation_method: "last_observation.v1",
+                sparse_fallback_policy: "global_mean.v1",
+                sparse_hour_minimum_observation_count: 2,
+            },
+        })
+        .expect("seasonality materialization should succeed");
 
     assert_eq!(first_output.s_h, vec![1.2, 1.1, 1.6]);
     assert_eq!(first_output, second_output);
@@ -363,30 +374,35 @@ fn seasonality_materializer_is_deterministic_for_identical_inputs() {
 fn seasonality_materializer_assigns_transition_boundary_observations_deterministically() {
     let registry = build_calendar_registry();
 
-    let spring_forward_output = materialize_hourly_seasonality_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-03-08T06:00:00Z"),
-        parse_timestamp("2026-03-08T09:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[
-            parse_timestamp("2026-03-08T06:30:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-            parse_timestamp("2026-03-08T07:00:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-            parse_timestamp("2026-03-08T08:00:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-        ],
-        &[1.0, 2.0, 3.0],
-        "previous_observation_carry_forward.v1",
-        "last_observation.v1",
-        "global_mean.v1",
-        1,
-    )
-    .expect("seasonality materialization should succeed");
+    let spring_forward_output =
+        materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-03-08T06:00:00Z")
+                ..parse_timestamp("2026-03-08T09:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            source_signal: HourlySeasonalitySourceSignal {
+                timestamp_utc_nanos: &[
+                    parse_timestamp("2026-03-08T06:30:00Z")
+                        .timestamp_nanos_opt()
+                        .expect("timestamp fixture must be in range"),
+                    parse_timestamp("2026-03-08T07:00:00Z")
+                        .timestamp_nanos_opt()
+                        .expect("timestamp fixture must be in range"),
+                    parse_timestamp("2026-03-08T08:00:00Z")
+                        .timestamp_nanos_opt()
+                        .expect("timestamp fixture must be in range"),
+                ],
+                seasonality_factors: &[1.0, 2.0, 3.0],
+            },
+            policy: HourlySeasonalityMaterializationPolicy {
+                interpolation_method: "previous_observation_carry_forward.v1",
+                aggregation_method: "last_observation.v1",
+                sparse_fallback_policy: "global_mean.v1",
+                sparse_hour_minimum_observation_count: 1,
+            },
+        })
+        .expect("seasonality materialization should succeed");
 
     assert_eq!(spring_forward_output.s_h, vec![1.0, 2.0, 3.0]);
     assert_eq!(
@@ -402,30 +418,35 @@ fn seasonality_materializer_assigns_transition_boundary_observations_determinist
         0
     );
 
-    let fall_back_output = materialize_hourly_seasonality_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-11-01T05:00:00Z"),
-        parse_timestamp("2026-11-01T08:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[
-            parse_timestamp("2026-11-01T05:00:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-            parse_timestamp("2026-11-01T06:00:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-            parse_timestamp("2026-11-01T07:00:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-        ],
-        &[1.5, 2.5, 3.5],
-        "previous_observation_carry_forward.v1",
-        "last_observation.v1",
-        "global_mean.v1",
-        1,
-    )
-    .expect("seasonality materialization should succeed");
+    let fall_back_output =
+        materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-11-01T05:00:00Z")
+                ..parse_timestamp("2026-11-01T08:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            source_signal: HourlySeasonalitySourceSignal {
+                timestamp_utc_nanos: &[
+                    parse_timestamp("2026-11-01T05:00:00Z")
+                        .timestamp_nanos_opt()
+                        .expect("timestamp fixture must be in range"),
+                    parse_timestamp("2026-11-01T06:00:00Z")
+                        .timestamp_nanos_opt()
+                        .expect("timestamp fixture must be in range"),
+                    parse_timestamp("2026-11-01T07:00:00Z")
+                        .timestamp_nanos_opt()
+                        .expect("timestamp fixture must be in range"),
+                ],
+                seasonality_factors: &[1.5, 2.5, 3.5],
+            },
+            policy: HourlySeasonalityMaterializationPolicy {
+                interpolation_method: "previous_observation_carry_forward.v1",
+                aggregation_method: "last_observation.v1",
+                sparse_fallback_policy: "global_mean.v1",
+                sparse_hour_minimum_observation_count: 1,
+            },
+        })
+        .expect("seasonality materialization should succeed");
 
     assert_eq!(fall_back_output.s_h, vec![1.5, 2.5, 3.5]);
     assert_eq!(
@@ -446,24 +467,25 @@ fn seasonality_materializer_assigns_transition_boundary_observations_determinist
 fn news_intensity_materializer_supports_known_only_component() {
     let registry = build_calendar_registry();
 
-    let output = materialize_hourly_news_intensity_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T17:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[
-            parse_timestamp("2026-02-02T14:05:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-            parse_timestamp("2026-02-02T15:10:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-        ],
-        0.0,
-        &[],
-    )
-    .expect("news intensity materialization should succeed");
+    let output =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T17:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            known_scheduled_event_timestamps_utc_nanos: &[
+                parse_timestamp("2026-02-02T14:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-02-02T15:10:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+            ],
+            surprise_baseline_intensity: 0.0,
+            surprise_deterministic_time_multiplier_by_interval_index: &[],
+        })
+        .expect("news intensity materialization should succeed");
 
     assert_eq!(
         output.schema_version,
@@ -526,17 +548,22 @@ fn news_intensity_materializer_supports_known_only_component() {
 fn news_intensity_materializer_supports_surprise_only_component() {
     let registry = build_calendar_registry();
 
-    let output = materialize_hourly_news_intensity_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-07T00:00:00Z"),
-        parse_timestamp("2026-02-07T03:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[],
-        0.4,
-        &[(0, 1.0), (1, 0.5), (2, 2.0)],
-    )
-    .expect("surprise-only news intensity materialization should succeed");
+    let output =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-07T00:00:00Z")
+                ..parse_timestamp("2026-02-07T03:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            known_scheduled_event_timestamps_utc_nanos: &[],
+            surprise_baseline_intensity: 0.4,
+            surprise_deterministic_time_multiplier_by_interval_index: &[
+                (0, 1.0),
+                (1, 0.5),
+                (2, 2.0),
+            ],
+        })
+        .expect("surprise-only news intensity materialization should succeed");
 
     assert_eq!(output.known_component_nu_h, vec![0.0, 0.0, 0.0]);
     assert_eq!(output.surprise_component_nu_h, vec![0.4, 0.2, 0.8]);
@@ -569,24 +596,29 @@ fn news_intensity_materializer_supports_surprise_only_component() {
 fn news_intensity_materializer_supports_combined_known_and_surprise_components() {
     let registry = build_calendar_registry();
 
-    let output = materialize_hourly_news_intensity_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T17:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[
-            parse_timestamp("2026-02-02T14:05:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-            parse_timestamp("2026-02-02T15:10:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-        ],
-        0.1,
-        &[(0, 1.0), (1, 2.0), (2, 1.0)],
-    )
-    .expect("combined known and surprise materialization should succeed");
+    let output =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T17:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            known_scheduled_event_timestamps_utc_nanos: &[
+                parse_timestamp("2026-02-02T14:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-02-02T15:10:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+            ],
+            surprise_baseline_intensity: 0.1,
+            surprise_deterministic_time_multiplier_by_interval_index: &[
+                (0, 1.0),
+                (1, 2.0),
+                (2, 1.0),
+            ],
+        })
+        .expect("combined known and surprise materialization should succeed");
 
     assert_eq!(output.known_component_nu_h, vec![1.0, 1.0, 0.0]);
     assert_eq!(output.surprise_component_nu_h, vec![0.1, 0.2, 0.1]);
@@ -613,19 +645,20 @@ fn news_intensity_materializer_supports_combined_known_and_surprise_components()
 fn news_intensity_materializer_normalizes_known_news_to_per_hour_intensity() {
     let registry = build_calendar_registry();
 
-    let output = materialize_hourly_news_intensity_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T15:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS / 2,
-        &[parse_timestamp("2026-02-02T14:05:00Z")
-            .timestamp_nanos_opt()
-            .expect("timestamp fixture must be in range")],
-        0.0,
-        &[],
-    )
-    .expect("sub-hour known-news materialization should succeed");
+    let output =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T15:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS / 2,
+            known_scheduled_event_timestamps_utc_nanos: &[parse_timestamp("2026-02-02T14:05:00Z")
+                .timestamp_nanos_opt()
+                .expect("timestamp fixture must be in range")],
+            surprise_baseline_intensity: 0.0,
+            surprise_deterministic_time_multiplier_by_interval_index: &[],
+        })
+        .expect("sub-hour known-news materialization should succeed");
 
     assert_eq!(output.known_component_nu_h, vec![2.0, 0.0]);
     assert_eq!(output.surprise_component_nu_h, vec![0.0, 0.0]);
@@ -636,24 +669,25 @@ fn news_intensity_materializer_normalizes_known_news_to_per_hour_intensity() {
 fn news_intensity_materializer_rejects_non_increasing_known_calendar_anchor_input() {
     let registry = build_calendar_registry();
 
-    let non_increasing_error = materialize_hourly_news_intensity_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T16:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[
-            parse_timestamp("2026-02-02T15:10:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-            parse_timestamp("2026-02-02T14:05:00Z")
-                .timestamp_nanos_opt()
-                .expect("timestamp fixture must be in range"),
-        ],
-        0.4,
-        &[],
-    )
-    .expect_err("non-increasing known timestamps must fail");
+    let non_increasing_error =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T16:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            known_scheduled_event_timestamps_utc_nanos: &[
+                parse_timestamp("2026-02-02T15:10:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-02-02T14:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+            ],
+            surprise_baseline_intensity: 0.4,
+            surprise_deterministic_time_multiplier_by_interval_index: &[],
+        })
+        .expect_err("non-increasing known timestamps must fail");
 
     assert!(matches!(
         non_increasing_error,
@@ -665,34 +699,36 @@ fn news_intensity_materializer_rejects_non_increasing_known_calendar_anchor_inpu
 fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
     let registry = build_calendar_registry();
 
-    let baseline_error = materialize_hourly_news_intensity_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T16:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[],
-        -0.1,
-        &[],
-    )
-    .expect_err("negative surprise baseline must fail");
+    let baseline_error =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T16:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            known_scheduled_event_timestamps_utc_nanos: &[],
+            surprise_baseline_intensity: -0.1,
+            surprise_deterministic_time_multiplier_by_interval_index: &[],
+        })
+        .expect_err("negative surprise baseline must fail");
 
     assert_eq!(
         baseline_error,
         HourlyFactorContractError::InvalidSurpriseBaselineIntensity { value: -0.1 }
     );
 
-    let multiplier_error = materialize_hourly_news_intensity_factors(
-        &registry,
-        "XNYS",
-        parse_timestamp("2026-02-02T14:00:00Z"),
-        parse_timestamp("2026-02-02T16:00:00Z"),
-        ONE_HOUR_INTERVAL_NANOS,
-        &[],
-        0.5,
-        &[(0, -0.2)],
-    )
-    .expect_err("negative surprise multiplier must fail");
+    let multiplier_error =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T16:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            known_scheduled_event_timestamps_utc_nanos: &[],
+            surprise_baseline_intensity: 0.5,
+            surprise_deterministic_time_multiplier_by_interval_index: &[(0, -0.2)],
+        })
+        .expect_err("negative surprise multiplier must fail");
 
     assert_eq!(
         multiplier_error,
@@ -702,16 +738,16 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
         }
     );
     assert!(matches!(
-        materialize_hourly_news_intensity_factors(
-            &registry,
-            "XNYS",
-            parse_timestamp("2026-02-02T14:00:00Z"),
-            parse_timestamp("2026-02-02T16:00:00Z"),
-            ONE_HOUR_INTERVAL_NANOS,
-            &[],
-            0.5,
-            &[(2, 1.0)],
-        )
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &registry,
+            exchange_code: "XNYS",
+            range_utc: parse_timestamp("2026-02-02T14:00:00Z")
+                ..parse_timestamp("2026-02-02T16:00:00Z"),
+            interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+            known_scheduled_event_timestamps_utc_nanos: &[],
+            surprise_baseline_intensity: 0.5,
+            surprise_deterministic_time_multiplier_by_interval_index: &[(2, 1.0)],
+        })
         .expect_err("out-of-range surprise multiplier interval index must fail"),
         HourlyFactorContractError::SurpriseDeterministicTimeMultiplierIntervalOutOfRange {
             interval_index: 2,

@@ -44,9 +44,10 @@ pub fn build_equation_specification(
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidModelKernelParameters {
             profile_id: profile.profile_id.clone(),
-            source,
+            source: Box::new(source),
         }
     })?;
+
     let gamma_mark_configuration = GammaSeverityMarkConfiguration::try_new(
         model_parameters.gamma_shape_k,
         model_parameters.gamma_scale_theta,
@@ -54,7 +55,7 @@ pub fn build_equation_specification(
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidModelGammaMarkConfiguration {
             profile_id: profile.profile_id.clone(),
-            source,
+            source: Box::new(source),
         }
     })?;
 
@@ -71,14 +72,16 @@ pub fn build_pricing_engine_settings(
     let contour = FourierInversionContour::try_new(1.5).map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
             profile_id: profile.profile_id.clone(),
-            source: FourierInversionEngineSettingsError::InvalidContour { source },
+            source: Box::new(FourierInversionEngineSettingsError::InvalidContour { source }),
         }
     })?;
+
     let integration_step_count = profile.interval_settings.oracle_solver_step_count.max(
         benchmark_policy
             .pricing_input_ranges
             .minimum_integration_step_count,
     );
+
     let numeric_settings = FourierInversionNumericSettings::try_new(
         benchmark_policy
             .pricing_input_ranges
@@ -89,9 +92,12 @@ pub fn build_pricing_engine_settings(
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
             profile_id: profile.profile_id.clone(),
-            source: FourierInversionEngineSettingsError::InvalidNumericSettings { source },
+            source: Box::new(
+                FourierInversionEngineSettingsError::InvalidNumericSettings { source },
+            ),
         }
     })?;
+
     let stability_controls = FourierInversionIntegrationStabilityControls::try_new(
         1.0e-5,
         1.0e-4,
@@ -102,7 +108,9 @@ pub fn build_pricing_engine_settings(
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
             profile_id: profile.profile_id.clone(),
-            source: FourierInversionEngineSettingsError::InvalidStabilityControls { source },
+            source: Box::new(
+                FourierInversionEngineSettingsError::InvalidStabilityControls { source },
+            ),
         }
     })?;
 
@@ -110,7 +118,7 @@ pub fn build_pricing_engine_settings(
         |source| {
             OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
                 profile_id: profile.profile_id.clone(),
-                source,
+                source: Box::new(source),
             }
         },
     )
@@ -124,6 +132,7 @@ pub fn build_oracle_transform_input(
 ) -> Result<ExponentialAffineTransformInput, OraclePricerSufficientStatisticsBenchmarkHarnessError>
 {
     let noise = unit_interval_from_seed(invocation_seed);
+
     let complementary_noise = 1.0 - noise;
     let solver_probes = benchmark_policy.oracle_solver_probes;
 
@@ -132,8 +141,10 @@ pub fn build_oracle_transform_input(
         solver_probes.news_intensity_factor_max,
         complementary_noise,
     );
+
     let known_news_intensity_factor = news_intensity_factor * noise;
     let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
+
     let news_intensity_input = ExponentialAffineTransformNewsIntensityInput::try_new(
         known_news_intensity_factor,
         surprise_news_intensity_factor,
@@ -141,7 +152,9 @@ pub fn build_oracle_transform_input(
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidOracleTransformInput {
             profile_id: profile.profile_id.clone(),
-            source: ExponentialAffineTransformInputError::InvalidNewsIntensityInput { source },
+            source: Box::new(
+                ExponentialAffineTransformInputError::InvalidNewsIntensityInput { source },
+            ),
         }
     })?;
 
@@ -183,7 +196,7 @@ pub fn build_oracle_transform_input(
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidOracleTransformInput {
             profile_id: profile.profile_id.clone(),
-            source,
+            source: Box::new(source),
         }
     })
 }
@@ -196,28 +209,34 @@ pub fn build_pricing_market_inputs(
     let spot_noise = unit_interval_from_seed(invocation_seed ^ 0x91);
     let strike_noise = unit_interval_from_seed(invocation_seed ^ 0x53);
     let maturity_noise = unit_interval_from_seed(invocation_seed ^ 0xC7);
+
     let pricing_ranges = benchmark_policy.pricing_input_ranges;
 
     let spot = pricing_ranges.spot_base
         + profile.portfolio_shape.underlying_count as f64
             * pricing_ranges.spot_underlying_count_scale
         + pricing_ranges.spot_noise_span * spot_noise;
+
     let strike_ratio = interpolate_range(
         pricing_ranges.strike_ratio_min,
         pricing_ranges.strike_ratio_max,
         strike_noise,
     );
+
     let strike = spot * strike_ratio;
+
     let maturity_interval = profile.interval_settings.interval_delta
         * (pricing_ranges.maturity_multiplier_min
             + maturity_noise
                 * (profile.portfolio_shape.maturity_bucket_count_per_underlying as f64
                     * pricing_ranges.maturity_bucket_scale));
+
     let risk_free_rate = interpolate_range(
         pricing_ranges.risk_free_rate_min,
         pricing_ranges.risk_free_rate_max,
         spot_noise,
     );
+
     let dividend_yield = interpolate_range(
         pricing_ranges.dividend_yield_min,
         pricing_ranges.dividend_yield_max,
@@ -245,16 +264,20 @@ pub(crate) fn build_sufficient_statistics_transform_slices(
 > {
     let mut slices_by_interval: Vec<SufficientStatisticsTransformSlices> =
         Vec::with_capacity(profile.interval_settings.horizon_interval_count);
+
     let sampling_settings = SufficientStatisticsTransformSliceSettings::default();
 
     for interval_index in 0..profile.interval_settings.horizon_interval_count {
         let interval_seed = derive_invocation_seed(component_seed, interval_index + 1);
+
         let factor_noise = unit_interval_from_seed(interval_seed);
+
         let seasonality_factor = interpolate_range(
             benchmark_policy.oracle_solver_probes.seasonality_factor_min,
             benchmark_policy.oracle_solver_probes.seasonality_factor_max,
             factor_noise,
         );
+
         let news_intensity_factor = interpolate_range(
             benchmark_policy
                 .oracle_solver_probes
@@ -264,8 +287,10 @@ pub(crate) fn build_sufficient_statistics_transform_slices(
                 .news_intensity_factor_max,
             1.0 - factor_noise,
         );
+
         let known_news_intensity_factor = news_intensity_factor * factor_noise;
         let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
+
         let news_intensity_input = ExponentialAffineTransformNewsIntensityInput::try_new(
             known_news_intensity_factor,
             surprise_news_intensity_factor,
@@ -274,10 +299,12 @@ pub(crate) fn build_sufficient_statistics_transform_slices(
             OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidRiskSliceContext {
                 profile_id: profile.profile_id.clone(),
                 interval_index,
-                source: SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
-                    interval_index,
-                    source,
-                },
+                source: Box::new(
+                    SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
+                        interval_index,
+                        source,
+                    },
+                ),
             }
         })?;
 
@@ -292,7 +319,7 @@ pub(crate) fn build_sufficient_statistics_transform_slices(
             OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidRiskSliceContext {
                 profile_id: profile.profile_id.clone(),
                 interval_index,
-                source,
+                source: Box::new(source),
             }
         })?;
 
@@ -306,7 +333,7 @@ pub(crate) fn build_sufficient_statistics_transform_slices(
             OraclePricerSufficientStatisticsBenchmarkHarnessError::SufficientStatisticsSliceSolveFailure {
                 profile_id: profile.profile_id.clone(),
                 interval_index,
-                source,
+                source: Box::new(source),
             }
         })?;
 

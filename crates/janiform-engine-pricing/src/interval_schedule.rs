@@ -31,20 +31,15 @@ const EXPLICIT_INTERVAL_ENDPOINT_DERIVATION_POLICY: &str =
 const EXPLICIT_INTERVAL_ENDPOINT_FACTOR_ASSIGNMENT_POLICY: &str =
     "overlap_weighted_resampling_from_hourly_source_buckets.v1";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "policy", rename_all = "snake_case")]
 pub enum PricingIntervalSchedulePolicy {
+    #[default]
     AutoActivityCompressed,
     AutoExactSparse,
     ExplicitIntervalEndTimestampsUtc {
         interval_end_timestamps_utc_nanos: Vec<i64>,
     },
-}
-
-impl Default for PricingIntervalSchedulePolicy {
-    fn default() -> Self {
-        Self::AutoActivityCompressed
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

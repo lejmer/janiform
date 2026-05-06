@@ -57,16 +57,16 @@ pub(super) fn run_tail_skew_diagnostics_internal(
 
     let cpu_count = resolved_cpu_count(request.cpu_count);
 
-    let horizon_reports = build_horizon_reports(
-        &request.horizon_buckets,
-        &empirical_dataset,
-        &simulated_dataset,
+    let horizon_reports = build_horizon_reports(TailSkewHorizonReportBuildInput {
+        horizon_buckets: &request.horizon_buckets,
+        empirical_dataset: &empirical_dataset,
+        simulated_dataset: &simulated_dataset,
         analysis_window,
-        request.sample_sufficiency_policy,
-        request.bootstrap_configuration,
+        sample_sufficiency_policy: request.sample_sufficiency_policy,
+        bootstrap_configuration: request.bootstrap_configuration,
         cpu_count,
         progress_sender,
-    )?;
+    })?;
 
     Ok(TailSkewDiagnosticsReport {
         schema_version: TAIL_SKEW_DIAGNOSTICS_REPORT_SCHEMA_VERSION,
@@ -81,26 +81,44 @@ pub(super) fn run_tail_skew_diagnostics_internal(
     })
 }
 
-fn build_horizon_reports(
-    horizon_buckets: &[TailSkewHorizonBucket],
-    empirical_dataset: &PreparedTailSkewDataset,
-    simulated_dataset: &PreparedTailSkewDataset,
+#[derive(Clone)]
+struct TailSkewHorizonReportBuildInput<'a> {
+    horizon_buckets: &'a [TailSkewHorizonBucket],
+    empirical_dataset: &'a PreparedTailSkewDataset,
+    simulated_dataset: &'a PreparedTailSkewDataset,
     analysis_window: TimestampAnalysisWindow,
     sample_sufficiency_policy: TailSkewSampleSufficiencyPolicy,
     bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
     cpu_count: usize,
     progress_sender: Option<mpsc::Sender<TailSkewDiagnosticsWorkerMessage>>,
+}
+
+fn build_horizon_reports(
+    input: TailSkewHorizonReportBuildInput<'_>,
 ) -> Result<Vec<TailSkewHorizonDiagnostics>, TailSkewDiagnosticsError> {
+    let TailSkewHorizonReportBuildInput {
+        horizon_buckets,
+        empirical_dataset,
+        simulated_dataset,
+        analysis_window,
+        sample_sufficiency_policy,
+        bootstrap_configuration,
+        cpu_count,
+        progress_sender,
+    } = input;
+
     if cpu_count <= 1 {
         return Ok(build_horizon_reports_serial(
-            horizon_buckets,
-            empirical_dataset,
-            simulated_dataset,
-            analysis_window,
-            sample_sufficiency_policy,
-            bootstrap_configuration,
-            false,
-            progress_sender,
+            TailSkewHorizonReportSerialBuildInput {
+                horizon_buckets,
+                empirical_dataset,
+                simulated_dataset,
+                analysis_window,
+                sample_sufficiency_policy,
+                bootstrap_configuration,
+                parallel_metric_work: false,
+                progress_sender,
+            },
         ));
     }
 
@@ -119,7 +137,7 @@ fn build_horizon_reports(
                 .par_iter()
                 .enumerate()
                 .map(|(horizon_position, horizon_bucket)| {
-                    build_horizon_diagnostics(
+                    build_horizon_diagnostics(TailSkewHorizonDiagnosticsBuildInput {
                         horizon_position,
                         horizon_bucket,
                         empirical_dataset,
@@ -127,41 +145,57 @@ fn build_horizon_reports(
                         analysis_window,
                         sample_sufficiency_policy,
                         bootstrap_configuration,
-                        true,
-                        progress_sender.clone(),
-                    )
+                        parallel_metric_work: true,
+                        progress_sender: progress_sender.clone(),
+                    })
                 })
                 .collect()
         } else {
-            build_horizon_reports_serial(
+            build_horizon_reports_serial(TailSkewHorizonReportSerialBuildInput {
                 horizon_buckets,
                 empirical_dataset,
                 simulated_dataset,
                 analysis_window,
                 sample_sufficiency_policy,
                 bootstrap_configuration,
-                true,
+                parallel_metric_work: true,
                 progress_sender,
-            )
+            })
         }
     }))
 }
 
-fn build_horizon_reports_serial(
-    horizon_buckets: &[TailSkewHorizonBucket],
-    empirical_dataset: &PreparedTailSkewDataset,
-    simulated_dataset: &PreparedTailSkewDataset,
+#[derive(Clone)]
+struct TailSkewHorizonReportSerialBuildInput<'a> {
+    horizon_buckets: &'a [TailSkewHorizonBucket],
+    empirical_dataset: &'a PreparedTailSkewDataset,
+    simulated_dataset: &'a PreparedTailSkewDataset,
     analysis_window: TimestampAnalysisWindow,
     sample_sufficiency_policy: TailSkewSampleSufficiencyPolicy,
     bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
     parallel_metric_work: bool,
     progress_sender: Option<mpsc::Sender<TailSkewDiagnosticsWorkerMessage>>,
+}
+
+fn build_horizon_reports_serial(
+    input: TailSkewHorizonReportSerialBuildInput<'_>,
 ) -> Vec<TailSkewHorizonDiagnostics> {
+    let TailSkewHorizonReportSerialBuildInput {
+        horizon_buckets,
+        empirical_dataset,
+        simulated_dataset,
+        analysis_window,
+        sample_sufficiency_policy,
+        bootstrap_configuration,
+        parallel_metric_work,
+        progress_sender,
+    } = input;
+
     horizon_buckets
         .iter()
         .enumerate()
         .map(|(horizon_position, horizon_bucket)| {
-            build_horizon_diagnostics(
+            build_horizon_diagnostics(TailSkewHorizonDiagnosticsBuildInput {
                 horizon_position,
                 horizon_bucket,
                 empirical_dataset,
@@ -170,8 +204,8 @@ fn build_horizon_reports_serial(
                 sample_sufficiency_policy,
                 bootstrap_configuration,
                 parallel_metric_work,
-                progress_sender.clone(),
-            )
+                progress_sender: progress_sender.clone(),
+            })
         })
         .collect()
 }
@@ -189,17 +223,34 @@ struct HorizonReturnSeries {
     interval_returns: Vec<f64>,
 }
 
-fn build_horizon_diagnostics(
+#[derive(Clone)]
+struct TailSkewHorizonDiagnosticsBuildInput<'a> {
     horizon_position: usize,
-    horizon_bucket: &TailSkewHorizonBucket,
-    empirical_dataset: &PreparedTailSkewDataset,
-    simulated_dataset: &PreparedTailSkewDataset,
+    horizon_bucket: &'a TailSkewHorizonBucket,
+    empirical_dataset: &'a PreparedTailSkewDataset,
+    simulated_dataset: &'a PreparedTailSkewDataset,
     analysis_window: TimestampAnalysisWindow,
     sample_sufficiency_policy: TailSkewSampleSufficiencyPolicy,
     bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
     parallel_metric_work: bool,
     progress_sender: Option<mpsc::Sender<TailSkewDiagnosticsWorkerMessage>>,
+}
+
+fn build_horizon_diagnostics(
+    input: TailSkewHorizonDiagnosticsBuildInput<'_>,
 ) -> TailSkewHorizonDiagnostics {
+    let TailSkewHorizonDiagnosticsBuildInput {
+        horizon_position,
+        horizon_bucket,
+        empirical_dataset,
+        simulated_dataset,
+        analysis_window,
+        sample_sufficiency_policy,
+        bootstrap_configuration,
+        parallel_metric_work,
+        progress_sender,
+    } = input;
+
     let empirical_horizon_series =
         build_horizon_return_series(empirical_dataset, analysis_window, horizon_bucket);
     let simulated_horizon_series =
@@ -218,38 +269,38 @@ fn build_horizon_diagnostics(
         TAIL_SKEW_METRIC_SPECIFICATIONS
             .par_iter()
             .map(|metric_specification| {
-                build_metric_comparison_for_specification(
-                    *metric_specification,
-                    &empirical_horizon_series.interval_returns,
-                    &simulated_horizon_series.interval_returns,
-                    sample_coverage_empirical,
-                    sample_coverage_simulated,
+                build_metric_comparison_for_specification(TailSkewMetricComparisonBuildInput {
+                    metric_specification: *metric_specification,
+                    empirical_interval_returns: &empirical_horizon_series.interval_returns,
+                    simulated_interval_returns: &simulated_horizon_series.interval_returns,
+                    empirical_sample_coverage: sample_coverage_empirical,
+                    simulated_sample_coverage: sample_coverage_simulated,
                     sample_sufficiency_policy,
                     bootstrap_configuration,
                     horizon_position,
-                    horizon_bucket.horizon_label.as_str(),
-                    true,
-                    progress_sender.clone(),
-                )
+                    horizon_label: horizon_bucket.horizon_label.as_str(),
+                    parallel_dataset_work: true,
+                    progress_sender: progress_sender.clone(),
+                })
             })
             .collect()
     } else {
         TAIL_SKEW_METRIC_SPECIFICATIONS
             .iter()
             .map(|metric_specification| {
-                build_metric_comparison_for_specification(
-                    *metric_specification,
-                    &empirical_horizon_series.interval_returns,
-                    &simulated_horizon_series.interval_returns,
-                    sample_coverage_empirical,
-                    sample_coverage_simulated,
+                build_metric_comparison_for_specification(TailSkewMetricComparisonBuildInput {
+                    metric_specification: *metric_specification,
+                    empirical_interval_returns: &empirical_horizon_series.interval_returns,
+                    simulated_interval_returns: &simulated_horizon_series.interval_returns,
+                    empirical_sample_coverage: sample_coverage_empirical,
+                    simulated_sample_coverage: sample_coverage_simulated,
                     sample_sufficiency_policy,
                     bootstrap_configuration,
                     horizon_position,
-                    horizon_bucket.horizon_label.as_str(),
-                    false,
-                    progress_sender.clone(),
-                )
+                    horizon_label: horizon_bucket.horizon_label.as_str(),
+                    parallel_dataset_work: false,
+                    progress_sender: progress_sender.clone(),
+                })
             })
             .collect()
     };
@@ -261,20 +312,38 @@ fn build_horizon_diagnostics(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_metric_comparison_for_specification(
+#[derive(Clone)]
+struct TailSkewMetricComparisonBuildInput<'a> {
     metric_specification: TailSkewMetricSpecification,
-    empirical_interval_returns: &[f64],
-    simulated_interval_returns: &[f64],
+    empirical_interval_returns: &'a [f64],
+    simulated_interval_returns: &'a [f64],
     empirical_sample_coverage: TailSkewSampleCoverage,
     simulated_sample_coverage: TailSkewSampleCoverage,
     sample_sufficiency_policy: TailSkewSampleSufficiencyPolicy,
     bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
     horizon_position: usize,
-    horizon_label: &str,
+    horizon_label: &'a str,
     parallel_dataset_work: bool,
     progress_sender: Option<mpsc::Sender<TailSkewDiagnosticsWorkerMessage>>,
+}
+
+fn build_metric_comparison_for_specification(
+    input: TailSkewMetricComparisonBuildInput<'_>,
 ) -> TailSkewMetricComparison {
+    let TailSkewMetricComparisonBuildInput {
+        metric_specification,
+        empirical_interval_returns,
+        simulated_interval_returns,
+        empirical_sample_coverage,
+        simulated_sample_coverage,
+        sample_sufficiency_policy,
+        bootstrap_configuration,
+        horizon_position,
+        horizon_label,
+        parallel_dataset_work,
+        progress_sender,
+    } = input;
+
     let required_minimums =
         (metric_specification.sample_sufficiency_selector)(sample_sufficiency_policy);
 

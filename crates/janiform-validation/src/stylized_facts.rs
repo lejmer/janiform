@@ -82,15 +82,13 @@ pub use metric_catalog::{
     load_stylized_fact_metric_catalog_from_json, serialize_stylized_fact_metric_catalog_to_json,
 };
 pub use reporting::{
-    STYLIZED_FACT_HORIZON_COMPARISON_PLOT_PAYLOAD_SCHEMA_VERSION,
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY,
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_OUTPUT_SCHEMA_METADATA_VERSION,
     STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION,
     STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION,
     StylizedFactHorizonComparisonArtifactExportConfig,
     StylizedFactHorizonComparisonArtifactExportReceipt, StylizedFactHorizonComparisonArtifactKind,
-    StylizedFactHorizonComparisonExportedArtifactFile, StylizedFactHorizonComparisonPlotPayload,
-    StylizedFactHorizonComparisonPlotPoint, StylizedFactHorizonComparisonReportBundle,
+    StylizedFactHorizonComparisonExportedArtifactFile, StylizedFactHorizonComparisonReportBundle,
     StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata,
     StylizedFactHorizonComparisonReportGenerationError,
     StylizedFactHorizonComparisonReportGeneratorOptions,

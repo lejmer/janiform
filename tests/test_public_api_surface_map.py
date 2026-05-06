@@ -523,7 +523,6 @@ def test_stylized_facts_public_module_is_a_package_with_curated_exports() -> Non
         "StylizedFactHorizonComparisonReportBundle",
         "StylizedFactHorizonComparisonReport",
         "StylizedFactHorizonComparisonTableSummary",
-        "StylizedFactHorizonComparisonPlotPayload",
         "run_stylized_fact_horizon_comparison_report_generator",
     }
 

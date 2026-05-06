@@ -204,6 +204,7 @@ impl NigBuySellDriverParameters {
             .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
                 shifted_argument,
             )?;
+
         sensitivity.theta_shift_derivative =
             differentiate_shifted_characteristic_exponent_wrt_theta(
                 self.buy_side_parameters,
@@ -258,10 +259,12 @@ impl NigBuySellDriverParameters {
         shifted_argument: ComplexScalar,
     ) -> Result<NigSharedPlusShiftCharacteristicExponentSensitivity, EsscherTransformError> {
         let effective_argument = shifted_argument.scale(-1.0);
+
         let mut sensitivity = self
             .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
                 shifted_argument,
             )?;
+
         sensitivity.theta_shift_derivative =
             differentiate_shifted_characteristic_exponent_wrt_theta(
                 self.sell_side_parameters,
@@ -329,6 +332,7 @@ impl NigBuySellDriverParameters {
             -self.buy_side_parameters.alpha - self.buy_side_parameters.beta,
             self.buy_side_parameters.alpha - self.buy_side_parameters.beta,
         );
+
         let sell_domain = NigEsscherTiltDomain::new(
             self.sell_side_parameters.beta - self.sell_side_parameters.alpha,
             self.sell_side_parameters.beta + self.sell_side_parameters.alpha,
@@ -357,6 +361,7 @@ impl NigBuySellDriverParameters {
         let buy_log_moment = evaluate_buy_side_log_moment(self.buy_side_parameters, lambda)?;
         let sell_log_moment =
             evaluate_sell_side_return_composition_log_moment(self.sell_side_parameters, lambda)?;
+
         let weighted_log_moment = integrated_buy_intensity
             .mul_add(buy_log_moment, integrated_sell_intensity * sell_log_moment);
 
@@ -391,6 +396,7 @@ impl NigBuySellDriverParameters {
             self.sell_side_parameters,
             lambda,
         )?;
+
         let weighted_derivative = integrated_buy_intensity
             .mul_add(buy_derivative, integrated_sell_intensity * sell_derivative);
 
@@ -433,6 +439,7 @@ impl NigBuySellDriverParameters {
         )?
         .transformed_exponent
         .scale(integrated_buy_intensity);
+
         let sell_transformed = transform_nig_characteristic_exponent_under_esscher_tilt(
             NigEsscherTransformationInput::new(
                 self.sell_side_parameters,
@@ -442,7 +449,8 @@ impl NigBuySellDriverParameters {
         )?
         .transformed_exponent
         .scale(integrated_sell_intensity);
-        let combined_transformed = buy_transformed.add(sell_transformed);
+
+        let combined_transformed = buy_transformed.plus(sell_transformed);
 
         if !combined_transformed.is_finite() {
             return Err(EsscherTransformError::NonFiniteTransformedExponent {
@@ -466,8 +474,9 @@ impl NigBuySellDriverParameters {
         let sell_side_weighted_exponent = self
             .sell_side_characteristic_exponent_for_return_composition(argument)
             .scale(integrated_sell_intensity);
+
         let combined_weighted_exponent =
-            buy_side_weighted_exponent.add(sell_side_weighted_exponent);
+            buy_side_weighted_exponent.plus(sell_side_weighted_exponent);
 
         NigTradingTimeCharacteristicExponentContributions {
             buy_side_weighted_exponent,
@@ -501,6 +510,7 @@ impl NigBuySellDriverParameters {
                     source,
                 },
             )?;
+
         let sell_side_increment = self
             .sell_side_parameters
             .sample_increment(integrated_sell_intensity, randomness_stream)
@@ -525,8 +535,10 @@ fn evaluate_buy_side_log_moment(
     lambda: f64,
 ) -> Result<f64, EsscherTransformError> {
     let gamma = stable_positive_gamma(parameters)?;
+
     let shifted_margin = parameters.alpha * parameters.alpha
         - (parameters.beta + lambda) * (parameters.beta + lambda);
+
     if !shifted_margin.is_finite() || shifted_margin <= 0.0 {
         return Err(EsscherTransformError::PureImaginaryArgumentOutOfDomain {
             theta: lambda,
@@ -537,6 +549,7 @@ fn evaluate_buy_side_log_moment(
     }
 
     let shifted_gamma = shifted_margin.sqrt();
+
     let log_moment = parameters
         .mu
         .mul_add(lambda, parameters.delta * (gamma - shifted_gamma));
@@ -554,8 +567,10 @@ fn evaluate_sell_side_return_composition_log_moment(
     lambda: f64,
 ) -> Result<f64, EsscherTransformError> {
     let gamma = stable_positive_gamma(parameters)?;
+
     let shifted_margin = parameters.alpha * parameters.alpha
         - (parameters.beta - lambda) * (parameters.beta - lambda);
+
     if !shifted_margin.is_finite() || shifted_margin <= 0.0 {
         return Err(EsscherTransformError::PureImaginaryArgumentOutOfDomain {
             theta: lambda,
@@ -566,6 +581,7 @@ fn evaluate_sell_side_return_composition_log_moment(
     }
 
     let shifted_gamma = shifted_margin.sqrt();
+
     let log_moment = (-parameters.mu).mul_add(lambda, parameters.delta * (gamma - shifted_gamma));
     if !log_moment.is_finite() {
         return Err(EsscherTransformError::NonFiniteTransformedExponent {
@@ -582,6 +598,7 @@ fn differentiate_buy_side_log_moment(
 ) -> Result<f64, EsscherTransformError> {
     let shifted_margin = parameters.alpha * parameters.alpha
         - (parameters.beta + lambda) * (parameters.beta + lambda);
+
     if !shifted_margin.is_finite() || shifted_margin <= 0.0 {
         return Err(EsscherTransformError::PureImaginaryArgumentOutOfDomain {
             theta: lambda,
@@ -592,6 +609,7 @@ fn differentiate_buy_side_log_moment(
     }
 
     let shifted_gamma = shifted_margin.sqrt();
+
     let derivative = parameters.mu.mul_add(
         1.0,
         parameters.delta * (parameters.beta + lambda) / shifted_gamma,
@@ -614,6 +632,7 @@ fn differentiate_sell_side_return_composition_log_moment(
 ) -> Result<f64, EsscherTransformError> {
     let shifted_margin = parameters.alpha * parameters.alpha
         - (parameters.beta - lambda) * (parameters.beta - lambda);
+
     if !shifted_margin.is_finite() || shifted_margin <= 0.0 {
         return Err(EsscherTransformError::PureImaginaryArgumentOutOfDomain {
             theta: lambda,
@@ -624,6 +643,7 @@ fn differentiate_sell_side_return_composition_log_moment(
     }
 
     let shifted_gamma = shifted_margin.sqrt();
+
     let derivative = (-parameters.mu).mul_add(
         1.0,
         -parameters.delta * (parameters.beta - lambda) / shifted_gamma,
@@ -681,8 +701,10 @@ mod tests {
                 .expect("configuration should validate")
                 .derive_driver_parameters()
                 .expect("driver parameters should derive");
+
         let integrated_buy_intensity = 140.0;
         let integrated_sell_intensity = 60.0;
+
         let lambda = -0.35;
         let lambda_step = 1.0e-6;
 
@@ -693,6 +715,7 @@ mod tests {
                 lambda,
             )
             .expect("derivative should evaluate");
+
         let forward_value = driver_parameters
             .evaluate_return_composition_log_moment(
                 integrated_buy_intensity,
@@ -700,6 +723,7 @@ mod tests {
                 lambda + lambda_step,
             )
             .expect("forward log moment should evaluate");
+
         let backward_value = driver_parameters
             .evaluate_return_composition_log_moment(
                 integrated_buy_intensity,
@@ -707,6 +731,7 @@ mod tests {
                 lambda - lambda_step,
             )
             .expect("backward log moment should evaluate");
+
         let finite_difference_derivative = (forward_value - backward_value) / (2.0 * lambda_step);
 
         assert_close(derivative, finite_difference_derivative);
@@ -734,6 +759,7 @@ mod tests {
 
     fn assert_close(actual: f64, expected: f64) {
         let tolerance = 1.0e-9f64.max(1.0e-6 * actual.abs().max(expected.abs()));
+
         assert!(
             (actual - expected).abs() <= tolerance,
             "actual={actual} expected={expected} tolerance={tolerance}"

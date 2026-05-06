@@ -420,12 +420,15 @@ impl CoarseFineConsistencyRegressionToleranceConfig {
                 },
             );
         }
+
         if self.policy_id.trim().is_empty() {
             return Err(CoarseFineConsistencyRegressionToleranceConfigError::EmptyPolicyId);
         }
+
         if self.policy_version.trim().is_empty() {
             return Err(CoarseFineConsistencyRegressionToleranceConfigError::EmptyPolicyVersion);
         }
+
         if self.governance_scope_policy
             != COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY
         {
@@ -436,6 +439,7 @@ impl CoarseFineConsistencyRegressionToleranceConfig {
                 },
             );
         }
+
         if self.interval_tolerance_bands.is_empty() {
             return Err(
                 CoarseFineConsistencyRegressionToleranceConfigError::EmptyIntervalToleranceBands,
@@ -443,6 +447,7 @@ impl CoarseFineConsistencyRegressionToleranceConfig {
         }
 
         let mut previous_delta_upper_bound: Option<f64> = None;
+
         for (position, tolerance_band) in self.interval_tolerance_bands.iter().enumerate() {
             tolerance_band.validate().map_err(|source| {
                 CoarseFineConsistencyRegressionToleranceConfigError::InvalidIntervalToleranceBand {
@@ -451,16 +456,17 @@ impl CoarseFineConsistencyRegressionToleranceConfig {
                 }
             })?;
 
-            if let Some(previous_delta_upper_bound) = previous_delta_upper_bound {
-                if tolerance_band.delta_upper_bound <= previous_delta_upper_bound {
-                    return Err(
-                        CoarseFineConsistencyRegressionToleranceConfigError::NonIncreasingDeltaUpperBound {
-                            previous: previous_delta_upper_bound,
-                            current: tolerance_band.delta_upper_bound,
-                        },
-                    );
-                }
+            if let Some(previous_delta_upper_bound) = previous_delta_upper_bound
+                && tolerance_band.delta_upper_bound <= previous_delta_upper_bound
+            {
+                return Err(
+                    CoarseFineConsistencyRegressionToleranceConfigError::NonIncreasingDeltaUpperBound {
+                        previous: previous_delta_upper_bound,
+                        current: tolerance_band.delta_upper_bound,
+                    },
+                );
             }
+
             previous_delta_upper_bound = Some(tolerance_band.delta_upper_bound);
         }
 
@@ -470,6 +476,7 @@ impl CoarseFineConsistencyRegressionToleranceConfig {
 
         let mut observed_policy_versions: BTreeSet<String> = BTreeSet::new();
         let mut has_current_policy_version = false;
+
         for (position, change_log_entry) in self.change_log.iter().enumerate() {
             change_log_entry.validate().map_err(|source| {
                 CoarseFineConsistencyRegressionToleranceConfigError::InvalidChangeLogEntry {
@@ -485,6 +492,7 @@ impl CoarseFineConsistencyRegressionToleranceConfig {
                     },
                 );
             }
+
             has_current_policy_version = has_current_policy_version
                 || change_log_entry.policy_version == self.policy_version;
         }
@@ -699,6 +707,7 @@ pub fn load_coarse_fine_consistency_regression_tolerance_config_from_json(
                 source: source.to_string(),
             }
         })?;
+
     tolerance_config.validate().map_err(|source| {
         CoarseFineConsistencyRegressionToleranceConfigLoadError::InvalidToleranceConfig { source }
     })?;
@@ -952,6 +961,7 @@ impl CoarseFineRiskMetricAccumulator {
         self.sum_a_minus += a_minus;
         self.sum_n_plus += n_plus;
         self.sum_n_minus += n_minus;
+
         self.observation_count = self.observation_count.saturating_add(1);
 
         Ok(())
@@ -982,9 +992,11 @@ pub fn run_coarse_fine_consistency_regression_harness(
     benchmark_policy.validate().map_err(|source| {
         CoarseFineConsistencyRegressionHarnessError::InvalidBenchmarkPolicy { source }
     })?;
+
     tolerance_config.validate().map_err(|source| {
         CoarseFineConsistencyRegressionHarnessError::InvalidToleranceConfig { source }
     })?;
+
     execution_config.validate().map_err(|source| {
         CoarseFineConsistencyRegressionHarnessError::InvalidExecutionConfig { source }
     })?;
@@ -994,6 +1006,7 @@ pub fn run_coarse_fine_consistency_regression_harness(
     normalized_catalog.validate().map_err(|source| {
         CoarseFineConsistencyRegressionHarnessError::InvalidScenarioCatalog { source }
     })?;
+
     normalized_catalog.sort_profiles_canonically();
 
     let mut scenario_reports: Vec<CoarseFineConsistencyScenarioReport> =
@@ -1023,6 +1036,7 @@ pub fn run_coarse_fine_consistency_regression_harness(
         .iter()
         .map(|scenario_report| scenario_report.metric_deltas.len())
         .sum();
+
     let failed_metric_count = scenario_reports
         .iter()
         .map(|scenario_report| scenario_report.failed_metric_count)
@@ -1077,8 +1091,10 @@ fn run_coarse_fine_consistency_scenario(
     )?;
 
     let oracle_experiment = run_coarse_fine_oracle_experiment(profile, benchmark_policy, &setup)?;
+
     let pricing_experiment =
         run_coarse_fine_pricing_experiment(profile, benchmark_policy, execution_config, &setup)?;
+
     let sufficient_statistics_experiment = run_coarse_fine_sufficient_statistics_experiment(
         profile,
         benchmark_policy,
@@ -1110,6 +1126,7 @@ fn build_coarse_fine_scenario_setup(
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
 ) -> Result<CoarseFineScenarioSetup, CoarseFineConsistencyRegressionHarnessError> {
     let scenario_id = profile.profile_id.clone();
+
     let seeds = build_coarse_fine_scenario_seeds(profile, benchmark_policy, execution_config);
 
     let fine_interval_delta = profile.interval_settings.interval_delta
@@ -1412,7 +1429,7 @@ fn price_coarse_fine_benchmark_vanilla_option(
             let i_times_argument = ComplexScalar::new(-argument.imaginary, argument.real);
             let drift_term = i_times_argument.scale(pricing_drift);
             let diffusion_term = argument.square().scale(-0.5 * pricing_variance);
-            complex_exponential(drift_term.add(diffusion_term))
+            complex_exponential(drift_term.plus(diffusion_term))
         },
     )
     .map_err(|source| {
@@ -1440,6 +1457,7 @@ fn run_coarse_fine_sufficient_statistics_experiment(
             &coarse_sufficient_statistics_factor_series,
             execution_config.fine_subinterval_count_per_coarse_interval,
         );
+
     let equation_specification =
         build_scenario_equation_specification(&setup.scenario_id, profile, benchmark_policy)?;
 
@@ -2018,6 +2036,7 @@ fn validate_sufficient_statistics_metric_means(
         ("mean_n_plus", metric_means.mean_n_plus),
         ("mean_n_minus", metric_means.mean_n_minus),
     ];
+
     for (field_name, value) in fields {
         if !value.is_finite() {
             return Err(coarse_fine_scenario_error(
@@ -2054,6 +2073,7 @@ fn estimate_fine_pricing_reference_price(
         ("dividend_yield", dividend_yield),
         ("volatility", volatility),
     ];
+
     for (field_name, value) in fields {
         if !value.is_finite() {
             return Err(coarse_fine_scenario_error(

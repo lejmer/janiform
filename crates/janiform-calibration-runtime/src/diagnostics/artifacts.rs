@@ -118,12 +118,12 @@ pub(crate) fn persist_diagnostic_artifact_bundle(
     ];
 
     let mut references = Vec::with_capacity(families.len());
-    for ((artifact_family, file_name), payload_result) in
-        families.into_iter().zip(payloads.into_iter())
-    {
+
+    for ((artifact_family, file_name), payload_result) in families.into_iter().zip(payloads) {
         let payload = payload_result.map_err(|source| {
             format!("failed to serialize {artifact_family} diagnostics: {source}")
         })?;
+
         let artifact_path = artifacts_directory.join(file_name);
 
         fs::write(&artifact_path, payload)
@@ -186,148 +186,151 @@ fn build_observed_targets_artifact(
         let price_range = &selected_return_candidate.price_range_sanity_diagnostic;
 
         targets.extend([
-            build_observed_target_entry(
-                "return_components.mean_return",
-                "return_center_mass",
-                "Observed open-session mean block return",
-                "deterministic_open_session_return_summary.v1",
-                return_distribution.sample_count as f64,
-                return_distribution.observed_mean_return.abs().max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "log_return",
-                return_distribution.observed_mean_return,
-            ),
-            build_observed_target_entry(
-                "return_components.return_volatility",
-                "return_scale",
-                "Observed open-session return volatility",
-                "deterministic_open_session_return_summary.v1",
-                return_distribution.sample_count as f64,
-                return_distribution
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.mean_return",
+                target_family: "return_center_mass",
+                definition: "Observed open-session mean block return",
+                estimation_method: "deterministic_open_session_return_summary.v1",
+                effective_sample_size: return_distribution.sample_count as f64,
+                uncertainty_scale: return_distribution.observed_mean_return.abs().max(1.0e-8),
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "log_return",
+                observed_value: return_distribution.observed_mean_return,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.return_volatility",
+                target_family: "return_scale",
+                definition: "Observed open-session return volatility",
+                estimation_method: "deterministic_open_session_return_summary.v1",
+                effective_sample_size: return_distribution.sample_count as f64,
+                uncertainty_scale: return_distribution
                     .observed_return_volatility
                     .abs()
                     .max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Admissibility,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "log_return",
-                return_distribution.observed_return_volatility,
-            ),
-            build_observed_target_entry(
-                "return_components.skewness",
-                "return_asymmetry",
-                "Observed open-session return skewness",
-                "deterministic_open_session_return_summary.v1",
-                return_distribution.sample_count as f64,
-                0.1,
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "unitless",
-                return_distribution.observed_skewness,
-            ),
-            build_observed_target_entry(
-                "return_components.excess_kurtosis",
-                "return_tails",
-                "Observed open-session return excess kurtosis",
-                "deterministic_open_session_return_summary.v1",
-                return_distribution.sample_count as f64,
-                0.25,
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "unitless",
-                return_distribution.observed_excess_kurtosis,
-            ),
-            build_observed_target_entry(
-                "return_components.surprise_arrival_intensity_per_hour",
-                "event_conditioned_return_behavior",
-                "Observed surprise jump arrival intensity per hour",
-                "surprise_episode_detection_summary.v1",
-                summary_statistics.selected_surprise_jump_episode_count as f64,
-                surprise_arrival
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Admissibility,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "log_return",
+                observed_value: return_distribution.observed_return_volatility,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.skewness",
+                target_family: "return_asymmetry",
+                definition: "Observed open-session return skewness",
+                estimation_method: "deterministic_open_session_return_summary.v1",
+                effective_sample_size: return_distribution.sample_count as f64,
+                uncertainty_scale: 0.1,
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "unitless",
+                observed_value: return_distribution.observed_skewness,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.excess_kurtosis",
+                target_family: "return_tails",
+                definition: "Observed open-session return excess kurtosis",
+                estimation_method: "deterministic_open_session_return_summary.v1",
+                effective_sample_size: return_distribution.sample_count as f64,
+                uncertainty_scale: 0.25,
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "unitless",
+                observed_value: return_distribution.observed_excess_kurtosis,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.surprise_arrival_intensity_per_hour",
+                target_family: "event_conditioned_return_behavior",
+                definition: "Observed surprise jump arrival intensity per hour",
+                estimation_method: "surprise_episode_detection_summary.v1",
+                effective_sample_size: summary_statistics.selected_surprise_jump_episode_count
+                    as f64,
+                uncertainty_scale: surprise_arrival
                     .observed_jump_frequency_per_hour
                     .abs()
                     .max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "events_per_hour",
-                surprise_arrival.observed_jump_frequency_per_hour,
-            ),
-            build_observed_target_entry(
-                "return_components.open_jump_abs_return",
-                "event_conditioned_return_behavior",
-                "Observed mean absolute open-session jump return",
-                "jump_episode_summary.v1",
-                jump.observed_jump_count as f64,
-                jump.observed_mean_abs_jump_return.abs().max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "absolute_log_return",
-                jump.observed_mean_abs_jump_return,
-            ),
-            build_observed_target_entry(
-                "return_components.closed_gap_abs_return",
-                "event_conditioned_return_behavior",
-                "Observed mean absolute close-open gap return",
-                "gap_episode_summary.v1",
-                gap.observed_gap_count as f64,
-                gap.observed_mean_abs_gap_return.abs().max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "absolute_log_return",
-                gap.observed_mean_abs_gap_return,
-            ),
-            build_observed_target_entry(
-                "return_components.known_post_shock_activity_lift",
-                "event_conditioned_activity_response",
-                "Observed known-news post-shock activity lift",
-                "event_conditioned_activity_summary.v1",
-                summary_statistics.known_realized_sample_count as f64,
-                activity_coupling
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "events_per_hour",
+                observed_value: surprise_arrival.observed_jump_frequency_per_hour,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.open_jump_abs_return",
+                target_family: "event_conditioned_return_behavior",
+                definition: "Observed mean absolute open-session jump return",
+                estimation_method: "jump_episode_summary.v1",
+                effective_sample_size: jump.observed_jump_count as f64,
+                uncertainty_scale: jump.observed_mean_abs_jump_return.abs().max(1.0e-8),
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "absolute_log_return",
+                observed_value: jump.observed_mean_abs_jump_return,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.closed_gap_abs_return",
+                target_family: "event_conditioned_return_behavior",
+                definition: "Observed mean absolute close-open gap return",
+                estimation_method: "gap_episode_summary.v1",
+                effective_sample_size: gap.observed_gap_count as f64,
+                uncertainty_scale: gap.observed_mean_abs_gap_return.abs().max(1.0e-8),
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "absolute_log_return",
+                observed_value: gap.observed_mean_abs_gap_return,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.known_post_shock_activity_lift",
+                target_family: "event_conditioned_activity_response",
+                definition: "Observed known-news post-shock activity lift",
+                estimation_method: "event_conditioned_activity_summary.v1",
+                effective_sample_size: summary_statistics.known_realized_sample_count as f64,
+                uncertainty_scale: activity_coupling
                     .observed_known_post_shock_activity_lift
                     .abs()
                     .max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "activity_lift",
-                activity_coupling.observed_known_post_shock_activity_lift,
-            ),
-            build_observed_target_entry(
-                "return_components.surprise_post_shock_activity_lift",
-                "event_conditioned_activity_response",
-                "Observed surprise-event post-shock activity lift",
-                "event_conditioned_activity_summary.v1",
-                summary_statistics.selected_surprise_jump_episode_count as f64,
-                activity_coupling
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "activity_lift",
+                observed_value: activity_coupling.observed_known_post_shock_activity_lift,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.surprise_post_shock_activity_lift",
+                target_family: "event_conditioned_activity_response",
+                definition: "Observed surprise-event post-shock activity lift",
+                estimation_method: "event_conditioned_activity_summary.v1",
+                effective_sample_size: summary_statistics.selected_surprise_jump_episode_count
+                    as f64,
+                uncertainty_scale: activity_coupling
                     .observed_surprise_post_shock_activity_lift
                     .abs()
                     .max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::ExactEligible,
-                CalibrationDiagnosticMetricRole::Ranking,
-                CalibrationDiagnosticMetricRole::Ranking,
-                "activity_lift",
-                activity_coupling.observed_surprise_post_shock_activity_lift,
-            ),
-            build_observed_target_entry(
-                "return_components.windowed_log_price_span",
-                "diagnostic",
-                "Observed reference log-price span summary used only for admissibility diagnostics",
-                "path_functional_reference_summary.v1",
-                price_range.effective_continuous_sample_count as f64,
-                price_range.observed_log_price_span.abs().max(1.0e-8),
-                CalibrationDiagnosticMetricEligibility::CoarseEligible,
-                CalibrationDiagnosticMetricRole::Diagnostic,
-                CalibrationDiagnosticMetricRole::Diagnostic,
-                "log_price_span",
-                price_range.observed_log_price_span,
-            ),
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Ranking,
+                ranking_role: CalibrationDiagnosticMetricRole::Ranking,
+                units: "activity_lift",
+                observed_value: activity_coupling.observed_surprise_post_shock_activity_lift,
+            }),
+            build_observed_target_entry(ObservedTargetEntryBuildInput {
+                target_id: "return_components.windowed_log_price_span",
+                target_family: "diagnostic",
+                definition:
+                    "Observed reference log-price span summary used only for admissibility diagnostics",
+                estimation_method: "path_functional_reference_summary.v1",
+                effective_sample_size: price_range.effective_continuous_sample_count as f64,
+                uncertainty_scale: price_range.observed_log_price_span.abs().max(1.0e-8),
+                evaluation_eligibility: CalibrationDiagnosticMetricEligibility::CoarseEligible,
+                admissibility_role: CalibrationDiagnosticMetricRole::Diagnostic,
+                ranking_role: CalibrationDiagnosticMetricRole::Diagnostic,
+                units: "log_price_span",
+                observed_value: price_range.observed_log_price_span,
+            }),
         ]);
     }
 
@@ -768,18 +771,22 @@ fn build_search_surface_manifest_artifact(
 }
 
 fn build_observed_target_entry(
-    target_id: &str,
-    target_family: &str,
-    definition: &str,
-    estimation_method: &str,
-    effective_sample_size: f64,
-    uncertainty_scale: f64,
-    evaluation_eligibility: CalibrationDiagnosticMetricEligibility,
-    admissibility_role: CalibrationDiagnosticMetricRole,
-    ranking_role: CalibrationDiagnosticMetricRole,
-    units: &str,
-    observed_value: f64,
+    input: ObservedTargetEntryBuildInput<'_>,
 ) -> CalibrationDiagnosticObservedTargetEntry {
+    let ObservedTargetEntryBuildInput {
+        target_id,
+        target_family,
+        definition,
+        estimation_method,
+        effective_sample_size,
+        uncertainty_scale,
+        evaluation_eligibility,
+        admissibility_role,
+        ranking_role,
+        units,
+        observed_value,
+    } = input;
+
     CalibrationDiagnosticObservedTargetEntry {
         target_id: target_id.to_string(),
         target_family: target_family.to_string(),
@@ -796,6 +803,20 @@ fn build_observed_target_entry(
         units: units.to_string(),
         observed_value,
     }
+}
+
+struct ObservedTargetEntryBuildInput<'a> {
+    target_id: &'a str,
+    target_family: &'a str,
+    definition: &'a str,
+    estimation_method: &'a str,
+    effective_sample_size: f64,
+    uncertainty_scale: f64,
+    evaluation_eligibility: CalibrationDiagnosticMetricEligibility,
+    admissibility_role: CalibrationDiagnosticMetricRole,
+    ranking_role: CalibrationDiagnosticMetricRole,
+    units: &'a str,
+    observed_value: f64,
 }
 
 fn classify_metric_family(metric_id: &str) -> &'static str {

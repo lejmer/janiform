@@ -171,17 +171,12 @@ impl Display for FourierInversionNumericSettingsError {
 impl Error for FourierInversionNumericSettingsError {}
 
 /// Quality-gate behavior for numerical stability checks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FourierInversionNumericQualityGate {
+    #[default]
     DiagnosticsOnly,
     EnforceFailure,
-}
-
-impl Default for FourierInversionNumericQualityGate {
-    fn default() -> Self {
-        Self::DiagnosticsOnly
-    }
 }
 
 /// Tuning controls for convergence and truncation quality checks.
@@ -450,10 +445,10 @@ pub struct FourierInversionPricingResult {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FourierInversionPricingError {
     InvalidMarketInputs {
-        source: VanillaOptionPricingMarketInputsError,
+        source: Box<VanillaOptionPricingMarketInputsError>,
     },
     InvalidSettings {
-        source: FourierInversionEngineSettingsError,
+        source: Box<FourierInversionEngineSettingsError>,
     },
     InternalSelectionFailure {
         message: String,
@@ -495,7 +490,7 @@ pub enum FourierInversionPricingError {
         tolerance: f64,
     },
     NumericQualityFailure {
-        diagnostics: FourierInversionNumericQualityDiagnostics,
+        diagnostics: Box<FourierInversionNumericQualityDiagnostics>,
     },
 }
 
@@ -579,8 +574,8 @@ impl Display for FourierInversionPricingError {
 impl Error for FourierInversionPricingError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidMarketInputs { source } => Some(source),
-            Self::InvalidSettings { source } => Some(source),
+            Self::InvalidMarketInputs { source } => Some(source.as_ref()),
+            Self::InvalidSettings { source } => Some(source.as_ref()),
             _ => None,
         }
     }
@@ -620,18 +615,26 @@ where
 {
     market_inputs
         .validate_single_node_shape()
-        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs {
+            source: Box::new(source),
+        })?;
     settings
         .validate()
-        .map_err(|source| FourierInversionPricingError::InvalidSettings { source })?;
+        .map_err(|source| FourierInversionPricingError::InvalidSettings {
+            source: Box::new(source),
+        })?;
 
-    let strike = market_inputs
-        .single_strike()
-        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+    let strike = market_inputs.single_strike().map_err(|source| {
+        FourierInversionPricingError::InvalidMarketInputs {
+            source: Box::new(source),
+        }
+    })?;
 
-    let maturity_interval = market_inputs
-        .single_maturity_interval()
-        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+    let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
+        FourierInversionPricingError::InvalidMarketInputs {
+            source: Box::new(source),
+        }
+    })?;
 
     let log_moneyness = (strike / market_inputs.spot).ln();
     if !log_moneyness.is_finite() {
@@ -739,17 +742,18 @@ where
     let total_evaluations =
         total_fourier_progress_evaluations(settings.numeric_settings.quadrature_rule, settings);
 
-    let full_resolution_statistics = evaluate_fourier_integral_statistics(
-        settings.contour.damping_factor,
-        settings.numeric_settings.quadrature_rule,
-        settings.numeric_settings.integration_upper_bound,
-        settings.numeric_settings.integration_step_count,
-        log_moneyness,
-        log_return_characteristic_function,
-        0,
-        total_evaluations,
-        &mut observer,
-    )?;
+    let full_resolution_statistics =
+        evaluate_fourier_integral_statistics(FourierIntegralStatisticsEvaluationInput {
+            damping_factor: settings.contour.damping_factor,
+            quadrature_rule: settings.numeric_settings.quadrature_rule,
+            integration_upper_bound: settings.numeric_settings.integration_upper_bound,
+            integration_step_count: settings.numeric_settings.integration_step_count,
+            log_moneyness,
+            log_return_characteristic_function,
+            completed_evaluation_offset: 0,
+            total_evaluations,
+            observer: &mut observer,
+        })?;
 
     let numeric_quality_diagnostics = evaluate_fourier_numeric_quality(
         settings,
@@ -764,7 +768,7 @@ where
             == FourierInversionNumericQualityGate::EnforceFailure
     {
         return Err(FourierInversionPricingError::NumericQualityFailure {
-            diagnostics: numeric_quality_diagnostics,
+            diagnostics: Box::new(numeric_quality_diagnostics),
         });
     }
 
@@ -800,20 +804,36 @@ where
     })
 }
 
-fn evaluate_fourier_integral_statistics<FCharacteristicFunction>(
+struct FourierIntegralStatisticsEvaluationInput<'a, 'observer, 'callback, FCharacteristicFunction> {
     damping_factor: f64,
     quadrature_rule: FourierInversionQuadratureRule,
     integration_upper_bound: f64,
     integration_step_count: usize,
     log_moneyness: f64,
-    log_return_characteristic_function: &FCharacteristicFunction,
+    log_return_characteristic_function: &'a FCharacteristicFunction,
     completed_evaluation_offset: usize,
     total_evaluations: usize,
-    observer: &mut Option<&mut dyn FnMut(FourierInversionProgress)>,
+    observer: &'observer mut Option<&'callback mut dyn FnMut(FourierInversionProgress)>,
+}
+
+fn evaluate_fourier_integral_statistics<FCharacteristicFunction>(
+    input: FourierIntegralStatisticsEvaluationInput<'_, '_, '_, FCharacteristicFunction>,
 ) -> Result<FourierIntegralStatistics, FourierInversionPricingError>
 where
     FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
 {
+    let FourierIntegralStatisticsEvaluationInput {
+        damping_factor,
+        quadrature_rule,
+        integration_upper_bound,
+        integration_step_count,
+        log_moneyness,
+        log_return_characteristic_function,
+        completed_evaluation_offset,
+        total_evaluations,
+        observer,
+    } = input;
+
     let integration_interval_width = integration_upper_bound / integration_step_count as f64;
 
     let mut weighted_integrand_sum: f64 = 0.0;
@@ -935,20 +955,23 @@ where
     ) = if insufficient_convergence_resolution {
         (full_resolution_statistics.integral_estimate, 0.0, 0.0)
     } else {
-        let coarse_resolution_statistics = evaluate_fourier_integral_statistics(
-            settings.contour.damping_factor,
-            settings.numeric_settings.quadrature_rule,
-            settings.numeric_settings.integration_upper_bound,
-            coarse_step_count,
-            log_moneyness,
-            log_return_characteristic_function,
-            full_resolution_statistics.integrand_evaluation_count,
-            total_evaluations,
-            observer,
-        )?;
+        let coarse_resolution_statistics =
+            evaluate_fourier_integral_statistics(FourierIntegralStatisticsEvaluationInput {
+                damping_factor: settings.contour.damping_factor,
+                quadrature_rule: settings.numeric_settings.quadrature_rule,
+                integration_upper_bound: settings.numeric_settings.integration_upper_bound,
+                integration_step_count: coarse_step_count,
+                log_moneyness,
+                log_return_characteristic_function,
+                completed_evaluation_offset: full_resolution_statistics.integrand_evaluation_count,
+                total_evaluations,
+                observer,
+            })?;
+
         let absolute_difference = (full_resolution_statistics.integral_estimate
             - coarse_resolution_statistics.integral_estimate)
             .abs();
+
         let normalization = full_resolution_statistics.integral_estimate.abs().max(1.0);
         (
             coarse_resolution_statistics.integral_estimate,
@@ -1066,11 +1089,13 @@ where
 
     let phase_argument = frequency * log_moneyness;
     let phase_factor = ComplexScalar::new(phase_argument.cos(), -phase_argument.sin());
+
     let numerator = complex_multiply(phase_factor, characteristic_function_value);
     let denominator = ComplexScalar::new(
         damping_factor.mul_add(damping_factor + 1.0, -(frequency * frequency)),
         (2.0 * damping_factor + 1.0) * frequency,
     );
+
     let integrand_complex = numerator.divide(denominator).ok_or(
         FourierInversionPricingError::IntegrandDivisionByNearZeroDenominator { frequency },
     )?;
@@ -1096,9 +1121,11 @@ fn map_discounted_call_to_vanilla_payoff(
     match payoff_type {
         VanillaOptionPayoffType::Call => clamp_small_negative_price(discounted_call_price),
         VanillaOptionPayoffType::Put => {
-            let strike = market_inputs
-                .single_strike()
-                .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+            let strike = market_inputs.single_strike().map_err(|source| {
+                FourierInversionPricingError::InvalidMarketInputs {
+                    source: Box::new(source),
+                }
+            })?;
 
             let discounted_spot = market_inputs.spot * dividend_discount_factor;
             let discounted_strike = strike * discount_factor;

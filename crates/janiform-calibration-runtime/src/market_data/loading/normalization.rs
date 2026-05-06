@@ -16,24 +16,24 @@ pub(super) fn normalize_tick_row(
     normalization_policy: &MarketDataNormalizationPolicy,
     source_path: &str,
 ) -> Result<LoadedTickRecord, MarketDataLoadingError> {
-    normalize_tick_values(
-        column_mapping
+    normalize_tick_values(NormalizeTickValuesInput {
+        timestamp_raw_value: column_mapping
             .timestamp_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        explicit_price_raw_value: column_mapping
             .price_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        bid_price_raw_value: column_mapping
             .bid_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        ask_price_raw_value: column_mapping
             .ask_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        trade_sign_raw_value: column_mapping
             .trade_sign_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
@@ -41,20 +41,36 @@ pub(super) fn normalize_tick_row(
         column_mapping,
         normalization_policy,
         source_path,
-    )
+    })
+}
+
+pub(super) struct NormalizeTickValuesInput<'a> {
+    pub(super) timestamp_raw_value: Option<&'a RawValue>,
+    pub(super) explicit_price_raw_value: Option<&'a RawValue>,
+    pub(super) bid_price_raw_value: Option<&'a RawValue>,
+    pub(super) ask_price_raw_value: Option<&'a RawValue>,
+    pub(super) trade_sign_raw_value: Option<&'a RawValue>,
+    pub(super) source_row_number: usize,
+    pub(super) column_mapping: &'a MarketDataTickDataColumnMapping,
+    pub(super) normalization_policy: &'a MarketDataNormalizationPolicy,
+    pub(super) source_path: &'a str,
 }
 
 pub(super) fn normalize_tick_values(
-    timestamp_raw_value: Option<&RawValue>,
-    explicit_price_raw_value: Option<&RawValue>,
-    bid_price_raw_value: Option<&RawValue>,
-    ask_price_raw_value: Option<&RawValue>,
-    trade_sign_raw_value: Option<&RawValue>,
-    source_row_number: usize,
-    column_mapping: &MarketDataTickDataColumnMapping,
-    normalization_policy: &MarketDataNormalizationPolicy,
-    source_path: &str,
+    input: NormalizeTickValuesInput<'_>,
 ) -> Result<LoadedTickRecord, MarketDataLoadingError> {
+    let NormalizeTickValuesInput {
+        timestamp_raw_value,
+        explicit_price_raw_value,
+        bid_price_raw_value,
+        ask_price_raw_value,
+        trade_sign_raw_value,
+        source_row_number,
+        column_mapping,
+        normalization_policy,
+        source_path,
+    } = input;
+
     let timestamp_column = column_mapping.timestamp_column.as_deref().ok_or_else(|| {
         MarketDataLoadingError::InvalidValue {
             field_path: "column_mapping.tick_data.timestamp_column".to_string(),

@@ -78,20 +78,16 @@ pub(crate) fn compute_radicand_warning_threshold(
         .abs()
         .max(beta_plus_imaginary_argument.norm())
         .max(1.0);
+
     transform_scale * transform_scale * NIG_RADICAND_WARNING_RELATIVE_THRESHOLD
 }
 
 pub(crate) fn push_guardrail_event(
     status: &mut NigNumericalGuardrailStatus,
     events: &mut Vec<NigCharacteristicExponentGuardrailEvent>,
-    code: NigCharacteristicExponentGuardrailCode,
-    severity: NigNumericalGuardrailSeverity,
-    metric: &'static str,
-    observed_value: Option<f64>,
-    threshold_value: Option<f64>,
-    detail: &'static str,
+    event: NigCharacteristicExponentGuardrailEvent,
 ) {
-    match severity {
+    match event.severity {
         NigNumericalGuardrailSeverity::Warning => {
             if *status == NigNumericalGuardrailStatus::Pass {
                 *status = NigNumericalGuardrailStatus::Warning;
@@ -102,14 +98,7 @@ pub(crate) fn push_guardrail_event(
         }
     }
 
-    events.push(NigCharacteristicExponentGuardrailEvent {
-        code,
-        severity,
-        metric,
-        observed_value,
-        threshold_value,
-        detail,
-    });
+    events.push(event);
 }
 
 pub(crate) fn collect_non_finite_guardrail_event(
@@ -123,12 +112,14 @@ pub(crate) fn collect_non_finite_guardrail_event(
         push_guardrail_event(
             status,
             events,
-            NigCharacteristicExponentGuardrailCode::NonFiniteInput,
-            NigNumericalGuardrailSeverity::Error,
-            metric,
-            Some(observed_value),
-            None,
-            detail,
+            NigCharacteristicExponentGuardrailEvent {
+                code: NigCharacteristicExponentGuardrailCode::NonFiniteInput,
+                severity: NigNumericalGuardrailSeverity::Error,
+                metric,
+                observed_value: Some(observed_value),
+                threshold_value: None,
+                detail,
+            },
         );
     }
 }

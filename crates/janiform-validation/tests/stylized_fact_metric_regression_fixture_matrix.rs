@@ -144,77 +144,75 @@ fn compare_case_against_reference(
             continue;
         }
 
-        compare_optional_float(
-            &mut mismatches,
-            fixture_case.fixture_id.as_str(),
-            &metric_key,
-            "expected_empirical_value",
-            expected_metric.expected_empirical_value,
-            observed_metric.empirical_value,
-            tolerance_policy.point_estimate_absolute_tolerance,
-            observed_metric.debug_context.as_str(),
-        );
-        compare_optional_float(
-            &mut mismatches,
-            fixture_case.fixture_id.as_str(),
-            &metric_key,
-            "expected_simulated_value",
-            expected_metric.expected_simulated_value,
-            observed_metric.simulated_value,
-            tolerance_policy.point_estimate_absolute_tolerance,
-            observed_metric.debug_context.as_str(),
-        );
-        compare_optional_float(
-            &mut mismatches,
-            fixture_case.fixture_id.as_str(),
-            &metric_key,
-            "expected_absolute_delta",
-            expected_metric.expected_absolute_delta,
-            observed_metric.absolute_delta,
-            tolerance_policy.absolute_delta_tolerance,
-            observed_metric.debug_context.as_str(),
-        );
+        compare_optional_float(OptionalFloatComparisonInput {
+            mismatches: &mut mismatches,
+            fixture_id: fixture_case.fixture_id.as_str(),
+            metric_key: &metric_key,
+            field_name: "expected_empirical_value",
+            expected: expected_metric.expected_empirical_value,
+            observed: observed_metric.empirical_value,
+            tolerance: tolerance_policy.point_estimate_absolute_tolerance,
+            debug_context: observed_metric.debug_context.as_str(),
+        });
+        compare_optional_float(OptionalFloatComparisonInput {
+            mismatches: &mut mismatches,
+            fixture_id: fixture_case.fixture_id.as_str(),
+            metric_key: &metric_key,
+            field_name: "expected_simulated_value",
+            expected: expected_metric.expected_simulated_value,
+            observed: observed_metric.simulated_value,
+            tolerance: tolerance_policy.point_estimate_absolute_tolerance,
+            debug_context: observed_metric.debug_context.as_str(),
+        });
+        compare_optional_float(OptionalFloatComparisonInput {
+            mismatches: &mut mismatches,
+            fixture_id: fixture_case.fixture_id.as_str(),
+            metric_key: &metric_key,
+            field_name: "expected_absolute_delta",
+            expected: expected_metric.expected_absolute_delta,
+            observed: observed_metric.absolute_delta,
+            tolerance: tolerance_policy.absolute_delta_tolerance,
+            debug_context: observed_metric.debug_context.as_str(),
+        });
 
         if tolerance_policy.require_confidence_intervals {
-            compare_optional_confidence_interval(
-                &mut mismatches,
-                fixture_case.fixture_id.as_str(),
-                &metric_key,
-                "expected_empirical_confidence_interval",
-                expected_metric.expected_empirical_confidence_interval,
-                observed_metric.empirical_confidence_interval,
-                tolerance_policy.confidence_interval_bound_absolute_tolerance,
-                observed_metric.debug_context.as_str(),
-            );
-            compare_optional_confidence_interval(
-                &mut mismatches,
-                fixture_case.fixture_id.as_str(),
-                &metric_key,
-                "expected_simulated_confidence_interval",
-                expected_metric.expected_simulated_confidence_interval,
-                observed_metric.simulated_confidence_interval,
-                tolerance_policy.confidence_interval_bound_absolute_tolerance,
-                observed_metric.debug_context.as_str(),
-            );
+            compare_optional_confidence_interval(OptionalConfidenceIntervalComparisonInput {
+                mismatches: &mut mismatches,
+                fixture_id: fixture_case.fixture_id.as_str(),
+                metric_key: &metric_key,
+                field_name: "expected_empirical_confidence_interval",
+                expected: expected_metric.expected_empirical_confidence_interval,
+                observed: observed_metric.empirical_confidence_interval,
+                tolerance: tolerance_policy.confidence_interval_bound_absolute_tolerance,
+                debug_context: observed_metric.debug_context.as_str(),
+            });
+            compare_optional_confidence_interval(OptionalConfidenceIntervalComparisonInput {
+                mismatches: &mut mismatches,
+                fixture_id: fixture_case.fixture_id.as_str(),
+                metric_key: &metric_key,
+                field_name: "expected_simulated_confidence_interval",
+                expected: expected_metric.expected_simulated_confidence_interval,
+                observed: observed_metric.simulated_confidence_interval,
+                tolerance: tolerance_policy.confidence_interval_bound_absolute_tolerance,
+                debug_context: observed_metric.debug_context.as_str(),
+            });
         } else if matches!(
             tolerance_policy.policy_kind,
             StylizedFactRegressionTolerancePolicyKind::DeterministicExactMatch
-        ) {
-            if expected_metric
-                .expected_empirical_confidence_interval
-                .is_some()
-                || expected_metric
-                    .expected_simulated_confidence_interval
-                    .is_some()
-            {
-                mismatches.push(format!(
-                    "fixture_id={} horizon={} metric_id={} metric_variant={:?} deterministic exact-match policy should not define expected confidence intervals",
-                    fixture_case.fixture_id,
-                    metric_key.horizon_label,
-                    metric_key.metric_id,
-                    metric_key.metric_variant
-                ));
-            }
+        ) && (expected_metric
+            .expected_empirical_confidence_interval
+            .is_some()
+            || expected_metric
+                .expected_simulated_confidence_interval
+                .is_some())
+        {
+            mismatches.push(format!(
+                "fixture_id={} horizon={} metric_id={} metric_variant={:?} deterministic exact-match policy should not define expected confidence intervals",
+                fixture_case.fixture_id,
+                metric_key.horizon_label,
+                metric_key.metric_id,
+                metric_key.metric_variant
+            ));
         }
     }
 
@@ -268,16 +266,29 @@ fn collect_observed_metrics(
     }
 }
 
-fn compare_optional_float(
-    mismatches: &mut Vec<String>,
-    fixture_id: &str,
-    metric_key: &MetricKey,
-    field_name: &str,
+struct OptionalFloatComparisonInput<'a> {
+    mismatches: &'a mut Vec<String>,
+    fixture_id: &'a str,
+    metric_key: &'a MetricKey,
+    field_name: &'a str,
     expected: Option<f64>,
     observed: Option<f64>,
     tolerance: f64,
-    debug_context: &str,
-) {
+    debug_context: &'a str,
+}
+
+fn compare_optional_float(input: OptionalFloatComparisonInput<'_>) {
+    let OptionalFloatComparisonInput {
+        mismatches,
+        fixture_id,
+        metric_key,
+        field_name,
+        expected,
+        observed,
+        tolerance,
+        debug_context,
+    } = input;
+
     match (expected, observed) {
         (Some(expected_value), Some(observed_value)) => {
             if !within_tolerance(expected_value, observed_value, tolerance) {
@@ -312,16 +323,29 @@ fn compare_optional_float(
     }
 }
 
-fn compare_optional_confidence_interval(
-    mismatches: &mut Vec<String>,
-    fixture_id: &str,
-    metric_key: &MetricKey,
-    field_name: &str,
+struct OptionalConfidenceIntervalComparisonInput<'a> {
+    mismatches: &'a mut Vec<String>,
+    fixture_id: &'a str,
+    metric_key: &'a MetricKey,
+    field_name: &'a str,
     expected: Option<StylizedFactExpectedConfidenceInterval>,
     observed: Option<ConfidenceIntervalSnapshot>,
     tolerance: f64,
-    debug_context: &str,
-) {
+    debug_context: &'a str,
+}
+
+fn compare_optional_confidence_interval(input: OptionalConfidenceIntervalComparisonInput<'_>) {
+    let OptionalConfidenceIntervalComparisonInput {
+        mismatches,
+        fixture_id,
+        metric_key,
+        field_name,
+        expected,
+        observed,
+        tolerance,
+        debug_context,
+    } = input;
+
     match (expected, observed) {
         (Some(expected_interval), Some(observed_interval)) => {
             if !within_tolerance(

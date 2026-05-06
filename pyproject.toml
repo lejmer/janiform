@@ -11,25 +11,22 @@ license-files = ["LICENSE", "THIRD_PARTY_NOTICES.txt"]
 requires-python = ">=3.12"
 dynamic = ["version"]
 dependencies = [
-    "maturin>=1.12.6",
-    "numpy>=2.4.3",
-    "orjson>=3.11.7",
-    "pandas>=3.0.1",
-    "plotly>=6.5.0",
-    "pyarrow>=23.0.1",
+    "numpy>=2.4",
+    "orjson>=3.11",
+    "pandas>=3.0",
+    "pyarrow>=23.0",
 ]
 
 [project.optional-dependencies]
 test = [
-    "matplotlib>=3.10.8",
-    "pyqt6==6.10.2",
-    "pytest>=8.0",
-    "pytest-benchmark>=5.2.3",
-    "pytest-cov>=7.0.0",
+    "matplotlib>=3.10",
+    "pyqt6>=6.10",
+    "pytest>=9.0",
+    "pytest-benchmark>=5.2",
+    "pytest-cov>=7.0",
 ]
 dev = [
     "janiform[test]",
-    "databento>=0.74.1",
     "maturin>=1.9,<2.0",
 ]
 

@@ -51,15 +51,15 @@ pub fn normalize_preset_artifact(artifact: Value) -> PresetResolutionResult<Valu
     let artifact_object = object_value(&normalized_artifact, "preset_artifact")?;
 
     let observed_content_hash = preset_artifact_content_hash(artifact_object)?;
-    if let Some(observed_content_hash) = observed_content_hash {
-        if observed_content_hash != computed_content_hash {
-            return Err(payload_error(
-                "metadata.provenance.content_hash",
-                &format!(
-                    "must match the normalized artifact content hash `{computed_content_hash}`, received `{observed_content_hash}`"
-                ),
-            ));
-        }
+    if let Some(observed_content_hash) = observed_content_hash
+        && observed_content_hash != computed_content_hash
+    {
+        return Err(payload_error(
+            "metadata.provenance.content_hash",
+            &format!(
+                "must match the normalized artifact content hash `{computed_content_hash}`, received `{observed_content_hash}`"
+            ),
+        ));
     }
 
     set_preset_artifact_content_hash(&mut normalized_artifact, Some(computed_content_hash))?;

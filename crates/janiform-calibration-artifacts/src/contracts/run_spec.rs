@@ -254,19 +254,19 @@ impl CalibrationRunSpecError {
     /// Return a deterministic error class for caller-side handling.
     pub const fn classification(&self) -> CalibrationRunSpecErrorClassification {
         match self {
-            Self::InvalidStageHandoff { source } => match source {
-                CalibrationStageHandoffError::PersistedArtifactHandoffRequiresDiskMode {
-                    ..
-                } => CalibrationRunSpecErrorClassification::ModeIncompatibleOptions,
-                _ => CalibrationRunSpecErrorClassification::InvalidInput,
-            },
-            Self::InvalidResumeSettings { source } => match source {
-                CalibrationResumeSettingsError::SameProcessResumeRequiresMemoryMode
-                | CalibrationResumeSettingsError::PersistedCheckpointResumeRequiresDiskMode => {
-                    CalibrationRunSpecErrorClassification::ModeIncompatibleOptions
-                }
-                _ => CalibrationRunSpecErrorClassification::InvalidInput,
-            },
+            Self::InvalidStageHandoff {
+                source:
+                    CalibrationStageHandoffError::PersistedArtifactHandoffRequiresDiskMode { .. },
+            } => CalibrationRunSpecErrorClassification::ModeIncompatibleOptions,
+            Self::InvalidStageHandoff { .. } => CalibrationRunSpecErrorClassification::InvalidInput,
+            Self::InvalidResumeSettings {
+                source:
+                    CalibrationResumeSettingsError::SameProcessResumeRequiresMemoryMode
+                    | CalibrationResumeSettingsError::PersistedCheckpointResumeRequiresDiskMode,
+            } => CalibrationRunSpecErrorClassification::ModeIncompatibleOptions,
+            Self::InvalidResumeSettings { .. } => {
+                CalibrationRunSpecErrorClassification::InvalidInput
+            }
             _ => CalibrationRunSpecErrorClassification::InvalidInput,
         }
     }

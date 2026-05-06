@@ -365,19 +365,21 @@ pub(super) fn build_parameter_bounds(
     (lower_bounds, upper_bounds)
 }
 
-pub(super) fn build_restart_seeds(
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
-    activity_log_shift: f64,
-    joint_context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
-    restart_candidate_budget: usize,
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-) -> Vec<(String, Vec<f64>)> {
+pub(super) fn build_restart_seeds(input: RestartSeedsBuildInput<'_>) -> Vec<(String, Vec<f64>)> {
+    let RestartSeedsBuildInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+        joint_context,
+        solver_settings,
+        restart_candidate_budget,
+        progress_sender,
+    } = input;
+
     emit_restart_seed_generation_progress(
         progress_sender,
         0,
@@ -419,34 +421,55 @@ pub(super) fn build_restart_seeds(
         Some("restart_seed_candidates_built"),
     );
 
-    finalize_restart_seed_candidates(
+    let restart_seed_score = |_: &str, restart_seed: &[f64]| {
+        screened_exploratory_restart_seed_score(restart_seed, joint_context)
+    };
+
+    finalize_restart_seed_candidates(RestartSeedCandidateFinalizationInput {
         restart_candidates,
         baseline_parameter_vector,
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
         restart_candidate_budget,
-        |_, restart_seed| screened_exploratory_restart_seed_score(restart_seed, joint_context),
-        Some(joint_context),
+        restart_seed_score: &restart_seed_score,
+        joint_context: Some(joint_context),
         progress_sender,
-    )
+    })
+}
+
+pub(super) struct RestartSeedsBuildInput<'a> {
+    pub(super) baseline_parameter_vector: &'a [f64],
+    pub(super) active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    pub(super) lower_bounds: &'a [f64],
+    pub(super) upper_bounds: &'a [f64],
+    pub(super) baseline_15m_calibration_sample:
+        &'a ReturnComponentsStageContinuousReturnCalibrationSample,
+    pub(super) return_component_basin_diagnostics:
+        &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    pub(super) activity_log_shift: f64,
+    pub(super) joint_context: &'a JointRefinementContext,
+    pub(super) solver_settings: &'a CalibrationOptimizerSettings,
+    pub(super) restart_candidate_budget: usize,
+    pub(super) progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
 }
 
 #[cfg(test)]
-pub(super) fn build_restart_seeds_with_halton_acceptance<F>(
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
-    activity_log_shift: f64,
-    restart_candidate_budget: usize,
-    halton_seed_is_accepted: F,
-) -> Vec<(String, Vec<f64>)>
-where
-    F: FnMut(&[f64]) -> bool + Send,
-{
+pub(super) fn build_restart_seeds_with_halton_acceptance(
+    input: RestartSeedsWithHaltonAcceptanceBuildInput<'_>,
+) -> Vec<(String, Vec<f64>)> {
+    let RestartSeedsWithHaltonAcceptanceBuildInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+        restart_candidate_budget,
+        halton_seed_is_accepted,
+    } = input;
+
     let halton_seed_is_accepted = Mutex::new(halton_seed_is_accepted);
 
     let restart_candidates = build_core_restart_seed_candidates(
@@ -459,27 +482,47 @@ where
         activity_log_shift,
     );
 
-    finalize_restart_seed_candidates(
+    let restart_seed_score = |restart_id: &str, restart_seed: &[f64]| {
+        if !restart_id.starts_with("halton_") {
+            return Some(0.0);
+        }
+
+        let Ok(mut halton_seed_is_accepted) = halton_seed_is_accepted.lock() else {
+            return None;
+        };
+
+        halton_seed_is_accepted(restart_seed).then_some(0.0)
+    };
+
+    finalize_restart_seed_candidates(RestartSeedCandidateFinalizationInput {
         restart_candidates,
         baseline_parameter_vector,
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
         restart_candidate_budget,
-        |restart_id, restart_seed| {
-            if !restart_id.starts_with("halton_") {
-                return Some(0.0);
-            }
+        restart_seed_score: &restart_seed_score,
+        joint_context: None,
+        progress_sender: None,
+    })
+}
 
-            let Ok(mut halton_seed_is_accepted) = halton_seed_is_accepted.lock() else {
-                return None;
-            };
+#[cfg(test)]
+type HaltonSeedAcceptancePredicate<'a> = Box<dyn FnMut(&[f64]) -> bool + Send + 'a>;
 
-            halton_seed_is_accepted(restart_seed).then_some(0.0)
-        },
-        None,
-        None,
-    )
+#[cfg(test)]
+pub(super) struct RestartSeedsWithHaltonAcceptanceBuildInput<'a> {
+    pub(super) baseline_parameter_vector: &'a [f64],
+    pub(super) active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    pub(super) lower_bounds: &'a [f64],
+    pub(super) upper_bounds: &'a [f64],
+    pub(super) baseline_15m_calibration_sample:
+        &'a ReturnComponentsStageContinuousReturnCalibrationSample,
+    pub(super) return_component_basin_diagnostics:
+        &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    pub(super) activity_log_shift: f64,
+    pub(super) restart_candidate_budget: usize,
+    pub(super) halton_seed_is_accepted: HaltonSeedAcceptancePredicate<'a>,
 }
 
 fn build_core_restart_seed_candidates(
@@ -520,44 +563,49 @@ fn build_core_restart_seed_candidates(
     ];
 
     restart_candidates.extend(joint_nig_basin_restart_seeds(
-        baseline_parameter_vector,
-        active_parameter_layout,
-        lower_bounds,
-        upper_bounds,
-        baseline_15m_calibration_sample,
-        return_component_basin_diagnostics,
-        activity_log_shift,
-        4,
+        JointNigRestartSeedsBuildInput {
+            baseline_parameter_vector,
+            active_parameter_layout,
+            lower_bounds,
+            upper_bounds,
+            baseline_15m_calibration_sample,
+            return_component_basin_diagnostics,
+            activity_log_shift,
+            maximum_seed_count: 4,
+        },
     ));
 
     restart_candidates.extend(joint_nig_alpha_delta_restart_seeds(
-        baseline_parameter_vector,
-        active_parameter_layout,
-        lower_bounds,
-        upper_bounds,
-        baseline_15m_calibration_sample,
-        return_component_basin_diagnostics,
-        activity_log_shift,
-        2,
+        JointNigRestartSeedsBuildInput {
+            baseline_parameter_vector,
+            active_parameter_layout,
+            lower_bounds,
+            upper_bounds,
+            baseline_15m_calibration_sample,
+            return_component_basin_diagnostics,
+            activity_log_shift,
+            maximum_seed_count: 2,
+        },
     ));
 
     restart_candidates
 }
 
-fn finalize_restart_seed_candidates<F>(
-    restart_candidates: Vec<(String, Vec<f64>)>,
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    restart_candidate_budget: usize,
-    restart_seed_score: F,
-    joint_context: Option<&JointRefinementContext>,
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-) -> Vec<(String, Vec<f64>)>
-where
-    F: Fn(&str, &[f64]) -> Option<f64> + Sync,
-{
+fn finalize_restart_seed_candidates(
+    input: RestartSeedCandidateFinalizationInput<'_>,
+) -> Vec<(String, Vec<f64>)> {
+    let RestartSeedCandidateFinalizationInput {
+        restart_candidates,
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        restart_candidate_budget,
+        restart_seed_score,
+        joint_context,
+        progress_sender,
+    } = input;
+
     let target_restart_count = restart_candidate_budget.max(1);
 
     let deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates);
@@ -602,19 +650,20 @@ where
             .collect();
     }
 
-    let mut screened_halton_candidates = screen_halton_restart_candidates(
-        baseline_parameter_vector,
-        active_parameter_layout,
-        lower_bounds,
-        upper_bounds,
-        target_restart_count,
-        frontier_score_ceiling,
-        &restart_seed_score,
-        joint_context,
-        progress_sender,
-        &completed_screening_units,
-        total_screening_units,
-    );
+    let mut screened_halton_candidates =
+        screen_halton_restart_candidates(HaltonRestartCandidateScreeningInput {
+            baseline_parameter_vector,
+            active_parameter_layout,
+            lower_bounds,
+            upper_bounds,
+            target_restart_count,
+            frontier_score_ceiling,
+            halton_seed_score: &restart_seed_score,
+            joint_context,
+            progress_sender,
+            completed_screening_units: &completed_screening_units,
+            total_screening_units,
+        });
 
     screened_halton_candidates.sort_by(|left, right| {
         left.score
@@ -622,7 +671,7 @@ where
             .then_with(|| left.restart_id.cmp(&right.restart_id))
     });
 
-    screened_restart_candidates.extend(screened_halton_candidates.into_iter());
+    screened_restart_candidates.extend(screened_halton_candidates);
 
     let selected_restart_candidates = screened_restart_candidates
         .into_iter()
@@ -633,6 +682,18 @@ where
         .into_iter()
         .take(target_restart_count)
         .collect()
+}
+
+struct RestartSeedCandidateFinalizationInput<'a> {
+    restart_candidates: Vec<(String, Vec<f64>)>,
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
+    restart_candidate_budget: usize,
+    restart_seed_score: &'a (dyn Fn(&str, &[f64]) -> Option<f64> + Sync),
+    joint_context: Option<&'a JointRefinementContext>,
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
 }
 
 #[derive(Debug)]
@@ -680,7 +741,7 @@ fn screen_restart_candidates<F>(
     total_screening_units: usize,
 ) -> Vec<ScreenedRestartCandidate>
 where
-    F: Fn(&str, &[f64]) -> Option<f64> + Sync,
+    F: Fn(&str, &[f64]) -> Option<f64> + Sync + ?Sized,
 {
     let thread_pool = joint_context.and_then(|joint_context| {
         joint_context
@@ -708,7 +769,7 @@ fn screen_restart_candidates_with_thread_pool<F>(
     total_screening_units: usize,
 ) -> Vec<ScreenedRestartCandidate>
 where
-    F: Fn(&str, &[f64]) -> Option<f64> + Sync,
+    F: Fn(&str, &[f64]) -> Option<f64> + Sync + ?Sized,
 {
     let screen_candidate = |(restart_id, seed): &(String, Vec<f64>)| {
         let score = seed_score(restart_id.as_str(), seed.as_slice());
@@ -786,21 +847,25 @@ pub(super) fn restart_candidate_screening_max_parallelism_for_test(
 }
 
 fn screen_halton_restart_candidates<F>(
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    target_restart_count: usize,
-    frontier_score_ceiling: f64,
-    halton_seed_score: &F,
-    joint_context: Option<&JointRefinementContext>,
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    completed_screening_units: &Mutex<usize>,
-    total_screening_units: usize,
+    input: HaltonRestartCandidateScreeningInput<'_, F>,
 ) -> Vec<ScreenedRestartCandidate>
 where
-    F: Fn(&str, &[f64]) -> Option<f64> + Sync,
+    F: Fn(&str, &[f64]) -> Option<f64> + Sync + ?Sized,
 {
+    let HaltonRestartCandidateScreeningInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        target_restart_count,
+        frontier_score_ceiling,
+        halton_seed_score,
+        joint_context,
+        progress_sender,
+        completed_screening_units,
+        total_screening_units,
+    } = input;
+
     let screen_halton_position = |halton_position: usize| {
         let mut halton_seed =
             halton_parameter_vector(halton_position as u64, lower_bounds, upper_bounds);
@@ -852,6 +917,20 @@ where
     (1..=target_restart_count)
         .filter_map(screen_halton_position)
         .collect()
+}
+
+struct HaltonRestartCandidateScreeningInput<'a, F: ?Sized> {
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
+    target_restart_count: usize,
+    frontier_score_ceiling: f64,
+    halton_seed_score: &'a F,
+    joint_context: Option<&'a JointRefinementContext>,
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+    completed_screening_units: &'a Mutex<usize>,
+    total_screening_units: usize,
 }
 
 fn emit_completed_restart_candidate_screening_unit(
@@ -1017,16 +1096,32 @@ fn joint_tick_moment_restart_seeds(
         .collect()
 }
 
-fn joint_nig_basin_restart_seeds(
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+struct JointNigRestartSeedsBuildInput<'a> {
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
+    baseline_15m_calibration_sample: &'a ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics:
+        &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
     activity_log_shift: f64,
     maximum_seed_count: usize,
+}
+
+fn joint_nig_basin_restart_seeds(
+    input: JointNigRestartSeedsBuildInput<'_>,
 ) -> Vec<(String, Vec<f64>)> {
+    let JointNigRestartSeedsBuildInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+        maximum_seed_count,
+    } = input;
+
     return_component_basin_diagnostics
         .iter()
         .take(maximum_seed_count.div_ceil(2))
@@ -1073,15 +1168,19 @@ fn joint_nig_basin_restart_seeds(
 }
 
 fn joint_nig_alpha_delta_restart_seeds(
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
-    activity_log_shift: f64,
-    maximum_seed_count: usize,
+    input: JointNigRestartSeedsBuildInput<'_>,
 ) -> Vec<(String, Vec<f64>)> {
+    let JointNigRestartSeedsBuildInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+        maximum_seed_count,
+    } = input;
+
     return_component_basin_diagnostics
         .iter()
         .take(maximum_seed_count.div_ceil(2))
@@ -1253,15 +1352,19 @@ pub(super) fn compute_cumulative_log_price_span(
 }
 
 pub(super) fn cached_seed_summaries_for_candidate_seeds(
-    parameter_bits: Option<&[u64]>,
-    fitted_parameters: &JointRefinementStageFittedParameters,
-    context: &JointRefinementContext,
-    simulation_seeds: &[u64],
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    progress_phase: Option<JointRefinementStageProgressPhase>,
-    completed_units_before_seed_summaries: usize,
-    total_units: usize,
+    input: CandidateSeedSummariesCacheInput<'_>,
 ) -> Result<Vec<(u64, JointRefinementSeedSummary)>, String> {
+    let CandidateSeedSummariesCacheInput {
+        parameter_bits,
+        fitted_parameters,
+        context,
+        simulation_seeds,
+        progress_sender,
+        progress_phase,
+        completed_units_before_seed_summaries,
+        total_units,
+    } = input;
+
     let cache_key = parameter_bits.map(|bits| JointRefinementSeedSummaryCacheKey {
         parameter_bits: bits.to_vec(),
         simulation_seed: 0,
@@ -1346,6 +1449,17 @@ pub(super) fn cached_seed_summaries_for_candidate_seeds(
     });
 
     Ok(resolved_seed_summaries)
+}
+
+pub(super) struct CandidateSeedSummariesCacheInput<'a> {
+    pub(super) parameter_bits: Option<&'a [u64]>,
+    pub(super) fitted_parameters: &'a JointRefinementStageFittedParameters,
+    pub(super) context: &'a JointRefinementContext,
+    pub(super) simulation_seeds: &'a [u64],
+    pub(super) progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+    pub(super) progress_phase: Option<JointRefinementStageProgressPhase>,
+    pub(super) completed_units_before_seed_summaries: usize,
+    pub(super) total_units: usize,
 }
 
 pub(crate) fn build_surprise_multipliers_for_interval_grid(

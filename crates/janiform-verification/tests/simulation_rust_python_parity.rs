@@ -12,7 +12,8 @@ use janiform_engine_simulation::{
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, build_hourly_factor_contract,
+    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HourlyFactorContractBuildInput,
+    build_hourly_factor_contract,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -415,17 +416,16 @@ fn run_fixture_case(
     let range_start_utc = parse_utc_timestamp(&fixture_case.range_start_utc)?;
     let range_end_utc = parse_utc_timestamp(&fixture_case.range_end_utc)?;
 
-    let hourly_factor_contract = build_hourly_factor_contract(
+    let hourly_factor_contract = build_hourly_factor_contract(HourlyFactorContractBuildInput {
         calendar_registry,
-        &fixture_case.exchange_code,
-        range_start_utc,
-        range_end_utc,
-        NANOS_PER_HOUR,
-        &fixture_case.seasonality_hourly_factors,
-        &fixture_case.news_intensity_hourly_factors,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-    )
+        exchange_code: &fixture_case.exchange_code,
+        range_utc: range_start_utc..range_end_utc,
+        interval_duration_nanos: NANOS_PER_HOUR,
+        seasonality_factors: &fixture_case.seasonality_hourly_factors,
+        news_intensity_factors: &fixture_case.news_intensity_hourly_factors,
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
     .map_err(|source| format!("failed to build hourly factor contract: {source}"))?;
 
     let kernel_parameters = HawkesKernelParameters::try_new(
@@ -620,12 +620,14 @@ fn first_mismatch_diagnostic(
     None
 }
 
+type IntervalCountSummary = (Vec<usize>, Vec<usize>, Vec<usize>);
+
 fn summarize_counts_by_interval(
     observed_timestamps: &[i64],
     observed_sides: &[String],
     range_start_utc: &str,
     horizon_interval_count: usize,
-) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>), String> {
+) -> Result<IntervalCountSummary, String> {
     let mut interval_event_counts = vec![0usize; horizon_interval_count];
     let mut interval_buy_counts = vec![0usize; horizon_interval_count];
     let mut interval_sell_counts = vec![0usize; horizon_interval_count];

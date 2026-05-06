@@ -547,8 +547,9 @@ fn family_aligned_candidate_count(candidate_budget: usize, family_count: usize) 
     }
 
     let requested_budget = candidate_budget.max(family_count);
-    let rounded_family_count =
-        ((requested_budget + family_count - 1) / family_count).saturating_mul(family_count);
+    let rounded_family_count = requested_budget
+        .div_ceil(family_count)
+        .saturating_mul(family_count);
 
     rounded_family_count.max(family_count)
 }
@@ -804,10 +805,10 @@ fn evaluate_cached_search_point(
         log_delta_offset_bits: shape_search_point.log_delta_offset.to_bits(),
     };
 
-    if let Ok(cache_guard) = optimizer_context.cache.lock() {
-        if let Some(cached_value) = cache_guard.get(&cache_key) {
-            return *cached_value;
-        }
+    if let Ok(cache_guard) = optimizer_context.cache.lock()
+        && let Some(cached_value) = cache_guard.get(&cache_key)
+    {
+        return *cached_value;
     }
 
     let cached_value = configuration_from_shape_search_point(optimizer_context, shape_search_point)

@@ -63,7 +63,7 @@ impl ExchangeCalendarRegistry {
                 ExchangeCalendarDefinition::from_artifact(exchange_artifact).map_err(|source| {
                     ExchangeCalendarRegistryLoadError::InvalidExchangeArtifact {
                         exchange_code: (!exchange_code.is_empty()).then_some(exchange_code.clone()),
-                        source,
+                        source: Box::new(source),
                     }
                 })?;
 
@@ -105,7 +105,7 @@ impl ExchangeCalendarRegistry {
     /// - Session windows are interpreted as half-open intervals `[open, close)`.
     /// - Exact session open timestamp resolves to `MarketState::Open`.
     /// - Exact session close timestamp resolves to `MarketState::Closed`.
-    /// Rule precedence:
+    ///   Rule precedence:
     /// - Holidays resolve `MarketState::Closed` for the full local exchange date.
     /// - Early-close windows override regular sessions when configured for a local date.
     /// - Regular sessions apply when neither holiday nor early-close rule matches.

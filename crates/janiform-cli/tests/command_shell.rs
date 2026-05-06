@@ -65,28 +65,27 @@ fn root_help_shows_primary_command_tree() {
 
 #[test]
 fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
-    for arguments in [&[
+    let arguments = &[
         "price",
         "observed-options",
         "--model-path",
         "model.jf",
         "--option-surface-path",
         "options.parquet",
-    ][..]]
-    {
-        let output = janiform_command()
-            .args(arguments)
-            .output()
-            .expect("janiform command should execute");
+    ];
 
-        assert_eq!(
-            output.status.code(),
-            Some(CliExitCode::UnimplementedCommand as i32),
-            "unexpected exit for arguments {arguments:?}: stdout=`{}` stderr=`{}`",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+    let output = janiform_command()
+        .args(arguments)
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::UnimplementedCommand as i32),
+        "unexpected exit for arguments {arguments:?}: stdout=`{}` stderr=`{}`",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -716,7 +715,6 @@ fn validate_stylized_facts_human_reports_failures_and_artifacts() {
         "Artifact output",
         "stylized_facts.report_bundle.json",
         "stylized_facts.table_summary.json",
-        "stylized_facts.plot_payload.json",
     ] {
         assert!(
             stdout.contains(expected),
@@ -727,7 +725,6 @@ fn validate_stylized_facts_human_reports_failures_and_artifacts() {
     for file_name in [
         "stylized_facts.report_bundle.json",
         "stylized_facts.table_summary.json",
-        "stylized_facts.plot_payload.json",
     ] {
         assert!(
             workspace.join("exported").join(file_name).is_file(),

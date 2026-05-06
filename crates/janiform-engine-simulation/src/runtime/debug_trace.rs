@@ -152,7 +152,7 @@ impl SeededTickEventDebugTraceCollector {
             return true;
         }
 
-        transition_index % self.options.sample_every_nth_transition == 0
+        transition_index.is_multiple_of(self.options.sample_every_nth_transition)
     }
 
     fn flush_pending_chunk(&mut self) {

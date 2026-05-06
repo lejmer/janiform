@@ -125,18 +125,21 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
         fs::remove_dir_all(export_directory.as_path())
             .expect("pre-existing export directory should be removable");
     }
+
     fs::create_dir_all(export_directory.as_path()).expect("export directory should be creatable");
 
     let export_config = StylizedFactHorizonComparisonArtifactExportConfig {
         export_directory: export_directory.display().to_string(),
         file_stem: "batch_run_fixture".to_string(),
     };
+
     let request = build_generator_request(CalibrationExecutionMode::Disk, Some(export_config));
 
     let first_bundle = run_stylized_fact_horizon_comparison_report_generator(request.clone())
         .expect("first disk-mode report generation should succeed");
     let second_bundle = run_stylized_fact_horizon_comparison_report_generator(request)
         .expect("second disk-mode report generation should succeed");
+
     let first_receipt = first_bundle
         .artifact_export
         .as_ref()
@@ -157,7 +160,6 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
         vec![
             "batch_run_fixture.report_bundle.json",
             "batch_run_fixture.table_summary.json",
-            "batch_run_fixture.plot_payload.json",
         ]
     );
 
@@ -165,6 +167,7 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
     for exported_file in &first_receipt.exported_files {
         let payload = fs::read_to_string(exported_file.absolute_path.as_str())
             .expect("exported artifact file should be readable");
+
         first_pass_payloads.push(payload);
     }
 
@@ -172,52 +175,11 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
     for exported_file in &second_receipt.exported_files {
         let payload = fs::read_to_string(exported_file.absolute_path.as_str())
             .expect("exported artifact file should be readable on second pass");
+
         second_pass_payloads.push(payload);
     }
 
     assert_eq!(first_pass_payloads, second_pass_payloads);
-}
-
-#[test]
-fn plot_payload_preserves_metric_class_and_uncertainty_metadata() {
-    let report_bundle = run_stylized_fact_horizon_comparison_report_generator(
-        build_generator_request(CalibrationExecutionMode::Memory, None),
-    )
-    .expect("report generator should succeed in memory mode");
-
-    assert_eq!(
-        report_bundle.plot_payload.points.len(),
-        report_bundle.table_summary.rows.len()
-    );
-
-    for plot_point in &report_bundle.plot_payload.points {
-        let table_row = report_bundle
-            .table_summary
-            .rows
-            .iter()
-            .find(|row| {
-                row.calibration_run_id == plot_point.calibration_run_id
-                    && row.horizon_label == plot_point.horizon_label
-                    && row.metric_id == plot_point.metric_id
-                    && row.metric_variant == plot_point.metric_variant
-            })
-            .expect("plot point should map to one table row");
-
-        assert_eq!(plot_point.metric_class, table_row.metric_class);
-        assert_eq!(plot_point.status, table_row.status);
-        assert_eq!(
-            plot_point.empirical_confidence_interval,
-            table_row.empirical_confidence_interval
-        );
-        assert_eq!(
-            plot_point.simulated_confidence_interval,
-            table_row.simulated_confidence_interval
-        );
-        assert_eq!(
-            plot_point.insufficient_data_reasons,
-            table_row.insufficient_data_reasons
-        );
-    }
 }
 
 fn build_generator_request(

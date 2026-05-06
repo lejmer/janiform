@@ -47,7 +47,7 @@ pub(crate) fn dispatch(
     );
 
     let result = match command {
-        RootCommand::Fit(command) => dispatch_fit(context, command),
+        RootCommand::Fit(command) => dispatch_fit(context, *command),
         RootCommand::Inspect(command) => match command.command {
             InspectSubcommand::Run(command) => run_inspect_run(context, command),
             InspectSubcommand::Model(command) => run_inspect_model(context, command),
@@ -55,18 +55,24 @@ pub(crate) fn dispatch(
         RootCommand::Report(command) => match command.command {
             ReportSubcommand::Fit(command) => run_report_fit(context, command),
         },
-        RootCommand::Price(command) => dispatch_price(context, command),
-        RootCommand::Simulate(command) => match command.command {
-            Some(SimulateSubcommand::SeededTicks(command)) => {
-                crate::commands::simulation::run_simulate_seeded_ticks_command(context, command)
+        RootCommand::Price(command) => dispatch_price(context, *command),
+        RootCommand::Simulate(command) => {
+            let mut command = *command;
+
+            match command.command.take() {
+                Some(SimulateSubcommand::SeededTicks(command)) => {
+                    crate::commands::simulation::run_simulate_seeded_ticks_command(context, command)
+                }
+                Some(SimulateSubcommand::CoarseInterval(command)) => {
+                    crate::commands::simulation::run_simulate_coarse_interval_command(
+                        context, command,
+                    )
+                }
+                None => crate::commands::simulation::run_simulate_from_model_artifact_command(
+                    context, command,
+                ),
             }
-            Some(SimulateSubcommand::CoarseInterval(command)) => {
-                crate::commands::simulation::run_simulate_coarse_interval_command(context, command)
-            }
-            None => crate::commands::simulation::run_simulate_from_model_artifact_command(
-                context, command,
-            ),
-        },
+        }
         RootCommand::Presets(command) => match command.command {
             PresetsSubcommand::List(command) => run_presets_list(context, command),
             PresetsSubcommand::Show(command) => run_presets_show(context, command),
@@ -119,7 +125,7 @@ fn dispatch_fit(
         Some(FitSubcommand::Inspect(command)) => run_fit_inspect(context, command),
         Some(FitSubcommand::Plan(command)) => run_fit_plan(context, command),
         Some(FitSubcommand::Staged(command)) => match command.command {
-            Some(FitStagedSubcommand::Plan(command)) => run_fit_staged_plan(context, command),
+            Some(FitStagedSubcommand::Plan(command)) => run_fit_staged_plan(context, *command),
             Some(FitStagedSubcommand::Run(command)) => {
                 run_fit_staged_run_command(context, command.staged)
             }

@@ -50,38 +50,38 @@ pub(crate) struct Cli {
 #[derive(Debug, Subcommand)]
 pub(crate) enum RootCommand {
     #[command(about = "Fit Janiform models from market data.")]
-    Fit(FitCommand),
+    Fit(Box<FitCommand>),
 
     #[command(about = "Inspect saved runs and fitted models.")]
-    Inspect(InspectCommand),
+    Inspect(Box<InspectCommand>),
 
     #[command(about = "Render reports from saved Janiform outputs.")]
-    Report(ReportCommand),
+    Report(Box<ReportCommand>),
 
     #[command(
         about = "Price derivatives with a fitted Janiform model.",
         alias = "pricing"
     )]
-    Price(PriceCommand),
+    Price(Box<PriceCommand>),
 
     #[command(about = "Simulate paths from a fitted Janiform model.")]
-    Simulate(SimulateCommand),
+    Simulate(Box<SimulateCommand>),
 
     #[command(about = "Inspect bundled and user-registered presets.")]
-    Presets(PresetsCommand),
+    Presets(Box<PresetsCommand>),
 
     #[command(about = "Prepare and diagnose seasonality inputs.")]
-    Seasonality(SeasonalityCommand),
+    Seasonality(Box<SeasonalityCommand>),
 
     #[command(
         name = "hourly-factors",
         about = "Prepare hourly seasonality and news-intensity factors."
     )]
-    HourlyFactors(HourlyFactorsCommand),
+    HourlyFactors(Box<HourlyFactorsCommand>),
 
     #[command(about = "Validate fitted models against empirical behavior.")]
-    Validate(ValidateCommand),
+    Validate(Box<ValidateCommand>),
 
     #[command(about = "Janiform workflows for developers.")]
-    Dev(DevCommand),
+    Dev(Box<DevCommand>),
 }

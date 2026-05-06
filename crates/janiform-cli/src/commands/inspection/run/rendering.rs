@@ -23,7 +23,7 @@ use janiform_terminal_ui::format_warning_count;
 use crate::commands::shared::terminal::ArtifactListItem;
 use crate::commands::shared::terminal::render_artifact_list;
 
-use super::RunStateSource;
+use super::state::RunStateSource;
 
 pub(super) fn render_run_state(
     state: &RunStateSnapshot,

@@ -352,35 +352,39 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         &fitted_activity_coupling_layer,
     );
 
-    let candidate_provenance_template = build_candidate_provenance_template(
-        sorted_signals.source_window,
-        stage_seed,
-        summary_statistics,
-        close_open_gap_detection_filter,
-        fitted_signal_partition_layer,
-        fitted_surprise_episode_selection_layer.policy.clone(),
-        fitted_quantile_binning_policy,
-        fitted_diagnostic_policy.clone(),
-        fitted_objective_scoring_policy.clone(),
-        fitted_price_range_sanity_policy.clone(),
-    );
+    let candidate_provenance_template =
+        build_candidate_provenance_template(CandidateProvenanceTemplateBuildInput {
+            source_window: sorted_signals.source_window,
+            stage_seed,
+            summary_statistics,
+            close_open_gap_detection_filter,
+            fitted_signal_partition_layer,
+            fitted_surprise_episode_selection_policy: fitted_surprise_episode_selection_layer
+                .policy
+                .clone(),
+            fitted_quantile_binning_policy,
+            fitted_diagnostic_policy: fitted_diagnostic_policy.clone(),
+            fitted_objective_scoring_policy: fitted_objective_scoring_policy.clone(),
+            fitted_price_range_sanity_policy: fitted_price_range_sanity_policy.clone(),
+        });
 
     let candidate_family_counts =
         build_candidate_family_counts(&candidate_family_sets.fitted_continuous_return_layer);
 
-    let generated_candidates = enumerate_candidate_inputs(
+    let generated_candidates = enumerate_candidate_inputs(CandidateInputsEnumerationInput {
         candidate_generation_input,
-        &candidate_family_sets,
+        candidate_family_sets: &candidate_family_sets,
         summary_statistics,
-        &continuous_return_calibration_sample,
-        &fitted_surprise_arrival_layer.deterministic_intensity_profile,
-        stage_seed,
-        &candidate_provenance_template,
-        &fitted_diagnostic_policy,
-        &fitted_objective_scoring_policy,
-        &fitted_price_range_sanity_policy,
+        _continuous_return_calibration_sample: &continuous_return_calibration_sample,
+        fitted_surprise_deterministic_intensity_profile: &fitted_surprise_arrival_layer
+            .deterministic_intensity_profile,
+        _stage_seed: stage_seed,
+        candidate_provenance_template: &candidate_provenance_template,
+        fitted_diagnostic_policy: &fitted_diagnostic_policy,
+        fitted_objective_scoring_policy: &fitted_objective_scoring_policy,
+        fitted_price_range_sanity_policy: &fitted_price_range_sanity_policy,
         progress_sender,
-    )?;
+    })?;
 
     Ok(ReturnComponentsStageCandidateGenerationOutput {
         candidate_inputs: generated_candidates,
@@ -449,17 +453,21 @@ fn build_activity_coupling_families(
 }
 
 fn build_candidate_provenance_template(
-    source_window: super::super::contracts::ReturnComponentsStageSignalSourceWindow,
-    stage_seed: u64,
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
-    close_open_gap_detection_filter: &str,
-    fitted_signal_partition_layer: signal_partition_fit::FittedSignalPartitionLayer,
-    fitted_surprise_episode_selection_policy: ReturnComponentsStageSurpriseEpisodeSelectionPolicy,
-    fitted_quantile_binning_policy: ReturnComponentsStageQuantileBinningPolicy,
-    fitted_diagnostic_policy: ReturnComponentsStageDiagnosticPolicy,
-    fitted_objective_scoring_policy: ReturnComponentsStageObjectiveScoringPolicy,
-    fitted_price_range_sanity_policy: ReturnComponentsStagePriceRangeSanityPolicy,
+    input: CandidateProvenanceTemplateBuildInput<'_>,
 ) -> ReturnComponentsStageCandidateProvenance {
+    let CandidateProvenanceTemplateBuildInput {
+        source_window,
+        stage_seed,
+        summary_statistics,
+        close_open_gap_detection_filter,
+        fitted_signal_partition_layer,
+        fitted_surprise_episode_selection_policy,
+        fitted_quantile_binning_policy,
+        fitted_diagnostic_policy,
+        fitted_objective_scoring_policy,
+        fitted_price_range_sanity_policy,
+    } = input;
+
     ReturnComponentsStageCandidateProvenance {
         source_windows: vec![
             ReturnComponentsStageCandidateSourceWindow {
@@ -525,6 +533,19 @@ fn build_candidate_provenance_template(
     }
 }
 
+struct CandidateProvenanceTemplateBuildInput<'a> {
+    source_window: super::super::contracts::ReturnComponentsStageSignalSourceWindow,
+    stage_seed: u64,
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    close_open_gap_detection_filter: &'a str,
+    fitted_signal_partition_layer: signal_partition_fit::FittedSignalPartitionLayer,
+    fitted_surprise_episode_selection_policy: ReturnComponentsStageSurpriseEpisodeSelectionPolicy,
+    fitted_quantile_binning_policy: ReturnComponentsStageQuantileBinningPolicy,
+    fitted_diagnostic_policy: ReturnComponentsStageDiagnosticPolicy,
+    fitted_objective_scoring_policy: ReturnComponentsStageObjectiveScoringPolicy,
+    fitted_price_range_sanity_policy: ReturnComponentsStagePriceRangeSanityPolicy,
+}
+
 fn build_candidate_family_counts(
     fitted_continuous_return_layer: &continuous_layer_fit::FittedContinuousReturnLayer,
 ) -> ReturnComponentsStageCandidateFamilyCounts {
@@ -538,21 +559,25 @@ fn build_candidate_family_counts(
 }
 
 fn enumerate_candidate_inputs(
-    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-    candidate_family_sets: &ReturnComponentsStageCandidateFamilySets,
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
-    _continuous_return_calibration_sample: &super::super::continuous_fit::ReturnComponentsStageContinuousReturnCalibrationSample,
-    fitted_surprise_deterministic_intensity_profile: &SurpriseNewsDeterministicIntensityProfile,
-    _stage_seed: u64,
-    candidate_provenance_template: &ReturnComponentsStageCandidateProvenance,
-    fitted_diagnostic_policy: &ReturnComponentsStageDiagnosticPolicy,
-    fitted_objective_scoring_policy: &ReturnComponentsStageObjectiveScoringPolicy,
-    fitted_price_range_sanity_policy: &ReturnComponentsStagePriceRangeSanityPolicy,
-    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
+    input: CandidateInputsEnumerationInput<'_>,
 ) -> Result<
     Vec<ReturnComponentsStageCandidateInput>,
     ReturnComponentsStageCandidateGenerationInputError,
 > {
+    let CandidateInputsEnumerationInput {
+        candidate_generation_input,
+        candidate_family_sets,
+        summary_statistics,
+        _continuous_return_calibration_sample,
+        fitted_surprise_deterministic_intensity_profile,
+        _stage_seed,
+        candidate_provenance_template,
+        fitted_diagnostic_policy,
+        fitted_objective_scoring_policy,
+        fitted_price_range_sanity_policy,
+        progress_sender,
+    } = input;
+
     let known_arrival_family = candidate_family_sets
         .fitted_known_arrival_layer
         .as_candidate_family();
@@ -696,6 +721,21 @@ fn enumerate_candidate_inputs(
             },
         )
         .collect()
+}
+
+struct CandidateInputsEnumerationInput<'a> {
+    candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
+    candidate_family_sets: &'a ReturnComponentsStageCandidateFamilySets,
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    _continuous_return_calibration_sample:
+        &'a super::super::continuous_fit::ReturnComponentsStageContinuousReturnCalibrationSample,
+    fitted_surprise_deterministic_intensity_profile: &'a SurpriseNewsDeterministicIntensityProfile,
+    _stage_seed: u64,
+    candidate_provenance_template: &'a ReturnComponentsStageCandidateProvenance,
+    fitted_diagnostic_policy: &'a ReturnComponentsStageDiagnosticPolicy,
+    fitted_objective_scoring_policy: &'a ReturnComponentsStageObjectiveScoringPolicy,
+    fitted_price_range_sanity_policy: &'a ReturnComponentsStagePriceRangeSanityPolicy,
+    progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
 }
 
 fn build_news_process_configuration_from_candidate_families(

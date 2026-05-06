@@ -3,8 +3,9 @@ use std::path::Path;
 use janiform_calibration_artifacts::CalibrationStage;
 use janiform_calibration_runtime::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, JointRefinementProgressCandidateAssessment,
-    JointRefinementStageProgressPhase, ReturnComponentsStageProgressPhase,
+    CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent,
+    JointRefinementProgressCandidateAssessment, JointRefinementStageProgressPhase,
+    ReturnComponentsStageProgressPhase,
 };
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
@@ -79,29 +80,22 @@ pub fn run_events_from_staged_event(
                 runtime_seconds: *runtime_seconds,
             }),
         )],
-        CalibrationStagedRunObserverEvent::StageProgress {
-            run_id,
-            stage,
-            progress_phase,
-            completed_units,
-            total_units,
-            ..
-        } => vec![RunEvent::new(
-            run_id.clone(),
+        CalibrationStagedRunObserverEvent::StageProgress(progress) => vec![RunEvent::new(
+            progress.run_id.clone(),
             workflow,
             EventDeliveryPriority::DroppableVolatile,
             RunEventPayload::Progress(RunProgressEvent {
-                stage: Some(stage_ref(*stage)),
+                stage: Some(stage_ref(progress.stage)),
                 phase: Some(phase_ref(
-                    phase_token(progress_phase),
-                    phase_label(progress_phase),
+                    phase_token(&progress.progress_phase),
+                    phase_label(&progress.progress_phase),
                 )),
                 subphase: None,
                 measures: vec![EventProgressMeasure::BoundedCount {
                     metric_id: "stage_units".to_string(),
                     label: Some("stage units".to_string()),
-                    completed_units: *completed_units,
-                    total_units: *total_units,
+                    completed_units: progress.completed_units,
+                    total_units: progress.total_units,
                 }],
             }),
         )],
@@ -190,71 +184,22 @@ pub fn progress_event_from_staged_event(
             stage_number: *stage_index,
             stage_count: *stage_count,
         }),
-        CalibrationStagedRunObserverEvent::StageProgress {
-            progress_phase,
-            completed_units,
-            total_units,
-            current_item_label,
-            planned_work_item_labels,
-            active_restart_count,
-            current_evaluation_count,
-            total_evaluation_budget,
-            evaluation_progress_percent,
-            valid_completed_units,
-            cumulative_local_evaluation_count,
-            current_weighted_objective,
-            current_restart_best_weighted_objective,
-            current_candidate_assessment,
-            best_weighted_objective,
-            current_coarse_consistency_fit,
-            best_coarse_consistency_fit,
-            current_convergence_ratio,
-            ..
-        } => Some(ProgressEvent::StageProgress {
-            phase: phase_label(progress_phase).to_string(),
-            measure: UiProgressMeasure::bounded(*completed_units, *total_units)
-                .map_err(|source| WorkflowError::OutputProgress { source })?,
-            work_item_label: progress_work_item_label(
-                progress_phase,
-                current_item_label.as_deref(),
-            ),
-            work_item_progress_percent: *evaluation_progress_percent,
-            planned_work_item_labels: planned_work_item_labels.clone(),
-            work_item_columns: work_item_table_columns(
-                progress_phase,
-                *current_evaluation_count,
-                *total_evaluation_budget,
-                *current_weighted_objective,
-                *current_restart_best_weighted_objective,
-                *current_candidate_assessment,
-                *current_coarse_consistency_fit,
-                *current_convergence_ratio,
-            ),
-            work_item_metrics: work_item_table_metrics(
-                *evaluation_progress_percent,
-                *current_evaluation_count,
-                *total_evaluation_budget,
-                *current_weighted_objective,
-                *current_restart_best_weighted_objective,
-                *current_candidate_assessment,
-                *current_coarse_consistency_fit,
-                *current_convergence_ratio,
-            ),
-            latest_signal: stage_progress_signal(
-                progress_phase,
-                current_item_label.as_deref(),
-                *active_restart_count,
-                *current_evaluation_count,
-                *total_evaluation_budget,
-                *valid_completed_units,
-                *cumulative_local_evaluation_count,
-                *current_weighted_objective,
-                *best_weighted_objective,
-                *current_coarse_consistency_fit,
-                *best_coarse_consistency_fit,
-                *current_convergence_ratio,
-            ),
-        }),
+        CalibrationStagedRunObserverEvent::StageProgress(progress) => {
+            Some(ProgressEvent::StageProgress {
+                phase: phase_label(&progress.progress_phase).to_string(),
+                measure: UiProgressMeasure::bounded(progress.completed_units, progress.total_units)
+                    .map_err(|source| WorkflowError::OutputProgress { source })?,
+                work_item_label: progress_work_item_label(
+                    &progress.progress_phase,
+                    progress.current_item_label.as_deref(),
+                ),
+                work_item_progress_percent: progress.evaluation_progress_percent,
+                planned_work_item_labels: progress.planned_work_item_labels.clone(),
+                work_item_columns: work_item_table_columns(progress),
+                work_item_metrics: work_item_table_metrics(progress),
+                latest_signal: stage_progress_signal(progress),
+            })
+        }
         CalibrationStagedRunObserverEvent::StageCompleted {
             stage,
             runtime_seconds,
@@ -338,54 +283,46 @@ fn serialized_failure_reason(
     serde_json::to_string(failure).map_err(|source| WorkflowError::OutputSerialize { source })
 }
 
-fn stage_progress_signal(
-    progress_phase: &CalibrationStageProgressPhase,
-    current_item_label: Option<&str>,
-    active_restart_count: Option<usize>,
-    current_evaluation_count: Option<usize>,
-    total_evaluation_budget: Option<usize>,
-    valid_completed_units: Option<usize>,
-    cumulative_local_evaluation_count: Option<usize>,
-    current_weighted_objective: Option<f64>,
-    best_weighted_objective: Option<f64>,
-    current_coarse_consistency_fit: Option<f64>,
-    best_coarse_consistency_fit: Option<f64>,
-    current_convergence_ratio: Option<f64>,
-) -> Option<String> {
-    if progress_work_item_label(progress_phase, current_item_label).is_some() {
+fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> Option<String> {
+    if progress_work_item_label(
+        &progress.progress_phase,
+        progress.current_item_label.as_deref(),
+    )
+    .is_some()
+    {
         return parallel_stage_progress_signal(
-            active_restart_count,
-            valid_completed_units,
-            cumulative_local_evaluation_count,
-            best_weighted_objective,
-            best_coarse_consistency_fit,
+            progress.active_restart_count,
+            progress.valid_completed_units,
+            progress.cumulative_local_evaluation_count,
+            progress.best_weighted_objective,
+            progress.best_coarse_consistency_fit,
         );
     }
 
     let mut parts = Vec::new();
 
-    if let Some(current_item_label) = current_item_label {
+    if let Some(current_item_label) = progress.current_item_label.as_deref() {
         parts.push(current_item_label.to_string());
     }
     push_evaluation_signal(
         &mut parts,
-        current_evaluation_count,
-        total_evaluation_budget,
+        progress.current_evaluation_count,
+        progress.total_evaluation_budget,
     );
 
-    if let Some(current_weighted_objective) = current_weighted_objective {
+    if let Some(current_weighted_objective) = progress.current_weighted_objective {
         parts.push(format!("objective {current_weighted_objective:.6}"));
     }
-    if let Some(best_weighted_objective) = best_weighted_objective {
+    if let Some(best_weighted_objective) = progress.best_weighted_objective {
         parts.push(format!("best {best_weighted_objective:.6}"));
     }
-    if let Some(current_coarse_consistency_fit) = current_coarse_consistency_fit {
+    if let Some(current_coarse_consistency_fit) = progress.current_coarse_consistency_fit {
         parts.push(format!("coarse fit {current_coarse_consistency_fit:.6}"));
     }
-    if let Some(best_coarse_consistency_fit) = best_coarse_consistency_fit {
+    if let Some(best_coarse_consistency_fit) = progress.best_coarse_consistency_fit {
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
     }
-    if let Some(current_convergence_ratio) = current_convergence_ratio {
+    if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
         parts.push(format!("convergence {current_convergence_ratio:.6}"));
     }
 
@@ -433,44 +370,39 @@ fn candidate_assessment_label(assessment: &JointRefinementProgressCandidateAsses
 }
 
 fn work_item_table_columns(
-    progress_phase: &CalibrationStageProgressPhase,
-    current_evaluation_count: Option<usize>,
-    total_evaluation_budget: Option<usize>,
-    current_weighted_objective: Option<f64>,
-    current_restart_best_weighted_objective: Option<f64>,
-    current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
-    current_coarse_consistency_fit: Option<f64>,
-    current_convergence_ratio: Option<f64>,
+    progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Vec<ProgressWorkItemColumn> {
     let mut columns = Vec::new();
     let uses_restart_optimization_columns =
-        work_item_table_uses_restart_optimization_columns(progress_phase);
+        work_item_table_uses_restart_optimization_columns(&progress.progress_phase);
 
     if uses_restart_optimization_columns
-        || current_evaluation_count.is_some()
-        || total_evaluation_budget.is_some()
+        || progress.current_evaluation_count.is_some()
+        || progress.total_evaluation_budget.is_some()
     {
         columns.push(ProgressWorkItemColumn::new("eval", "Eval"));
     }
-    if uses_restart_optimization_columns || current_weighted_objective.is_some() {
+    if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
         columns.push(ProgressWorkItemColumn::new(
             "current_objective",
             "Cur. obj.",
         ));
     }
-    if uses_restart_optimization_columns || current_restart_best_weighted_objective.is_some() {
+    if uses_restart_optimization_columns
+        || progress.current_restart_best_weighted_objective.is_some()
+    {
         columns.push(ProgressWorkItemColumn::new("best_objective", "Best obj."));
     }
-    if uses_restart_optimization_columns || current_weighted_objective.is_some() {
+    if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
         columns.push(ProgressWorkItemColumn::new("final_objective", "Final obj."));
     }
-    if current_candidate_assessment.is_some() {
+    if progress.current_candidate_assessment.is_some() {
         columns.push(ProgressWorkItemColumn::new("assessment", "Assessment"));
     }
-    if current_coarse_consistency_fit.is_some() {
+    if progress.current_coarse_consistency_fit.is_some() {
         columns.push(ProgressWorkItemColumn::new("coarse_fit", "Coarse fit"));
     }
-    if current_convergence_ratio.is_some() {
+    if progress.current_convergence_ratio.is_some() {
         columns.push(ProgressWorkItemColumn::new("convergence", "Conv."));
     }
 
@@ -489,25 +421,19 @@ fn work_item_table_uses_restart_optimization_columns(
 }
 
 fn work_item_table_metrics(
-    evaluation_progress_percent: Option<usize>,
-    current_evaluation_count: Option<usize>,
-    total_evaluation_budget: Option<usize>,
-    current_weighted_objective: Option<f64>,
-    current_restart_best_weighted_objective: Option<f64>,
-    current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
-    current_coarse_consistency_fit: Option<f64>,
-    current_convergence_ratio: Option<f64>,
+    progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Vec<ProgressWorkItemMetric> {
     let mut metrics = Vec::new();
 
-    if let Some(evaluation_label) =
-        evaluation_label(current_evaluation_count, total_evaluation_budget)
-    {
+    if let Some(evaluation_label) = evaluation_label(
+        progress.current_evaluation_count,
+        progress.total_evaluation_budget,
+    ) {
         metrics.push(ProgressWorkItemMetric::new("eval", evaluation_label));
     }
 
-    if let Some(current_weighted_objective) = current_weighted_objective {
-        let metric_key = if evaluation_progress_percent == Some(100) {
+    if let Some(current_weighted_objective) = progress.current_weighted_objective {
+        let metric_key = if progress.evaluation_progress_percent == Some(100) {
             "final_objective"
         } else {
             "current_objective"
@@ -518,25 +444,27 @@ fn work_item_table_metrics(
             format!("{current_weighted_objective:.6}"),
         ));
     }
-    if let Some(current_restart_best_weighted_objective) = current_restart_best_weighted_objective {
+    if let Some(current_restart_best_weighted_objective) =
+        progress.current_restart_best_weighted_objective
+    {
         metrics.push(ProgressWorkItemMetric::new(
             "best_objective",
             format!("{current_restart_best_weighted_objective:.6}"),
         ));
     }
-    if let Some(current_candidate_assessment) = current_candidate_assessment {
+    if let Some(current_candidate_assessment) = progress.current_candidate_assessment {
         metrics.push(ProgressWorkItemMetric::new(
             "assessment",
             candidate_assessment_label(&current_candidate_assessment),
         ));
     }
-    if let Some(current_coarse_consistency_fit) = current_coarse_consistency_fit {
+    if let Some(current_coarse_consistency_fit) = progress.current_coarse_consistency_fit {
         metrics.push(ProgressWorkItemMetric::new(
             "coarse_fit",
             format!("{current_coarse_consistency_fit:.6}"),
         ));
     }
-    if let Some(current_convergence_ratio) = current_convergence_ratio {
+    if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
         metrics.push(ProgressWorkItemMetric::new(
             "convergence",
             format!("{current_convergence_ratio:.6}"),

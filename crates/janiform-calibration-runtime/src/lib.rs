@@ -126,7 +126,8 @@ pub use runtime_seasonality::{
 };
 pub use staged_runner::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
+    CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
     calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,

@@ -22,7 +22,7 @@ pub fn black_scholes_log_return_characteristic_function(
     let drift_term = imaginary_unit_term.scale(drift);
     let variance_term = argument.square().scale(-0.5 * variance);
 
-    complex_exponential(drift_term.add(variance_term))
+    complex_exponential(drift_term.plus(variance_term))
 }
 
 /// Evaluate the Black-Scholes log-return characteristic function for hourly intraday maturities and annualized rates.

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "e51e7e11d5b164f455c9eb803f515d5083715d7abb85d63071009c5b5123ca46",
+  "approved_snapshot_sha256": "8779b3501a364f93bcd754bfddd3398cef2d5306430bec20b7aa52bc5be3c9f1",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1359,6 +1359,20 @@
       "updated_surfaces": [
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-04",
+      "docs_updated": [
+        "docs/workflows/model-validation.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Janiform does not need native plot support for stylized facts initially. Let people choose what to plot and build their plots of this themselves if they need them.",
+      "snapshot_sha256": "8779b3501a364f93bcd754bfddd3398cef2d5306430bec20b7aa52bc5be3c9f1",
+      "summary": "Remove native plot support for stylized facts from Janiform initial release.",
+      "updated_surfaces": [
+        "janiform.stylized_facts.contracts",
+        "janiform.stylized_facts.workflows"
       ]
     }
   ],

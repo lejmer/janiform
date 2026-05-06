@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use chrono::{DateTime, Utc};
 
 use crate::calendar::ExchangeCalendarRegistry;
@@ -25,17 +27,32 @@ use super::types::{
 /// - Exchange-local interval labels are projections of UTC boundaries and include numeric offsets.
 /// - Spring-forward transitions skip nonexistent local-hour labels.
 /// - Fall-back transitions preserve repeated local-hour labels and disambiguate them by offset.
+#[derive(Debug, Clone)]
+pub struct HourlyFactorContractBuildInput<'a> {
+    pub calendar_registry: &'a ExchangeCalendarRegistry,
+    pub exchange_code: &'a str,
+    pub range_utc: Range<DateTime<Utc>>,
+    pub interval_duration_nanos: i64,
+    pub seasonality_factors: &'a [f64],
+    pub news_intensity_factors: &'a [f64],
+    pub seasonality_materialization_method: &'a str,
+    pub news_intensity_materialization_method: &'a str,
+}
+
 pub fn build_hourly_factor_contract(
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
-    range_start_utc: DateTime<Utc>,
-    range_end_utc: DateTime<Utc>,
-    interval_duration_nanos: i64,
-    seasonality_factors: &[f64],
-    news_intensity_factors: &[f64],
-    seasonality_materialization_method: &str,
-    news_intensity_materialization_method: &str,
+    input: HourlyFactorContractBuildInput<'_>,
 ) -> Result<HourlyFactorContractOutput, HourlyFactorContractError> {
+    let HourlyFactorContractBuildInput {
+        calendar_registry,
+        exchange_code,
+        range_utc,
+        interval_duration_nanos,
+        seasonality_factors,
+        news_intensity_factors,
+        seasonality_materialization_method,
+        news_intensity_materialization_method,
+    } = input;
+
     if seasonality_materialization_method.trim().is_empty() {
         return Err(HourlyFactorContractError::EmptySeasonalityMaterializationMethod);
     }
@@ -46,8 +63,8 @@ pub fn build_hourly_factor_contract(
     let interval_indexing = build_fixed_interval_indexing(
         calendar_registry,
         exchange_code,
-        range_start_utc,
-        range_end_utc,
+        range_utc.start,
+        range_utc.end,
         interval_duration_nanos,
     )?;
 

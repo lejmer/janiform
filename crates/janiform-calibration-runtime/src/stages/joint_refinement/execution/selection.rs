@@ -9,7 +9,8 @@ use crate::stages::joint_refinement::contracts::{
 };
 
 use super::super::objective::{
-    compare_joint_candidate_breakdowns, joint_primary_metrics_from_breakdown,
+    JointCandidateBreakdownComparisonInput, compare_joint_candidate_breakdowns,
+    joint_primary_metrics_from_breakdown,
 };
 use super::coarse_consistency::{
     JointRefinementCoarseConsistencyArtifacts, JointRefinementCoarseConsistencyProgress,
@@ -245,17 +246,17 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         baseline_artifacts,
     );
 
-    emit_coarse_consistency_progress(
+    emit_coarse_consistency_progress(CoarseConsistencyProgressEmissionInput {
         progress_sender,
-        0,
-        total_ranked_restart_groups,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
+        completed_units: 0,
+        total_units: total_ranked_restart_groups,
+        current_item_label: None,
+        current_weighted_objective: None,
+        best_restart_id: None,
+        best_weighted_objective: None,
+        current_coarse_consistency_fit: None,
+        best_coarse_consistency_fit: None,
+    });
 
     let mut progress_state = LazyCoarseConsistencyProgressState::default();
     let mut selected_restart_outcomes = Vec::new();
@@ -274,17 +275,17 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             .breakdown
             .weighted_objective;
 
-        emit_coarse_consistency_progress(
+        emit_coarse_consistency_progress(CoarseConsistencyProgressEmissionInput {
             progress_sender,
-            progress_state.completed_units,
-            total_ranked_restart_groups,
-            Some(candidate_state.restart_outcome.restart_id.as_str()),
-            Some(current_weighted_objective),
-            progress_state.best_restart_id.as_deref(),
-            progress_state.best_weighted_objective,
-            None,
-            progress_state.best_coarse_consistency_fit,
-        );
+            completed_units: progress_state.completed_units,
+            total_units: total_ranked_restart_groups,
+            current_item_label: Some(candidate_state.restart_outcome.restart_id.as_str()),
+            current_weighted_objective: Some(current_weighted_objective),
+            best_restart_id: progress_state.best_restart_id.as_deref(),
+            best_weighted_objective: progress_state.best_weighted_objective,
+            current_coarse_consistency_fit: None,
+            best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
+        });
 
         let current_artifacts = resolve_restart_group_coarse_consistency(
             &mut coarse_consistency_cache,
@@ -300,35 +301,34 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             current_artifacts.as_ref(),
         );
 
-        emit_coarse_consistency_progress(
+        emit_coarse_consistency_progress(CoarseConsistencyProgressEmissionInput {
             progress_sender,
-            progress_state.completed_units,
-            total_ranked_restart_groups,
-            Some(candidate_state.restart_outcome.restart_id.as_str()),
-            Some(current_weighted_objective),
-            progress_state.best_restart_id.as_deref(),
-            progress_state.best_weighted_objective,
+            completed_units: progress_state.completed_units,
+            total_units: total_ranked_restart_groups,
+            current_item_label: Some(candidate_state.restart_outcome.restart_id.as_str()),
+            current_weighted_objective: Some(current_weighted_objective),
+            best_restart_id: progress_state.best_restart_id.as_deref(),
+            best_weighted_objective: progress_state.best_weighted_objective,
             current_coarse_consistency_fit,
-            progress_state.best_coarse_consistency_fit,
-        );
+            best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
+        });
 
         if current_artifacts
             .as_ref()
             .is_some_and(|artifacts| coarse_consistency_summary_is_admissible(&artifacts.summary))
-        {
-            if let Some(selected_restart_outcome) = find_restart_outcome(
+            && let Some(selected_restart_outcome) = find_restart_outcome(
                 restart_outcomes,
                 restart_group.representative.restart_id.as_str(),
-            ) {
-                selected_restart_outcomes.push(selected_restart_outcome);
+            )
+        {
+            selected_restart_outcomes.push(selected_restart_outcome);
 
-                if selected_restart_outcomes.len() >= selected_restart_count {
-                    return JointRefinementLazyCoarseConsistencySelection {
-                        selected_restart_outcomes,
-                        coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
-                            .artifacts_by_restart_id,
-                    };
-                }
+            if selected_restart_outcomes.len() >= selected_restart_count {
+                return JointRefinementLazyCoarseConsistencySelection {
+                    selected_restart_outcomes,
+                    coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
+                        .artifacts_by_restart_id,
+                };
             }
         }
     }
@@ -807,17 +807,17 @@ fn compare_joint_candidate_ordering_states(
     right: JointRefinementCandidateOrderingState<'_>,
     has_admissible_candidate: bool,
 ) -> std::cmp::Ordering {
-    compare_joint_candidate_breakdowns(
-        left.pareto_rank,
-        &left.restart_outcome.final_evaluation.breakdown,
-        left.admissible,
-        left.restart_outcome.restart_id.as_str(),
-        right.pareto_rank,
-        &right.restart_outcome.final_evaluation.breakdown,
-        right.admissible,
-        right.restart_outcome.restart_id.as_str(),
+    compare_joint_candidate_breakdowns(JointCandidateBreakdownComparisonInput {
+        left_pareto_rank: left.pareto_rank,
+        left_breakdown: &left.restart_outcome.final_evaluation.breakdown,
+        left_admissible: left.admissible,
+        left_restart_id: left.restart_outcome.restart_id.as_str(),
+        right_pareto_rank: right.pareto_rank,
+        right_breakdown: &right.restart_outcome.final_evaluation.breakdown,
+        right_admissible: right.admissible,
+        right_restart_id: right.restart_outcome.restart_id.as_str(),
         has_admissible_candidate,
-    )
+    })
 }
 
 fn named_joint_parameter_coordinates(
@@ -884,17 +884,31 @@ fn named_joint_parameter_coordinates(
         .collect()
 }
 
-fn emit_coarse_consistency_progress(
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+struct CoarseConsistencyProgressEmissionInput<'a> {
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
     completed_units: usize,
     total_units: usize,
-    current_item_label: Option<&str>,
+    current_item_label: Option<&'a str>,
     current_weighted_objective: Option<f64>,
-    best_restart_id: Option<&str>,
+    best_restart_id: Option<&'a str>,
     best_weighted_objective: Option<f64>,
     current_coarse_consistency_fit: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
-) {
+}
+
+fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInput<'_>) {
+    let CoarseConsistencyProgressEmissionInput {
+        progress_sender,
+        completed_units,
+        total_units,
+        current_item_label,
+        current_weighted_objective,
+        best_restart_id,
+        best_weighted_objective,
+        current_coarse_consistency_fit,
+        best_coarse_consistency_fit,
+    } = input;
+
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
             current_item_label: current_item_label.map(str::to_string),

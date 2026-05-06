@@ -14,8 +14,9 @@ where
 {
     let mut stdout = std::io::stdout().lock();
 
-    serde_json::to_writer(&mut stdout, payload)
-        .map_err(|source| CliError::OutputSerialize { source })?;
+    serde_json::to_writer(&mut stdout, payload).map_err(|source| CliError::OutputSerialize {
+        source: Box::new(source),
+    })?;
 
     writeln!(stdout).map_err(|source| CliError::OutputWrite { source })
 }
@@ -36,8 +37,11 @@ where
     let mut file =
         fs::File::create(path).map_err(|source| map_io_error(path.to_path_buf(), source))?;
 
-    serde_json::to_writer_pretty(&mut file, payload)
-        .map_err(|source| CliError::OutputSerialize { source })?;
+    serde_json::to_writer_pretty(&mut file, payload).map_err(|source| {
+        CliError::OutputSerialize {
+            source: Box::new(source),
+        }
+    })?;
 
     writeln!(file).map_err(|source| map_io_error(path.to_path_buf(), source))
 }

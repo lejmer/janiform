@@ -14,7 +14,9 @@ use crate::stages::joint_refinement::contracts::{
 };
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 
-use super::super::setup::cached_seed_summaries_for_candidate_seeds;
+use super::super::setup::{
+    CandidateSeedSummariesCacheInput, cached_seed_summaries_for_candidate_seeds,
+};
 use super::{
     JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
     JointRefinementRestartOutcome, JointRefinementSeedSummary, ordered_parameter_bits,
@@ -87,16 +89,16 @@ pub(crate) fn build_joint_finalist_seed_summaries(
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Vec<(u64, JointRefinementSeedSummary)> {
-    cached_seed_summaries_for_candidate_seeds(
+    cached_seed_summaries_for_candidate_seeds(CandidateSeedSummariesCacheInput {
         parameter_bits,
         fitted_parameters,
         context,
-        context.final_simulation_seeds.as_slice(),
+        simulation_seeds: context.final_simulation_seeds.as_slice(),
         progress_sender,
-        Some(JointRefinementStageProgressPhase::FinalSeedEvaluation),
-        0,
-        context.final_simulation_seeds.len(),
-    )
+        progress_phase: Some(JointRefinementStageProgressPhase::FinalSeedEvaluation),
+        completed_units_before_seed_summaries: 0,
+        total_units: context.final_simulation_seeds.len(),
+    })
     .unwrap_or_default()
 }
 

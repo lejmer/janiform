@@ -339,14 +339,14 @@ impl PersistentSummarySimulationWorker {
         session_context: &JointRefinementSummarySimulationSessionContext,
     ) -> Result<(u64, u64), String> {
         let worker_response = self.send_request(
-            &JointRefinementSummarySimulationWorkerRequest::InitializeSession(
+            &JointRefinementSummarySimulationWorkerRequest::InitializeSession(Box::new(
                 InitializeSessionRequest {
                     schema_version:
                         JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                             .to_string(),
                     session_context: session_context.clone(),
                 },
-            ),
+            )),
             "summary simulation worker returned malformed initialize-session output",
         )?;
 
@@ -363,7 +363,7 @@ impl PersistentSummarySimulationWorker {
                     ));
                 }
 
-                match response {
+                match *response {
                     InitializeSessionResponse::Success {
                         worker_baseline_resident_bytes,
                         worker_initialized_resident_bytes,
@@ -389,7 +389,9 @@ impl PersistentSummarySimulationWorker {
     ) -> Result<RunCandidateResponse, JointRefinementSeedSummaryAcquisitionError> {
         let worker_response = self
             .send_request(
-                &JointRefinementSummarySimulationWorkerRequest::RunCandidate(request.clone()),
+                &JointRefinementSummarySimulationWorkerRequest::RunCandidate(Box::new(
+                    request.clone(),
+                )),
                 "summary simulation worker returned malformed run-candidate output",
             )
             .map_err(|error_message| {
@@ -413,7 +415,7 @@ impl PersistentSummarySimulationWorker {
                     );
                 }
 
-                Ok(response)
+                Ok(*response)
             }
             _ => Err(
                 JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure {
@@ -427,10 +429,13 @@ impl PersistentSummarySimulationWorker {
 
     fn close_session(&mut self) {
         let close_result = self.send_request(
-            &JointRefinementSummarySimulationWorkerRequest::CloseSession(CloseSessionRequest {
-                schema_version: JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
-                    .to_string(),
-            }),
+            &JointRefinementSummarySimulationWorkerRequest::CloseSession(Box::new(
+                CloseSessionRequest {
+                    schema_version:
+                        JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
+                            .to_string(),
+                },
+            )),
             "summary simulation worker returned malformed close-session output",
         );
 
@@ -440,7 +445,6 @@ impl PersistentSummarySimulationWorker {
         }) = close_result
             && schema_version == JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
         {
-            return;
         }
     }
 
@@ -581,13 +585,13 @@ fn resolve_summary_simulation_backend_preference()
 fn candidate_search_roots(current_executable: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
 
-    if let Some(current_executable) = current_executable {
-        if let Some(parent) = current_executable.parent() {
-            push_candidate_search_root(&mut roots, parent.to_path_buf());
+    if let Some(current_executable) = current_executable
+        && let Some(parent) = current_executable.parent()
+    {
+        push_candidate_search_root(&mut roots, parent.to_path_buf());
 
-            if let Some(grandparent) = parent.parent() {
-                push_candidate_search_root(&mut roots, grandparent.to_path_buf());
-            }
+        if let Some(grandparent) = parent.parent() {
+            push_candidate_search_root(&mut roots, grandparent.to_path_buf());
         }
     }
 

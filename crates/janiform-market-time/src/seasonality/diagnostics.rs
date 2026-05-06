@@ -53,6 +53,19 @@ pub struct SeasonalityComponentDiagnosticsSummary {
     pub root_mean_squared_factor_error: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SeasonalityComponentSummaryInput<'a> {
+    component_name: &'static str,
+    component_schema_version: &'a str,
+    component_input_event_count: usize,
+    expected_input_event_count: usize,
+    event_count_by_bucket: &'a [u64],
+    factor_by_bucket: &'a [f64],
+    sparse_bucket_count: usize,
+    fallback_bucket_count: usize,
+    pseudocount: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SeasonalityOverlayComponentDiagnosticsSummary {
     pub configured_overlay_count: usize,
@@ -382,59 +395,59 @@ pub fn generate_seasonality_diagnostics_report(
         });
     }
 
-    let intraday_summary = build_component_summary(
-        "intraday",
-        report_input.intraday_estimate.schema_version,
-        report_input.intraday_estimate.diagnostics.input_event_count,
-        input_event_count,
-        &report_input.intraday_estimate.event_count_by_bin,
-        &report_input.intraday_estimate.intraday_factor_by_bin,
-        report_input.intraday_estimate.diagnostics.sparse_bin_count,
-        0,
-        report_input.intraday_estimate.pseudocount,
-    )?;
+    let intraday_summary = build_component_summary(SeasonalityComponentSummaryInput {
+        component_name: "intraday",
+        component_schema_version: report_input.intraday_estimate.schema_version,
+        component_input_event_count: report_input.intraday_estimate.diagnostics.input_event_count,
+        expected_input_event_count: input_event_count,
+        event_count_by_bucket: &report_input.intraday_estimate.event_count_by_bin,
+        factor_by_bucket: &report_input.intraday_estimate.intraday_factor_by_bin,
+        sparse_bucket_count: report_input.intraday_estimate.diagnostics.sparse_bin_count,
+        fallback_bucket_count: 0,
+        pseudocount: report_input.intraday_estimate.pseudocount,
+    })?;
 
-    let day_of_week_summary = build_component_summary(
-        "day_of_week",
-        report_input.day_of_week_estimate.schema_version,
-        report_input
+    let day_of_week_summary = build_component_summary(SeasonalityComponentSummaryInput {
+        component_name: "day_of_week",
+        component_schema_version: report_input.day_of_week_estimate.schema_version,
+        component_input_event_count: report_input
             .day_of_week_estimate
             .diagnostics
             .input_event_count,
-        input_event_count,
-        &report_input.day_of_week_estimate.event_count_by_day_of_week,
-        &report_input.day_of_week_estimate.day_of_week_factor,
-        report_input
+        expected_input_event_count: input_event_count,
+        event_count_by_bucket: &report_input.day_of_week_estimate.event_count_by_day_of_week,
+        factor_by_bucket: &report_input.day_of_week_estimate.day_of_week_factor,
+        sparse_bucket_count: report_input
             .day_of_week_estimate
             .diagnostics
             .sparse_bucket_count,
-        report_input
+        fallback_bucket_count: report_input
             .day_of_week_estimate
             .diagnostics
             .fallback_bucket_count,
-        report_input.day_of_week_estimate.pseudocount,
-    )?;
+        pseudocount: report_input.day_of_week_estimate.pseudocount,
+    })?;
 
-    let day_of_year_summary = build_component_summary(
-        "day_of_year",
-        report_input.day_of_year_estimate.schema_version,
-        report_input
+    let day_of_year_summary = build_component_summary(SeasonalityComponentSummaryInput {
+        component_name: "day_of_year",
+        component_schema_version: report_input.day_of_year_estimate.schema_version,
+        component_input_event_count: report_input
             .day_of_year_estimate
             .diagnostics
             .input_event_count,
-        input_event_count,
-        &report_input.day_of_year_estimate.event_count_by_day_of_year,
-        &report_input.day_of_year_estimate.day_of_year_factor,
-        report_input
+        expected_input_event_count: input_event_count,
+        event_count_by_bucket: &report_input.day_of_year_estimate.event_count_by_day_of_year,
+        factor_by_bucket: &report_input.day_of_year_estimate.day_of_year_factor,
+        sparse_bucket_count: report_input
             .day_of_year_estimate
             .diagnostics
             .sparse_bucket_count,
-        report_input
+        fallback_bucket_count: report_input
             .day_of_year_estimate
             .diagnostics
             .fallback_bucket_count,
-        report_input.day_of_year_estimate.pseudocount,
-    )?;
+        pseudocount: report_input.day_of_year_estimate.pseudocount,
+    })?;
 
     let overlay_summary =
         build_overlay_component_summary(input_event_count, report_input.composition)?;
@@ -495,16 +508,20 @@ pub fn generate_seasonality_diagnostics_batch_report(
 }
 
 fn build_component_summary(
-    component_name: &'static str,
-    component_schema_version: &str,
-    component_input_event_count: usize,
-    expected_input_event_count: usize,
-    event_count_by_bucket: &[u64],
-    factor_by_bucket: &[f64],
-    sparse_bucket_count: usize,
-    fallback_bucket_count: usize,
-    pseudocount: f64,
+    input: SeasonalityComponentSummaryInput<'_>,
 ) -> Result<SeasonalityComponentDiagnosticsSummary, SeasonalityDiagnosticsReportError> {
+    let SeasonalityComponentSummaryInput {
+        component_name,
+        component_schema_version,
+        component_input_event_count,
+        expected_input_event_count,
+        event_count_by_bucket,
+        factor_by_bucket,
+        sparse_bucket_count,
+        fallback_bucket_count,
+        pseudocount,
+    } = input;
+
     if component_input_event_count != expected_input_event_count {
         return Err(SeasonalityDiagnosticsReportError::InputEventCountMismatch {
             component_name,
@@ -541,6 +558,7 @@ fn build_component_summary(
 
     let observed_factor_by_bucket =
         build_observed_factor_by_bucket(event_count_by_bucket, pseudocount, bucket_count);
+
     let fit_error_metrics = calculate_component_fit_error_metrics(
         component_name,
         factor_by_bucket,
@@ -552,12 +570,16 @@ fn build_component_summary(
         .copied()
         .filter(|event_count| *event_count == 0)
         .count();
+
     let bucket_count_float = bucket_count as f64;
+
     let mean_factor = factor_by_bucket.iter().sum::<f64>() / bucket_count_float;
+
     let min_factor = factor_by_bucket
         .iter()
         .copied()
         .fold(f64::INFINITY, f64::min);
+
     let max_factor = factor_by_bucket
         .iter()
         .copied()
@@ -592,7 +614,9 @@ fn build_observed_factor_by_bucket(
         .copied()
         .map(|event_count| event_count as f64 + pseudocount)
         .collect();
+
     let adjusted_event_count_total: f64 = adjusted_event_count_by_bucket.iter().sum();
+
     let bucket_count_float = bucket_count as f64;
 
     adjusted_event_count_by_bucket
@@ -651,6 +675,7 @@ fn build_overlay_component_summary(
     }
 
     let mut active_overlay_log_adjustments: Vec<f64> = Vec::new();
+
     for (record_position, overlay_active_flag) in composition_output
         .special_overlay_active_flags_by_event
         .iter()
@@ -688,6 +713,7 @@ fn build_overlay_component_summary(
             .iter()
             .copied()
             .fold(f64::INFINITY, f64::min);
+
         let max_value = active_overlay_log_adjustments
             .iter()
             .copied()
@@ -721,16 +747,20 @@ fn build_fit_quality_metrics(
     overlay_summary: Option<&SeasonalityOverlayComponentDiagnosticsSummary>,
 ) -> Result<SeasonalityFitQualityMetrics, SeasonalityDiagnosticsReportError> {
     let component_summaries = [intraday_summary, day_of_week_summary, day_of_year_summary];
+
     let total_bucket_count: usize = component_summaries
         .iter()
         .map(|summary| summary.bucket_count)
         .sum();
+
     let total_bucket_count_float = total_bucket_count as f64;
+
     let weighted_mean_absolute_factor_error = component_summaries
         .iter()
         .map(|summary| summary.mean_absolute_factor_error * summary.bucket_count as f64)
         .sum::<f64>()
         / total_bucket_count_float;
+
     let weighted_root_mean_squared_factor_error = component_summaries
         .iter()
         .map(|summary| summary.root_mean_squared_factor_error * summary.bucket_count as f64)
@@ -740,10 +770,12 @@ fn build_fit_quality_metrics(
     let mut combined_factor_sum = 0.0;
     let mut combined_factor_min = f64::INFINITY;
     let mut combined_factor_max = f64::NEG_INFINITY;
+
     let mut combined_log_component_sum = 0.0;
 
     for record_position in 0..composition_output.combined_factor_by_event.len() {
         let combined_factor = composition_output.combined_factor_by_event[record_position];
+
         let combined_log_component =
             composition_output.combined_log_component_by_event[record_position];
 
@@ -761,14 +793,17 @@ fn build_fit_quality_metrics(
 
         combined_factor_sum += combined_factor;
         combined_log_component_sum += combined_log_component;
+
         combined_factor_min = combined_factor_min.min(combined_factor);
         combined_factor_max = combined_factor_max.max(combined_factor);
     }
 
     let input_event_count = composition_output.combined_factor_by_event.len();
     let input_event_count_float = input_event_count as f64;
+
     let combined_factor_mean = combined_factor_sum / input_event_count_float;
     let _combined_log_component_mean = combined_log_component_sum / input_event_count_float;
+
     let combined_factor_variance = composition_output
         .combined_factor_by_event
         .iter()
@@ -781,7 +816,9 @@ fn build_fit_quality_metrics(
         Some(summary) => summary.active_overlay_event_ratio,
         None => 0.0,
     };
+
     let normalization_metadata = &composition_output.diagnostics.normalization_metadata;
+
     let normalization_anchor_error = (normalization_metadata.post_normalization_mean_factor
         - normalization_metadata.target_mean_factor)
         .abs();
@@ -802,13 +839,16 @@ fn build_reproducibility_metadata(
     report_input: &SeasonalityDiagnosticsReportInput<'_>,
 ) -> SeasonalityReproducibilityMetadata {
     let input_snapshot_fingerprint_hex = build_input_snapshot_fingerprint(report_input);
+
     let first_event_timestamp_utc_nanos = report_input.timestamp_utc_nanos[0];
     let last_event_timestamp_utc_nanos =
         report_input.timestamp_utc_nanos[report_input.timestamp_utc_nanos.len() - 1];
+
     let overlay_metadata = &report_input
         .composition
         .diagnostics
         .overlay_provenance_metadata;
+
     let normalization_metadata = &report_input.composition.diagnostics.normalization_metadata;
 
     SeasonalityReproducibilityMetadata {
@@ -876,18 +916,23 @@ fn build_input_snapshot_fingerprint(
     for source_record_position in report_input.source_record_positions {
         hash_with_u64(&mut hash, *source_record_position);
     }
+
     for timestamp_utc_nanos in report_input.timestamp_utc_nanos {
         hash_with_i64(&mut hash, *timestamp_utc_nanos);
     }
+
     for minute_of_day in report_input.exchange_local_minute_of_day {
         hash_with_u16(&mut hash, *minute_of_day);
     }
+
     for day_of_week in report_input.exchange_local_day_of_week {
         hash_with_u8(&mut hash, *day_of_week);
     }
+
     for day_of_year in report_input.exchange_local_day_of_year {
         hash_with_u16(&mut hash, *day_of_year);
     }
+
     for market_state_code in report_input.market_state_codes {
         hash_with_u8(&mut hash, *market_state_code);
     }

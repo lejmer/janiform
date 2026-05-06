@@ -172,7 +172,7 @@ fn load_parquet_option_surface_rows(
                 message: "parquet source row-count metadata is unavailable".to_string(),
             })?;
 
-    let mut reader = open_projected_parquet_record_batch_reader(
+    let reader = open_projected_parquet_record_batch_reader(
         &option_surface_input.source,
         "option_surface_source",
         projected_columns.as_slice(),
@@ -181,7 +181,7 @@ fn load_parquet_option_surface_rows(
     let mut normalized_rows = Vec::with_capacity(source_row_count);
     let mut source_row_number: usize = 0;
 
-    while let Some(batch_result) = reader.next() {
+    for batch_result in reader {
         let batch = batch_result.map_err(|error| MarketDataLoadingError::Parquet {
             field_path: "option_surface_source.path".to_string(),
             message: error.to_string(),
@@ -254,18 +254,20 @@ fn load_parquet_option_surface_rows(
             )?;
 
             normalized_rows.push(normalize_option_surface_values(
-                Some(&quote_timestamp_raw_value),
-                Some(&expiry_timestamp_raw_value),
-                Some(&strike_raw_value),
-                Some(&option_type_raw_value),
-                mid_price_raw_value.as_ref(),
-                bid_price_raw_value.as_ref(),
-                ask_price_raw_value.as_ref(),
-                implied_volatility_raw_value.as_ref(),
-                source_row_number,
-                &option_surface_input.column_mapping,
-                normalization_policy,
-                &option_surface_input.source.path,
+                NormalizeOptionSurfaceValuesInput {
+                    quote_timestamp_raw_value: Some(&quote_timestamp_raw_value),
+                    expiry_timestamp_raw_value: Some(&expiry_timestamp_raw_value),
+                    strike_raw_value: Some(&strike_raw_value),
+                    option_type_raw_value: Some(&option_type_raw_value),
+                    mid_price_raw_value: mid_price_raw_value.as_ref(),
+                    bid_price_raw_value: bid_price_raw_value.as_ref(),
+                    ask_price_raw_value: ask_price_raw_value.as_ref(),
+                    implied_volatility_raw_value: implied_volatility_raw_value.as_ref(),
+                    source_row_number,
+                    column_mapping: &option_surface_input.column_mapping,
+                    normalization_policy,
+                    source_path: &option_surface_input.source.path,
+                },
             )?);
         }
     }
@@ -300,36 +302,36 @@ pub(super) fn normalize_option_surface_row(
     normalization_policy: &MarketDataNormalizationPolicy,
     source_path: &str,
 ) -> Result<LoadedOptionSurfaceRecord, MarketDataLoadingError> {
-    normalize_option_surface_values(
-        column_mapping
+    normalize_option_surface_values(NormalizeOptionSurfaceValuesInput {
+        quote_timestamp_raw_value: column_mapping
             .quote_timestamp_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        expiry_timestamp_raw_value: column_mapping
             .expiry_timestamp_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        strike_raw_value: column_mapping
             .strike_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        option_type_raw_value: column_mapping
             .option_type_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        mid_price_raw_value: column_mapping
             .mid_price_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        bid_price_raw_value: column_mapping
             .bid_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        ask_price_raw_value: column_mapping
             .ask_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
-        column_mapping
+        implied_volatility_raw_value: column_mapping
             .implied_volatility_column
             .as_ref()
             .and_then(|column_name| raw_row.get(column_name)),
@@ -337,23 +339,42 @@ pub(super) fn normalize_option_surface_row(
         column_mapping,
         normalization_policy,
         source_path,
-    )
+    })
+}
+
+pub(super) struct NormalizeOptionSurfaceValuesInput<'a> {
+    pub(super) quote_timestamp_raw_value: Option<&'a RawValue>,
+    pub(super) expiry_timestamp_raw_value: Option<&'a RawValue>,
+    pub(super) strike_raw_value: Option<&'a RawValue>,
+    pub(super) option_type_raw_value: Option<&'a RawValue>,
+    pub(super) mid_price_raw_value: Option<&'a RawValue>,
+    pub(super) bid_price_raw_value: Option<&'a RawValue>,
+    pub(super) ask_price_raw_value: Option<&'a RawValue>,
+    pub(super) implied_volatility_raw_value: Option<&'a RawValue>,
+    pub(super) source_row_number: usize,
+    pub(super) column_mapping: &'a MarketDataOptionSurfaceColumnMapping,
+    pub(super) normalization_policy: &'a MarketDataNormalizationPolicy,
+    pub(super) source_path: &'a str,
 }
 
 pub(super) fn normalize_option_surface_values(
-    quote_timestamp_raw_value: Option<&super::shared::RawValue>,
-    expiry_timestamp_raw_value: Option<&super::shared::RawValue>,
-    strike_raw_value: Option<&super::shared::RawValue>,
-    option_type_raw_value: Option<&super::shared::RawValue>,
-    mid_price_raw_value: Option<&super::shared::RawValue>,
-    bid_price_raw_value: Option<&super::shared::RawValue>,
-    ask_price_raw_value: Option<&super::shared::RawValue>,
-    implied_volatility_raw_value: Option<&super::shared::RawValue>,
-    source_row_number: usize,
-    column_mapping: &MarketDataOptionSurfaceColumnMapping,
-    normalization_policy: &MarketDataNormalizationPolicy,
-    source_path: &str,
+    input: NormalizeOptionSurfaceValuesInput<'_>,
 ) -> Result<LoadedOptionSurfaceRecord, MarketDataLoadingError> {
+    let NormalizeOptionSurfaceValuesInput {
+        quote_timestamp_raw_value,
+        expiry_timestamp_raw_value,
+        strike_raw_value,
+        option_type_raw_value,
+        mid_price_raw_value,
+        bid_price_raw_value,
+        ask_price_raw_value,
+        implied_volatility_raw_value,
+        source_row_number,
+        column_mapping,
+        normalization_policy,
+        source_path,
+    } = input;
+
     let row_field_path = format!("option_surface_source.rows[{source_row_number}]");
     let quote_timestamp_column = column_mapping
         .quote_timestamp_column
@@ -512,9 +533,7 @@ pub(super) fn normalize_option_surface_values(
     })
 }
 
-pub(super) fn option_surface_record_dedup_key(
-    row: &LoadedOptionSurfaceRecord,
-) -> (
+type OptionSurfaceRecordDedupKey = (
     i64,
     i64,
     u64,
@@ -524,7 +543,11 @@ pub(super) fn option_surface_record_dedup_key(
     Option<u64>,
     Option<u64>,
     Option<u64>,
-) {
+);
+
+pub(super) fn option_surface_record_dedup_key(
+    row: &LoadedOptionSurfaceRecord,
+) -> OptionSurfaceRecordDedupKey {
     (
         row.quote_timestamp_utc_nanos,
         row.expiry_timestamp_utc_nanos,

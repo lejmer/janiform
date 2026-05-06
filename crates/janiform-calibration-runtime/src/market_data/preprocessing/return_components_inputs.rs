@@ -23,16 +23,7 @@ use super::shared::{
 use janiform_foundations::time::duration_nanos_to_hours;
 
 pub(super) fn build_return_components_candidate_generation_input(
-    definition: &ExchangeCalendarDefinition,
-    timezone: Tz,
-    exchange_code: &str,
-    open_price_ticks: &[OpenTickRecord],
-    open_signed_tick_count: usize,
-    open_session_sell_tick_count: usize,
-    retained_known_news: &[ResolvedKnownNewsRecord],
-    source_window: CalibrationReturnComponentsSignalSourceWindow,
-    _option_surface_quote_values: &[f64],
-    preprocessing_settings: Option<&MarketDataTranslationReturnComponentsPreprocessingSettings>,
+    input: ReturnComponentsCandidateGenerationInputBuildInput<'_>,
 ) -> Result<
     (
         CalibrationReturnComponentsStageCandidateGenerationInput,
@@ -40,6 +31,19 @@ pub(super) fn build_return_components_candidate_generation_input(
     ),
     MarketDataTranslationPreprocessingError,
 > {
+    let ReturnComponentsCandidateGenerationInputBuildInput {
+        definition,
+        timezone,
+        exchange_code,
+        open_price_ticks,
+        open_signed_tick_count,
+        open_session_sell_tick_count,
+        retained_known_news,
+        source_window,
+        _option_surface_quote_values,
+        preprocessing_settings,
+    } = input;
+
     if open_price_ticks.len() < 2 {
         return Err(MarketDataTranslationPreprocessingError::MissingOpenSessionPriceObservations);
     }
@@ -150,6 +154,20 @@ pub(super) fn build_return_components_candidate_generation_input(
     };
 
     Ok((candidate_generation_input, material_close_open_gap_count))
+}
+
+pub(super) struct ReturnComponentsCandidateGenerationInputBuildInput<'a> {
+    pub(super) definition: &'a ExchangeCalendarDefinition,
+    pub(super) timezone: Tz,
+    pub(super) exchange_code: &'a str,
+    pub(super) open_price_ticks: &'a [OpenTickRecord],
+    pub(super) open_signed_tick_count: usize,
+    pub(super) open_session_sell_tick_count: usize,
+    pub(super) retained_known_news: &'a [ResolvedKnownNewsRecord],
+    pub(super) source_window: CalibrationReturnComponentsSignalSourceWindow,
+    pub(super) _option_surface_quote_values: &'a [f64],
+    pub(super) preprocessing_settings:
+        Option<&'a MarketDataTranslationReturnComponentsPreprocessingSettings>,
 }
 
 pub(super) fn derive_mean_reversion_open_session_grid_inputs(

@@ -41,7 +41,9 @@ pub(crate) fn map_transition_error_to_seeded_simulation_run_error(
                 value: source.value,
             }
         }
-        _ => SeededTickSimulationRunError::InvalidTransitionStep { source },
+        _ => SeededTickSimulationRunError::InvalidTransitionStep {
+            source: Box::new(source),
+        },
     }
 }
 

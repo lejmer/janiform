@@ -2,8 +2,11 @@ use chrono::{DateTime, Utc};
 use janiform::model::factors::hourly::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
-    DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HourlyFactorContractError,
-    HourlyFactorContractPayload, build_hourly_factor_contract as build_hourly_factor_contract_core,
+    DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HourlyFactorContractBuildInput,
+    HourlyFactorContractError, HourlyFactorContractPayload,
+    HourlyNewsIntensityMaterializationInput, HourlySeasonalityMaterializationInput,
+    HourlySeasonalityMaterializationPolicy, HourlySeasonalitySourceSignal,
+    build_hourly_factor_contract as build_hourly_factor_contract_core,
     load_hourly_factor_contract as load_hourly_factor_contract_core,
     materialize_hourly_news_intensity_factors as materialize_hourly_news_intensity_factors_core,
     materialize_hourly_seasonality_factors as materialize_hourly_seasonality_factors_core,
@@ -57,6 +60,10 @@ pub(super) enum ParsedHourlyProviderNewsIntensitySource {
 
 #[pyfunction]
 #[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, seasonality_hourly_factors, news_intensity_hourly_factors, *, seasonality_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, news_intensity_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn build_hourly_factor_contract(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
@@ -86,17 +93,16 @@ fn build_hourly_factor_contract(
 
     let output = py
         .detach(|| {
-            build_hourly_factor_contract_core(
-                &calendar_registry.registry,
+            build_hourly_factor_contract_core(HourlyFactorContractBuildInput {
+                calendar_registry: &calendar_registry.registry,
                 exchange_code,
-                parsed_range_start_utc,
-                parsed_range_end_utc,
+                range_utc: parsed_range_start_utc..parsed_range_end_utc,
                 interval_duration_nanos,
-                &parsed_seasonality_hourly_factors,
-                &parsed_news_intensity_hourly_factors,
+                seasonality_factors: &parsed_seasonality_hourly_factors,
+                news_intensity_factors: &parsed_news_intensity_hourly_factors,
                 seasonality_materialization_method,
                 news_intensity_materialization_method,
-            )
+            })
         })
         .map_err(map_hourly_factor_contract_error)?;
 
@@ -133,6 +139,10 @@ fn load_hourly_factor_contract_payload(
 
 #[pyfunction]
 #[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, source_timestamps_utc, source_seasonality_factors, *, interpolation_method = DEFAULT_SEASONALITY_INTERPOLATION_METHOD, aggregation_method = DEFAULT_SEASONALITY_AGGREGATION_METHOD, sparse_fallback_policy = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, sparse_hour_minimum_observation_count = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn materialize_hourly_seasonality_factors(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
@@ -190,19 +200,22 @@ fn materialize_hourly_seasonality_factors(
 
     let output = py
         .detach(|| {
-            materialize_hourly_seasonality_factors_core(
-                &calendar_registry.registry,
+            materialize_hourly_seasonality_factors_core(HourlySeasonalityMaterializationInput {
+                calendar_registry: &calendar_registry.registry,
                 exchange_code,
-                parsed_range_start_utc,
-                parsed_range_end_utc,
+                range_utc: parsed_range_start_utc..parsed_range_end_utc,
                 interval_duration_nanos,
-                &parsed_source_timestamp_utc_nanos,
-                &parsed_source_seasonality_factors,
-                interpolation_method,
-                aggregation_method,
-                sparse_fallback_policy,
-                sparse_hour_minimum_observation_count,
-            )
+                source_signal: HourlySeasonalitySourceSignal {
+                    timestamp_utc_nanos: &parsed_source_timestamp_utc_nanos,
+                    seasonality_factors: &parsed_source_seasonality_factors,
+                },
+                policy: HourlySeasonalityMaterializationPolicy {
+                    interpolation_method,
+                    aggregation_method,
+                    sparse_fallback_policy,
+                    sparse_hour_minimum_observation_count,
+                },
+            })
         })
         .map_err(map_hourly_factor_contract_error)?;
 
@@ -211,6 +224,10 @@ fn materialize_hourly_seasonality_factors(
 
 #[pyfunction]
 #[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, surprise_baseline_intensity, *, known_scheduled_event_timestamps_utc = None, surprise_deterministic_time_multiplier_by_interval_index = None))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn materialize_hourly_news_intensity_factors(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
@@ -289,14 +306,17 @@ fn materialize_hourly_news_intensity_factors(
     let output = py
         .detach(|| {
             materialize_hourly_news_intensity_factors_core(
-                &calendar_registry.registry,
-                exchange_code,
-                parsed_range_start_utc,
-                parsed_range_end_utc,
-                interval_duration_nanos,
-                &parsed_known_scheduled_event_timestamps_utc_nanos,
-                surprise_baseline_intensity,
-                &parsed_surprise_deterministic_time_multiplier_by_interval_index,
+                HourlyNewsIntensityMaterializationInput {
+                    calendar_registry: &calendar_registry.registry,
+                    exchange_code,
+                    range_utc: parsed_range_start_utc..parsed_range_end_utc,
+                    interval_duration_nanos,
+                    known_scheduled_event_timestamps_utc_nanos:
+                        &parsed_known_scheduled_event_timestamps_utc_nanos,
+                    surprise_baseline_intensity,
+                    surprise_deterministic_time_multiplier_by_interval_index:
+                        &parsed_surprise_deterministic_time_multiplier_by_interval_index,
+                },
             )
         })
         .map_err(map_hourly_factor_contract_error)?;
@@ -306,6 +326,10 @@ fn materialize_hourly_news_intensity_factors(
 
 #[pyfunction]
 #[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, *, seasonality_source = None, news_intensity_source = None))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn provide_hourly_factor_contract(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,

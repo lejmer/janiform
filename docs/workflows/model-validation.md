@@ -90,7 +90,6 @@ The main report artifacts are written to:
 ```text
 <validation-dir>/stylized_facts.report_bundle.json
 <validation-dir>/stylized_facts.table_summary.json
-<validation-dir>/stylized_facts.plot_payload.json
 <validation-dir>/lineage.json
 ```
 
@@ -132,7 +131,6 @@ The report bundle is the primary output. The table and plot payloads exist so do
 |----------------------|---------------------------------------------|------------------------------------------------------------------------------|
 | Report bundle        | `stylized_facts.report_bundle.json`         | Full validation report, summary counts, metric checks, and artifact receipt. |
 | Table summary        | `stylized_facts.table_summary.json`         | Flattened rows for review tables and dashboards.                             |
-| Plot payload         | `stylized_facts.plot_payload.json`          | Plot-ready metric points with deltas, status, and coverage metadata.         |
 | Lineage              | `lineage.json`                              | Resolved validation plan used for the run.                                   |
 | Python report bundle | `StylizedFactHorizonComparisonReportBundle` | Returned by `run_stylized_fact_horizon_comparison_report_generator(...)`.    |
 

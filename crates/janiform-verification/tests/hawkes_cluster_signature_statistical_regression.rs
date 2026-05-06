@@ -986,7 +986,7 @@ fn collect_scale_consistency_summaries(
             *seed,
             fine_interval_duration_nanos,
             fine_interval_count,
-            kernel_parameters.clone(),
+            kernel_parameters,
             HawkesExcitationState {
                 y_plus_plus: 0.0,
                 y_plus_minus: 0.0,
@@ -1002,7 +1002,7 @@ fn collect_scale_consistency_summaries(
             *seed,
             coarse_interval_duration_nanos,
             coarse_interval_count,
-            kernel_parameters.clone(),
+            kernel_parameters,
             HawkesExcitationState {
                 y_plus_plus: 0.0,
                 y_plus_minus: 0.0,

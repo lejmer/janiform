@@ -109,12 +109,14 @@ fn validation_suite_report_is_repeatable_for_fixed_inputs() {
 fn validation_suite_separates_deterministic_and_statistical_failures() {
     let scenarios = build_validation_scenarios();
 
-    let mut strict_thresholds = SufficientStatisticsMultiIntervalValidationThresholds::default();
-    strict_thresholds.statistical_sample_count = 32;
-    strict_thresholds.integrated_intensity_mean_absolute_floor = 0.0;
-    strict_thresholds.integrated_intensity_mean_relative_tolerance = 0.0;
-    strict_thresholds.event_count_mean_absolute_floor = 0.0;
-    strict_thresholds.event_count_mean_relative_tolerance = 0.0;
+    let strict_thresholds = SufficientStatisticsMultiIntervalValidationThresholds {
+        statistical_sample_count: 32,
+        integrated_intensity_mean_absolute_floor: 0.0,
+        integrated_intensity_mean_relative_tolerance: 0.0,
+        event_count_mean_absolute_floor: 0.0,
+        event_count_mean_relative_tolerance: 0.0,
+        ..SufficientStatisticsMultiIntervalValidationThresholds::default()
+    };
 
     let report = run_sufficient_statistics_multi_interval_validation_suite(
         &scenarios,

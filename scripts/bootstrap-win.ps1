@@ -1,34 +1,55 @@
-param(
-    [Parameter(Position=0)]
-    [string]$VenvDir = ".venv-win"
-)
-
 $ErrorActionPreference = "Stop"
+$ScriptDir = Split-Path -Parent $PSCommandPath
+. (Join-Path $ScriptDir "_build-helpers-win.ps1")
 
 # This bootstrapping script assumes:
 # - Current dir is repo root
 # - Rust already installed
 # - Either uv or Python is installed
 
-if ($args.Count -gt 0) {
-    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [venv_dir]"
-    exit 1
+function Show-Usage {
+    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [--release-wheel] [venv_dir]"
+}
+
+$ReleaseWheel = $false
+$UseUvPackageInstaller = $false
+$VenvDir = ".venv-win"
+$venvDirSet = $false
+
+foreach ($argumentValue in $args) {
+    if ($argumentValue -eq "--release-wheel" -or $argumentValue -eq "-ReleaseWheel") {
+        $ReleaseWheel = $true
+    }
+    elseif ($argumentValue -eq "--help" -or $argumentValue -eq "-Help" -or $argumentValue -eq "-h") {
+        Show-Usage
+        exit 0
+    }
+    elseif ($argumentValue.StartsWith("-")) {
+        Write-Host "Error: unknown option '$argumentValue'."
+        Show-Usage
+        exit 1
+    }
+    elseif ($venvDirSet) {
+        Show-Usage
+        exit 1
+    }
+    else {
+        $VenvDir = $argumentValue
+        $venvDirSet = $true
+    }
 }
 
 Write-Host "Using virtual environment: $VenvDir"
-
-function Have-Cmd {
-    param([string]$Cmd)
-    return [bool](Get-Command $Cmd -ErrorAction SilentlyContinue)
+if ($ReleaseWheel) {
+    Write-Host "Using package build mode: release wheel"
 }
-
-function Activate-Venv {
-    $activate = Join-Path $VenvDir "Scripts\Activate.ps1"
-    . $activate
+else {
+    Write-Host "Using package build mode: editable"
 }
 
 if (Have-Cmd "uv") {
     Write-Host "Bootstrapping using: uv"
+    $UseUvPackageInstaller = $true
 
     # Make uv treat the chosen venv as the project's environment
     $env:UV_PROJECT_ENVIRONMENT = $VenvDir
@@ -36,8 +57,13 @@ if (Have-Cmd "uv") {
     uv venv $VenvDir
     Activate-Venv
 
-    # Install project and dev extra into the chosen local venv
-    uv sync --extra dev
+    if ($ReleaseWheel) {
+        uv pip install "maturin>=1.9,<2.0"
+    }
+    else {
+        # Install project and dev extra into the chosen local venv
+        uv sync --extra dev
+    }
 }
 elseif (Have-Cmd "python") {
     Write-Host "Bootstrapping using: python"
@@ -45,12 +71,13 @@ elseif (Have-Cmd "python") {
     python -m venv $VenvDir
     Activate-Venv
 
-    # Just in case pip is missing in the venv for some reason
-    python -m ensurepip --upgrade 2>$null
-    python -m pip install --upgrade pip
-
-    # Install project in editable mode with dev dependencies
-    python -m pip install -e ".[dev]"
+    if ($ReleaseWheel) {
+        Install-ReleaseBuildToolWithPip
+    }
+    else {
+        # Install project in editable mode with dev dependencies
+        Install-EditableWithPip
+    }
 }
 elseif (Have-Cmd "py") {
     Write-Host "Bootstrapping using: py launcher"
@@ -58,12 +85,13 @@ elseif (Have-Cmd "py") {
     py -m venv $VenvDir
     Activate-Venv
 
-    # Just in case pip is missing in the venv for some reason
-    python -m ensurepip --upgrade 2>$null
-    python -m pip install --upgrade pip
-
-    # Install project in editable mode with dev dependencies
-    python -m pip install -e ".[dev]"
+    if ($ReleaseWheel) {
+        Install-ReleaseBuildToolWithPip
+    }
+    else {
+        # Install project in editable mode with dev dependencies
+        Install-EditableWithPip
+    }
 }
 else {
     Write-Host "Error: neither 'uv' nor a compatible Python interpreter was found."
@@ -71,11 +99,12 @@ else {
     exit 1
 }
 
-# Build/install the Rust extension into the venv
-python -m maturin develop
-
-# Build the native Rust CLI executable
-cargo build -p janiform-cli
+if ($ReleaseWheel) {
+    Build-ReleasePackageAndCli
+}
+else {
+    Build-EditablePackageAndCli
+}
 
 # Smoke test
 python -c "import janiform; print('janiform installed correctly.')"

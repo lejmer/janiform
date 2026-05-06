@@ -84,28 +84,28 @@ pub fn evaluate_exponential_affine_transform_ode_rhs(
         d_vector
             .plus_plus
             .scale(-beta)
-            .add(hamiltonians.h_plus.scale(transform_input.s_h)),
+            .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
         d_vector
             .plus_minus
             .scale(-beta)
-            .add(hamiltonians.h_plus.scale(transform_input.s_h)),
+            .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
         d_vector
             .minus_plus
             .scale(-beta)
-            .add(hamiltonians.h_minus.scale(transform_input.s_h)),
+            .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
         d_vector
             .minus_minus
             .scale(-beta)
-            .add(hamiltonians.h_minus.scale(transform_input.s_h)),
+            .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
     );
 
     let trading_term = hamiltonians
         .h_plus
-        .add(hamiltonians.h_minus)
+        .plus(hamiltonians.h_minus)
         .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar);
     let news_term = evaluate_gamma_moment_news_term(transform_input, d_vector);
 
-    ExponentialAffineTransformOdeRhs::new(d_derivative, trading_term.add(news_term))
+    ExponentialAffineTransformOdeRhs::new(d_derivative, trading_term.plus(news_term))
 }
 fn evaluate_hamiltonian_component(
     u_component: ComplexScalar,

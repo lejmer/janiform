@@ -290,7 +290,7 @@ fn build_direct_job(
             .map_err(|source| validation_error("seeded_tick_request", source.to_string()))?;
 
             Ok(DirectSimulationJob::SeededTick {
-                run_config,
+                run_config: Box::new(run_config),
                 export: SeededTickExportSettings {
                     // Intentional copy because export settings own the public
                     // output column contract independent of the borrowed request.
@@ -375,7 +375,7 @@ fn build_direct_job(
             .map_err(|source| validation_error("coarse_interval_request", source.to_string()))?;
 
             Ok(DirectSimulationJob::CoarseInterval {
-                request: coarse_request,
+                request: Box::new(coarse_request),
                 export: CoarseIntervalExportSettings {
                     // Intentional copies because export settings own their column
                     // and calendar contracts after request construction completes.

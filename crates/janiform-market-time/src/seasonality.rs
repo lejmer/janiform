@@ -18,9 +18,9 @@ pub use calendar_buckets::{
 };
 pub use composition::{
     DeterministicSeasonalityCompositionDiagnostics, DeterministicSeasonalityCompositionError,
-    DeterministicSeasonalityCompositionOutput, ScheduledEventOverlayDefinition,
-    ScheduledEventOverlayProvenanceMetadata, SeasonalityNormalizationMetadata,
-    compose_deterministic_seasonality_signal,
+    DeterministicSeasonalityCompositionInput, DeterministicSeasonalityCompositionOutput,
+    ScheduledEventOverlayDefinition, ScheduledEventOverlayProvenanceMetadata,
+    SeasonalityNormalizationMetadata, compose_deterministic_seasonality_signal,
 };
 pub use constants::{
     DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,

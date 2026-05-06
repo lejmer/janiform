@@ -1290,14 +1290,14 @@ impl VanillaOptionPricingResponse {
                     VanillaOptionPricingResponseError::InvalidDiagnostics { source }
                 })?;
 
-                if let Some(implied_volatility) = self.implied_volatility {
-                    if !implied_volatility.is_finite() || implied_volatility < 0.0 {
-                        return Err(
-                            VanillaOptionPricingResponseError::InvalidImpliedVolatility {
-                                value: implied_volatility,
-                            },
-                        );
-                    }
+                if let Some(implied_volatility) = self.implied_volatility
+                    && (!implied_volatility.is_finite() || implied_volatility < 0.0)
+                {
+                    return Err(
+                        VanillaOptionPricingResponseError::InvalidImpliedVolatility {
+                            value: implied_volatility,
+                        },
+                    );
                 }
 
                 let inversion_status = self.implied_volatility_inversion_status.ok_or(
@@ -1994,16 +1994,33 @@ impl Error for VanillaOptionPricingRunResultError {
 }
 
 /// Build one pricing run output with optional diagnostics and calibration hooks.
+#[derive(Debug, Clone)]
+pub struct VanillaOptionPricingRunResultBuildInput {
+    pub response: VanillaOptionPricingResponse,
+    pub output_selection: VanillaOptionPricingOptionalOutputSelection,
+    pub market_inputs_for_calibration_hooks: Option<VanillaOptionPricingMarketInputs>,
+    pub transform_diagnostics_source: Option<ExponentialAffineTransformIntegrationResult>,
+    pub integration_quality_source: Option<FourierInversionDiagnostics>,
+    pub spectral_source: Option<SpectralPricingDiagnostics>,
+    pub runtime_interval_schedule: PricingIntervalSchedule,
+    pub maturity_terminal_interval_indices: Vec<usize>,
+}
+
+/// Build one pricing run output with optional diagnostics and calibration hooks.
 pub fn build_vanilla_option_pricing_run_result(
-    response: VanillaOptionPricingResponse,
-    output_selection: VanillaOptionPricingOptionalOutputSelection,
-    market_inputs_for_calibration_hooks: Option<VanillaOptionPricingMarketInputs>,
-    transform_diagnostics_source: Option<ExponentialAffineTransformIntegrationResult>,
-    integration_quality_source: Option<FourierInversionDiagnostics>,
-    spectral_source: Option<SpectralPricingDiagnostics>,
-    runtime_interval_schedule: PricingIntervalSchedule,
-    maturity_terminal_interval_indices: Vec<usize>,
+    input: VanillaOptionPricingRunResultBuildInput,
 ) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunResultBuildError> {
+    let VanillaOptionPricingRunResultBuildInput {
+        response,
+        output_selection,
+        market_inputs_for_calibration_hooks,
+        transform_diagnostics_source,
+        integration_quality_source,
+        spectral_source,
+        runtime_interval_schedule,
+        maturity_terminal_interval_indices,
+    } = input;
+
     let run_diagnostics = if response.is_successful() && output_selection.diagnostics_selected() {
         if output_selection.include_transform_diagnostics && transform_diagnostics_source.is_none()
         {

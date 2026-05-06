@@ -174,10 +174,10 @@ impl CommandContext {
     pub(crate) fn from_global_options(options: &GlobalCliOptions) -> Result<Self, CliError> {
         let paths = PathResolver::from_process()?;
 
-        let config_path = match &options.config {
-            Some(path) => Some(paths.resolve_process_path(path)),
-            None => None,
-        };
+        let config_path = options
+            .config
+            .as_ref()
+            .map(|path| paths.resolve_process_path(path));
 
         let configuration = match &config_path {
             Some(path) => CliConfiguration::load(path)?,

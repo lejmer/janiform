@@ -27,11 +27,9 @@ pub(crate) fn send_return_components_evaluation_progress(
     current_evaluation_count: usize,
     total_evaluation_budget: usize,
 ) {
-    let evaluation_progress_percent = if total_evaluation_budget == 0 {
-        None
-    } else {
-        Some(current_evaluation_count.saturating_mul(100) / total_evaluation_budget)
-    };
+    let evaluation_progress_percent = current_evaluation_count
+        .saturating_mul(100)
+        .checked_div(total_evaluation_budget);
 
     send_return_components_progress_update(
         progress_sender,

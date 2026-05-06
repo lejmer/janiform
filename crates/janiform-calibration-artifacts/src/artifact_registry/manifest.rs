@@ -510,10 +510,11 @@ fn build_validation_metric_summary(
         .metric_collections
         .iter()
         .flat_map(|collection| {
-            collection.metrics.iter().filter_map(|metric| {
-                (metric.status == CalibrationValidationMetricStatus::Fail)
-                    .then(|| metric.metric_id.clone())
-            })
+            collection
+                .metrics
+                .iter()
+                .filter(|metric| metric.status == CalibrationValidationMetricStatus::Fail)
+                .map(|metric| metric.metric_id.clone())
         })
         .collect::<Vec<_>>();
 

@@ -104,7 +104,7 @@ pub(super) fn retained_stage_report(
                 .as_ref()
                 .map(|payload| payload.without_event_level_vectors());
 
-            CalibrationStagedRunStageReport::Seasonality(
+            CalibrationStagedRunStageReport::Seasonality(Box::new(
                 crate::stages::seasonality::SeasonalityStageExecutionReport {
                     schema_version: report.schema_version,
                     stage: report.stage,
@@ -117,7 +117,7 @@ pub(super) fn retained_stage_report(
                     metadata: report.metadata.clone(),
                     failure: report.failure.clone(),
                 },
-            )
+            ))
         }
         _ => stage_report.clone(),
     }

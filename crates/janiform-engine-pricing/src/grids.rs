@@ -216,24 +216,24 @@ impl VanillaOptionGridBatchPricingExecutionInput {
             );
         }
 
-        if let Some(cpu_count) = self.cpu_count {
-            if cpu_count == 0 {
-                return Err(
-                    VanillaOptionGridBatchPricingExecutionInputError::InvalidCpuCount {
-                        value: cpu_count,
-                    },
-                );
-            }
+        if let Some(cpu_count) = self.cpu_count
+            && cpu_count == 0
+        {
+            return Err(
+                VanillaOptionGridBatchPricingExecutionInputError::InvalidCpuCount {
+                    value: cpu_count,
+                },
+            );
         }
 
-        if let Some(collocation_node_count) = self.spectral_collocation_node_count_override {
-            if collocation_node_count == 0 {
-                return Err(
-                    VanillaOptionGridBatchPricingExecutionInputError::InvalidCollocationNodeCount {
-                        value: collocation_node_count,
-                    },
-                );
-            }
+        if let Some(collocation_node_count) = self.spectral_collocation_node_count_override
+            && collocation_node_count == 0
+        {
+            return Err(
+                VanillaOptionGridBatchPricingExecutionInputError::InvalidCollocationNodeCount {
+                    value: collocation_node_count,
+                },
+            );
         }
 
         for grid in &self.request.grids {
@@ -373,10 +373,10 @@ pub struct VanillaOptionGridBatchPricingRunResult {
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionGridBatchPricingRunError {
     InvalidExecutionInput {
-        source: VanillaOptionGridBatchPricingExecutionInputError,
+        source: Box<VanillaOptionGridBatchPricingExecutionInputError>,
     },
     InvalidDriverParameters {
-        source: NigSharedPlusShiftConfigurationError,
+        source: Box<NigSharedPlusShiftConfigurationError>,
     },
     NodePricingFailure {
         message: String,
@@ -404,8 +404,8 @@ impl Display for VanillaOptionGridBatchPricingRunError {
 impl Error for VanillaOptionGridBatchPricingRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidExecutionInput { source } => Some(source),
-            Self::InvalidDriverParameters { source } => Some(source),
+            Self::InvalidExecutionInput { source } => Some(source.as_ref()),
+            Self::InvalidDriverParameters { source } => Some(source.as_ref()),
             Self::NodePricingFailure { .. } => None,
         }
     }
@@ -778,10 +778,10 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
     )
     .map_err(|source| match source {
         VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source } => {
-            VanillaOptionSurfacePricingRunError::InvalidExecutionInput { source }
+            VanillaOptionSurfacePricingRunError::InvalidExecutionInput { source: *source }
         }
         VanillaOptionGridBatchPricingRunError::InvalidDriverParameters { source } => {
-            VanillaOptionSurfacePricingRunError::InvalidDriverParameters { source }
+            VanillaOptionSurfacePricingRunError::InvalidDriverParameters { source: *source }
         }
         VanillaOptionGridBatchPricingRunError::NodePricingFailure { message } => {
             VanillaOptionSurfacePricingRunError::NodePricingFailure { message }

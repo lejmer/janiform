@@ -30,13 +30,13 @@ impl<'a> SeededSimulationMarketStateResolver<'a> {
                     SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
                         exchange_code: exchange_code.to_string(),
                         timestamp_utc_nanos: 0,
-                        source: match source {
+                        source: Box::new(match source {
                             janiform_market_time::calendar::ExchangeCalendarRegistryLookupError::MissingExchangeId {
                                 exchange_code,
                             } => janiform_market_time::calendar::ExchangeCalendarResolveError::MissingExchangeId {
                                 exchange_code,
                             },
-                        },
+                        }),
                     }
                 })?;
 
@@ -44,10 +44,10 @@ impl<'a> SeededSimulationMarketStateResolver<'a> {
             SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
                 exchange_code: exchange_code.to_string(),
                 timestamp_utc_nanos: 0,
-                source: janiform_market_time::calendar::ExchangeCalendarResolveError::InvalidTimezoneName {
+                source: Box::new(janiform_market_time::calendar::ExchangeCalendarResolveError::InvalidTimezoneName {
                     exchange_code: exchange_code.to_string(),
                     timezone_name: definition.timezone_name().to_string(),
-                },
+                }),
             }
         })?;
 

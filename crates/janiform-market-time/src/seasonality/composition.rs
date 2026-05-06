@@ -73,18 +73,36 @@ pub struct DeterministicSeasonalityCompositionOutput {
     pub diagnostics: DeterministicSeasonalityCompositionDiagnostics,
 }
 
+/// Input contract for deterministic seasonality composition.
+#[derive(Debug, Clone, Copy)]
+pub struct DeterministicSeasonalityCompositionInput<'a> {
+    pub timestamp_utc_nanos: &'a [i64],
+    pub exchange_local_minute_of_day: &'a [u16],
+    pub exchange_local_day_of_week: &'a [u8],
+    pub exchange_local_day_of_year: &'a [u16],
+    pub intraday_minutes_per_bin: u16,
+    pub intraday_log_component_by_bin: &'a [f64],
+    pub day_of_week_log_component: &'a [f64],
+    pub day_of_year_log_component: &'a [f64],
+    pub scheduled_event_overlays: &'a [ScheduledEventOverlayDefinition],
+}
+
 /// Compose intraday, day-of-week, and day-of-year log components into a unified signal.
 pub fn compose_deterministic_seasonality_signal(
-    timestamp_utc_nanos: &[i64],
-    exchange_local_minute_of_day: &[u16],
-    exchange_local_day_of_week: &[u8],
-    exchange_local_day_of_year: &[u16],
-    intraday_minutes_per_bin: u16,
-    intraday_log_component_by_bin: &[f64],
-    day_of_week_log_component: &[f64],
-    day_of_year_log_component: &[f64],
-    scheduled_event_overlays: &[ScheduledEventOverlayDefinition],
+    input: DeterministicSeasonalityCompositionInput<'_>,
 ) -> Result<DeterministicSeasonalityCompositionOutput, DeterministicSeasonalityCompositionError> {
+    let DeterministicSeasonalityCompositionInput {
+        timestamp_utc_nanos,
+        exchange_local_minute_of_day,
+        exchange_local_day_of_week,
+        exchange_local_day_of_year,
+        intraday_minutes_per_bin,
+        intraday_log_component_by_bin,
+        day_of_week_log_component,
+        day_of_year_log_component,
+        scheduled_event_overlays,
+    } = input;
+
     if timestamp_utc_nanos.is_empty() {
         return Err(DeterministicSeasonalityCompositionError::EmptyInputEvents);
     }
@@ -150,6 +168,7 @@ pub fn compose_deterministic_seasonality_signal(
     let mut overlay_source_labels_in_order: Vec<String> =
         Vec::with_capacity(scheduled_event_overlays.len());
     let mut observed_overlay_ids: BTreeSet<String> = BTreeSet::new();
+
     let mut enabled_overlay_count = 0_usize;
 
     for (overlay_position, overlay) in scheduled_event_overlays.iter().enumerate() {
@@ -203,6 +222,7 @@ pub fn compose_deterministic_seasonality_signal(
     let mut combined_log_component_by_event: Vec<f64> = Vec::with_capacity(input_event_count);
     let mut combined_factor_by_event: Vec<f64> = Vec::with_capacity(input_event_count);
     let mut overlay_application_count_by_index: Vec<u64> = vec![0; scheduled_event_overlays.len()];
+
     let mut active_overlay_event_count = 0_usize;
 
     for record_position in 0..input_event_count {
@@ -234,9 +254,12 @@ pub fn compose_deterministic_seasonality_signal(
 
         let intraday_bin_index = minute_of_day / intraday_minutes_per_bin;
         let intraday_log_component = intraday_log_component_by_bin[usize::from(intraday_bin_index)];
+
         let day_of_week_log_component_value = day_of_week_log_component[(day_of_week - 1) as usize];
         let day_of_year_log_component_value = day_of_year_log_component[(day_of_year - 1) as usize];
+
         let event_timestamp_utc_nanos = timestamp_utc_nanos[record_position];
+
         let mut selected_overlay_indices: Vec<usize> = Vec::new();
         let mut selected_overlay_precedence: Option<u16> = None;
         let mut special_log_component = 0.0;
@@ -332,6 +355,7 @@ pub fn compose_deterministic_seasonality_signal(
     }
 
     let mut applied_overlay_ids_in_order: Vec<String> = Vec::new();
+
     for (overlay_index, overlay_application_count) in overlay_application_count_by_index
         .iter()
         .copied()

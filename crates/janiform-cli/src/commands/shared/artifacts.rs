@@ -66,7 +66,7 @@ fn json_document_load_error(
         JsonDocumentLoadError::Parse { path, source } => CliError::ArtifactParse {
             artifact_name,
             path,
-            source,
+            source: Box::new(source),
         },
     }
 }

@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::ops::Add;
 
 use serde::{Deserialize, Serialize};
 
@@ -424,13 +425,8 @@ impl ExponentialAffineTransformDVector {
     }
 
     /// Componentwise addition in model order `[++, +-, -+, --]`.
-    pub fn add(self, other: Self) -> Self {
-        Self::new(
-            self.plus_plus.add(other.plus_plus),
-            self.plus_minus.add(other.plus_minus),
-            self.minus_plus.add(other.minus_plus),
-            self.minus_minus.add(other.minus_minus),
-        )
+    pub fn plus(self, other: Self) -> Self {
+        self + other
     }
 
     /// Uniform scalar multiplication across all components.
@@ -446,19 +442,36 @@ impl ExponentialAffineTransformDVector {
     /// Compute `D(Delta) · y_0`.
     pub fn dot_state(self, state: HawkesExcitationState) -> ComplexScalar {
         let mut total = ComplexScalar::new(0.0, 0.0);
-        total = total.add(self.plus_plus.scale(state.y_plus_plus));
-        total = total.add(self.plus_minus.scale(state.y_plus_minus));
-        total = total.add(self.minus_plus.scale(state.y_minus_plus));
-        total.add(self.minus_minus.scale(state.y_minus_minus))
+
+        total = total.plus(self.plus_plus.scale(state.y_plus_plus));
+        total = total.plus(self.plus_minus.scale(state.y_plus_minus));
+        total = total.plus(self.minus_plus.scale(state.y_minus_plus));
+
+        total.plus(self.minus_minus.scale(state.y_minus_minus))
     }
 
     /// Compute `D · w` using model-order component matching.
     pub fn dot_loadings(self, loadings: HawkesKernelLoadings) -> ComplexScalar {
         let mut total = ComplexScalar::new(0.0, 0.0);
-        total = total.add(self.plus_plus.scale(loadings.plus_plus));
-        total = total.add(self.plus_minus.scale(loadings.plus_minus));
-        total = total.add(self.minus_plus.scale(loadings.minus_plus));
-        total.add(self.minus_minus.scale(loadings.minus_minus))
+
+        total = total.plus(self.plus_plus.scale(loadings.plus_plus));
+        total = total.plus(self.plus_minus.scale(loadings.plus_minus));
+        total = total.plus(self.minus_plus.scale(loadings.minus_plus));
+
+        total.plus(self.minus_minus.scale(loadings.minus_minus))
+    }
+}
+
+impl Add for ExponentialAffineTransformDVector {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self::new(
+            self.plus_plus + other.plus_plus,
+            self.plus_minus + other.plus_minus,
+            self.minus_plus + other.minus_plus,
+            self.minus_minus + other.minus_minus,
+        )
     }
 }
 

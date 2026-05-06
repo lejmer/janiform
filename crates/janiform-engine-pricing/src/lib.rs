@@ -68,8 +68,8 @@ pub use contracts::{
     VanillaOptionPricingResponseError, VanillaOptionPricingRunDiagnostics,
     VanillaOptionPricingRunDiagnosticsError, VanillaOptionPricingRunOutputSchemaMetadata,
     VanillaOptionPricingRunResult, VanillaOptionPricingRunResultBuildError,
-    VanillaOptionPricingRunResultError, VanillaOptionPricingStatus,
-    build_vanilla_option_pricing_run_result,
+    VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingRunResultError,
+    VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
 };
 pub use fourier::{
     FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,

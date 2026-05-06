@@ -451,7 +451,7 @@ pub fn differentiate_nig_characteristic_exponent_under_esscher_tilt(
     input.validate()?;
 
     let anchor_argument = ComplexScalar::new(0.0, input.theta);
-    let shifted_argument = input.argument.add(anchor_argument);
+    let shifted_argument = input.argument.plus(anchor_argument);
 
     let shifted_sensitivity =
         differentiate_nig_characteristic_exponent(input.physical_parameters, shifted_argument)?;
@@ -635,7 +635,7 @@ pub fn transform_nig_characteristic_exponent_under_esscher_tilt(
     input.validate()?;
 
     let anchor_argument = ComplexScalar::new(0.0, input.theta);
-    let shifted_argument = input.argument.add(anchor_argument);
+    let shifted_argument = input.argument.plus(anchor_argument);
 
     let physical_exponent_at_shifted_argument = input
         .physical_parameters
@@ -810,7 +810,7 @@ mod tests {
         )
         .expect("Esscher transform should evaluate for a valid fixture");
 
-        let expected_shifted_argument = argument.add(ComplexScalar::new(0.0, theta));
+        let expected_shifted_argument = argument.plus(ComplexScalar::new(0.0, theta));
         let expected_anchor_argument = ComplexScalar::new(0.0, theta);
         let expected = parameters
             .characteristic_exponent(expected_shifted_argument)

@@ -3,7 +3,10 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use crate::stages::seasonality::build_runtime_hourly_seasonality_factors_from_components;
+use crate::stages::seasonality::{
+    RuntimeHourlySeasonalityFactorsBuildInput,
+    build_runtime_hourly_seasonality_factors_from_components,
+};
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 /// Rust-native input for compact structural runtime seasonality materialization.
@@ -65,15 +68,17 @@ pub fn materialize_runtime_structural_seasonality(
     RuntimeStructuralSeasonalityMaterializationError,
 > {
     let seasonality_factors = build_runtime_hourly_seasonality_factors_from_components(
-        calendar_registry,
-        input.exchange_code.as_str(),
-        input.intraday_minutes_per_bin,
-        input.intraday_factor_by_bin.as_slice(),
-        input.day_of_week_factor.as_slice(),
-        input.day_of_year_factor.as_slice(),
-        input.range_start_utc_nanos,
-        input.range_end_utc_nanos,
-        input.interval_duration_nanos,
+        RuntimeHourlySeasonalityFactorsBuildInput {
+            calendar_registry,
+            exchange_code: input.exchange_code.as_str(),
+            intraday_minutes_per_bin: input.intraday_minutes_per_bin,
+            intraday_factor_by_bin: input.intraday_factor_by_bin.as_slice(),
+            day_of_week_factor: input.day_of_week_factor.as_slice(),
+            day_of_year_factor: input.day_of_year_factor.as_slice(),
+            range_start_utc_nanos: input.range_start_utc_nanos,
+            range_end_utc_nanos: input.range_end_utc_nanos,
+            interval_duration_nanos: input.interval_duration_nanos,
+        },
     )
     .map_err(|reason| {
         RuntimeStructuralSeasonalityMaterializationError::FactorMaterializationFailed { reason }
@@ -84,6 +89,7 @@ pub fn materialize_runtime_structural_seasonality(
 
     while current_interval_start_utc_nanos < input.range_end_utc_nanos {
         interval_start_utc_nanos.push(current_interval_start_utc_nanos);
+
         current_interval_start_utc_nanos = current_interval_start_utc_nanos
             .checked_add(input.interval_duration_nanos)
             .ok_or(

@@ -1,9 +1,10 @@
 use janiform::model::factors::seasonality::{
     DayOfWeekSeasonalityEstimationError, DayOfWeekSeasonalityEstimatorSettings,
     DayOfYearSeasonalityEstimationError, DayOfYearSeasonalityEstimatorSettings,
-    DeterministicSeasonalityCompositionError, IntradaySeasonalityEstimationError,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
-    SeasonalityDiagnosticsReportError, SeasonalityDiagnosticsReportInput,
+    DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionInput,
+    IntradaySeasonalityEstimationError, IntradaySeasonalityEstimatorSettings,
+    IntradaySmoothingKernel, ScheduledEventOverlayDefinition, SeasonalityDiagnosticsReportError,
+    SeasonalityDiagnosticsReportInput,
     compose_deterministic_seasonality_signal as compose_deterministic_seasonality_signal_core,
     estimate_day_of_week_seasonality as estimate_day_of_week_seasonality_core,
     estimate_day_of_year_seasonality as estimate_day_of_year_seasonality_core,
@@ -111,6 +112,10 @@ fn estimate_day_of_year_seasonality(
 
 #[pyfunction]
 #[pyo3(signature = (timestamp_utc_nanos, exchange_local_minute_of_day, exchange_local_day_of_week, exchange_local_day_of_year, intraday_log_component_by_bin, day_of_week_log_component, day_of_year_log_component, *, intraday_minutes_per_bin, scheduled_event_overlays = None))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn compose_deterministic_seasonality_signal(
     py: Python<'_>,
     timestamp_utc_nanos: &Bound<'_, PyAny>,
@@ -170,15 +175,17 @@ fn compose_deterministic_seasonality_signal(
     let output = py
         .detach(|| {
             compose_deterministic_seasonality_signal_core(
-                &timestamp_utc_nanos_values,
-                &minute_of_day_values,
-                &day_of_week_values,
-                &day_of_year_values,
-                intraday_minutes_per_bin,
-                &intraday_log_values,
-                &day_of_week_log_values,
-                &day_of_year_log_values,
-                &overlay_definitions,
+                DeterministicSeasonalityCompositionInput {
+                    timestamp_utc_nanos: &timestamp_utc_nanos_values,
+                    exchange_local_minute_of_day: &minute_of_day_values,
+                    exchange_local_day_of_week: &day_of_week_values,
+                    exchange_local_day_of_year: &day_of_year_values,
+                    intraday_minutes_per_bin,
+                    intraday_log_component_by_bin: &intraday_log_values,
+                    day_of_week_log_component: &day_of_week_log_values,
+                    day_of_year_log_component: &day_of_year_log_values,
+                    scheduled_event_overlays: &overlay_definitions,
+                },
             )
         })
         .map_err(map_deterministic_composition_error)?;
@@ -188,6 +195,10 @@ fn compose_deterministic_seasonality_signal(
 
 #[pyfunction]
 #[pyo3(signature = (dataset_id, preprocessed_events, intraday_estimate, day_of_week_estimate, day_of_year_estimate, composition, *, estimator_version))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn generate_seasonality_diagnostics_report(
     py: Python<'_>,
     dataset_id: &str,

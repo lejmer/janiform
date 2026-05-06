@@ -15,15 +15,19 @@ use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{HawkesKernelLoadings, stationary_intensity_multipliers};
 
 pub(super) fn build_hawkes_candidate_inputs(
-    resolved_ticks: &[ResolvedTickRecord],
-    open_price_ticks: &[OpenTickRecord],
-    retained_known_news: &[ResolvedKnownNewsRecord],
-    session_open_tick_count: usize,
-    session_closed_tick_count: usize,
-    open_session_buy_tick_count: usize,
-    open_session_sell_tick_count: usize,
-    directional_label_diagnostics: Option<CalibrationHawkesDirectionalLabelDiagnostics>,
+    input: HawkesCandidateInputsBuildInput<'_>,
 ) -> Result<Vec<CalibrationHawkesStageCandidateInput>, MarketDataTranslationPreprocessingError> {
+    let HawkesCandidateInputsBuildInput {
+        resolved_ticks,
+        open_price_ticks,
+        retained_known_news,
+        session_open_tick_count,
+        session_closed_tick_count,
+        open_session_buy_tick_count,
+        open_session_sell_tick_count,
+        directional_label_diagnostics,
+    } = input;
+
     if let Some(missing_sign_tick) = resolved_ticks
         .iter()
         .find(|resolved_tick| resolved_tick.trade_sign.is_none())
@@ -213,6 +217,17 @@ pub(super) fn build_hawkes_candidate_inputs(
     }
 
     Ok(candidate_inputs)
+}
+
+pub(super) struct HawkesCandidateInputsBuildInput<'a> {
+    pub(super) resolved_ticks: &'a [ResolvedTickRecord],
+    pub(super) open_price_ticks: &'a [OpenTickRecord],
+    pub(super) retained_known_news: &'a [ResolvedKnownNewsRecord],
+    pub(super) session_open_tick_count: usize,
+    pub(super) session_closed_tick_count: usize,
+    pub(super) open_session_buy_tick_count: usize,
+    pub(super) open_session_sell_tick_count: usize,
+    pub(super) directional_label_diagnostics: Option<CalibrationHawkesDirectionalLabelDiagnostics>,
 }
 
 pub(super) fn build_structured_alpha_candidate(

@@ -103,6 +103,20 @@ pub struct PricingProgressEvent {
     pub average_core_log_moment_shift_configuration_gradient_norm: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TransitionRowSolveProgressDiagnostics {
+    pub seed_exact_transition_row_count: usize,
+    pub shared_theta_transition_row_count: usize,
+    pub certified_transition_row_count: usize,
+    pub fallback_exact_transition_row_count: usize,
+    pub theta_search_elapsed_millis: u64,
+    pub theta_certification_elapsed_millis: u64,
+    pub row_batch_elapsed_millis: u64,
+    pub average_buy_shift_configuration_gradient_norm: f64,
+    pub average_sell_shift_configuration_gradient_norm: f64,
+    pub average_core_log_moment_shift_configuration_gradient_norm: f64,
+}
+
 impl PricingProgressEvent {
     pub fn group_progress(
         completed_units: usize,
@@ -257,30 +271,24 @@ impl PricingProgressEvent {
 
     pub fn with_transition_row_solve_diagnostics(
         mut self,
-        seed_exact_transition_row_count: usize,
-        shared_theta_transition_row_count: usize,
-        certified_transition_row_count: usize,
-        fallback_exact_transition_row_count: usize,
-        theta_search_elapsed_millis: u64,
-        theta_certification_elapsed_millis: u64,
-        row_batch_elapsed_millis: u64,
-        average_buy_shift_configuration_gradient_norm: f64,
-        average_sell_shift_configuration_gradient_norm: f64,
-        average_core_log_moment_shift_configuration_gradient_norm: f64,
+        diagnostics: TransitionRowSolveProgressDiagnostics,
     ) -> Self {
-        self.seed_exact_transition_row_count = Some(seed_exact_transition_row_count);
-        self.shared_theta_transition_row_count = Some(shared_theta_transition_row_count);
-        self.certified_transition_row_count = Some(certified_transition_row_count);
-        self.fallback_exact_transition_row_count = Some(fallback_exact_transition_row_count);
-        self.theta_search_elapsed_millis = Some(theta_search_elapsed_millis);
-        self.theta_certification_elapsed_millis = Some(theta_certification_elapsed_millis);
-        self.row_batch_elapsed_millis = Some(row_batch_elapsed_millis);
+        self.seed_exact_transition_row_count = Some(diagnostics.seed_exact_transition_row_count);
+        self.shared_theta_transition_row_count =
+            Some(diagnostics.shared_theta_transition_row_count);
+        self.certified_transition_row_count = Some(diagnostics.certified_transition_row_count);
+        self.fallback_exact_transition_row_count =
+            Some(diagnostics.fallback_exact_transition_row_count);
+        self.theta_search_elapsed_millis = Some(diagnostics.theta_search_elapsed_millis);
+        self.theta_certification_elapsed_millis =
+            Some(diagnostics.theta_certification_elapsed_millis);
+        self.row_batch_elapsed_millis = Some(diagnostics.row_batch_elapsed_millis);
         self.average_buy_shift_configuration_gradient_norm =
-            Some(average_buy_shift_configuration_gradient_norm);
+            Some(diagnostics.average_buy_shift_configuration_gradient_norm);
         self.average_sell_shift_configuration_gradient_norm =
-            Some(average_sell_shift_configuration_gradient_norm);
+            Some(diagnostics.average_sell_shift_configuration_gradient_norm);
         self.average_core_log_moment_shift_configuration_gradient_norm =
-            Some(average_core_log_moment_shift_configuration_gradient_norm);
+            Some(diagnostics.average_core_log_moment_shift_configuration_gradient_norm);
 
         self
     }

@@ -11,10 +11,11 @@ use super::bounds::{
     theoretical_search_bounds,
 };
 use super::likelihood::{
-    alpha_beta_boundary_penalty, average_negative_log_likelihood_resolution,
-    closed_form_single_side_log_density, continuous_block_likelihood_objective_with_failures,
-    log_density_net_trading_time_return, log_density_net_trading_time_return_failure_reason,
-    maximum_profiled_open_beta_ratio, profile_likelihood_score,
+    NetTradingTimeReturnLogDensityInput, alpha_beta_boundary_penalty,
+    average_negative_log_likelihood_resolution, closed_form_single_side_log_density,
+    continuous_block_likelihood_objective_with_failures, log_density_net_trading_time_return,
+    log_density_net_trading_time_return_failure_reason, maximum_profiled_open_beta_ratio,
+    profile_likelihood_score,
 };
 use super::optimization::{build_nig_moment_seed_configurations, build_nig_search_candidates};
 use super::profile::{
@@ -185,17 +186,18 @@ fn buy_only_exact_density_matches_closed_form_reference() {
         .derive_driver_parameters()
         .expect("driver parameters should derive");
 
-    let exact_log_density = log_density_net_trading_time_return(
-        driver_parameters,
-        configuration,
-        1.1e-4,
-        1.0,
-        0.0,
-        0.8,
-        0.0,
-        average_negative_log_likelihood_resolution(1),
-    )
-    .expect("buy-only log density should evaluate");
+    let exact_log_density =
+        log_density_net_trading_time_return(NetTradingTimeReturnLogDensityInput {
+            driver_parameters,
+            configuration,
+            observed_return: 1.1e-4,
+            business_time_scale: 1.0,
+            sell_share_proxy: 0.0,
+            integrated_buy_intensity: 0.8,
+            integrated_sell_intensity: 0.0,
+            log_density_resolution: average_negative_log_likelihood_resolution(1),
+        })
+        .expect("buy-only log density should evaluate");
     let closed_form_log_density = closed_form_single_side_log_density(
         ReturnComponentsStageExactLikelihoodEvaluatorKind::ClosedFormSingleSideBuy,
         configuration,
@@ -215,17 +217,18 @@ fn sell_only_exact_density_matches_closed_form_reference() {
         .derive_driver_parameters()
         .expect("driver parameters should derive");
 
-    let exact_log_density = log_density_net_trading_time_return(
-        driver_parameters,
-        configuration,
-        -9.5e-5,
-        1.0,
-        1.0,
-        0.0,
-        0.65,
-        average_negative_log_likelihood_resolution(1),
-    )
-    .expect("sell-only log density should evaluate");
+    let exact_log_density =
+        log_density_net_trading_time_return(NetTradingTimeReturnLogDensityInput {
+            driver_parameters,
+            configuration,
+            observed_return: -9.5e-5,
+            business_time_scale: 1.0,
+            sell_share_proxy: 1.0,
+            integrated_buy_intensity: 0.0,
+            integrated_sell_intensity: 0.65,
+            log_density_resolution: average_negative_log_likelihood_resolution(1),
+        })
+        .expect("sell-only log density should evaluate");
     let closed_form_log_density = closed_form_single_side_log_density(
         ReturnComponentsStageExactLikelihoodEvaluatorKind::ClosedFormSingleSideSell,
         configuration,
@@ -424,26 +427,27 @@ fn block_log_density_is_finite_for_representative_configuration() {
         .derive_driver_parameters()
         .expect("driver parameters should derive");
 
-    let log_density = log_density_net_trading_time_return(
+    let log_density = log_density_net_trading_time_return(NetTradingTimeReturnLogDensityInput {
         driver_parameters,
         configuration,
-        1.5e-4,
-        1.2,
-        0.55,
-        0.54,
-        0.66,
-        average_negative_log_likelihood_resolution(1),
-    );
-    let failure_reason = log_density_net_trading_time_return_failure_reason(
-        driver_parameters,
-        configuration,
-        1.5e-4,
-        1.2,
-        0.55,
-        0.54,
-        0.66,
-        average_negative_log_likelihood_resolution(1),
-    );
+        observed_return: 1.5e-4,
+        business_time_scale: 1.2,
+        sell_share_proxy: 0.55,
+        integrated_buy_intensity: 0.54,
+        integrated_sell_intensity: 0.66,
+        log_density_resolution: average_negative_log_likelihood_resolution(1),
+    });
+    let failure_reason =
+        log_density_net_trading_time_return_failure_reason(NetTradingTimeReturnLogDensityInput {
+            driver_parameters,
+            configuration,
+            observed_return: 1.5e-4,
+            business_time_scale: 1.2,
+            sell_share_proxy: 0.55,
+            integrated_buy_intensity: 0.54,
+            integrated_sell_intensity: 0.66,
+            log_density_resolution: average_negative_log_likelihood_resolution(1),
+        });
 
     assert!(
         log_density.is_some(),

@@ -4,9 +4,10 @@ use super::contracts::{
     MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
     MarketDataTranslationPreprocessingRequest,
 };
-use super::hawkes_inputs::build_hawkes_candidate_inputs;
+use super::hawkes_inputs::{HawkesCandidateInputsBuildInput, build_hawkes_candidate_inputs};
 use super::known_news_samples::resolve_known_news_records;
 use super::return_components_inputs::{
+    ReturnComponentsCandidateGenerationInputBuildInput,
     build_return_components_candidate_generation_input,
     derive_mean_reversion_open_session_grid_inputs,
 };
@@ -47,14 +48,16 @@ pub fn preprocess_market_data_translation_request(
 
     let hawkes_candidate_inputs = if request.require_hawkes {
         Some(build_hawkes_candidate_inputs(
-            tick_summary.resolved_ticks.as_slice(),
-            tick_summary.open_price_ticks.as_slice(),
-            retained_known_news.retained_records.as_slice(),
-            tick_summary.session_open_tick_count,
-            tick_summary.session_closed_tick_count,
-            tick_summary.open_session_buy_tick_count,
-            tick_summary.open_session_sell_tick_count,
-            request.directional_label_diagnostics,
+            HawkesCandidateInputsBuildInput {
+                resolved_ticks: tick_summary.resolved_ticks.as_slice(),
+                open_price_ticks: tick_summary.open_price_ticks.as_slice(),
+                retained_known_news: retained_known_news.retained_records.as_slice(),
+                session_open_tick_count: tick_summary.session_open_tick_count,
+                session_closed_tick_count: tick_summary.session_closed_tick_count,
+                open_session_buy_tick_count: tick_summary.open_session_buy_tick_count,
+                open_session_sell_tick_count: tick_summary.open_session_sell_tick_count,
+                directional_label_diagnostics: request.directional_label_diagnostics,
+            },
         )?)
     } else {
         None
@@ -67,20 +70,23 @@ pub fn preprocess_market_data_translation_request(
         material_close_open_gap_count,
     ) = if request.require_return_components {
         let output = build_return_components_candidate_generation_input(
-            definition,
-            timezone,
-            request.exchange_code.as_str(),
-            tick_summary.open_price_ticks.as_slice(),
-            tick_summary.open_signed_tick_count,
-            tick_summary.open_session_sell_tick_count,
-            retained_known_news.retained_records.as_slice(),
-            tick_summary.source_window.clone(),
-            request.option_surface_quote_values.as_slice(),
-            request
-                .preprocessing_settings
-                .as_ref()
-                .and_then(|settings| settings.return_components.as_ref()),
+            ReturnComponentsCandidateGenerationInputBuildInput {
+                definition,
+                timezone,
+                exchange_code: request.exchange_code.as_str(),
+                open_price_ticks: tick_summary.open_price_ticks.as_slice(),
+                open_signed_tick_count: tick_summary.open_signed_tick_count,
+                open_session_sell_tick_count: tick_summary.open_session_sell_tick_count,
+                retained_known_news: retained_known_news.retained_records.as_slice(),
+                source_window: tick_summary.source_window.clone(),
+                _option_surface_quote_values: request.option_surface_quote_values.as_slice(),
+                preprocessing_settings: request
+                    .preprocessing_settings
+                    .as_ref()
+                    .and_then(|settings| settings.return_components.as_ref()),
+            },
         )?;
+
         let mean_reversion_grid_inputs = derive_mean_reversion_open_session_grid_inputs(
             tick_summary.open_price_ticks.as_slice(),
         );

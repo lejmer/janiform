@@ -19,7 +19,7 @@ pub enum DirectSimulationJob {
     /// Seeded tick-event simulation.
     SeededTick {
         /// Validated seeded run configuration.
-        run_config: SeededTickSimulationRunConfig,
+        run_config: Box<SeededTickSimulationRunConfig>,
         /// Export configuration.
         export: SeededTickExportSettings,
     },
@@ -27,7 +27,7 @@ pub enum DirectSimulationJob {
     /// Coarse interval simulation.
     CoarseInterval {
         /// Validated coarse run request.
-        request: CoarseSimulationRunRequest,
+        request: Box<CoarseSimulationRunRequest>,
         /// Export configuration.
         export: CoarseIntervalExportSettings,
     },
@@ -62,7 +62,7 @@ pub enum DirectSimulationCompleted {
     /// Seeded tick-event result.
     SeededTick {
         /// Engine result.
-        result: SeededTickSimulationRunResult,
+        result: Box<SeededTickSimulationRunResult>,
         /// Export configuration.
         export: SeededTickExportSettings,
     },
@@ -70,7 +70,7 @@ pub enum DirectSimulationCompleted {
     /// Coarse interval result.
     CoarseInterval {
         /// Engine result.
-        result: CoarseSimulationPath,
+        result: Box<CoarseSimulationPath>,
         /// Export configuration.
         export: CoarseIntervalExportSettings,
     },
@@ -92,17 +92,22 @@ impl DirectSimulationJob {
     ) -> Result<DirectSimulationCompleted, WorkflowError> {
         match self {
             DirectSimulationJob::SeededTick { run_config, export } => {
-                let result =
-                    run_seeded_tick_event_simulation_with_observer(run_config, observer)
-                        .map_err(|source| validation_error("request_json", source.to_string()))?;
-
-                Ok(DirectSimulationCompleted::SeededTick { result, export })
-            }
-            DirectSimulationJob::CoarseInterval { request, export } => {
-                let result = run_coarse_simulation_with_observer(request, observer)
+                let result = run_seeded_tick_event_simulation_with_observer(*run_config, observer)
                     .map_err(|source| validation_error("request_json", source.to_string()))?;
 
-                Ok(DirectSimulationCompleted::CoarseInterval { result, export })
+                Ok(DirectSimulationCompleted::SeededTick {
+                    result: Box::new(result),
+                    export,
+                })
+            }
+            DirectSimulationJob::CoarseInterval { request, export } => {
+                let result = run_coarse_simulation_with_observer(*request, observer)
+                    .map_err(|source| validation_error("request_json", source.to_string()))?;
+
+                Ok(DirectSimulationCompleted::CoarseInterval {
+                    result: Box::new(result),
+                    export,
+                })
             }
         }
     }

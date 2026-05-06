@@ -123,7 +123,7 @@ pub(crate) fn render_staged_plan_human(
 ) -> String {
     let renderer = context.stdout_renderer();
 
-    vec![
+    [
         StartSummary {
             title: "Janiform fit staged plan".to_string(),
             rows: vec![

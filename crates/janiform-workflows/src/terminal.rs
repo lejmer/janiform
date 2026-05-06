@@ -9,12 +9,13 @@ use serde::Deserialize;
 use crate::error::WorkflowError;
 
 /// Terminal progress mode requested by an entrypoint boundary.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalProgressMode {
     /// Render human terminal progress.
     Human,
     /// Do not render terminal progress.
+    #[default]
     None,
 }
 
@@ -28,12 +29,6 @@ impl TerminalProgressMode {
                 "progress_mode must be either 'human' or 'none', received '{value}'"
             )),
         }
-    }
-}
-
-impl Default for TerminalProgressMode {
-    fn default() -> Self {
-        Self::None
     }
 }
 

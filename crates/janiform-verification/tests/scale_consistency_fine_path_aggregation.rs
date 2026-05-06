@@ -224,9 +224,11 @@ fn fine_path_aggregation_is_deterministic_across_repeated_runs_and_interval_pair
     assert_eq!(first_run.aggregated_path.records.len(), 2);
 }
 
+type SufficientStatisticsRecordFixture = (f64, f64, u64, u64, f64, f64, f64, f64, f64, f64);
+
 fn build_fine_path(
     interval_delta: f64,
-    records: &[(f64, f64, u64, u64, f64, f64, f64, f64, f64, f64)],
+    records: &[SufficientStatisticsRecordFixture],
 ) -> SufficientStatisticsPath {
     let records = records
         .iter()

@@ -75,9 +75,9 @@ pub(crate) fn run_return_components_calibration_stage_with_progress_observer(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: ReturnComponentsStageExecutionInput,
-    mut progress_observer: Option<&mut dyn FnMut(ReturnComponentsStageProgressUpdate)>,
+    progress_observer: Option<&mut dyn FnMut(ReturnComponentsStageProgressUpdate)>,
 ) -> ReturnComponentsStageExecutionReport {
-    let Some(progress_observer) = progress_observer.as_deref_mut() else {
+    let Some(progress_observer) = progress_observer else {
         return run_return_components_calibration_stage_internal(
             run_spec,
             calendar_registry,
@@ -620,7 +620,7 @@ fn build_candidate_diagnostics(
     for ((candidate_input, constraint_violations), optimizer_diagnostic) in generated_candidates
         .candidate_inputs
         .iter()
-        .zip(external_constraint_diagnostics.into_iter())
+        .zip(external_constraint_diagnostics)
         .zip(optimizer_adapter_output.candidate_diagnostics.iter())
     {
         let mut combined_constraint_violations: Vec<

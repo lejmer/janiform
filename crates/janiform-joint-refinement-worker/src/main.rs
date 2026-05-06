@@ -29,12 +29,12 @@ fn main() -> Result<(), String> {
                         schema_version:
                             JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                                 .to_string(),
-                        response: InitializeSessionResponse::InfrastructureFailure {
+                        response: Box::new(InitializeSessionResponse::InfrastructureFailure {
                             error_message: format!(
                                 "unexpected worker request schema version: {}",
                                 request.schema_version
                             ),
-                        },
+                        }),
                     }
                 } else {
                     let worker_baseline_resident_bytes = current_process_resident_bytes()?;
@@ -49,10 +49,10 @@ fn main() -> Result<(), String> {
                                 schema_version:
                                     JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                                         .to_string(),
-                                response: InitializeSessionResponse::Success {
+                                response: Box::new(InitializeSessionResponse::Success {
                                     worker_baseline_resident_bytes,
                                     worker_initialized_resident_bytes,
-                                },
+                                }),
                             }
                         }
                         Err(error_message) => {
@@ -60,9 +60,9 @@ fn main() -> Result<(), String> {
                                 schema_version:
                                     JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                                         .to_string(),
-                                response: InitializeSessionResponse::InfrastructureFailure {
+                                response: Box::new(InitializeSessionResponse::InfrastructureFailure {
                                     error_message,
-                                },
+                                }),
                             }
                         }
                     }
@@ -84,7 +84,7 @@ fn main() -> Result<(), String> {
                     schema_version:
                         JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                             .to_string(),
-                    response,
+                    response: Box::new(response),
                 }
             }
             JointRefinementSummarySimulationWorkerRequest::CloseSession(request) => {
@@ -95,7 +95,7 @@ fn main() -> Result<(), String> {
                         schema_version:
                             JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                                 .to_string(),
-                        response: CloseSessionResponse { closed: false },
+                        response: Box::new(CloseSessionResponse { closed: false }),
                     }
                 } else {
                     let close_response =
@@ -103,7 +103,7 @@ fn main() -> Result<(), String> {
                             schema_version:
                                 JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                                     .to_string(),
-                            response: CloseSessionResponse { closed: true },
+                            response: Box::new(CloseSessionResponse { closed: true }),
                         };
                     write_joint_refinement_worker_frame(&mut writer, &close_response)?;
                     break;

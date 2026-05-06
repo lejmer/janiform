@@ -110,6 +110,8 @@ struct HawkesPreparedCandidate {
     external_constraint_violation_count: usize,
 }
 
+type HawkesStageReportResult<T> = Result<T, Box<HawkesStageExecutionReport>>;
+
 pub fn run_hawkes_calibration_stage(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
@@ -260,7 +262,7 @@ pub fn run_hawkes_calibration_stage(
         &mut observed_activity_targets_by_regime,
     ) {
         Ok(prepared_candidates) => prepared_candidates,
-        Err(report) => return report,
+        Err(report) => return *report,
     };
 
     let (initial_candidate_diagnostics, initial_optimizer_output) =
@@ -270,7 +272,7 @@ pub fn run_hawkes_calibration_stage(
             initial_prepared_candidates.as_slice(),
         ) {
             Ok(result) => result,
-            Err(report) => return report,
+            Err(report) => return *report,
         };
 
     let refined_candidate_inputs = generate_refined_hawkes_candidate_inputs(
@@ -290,7 +292,7 @@ pub fn run_hawkes_calibration_stage(
             &mut observed_activity_targets_by_regime,
         ) {
             Ok(prepared_candidates) => prepared_candidates,
-            Err(report) => return report,
+            Err(report) => return *report,
         };
 
         all_prepared_candidates.extend(refined_prepared_candidates);
@@ -306,7 +308,7 @@ pub fn run_hawkes_calibration_stage(
                 all_prepared_candidates.as_slice(),
             ) {
                 Ok(result) => result,
-                Err(report) => return report,
+                Err(report) => return *report,
             }
         };
 
@@ -573,7 +575,7 @@ fn prepare_hawkes_candidates(
         HawkesObservedSourceRegimeKey,
         HawkesObservedActivityTargets,
     >,
-) -> Result<Vec<HawkesPreparedCandidate>, HawkesStageExecutionReport> {
+) -> HawkesStageReportResult<Vec<HawkesPreparedCandidate>> {
     let validated_candidate_inputs = validate_hawkes_candidate_inputs(run_spec, candidate_inputs)?;
     populate_observed_activity_targets_cache(
         validated_candidate_inputs.as_slice(),
@@ -592,28 +594,28 @@ fn prepare_hawkes_candidates(
 fn validate_hawkes_candidate_inputs<'a>(
     run_spec: &CalibrationRunSpec,
     candidate_inputs: &'a [HawkesStageCandidateInput],
-) -> Result<Vec<&'a HawkesStageCandidateInput>, HawkesStageExecutionReport> {
+) -> HawkesStageReportResult<Vec<&'a HawkesStageCandidateInput>> {
     let mut seen_candidate_ids = BTreeSet::new();
     let mut validated_candidate_inputs = Vec::with_capacity(candidate_inputs.len());
 
     for candidate_input in candidate_inputs {
         if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
-            return Err(build_hawkes_stage_failure_report(
+            return Err(Box::new(build_hawkes_stage_failure_report(
                 run_spec,
                 HawkesStageExecutionFailure::DuplicateCandidateId {
                     candidate_id: candidate_input.candidate_id.clone(),
                 },
-            ));
+            )));
         }
 
         if let Err(source) = candidate_input.validate() {
-            return Err(build_hawkes_stage_failure_report(
+            return Err(Box::new(build_hawkes_stage_failure_report(
                 run_spec,
                 HawkesStageExecutionFailure::InvalidCandidateInput {
                     candidate_id: candidate_input.candidate_id.clone(),
                     error_message: source.to_string(),
                 },
-            ));
+            )));
         }
 
         validated_candidate_inputs.push(candidate_input);
@@ -755,13 +757,10 @@ fn evaluate_prepared_hawkes_candidates(
     run_spec: &CalibrationRunSpec,
     optimizer_adapter_configuration: &CalibrationOptimizerAdapterConfiguration,
     prepared_candidates: &[HawkesPreparedCandidate],
-) -> Result<
-    (
-        Vec<HawkesStageCandidateDiagnostic>,
-        CalibrationOptimizerAdapterRunOutput,
-    ),
-    HawkesStageExecutionReport,
-> {
+) -> HawkesStageReportResult<(
+    Vec<HawkesStageCandidateDiagnostic>,
+    CalibrationOptimizerAdapterRunOutput,
+)> {
     let adapter_candidate_inputs: Vec<CalibrationOptimizerAdapterCandidateInput> =
         prepared_candidates
             .iter()
@@ -797,40 +796,40 @@ fn evaluate_prepared_hawkes_candidates(
             candidate_id,
             source,
         }) => {
-            return Err(build_hawkes_stage_failure_report(
+            return Err(Box::new(build_hawkes_stage_failure_report(
                 run_spec,
                 HawkesStageExecutionFailure::InvalidCandidateInput {
                     candidate_id,
                     error_message: source.to_string(),
                 },
-            ));
+            )));
         }
         Err(CalibrationOptimizerAdapterError::InvalidObjectiveComposition {
             candidate_id,
             source,
         }) => {
-            return Err(build_hawkes_stage_failure_report(
+            return Err(Box::new(build_hawkes_stage_failure_report(
                 run_spec,
                 HawkesStageExecutionFailure::InvalidCandidateInput {
                     candidate_id,
                     error_message: source.to_string(),
                 },
-            ));
+            )));
         }
         Err(CalibrationOptimizerAdapterError::DuplicateCandidateId { candidate_id }) => {
-            return Err(build_hawkes_stage_failure_report(
+            return Err(Box::new(build_hawkes_stage_failure_report(
                 run_spec,
                 HawkesStageExecutionFailure::DuplicateCandidateId { candidate_id },
-            ));
+            )));
         }
         Err(source) => {
-            return Err(build_hawkes_stage_failure_report(
+            return Err(Box::new(build_hawkes_stage_failure_report(
                 run_spec,
                 HawkesStageExecutionFailure::CandidateConstructionFailed {
                     candidate_id: "optimizer_adapter".to_string(),
                     error_message: source.to_string(),
                 },
-            ));
+            )));
         }
     };
 
