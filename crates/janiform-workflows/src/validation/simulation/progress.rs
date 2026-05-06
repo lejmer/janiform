@@ -37,105 +37,125 @@ pub(super) fn emit_simulation_plan(
     });
 }
 
+pub(super) struct SimulationStartedProgressInput {
+    pub(super) path_position: usize,
+    pub(super) seed: u64,
+    pub(super) path_total_intervals: usize,
+    pub(super) total_path_count: usize,
+    pub(super) completed_units: usize,
+    pub(super) total_units: usize,
+    pub(super) worker_count: usize,
+}
+
 pub(super) fn emit_simulation_started(
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
-    path_position: usize,
-    seed: u64,
-    path_total_intervals: usize,
-    total_path_count: usize,
-    completed_units: usize,
-    total_units: usize,
-    worker_count: usize,
+    input: SimulationStartedProgressInput,
 ) {
     emit_simulation_progress(
         observer,
-        simulation_path_label(path_position),
+        simulation_path_label(input.path_position),
         Some(0),
-        completed_units,
-        total_units,
+        input.completed_units,
+        input.total_units,
         vec![
-            ProgressWorkItemMetric::new("seed", seed.to_string()),
-            ProgressWorkItemMetric::new("intervals", format!("0/{path_total_intervals}")),
+            ProgressWorkItemMetric::new("seed", input.seed.to_string()),
+            ProgressWorkItemMetric::new("intervals", format!("0/{}", input.path_total_intervals)),
             ProgressWorkItemMetric::new("transitions", "-"),
             ProgressWorkItemMetric::new("events", "-"),
-            ProgressWorkItemMetric::new("cpu", worker_count.to_string()),
+            ProgressWorkItemMetric::new("cpu", input.worker_count.to_string()),
         ],
         format!(
             "simulating path {}/{} on {}",
-            path_position + 1,
-            total_path_count,
-            format_cpu_count(worker_count)
+            input.path_position + 1,
+            input.total_path_count,
+            format_cpu_count(input.worker_count)
         ),
     );
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct SimulationIntervalProgressInput {
+    pub(super) path_position: usize,
+    pub(super) seed: u64,
+    pub(super) path_completed_intervals: usize,
+    pub(super) path_total_intervals: usize,
+    pub(super) completed_units: usize,
+    pub(super) total_units: usize,
+    pub(super) worker_count: usize,
+}
+
 pub(super) fn emit_simulation_interval_progress(
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
-    path_position: usize,
-    seed: u64,
-    path_completed_intervals: usize,
-    path_total_intervals: usize,
-    completed_units: usize,
-    total_units: usize,
-    worker_count: usize,
+    input: SimulationIntervalProgressInput,
 ) {
     emit_simulation_progress(
         observer,
-        simulation_path_label(path_position),
+        simulation_path_label(input.path_position),
         Some(progress_percent(
-            path_completed_intervals,
-            path_total_intervals,
+            input.path_completed_intervals,
+            input.path_total_intervals,
         )),
-        completed_units,
-        total_units,
+        input.completed_units,
+        input.total_units,
         vec![
-            ProgressWorkItemMetric::new("seed", seed.to_string()),
+            ProgressWorkItemMetric::new("seed", input.seed.to_string()),
             ProgressWorkItemMetric::new(
                 "intervals",
-                format!("{path_completed_intervals}/{path_total_intervals}"),
+                format!(
+                    "{}/{}",
+                    input.path_completed_intervals, input.path_total_intervals
+                ),
             ),
             ProgressWorkItemMetric::new("transitions", "-"),
             ProgressWorkItemMetric::new("events", "-"),
-            ProgressWorkItemMetric::new("cpu", worker_count.to_string()),
+            ProgressWorkItemMetric::new("cpu", input.worker_count.to_string()),
         ],
         format!(
             "simulating path {} interval {}/{} on {}",
-            path_position + 1,
-            path_completed_intervals,
-            path_total_intervals,
-            format_cpu_count(worker_count)
+            input.path_position + 1,
+            input.path_completed_intervals,
+            input.path_total_intervals,
+            format_cpu_count(input.worker_count)
         ),
     );
+}
+
+pub(super) struct SimulationCompletedProgressInput<'a> {
+    pub(super) manifest: &'a SimulationPathManifest,
+    pub(super) path_total_intervals: usize,
+    pub(super) completed_units: usize,
+    pub(super) total_units: usize,
+    pub(super) completed_path_count: usize,
+    pub(super) total_path_count: usize,
+    pub(super) worker_count: usize,
 }
 
 pub(super) fn emit_simulation_completed(
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
-    manifest: &SimulationPathManifest,
-    path_total_intervals: usize,
-    completed_units: usize,
-    total_units: usize,
-    completed_path_count: usize,
-    total_path_count: usize,
-    worker_count: usize,
+    input: SimulationCompletedProgressInput<'_>,
 ) {
     emit_simulation_progress(
         observer,
-        simulation_path_label(manifest.path_position),
+        simulation_path_label(input.manifest.path_position),
         Some(100),
-        completed_units,
-        total_units,
+        input.completed_units,
+        input.total_units,
         vec![
-            ProgressWorkItemMetric::new("seed", manifest.seed.to_string()),
+            ProgressWorkItemMetric::new("seed", input.manifest.seed.to_string()),
             ProgressWorkItemMetric::new(
                 "intervals",
-                format!("{path_total_intervals}/{path_total_intervals}"),
+                format!(
+                    "{}/{}",
+                    input.path_total_intervals, input.path_total_intervals
+                ),
             ),
-            ProgressWorkItemMetric::new("transitions", manifest.transition_count.to_string()),
-            ProgressWorkItemMetric::new("events", manifest.event_count.to_string()),
-            ProgressWorkItemMetric::new("cpu", worker_count.to_string()),
+            ProgressWorkItemMetric::new("transitions", input.manifest.transition_count.to_string()),
+            ProgressWorkItemMetric::new("events", input.manifest.event_count.to_string()),
+            ProgressWorkItemMetric::new("cpu", input.worker_count.to_string()),
         ],
-        format!("simulated {completed_path_count}/{total_path_count} paths"),
+        format!(
+            "simulated {}/{} paths",
+            input.completed_path_count, input.total_path_count
+        ),
     );
 }
 
@@ -194,15 +214,40 @@ fn format_cpu_count(cpu_count: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{emit_simulation_interval_progress, emit_simulation_plan, emit_simulation_started};
+    use super::{
+        SimulationIntervalProgressInput, SimulationStartedProgressInput,
+        emit_simulation_interval_progress, emit_simulation_plan, emit_simulation_started,
+    };
 
     #[test]
     fn simulation_progress_reports_interval_units_inside_single_path() {
         let mut events = Vec::new();
 
         emit_simulation_plan(&mut |event| events.push(event), &[7], 1, 10);
-        emit_simulation_started(&mut |event| events.push(event), 0, 7, 10, 1, 0, 10, 1);
-        emit_simulation_interval_progress(&mut |event| events.push(event), 0, 7, 4, 10, 4, 10, 1);
+        emit_simulation_started(
+            &mut |event| events.push(event),
+            SimulationStartedProgressInput {
+                path_position: 0,
+                seed: 7,
+                path_total_intervals: 10,
+                total_path_count: 1,
+                completed_units: 0,
+                total_units: 10,
+                worker_count: 1,
+            },
+        );
+        emit_simulation_interval_progress(
+            &mut |event| events.push(event),
+            SimulationIntervalProgressInput {
+                path_position: 0,
+                seed: 7,
+                path_completed_intervals: 4,
+                path_total_intervals: 10,
+                completed_units: 4,
+                total_units: 10,
+                worker_count: 1,
+            },
+        );
 
         let progress_event = events
             .last()

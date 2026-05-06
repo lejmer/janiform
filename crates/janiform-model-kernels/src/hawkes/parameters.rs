@@ -398,28 +398,32 @@ impl HawkesKernelParameters {
         if derived_alpha_minus_minus_is_valid && derived_alpha_plus_plus_is_valid {
             validate_greater_or_equal_to_comparison_field_check(
                 &mut checks,
-                "structural.alpha.self_asymmetry",
-                HawkesKernelParameterCheckCategory::Structural,
-                "alpha.minus_minus",
-                derived_alpha.minus_minus,
-                "alpha.plus_plus",
-                derived_alpha.plus_plus,
-                "alpha self asymmetry requires alpha.minus_minus >= alpha.plus_plus",
-                "increase structured_alpha.delta_self so alpha.minus_minus is at least alpha.plus_plus",
+                HawkesComparisonFieldValidationInput {
+                    check_id: "structural.alpha.self_asymmetry",
+                    category: HawkesKernelParameterCheckCategory::Structural,
+                    field: "alpha.minus_minus",
+                    value: derived_alpha.minus_minus,
+                    comparison_field: "alpha.plus_plus",
+                    comparison_value: derived_alpha.plus_plus,
+                    diagnostics_label: "alpha self asymmetry requires alpha.minus_minus >= alpha.plus_plus",
+                    remediation_hint: "increase structured_alpha.delta_self so alpha.minus_minus is at least alpha.plus_plus",
+                },
             );
         }
 
         if derived_alpha_minus_plus_is_valid && derived_alpha_plus_minus_is_valid {
             validate_greater_or_equal_to_comparison_field_check(
                 &mut checks,
-                "structural.alpha.cross_asymmetry",
-                HawkesKernelParameterCheckCategory::Structural,
-                "alpha.minus_plus",
-                derived_alpha.minus_plus,
-                "alpha.plus_minus",
-                derived_alpha.plus_minus,
-                "alpha cross asymmetry requires alpha.minus_plus >= alpha.plus_minus",
-                "increase structured_alpha.delta_cross so alpha.minus_plus is at least alpha.plus_minus",
+                HawkesComparisonFieldValidationInput {
+                    check_id: "structural.alpha.cross_asymmetry",
+                    category: HawkesKernelParameterCheckCategory::Structural,
+                    field: "alpha.minus_plus",
+                    value: derived_alpha.minus_plus,
+                    comparison_field: "alpha.plus_minus",
+                    comparison_value: derived_alpha.plus_minus,
+                    diagnostics_label: "alpha cross asymmetry requires alpha.minus_plus >= alpha.plus_minus",
+                    remediation_hint: "increase structured_alpha.delta_cross so alpha.minus_plus is at least alpha.plus_minus",
+                },
             );
         }
 
@@ -506,41 +510,47 @@ impl HawkesKernelParameters {
         if derived_rho_minus_minus_is_valid && derived_rho_plus_plus_is_valid {
             validate_greater_or_equal_to_comparison_field_check(
                 &mut checks,
-                "structural.rho.self_asymmetry",
-                HawkesKernelParameterCheckCategory::Structural,
-                "rho.minus_minus",
-                derived_rho.minus_minus,
-                "rho.plus_plus",
-                derived_rho.plus_plus,
-                "rho self asymmetry requires rho.minus_minus >= rho.plus_plus",
-                "increase structured_rho.delta_self_r so rho.minus_minus is at least rho.plus_plus",
+                HawkesComparisonFieldValidationInput {
+                    check_id: "structural.rho.self_asymmetry",
+                    category: HawkesKernelParameterCheckCategory::Structural,
+                    field: "rho.minus_minus",
+                    value: derived_rho.minus_minus,
+                    comparison_field: "rho.plus_plus",
+                    comparison_value: derived_rho.plus_plus,
+                    diagnostics_label: "rho self asymmetry requires rho.minus_minus >= rho.plus_plus",
+                    remediation_hint: "increase structured_rho.delta_self_r so rho.minus_minus is at least rho.plus_plus",
+                },
             );
         }
 
         if derived_rho_minus_plus_is_valid && derived_rho_plus_minus_is_valid {
             validate_greater_or_equal_to_comparison_field_check(
                 &mut checks,
-                "structural.rho.cross_asymmetry",
-                HawkesKernelParameterCheckCategory::Structural,
-                "rho.minus_plus",
-                derived_rho.minus_plus,
-                "rho.plus_minus",
-                derived_rho.plus_minus,
-                "rho cross asymmetry requires rho.minus_plus >= rho.plus_minus",
-                "increase structured_rho.delta_cross_r so rho.minus_plus is at least rho.plus_minus",
+                HawkesComparisonFieldValidationInput {
+                    check_id: "structural.rho.cross_asymmetry",
+                    category: HawkesKernelParameterCheckCategory::Structural,
+                    field: "rho.minus_plus",
+                    value: derived_rho.minus_plus,
+                    comparison_field: "rho.plus_minus",
+                    comparison_value: derived_rho.plus_minus,
+                    diagnostics_label: "rho cross asymmetry requires rho.minus_plus >= rho.plus_minus",
+                    remediation_hint: "increase structured_rho.delta_cross_r so rho.minus_plus is at least rho.plus_minus",
+                },
             );
         }
 
         if let Some(policy) = self_dominance_policy {
             let minimum_ratio_is_valid = validate_greater_or_equal_threshold_check(
                 &mut checks,
-                "structural.rho.self_dominance.minimum_ratio",
-                HawkesKernelParameterCheckCategory::Structural,
-                "structured_rho.self_dominance_policy.minimum_self_to_cross_ratio",
-                policy.minimum_self_to_cross_ratio,
-                1.0,
-                "self-dominance policy minimum ratio requires a threshold >= 1.0",
-                "set self-dominance minimum ratio to a finite value greater than or equal to 1.0",
+                HawkesThresholdValidationInput {
+                    check_id: "structural.rho.self_dominance.minimum_ratio",
+                    category: HawkesKernelParameterCheckCategory::Structural,
+                    field: "structured_rho.self_dominance_policy.minimum_self_to_cross_ratio",
+                    value: policy.minimum_self_to_cross_ratio,
+                    threshold_value: 1.0,
+                    diagnostics_label: "self-dominance policy minimum ratio requires a threshold >= 1.0",
+                    remediation_hint: "set self-dominance minimum ratio to a finite value greater than or equal to 1.0",
+                },
             );
 
             if minimum_ratio_is_valid
@@ -556,23 +566,27 @@ impl HawkesKernelParameters {
 
                 validate_greater_or_equal_threshold_check(
                     &mut checks,
-                    "structural.rho.self_dominance.target_plus_ratio",
-                    HawkesKernelParameterCheckCategory::Structural,
-                    "rho.target_plus_self_to_cross_ratio",
-                    target_plus_ratio,
-                    policy.minimum_self_to_cross_ratio,
-                    "target plus self-dominance ratio requires rho.plus_plus / rho.plus_minus >= configured minimum ratio",
-                    "increase rho.plus_plus or decrease rho.plus_minus to satisfy the configured minimum self-dominance ratio",
+                    HawkesThresholdValidationInput {
+                        check_id: "structural.rho.self_dominance.target_plus_ratio",
+                        category: HawkesKernelParameterCheckCategory::Structural,
+                        field: "rho.target_plus_self_to_cross_ratio",
+                        value: target_plus_ratio,
+                        threshold_value: policy.minimum_self_to_cross_ratio,
+                        diagnostics_label: "target plus self-dominance ratio requires rho.plus_plus / rho.plus_minus >= configured minimum ratio",
+                        remediation_hint: "increase rho.plus_plus or decrease rho.plus_minus to satisfy the configured minimum self-dominance ratio",
+                    },
                 );
                 validate_greater_or_equal_threshold_check(
                     &mut checks,
-                    "structural.rho.self_dominance.target_minus_ratio",
-                    HawkesKernelParameterCheckCategory::Structural,
-                    "rho.target_minus_self_to_cross_ratio",
-                    target_minus_ratio,
-                    policy.minimum_self_to_cross_ratio,
-                    "target minus self-dominance ratio requires rho.minus_minus / rho.minus_plus >= configured minimum ratio",
-                    "increase rho.minus_minus or decrease rho.minus_plus to satisfy the configured minimum self-dominance ratio",
+                    HawkesThresholdValidationInput {
+                        check_id: "structural.rho.self_dominance.target_minus_ratio",
+                        category: HawkesKernelParameterCheckCategory::Structural,
+                        field: "rho.target_minus_self_to_cross_ratio",
+                        value: target_minus_ratio,
+                        threshold_value: policy.minimum_self_to_cross_ratio,
+                        diagnostics_label: "target minus self-dominance ratio requires rho.minus_minus / rho.minus_plus >= configured minimum ratio",
+                        remediation_hint: "increase rho.minus_minus or decrease rho.minus_plus to satisfy the configured minimum self-dominance ratio",
+                    },
                 );
             }
         }
@@ -927,35 +941,6 @@ impl<'de> Deserialize<'de> for HawkesKernelParameters {
     }
 }
 
-fn push_validation_check(
-    checks: &mut Vec<HawkesKernelParameterCheck>,
-    check_id: &'static str,
-    status: HawkesKernelValidationStatus,
-    category: HawkesKernelParameterCheckCategory,
-    field: &'static str,
-    comparison_field: Option<&'static str>,
-    constraint: HawkesKernelParameterConstraint,
-    observed_value: f64,
-    threshold_value: Option<f64>,
-    expected_condition: &'static str,
-    diagnostics: String,
-    remediation_hint: &'static str,
-) {
-    checks.push(HawkesKernelParameterCheck {
-        check_id,
-        status,
-        category,
-        field,
-        comparison_field,
-        constraint,
-        observed_value,
-        threshold_value,
-        expected_condition,
-        diagnostics,
-        remediation_hint,
-    });
-}
-
 fn push_spectral_radius_stability_validation_check(
     checks: &mut Vec<HawkesKernelParameterCheck>,
     inputs_are_valid: bool,
@@ -974,26 +959,25 @@ fn push_spectral_radius_stability_validation_check(
         stability_numeric_tolerance,
     );
 
-    push_validation_check(
-        checks,
-        "stability.alpha_over_beta.spectral_radius",
-        HawkesKernelValidationStatus::from_bool(stability_check.is_stable),
-        HawkesKernelParameterCheckCategory::Stability,
-        "alpha_over_beta.spectral_radius",
-        Some("stability.effective_stationarity_threshold"),
-        HawkesKernelParameterConstraint::SpectralRadiusStrictlyBelowOne,
-        stability_check.spectral_radius_alpha_over_beta,
-        Some(stability_check.effective_stationarity_threshold),
-        "spectral radius must be strictly below the effective stationarity threshold",
-        format!(
+    checks.push(HawkesKernelParameterCheck {
+        check_id: "stability.alpha_over_beta.spectral_radius",
+        status: HawkesKernelValidationStatus::from_bool(stability_check.is_stable),
+        category: HawkesKernelParameterCheckCategory::Stability,
+        field: "alpha_over_beta.spectral_radius",
+        comparison_field: Some("stability.effective_stationarity_threshold"),
+        constraint: HawkesKernelParameterConstraint::SpectralRadiusStrictlyBelowOne,
+        observed_value: stability_check.spectral_radius_alpha_over_beta,
+        threshold_value: Some(stability_check.effective_stationarity_threshold),
+        expected_condition: "spectral radius must be strictly below the effective stationarity threshold",
+        diagnostics: format!(
             "spectral radius={} and effective_threshold={} (strict_threshold={}, numeric_tolerance={})",
             stability_check.spectral_radius_alpha_over_beta,
             stability_check.effective_stationarity_threshold,
             stability_check.strict_stationarity_threshold,
             stability_check.numeric_tolerance
         ),
-        "reduce alpha magnitudes or increase beta so spectral radius(alpha / beta) is below 1",
-    );
+        remediation_hint: "reduce alpha magnitudes or increase beta so spectral radius(alpha / beta) is below 1",
+    });
 }
 
 fn validate_strictly_positive_check(
@@ -1014,20 +998,19 @@ fn validate_strictly_positive_check(
         format!("{diagnostics_label}: observed value {value} violates > 0")
     };
 
-    push_validation_check(
-        checks,
+    checks.push(HawkesKernelParameterCheck {
         check_id,
         status,
         category,
         field,
-        None,
-        HawkesKernelParameterConstraint::FiniteAndStrictlyPositive,
-        value,
-        Some(0.0),
-        "value is finite and strictly greater than 0",
+        comparison_field: None,
+        constraint: HawkesKernelParameterConstraint::FiniteAndStrictlyPositive,
+        observed_value: value,
+        threshold_value: Some(0.0),
+        expected_condition: "value is finite and strictly greater than 0",
         diagnostics,
         remediation_hint,
-    );
+    });
 
     is_valid
 }
@@ -1050,26 +1033,25 @@ fn validate_non_negative_check(
         format!("{diagnostics_label}: observed value {value} violates >= 0")
     };
 
-    push_validation_check(
-        checks,
+    checks.push(HawkesKernelParameterCheck {
         check_id,
         status,
         category,
         field,
-        None,
-        HawkesKernelParameterConstraint::FiniteAndNonNegative,
-        value,
-        Some(0.0),
-        "value is finite and greater than or equal to 0",
+        comparison_field: None,
+        constraint: HawkesKernelParameterConstraint::FiniteAndNonNegative,
+        observed_value: value,
+        threshold_value: Some(0.0),
+        expected_condition: "value is finite and greater than or equal to 0",
         diagnostics,
         remediation_hint,
-    );
+    });
 
     is_valid
 }
 
-fn validate_greater_or_equal_to_comparison_field_check(
-    checks: &mut Vec<HawkesKernelParameterCheck>,
+#[derive(Debug, Clone, Copy)]
+struct HawkesComparisonFieldValidationInput {
     check_id: &'static str,
     category: HawkesKernelParameterCheckCategory,
     field: &'static str,
@@ -1078,7 +1060,23 @@ fn validate_greater_or_equal_to_comparison_field_check(
     comparison_value: f64,
     diagnostics_label: &'static str,
     remediation_hint: &'static str,
+}
+
+fn validate_greater_or_equal_to_comparison_field_check(
+    checks: &mut Vec<HawkesKernelParameterCheck>,
+    input: HawkesComparisonFieldValidationInput,
 ) -> bool {
+    let HawkesComparisonFieldValidationInput {
+        check_id,
+        category,
+        field,
+        value,
+        comparison_field,
+        comparison_value,
+        diagnostics_label,
+        remediation_hint,
+    } = input;
+
     let is_valid = value.is_finite() && comparison_value.is_finite() && value >= comparison_value;
     let status = HawkesKernelValidationStatus::from_bool(is_valid);
 
@@ -1092,26 +1090,25 @@ fn validate_greater_or_equal_to_comparison_field_check(
         )
     };
 
-    push_validation_check(
-        checks,
+    checks.push(HawkesKernelParameterCheck {
         check_id,
         status,
         category,
         field,
-        Some(comparison_field),
-        HawkesKernelParameterConstraint::GreaterThanOrEqualToComparisonField,
-        value,
-        Some(comparison_value),
-        "value is finite and greater than or equal to comparison field value",
+        comparison_field: Some(comparison_field),
+        constraint: HawkesKernelParameterConstraint::GreaterThanOrEqualToComparisonField,
+        observed_value: value,
+        threshold_value: Some(comparison_value),
+        expected_condition: "value is finite and greater than or equal to comparison field value",
         diagnostics,
         remediation_hint,
-    );
+    });
 
     is_valid
 }
 
-fn validate_greater_or_equal_threshold_check(
-    checks: &mut Vec<HawkesKernelParameterCheck>,
+#[derive(Debug, Clone, Copy)]
+struct HawkesThresholdValidationInput {
     check_id: &'static str,
     category: HawkesKernelParameterCheckCategory,
     field: &'static str,
@@ -1119,7 +1116,22 @@ fn validate_greater_or_equal_threshold_check(
     threshold_value: f64,
     diagnostics_label: &'static str,
     remediation_hint: &'static str,
+}
+
+fn validate_greater_or_equal_threshold_check(
+    checks: &mut Vec<HawkesKernelParameterCheck>,
+    input: HawkesThresholdValidationInput,
 ) -> bool {
+    let HawkesThresholdValidationInput {
+        check_id,
+        category,
+        field,
+        value,
+        threshold_value,
+        diagnostics_label,
+        remediation_hint,
+    } = input;
+
     let is_valid = value.is_finite() && value >= threshold_value;
     let status = HawkesKernelValidationStatus::from_bool(is_valid);
 
@@ -1133,20 +1145,19 @@ fn validate_greater_or_equal_threshold_check(
         )
     };
 
-    push_validation_check(
-        checks,
+    checks.push(HawkesKernelParameterCheck {
         check_id,
         status,
         category,
         field,
-        None,
-        HawkesKernelParameterConstraint::GreaterThanOrEqualToThreshold,
-        value,
-        Some(threshold_value),
-        "value is finite and greater than or equal to configured threshold",
+        comparison_field: None,
+        constraint: HawkesKernelParameterConstraint::GreaterThanOrEqualToThreshold,
+        observed_value: value,
+        threshold_value: Some(threshold_value),
+        expected_condition: "value is finite and greater than or equal to configured threshold",
         diagnostics,
         remediation_hint,
-    );
+    });
 
     is_valid
 }

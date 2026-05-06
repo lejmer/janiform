@@ -133,7 +133,7 @@ impl PreparedPricingKernelBenchmarkCase {
         let i_times_argument = ComplexScalar::new(-argument.imaginary, argument.real);
         let drift_term = i_times_argument.scale(self.drift);
         let diffusion_term = argument.square().scale(-0.5 * self.variance);
-        complex_exponential(drift_term.add(diffusion_term))
+        complex_exponential(drift_term.plus(diffusion_term))
     }
 }
 
@@ -211,7 +211,7 @@ impl MicrobenchmarkFixtureSet {
                 |source| MicrobenchmarkFixtureError::InvalidPreparedWorkload {
                     source: OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
                         profile_id: profile.profile_id.clone(),
-                        source,
+                        source: Box::new(source),
                     },
                 },
             )?;
@@ -222,13 +222,14 @@ impl MicrobenchmarkFixtureSet {
         let payoff = VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         };
+
         let volatility = interpolate_pricing_volatility(&self.policy, invocation_seed);
 
         let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
             MicrobenchmarkFixtureError::InvalidPreparedWorkload {
                 source: OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
                     profile_id: profile.profile_id.clone(),
-                    source,
+                    source: Box::new(source),
                 },
             }
         })?;
@@ -237,6 +238,7 @@ impl MicrobenchmarkFixtureSet {
             - market_inputs.dividend_yield
             - 0.5 * volatility * volatility)
             * maturity_interval;
+
         let variance = volatility * volatility * maturity_interval;
 
         Ok(PreparedPricingKernelBenchmarkCase {
@@ -254,15 +256,19 @@ impl MicrobenchmarkFixtureSet {
         profile_id: &'static str,
     ) -> Result<PreparedSufficientStatisticsSamplingBenchmarkCase, MicrobenchmarkFixtureError> {
         let profile = self.profile(profile_id)?;
+
         let equation_specification = build_equation_specification(profile, &self.policy)
             .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
+
         let solver_settings = self.oracle_solver_settings(profile)?;
+
         let sufficient_statistics_seed = self.component_seed(
             profile,
             self.policy
                 .seed_partition
                 .sufficient_statistics_component_seed_salt,
         );
+
         let solved_slices = build_sufficient_statistics_transform_slices(
             profile,
             &self.policy,
@@ -284,7 +290,9 @@ impl MicrobenchmarkFixtureSet {
         profile_id: &'static str,
     ) -> Result<PreparedSimulationPrimitiveBenchmarkCase, MicrobenchmarkFixtureError> {
         let profile = self.profile(profile_id)?;
+
         let model_parameters = self.policy.model_parameters;
+
         let kernel_parameters = HawkesKernelParameters::try_new(
             profile
                 .model_state
@@ -297,10 +305,11 @@ impl MicrobenchmarkFixtureSet {
             |source| MicrobenchmarkFixtureError::InvalidPreparedWorkload {
                 source: OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidModelKernelParameters {
                     profile_id: profile.profile_id.clone(),
-                    source,
+                    source: Box::new(source),
                 },
             },
         )?;
+
         let simulation_seed = splitmix64(
             self.component_seed(
                 profile,
@@ -309,6 +318,7 @@ impl MicrobenchmarkFixtureSet {
                     .sufficient_statistics_component_seed_salt,
             ) ^ 0x5A,
         );
+
         let transition_step = HawkesTransitionStep::new(
             profile.interval_settings.interval_delta,
             Some(if unit_interval_from_seed(simulation_seed) >= 0.5 {
@@ -379,6 +389,7 @@ fn interpolate_pricing_volatility(
     invocation_seed: u64,
 ) -> f64 {
     let noise = unit_interval_from_seed(invocation_seed ^ 0x51);
+
     policy.pricing_input_ranges.volatility_min
         + (policy.pricing_input_ranges.volatility_max - policy.pricing_input_ranges.volatility_min)
             * noise

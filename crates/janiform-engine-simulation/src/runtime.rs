@@ -26,7 +26,8 @@ pub use results::estimate_seeded_result_capacities;
 pub(crate) use market_state::SeededSimulationMarketStateResolver;
 #[cfg(test)]
 pub(crate) use news::{
-    build_interval_news_event_inputs, derive_interval_news_arrival_decomposition,
+    IntervalNewsEventInputBuildInput, build_interval_news_event_inputs,
+    derive_interval_news_arrival_decomposition,
 };
 pub(crate) use news::{
     build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,

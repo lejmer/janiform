@@ -19,10 +19,11 @@ use janiform_market_time::calendar::{
 use janiform_market_time::seasonality::{
     DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimatorSettings,
     DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimatorSettings,
-    IntradaySeasonalityEstimatorSettings, ScheduledEventOverlayDefinition,
-    SeasonalityDiagnosticsReportOutput, compose_deterministic_seasonality_signal,
-    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
-    estimate_intraday_seasonality, generate_seasonality_diagnostics_report,
+    DeterministicSeasonalityCompositionInput, IntradaySeasonalityEstimatorSettings,
+    ScheduledEventOverlayDefinition, SeasonalityDiagnosticsReportOutput,
+    compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
+    estimate_day_of_year_seasonality, estimate_intraday_seasonality,
+    generate_seasonality_diagnostics_report,
 };
 /// Configurable knobs for deterministic seasonality stage execution.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -236,16 +237,20 @@ pub struct SeasonalityStageExecutionReport {
 }
 
 pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
-    intraday_minutes_per_bin: u16,
-    intraday_factor_by_bin: &[f64],
-    day_of_week_factor: &[f64],
-    day_of_year_factor: &[f64],
-    range_start_utc_nanos: i64,
-    range_end_utc_nanos: i64,
-    interval_duration_nanos: i64,
+    input: RuntimeHourlySeasonalityFactorsBuildInput<'_>,
 ) -> Result<Vec<f64>, String> {
+    let RuntimeHourlySeasonalityFactorsBuildInput {
+        calendar_registry,
+        exchange_code,
+        intraday_minutes_per_bin,
+        intraday_factor_by_bin,
+        day_of_week_factor,
+        day_of_year_factor,
+        range_start_utc_nanos,
+        range_end_utc_nanos,
+        interval_duration_nanos,
+    } = input;
+
     if range_end_utc_nanos <= range_start_utc_nanos {
         return Ok(Vec::new());
     }
@@ -301,6 +306,18 @@ pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
     }
 
     mean_renormalize_runtime_hourly_factors(hourly_factors)
+}
+
+pub(crate) struct RuntimeHourlySeasonalityFactorsBuildInput<'a> {
+    pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
+    pub(crate) exchange_code: &'a str,
+    pub(crate) intraday_minutes_per_bin: u16,
+    pub(crate) intraday_factor_by_bin: &'a [f64],
+    pub(crate) day_of_week_factor: &'a [f64],
+    pub(crate) day_of_year_factor: &'a [f64],
+    pub(crate) range_start_utc_nanos: i64,
+    pub(crate) range_end_utc_nanos: i64,
+    pub(crate) interval_duration_nanos: i64,
 }
 
 pub(crate) fn maximum_runtime_hourly_seasonality_factor_from_payload(
@@ -615,27 +632,28 @@ pub fn run_seasonality_calibration_stage(
         &preprocessed.exchange_local_day_of_year,
     );
 
-    let composition = match compose_deterministic_seasonality_signal(
-        &preprocessed.timestamp_utc_nanos,
-        &preprocessed.exchange_local_minute_of_day,
-        &preprocessed.exchange_local_day_of_week,
-        &preprocessed.exchange_local_day_of_year,
-        intraday_estimate.minutes_per_bin,
-        &intraday_estimate.intraday_log_component_by_bin,
-        &day_of_week_estimate.day_of_week_log_component,
-        &day_of_year_estimate.day_of_year_log_component,
-        &scheduled_event_overlays,
-    ) {
-        Ok(composition) => composition,
-        Err(source) => {
-            return build_seasonality_stage_failure_report(
-                run_spec,
-                SeasonalityStageExecutionFailure::DeterministicCompositionFailed {
-                    error_message: source.to_string(),
-                },
-            );
-        }
-    };
+    let composition =
+        match compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &preprocessed.timestamp_utc_nanos,
+            exchange_local_minute_of_day: &preprocessed.exchange_local_minute_of_day,
+            exchange_local_day_of_week: &preprocessed.exchange_local_day_of_week,
+            exchange_local_day_of_year: &preprocessed.exchange_local_day_of_year,
+            intraday_minutes_per_bin: intraday_estimate.minutes_per_bin,
+            intraday_log_component_by_bin: &intraday_estimate.intraday_log_component_by_bin,
+            day_of_week_log_component: &day_of_week_estimate.day_of_week_log_component,
+            day_of_year_log_component: &day_of_year_estimate.day_of_year_log_component,
+            scheduled_event_overlays: &scheduled_event_overlays,
+        }) {
+            Ok(composition) => composition,
+            Err(source) => {
+                return build_seasonality_stage_failure_report(
+                    run_spec,
+                    SeasonalityStageExecutionFailure::DeterministicCompositionFailed {
+                        error_message: source.to_string(),
+                    },
+                );
+            }
+        };
 
     let diagnostics_report = match generate_seasonality_diagnostics_report(
         janiform_market_time::seasonality::SeasonalityDiagnosticsReportInput {

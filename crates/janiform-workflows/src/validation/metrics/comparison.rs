@@ -29,34 +29,62 @@ const GENERATED_THRESHOLD_POLICY_ID: &str =
 // A standardized delta of one is exactly the pooled confidence-interval half-width boundary.
 const STANDARDIZED_DELTA_INTERVAL_NON_OVERLAP_THRESHOLD: f64 = 1.0;
 
-pub(in crate::validation) fn build_comparison_request(
-    metric_catalog: &StylizedFactMetricCatalog,
-    threshold_policy: StylizedFactHorizonComparisonThresholdPolicy,
-    intervals: &[ParsedInterval],
-    empirical_returns: &[ReturnObservation],
-    simulated_returns: &[ReturnObservation],
+pub(in crate::validation) struct ComparisonRequestBuildInput<'a, 'observer> {
+    pub(in crate::validation) metric_catalog: &'a StylizedFactMetricCatalog,
+    pub(in crate::validation) threshold_policy: StylizedFactHorizonComparisonThresholdPolicy,
+    pub(in crate::validation) intervals: &'a [ParsedInterval],
+    pub(in crate::validation) empirical_returns: &'a [ReturnObservation],
+    pub(in crate::validation) simulated_returns: &'a [ReturnObservation],
+    pub(in crate::validation) bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
+    pub(in crate::validation) cpu_count: usize,
+    pub(in crate::validation) observer: &'a mut StylizedFactsValidationWorkflowObserver<'observer>,
+}
+
+struct IntervalMetricOutputInput<'a, 'observer> {
+    interval: ParsedInterval,
+    empirical_series: CompactedReturnSeries,
+    simulated_series: CompactedReturnSeries,
     bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
     cpu_count: usize,
-    observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
+    completed_units_before_interval: usize,
+    total_metric_units: usize,
+    observer: &'a mut StylizedFactsValidationWorkflowObserver<'observer>,
+}
+
+struct SingleDatasetObservedMetricsInput<'a, 'observer> {
+    dataset_id: &'a str,
+    series: CompactedReturnSeries,
+    horizon_bucket: &'a TailSkewHorizonBucket,
+    bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
+    dataset_side: TailSkewDatasetSide,
+    cpu_count: usize,
+    completed_units_before_dataset: usize,
+    interval_completed_units_before_dataset: usize,
+    total_metric_units: usize,
+    observer: &'a mut StylizedFactsValidationWorkflowObserver<'observer>,
+}
+
+pub(in crate::validation) fn build_comparison_request(
+    input: ComparisonRequestBuildInput<'_, '_>,
 ) -> Result<StylizedFactHorizonComparisonRequest, WorkflowError> {
-    let base_interval_duration_nanos = base_interval_duration_nanos(intervals).ok_or(
+    let base_interval_duration_nanos = base_interval_duration_nanos(input.intervals).ok_or(
         WorkflowError::ValidationMissingRequired {
             field: "--intervals",
         },
     )?;
 
     let empirical_series =
-        compact_observed_interval_timeline(empirical_returns, base_interval_duration_nanos)?;
+        compact_observed_interval_timeline(input.empirical_returns, base_interval_duration_nanos)?;
     let simulated_series =
-        compact_observed_interval_timeline(simulated_returns, base_interval_duration_nanos)?;
+        compact_observed_interval_timeline(input.simulated_returns, base_interval_duration_nanos)?;
 
     let interval_metrics = compute_interval_metrics(
         empirical_series,
         simulated_series,
-        intervals,
-        bootstrap_configuration,
-        cpu_count,
-        observer,
+        input.intervals,
+        input.bootstrap_configuration,
+        input.cpu_count,
+        input.observer,
     )?;
 
     let mut empirical_metrics = Vec::new();
@@ -68,9 +96,9 @@ pub(in crate::validation) fn build_comparison_request(
     }
 
     Ok(StylizedFactHorizonComparisonRequest {
-        metric_catalog_id: metric_catalog.catalog_id.clone(),
-        metric_catalog_version: metric_catalog.catalog_version.clone(),
-        threshold_policy,
+        metric_catalog_id: input.metric_catalog.catalog_id.clone(),
+        metric_catalog_version: input.metric_catalog.catalog_version.clone(),
+        threshold_policy: input.threshold_policy,
         calibration_runs: vec![StylizedFactCalibrationRunInput {
             calibration_run_id: "validation".to_string(),
             empirical_dataset_id: "empirical".to_string(),
@@ -123,16 +151,16 @@ fn compute_interval_metrics(
         // Intentional copy because each interval owns the diagnostics request payload.
         let simulated_series = simulated_series.clone();
 
-        let output = compute_interval_metric_output(
+        let output = compute_interval_metric_output(IntervalMetricOutputInput {
             interval,
             empirical_series,
             simulated_series,
             bootstrap_configuration,
             cpu_count,
-            completed_units,
+            completed_units_before_interval: completed_units,
             total_metric_units,
             observer,
-        )?;
+        })?;
 
         completed_units += TAIL_SKEW_DATASET_METRIC_TASK_COUNT;
 
@@ -153,50 +181,45 @@ fn compute_interval_metrics(
 }
 
 fn compute_interval_metric_output(
-    interval: ParsedInterval,
-    empirical_series: CompactedReturnSeries,
-    simulated_series: CompactedReturnSeries,
-    bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
-    cpu_count: usize,
-    completed_units_before_interval: usize,
-    total_metric_units: usize,
-    observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
+    input: IntervalMetricOutputInput<'_, '_>,
 ) -> Result<IntervalMetricOutput, WorkflowError> {
     let horizon_bucket = TailSkewHorizonBucket {
-        horizon_label: interval.label.clone(),
-        horizon_duration_nanos: interval.duration_nanos,
+        horizon_label: input.interval.label.clone(),
+        horizon_duration_nanos: input.interval.duration_nanos,
     };
 
-    let empirical_metrics = observed_metrics_for_single_dataset(
-        "empirical",
-        empirical_series,
-        &horizon_bucket,
-        bootstrap_configuration,
-        TailSkewDatasetSide::Empirical,
-        cpu_count,
-        completed_units_before_interval,
-        0,
-        total_metric_units,
-        observer,
-    )?;
+    let empirical_metrics =
+        observed_metrics_for_single_dataset(SingleDatasetObservedMetricsInput {
+            dataset_id: "empirical",
+            series: input.empirical_series,
+            horizon_bucket: &horizon_bucket,
+            bootstrap_configuration: input.bootstrap_configuration,
+            dataset_side: TailSkewDatasetSide::Empirical,
+            cpu_count: input.cpu_count,
+            completed_units_before_dataset: input.completed_units_before_interval,
+            interval_completed_units_before_dataset: 0,
+            total_metric_units: input.total_metric_units,
+            observer: &mut *input.observer,
+        })?;
 
     let side_task_count = TAIL_SKEW_DATASET_METRIC_TASK_COUNT / 2;
 
-    let simulated_metrics = observed_metrics_for_single_dataset(
-        "simulated",
-        simulated_series,
-        &horizon_bucket,
-        bootstrap_configuration,
-        TailSkewDatasetSide::Simulated,
-        cpu_count,
-        completed_units_before_interval + side_task_count,
-        side_task_count,
-        total_metric_units,
-        observer,
-    )?;
+    let simulated_metrics =
+        observed_metrics_for_single_dataset(SingleDatasetObservedMetricsInput {
+            dataset_id: "simulated",
+            series: input.simulated_series,
+            horizon_bucket: &horizon_bucket,
+            bootstrap_configuration: input.bootstrap_configuration,
+            dataset_side: TailSkewDatasetSide::Simulated,
+            cpu_count: input.cpu_count,
+            completed_units_before_dataset: input.completed_units_before_interval + side_task_count,
+            interval_completed_units_before_dataset: side_task_count,
+            total_metric_units: input.total_metric_units,
+            observer: &mut *input.observer,
+        })?;
 
     Ok(IntervalMetricOutput {
-        interval,
+        interval: input.interval,
         empirical_metrics,
         simulated_metrics,
     })
@@ -215,19 +238,10 @@ fn metric_progress_total_units(
 }
 
 fn observed_metrics_for_single_dataset(
-    dataset_id: &str,
-    series: CompactedReturnSeries,
-    horizon_bucket: &TailSkewHorizonBucket,
-    bootstrap_configuration: TailSkewBlockBootstrapConfiguration,
-    dataset_side: TailSkewDatasetSide,
-    cpu_count: usize,
-    completed_units_before_dataset: usize,
-    interval_completed_units_before_dataset: usize,
-    total_metric_units: usize,
-    observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
+    input: SingleDatasetObservedMetricsInput<'_, '_>,
 ) -> Result<Vec<StylizedFactObservedMetricInput>, WorkflowError> {
-    let return_observations = series.return_observations;
-    let dataset_role = dataset_side.dataset_role();
+    let return_observations = input.series.return_observations;
+    let dataset_role = input.dataset_side.dataset_role();
 
     let mut dataset_completed_units = 0usize;
 
@@ -239,39 +253,39 @@ fn observed_metrics_for_single_dataset(
         dataset_completed_units += 1;
 
         emit_metric_task_completed(
-            observer,
+            input.observer,
             event.bucket_label.as_str(),
             event.dataset_role,
             event.metric_id,
-            completed_units_before_dataset + dataset_completed_units,
-            total_metric_units,
-            interval_completed_units_before_dataset + dataset_completed_units,
+            input.completed_units_before_dataset + dataset_completed_units,
+            input.total_metric_units,
+            input.interval_completed_units_before_dataset + dataset_completed_units,
             TAIL_SKEW_DATASET_METRIC_TASK_COUNT,
-            cpu_count,
+            input.cpu_count,
         );
     };
 
     let diagnostics = run_tail_skew_diagnostics_with_observer(
         TailSkewDiagnosticsRequest {
-            analysis_start_utc_nanos: series.analysis_start_utc_nanos,
-            analysis_end_utc_nanos: series.analysis_end_utc_nanos,
+            analysis_start_utc_nanos: input.series.analysis_start_utc_nanos,
+            analysis_end_utc_nanos: input.series.analysis_end_utc_nanos,
             empirical_dataset: TailSkewDatasetInput {
-                dataset_id: dataset_id.to_string(),
+                dataset_id: input.dataset_id.to_string(),
                 // Intentional copy because the single-dataset diagnostic adapter
                 // must populate both sides of the tail/skew diagnostics contract.
                 return_observations: return_observations.clone(),
             },
             simulated_dataset: TailSkewDatasetInput {
-                dataset_id: dataset_id.to_string(),
+                dataset_id: input.dataset_id.to_string(),
                 return_observations,
             },
             horizon_buckets: vec![TailSkewHorizonBucket {
-                horizon_label: horizon_bucket.horizon_label.clone(),
-                horizon_duration_nanos: horizon_bucket.horizon_duration_nanos,
+                horizon_label: input.horizon_bucket.horizon_label.clone(),
+                horizon_duration_nanos: input.horizon_bucket.horizon_duration_nanos,
             }],
-            bootstrap_configuration,
+            bootstrap_configuration: input.bootstrap_configuration,
             sample_sufficiency_policy: TailSkewSampleSufficiencyPolicy::default(),
-            cpu_count: Some(cpu_count),
+            cpu_count: Some(input.cpu_count),
         },
         &mut progress_observer,
     )
@@ -284,7 +298,7 @@ fn observed_metrics_for_single_dataset(
 
     for horizon in &diagnostics.horizons {
         for metric in &horizon.metrics {
-            let dataset_metric = match dataset_side {
+            let dataset_metric = match input.dataset_side {
                 TailSkewDatasetSide::Empirical => &metric.empirical,
                 TailSkewDatasetSide::Simulated => &metric.simulated,
             };
@@ -536,7 +550,9 @@ mod tests {
     };
     use janiform::validation::tail_skew::TailSkewBlockBootstrapConfiguration;
 
-    use super::{build_comparison_request, compact_observed_interval_timeline};
+    use super::{
+        ComparisonRequestBuildInput, build_comparison_request, compact_observed_interval_timeline,
+    };
     use crate::validation::empirical::{ParsedInterval, ReturnObservation};
 
     const FIVE_MINUTES_NANOS: i64 = 300_000_000_000;
@@ -601,26 +617,26 @@ mod tests {
 
         let mut progress_events = Vec::new();
 
-        let comparison_request = build_comparison_request(
-            &metric_catalog,
-            StylizedFactHorizonComparisonThresholdPolicy {
+        let comparison_request = build_comparison_request(ComparisonRequestBuildInput {
+            metric_catalog: &metric_catalog,
+            threshold_policy: StylizedFactHorizonComparisonThresholdPolicy {
                 policy_id: "test_policy".to_string(),
                 default_max_absolute_delta: None,
                 default_max_standardized_delta: Some(1.0),
                 metric_threshold_overrides: Vec::new(),
             },
-            &[interval],
-            &empirical_returns,
-            &simulated_returns,
-            TailSkewBlockBootstrapConfiguration {
+            intervals: &[interval],
+            empirical_returns: &empirical_returns,
+            simulated_returns: &simulated_returns,
+            bootstrap_configuration: TailSkewBlockBootstrapConfiguration {
                 confidence_level: 0.95,
                 replication_count: 1,
                 block_length_interval_count: 1,
                 random_seed: 7,
             },
-            2,
-            &mut |event| progress_events.push(event),
-        )
+            cpu_count: 2,
+            observer: &mut |event| progress_events.push(event),
+        })
         .expect("comparison request should be built");
 
         let run = comparison_request

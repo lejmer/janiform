@@ -401,7 +401,7 @@ fn wrap_text(text: &str, max_width: Option<usize>) -> Vec<String> {
     let lines = text
         .lines()
         .flat_map(|line| {
-            textwrap::wrap(line, &Options::new(max_width).break_words(true))
+            textwrap::wrap(line, Options::new(max_width).break_words(true))
                 .into_iter()
                 .map(|line| line.into_owned())
                 .collect::<Vec<String>>()

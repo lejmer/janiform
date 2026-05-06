@@ -1069,7 +1069,7 @@ fn resolve_mean_reversion_grid_observations(
 
     if boundary_grid
         .as_ref()
-        .is_some_and(|grid| mean_reversion_grid_has_identifiable_full_model_coverage(grid))
+        .is_some_and(mean_reversion_grid_has_identifiable_full_model_coverage)
     {
         return boundary_grid;
     }
@@ -1087,7 +1087,7 @@ fn resolve_mean_reversion_grid_observations(
 
     if session_duration_grid
         .as_ref()
-        .is_some_and(|grid| mean_reversion_grid_has_identifiable_full_model_coverage(grid))
+        .is_some_and(mean_reversion_grid_has_identifiable_full_model_coverage)
     {
         return session_duration_grid;
     }
@@ -1106,7 +1106,7 @@ fn resolve_mean_reversion_grid_observations(
 
     if source_window_grid
         .as_ref()
-        .is_some_and(|grid| mean_reversion_grid_has_identifiable_full_model_coverage(grid))
+        .is_some_and(mean_reversion_grid_has_identifiable_full_model_coverage)
     {
         return source_window_grid;
     }

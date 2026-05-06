@@ -217,30 +217,29 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
 
     let seasonality_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::Seasonality(seasonality_report),
+        &CalibrationStagedRunStageReport::Seasonality(Box::new(seasonality_report)),
     )
     .expect("seasonality artifact should build");
     let hawkes_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::Hawkes(hawkes_report),
+        &CalibrationStagedRunStageReport::Hawkes(Box::new(hawkes_report)),
     )
     .expect("hawkes artifact should build");
     let return_components_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
+        &CalibrationStagedRunStageReport::ReturnComponents(Box::new(return_components_report)),
     )
     .expect("return-components artifact should build");
-    let mean_reversion_artifact =
-        build_calibration_stage_parameter_artifact(
-            &run_contract,
-            &CalibrationStagedRunStageReport::MeanReversion(
-                build_mean_reversion_stage_success_report(),
-            ),
-        )
-        .expect("mean-reversion artifact should build");
+    let mean_reversion_artifact = build_calibration_stage_parameter_artifact(
+        &run_contract,
+        &CalibrationStagedRunStageReport::MeanReversion(Box::new(
+            build_mean_reversion_stage_success_report(),
+        )),
+    )
+    .expect("mean-reversion artifact should build");
     let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
+        &CalibrationStagedRunStageReport::JointRefinement(Box::new(joint_refinement_report)),
     )
     .expect("joint-refinement artifact should build");
     let stage_parameter_artifacts = vec![
@@ -287,7 +286,7 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
         &dataset_snapshot,
         stage_parameter_artifacts.as_slice(),
         &[],
-        &[diagnostics_artifact.clone()],
+        std::slice::from_ref(&diagnostics_artifact),
         &[],
         Utc.with_ymd_and_hms(2026, 3, 4, 11, 30, 0)
             .single()

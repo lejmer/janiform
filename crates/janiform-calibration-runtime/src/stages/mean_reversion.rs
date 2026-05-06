@@ -31,8 +31,8 @@ use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_grid;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::{
-    CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
-    build_runtime_hourly_seasonality_factors_from_components,
+    CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
+    SeasonalityStageNormalizedPayload, build_runtime_hourly_seasonality_factors_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -209,8 +209,7 @@ pub fn run_mean_reversion_calibration_stage(
 
     if !run_spec
         .selected_stages
-        .iter()
-        .any(|selected_stage| *selected_stage == CalibrationStage::MeanReversion)
+        .contains(&CalibrationStage::MeanReversion)
     {
         return failure_report(
             run_spec,
@@ -636,15 +635,17 @@ fn build_endogenous_mean_reversion_calibration_context(
 
     let runtime_hourly_seasonality_factors =
         build_runtime_hourly_seasonality_factors_from_components(
-            calendar_registry,
-            seasonality_input.exchange_code.as_str(),
-            seasonality_input.intraday_minutes_per_bin,
-            seasonality_input.intraday_factor_by_bin.as_slice(),
-            seasonality_input.day_of_week_factor.as_slice(),
-            seasonality_input.day_of_year_factor.as_slice(),
-            runtime_hourly_seasonality_range_start_utc_nanos,
-            runtime_hourly_seasonality_range_end_utc_nanos,
-            NANOS_PER_HOUR,
+            RuntimeHourlySeasonalityFactorsBuildInput {
+                calendar_registry,
+                exchange_code: seasonality_input.exchange_code.as_str(),
+                intraday_minutes_per_bin: seasonality_input.intraday_minutes_per_bin,
+                intraday_factor_by_bin: seasonality_input.intraday_factor_by_bin.as_slice(),
+                day_of_week_factor: seasonality_input.day_of_week_factor.as_slice(),
+                day_of_year_factor: seasonality_input.day_of_year_factor.as_slice(),
+                range_start_utc_nanos: runtime_hourly_seasonality_range_start_utc_nanos,
+                range_end_utc_nanos: runtime_hourly_seasonality_range_end_utc_nanos,
+                interval_duration_nanos: NANOS_PER_HOUR,
+            },
         )
         .map_err(|error_message| {
             MeanReversionStageExecutionFailure::HourlyFactorMaterializationFailed { error_message }
@@ -1140,7 +1141,7 @@ fn profile_candidate_over_pressure_persistence(
     profile_candidate_over_unit_interval(
         solver_settings,
         best_boundary_candidate,
-        |pressure_persistence| evaluate_candidate_at_pressure_persistence(pressure_persistence),
+        evaluate_candidate_at_pressure_persistence,
     )
 }
 

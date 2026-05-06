@@ -23,9 +23,10 @@ use super::runtime::{
 };
 
 /// State snapshot capture mode for per-event diagnostics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SeededTickEventStateSnapshotCapture {
+    #[default]
     Disabled,
     PostEventTransition,
 }
@@ -38,12 +39,6 @@ impl SeededTickEventStateSnapshotCapture {
                 Some(SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY)
             }
         }
-    }
-}
-
-impl Default for SeededTickEventStateSnapshotCapture {
-    fn default() -> Self {
-        Self::Disabled
     }
 }
 
@@ -269,19 +264,25 @@ impl SeededTickSimulationRunConfig {
             .mean_reversion_fitted_parameters
             .validate()
             .map_err(|source| {
-                SeededTickSimulationRunError::InvalidMeanReversionFittedParameters { source }
+                SeededTickSimulationRunError::InvalidMeanReversionFittedParameters {
+                    source: Box::new(source),
+                }
             })?;
         self.model_inputs
             .mean_reversion_runtime_interval_anchors
             .validate()
             .map_err(|source| {
-                SeededTickSimulationRunError::InvalidMeanReversionRuntimeIntervalAnchors { source }
+                SeededTickSimulationRunError::InvalidMeanReversionRuntimeIntervalAnchors {
+                    source: Box::new(source),
+                }
             })?;
         self.model_inputs
             .initial_mean_reversion_boundary_state
             .validate()
             .map_err(
-                |source| SeededTickSimulationRunError::InvalidMeanReversionBoundaryState { source },
+                |source| SeededTickSimulationRunError::InvalidMeanReversionBoundaryState {
+                    source: Box::new(source),
+                },
             )?;
 
         let runtime_interval_anchors = &self.model_inputs.mean_reversion_runtime_interval_anchors;
@@ -362,13 +363,17 @@ impl SeededTickSimulationRunConfig {
             .nig_shared_plus_shift_configuration
             .derive_driver_parameters()
             .map_err(|source| {
-                SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration { source }
+                SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration {
+                    source: Box::new(source),
+                }
             })?;
         self.model_inputs
             .news_process_configuration
             .validate()
             .map_err(
-                |source| SeededTickSimulationRunError::InvalidNewsProcessConfiguration { source },
+                |source| SeededTickSimulationRunError::InvalidNewsProcessConfiguration {
+                    source: Box::new(source),
+                },
             )?;
 
         validate_known_scheduled_news_timestamps(

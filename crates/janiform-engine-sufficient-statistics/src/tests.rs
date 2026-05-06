@@ -1308,7 +1308,7 @@ fn build_sufficient_statistics_path_record(
     SufficientStatisticsPathRecord::try_new(
         interval_index,
         sufficient_statistics,
-        return_components.clone(),
+        return_components,
         return_components.total_return,
         observed_log_price_end,
         observed_log_price_end,

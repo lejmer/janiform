@@ -120,20 +120,20 @@ impl TransformSensitivityIntegrationState {
 
     fn add_scaled_rhs(self, rhs: TransformSensitivityOdeRhs, scale: f64) -> Self {
         Self {
-            d_vector: self.d_vector.add(rhs.d_derivative.scale(scale)),
-            c_value: self.c_value.add(rhs.c_derivative.scale(scale)),
+            d_vector: self.d_vector.plus(rhs.d_derivative.scale(scale)),
+            c_value: self.c_value.plus(rhs.c_derivative.scale(scale)),
             u_plus_d_vector: self
                 .u_plus_d_vector
-                .add(rhs.u_plus_d_derivative.scale(scale)),
+                .plus(rhs.u_plus_d_derivative.scale(scale)),
             u_plus_c_value: self
                 .u_plus_c_value
-                .add(rhs.u_plus_c_derivative.scale(scale)),
+                .plus(rhs.u_plus_c_derivative.scale(scale)),
             u_minus_d_vector: self
                 .u_minus_d_vector
-                .add(rhs.u_minus_d_derivative.scale(scale)),
+                .plus(rhs.u_minus_d_derivative.scale(scale)),
             u_minus_c_value: self
                 .u_minus_c_value
-                .add(rhs.u_minus_c_derivative.scale(scale)),
+                .plus(rhs.u_minus_c_derivative.scale(scale)),
         }
     }
 }
@@ -215,39 +215,39 @@ fn run_sensitivity_integration_runge_kutta(
             TransformSensitivityOdeRhs {
                 d_derivative: k1
                     .d_derivative
-                    .add(k2.d_derivative.scale(2.0))
-                    .add(k3.d_derivative.scale(2.0))
-                    .add(k4.d_derivative)
+                    .plus(k2.d_derivative.scale(2.0))
+                    .plus(k3.d_derivative.scale(2.0))
+                    .plus(k4.d_derivative)
                     .scale(1.0 / 6.0),
                 c_derivative: k1
                     .c_derivative
-                    .add(k2.c_derivative.scale(2.0))
-                    .add(k3.c_derivative.scale(2.0))
-                    .add(k4.c_derivative)
+                    .plus(k2.c_derivative.scale(2.0))
+                    .plus(k3.c_derivative.scale(2.0))
+                    .plus(k4.c_derivative)
                     .scale(1.0 / 6.0),
                 u_plus_d_derivative: k1
                     .u_plus_d_derivative
-                    .add(k2.u_plus_d_derivative.scale(2.0))
-                    .add(k3.u_plus_d_derivative.scale(2.0))
-                    .add(k4.u_plus_d_derivative)
+                    .plus(k2.u_plus_d_derivative.scale(2.0))
+                    .plus(k3.u_plus_d_derivative.scale(2.0))
+                    .plus(k4.u_plus_d_derivative)
                     .scale(1.0 / 6.0),
                 u_plus_c_derivative: k1
                     .u_plus_c_derivative
-                    .add(k2.u_plus_c_derivative.scale(2.0))
-                    .add(k3.u_plus_c_derivative.scale(2.0))
-                    .add(k4.u_plus_c_derivative)
+                    .plus(k2.u_plus_c_derivative.scale(2.0))
+                    .plus(k3.u_plus_c_derivative.scale(2.0))
+                    .plus(k4.u_plus_c_derivative)
                     .scale(1.0 / 6.0),
                 u_minus_d_derivative: k1
                     .u_minus_d_derivative
-                    .add(k2.u_minus_d_derivative.scale(2.0))
-                    .add(k3.u_minus_d_derivative.scale(2.0))
-                    .add(k4.u_minus_d_derivative)
+                    .plus(k2.u_minus_d_derivative.scale(2.0))
+                    .plus(k3.u_minus_d_derivative.scale(2.0))
+                    .plus(k4.u_minus_d_derivative)
                     .scale(1.0 / 6.0),
                 u_minus_c_derivative: k1
                     .u_minus_c_derivative
-                    .add(k2.u_minus_c_derivative.scale(2.0))
-                    .add(k3.u_minus_c_derivative.scale(2.0))
-                    .add(k4.u_minus_c_derivative)
+                    .plus(k2.u_minus_c_derivative.scale(2.0))
+                    .plus(k3.u_minus_c_derivative.scale(2.0))
+                    .plus(k4.u_minus_c_derivative)
                     .scale(1.0 / 6.0),
             },
             step_size,
@@ -326,28 +326,28 @@ fn evaluate_transform_sensitivity_ode_rhs(
                 .d_vector
                 .plus_plus
                 .scale(-beta)
-                .add(hamiltonians.h_plus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
             integration_state
                 .d_vector
                 .plus_minus
                 .scale(-beta)
-                .add(hamiltonians.h_plus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
             integration_state
                 .d_vector
                 .minus_plus
                 .scale(-beta)
-                .add(hamiltonians.h_minus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
             integration_state
                 .d_vector
                 .minus_minus
                 .scale(-beta)
-                .add(hamiltonians.h_minus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
         ),
         c_derivative: hamiltonians
             .h_plus
-            .add(hamiltonians.h_minus)
+            .plus(hamiltonians.h_minus)
             .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar)
-            .add(
+            .plus(
                 complex_pow_real_exponent_principal(
                     one_minus_theta_d_dot_r,
                     -gamma_configuration.shape_k,
@@ -360,53 +360,53 @@ fn evaluate_transform_sensitivity_ode_rhs(
                 .u_plus_d_vector
                 .plus_plus
                 .scale(-beta)
-                .add(u_plus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_plus_derivative.scale(transform_input.s_h)),
             integration_state
                 .u_plus_d_vector
                 .plus_minus
                 .scale(-beta)
-                .add(u_plus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_plus_derivative.scale(transform_input.s_h)),
             integration_state
                 .u_plus_d_vector
                 .minus_plus
                 .scale(-beta)
-                .add(u_plus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_minus_derivative.scale(transform_input.s_h)),
             integration_state
                 .u_plus_d_vector
                 .minus_minus
                 .scale(-beta)
-                .add(u_plus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_minus_derivative.scale(transform_input.s_h)),
         ),
         u_plus_c_derivative: u_plus_h_plus_derivative
-            .add(u_plus_h_minus_derivative)
+            .plus(u_plus_h_minus_derivative)
             .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar)
-            .add(u_plus_news_derivative),
+            .plus(u_plus_news_derivative),
         u_minus_d_derivative: ExponentialAffineTransformDVector::new(
             integration_state
                 .u_minus_d_vector
                 .plus_plus
                 .scale(-beta)
-                .add(u_minus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_plus_derivative.scale(transform_input.s_h)),
             integration_state
                 .u_minus_d_vector
                 .plus_minus
                 .scale(-beta)
-                .add(u_minus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_plus_derivative.scale(transform_input.s_h)),
             integration_state
                 .u_minus_d_vector
                 .minus_plus
                 .scale(-beta)
-                .add(u_minus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_minus_derivative.scale(transform_input.s_h)),
             integration_state
                 .u_minus_d_vector
                 .minus_minus
                 .scale(-beta)
-                .add(u_minus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_minus_derivative.scale(transform_input.s_h)),
         ),
         u_minus_c_derivative: u_minus_h_plus_derivative
-            .add(u_minus_h_minus_derivative)
+            .plus(u_minus_h_minus_derivative)
             .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar)
-            .add(u_minus_news_derivative),
+            .plus(u_minus_news_derivative),
     }
 }
 
@@ -418,7 +418,7 @@ fn build_sensitivity_output(
     ExponentialAffineTransformInputSensitivityError,
 > {
     let transform_value = complex_exponential(
-        integration_state.c_value.add(
+        integration_state.c_value.plus(
             integration_state
                 .d_vector
                 .dot_state(transform_input.initial_state),
@@ -433,7 +433,7 @@ fn build_sensitivity_output(
 
     let u_plus_transform_value_derivative = complex_multiply(
         transform_value,
-        integration_state.u_plus_c_value.add(
+        integration_state.u_plus_c_value.plus(
             integration_state
                 .u_plus_d_vector
                 .dot_state(transform_input.initial_state),
@@ -441,7 +441,7 @@ fn build_sensitivity_output(
     );
     let u_minus_transform_value_derivative = complex_multiply(
         transform_value,
-        integration_state.u_minus_c_value.add(
+        integration_state.u_minus_c_value.plus(
             integration_state
                 .u_minus_d_vector
                 .dot_state(transform_input.initial_state),
@@ -455,8 +455,10 @@ fn build_sensitivity_output(
         "u_minus.transform_value",
         u_minus_transform_value_derivative,
     )?;
+
     validate_finite_d_vector_sensitivity("u_plus.d_at_delta", integration_state.u_plus_d_vector)?;
     validate_finite_d_vector_sensitivity("u_minus.d_at_delta", integration_state.u_minus_d_vector)?;
+
     validate_finite_complex_sensitivity("u_plus.c_at_delta", integration_state.u_plus_c_value)?;
     validate_finite_complex_sensitivity("u_minus.c_at_delta", integration_state.u_minus_c_value)?;
 

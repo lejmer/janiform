@@ -16,7 +16,8 @@ use janiform_engine_pricing::{
     PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingResponse, VanillaOptionPricingStatus,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse,
+    VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingStatus,
     build_pricing_transform_input, build_vanilla_option_pricing_run_result,
     solve_exponential_affine_transform,
 };
@@ -205,17 +206,18 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
 
     let numeric_quality = integration_diagnostics.numeric_quality_diagnostics;
 
-    let run_output = build_vanilla_option_pricing_run_result(
-        response,
-        VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
-        Some(market_inputs),
-        Some(transform_diagnostics),
-        Some(integration_diagnostics),
-        None,
-        build_uniform_runtime_interval_schedule(1, 0.5),
-        vec![0],
-    )
-    .expect("run output should include diagnostics and calibration hooks");
+    let run_output =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response,
+            output_selection: VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+            market_inputs_for_calibration_hooks: Some(market_inputs),
+            transform_diagnostics_source: Some(transform_diagnostics),
+            integration_quality_source: Some(integration_diagnostics),
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 0.5),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect("run output should include diagnostics and calibration hooks");
 
     let run_diagnostics = run_output
         .run_diagnostics

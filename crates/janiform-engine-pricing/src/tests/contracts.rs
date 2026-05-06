@@ -14,7 +14,8 @@ use crate::{
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResultBuildError,
-    VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
+    VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingStatus,
+    build_vanilla_option_pricing_run_result,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
@@ -398,17 +399,18 @@ fn pricing_run_output_selection_defaults_to_base_response_only() {
     let transform_diagnostics = build_reference_transform_diagnostics_source();
     let integration_quality = build_reference_integration_diagnostics_source(&market_inputs);
 
-    let run_result = build_vanilla_option_pricing_run_result(
-        response,
-        VanillaOptionPricingOptionalOutputSelection::default(),
-        None,
-        Some(transform_diagnostics),
-        Some(integration_quality),
-        None,
-        build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![0],
-    )
-    .expect("default output selection should emit base response only");
+    let run_result =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response,
+            output_selection: VanillaOptionPricingOptionalOutputSelection::default(),
+            market_inputs_for_calibration_hooks: None,
+            transform_diagnostics_source: Some(transform_diagnostics),
+            integration_quality_source: Some(integration_quality),
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect("default output selection should emit base response only");
 
     assert_eq!(
         run_result.schema_version,
@@ -425,17 +427,18 @@ fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
     let transform_diagnostics = build_reference_transform_diagnostics_source();
     let integration_quality = build_reference_integration_diagnostics_source(&market_inputs);
 
-    let run_result = build_vanilla_option_pricing_run_result(
-        response,
-        VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
-        Some(market_inputs),
-        Some(transform_diagnostics),
-        Some(integration_quality),
-        None,
-        build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![0],
-    )
-    .expect("full output selection should include diagnostics and hooks");
+    let run_result =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response,
+            output_selection: VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+            market_inputs_for_calibration_hooks: Some(market_inputs),
+            transform_diagnostics_source: Some(transform_diagnostics),
+            integration_quality_source: Some(integration_quality),
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect("full output selection should include diagnostics and hooks");
 
     let run_diagnostics = run_result
         .run_diagnostics
@@ -468,17 +471,18 @@ fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields()
     let response = build_reference_pricing_response(&market_inputs);
     let transform_diagnostics = build_reference_transform_diagnostics_source();
     let integration_quality = build_reference_integration_diagnostics_source(&market_inputs);
-    let run_result = build_vanilla_option_pricing_run_result(
-        response,
-        VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
-        Some(market_inputs),
-        Some(transform_diagnostics),
-        Some(integration_quality),
-        None,
-        build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![0],
-    )
-    .expect("full output selection should construct");
+    let run_result =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response,
+            output_selection: VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+            market_inputs_for_calibration_hooks: Some(market_inputs),
+            transform_diagnostics_source: Some(transform_diagnostics),
+            integration_quality_source: Some(integration_quality),
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect("full output selection should construct");
 
     assert_eq!(
         run_result.output_schema_metadata.schema_version,
@@ -540,49 +544,52 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
     let market_inputs = build_reference_market_inputs();
     let response = build_reference_pricing_response(&market_inputs);
 
-    let missing_transform_error = build_vanilla_option_pricing_run_result(
-        response.clone(),
-        VanillaOptionPricingOptionalOutputSelection::new(true, false, false),
-        None,
-        None,
-        None,
-        None,
-        build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![0],
-    )
-    .expect_err("transform diagnostics selection without source must fail");
+    let missing_transform_error =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response: response.clone(),
+            output_selection: VanillaOptionPricingOptionalOutputSelection::new(true, false, false),
+            market_inputs_for_calibration_hooks: None,
+            transform_diagnostics_source: None,
+            integration_quality_source: None,
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect_err("transform diagnostics selection without source must fail");
     assert!(matches!(
         missing_transform_error,
         VanillaOptionPricingRunResultBuildError::MissingTransformDiagnosticsSource
     ));
 
-    let missing_integration_error = build_vanilla_option_pricing_run_result(
-        response.clone(),
-        VanillaOptionPricingOptionalOutputSelection::new(false, true, false),
-        None,
-        None,
-        None,
-        None,
-        build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![0],
-    )
-    .expect_err("integration diagnostics selection without source must fail");
+    let missing_integration_error =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response: response.clone(),
+            output_selection: VanillaOptionPricingOptionalOutputSelection::new(false, true, false),
+            market_inputs_for_calibration_hooks: None,
+            transform_diagnostics_source: None,
+            integration_quality_source: None,
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect_err("integration diagnostics selection without source must fail");
     assert!(matches!(
         missing_integration_error,
         VanillaOptionPricingRunResultBuildError::MissingIntegrationQualityDiagnosticsSource
     ));
 
-    let missing_market_inputs_error = build_vanilla_option_pricing_run_result(
-        response,
-        VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
-        None,
-        None,
-        None,
-        None,
-        build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![0],
-    )
-    .expect_err("calibration hooks selection without market inputs must fail");
+    let missing_market_inputs_error =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response,
+            output_selection: VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
+            market_inputs_for_calibration_hooks: None,
+            transform_diagnostics_source: None,
+            integration_quality_source: None,
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect_err("calibration hooks selection without market inputs must fail");
     assert!(matches!(
         missing_market_inputs_error,
         VanillaOptionPricingRunResultBuildError::MissingMarketInputsForCalibrationHooks
@@ -595,16 +602,16 @@ fn calibration_hooks_reject_invalid_market_inputs_with_actionable_error() {
     let invalid_market_inputs =
         VanillaOptionPricingMarketInputs::new_single_node(0.0, 100.0, 0.5, 0.02, 0.01);
 
-    let error = build_vanilla_option_pricing_run_result(
+    let error = build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
         response,
-        VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
-        Some(invalid_market_inputs),
-        None,
-        None,
-        None,
-        build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![0],
-    )
+        output_selection: VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
+        market_inputs_for_calibration_hooks: Some(invalid_market_inputs),
+        transform_diagnostics_source: None,
+        integration_quality_source: None,
+        spectral_source: None,
+        runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+        maturity_terminal_interval_indices: vec![0],
+    })
     .expect_err("invalid market inputs should fail calibration hook construction");
 
     assert!(matches!(

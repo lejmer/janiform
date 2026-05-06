@@ -4,7 +4,6 @@
 //! completion summaries, and the lifecycle points where those views are emitted.
 
 #![forbid(unsafe_code)]
-
 pub mod error;
 pub mod fit;
 pub mod pricing;

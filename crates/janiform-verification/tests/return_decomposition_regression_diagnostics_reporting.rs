@@ -320,7 +320,7 @@ fn compose_observed_contributions(
                 .sell_side_characteristic_exponent_for_return_composition(scenario.argument)
                 .scale(effective_decomposition.a_plus);
             let combined_weighted_exponent =
-                buy_side_weighted_exponent.add(sell_side_weighted_exponent);
+                buy_side_weighted_exponent.plus(sell_side_weighted_exponent);
             let trading_time_characteristic_factor =
                 complex_exponential(combined_weighted_exponent);
             let effective_closed_gap_characteristic_factor =

@@ -74,28 +74,28 @@ fn run_validation(
 
     let mut progress_error = None;
 
-    let mut observer = |event: StylizedFactsValidationProgressEvent| {
-        if progress_error.is_none() {
-            if let Err(source) = progress.observe_stage_progress(StageProgressUpdate {
-                phase: &event.label,
-                stage_number: event.step,
-                completed_units: event.completed_units,
-                total_units: event.total_units,
-                work_item_label: event.work_item_label,
-                work_item_progress_percent: event.work_item_progress_percent,
-                planned_work_item_labels: event.planned_work_item_labels,
-                work_item_columns: event.work_item_columns,
-                work_item_metrics: event.work_item_metrics,
-                latest_signal: event.latest_signal,
-            }) {
+    let workflow_output = {
+        let mut observer = |event: StylizedFactsValidationProgressEvent| {
+            if progress_error.is_none()
+                && let Err(source) = progress.observe_stage_progress(StageProgressUpdate {
+                    phase: &event.label,
+                    stage_number: event.step,
+                    completed_units: event.completed_units,
+                    total_units: event.total_units,
+                    work_item_label: event.work_item_label,
+                    work_item_progress_percent: event.work_item_progress_percent,
+                    planned_work_item_labels: event.planned_work_item_labels,
+                    work_item_columns: event.work_item_columns,
+                    work_item_metrics: event.work_item_metrics,
+                    latest_signal: event.latest_signal,
+                })
+            {
                 progress_error = Some(source);
             }
-        }
+        };
+
+        run_stylized_facts_validation_workflow(request, &mut observer)?
     };
-
-    let workflow_output = run_stylized_facts_validation_workflow(request, &mut observer)?;
-
-    drop(observer);
 
     if let Some(error) = progress_error {
         return Err(error);

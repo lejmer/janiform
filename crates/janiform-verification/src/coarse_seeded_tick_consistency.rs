@@ -166,12 +166,14 @@ pub fn aggregate_seeded_tick_run_to_coarse_comparable_path(
     }
 
     let horizon_interval_count = run_config.horizon_interval_count;
+
     let fine_interval_delta =
         derive_uniform_interval_delta_hours(run_config, horizon_interval_count)?;
+
     let fine_subinterval_count_per_coarse_interval =
         resolve_interval_ratio(coarse_interval_delta, fine_interval_delta)?;
 
-    if horizon_interval_count % fine_subinterval_count_per_coarse_interval != 0 {
+    if !horizon_interval_count.is_multiple_of(fine_subinterval_count_per_coarse_interval) {
         return Err(
             SeededTickCoarseAggregationError::FineIntervalCountDoesNotPartitionHorizon {
                 fine_interval_count: horizon_interval_count,
@@ -181,8 +183,10 @@ pub fn aggregate_seeded_tick_run_to_coarse_comparable_path(
     }
 
     let flat_trace_records = flatten_trace_records(debug_trace);
+
     let fine_records =
         reconstruct_fine_interval_records(run_config, run_result, &flat_trace_records)?;
+
     let observed_fine_terminal_state = fine_records
         .last()
         .map(|record| record.terminal_excitation_state)
@@ -190,19 +194,24 @@ pub fn aggregate_seeded_tick_run_to_coarse_comparable_path(
     if observed_fine_terminal_state != run_result.final_excitation_state {
         return Err(SeededTickCoarseAggregationError::FinalStateMismatch);
     }
+
     let coarse_records = aggregate_fine_records_to_coarse_records(
         &fine_records,
         fine_subinterval_count_per_coarse_interval,
     );
+
     let diagnostics = derive_seeded_tick_comparable_diagnostics(&coarse_records);
+
     let start_time_utc_nanos = coarse_records
         .first()
         .map(|record| record.interval_start_utc_nanos)
         .ok_or(SeededTickCoarseAggregationError::MissingFineIntervalRecords)?;
+
     let end_time_utc_nanos = coarse_records
         .last()
         .map(|record| record.interval_end_utc_nanos)
         .ok_or(SeededTickCoarseAggregationError::MissingFineIntervalRecords)?;
+
     let terminal_excitation_state = coarse_records
         .last()
         .map(|record| record.terminal_excitation_state)
@@ -653,6 +662,7 @@ pub fn build_coarse_seeded_tick_consistency_report(
     }
 
     let mut scenario_reports = Vec::with_capacity(scenarios.len());
+
     for scenario in scenarios {
         scenario_reports.push(build_scenario_report(scenario, thresholds)?);
     }
@@ -661,10 +671,12 @@ pub fn build_coarse_seeded_tick_consistency_report(
         .iter()
         .filter(|scenario_report| scenario_report.status == RegressionCaseStatus::Pass)
         .count();
+
     let deterministic_failed_check_count = scenario_reports
         .iter()
         .map(|scenario_report| scenario_report.deterministic_failed_check_count)
         .sum();
+
     let statistical_failed_check_count = scenario_reports
         .iter()
         .map(|scenario_report| scenario_report.statistical_failed_check_count)
@@ -705,6 +717,7 @@ fn build_scenario_report(
     if scenario.scenario_id.trim().is_empty() {
         return Err(CoarseSeededTickConsistencyReportError::MissingScenarioId);
     }
+
     if scenario.interval_grid_label.trim().is_empty() {
         return Err(
             CoarseSeededTickConsistencyReportError::MissingIntervalGridLabel {
@@ -712,6 +725,7 @@ fn build_scenario_report(
             },
         );
     }
+
     if scenario.paired_paths.is_empty() {
         return Err(CoarseSeededTickConsistencyReportError::MissingPairedPaths {
             scenario_id: scenario.scenario_id.clone(),
@@ -719,9 +733,11 @@ fn build_scenario_report(
     }
 
     let coarse_interval_delta = scenario.paired_paths[0].coarse_path.interval_delta;
+
     let fine_interval_delta = scenario.paired_paths[0]
         .aggregated_fine_path
         .fine_interval_delta;
+
     if scenario.paired_paths.iter().any(|paired_path| {
         paired_path.coarse_path.interval_delta != coarse_interval_delta
             || paired_path.aggregated_fine_path.fine_interval_delta != fine_interval_delta
@@ -736,14 +752,17 @@ fn build_scenario_report(
 
     let deterministic_checks = build_deterministic_checks(scenario);
     let statistical_checks = build_statistical_checks(scenario, thresholds);
+
     let deterministic_failed_check_count = deterministic_checks
         .iter()
         .filter(|check| !check.passed)
         .count();
+
     let statistical_failed_check_count = statistical_checks
         .iter()
         .filter(|check| !check.passed)
         .count();
+
     let status = if deterministic_failed_check_count == 0 && statistical_failed_check_count == 0 {
         RegressionCaseStatus::Pass
     } else {
@@ -769,6 +788,7 @@ fn build_deterministic_checks(
 ) -> Vec<CoarseSeededTickDeterministicCheck> {
     let mut interval_count_detail =
         "all paired paths share the same aggregated interval count".to_string();
+
     let interval_count_alignment_passed = scenario.paired_paths.iter().all(|paired_path| {
         let passed = paired_path.coarse_path.simulated_interval_count
             == paired_path.aggregated_fine_path.simulated_interval_count;
@@ -785,6 +805,7 @@ fn build_deterministic_checks(
     let mut boundary_detail =
         "all paired paths preserve identical coarse interval start and end boundaries".to_string();
     let mut boundary_alignment_passed = true;
+
     for paired_path in &scenario.paired_paths {
         if paired_path.coarse_path.records.len() != paired_path.aggregated_fine_path.records.len() {
             boundary_alignment_passed = false;
@@ -812,6 +833,7 @@ fn build_deterministic_checks(
                     fine_record.interval_start_utc_nanos,
                     fine_record.interval_end_utc_nanos
                 );
+
                 break;
             }
         }
@@ -825,6 +847,7 @@ fn build_deterministic_checks(
         "all paired paths agree on open-jump and closed-gap component presence per interval"
             .to_string();
     let mut routing_presence_passed = true;
+
     for paired_path in &scenario.paired_paths {
         if paired_path.coarse_path.records.len() != paired_path.aggregated_fine_path.records.len() {
             routing_presence_passed = false;
@@ -842,9 +865,11 @@ fn build_deterministic_checks(
         {
             let coarse_open_present =
                 !is_effectively_zero(coarse_record.return_components.open_jump_return);
+
             let fine_open_present = !is_effectively_zero(fine_record.open_jump_return);
             let coarse_gap_present =
                 !is_effectively_zero(coarse_record.return_components.closed_gap_return);
+
             let fine_gap_present = !is_effectively_zero(fine_record.closed_gap_return);
             if coarse_open_present != fine_open_present || coarse_gap_present != fine_gap_present {
                 routing_presence_passed = false;
@@ -856,6 +881,7 @@ fn build_deterministic_checks(
                     coarse_gap_present,
                     fine_gap_present
                 );
+
                 break;
             }
         }
@@ -1322,8 +1348,7 @@ fn reconstruct_fine_interval_records(
 
     let mut fine_records = Vec::with_capacity(horizon_interval_count);
 
-    for interval_index in 0..horizon_interval_count {
-        let trace_records = &interval_trace_records[interval_index];
+    for (interval_index, trace_records) in interval_trace_records.iter().enumerate() {
         if trace_records.is_empty() {
             return Err(
                 SeededTickCoarseAggregationError::MissingBoundaryDriftRecord { interval_index },
@@ -1359,6 +1384,7 @@ fn reconstruct_fine_interval_records(
                 elapsed_hours,
                 true,
             );
+
             a_minus += integrate_side_intensity(
                 current_state,
                 lambda_bar,
@@ -1401,6 +1427,7 @@ fn reconstruct_fine_interval_records(
         let boundary_trace_record = trace_records.last().copied().ok_or(
             SeededTickCoarseAggregationError::MissingBoundaryDriftRecord { interval_index },
         )?;
+
         if boundary_trace_record.transition_kind
             != SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
         {
@@ -1408,6 +1435,7 @@ fn reconstruct_fine_interval_records(
                 SeededTickCoarseAggregationError::MissingBoundaryDriftRecord { interval_index },
             );
         }
+
         if boundary_trace_record.timestamp_utc_nanos != interval_end_utc_nanos {
             return Err(
                 SeededTickCoarseAggregationError::BoundaryTimestampMismatch {
@@ -1646,6 +1674,7 @@ fn resolve_interval_ratio(
             },
         );
     }
+
     if !fine_interval_delta.is_finite() || fine_interval_delta <= 0.0 {
         return Err(SeededTickCoarseAggregationError::InvalidFineIntervalDelta {
             value: fine_interval_delta,

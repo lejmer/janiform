@@ -223,10 +223,10 @@ pub(crate) fn run_presets_export(
         Value::String(PRESETS_EXPORT_COMMAND_ID.to_string()),
     );
 
-    let output_path = match &command.output_path {
-        Some(path) => Some(context.paths().output_path(path)),
-        None => None,
-    };
+    let output_path = command
+        .output_path
+        .as_ref()
+        .map(|path| context.paths().output_path(path));
 
     if let Some(output_path) = &output_path {
         write_pretty_json_file(output_path, &payload, |path, source| {
@@ -330,7 +330,7 @@ fn append_user_preset_artifact(
     let artifact = janiform::calibration::presets::deserialize_preset_artifact_json(&preset_json)
         .map_err(|source| CliError::PresetUserFileInvalid {
         path: resolved_path,
-        source,
+        source: Box::new(source),
     })?;
 
     user_registered_presets.push(artifact);
@@ -472,7 +472,7 @@ fn preset_workflow_error(
             .unwrap_or(AUTOMATIC_SCOPE_LABEL)
             .to_string(),
         preset_name: preset_name.unwrap_or(NO_PRESET_NAME).to_string(),
-        source,
+        source: Box::new(source),
     }
 }
 

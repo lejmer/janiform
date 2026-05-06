@@ -219,11 +219,7 @@ fn assert_case_matches_reference(
             metric_decision.metric_variant
         );
 
-        let observed_reason_codes = metric_decision
-            .decision_reason_codes
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
+        let observed_reason_codes = metric_decision.decision_reason_codes.to_vec();
         let expected_reason_codes = expected_metric_outcome
             .expected_decision_reason_codes
             .iter()

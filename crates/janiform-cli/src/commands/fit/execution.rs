@@ -33,6 +33,8 @@ use crate::context::EventStreamFormat;
 use crate::context::OutputMode;
 use crate::error::CliError;
 
+type CliMachineEventSink<'a> = &'a mut dyn FnMut(&RunEvent) -> Result<(), WorkflowError>;
+
 pub(crate) fn run_fit_command(
     context: &CommandContext,
     command: FitCommand,
@@ -88,7 +90,7 @@ pub(crate) fn run_fit_staged_run_command(
     let mut execution_input: CalibrationStagedExecutionInput = serde_json::from_reader(file)
         .map_err(|source| CliError::StagedExecutionInputParse {
             path: execution_input_path.clone(),
-            source,
+            source: Box::new(source),
         })?;
 
     if let Some(persistence_root_directory) = options.disk_checkpoint_directory.as_ref() {
@@ -279,8 +281,8 @@ fn emit_completion_output(
 
 fn machine_event_sink_for_context<'a>(
     context: &CommandContext,
-    machine_event_sink: &'a mut dyn FnMut(&RunEvent) -> Result<(), WorkflowError>,
-) -> Option<&'a mut dyn FnMut(&RunEvent) -> Result<(), WorkflowError>> {
+    machine_event_sink: CliMachineEventSink<'a>,
+) -> Option<CliMachineEventSink<'a>> {
     if context.event_settings().stream_format == Some(EventStreamFormat::Jsonl) {
         return Some(machine_event_sink);
     }

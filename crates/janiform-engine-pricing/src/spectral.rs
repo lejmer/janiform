@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Add;
 use std::time::Instant;
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -21,7 +22,7 @@ use crate::implied_volatility::{
     invert_vanilla_option_implied_volatility,
 };
 use crate::intraday_black_scholes_no_arbitrage_price_bounds;
-use crate::progress::PricingProgressEvent;
+use crate::progress::{PricingProgressEvent, TransitionRowSolveProgressDiagnostics};
 use crate::runner::{
     CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity,
     CorePureImaginaryLogMomentSharedPlusShiftSensitivity, LocalTransitionRequestContext,
@@ -132,7 +133,9 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_
     theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
     execution_input.validate().map_err(|source| {
-        VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source }
+        VanillaOptionGridBatchPricingRunError::InvalidExecutionInput {
+            source: Box::new(source),
+        }
     })?;
 
     let pricing_thread_pool = build_pricing_thread_pool(execution_input.cpu_count);
@@ -200,21 +203,27 @@ pub(crate) fn run_single_option_pricing(
 
     let strike = market_inputs.single_strike().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
-                source: crate::contracts::VanillaOptionPricingRequestError::InvalidMarketInputs {
-                    source,
+            source: Box::new(
+                crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
+                    source:
+                        crate::contracts::VanillaOptionPricingRequestError::InvalidMarketInputs {
+                            source,
+                        },
                 },
-            },
+            ),
         }
     })?;
 
     let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
-                source: crate::contracts::VanillaOptionPricingRequestError::InvalidMarketInputs {
-                    source,
+            source: Box::new(
+                crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
+                    source:
+                        crate::contracts::VanillaOptionPricingRequestError::InvalidMarketInputs {
+                            source,
+                        },
                 },
-            },
+            ),
         }
     })?;
 
@@ -305,7 +314,11 @@ pub(crate) fn run_single_option_pricing(
         maturity_summary.collocation_node_count,
         maturity_summary.interval_summaries.clone(),
     )
-    .map_err(|source| VanillaOptionPricingRunError::InvalidSpectralDiagnostics { source })?;
+    .map_err(
+        |source| VanillaOptionPricingRunError::InvalidSpectralDiagnostics {
+            source: Box::new(source),
+        },
+    )?;
 
     Ok(SingleOptionSpectralOutcome {
         price,
@@ -429,23 +442,24 @@ fn prepare_carry_group_contexts(
         )
         .map_err(|source| format!("failed to construct spectral domain: {source}"))?;
 
-        let cached_interval_operators = build_cached_interval_operators(
-            carry_group_key,
-            &base_request,
-            execution_input
-                .optional_output_selection
-                .include_node_price_sensitivities,
-            execution_input.interval_factors.as_slice(),
-            &materialization,
-            maximum_maturity_count,
-            spectral_domain,
-            driver_parameters,
-            pricing_thread_pool,
-            cpu_count,
-            observer,
-            theta_warm_start_state.as_deref_mut(),
-        )
-        .map_err(|source| format!("spectral interval-operator assembly failed: {source}"))?;
+        let cached_interval_operators =
+            build_cached_interval_operators(CachedIntervalOperatorBuildInput {
+                carry_group_key,
+                pricing_request: &base_request,
+                include_node_price_sensitivities: execution_input
+                    .optional_output_selection
+                    .include_node_price_sensitivities,
+                interval_factors: execution_input.interval_factors.as_slice(),
+                materialization: &materialization,
+                maximum_maturity_count,
+                spectral_domain,
+                driver_parameters,
+                pricing_thread_pool,
+                cpu_count,
+                observer,
+                theta_warm_start_state: theta_warm_start_state.as_deref_mut(),
+            })
+            .map_err(|source| format!("spectral interval-operator assembly failed: {source}"))?;
 
         let mut maturity_laws = BTreeMap::new();
 
@@ -506,11 +520,14 @@ fn build_grid_result(
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
 ) -> Result<VanillaOptionGridPricingResult, VanillaOptionGridBatchPricingRunError> {
     let mut price_grid = Vec::with_capacity(grid.maturity_intervals.len());
+
     let mut implied_volatility_grid = Vec::with_capacity(grid.maturity_intervals.len());
     let mut implied_volatility_status_grid = Vec::with_capacity(grid.maturity_intervals.len());
+
     let mut pricing_status_grid = Vec::with_capacity(grid.maturity_intervals.len());
     let mut pricing_failure_stage_grid = Vec::with_capacity(grid.maturity_intervals.len());
     let mut pricing_failure_reason_grid = Vec::with_capacity(grid.maturity_intervals.len());
+
     let mut forward_price_grid = Vec::with_capacity(grid.maturity_intervals.len());
     let mut discount_factor_grid = Vec::with_capacity(grid.maturity_intervals.len());
     let mut boundary_state_norm_grid = Vec::with_capacity(grid.maturity_intervals.len());
@@ -518,6 +535,7 @@ fn build_grid_result(
         .optional_output_selection
         .include_node_price_sensitivities
         .then(|| Vec::with_capacity(grid.maturity_intervals.len()));
+
     let mut maturity_summaries = Vec::with_capacity(grid.maturity_intervals.len());
     let mut maturity_terminal_interval_indices = Vec::with_capacity(grid.maturity_intervals.len());
 
@@ -553,26 +571,29 @@ fn build_grid_result(
                 },
             )?;
 
-        let priced_row = price_strike_row(
-            execution_input.request.spot,
+        let priced_row = price_strike_row(StrikeRowPricingInput {
+            spot: execution_input.request.spot,
             grid,
             solved_maturity,
-            execution_input.boundary_input.hawkes_boundary_state,
+            boundary_state: execution_input.boundary_input.hawkes_boundary_state,
             pricing_thread_pool,
             cpu_count,
             maturity_index,
             total_maturities,
             observer,
-        );
+        });
 
         let representative_price = priced_row.price_row.iter().flatten().copied().next();
 
         price_grid.push(priced_row.price_row);
+
         implied_volatility_grid.push(priced_row.implied_volatility_row);
         implied_volatility_status_grid.push(priced_row.implied_volatility_status_row);
+
         pricing_status_grid.push(priced_row.pricing_status_row);
         pricing_failure_stage_grid.push(priced_row.pricing_failure_stage_row);
         pricing_failure_reason_grid.push(priced_row.pricing_failure_reason_row);
+
         forward_price_grid.push(priced_row.forward_price_row);
         discount_factor_grid.push(priced_row.discount_factor_row);
         boundary_state_norm_grid.push(priced_row.boundary_state_norm_row);
@@ -638,17 +659,31 @@ struct PricedStrikeRow {
     node_price_sensitivity_row: Vec<Option<VanillaOptionNodePriceSensitivity>>,
 }
 
-fn price_strike_row(
+struct StrikeRowPricingInput<'a, 'observer, 'callback> {
     spot: f64,
-    grid: &VanillaOptionGridRequest,
-    solved_maturity: &SolvedMaturityLaw,
+    grid: &'a VanillaOptionGridRequest,
+    solved_maturity: &'a SolvedMaturityLaw,
     boundary_state: janiform_model_kernels::hawkes::HawkesExcitationState,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
     maturity_index: usize,
     total_maturities: usize,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
-) -> PricedStrikeRow {
+    observer: &'observer mut Option<&'callback mut dyn FnMut(PricingProgressEvent)>,
+}
+
+fn price_strike_row(input: StrikeRowPricingInput<'_, '_, '_>) -> PricedStrikeRow {
+    let StrikeRowPricingInput {
+        spot,
+        grid,
+        solved_maturity,
+        boundary_state,
+        pricing_thread_pool,
+        cpu_count,
+        maturity_index,
+        total_maturities,
+        observer,
+    } = input;
+
     let strike_count = grid.strikes.len();
 
     let maturity_year_fraction = intraday_year_fraction(solved_maturity.maturity_interval);
@@ -838,26 +873,50 @@ fn invert_spectral_implied_volatility(
     invert_vanilla_option_implied_volatility(market_inputs, payoff_type, bounded_price)
 }
 
-fn build_cached_interval_operators(
+struct CachedIntervalOperatorBuildInput<'a, 'observer, 'callback> {
     carry_group_key: CarryGroupKey,
-    pricing_request: &VanillaOptionPricingRequest,
+    pricing_request: &'a VanillaOptionPricingRequest,
     include_node_price_sensitivities: bool,
-    interval_factors: &[VanillaOptionPricingIntervalFactors],
-    materialization: &RiskNeutralAnchorMaterialization,
+    interval_factors: &'a [VanillaOptionPricingIntervalFactors],
+    materialization: &'a RiskNeutralAnchorMaterialization,
     maximum_maturity_count: usize,
     spectral_domain: SpectralDomain,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
-    mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
+    observer: &'observer mut Option<&'callback mut dyn FnMut(PricingProgressEvent)>,
+    theta_warm_start_state: Option<&'a mut SpectralThetaWarmStartState>,
+}
+
+fn build_cached_interval_operators(
+    input: CachedIntervalOperatorBuildInput<'_, '_, '_>,
 ) -> Result<Vec<CachedIntervalOperator>, VanillaOptionPricingRunError> {
+    let CachedIntervalOperatorBuildInput {
+        carry_group_key,
+        pricing_request,
+        include_node_price_sensitivities,
+        interval_factors,
+        materialization,
+        maximum_maturity_count,
+        spectral_domain,
+        driver_parameters,
+        pricing_thread_pool,
+        cpu_count,
+        observer,
+        mut theta_warm_start_state,
+    } = input;
+
     let collocation_nodes = spectral_domain.collocation_nodes();
     let runtime_anchors = &materialization.runtime_interval_anchors;
 
     let mut cached_interval_operators = Vec::with_capacity(maximum_maturity_count);
 
-    for interval_offset in 0..maximum_maturity_count {
+    for (interval_offset, interval_factor) in interval_factors
+        .iter()
+        .copied()
+        .enumerate()
+        .take(maximum_maturity_count)
+    {
         emit_pricing_progress(
             observer,
             PricingProgressEvent::interval_progress(
@@ -887,7 +946,6 @@ fn build_cached_interval_operators(
         let expected_hawkes_state_after =
             materialization.expected_hawkes_state_path[interval_offset + 1];
 
-        let interval_factor = interval_factors[interval_offset];
         let current_driver_configuration = theta_warm_start_driver_configuration(driver_parameters);
 
         let base_context = LocalTransitionRequestContext::from_interval_state(
@@ -933,16 +991,18 @@ fn build_cached_interval_operators(
 
         let (row_operators, row_theta_states, row_solve_diagnostics) =
             solve_interval_row_frequency_batches_adaptively(
-                &base_context,
-                collocation_nodes.as_slice(),
-                row_states.as_slice(),
-                theta_hints.as_slice(),
-                spectral_domain,
-                driver_parameters,
-                observer.as_ref().is_some(),
-                theta_warm_start_state.is_some(),
-                pricing_thread_pool,
-                cpu_count,
+                IntervalRowFrequencyBatchAdaptiveSolveInput {
+                    base_context: &base_context,
+                    collocation_nodes: collocation_nodes.as_slice(),
+                    row_states: row_states.as_slice(),
+                    theta_hints: theta_hints.as_slice(),
+                    spectral_domain,
+                    driver_parameters,
+                    collect_extended_gradient_diagnostics: observer.as_ref().is_some(),
+                    collect_theta_warm_start_sensitivities: theta_warm_start_state.is_some(),
+                    pricing_thread_pool,
+                    cpu_count,
+                },
             )?;
 
         let row_operator_sensitivities = if include_node_price_sensitivities {
@@ -978,16 +1038,27 @@ fn build_cached_interval_operators(
                 Some(maximum_maturity_count),
             )
             .with_transition_row_solve_diagnostics(
-                row_solve_diagnostics.seed_exact_transition_row_count,
-                row_solve_diagnostics.shared_theta_transition_row_count,
-                row_solve_diagnostics.certified_transition_row_count,
-                row_solve_diagnostics.fallback_exact_transition_row_count,
-                row_solve_diagnostics.theta_search_elapsed_millis,
-                row_solve_diagnostics.theta_certification_elapsed_millis,
-                row_solve_diagnostics.row_batch_elapsed_millis,
-                row_solve_diagnostics.average_buy_shift_configuration_gradient_norm(),
-                row_solve_diagnostics.average_sell_shift_configuration_gradient_norm(),
-                row_solve_diagnostics.average_core_log_moment_shift_configuration_gradient_norm(),
+                TransitionRowSolveProgressDiagnostics {
+                    seed_exact_transition_row_count: row_solve_diagnostics
+                        .seed_exact_transition_row_count,
+                    shared_theta_transition_row_count: row_solve_diagnostics
+                        .shared_theta_transition_row_count,
+                    certified_transition_row_count: row_solve_diagnostics
+                        .certified_transition_row_count,
+                    fallback_exact_transition_row_count: row_solve_diagnostics
+                        .fallback_exact_transition_row_count,
+                    theta_search_elapsed_millis: row_solve_diagnostics.theta_search_elapsed_millis,
+                    theta_certification_elapsed_millis: row_solve_diagnostics
+                        .theta_certification_elapsed_millis,
+                    row_batch_elapsed_millis: row_solve_diagnostics.row_batch_elapsed_millis,
+                    average_buy_shift_configuration_gradient_norm: row_solve_diagnostics
+                        .average_buy_shift_configuration_gradient_norm(),
+                    average_sell_shift_configuration_gradient_norm: row_solve_diagnostics
+                        .average_sell_shift_configuration_gradient_norm(),
+                    average_core_log_moment_shift_configuration_gradient_norm:
+                        row_solve_diagnostics
+                            .average_core_log_moment_shift_configuration_gradient_norm(),
+                },
             ),
         );
 
@@ -1055,8 +1126,8 @@ fn solve_maturity_law(
             ]
         });
 
-    for frequency_index in 0..frequency_count {
-        continuation_coefficients[frequency_index][0] = ComplexScalar::new(1.0, 0.0);
+    for continuation_coefficient_row in continuation_coefficients.iter_mut() {
+        continuation_coefficient_row[0] = ComplexScalar::new(1.0, 0.0);
     }
 
     for cached_interval_operator in cached_interval_operators[..maturity_count].iter().rev() {
@@ -1175,7 +1246,7 @@ fn apply_cached_interval_operator(
                     row_operator.basis_forward_phases[basis_index],
                     row_operator.positive_frequency_values[frequency_index + basis_index],
                 )
-                .add(complex_multiply(
+                .plus(complex_multiply(
                     row_operator.basis_backward_phases[basis_index],
                     difference_value,
                 ))
@@ -1196,17 +1267,19 @@ fn apply_cached_interval_operator(
                                 .conjugate()
                         };
 
-                        complex_expectation_sensitivity(
-                            row_operator.basis_forward_phases[basis_index],
-                            row_operator_sensitivity.basis_forward_phase_sensitivities[basis_index],
-                            row_operator.positive_frequency_values[frequency_index + basis_index],
-                            positive_frequency_sensitivity,
-                            row_operator.basis_backward_phases[basis_index],
-                            row_operator_sensitivity.basis_backward_phase_sensitivities
-                                [basis_index],
-                            difference_value,
-                            difference_sensitivity,
-                        )
+                        complex_expectation_sensitivity(ComplexExpectationSensitivityInput {
+                            basis_forward_phase: row_operator.basis_forward_phases[basis_index],
+                            basis_forward_phase_sensitivity: row_operator_sensitivity
+                                .basis_forward_phase_sensitivities[basis_index],
+                            forward_value: row_operator.positive_frequency_values
+                                [frequency_index + basis_index],
+                            forward_value_sensitivity: positive_frequency_sensitivity,
+                            basis_backward_phase: row_operator.basis_backward_phases[basis_index],
+                            basis_backward_phase_sensitivity: row_operator_sensitivity
+                                .basis_backward_phase_sensitivities[basis_index],
+                            backward_value: difference_value,
+                            backward_value_sensitivity: difference_sensitivity,
+                        })
                     },
                 );
 
@@ -1217,17 +1290,17 @@ fn apply_cached_interval_operator(
                     })
                     .unwrap_or_else(NodePriceSharedPlusShiftComplexSensitivity::zero);
 
-                row_value = row_value.add(complex_multiply(
+                row_value = row_value.plus(complex_multiply(
                     continuation_coefficients[frequency_index][basis_index],
                     expectation,
                 ));
 
                 row_value_sensitivity = row_value_sensitivity
-                    .add(complex_scale_sensitivity(
+                    .plus(complex_scale_sensitivity(
                         expectation,
                         continuation_sensitivity,
                     ))
-                    .add(complex_scale_sensitivity(
+                    .plus(complex_scale_sensitivity(
                         continuation_coefficients[frequency_index][basis_index],
                         expectation_sensitivity,
                     ));
@@ -1288,13 +1361,8 @@ impl NodePriceSharedPlusShiftSensitivity {
         Self::default()
     }
 
-    fn add(self, other: Self) -> Self {
-        Self {
-            alpha_derivative: self.alpha_derivative + other.alpha_derivative,
-            beta_0_derivative: self.beta_0_derivative + other.beta_0_derivative,
-            delta_derivative: self.delta_derivative + other.delta_derivative,
-            delta_beta_derivative: self.delta_beta_derivative + other.delta_beta_derivative,
-        }
+    fn plus(self, other: Self) -> Self {
+        self + other
     }
 
     fn into_output(self) -> VanillaOptionNodePriceSensitivity {
@@ -1303,6 +1371,19 @@ impl NodePriceSharedPlusShiftSensitivity {
             beta_0_derivative: self.beta_0_derivative,
             delta_derivative: self.delta_derivative,
             delta_beta_derivative: self.delta_beta_derivative,
+        }
+    }
+}
+
+impl Add for NodePriceSharedPlusShiftSensitivity {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self {
+            alpha_derivative: self.alpha_derivative + other.alpha_derivative,
+            beta_0_derivative: self.beta_0_derivative + other.beta_0_derivative,
+            delta_derivative: self.delta_derivative + other.delta_derivative,
+            delta_beta_derivative: self.delta_beta_derivative + other.delta_beta_derivative,
         }
     }
 }
@@ -1334,13 +1415,8 @@ impl NodePriceSharedPlusShiftComplexSensitivity {
         }
     }
 
-    fn add(self, other: Self) -> Self {
-        Self {
-            alpha_derivative: self.alpha_derivative.add(other.alpha_derivative),
-            beta_0_derivative: self.beta_0_derivative.add(other.beta_0_derivative),
-            delta_derivative: self.delta_derivative.add(other.delta_derivative),
-            delta_beta_derivative: self.delta_beta_derivative.add(other.delta_beta_derivative),
-        }
+    fn plus(self, other: Self) -> Self {
+        self + other
     }
 
     fn conjugate(self) -> Self {
@@ -1349,6 +1425,19 @@ impl NodePriceSharedPlusShiftComplexSensitivity {
             beta_0_derivative: self.beta_0_derivative.conjugate(),
             delta_derivative: self.delta_derivative.conjugate(),
             delta_beta_derivative: self.delta_beta_derivative.conjugate(),
+        }
+    }
+}
+
+impl Add for NodePriceSharedPlusShiftComplexSensitivity {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self {
+            alpha_derivative: self.alpha_derivative + other.alpha_derivative,
+            beta_0_derivative: self.beta_0_derivative + other.beta_0_derivative,
+            delta_derivative: self.delta_derivative + other.delta_derivative,
+            delta_beta_derivative: self.delta_beta_derivative + other.delta_beta_derivative,
         }
     }
 }
@@ -1689,7 +1778,7 @@ fn build_row_frequency_batch_from_shared_kernel(
         basis_forward_phases,
         basis_backward_phases,
         row_frequency_phases,
-        representative_transform: shared_kernel.representative_transform.clone(),
+        representative_transform: shared_kernel.representative_transform,
     })
 }
 
@@ -1784,22 +1873,22 @@ fn node_price_shared_plus_shift_sensitivity_from_characteristic(
     theta_sensitivity: NodePriceSharedPlusShiftSensitivity,
 ) -> NodePriceSharedPlusShiftComplexSensitivity {
     NodePriceSharedPlusShiftComplexSensitivity {
-        alpha_derivative: sensitivity.alpha_derivative.add(
+        alpha_derivative: sensitivity.alpha_derivative.plus(
             sensitivity
                 .theta_derivative
                 .scale(theta_sensitivity.alpha_derivative),
         ),
-        beta_0_derivative: sensitivity.beta_0_derivative.add(
+        beta_0_derivative: sensitivity.beta_0_derivative.plus(
             sensitivity
                 .theta_derivative
                 .scale(theta_sensitivity.beta_0_derivative),
         ),
-        delta_derivative: sensitivity.delta_derivative.add(
+        delta_derivative: sensitivity.delta_derivative.plus(
             sensitivity
                 .theta_derivative
                 .scale(theta_sensitivity.delta_derivative),
         ),
-        delta_beta_derivative: sensitivity.delta_beta_derivative.add(
+        delta_beta_derivative: sensitivity.delta_beta_derivative.plus(
             sensitivity
                 .theta_derivative
                 .scale(theta_sensitivity.delta_beta_derivative),
@@ -1852,9 +1941,9 @@ fn build_shared_row_frequency_batch_kernel_sensitivity(
                         sensitivity.value,
                         sensitivity
                             .alpha_derivative
-                            .add(sensitivity.theta_derivative.scale(theta_sensitivity.alpha_derivative)),
+                            .plus(sensitivity.theta_derivative.scale(theta_sensitivity.alpha_derivative)),
                         denominator_sensitivity.value,
-                        denominator_sensitivity.alpha_derivative.add(
+                        denominator_sensitivity.alpha_derivative.plus(
                             denominator_sensitivity
                                 .theta_derivative
                                 .scale(theta_sensitivity.alpha_derivative),
@@ -1862,11 +1951,11 @@ fn build_shared_row_frequency_batch_kernel_sensitivity(
                     )?,
                     beta_0_derivative: pricing_ratio_derivative(
                         sensitivity.value,
-                        sensitivity.beta_0_derivative.add(
+                        sensitivity.beta_0_derivative.plus(
                             sensitivity.theta_derivative.scale(theta_sensitivity.beta_0_derivative),
                         ),
                         denominator_sensitivity.value,
-                        denominator_sensitivity.beta_0_derivative.add(
+                        denominator_sensitivity.beta_0_derivative.plus(
                             denominator_sensitivity
                                 .theta_derivative
                                 .scale(theta_sensitivity.beta_0_derivative),
@@ -1876,9 +1965,9 @@ fn build_shared_row_frequency_batch_kernel_sensitivity(
                         sensitivity.value,
                         sensitivity
                             .delta_derivative
-                            .add(sensitivity.theta_derivative.scale(theta_sensitivity.delta_derivative)),
+                            .plus(sensitivity.theta_derivative.scale(theta_sensitivity.delta_derivative)),
                         denominator_sensitivity.value,
-                        denominator_sensitivity.delta_derivative.add(
+                        denominator_sensitivity.delta_derivative.plus(
                             denominator_sensitivity
                                 .theta_derivative
                                 .scale(theta_sensitivity.delta_derivative),
@@ -1887,13 +1976,13 @@ fn build_shared_row_frequency_batch_kernel_sensitivity(
                     mu_derivative: ComplexScalar::new(0.0, 0.0),
                     delta_beta_derivative: pricing_ratio_derivative(
                         sensitivity.value,
-                        sensitivity.delta_beta_derivative.add(
+                        sensitivity.delta_beta_derivative.plus(
                             sensitivity
                                 .theta_derivative
                                 .scale(theta_sensitivity.delta_beta_derivative),
                         ),
                         denominator_sensitivity.value,
-                        denominator_sensitivity.delta_beta_derivative.add(
+                        denominator_sensitivity.delta_beta_derivative.plus(
                             denominator_sensitivity
                                 .theta_derivative
                                 .scale(theta_sensitivity.delta_beta_derivative),
@@ -2002,17 +2091,22 @@ fn basis_phase_sensitivity(
     }
 }
 
-fn solve_interval_row_frequency_batches_adaptively(
-    base_context: &LocalTransitionRequestContext,
-    collocation_nodes: &[f64],
-    row_states: &[LocalTransitionRowState],
-    theta_hints: &[Option<f64>],
+#[derive(Clone, Copy)]
+struct IntervalRowFrequencyBatchAdaptiveSolveInput<'a> {
+    base_context: &'a LocalTransitionRequestContext,
+    collocation_nodes: &'a [f64],
+    row_states: &'a [LocalTransitionRowState],
+    theta_hints: &'a [Option<f64>],
     spectral_domain: SpectralDomain,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     collect_extended_gradient_diagnostics: bool,
     collect_theta_warm_start_sensitivities: bool,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
+}
+
+fn solve_interval_row_frequency_batches_adaptively(
+    input: IntervalRowFrequencyBatchAdaptiveSolveInput<'_>,
 ) -> Result<
     (
         Vec<RowFrequencyBatchSolution>,
@@ -2021,6 +2115,19 @@ fn solve_interval_row_frequency_batches_adaptively(
     ),
     VanillaOptionPricingRunError,
 > {
+    let IntervalRowFrequencyBatchAdaptiveSolveInput {
+        base_context,
+        collocation_nodes,
+        row_states,
+        theta_hints,
+        spectral_domain,
+        driver_parameters,
+        collect_extended_gradient_diagnostics,
+        collect_theta_warm_start_sensitivities,
+        pricing_thread_pool,
+        cpu_count,
+    } = input;
+
     let row_count = collocation_nodes.len();
     if row_count == 0 {
         return Ok((
@@ -2035,15 +2142,17 @@ fn solve_interval_row_frequency_batches_adaptively(
         .all(LocalTransitionRowState::uses_nested_transition_measure)
     {
         return solve_nested_interval_row_frequency_batches_with_shared_theta(
-            base_context,
-            row_states,
-            theta_hints,
-            spectral_domain,
-            driver_parameters,
-            collect_extended_gradient_diagnostics,
-            collect_theta_warm_start_sensitivities,
-            pricing_thread_pool,
-            cpu_count,
+            NestedIntervalRowFrequencyBatchSharedThetaSolveInput {
+                base_context,
+                row_states,
+                theta_hints,
+                spectral_domain,
+                driver_parameters,
+                collect_extended_gradient_diagnostics,
+                collect_theta_warm_start_sensitivities,
+                pricing_thread_pool,
+                cpu_count,
+            },
         );
     }
 
@@ -2069,17 +2178,17 @@ fn solve_interval_row_frequency_batches_adaptively(
                 seeded_row_indices
                     .par_iter()
                     .map(|&row_index| {
-                        solve_exact_row_frequency_batch(
+                        solve_exact_row_frequency_batch(ExactRowFrequencyBatchSolveInput {
                             base_context,
-                            &row_states[row_index],
-                            theta_hints[row_index],
+                            transition_row: &row_states[row_index],
+                            initial_theta_hint: theta_hints[row_index],
                             spectral_domain,
                             driver_parameters,
                             collect_extended_gradient_diagnostics,
                             collect_theta_warm_start_sensitivities,
                             pricing_thread_pool,
                             cpu_count,
-                        )
+                        })
                         .map(|solution| (row_index, solution))
                     })
                     .collect::<Result<Vec<_>, _>>()
@@ -2089,17 +2198,17 @@ fn solve_interval_row_frequency_batches_adaptively(
             for &row_index in &seeded_row_indices {
                 seeded_solutions.push((
                     row_index,
-                    solve_exact_row_frequency_batch(
+                    solve_exact_row_frequency_batch(ExactRowFrequencyBatchSolveInput {
                         base_context,
-                        &row_states[row_index],
-                        theta_hints[row_index],
+                        transition_row: &row_states[row_index],
+                        initial_theta_hint: theta_hints[row_index],
                         spectral_domain,
                         driver_parameters,
                         collect_extended_gradient_diagnostics,
                         collect_theta_warm_start_sensitivities,
                         pricing_thread_pool,
                         cpu_count,
-                    )?,
+                    })?,
                 ));
             }
             seeded_solutions
@@ -2158,16 +2267,19 @@ fn solve_interval_row_frequency_batches_adaptively(
                     .par_iter()
                     .map(|task| {
                         solve_adaptive_midpoint_row_frequency_batch(
-                            base_context,
-                            &row_states[task.midpoint_row_index],
-                            theta_hints[task.midpoint_row_index].or(Some(task.predicted_theta)),
-                            task.predicted_theta,
-                            spectral_domain,
-                            driver_parameters,
-                            collect_extended_gradient_diagnostics,
-                            collect_theta_warm_start_sensitivities,
-                            pricing_thread_pool,
-                            cpu_count,
+                            AdaptiveMidpointRowFrequencyBatchSolveInput {
+                                base_context,
+                                transition_row: &row_states[task.midpoint_row_index],
+                                initial_theta_hint: theta_hints[task.midpoint_row_index]
+                                    .or(Some(task.predicted_theta)),
+                                predicted_theta: task.predicted_theta,
+                                spectral_domain,
+                                driver_parameters,
+                                collect_extended_gradient_diagnostics,
+                                collect_theta_warm_start_sensitivities,
+                                pricing_thread_pool,
+                                cpu_count,
+                            },
                         )
                         .map(|solution| (task.midpoint_row_index, solution))
                     })
@@ -2179,16 +2291,19 @@ fn solve_interval_row_frequency_batches_adaptively(
                 midpoint_solutions.push((
                     task.midpoint_row_index,
                     solve_adaptive_midpoint_row_frequency_batch(
-                        base_context,
-                        &row_states[task.midpoint_row_index],
-                        theta_hints[task.midpoint_row_index].or(Some(task.predicted_theta)),
-                        task.predicted_theta,
-                        spectral_domain,
-                        driver_parameters,
-                        collect_extended_gradient_diagnostics,
-                        collect_theta_warm_start_sensitivities,
-                        pricing_thread_pool,
-                        cpu_count,
+                        AdaptiveMidpointRowFrequencyBatchSolveInput {
+                            base_context,
+                            transition_row: &row_states[task.midpoint_row_index],
+                            initial_theta_hint: theta_hints[task.midpoint_row_index]
+                                .or(Some(task.predicted_theta)),
+                            predicted_theta: task.predicted_theta,
+                            spectral_domain,
+                            driver_parameters,
+                            collect_extended_gradient_diagnostics,
+                            collect_theta_warm_start_sensitivities,
+                            pricing_thread_pool,
+                            cpu_count,
+                        },
                     )?,
                 ));
             }
@@ -2271,16 +2386,21 @@ fn derive_parallel_adaptive_seed_row_indices(
     seeded_row_indices
 }
 
-fn solve_nested_interval_row_frequency_batches_with_shared_theta(
-    base_context: &LocalTransitionRequestContext,
-    row_states: &[LocalTransitionRowState],
-    theta_hints: &[Option<f64>],
+#[derive(Clone, Copy)]
+struct NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'a> {
+    base_context: &'a LocalTransitionRequestContext,
+    row_states: &'a [LocalTransitionRowState],
+    theta_hints: &'a [Option<f64>],
     spectral_domain: SpectralDomain,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     collect_extended_gradient_diagnostics: bool,
-    _collect_theta_warm_start_sensitivities: bool,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    collect_theta_warm_start_sensitivities: bool,
+    pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
+}
+
+fn solve_nested_interval_row_frequency_batches_with_shared_theta(
+    input: NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'_>,
 ) -> Result<
     (
         Vec<RowFrequencyBatchSolution>,
@@ -2289,6 +2409,18 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
     ),
     VanillaOptionPricingRunError,
 > {
+    let NestedIntervalRowFrequencyBatchSharedThetaSolveInput {
+        base_context,
+        row_states,
+        theta_hints,
+        spectral_domain,
+        driver_parameters,
+        collect_extended_gradient_diagnostics,
+        collect_theta_warm_start_sensitivities: _collect_theta_warm_start_sensitivities,
+        pricing_thread_pool,
+        cpu_count,
+    } = input;
+
     let representative_row_index = row_states
         .iter()
         .enumerate()
@@ -2402,17 +2534,34 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
     ))
 }
 
-fn solve_exact_row_frequency_batch(
-    base_context: &LocalTransitionRequestContext,
-    transition_row: &LocalTransitionRowState,
+#[derive(Clone, Copy)]
+struct ExactRowFrequencyBatchSolveInput<'a> {
+    base_context: &'a LocalTransitionRequestContext,
+    transition_row: &'a LocalTransitionRowState,
     initial_theta_hint: Option<f64>,
     spectral_domain: SpectralDomain,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     collect_extended_gradient_diagnostics: bool,
     collect_theta_warm_start_sensitivities: bool,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
+}
+
+fn solve_exact_row_frequency_batch(
+    input: ExactRowFrequencyBatchSolveInput<'_>,
 ) -> Result<TimedRowFrequencyBatchSolution, VanillaOptionPricingRunError> {
+    let ExactRowFrequencyBatchSolveInput {
+        base_context,
+        transition_row,
+        initial_theta_hint,
+        spectral_domain,
+        driver_parameters,
+        collect_extended_gradient_diagnostics,
+        collect_theta_warm_start_sensitivities,
+        pricing_thread_pool,
+        cpu_count,
+    } = input;
+
     let theta_started_at = Instant::now();
     let (theta, _) = resolve_local_transition_theta_for_row_with_parallelism_and_hint(
         base_context,
@@ -2486,18 +2635,36 @@ fn solve_exact_row_frequency_batch(
     })
 }
 
-fn solve_adaptive_midpoint_row_frequency_batch(
-    base_context: &LocalTransitionRequestContext,
-    transition_row: &LocalTransitionRowState,
+#[derive(Clone, Copy)]
+struct AdaptiveMidpointRowFrequencyBatchSolveInput<'a> {
+    base_context: &'a LocalTransitionRequestContext,
+    transition_row: &'a LocalTransitionRowState,
     initial_theta_hint: Option<f64>,
     predicted_theta: f64,
     spectral_domain: SpectralDomain,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     collect_extended_gradient_diagnostics: bool,
     collect_theta_warm_start_sensitivities: bool,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
+}
+
+fn solve_adaptive_midpoint_row_frequency_batch(
+    input: AdaptiveMidpointRowFrequencyBatchSolveInput<'_>,
 ) -> Result<TimedRowFrequencyBatchSolution, VanillaOptionPricingRunError> {
+    let AdaptiveMidpointRowFrequencyBatchSolveInput {
+        base_context,
+        transition_row,
+        initial_theta_hint,
+        predicted_theta,
+        spectral_domain,
+        driver_parameters,
+        collect_extended_gradient_diagnostics,
+        collect_theta_warm_start_sensitivities,
+        pricing_thread_pool,
+        cpu_count,
+    } = input;
+
     let certification_started_at = Instant::now();
 
     if certify_local_transition_theta_for_row_with_parallelism(
@@ -2549,7 +2716,7 @@ fn solve_adaptive_midpoint_row_frequency_batch(
         });
     }
 
-    let exact_solution = solve_exact_row_frequency_batch(
+    let exact_solution = solve_exact_row_frequency_batch(ExactRowFrequencyBatchSolveInput {
         base_context,
         transition_row,
         initial_theta_hint,
@@ -2559,7 +2726,7 @@ fn solve_adaptive_midpoint_row_frequency_batch(
         collect_theta_warm_start_sensitivities,
         pricing_thread_pool,
         cpu_count,
-    )?;
+    })?;
 
     Ok(TimedRowFrequencyBatchSolution {
         solution: exact_solution.solution,
@@ -2620,8 +2787,8 @@ fn values_to_cosine_coefficients(
 
     let mut coefficients = vec![vec![ComplexScalar::new(0.0, 0.0); node_count]; frequency_count];
 
-    for frequency_index in 0..frequency_count {
-        for basis_index in 0..node_count {
+    for (frequency_index, coefficient_row) in coefficients.iter_mut().enumerate() {
+        for (basis_index, coefficient_slot) in coefficient_row.iter_mut().enumerate() {
             let scale = if basis_index == 0 {
                 1.0 / node_count as f64
             } else {
@@ -2630,14 +2797,14 @@ fn values_to_cosine_coefficients(
 
             let mut coefficient = ComplexScalar::new(0.0, 0.0);
 
-            for node_index in 0..node_count {
+            for (node_index, node_value) in values_by_frequency[frequency_index].iter().enumerate()
+            {
                 let angle = std::f64::consts::PI * basis_index as f64 * (node_index as f64 + 0.5)
                     / node_count as f64;
-                coefficient = coefficient
-                    .add(values_by_frequency[frequency_index][node_index].scale(angle.cos()));
+                coefficient = coefficient.plus(node_value.scale(angle.cos()));
             }
 
-            coefficients[frequency_index][basis_index] = coefficient.scale(scale);
+            *coefficient_slot = coefficient.scale(scale);
         }
     }
 
@@ -2653,8 +2820,8 @@ fn values_to_cosine_coefficients_sensitivities(
     let mut coefficients =
         vec![vec![NodePriceSharedPlusShiftComplexSensitivity::zero(); node_count]; frequency_count];
 
-    for frequency_index in 0..frequency_count {
-        for basis_index in 0..node_count {
+    for (frequency_index, coefficient_row) in coefficients.iter_mut().enumerate() {
+        for (basis_index, coefficient_slot) in coefficient_row.iter_mut().enumerate() {
             let scale = if basis_index == 0 {
                 1.0 / node_count as f64
             } else {
@@ -2663,14 +2830,14 @@ fn values_to_cosine_coefficients_sensitivities(
 
             let mut coefficient = NodePriceSharedPlusShiftComplexSensitivity::zero();
 
-            for node_index in 0..node_count {
+            for (node_index, node_value) in values_by_frequency[frequency_index].iter().enumerate()
+            {
                 let angle = std::f64::consts::PI * basis_index as f64 * (node_index as f64 + 0.5)
                     / node_count as f64;
-                coefficient = coefficient
-                    .add(values_by_frequency[frequency_index][node_index].scale(angle.cos()));
+                coefficient = coefficient.plus(node_value.scale(angle.cos()));
             }
 
-            coefficients[frequency_index][basis_index] = coefficient.scale(scale);
+            *coefficient_slot = coefficient.scale(scale);
         }
     }
 
@@ -2688,7 +2855,7 @@ fn evaluate_cosine_series(
         |accum, (basis_index, coefficient)| {
             let angle = spectral_domain.basis_frequency(basis_index)
                 * (evaluation_point - spectral_domain.deviation_lower_bound);
-            accum.add(coefficient.scale(angle.cos()))
+            accum.plus(coefficient.scale(angle.cos()))
         },
     )
 }
@@ -2704,7 +2871,7 @@ fn evaluate_cosine_series_sensitivity(
         |accumulator, (basis_index, coefficient_sensitivity)| {
             let angle = spectral_domain.basis_frequency(basis_index)
                 * (evaluation_point - spectral_domain.deviation_lower_bound);
-            accumulator.add(coefficient_sensitivity.scale(angle.cos()))
+            accumulator.plus(coefficient_sensitivity.scale(angle.cos()))
         },
     )
 }
@@ -2721,7 +2888,7 @@ fn complex_scale_sensitivity(
     }
 }
 
-fn complex_expectation_sensitivity(
+struct ComplexExpectationSensitivityInput {
     basis_forward_phase: ComplexScalar,
     basis_forward_phase_sensitivity: NodePriceSharedPlusShiftComplexSensitivity,
     forward_value: ComplexScalar,
@@ -2730,17 +2897,32 @@ fn complex_expectation_sensitivity(
     basis_backward_phase_sensitivity: NodePriceSharedPlusShiftComplexSensitivity,
     backward_value: ComplexScalar,
     backward_value_sensitivity: NodePriceSharedPlusShiftComplexSensitivity,
+}
+
+fn complex_expectation_sensitivity(
+    input: ComplexExpectationSensitivityInput,
 ) -> NodePriceSharedPlusShiftComplexSensitivity {
+    let ComplexExpectationSensitivityInput {
+        basis_forward_phase,
+        basis_forward_phase_sensitivity,
+        forward_value,
+        forward_value_sensitivity,
+        basis_backward_phase,
+        basis_backward_phase_sensitivity,
+        backward_value,
+        backward_value_sensitivity,
+    } = input;
+
     complex_scale_sensitivity(forward_value, basis_forward_phase_sensitivity)
-        .add(complex_scale_sensitivity(
+        .plus(complex_scale_sensitivity(
             basis_forward_phase,
             forward_value_sensitivity,
         ))
-        .add(complex_scale_sensitivity(
+        .plus(complex_scale_sensitivity(
             backward_value,
             basis_backward_phase_sensitivity,
         ))
-        .add(complex_scale_sensitivity(
+        .plus(complex_scale_sensitivity(
             basis_backward_phase,
             backward_value_sensitivity,
         ))
@@ -2768,12 +2950,12 @@ fn build_spectral_domain(
         .current_anchor_value()
         .map_err(
             |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                source: crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
+                source: Box::new(crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
                     source:
                         crate::contracts::VanillaOptionPricingRequestError::InvalidBoundaryInput {
                             source,
                         },
-                },
+                }),
             },
         )?;
 
@@ -2972,7 +3154,7 @@ fn cos_price_sensitivity_from_terminal_characteristic_function(
         let weight = if frequency_index == 0 { 0.5 } else { 1.0 };
         let scaled_weight = discount_factor * weight * coefficient;
 
-        price_sensitivity = price_sensitivity.add(NodePriceSharedPlusShiftSensitivity {
+        price_sensitivity = price_sensitivity.plus(NodePriceSharedPlusShiftSensitivity {
             alpha_derivative: scaled_weight
                 * complex_multiply(phi_sensitivity.alpha_derivative, phase).real,
             beta_0_derivative: scaled_weight
@@ -3077,7 +3259,10 @@ fn psi_coefficient(lower: f64, upper: f64, domain_lower_bound: f64, angular_freq
 
 #[cfg(test)]
 mod tests {
-    use super::{build_spectral_domain, solve_interval_row_frequency_batches_adaptively};
+    use super::{
+        IntervalRowFrequencyBatchAdaptiveSolveInput, build_spectral_domain,
+        solve_interval_row_frequency_batches_adaptively,
+    };
     use crate::contracts::{
         AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
         VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
@@ -3182,16 +3367,18 @@ mod tests {
         );
 
         let (solved_rows, _, _) = solve_interval_row_frequency_batches_adaptively(
-            &base_context,
-            collocation_nodes.as_slice(),
-            row_states.as_slice(),
-            &vec![None; collocation_nodes.len()],
-            spectral_domain,
-            driver_parameters,
-            false,
-            false,
-            None,
-            Some(1),
+            IntervalRowFrequencyBatchAdaptiveSolveInput {
+                base_context: &base_context,
+                collocation_nodes: collocation_nodes.as_slice(),
+                row_states: row_states.as_slice(),
+                theta_hints: &vec![None; collocation_nodes.len()],
+                spectral_domain,
+                driver_parameters,
+                collect_extended_gradient_diagnostics: false,
+                collect_theta_warm_start_sensitivities: false,
+                pricing_thread_pool: None,
+                cpu_count: Some(1),
+            },
         )
         .expect("adaptive interval operator solve should succeed");
 

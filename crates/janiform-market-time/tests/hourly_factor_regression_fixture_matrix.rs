@@ -7,9 +7,11 @@ use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::{
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
-    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
-    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
-    materialize_hourly_seasonality_factors,
+    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractBuildInput,
+    HourlyFactorContractError, HourlyNewsIntensityMaterializationInput,
+    HourlySeasonalityMaterializationInput, HourlySeasonalityMaterializationPolicy,
+    HourlySeasonalitySourceSignal, build_hourly_factor_contract,
+    materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 
 use support::validation_fixture::{
@@ -305,44 +307,50 @@ fn build_contract_for_canonical_case(
     let range_start_utc = parse_utc_timestamp(&fixture_case.range_start_utc);
     let range_end_utc = parse_utc_timestamp(&fixture_case.range_end_utc);
 
-    let (seasonality_hourly_factors, seasonality_materialization_method) =
-        match &fixture_case.seasonality_source {
-            HourlySeasonalitySourceFixture::Explicit {
-                hourly_factors,
-                materialization_method,
-            } => (hourly_factors.clone(), materialization_method.clone()),
-            HourlySeasonalitySourceFixture::Materialized {
-                source_timestamps_utc,
-                source_seasonality_factors,
-                interpolation_method,
-                aggregation_method,
-                sparse_fallback_policy,
-                sparse_hour_minimum_observation_count,
-            } => {
-                let source_timestamp_utc_nanos: Vec<i64> = source_timestamps_utc
-                    .iter()
-                    .map(|timestamp| parse_utc_timestamp_to_nanos(timestamp))
-                    .collect();
-                let seasonality_output = materialize_hourly_seasonality_factors(
-                    registry,
-                    &fixture_case.exchange_code,
-                    range_start_utc,
-                    range_end_utc,
-                    NANOS_PER_HOUR,
-                    &source_timestamp_utc_nanos,
-                    source_seasonality_factors,
-                    interpolation_method,
-                    aggregation_method,
-                    sparse_fallback_policy,
-                    *sparse_hour_minimum_observation_count,
-                )?;
+    let (seasonality_hourly_factors, seasonality_materialization_method) = match &fixture_case
+        .seasonality_source
+    {
+        HourlySeasonalitySourceFixture::Explicit {
+            hourly_factors,
+            materialization_method,
+        } => (hourly_factors.clone(), materialization_method.clone()),
+        HourlySeasonalitySourceFixture::Materialized {
+            source_timestamps_utc,
+            source_seasonality_factors,
+            interpolation_method,
+            aggregation_method,
+            sparse_fallback_policy,
+            sparse_hour_minimum_observation_count,
+        } => {
+            let source_timestamp_utc_nanos: Vec<i64> = source_timestamps_utc
+                .iter()
+                .map(|timestamp| parse_utc_timestamp_to_nanos(timestamp))
+                .collect();
+            let seasonality_output =
+                materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+                    calendar_registry: registry,
+                    exchange_code: &fixture_case.exchange_code,
+                    range_utc: range_start_utc..range_end_utc,
+                    interval_duration_nanos: NANOS_PER_HOUR,
+                    source_signal: HourlySeasonalitySourceSignal {
+                        timestamp_utc_nanos: &source_timestamp_utc_nanos,
+                        seasonality_factors: source_seasonality_factors,
+                    },
+                    policy: HourlySeasonalityMaterializationPolicy {
+                        interpolation_method,
+                        aggregation_method,
+                        sparse_fallback_policy,
+                        sparse_hour_minimum_observation_count:
+                            *sparse_hour_minimum_observation_count,
+                    },
+                })?;
 
-                (
-                    seasonality_output.s_h,
-                    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION.to_string(),
-                )
-            }
-        };
+            (
+                seasonality_output.s_h,
+                HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION.to_string(),
+            )
+        }
+    };
 
     let (news_hourly_factors, news_materialization_method) =
         match &fixture_case.news_intensity_source {
@@ -363,14 +371,17 @@ fn build_contract_for_canonical_case(
                     surprise_deterministic_time_multiplier_by_interval_index,
                 );
                 let news_output = materialize_hourly_news_intensity_factors(
-                    registry,
-                    &fixture_case.exchange_code,
-                    range_start_utc,
-                    range_end_utc,
-                    NANOS_PER_HOUR,
-                    &known_scheduled_event_timestamps_utc_nanos,
-                    *surprise_baseline_intensity,
-                    &parsed_surprise_time_multipliers,
+                    HourlyNewsIntensityMaterializationInput {
+                        calendar_registry: registry,
+                        exchange_code: &fixture_case.exchange_code,
+                        range_utc: range_start_utc..range_end_utc,
+                        interval_duration_nanos: NANOS_PER_HOUR,
+                        known_scheduled_event_timestamps_utc_nanos:
+                            &known_scheduled_event_timestamps_utc_nanos,
+                        surprise_baseline_intensity: *surprise_baseline_intensity,
+                        surprise_deterministic_time_multiplier_by_interval_index:
+                            &parsed_surprise_time_multipliers,
+                    },
                 )?;
 
                 (
@@ -380,17 +391,16 @@ fn build_contract_for_canonical_case(
             }
         };
 
-    build_hourly_factor_contract(
-        registry,
-        &fixture_case.exchange_code,
-        range_start_utc,
-        range_end_utc,
-        NANOS_PER_HOUR,
-        &seasonality_hourly_factors,
-        &news_hourly_factors,
-        &seasonality_materialization_method,
-        &news_materialization_method,
-    )
+    build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: registry,
+        exchange_code: &fixture_case.exchange_code,
+        range_utc: range_start_utc..range_end_utc,
+        interval_duration_nanos: NANOS_PER_HOUR,
+        seasonality_factors: &seasonality_hourly_factors,
+        news_intensity_factors: &news_hourly_factors,
+        seasonality_materialization_method: &seasonality_materialization_method,
+        news_intensity_materialization_method: &news_materialization_method,
+    })
 }
 
 fn materialize_seasonality_for_missing_data_case(
@@ -408,19 +418,24 @@ fn materialize_seasonality_for_missing_data_case(
     let range_start_utc = parse_utc_timestamp(&fixture_case.range_start_utc);
     let range_end_utc = parse_utc_timestamp(&fixture_case.range_end_utc);
 
-    materialize_hourly_seasonality_factors(
-        registry,
-        &fixture_case.exchange_code,
-        range_start_utc,
-        range_end_utc,
-        NANOS_PER_HOUR,
-        &source_timestamp_utc_nanos,
-        &fixture_case.source_seasonality_factors,
-        &fixture_case.settings.interpolation_method,
-        &fixture_case.settings.aggregation_method,
-        &fixture_case.settings.sparse_fallback_policy,
-        fixture_case.settings.sparse_hour_minimum_observation_count,
-    )
+    materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+        calendar_registry: registry,
+        exchange_code: &fixture_case.exchange_code,
+        range_utc: range_start_utc..range_end_utc,
+        interval_duration_nanos: NANOS_PER_HOUR,
+        source_signal: HourlySeasonalitySourceSignal {
+            timestamp_utc_nanos: &source_timestamp_utc_nanos,
+            seasonality_factors: &fixture_case.source_seasonality_factors,
+        },
+        policy: HourlySeasonalityMaterializationPolicy {
+            interpolation_method: &fixture_case.settings.interpolation_method,
+            aggregation_method: &fixture_case.settings.aggregation_method,
+            sparse_fallback_policy: &fixture_case.settings.sparse_fallback_policy,
+            sparse_hour_minimum_observation_count: fixture_case
+                .settings
+                .sparse_hour_minimum_observation_count,
+        },
+    })
 }
 
 fn assert_float_vectors_within_tolerance(

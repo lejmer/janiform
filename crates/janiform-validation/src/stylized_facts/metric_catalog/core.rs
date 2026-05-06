@@ -701,17 +701,17 @@ impl StylizedFactSecondaryMomentVariant {
                     );
                 }
 
-                if let Some(ratio_denominator_order) = ratio_denominator_order {
-                    if ratio_denominator_order == 0 || ratio_denominator_order >= moment_order {
-                        return Err(
-                            StylizedFactMetricCatalogValidationError::InvalidSecondaryMomentVariant {
-                                metric_id: metric_id.to_string(),
-                                details: format!(
-                                    "ratio_denominator_order must be in [1, moment_order - 1], found {ratio_denominator_order}"
-                                ),
-                            },
-                        );
-                    }
+                if let Some(ratio_denominator_order) = ratio_denominator_order
+                    && (ratio_denominator_order == 0 || ratio_denominator_order >= moment_order)
+                {
+                    return Err(
+                        StylizedFactMetricCatalogValidationError::InvalidSecondaryMomentVariant {
+                            metric_id: metric_id.to_string(),
+                            details: format!(
+                                "ratio_denominator_order must be in [1, moment_order - 1], found {ratio_denominator_order}"
+                            ),
+                        },
+                    );
                 }
             }
             Self::CentralMoment {

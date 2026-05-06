@@ -60,17 +60,17 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
 
     let seasonality_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::Seasonality(seasonality_report),
+        &CalibrationStagedRunStageReport::Seasonality(Box::new(seasonality_report)),
     )
     .expect("seasonality artifact should build");
     let hawkes_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::Hawkes(hawkes_report),
+        &CalibrationStagedRunStageReport::Hawkes(Box::new(hawkes_report)),
     )
     .expect("hawkes artifact should build");
     let return_components_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
+        &CalibrationStagedRunStageReport::ReturnComponents(Box::new(return_components_report)),
     )
     .expect("return-components artifact should build");
 
@@ -290,7 +290,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
     assert_eq!(
         build_calibration_stage_parameter_artifact(
             &run_contract,
-            &CalibrationStagedRunStageReport::Hawkes(hawkes_report),
+            &CalibrationStagedRunStageReport::Hawkes(Box::new(hawkes_report)),
         )
         .expect_err("missing hawkes payload should fail"),
         CalibrationStageParameterArtifactBuildError::ValidationFailed {
@@ -301,7 +301,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
 
     let valid_hawkes_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::Hawkes(run_hawkes_calibration_stage(
+        &CalibrationStagedRunStageReport::Hawkes(Box::new(run_hawkes_calibration_stage(
             &run_contract.run_spec,
             &calendar_registry,
             HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
@@ -309,7 +309,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
                 build_seasonality_stage_success_payload(),
                 hawkes_stage_candidate_fixture(),
             ),
-        )),
+        ))),
     )
     .expect("valid hawkes artifact should build");
 
@@ -327,7 +327,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
 
     let valid_return_components_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::ReturnComponents(
+        &CalibrationStagedRunStageReport::ReturnComponents(Box::new(
             run_return_components_calibration_stage(
                 &run_contract.run_spec,
                 &calendar_registry,
@@ -336,7 +336,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
                     return_components_stage_candidate_generation_fixture(),
                 ),
             ),
-        ),
+        )),
     )
     .expect("valid return-components artifact should build");
 

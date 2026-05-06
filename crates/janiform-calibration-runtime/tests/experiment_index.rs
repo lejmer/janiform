@@ -273,19 +273,19 @@ fn commit_indexed_run(
 
     let seasonality_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::Seasonality(seasonality_report),
+        &CalibrationStagedRunStageReport::Seasonality(Box::new(seasonality_report)),
     )
     .expect("seasonality artifact should build");
 
     let hawkes_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::Hawkes(hawkes_report),
+        &CalibrationStagedRunStageReport::Hawkes(Box::new(hawkes_report)),
     )
     .expect("hawkes artifact should build");
 
     let return_components_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
+        &CalibrationStagedRunStageReport::ReturnComponents(Box::new(return_components_report)),
     )
     .expect("return-components artifact should build");
 
@@ -293,12 +293,12 @@ fn commit_indexed_run(
     let mean_reversion_report = build_mean_reversion_stage_success_report();
     let mean_reversion_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report),
+        &CalibrationStagedRunStageReport::MeanReversion(Box::new(mean_reversion_report)),
     )
     .expect("mean-reversion artifact should build");
     let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
+        &CalibrationStagedRunStageReport::JointRefinement(Box::new(joint_refinement_report)),
     )
     .expect("joint-refinement artifact should build");
 
@@ -324,7 +324,7 @@ fn commit_indexed_run(
         &dataset_snapshot,
         stage_parameter_artifacts.as_slice(),
         &[],
-        &[diagnostics_artifact.clone()],
+        std::slice::from_ref(&diagnostics_artifact),
         &[],
         committed_at,
     )

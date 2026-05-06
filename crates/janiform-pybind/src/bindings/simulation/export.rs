@@ -26,6 +26,10 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
 
 #[pyfunction]
 #[pyo3(signature = (native_result, output_path, reference_price, timestamp_column, price_column, side_column = None, batch_size = DEFAULT_SIMULATION_EXPORT_BATCH_SIZE))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn export_seeded_tick_simulation_artifact(
     py: Python<'_>,
     native_result: &PySeededTickSimulationNativeResult,
@@ -57,6 +61,10 @@ fn export_seeded_tick_simulation_artifact(
 
 #[pyfunction]
 #[pyo3(signature = (path_payload, output_path, reference_price, timestamp_column, price_column, calendar_registry, exchange_code, batch_size = DEFAULT_SIMULATION_EXPORT_BATCH_SIZE))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn export_coarse_simulation_artifact(
     py: Python<'_>,
     path_payload: &Bound<'_, PyAny>,

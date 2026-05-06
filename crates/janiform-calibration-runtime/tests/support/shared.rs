@@ -1476,7 +1476,7 @@ fn stage_parameter_artifact_input(
             )?;
 
             Ok(CalibrationStageParameterArtifactInput::Seasonality(
-                SeasonalityStageParameterArtifactInput {
+                Box::new(SeasonalityStageParameterArtifactInput {
                     metadata: CalibrationStageParameterBuildMetadata {
                         stage_output_schema_version: metadata
                             .stage_output_schema_version
@@ -1514,7 +1514,7 @@ fn stage_parameter_artifact_input(
                     day_of_week_factor: payload.day_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
                     normalization_metadata: payload.normalization_metadata.clone(),
-                },
+                }),
             ))
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
@@ -1531,7 +1531,7 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::Hawkes(
+            Ok(CalibrationStageParameterArtifactInput::Hawkes(Box::new(
                 HawkesStageParameterArtifactInput {
                     metadata: CalibrationStageParameterBuildMetadata {
                         stage_output_schema_version: metadata
@@ -1576,7 +1576,7 @@ fn stage_parameter_artifact_input(
                     seasonality_dataset_id: payload.seasonality_dataset_id.clone(),
                     seasonality_artifact_reference: payload.seasonality_artifact_reference.clone(),
                 },
-            ))
+            )))
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
@@ -1595,7 +1595,7 @@ fn stage_parameter_artifact_input(
             )?;
 
             Ok(CalibrationStageParameterArtifactInput::ReturnComponents(
-                ReturnComponentsStageParameterArtifactInput {
+                Box::new(ReturnComponentsStageParameterArtifactInput {
                     metadata: CalibrationStageParameterBuildMetadata {
                         stage_output_schema_version: metadata
                             .stage_output_schema_version
@@ -1645,7 +1645,7 @@ fn stage_parameter_artifact_input(
                         .activity_selected_hawkes_candidate_id
                         .clone(),
                     activity_artifact_reference: payload.activity_artifact_reference.clone(),
-                },
+                }),
             ))
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
@@ -1665,7 +1665,7 @@ fn stage_parameter_artifact_input(
             )?;
 
             Ok(CalibrationStageParameterArtifactInput::JointRefinement(
-                JointRefinementStageParameterArtifactInput {
+                Box::new(JointRefinementStageParameterArtifactInput {
                     metadata: CalibrationStageParameterBuildMetadata {
                         stage_output_schema_version: metadata
                             .stage_output_schema_version
@@ -1713,7 +1713,7 @@ fn stage_parameter_artifact_input(
                         .clone(),
                     objective_breakdown: payload.objective_breakdown.clone(),
                     optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
-                },
+                }),
             ))
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
@@ -1733,7 +1733,7 @@ fn stage_parameter_artifact_input(
             )?;
 
             Ok(CalibrationStageParameterArtifactInput::MeanReversion(
-                MeanReversionStageParameterArtifactInput {
+                Box::new(MeanReversionStageParameterArtifactInput {
                     metadata: CalibrationStageParameterBuildMetadata {
                         stage_output_schema_version: metadata
                             .stage_output_schema_version
@@ -1755,7 +1755,7 @@ fn stage_parameter_artifact_input(
                     return_components_artifact_reference: payload
                         .return_components_artifact_reference
                         .clone(),
-                },
+                }),
             ))
         }
     }

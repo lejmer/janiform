@@ -653,6 +653,7 @@ fn evaluate_open_closed_gap_leakage_case(
         let event_metadata = usize::try_from(dispatch_record.event_generation_order)
             .ok()
             .and_then(|event_position| event_metadata_by_generation_order.get(event_position));
+
         let (event_id, event_timestamp_utc) = event_metadata
             .map(|event_metadata| {
                 (
@@ -675,18 +676,23 @@ fn evaluate_open_closed_gap_leakage_case(
                 event_metadata.observed_activity_coupling_j_t_increment_override
             })
             .unwrap_or(dispatch_record.j_t_increment);
+
         let observed_open_jump = event_metadata
             .and_then(|event_metadata| event_metadata.observed_open_jump_m_t_increment_override)
             .unwrap_or(dispatch_record.m_t_increment);
+
         let observed_closed_gap = event_metadata
             .and_then(|event_metadata| event_metadata.observed_closed_gap_g_t_increment_override)
             .unwrap_or(dispatch_record.g_t_increment);
+
         let observed_trading_return = event_metadata
             .and_then(|event_metadata| event_metadata.observed_trading_return_increment_override)
             .unwrap_or(0.0);
 
         let expected_activity_coupling = dispatch_record.shared_severity_mark;
+
         let expected_trading_return = 0.0;
+
         let (expected_open_jump, expected_closed_gap) = match dispatch_record.market_state {
             MarketState::Open => {
                 open_window_event_count = open_window_event_count.saturating_add(1);
@@ -707,60 +713,63 @@ fn evaluate_open_closed_gap_leakage_case(
         expected_closed_gap_total += expected_closed_gap;
         observed_closed_gap_total += observed_closed_gap;
 
-        collect_semantic_mismatch(
-            &mut failures,
-            component_absolute_tolerance,
-            &event_id,
-            &event_timestamp_utc,
-            VerificationSemanticBucket::ActivityCoupling,
-            "activity_coupling_component_mismatch",
-            expected_activity_coupling,
-            observed_activity_coupling,
-            &mut max_absolute_mismatch,
-        );
-        collect_semantic_mismatch(
-            &mut failures,
-            component_absolute_tolerance,
-            &event_id,
-            &event_timestamp_utc,
-            VerificationSemanticBucket::TradingReturn,
-            "trading_return_component_mismatch",
-            expected_trading_return,
-            observed_trading_return,
-            &mut max_absolute_mismatch,
-        );
+        collect_semantic_mismatch(SemanticMismatchCollectionInput {
+            failures: &mut failures,
+            absolute_tolerance: component_absolute_tolerance,
+            event_id: &event_id,
+            event_timestamp_utc: &event_timestamp_utc,
+            semantic_bucket: VerificationSemanticBucket::ActivityCoupling,
+            mismatch_kind: "activity_coupling_component_mismatch",
+            expected_value: expected_activity_coupling,
+            observed_value: observed_activity_coupling,
+            max_absolute_mismatch: &mut max_absolute_mismatch,
+        });
+
+        collect_semantic_mismatch(SemanticMismatchCollectionInput {
+            failures: &mut failures,
+            absolute_tolerance: component_absolute_tolerance,
+            event_id: &event_id,
+            event_timestamp_utc: &event_timestamp_utc,
+            semantic_bucket: VerificationSemanticBucket::TradingReturn,
+            mismatch_kind: "trading_return_component_mismatch",
+            expected_value: expected_trading_return,
+            observed_value: observed_trading_return,
+            max_absolute_mismatch: &mut max_absolute_mismatch,
+        });
 
         let open_jump_mismatch_kind = match dispatch_record.market_state {
             MarketState::Open => "open_window_open_jump_mismatch",
             MarketState::Closed => "closed_window_open_jump_leakage",
         };
-        collect_semantic_mismatch(
-            &mut failures,
-            component_absolute_tolerance,
-            &event_id,
-            &event_timestamp_utc,
-            VerificationSemanticBucket::OpenJump,
-            open_jump_mismatch_kind,
-            expected_open_jump,
-            observed_open_jump,
-            &mut max_absolute_mismatch,
-        );
+
+        collect_semantic_mismatch(SemanticMismatchCollectionInput {
+            failures: &mut failures,
+            absolute_tolerance: component_absolute_tolerance,
+            event_id: &event_id,
+            event_timestamp_utc: &event_timestamp_utc,
+            semantic_bucket: VerificationSemanticBucket::OpenJump,
+            mismatch_kind: open_jump_mismatch_kind,
+            expected_value: expected_open_jump,
+            observed_value: observed_open_jump,
+            max_absolute_mismatch: &mut max_absolute_mismatch,
+        });
 
         let closed_gap_mismatch_kind = match dispatch_record.market_state {
             MarketState::Open => "open_window_closed_gap_leakage",
             MarketState::Closed => "closed_window_closed_gap_mismatch",
         };
-        collect_semantic_mismatch(
-            &mut failures,
-            component_absolute_tolerance,
-            &event_id,
-            &event_timestamp_utc,
-            VerificationSemanticBucket::ClosedGap,
-            closed_gap_mismatch_kind,
-            expected_closed_gap,
-            observed_closed_gap,
-            &mut max_absolute_mismatch,
-        );
+
+        collect_semantic_mismatch(SemanticMismatchCollectionInput {
+            failures: &mut failures,
+            absolute_tolerance: component_absolute_tolerance,
+            event_id: &event_id,
+            event_timestamp_utc: &event_timestamp_utc,
+            semantic_bucket: VerificationSemanticBucket::ClosedGap,
+            mismatch_kind: closed_gap_mismatch_kind,
+            expected_value: expected_closed_gap,
+            observed_value: observed_closed_gap,
+            max_absolute_mismatch: &mut max_absolute_mismatch,
+        });
     }
 
     let contribution_summary = OpenClosedGapBehaviorContributionSummary {
@@ -783,6 +792,7 @@ fn evaluate_open_closed_gap_leakage_case(
     );
 
     let semantic_mismatch_failure_count = failures.len();
+
     if failures.is_empty() {
         return OpenClosedGapLeakageRegressionCaseReport {
             fixture_id: gap_behavior_case.fixture_id.clone(),
@@ -836,17 +846,31 @@ fn validate_override_finite(
     ))
 }
 
-fn collect_semantic_mismatch(
-    failures: &mut Vec<OpenClosedGapLeakageRegressionFailure>,
+struct SemanticMismatchCollectionInput<'a> {
+    failures: &'a mut Vec<OpenClosedGapLeakageRegressionFailure>,
     absolute_tolerance: f64,
-    event_id: &str,
-    event_timestamp_utc: &str,
+    event_id: &'a str,
+    event_timestamp_utc: &'a str,
     semantic_bucket: VerificationSemanticBucket,
     mismatch_kind: &'static str,
     expected_value: f64,
     observed_value: f64,
-    max_absolute_mismatch: &mut f64,
-) {
+    max_absolute_mismatch: &'a mut f64,
+}
+
+fn collect_semantic_mismatch(input: SemanticMismatchCollectionInput<'_>) {
+    let SemanticMismatchCollectionInput {
+        failures,
+        absolute_tolerance,
+        event_id,
+        event_timestamp_utc,
+        semantic_bucket,
+        mismatch_kind,
+        expected_value,
+        observed_value,
+        max_absolute_mismatch,
+    } = input;
+
     let absolute_difference = (expected_value - observed_value).abs();
     if absolute_difference <= absolute_tolerance && absolute_difference.is_finite() {
         return;
@@ -855,6 +879,7 @@ fn collect_semantic_mismatch(
     if absolute_difference > *max_absolute_mismatch {
         *max_absolute_mismatch = absolute_difference;
     }
+
     failures.push(OpenClosedGapLeakageRegressionFailure::SemanticMismatch {
         semantic_bucket,
         mismatch_kind,
@@ -883,6 +908,7 @@ fn dispatch_error_case_report(
         expected_closed_gap_total: 0.0,
         observed_closed_gap_total: 0.0,
     };
+
     let behavior_diff = build_open_closed_behavior_scenario_diff(
         &gap_behavior_case.fixture_id,
         &gap_behavior_case.exchange_code,
@@ -947,6 +973,7 @@ fn build_open_closed_behavior_scenario_diff(
         .iter()
         .filter(|metric| metric.regression_detected)
         .count();
+
     let max_absolute_difference = metrics
         .iter()
         .map(|metric| metric.absolute_difference)

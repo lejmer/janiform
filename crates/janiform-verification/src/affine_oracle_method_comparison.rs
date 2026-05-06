@@ -529,15 +529,15 @@ impl ExponentialAffineTransformMethodComparisonTolerancePolicy {
                 }
             })?;
 
-            if let Some(previous_delta_upper_bound) = previous_delta_upper_bound {
-                if tolerance_band.delta_upper_bound <= previous_delta_upper_bound {
-                    return Err(
-                        ExponentialAffineTransformMethodComparisonTolerancePolicyError::NonIncreasingDeltaUpperBound {
-                            previous: previous_delta_upper_bound,
-                            current: tolerance_band.delta_upper_bound,
-                        },
-                    );
-                }
+            if let Some(previous_delta_upper_bound) = previous_delta_upper_bound
+                && tolerance_band.delta_upper_bound <= previous_delta_upper_bound
+            {
+                return Err(
+                    ExponentialAffineTransformMethodComparisonTolerancePolicyError::NonIncreasingDeltaUpperBound {
+                        previous: previous_delta_upper_bound,
+                        current: tolerance_band.delta_upper_bound,
+                    },
+                );
             }
 
             previous_delta_upper_bound = Some(tolerance_band.delta_upper_bound);
@@ -551,6 +551,7 @@ impl ExponentialAffineTransformMethodComparisonTolerancePolicy {
 
         let mut observed_policy_versions = BTreeSet::new();
         let mut has_current_policy_version = false;
+
         for (change_log_position, change_log_entry) in self.change_log.iter().enumerate() {
             change_log_entry.validate().map_err(|source| {
                 ExponentialAffineTransformMethodComparisonTolerancePolicyError::InvalidChangeLogEntry {

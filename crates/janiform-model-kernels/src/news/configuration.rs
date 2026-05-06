@@ -40,16 +40,18 @@ impl KnownNewsArrivalConfiguration {
                     },
                 );
             }
-            if let Some(previous_timestamp_utc_nanos_value) = previous_timestamp_utc_nanos {
-                if timestamp_utc_nanos <= previous_timestamp_utc_nanos_value {
-                    return Err(
-                        NewsArrivalConfigurationError::KnownScheduledTimestampsNotStrictlyIncreasing {
-                            previous_timestamp_utc_nanos: previous_timestamp_utc_nanos_value,
-                            current_timestamp_utc_nanos: timestamp_utc_nanos,
-                        },
-                    );
-                }
+
+            if let Some(previous_timestamp_utc_nanos_value) = previous_timestamp_utc_nanos
+                && timestamp_utc_nanos <= previous_timestamp_utc_nanos_value
+            {
+                return Err(
+                    NewsArrivalConfigurationError::KnownScheduledTimestampsNotStrictlyIncreasing {
+                        previous_timestamp_utc_nanos: previous_timestamp_utc_nanos_value,
+                        current_timestamp_utc_nanos: timestamp_utc_nanos,
+                    },
+                );
             }
+
             previous_timestamp_utc_nanos = Some(timestamp_utc_nanos);
         }
 
@@ -263,6 +265,7 @@ impl NewsComponentMarkScaleConfiguration {
                 },
             );
         }
+
         if !self.return_jump_scale.is_finite() || self.return_jump_scale < 0.0 {
             return Err(
                 NewsComponentMarkScaleConfigurationError::InvalidReturnJumpScale {
@@ -279,7 +282,7 @@ impl NewsComponentMarkScaleConfiguration {
 ///
 /// `NewsProcessConfiguration` now uses `NewsArrivalConfiguration` for known and surprise
 /// components directly.
-
+///
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct NewsIntensityConfiguration {
@@ -327,6 +330,7 @@ impl NewsIntensityConfiguration {
                 },
             );
         }
+
         if !deterministic_time_multiplier.is_finite() || deterministic_time_multiplier < 0.0 {
             return Err(
                 NewsDeterministicIntensityEvaluationError::InvalidDeterministicTimeMultiplier {
@@ -377,6 +381,7 @@ impl GammaSeverityMarkConfiguration {
                 value: self.shape_k,
             });
         }
+
         if !self.scale_theta.is_finite() || self.scale_theta <= 0.0 {
             return Err(NewsMarkConfigurationError::InvalidGammaScaleTheta {
                 value: self.scale_theta,
@@ -484,11 +489,13 @@ impl DoubleExponentialBaseShockConfiguration {
                 value: self.probability_positive,
             });
         }
+
         if !self.eta_plus.is_finite() || self.eta_plus <= 0.0 {
             return Err(NewsMarkConfigurationError::InvalidEtaPlus {
                 value: self.eta_plus,
             });
         }
+
         if !self.eta_minus.is_finite() || self.eta_minus <= 0.0 {
             return Err(NewsMarkConfigurationError::InvalidEtaMinus {
                 value: self.eta_minus,
@@ -528,6 +535,7 @@ impl DoubleExponentialBaseShockConfiguration {
         let acceptance_draw = randomness_stream
             .next_unit_interval_f64()
             .clamp(0.0, 1.0 - f64::EPSILON);
+
         let sampled_mark = if acceptance_draw < self.probability_positive {
             sample_exponential_with_rate(self.eta_plus, randomness_stream)
         } else {
@@ -637,6 +645,7 @@ impl CoupledGapMarkConfiguration {
                 value: shared_severity_mark,
             });
         }
+
         if !shared_base_shock_mark.is_finite() {
             return Err(
                 CoupledGapMarkConstructionError::InvalidSharedBaseShockMark {

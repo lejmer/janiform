@@ -143,12 +143,15 @@ pub struct PreparedFitWorkflow {
 /// Optional callbacks for fit workflow preparation.
 #[derive(Default)]
 pub(crate) struct FitPreparationObserver<'a> {
-    pub(crate) preparation_request_ready: Option<
-        &'a mut dyn FnMut(&CalibrationMarketDataPreparationRequest) -> Result<(), WorkflowError>,
-    >,
-    pub(crate) preparation_progress:
-        Option<&'a mut dyn FnMut(FitPreparationProgress) -> Result<(), WorkflowError>>,
+    pub(crate) preparation_request_ready: Option<FitPreparationRequestReadySink<'a>>,
+    pub(crate) preparation_progress: Option<FitPreparationProgressSink<'a>>,
 }
+
+type FitPreparationRequestReadySink<'a> =
+    &'a mut dyn FnMut(&CalibrationMarketDataPreparationRequest) -> Result<(), WorkflowError>;
+
+type FitPreparationProgressSink<'a> =
+    &'a mut dyn FnMut(FitPreparationProgress) -> Result<(), WorkflowError>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FitPreparationProgress {
@@ -160,6 +163,18 @@ struct EffectiveMarketProfileReference {
     reference: Option<Value>,
     session_reference: Option<Value>,
     requires_session_inference: bool,
+}
+
+struct PreparationRequestBuildInput<'a> {
+    request: &'a FitPreparationRequest,
+    workflow_scope: CalibrationMarketDataWorkflowScope,
+    run_id: &'a str,
+    tick_data_source: MarketDataInputFileReference,
+    option_surface_source: Option<MarketDataInputFileReference>,
+    tick_data_column_mapping: MarketDataTickDataColumnMapping,
+    normalization_policy: MarketDataNormalizationPolicy,
+    resolved_configuration: &'a Value,
+    materialization_directory: &'a Path,
 }
 
 /// Prepare a fit workflow entirely in Rust.
@@ -260,17 +275,17 @@ pub(crate) fn prepare_fit_workflow_with_observer(
         "assembling prepared calibration inputs",
     )?;
 
-    let preparation_request = build_preparation_request(
-        &request,
+    let preparation_request = build_preparation_request(PreparationRequestBuildInput {
+        request: &request,
         workflow_scope,
-        &input_inference.run_id,
-        input_inference.tick_data_source.clone(),
+        run_id: &input_inference.run_id,
+        tick_data_source: input_inference.tick_data_source.clone(),
         option_surface_source,
-        input_inference.tick_data_column_mapping.clone(),
-        input_inference.normalization_policy.clone(),
-        &resolved_configuration,
-        materialization_directory.as_path(),
-    )?;
+        tick_data_column_mapping: input_inference.tick_data_column_mapping.clone(),
+        normalization_policy: input_inference.normalization_policy.clone(),
+        resolved_configuration: &resolved_configuration,
+        materialization_directory: materialization_directory.as_path(),
+    })?;
 
     if let Some(preparation_request_ready) = observer.preparation_request_ready.as_mut() {
         preparation_request_ready(&preparation_request)?;
@@ -529,25 +544,25 @@ fn infer_session_resolution(
 }
 
 fn build_preparation_request(
-    request: &FitPreparationRequest,
-    workflow_scope: CalibrationMarketDataWorkflowScope,
-    run_id: &str,
-    tick_data_source: MarketDataInputFileReference,
-    option_surface_source: Option<MarketDataInputFileReference>,
-    tick_data_column_mapping: MarketDataTickDataColumnMapping,
-    normalization_policy: MarketDataNormalizationPolicy,
-    resolved_configuration: &Value,
-    materialization_directory: &Path,
+    input: PreparationRequestBuildInput<'_>,
 ) -> Result<CalibrationMarketDataPreparationRequest, WorkflowError> {
-    let session_configuration =
-        build_session_configuration(resolved_configuration, materialization_directory)?;
+    let session_configuration = build_session_configuration(
+        input.resolved_configuration,
+        input.materialization_directory,
+    )?;
 
-    let known_news_inputs =
-        build_known_news_inputs(resolved_configuration, materialization_directory)?;
+    let known_news_inputs = build_known_news_inputs(
+        input.resolved_configuration,
+        input.materialization_directory,
+    )?;
 
     let column_mapping = CalibrationMarketDataColumnMapping {
-        tick_data: tick_data_column_mapping,
-        option_surface: request.configuration.option_surface_column_mapping.clone(),
+        tick_data: input.tick_data_column_mapping,
+        option_surface: input
+            .request
+            .configuration
+            .option_surface_column_mapping
+            .clone(),
         known_news: known_news_inputs
             .as_ref()
             .map(|_| default_known_news_columns()),
@@ -555,33 +570,41 @@ fn build_preparation_request(
 
     Ok(CalibrationMarketDataPreparationRequest {
         schema_version: MARKET_DATA_REQUEST_SCHEMA_VERSION.to_string(),
-        run_id: run_id.to_string(),
-        tick_data_source,
+        run_id: input.run_id.to_string(),
+        tick_data_source: input.tick_data_source,
         session_configuration,
         column_mapping,
-        workflow_scope,
-        normalization_policy,
-        output_preferences: request.configuration.output_preferences.clone(),
-        optimizer_settings_by_stage: request.configuration.optimizer_settings_by_stage.clone(),
-        preprocessing_settings: request.configuration.preprocessing_settings.clone(),
-        option_surface_source,
-        option_surface_valuation_time_utc: request.option_surface_valuation_time_utc.clone(),
-        carry: request.carry.clone(),
-        pricing_interval_schedule_policy: request
+        workflow_scope: input.workflow_scope,
+        normalization_policy: input.normalization_policy,
+        output_preferences: input.request.configuration.output_preferences.clone(),
+        optimizer_settings_by_stage: input
+            .request
+            .configuration
+            .optimizer_settings_by_stage
+            .clone(),
+        preprocessing_settings: input.request.configuration.preprocessing_settings.clone(),
+        option_surface_source: input.option_surface_source,
+        option_surface_valuation_time_utc: input.request.option_surface_valuation_time_utc.clone(),
+        carry: input.request.carry.clone(),
+        pricing_interval_schedule_policy: input
+            .request
             .configuration
             .pricing_interval_schedule_policy
             .clone(),
-        dynamics_search_restart_candidate_budget: request
+        dynamics_search_restart_candidate_budget: input
+            .request
             .configuration
             .dynamics_search_restart_candidate_budget,
-        joint_refinement_option_refinement_candidate_count_override: request
+        joint_refinement_option_refinement_candidate_count_override: input
+            .request
             .configuration
             .joint_refinement_option_refinement_candidate_count_override,
-        joint_refinement_audit_option_pricing_enabled: request
+        joint_refinement_audit_option_pricing_enabled: input
+            .request
             .configuration
             .joint_refinement_audit_option_pricing_enabled,
         known_news_inputs,
-        mean_reversion: mean_reversion_configuration(request, workflow_scope),
+        mean_reversion: mean_reversion_configuration(input.request, input.workflow_scope),
     })
 }
 

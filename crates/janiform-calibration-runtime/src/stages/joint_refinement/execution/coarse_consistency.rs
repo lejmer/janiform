@@ -35,7 +35,8 @@ use super::super::mean_reversion_runtime::{
 };
 use super::super::objective::root_mean_square;
 use super::super::setup::{
-    build_surprise_multipliers_for_interval_grid, cached_seed_summaries_for_candidate_seeds,
+    CandidateSeedSummariesCacheInput, build_surprise_multipliers_for_interval_grid,
+    cached_seed_summaries_for_candidate_seeds,
 };
 use super::{
     JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JointRefinementCoarseConsistencySummary,
@@ -209,10 +210,12 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
             .collect::<Vec<_>>()
     });
 
-    let mut intervals_by_seed: Vec<(
+    type AggregatedIntervalsByHorizon = (
         Option<Vec<JointRefinementAggregatedIntervalObservation>>,
         Option<Vec<JointRefinementAggregatedIntervalObservation>>,
-    )> = (0..tick_seed_summaries.len())
+    );
+
+    let mut intervals_by_seed: Vec<AggregatedIntervalsByHorizon> = (0..tick_seed_summaries.len())
         .map(|_| (None, None))
         .collect();
 
@@ -363,17 +366,18 @@ pub(crate) fn build_joint_candidate_coarse_consistency_artifacts(
     baseline_raw_fit: Option<f64>,
     progress: Option<JointRefinementCoarseConsistencyProgress<'_>>,
 ) -> Option<JointRefinementCoarseConsistencyArtifacts> {
-    let finalist_seed_summaries = cached_seed_summaries_for_candidate_seeds(
-        parameter_bits,
-        fitted_parameters,
-        context,
-        context.final_simulation_seeds.as_slice(),
-        None,
-        None,
-        0,
-        context.final_simulation_seeds.len(),
-    )
-    .ok()?;
+    let finalist_seed_summaries =
+        cached_seed_summaries_for_candidate_seeds(CandidateSeedSummariesCacheInput {
+            parameter_bits,
+            fitted_parameters,
+            context,
+            simulation_seeds: context.final_simulation_seeds.as_slice(),
+            progress_sender: None,
+            progress_phase: None,
+            completed_units_before_seed_summaries: 0,
+            total_units: context.final_simulation_seeds.len(),
+        })
+        .ok()?;
 
     let coarse_tick_consistency = build_joint_coarse_tick_consistency_metrics(
         context,

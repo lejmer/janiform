@@ -79,13 +79,13 @@ pub enum SeededTickSimulationRunError {
         current_timestamp_utc_nanos: i64,
     },
     InvalidMeanReversionFittedParameters {
-        source: MeanReversionFittedParametersValidationError,
+        source: Box<MeanReversionFittedParametersValidationError>,
     },
     InvalidMeanReversionRuntimeIntervalAnchors {
-        source: MeanReversionRuntimeIntervalAnchorsValidationError,
+        source: Box<MeanReversionRuntimeIntervalAnchorsValidationError>,
     },
     InvalidMeanReversionBoundaryState {
-        source: MeanReversionBoundaryStateValidationError,
+        source: Box<MeanReversionBoundaryStateValidationError>,
     },
     MeanReversionRuntimeAnchorIntervalCountMismatch {
         expected_interval_count: usize,
@@ -105,10 +105,10 @@ pub enum SeededTickSimulationRunError {
         observed_interval_delta: f64,
     },
     InvalidNigSharedPlusShiftConfiguration {
-        source: NigSharedPlusShiftConfigurationError,
+        source: Box<NigSharedPlusShiftConfigurationError>,
     },
     InvalidNewsProcessConfiguration {
-        source: NewsProcessConfigurationError,
+        source: Box<NewsProcessConfigurationError>,
     },
     InvalidGeneratedNewsActivityCouplingMark {
         value: f64,
@@ -118,16 +118,16 @@ pub enum SeededTickSimulationRunError {
     },
     NewsMarkSamplingFailure {
         interval_index: usize,
-        source: NewsMarkInterfaceError,
+        source: Box<NewsMarkInterfaceError>,
     },
     SharedNewsDispatchFailure {
         interval_index: usize,
-        source: SharedNewsEventDispatchError,
+        source: Box<SharedNewsEventDispatchError>,
     },
     NewsMarketStateResolutionFailed {
         exchange_code: String,
         timestamp_utc_nanos: i64,
-        source: ExchangeCalendarResolveError,
+        source: Box<ExchangeCalendarResolveError>,
     },
     CalendarSessionBoundaryResolutionFailed {
         exchange_code: String,
@@ -141,18 +141,18 @@ pub enum SeededTickSimulationRunError {
     },
     InvalidReturnDecomposition {
         interval_index: usize,
-        source: ReturnDecompositionValidationError,
+        source: Box<ReturnDecompositionValidationError>,
     },
     TradingTimeSamplingFailure {
         interval_index: usize,
-        source: janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError,
+        source: Box<janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError>,
     },
     InvalidReturnComponents {
         interval_index: usize,
-        source: SufficientStatisticsReturnComponentsError,
+        source: Box<SufficientStatisticsReturnComponentsError>,
     },
     InvalidTransitionStep {
-        source: HawkesTransitionError,
+        source: Box<HawkesTransitionError>,
     },
     InternalInvariantViolation {
         message: &'static str,
@@ -386,18 +386,18 @@ impl Display for SeededTickSimulationRunError {
 impl Error for SeededTickSimulationRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidMeanReversionFittedParameters { source } => Some(source),
-            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source),
-            Self::InvalidMeanReversionBoundaryState { source } => Some(source),
-            Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
-            Self::InvalidNewsProcessConfiguration { source } => Some(source),
-            Self::NewsMarkSamplingFailure { source, .. } => Some(source),
-            Self::SharedNewsDispatchFailure { source, .. } => Some(source),
-            Self::NewsMarketStateResolutionFailed { source, .. } => Some(source),
-            Self::InvalidReturnDecomposition { source, .. } => Some(source),
-            Self::TradingTimeSamplingFailure { source, .. } => Some(source),
-            Self::InvalidReturnComponents { source, .. } => Some(source),
-            Self::InvalidTransitionStep { source } => Some(source),
+            Self::InvalidMeanReversionFittedParameters { source } => Some(source.as_ref()),
+            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source.as_ref()),
+            Self::InvalidMeanReversionBoundaryState { source } => Some(source.as_ref()),
+            Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source.as_ref()),
+            Self::InvalidNewsProcessConfiguration { source } => Some(source.as_ref()),
+            Self::NewsMarkSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
+            Self::NewsMarketStateResolutionFailed { source, .. } => Some(source.as_ref()),
+            Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
+            Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
+            Self::InvalidTransitionStep { source } => Some(source.as_ref()),
             Self::CalendarSessionBoundaryResolutionFailed { .. } => None,
             Self::InternalInvariantViolation { .. } => None,
             _ => None,

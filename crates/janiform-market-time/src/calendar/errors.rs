@@ -282,7 +282,7 @@ pub enum ExchangeCalendarRegistryLoadError {
     },
     InvalidExchangeArtifact {
         exchange_code: Option<String>,
-        source: ExchangeCalendarValidationError,
+        source: Box<ExchangeCalendarValidationError>,
     },
 }
 
@@ -292,7 +292,7 @@ impl ExchangeCalendarRegistryLoadError {
             ExchangeCalendarValidationError::MissingField { field } => Self::MissingField { field },
             _ => Self::InvalidExchangeArtifact {
                 exchange_code: None,
-                source,
+                source: Box::new(source),
             },
         }
     }
@@ -363,7 +363,7 @@ impl Display for ExchangeCalendarRegistryLoadError {
 impl Error for ExchangeCalendarRegistryLoadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidExchangeArtifact { source, .. } => Some(source),
+            Self::InvalidExchangeArtifact { source, .. } => Some(source.as_ref()),
             _ => None,
         }
     }

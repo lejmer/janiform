@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
@@ -160,43 +161,67 @@ struct SourceSeasonalityPoint {
 /// - Attempt interpolation using the configured interpolation method.
 /// - If interpolation is not possible, apply the configured sparse fallback policy.
 /// - UTC bucket boundaries are authoritative during timezone transitions.
+#[derive(Debug, Clone, Copy)]
+pub struct HourlySeasonalitySourceSignal<'a> {
+    pub timestamp_utc_nanos: &'a [i64],
+    pub seasonality_factors: &'a [f64],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HourlySeasonalityMaterializationPolicy<'a> {
+    pub interpolation_method: &'a str,
+    pub aggregation_method: &'a str,
+    pub sparse_fallback_policy: &'a str,
+    pub sparse_hour_minimum_observation_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct HourlySeasonalityMaterializationInput<'a> {
+    pub calendar_registry: &'a ExchangeCalendarRegistry,
+    pub exchange_code: &'a str,
+    pub range_utc: Range<DateTime<Utc>>,
+    pub interval_duration_nanos: i64,
+    pub source_signal: HourlySeasonalitySourceSignal<'a>,
+    pub policy: HourlySeasonalityMaterializationPolicy<'a>,
+}
+
 pub fn materialize_hourly_seasonality_factors(
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
-    range_start_utc: DateTime<Utc>,
-    range_end_utc: DateTime<Utc>,
-    interval_duration_nanos: i64,
-    source_timestamp_utc_nanos: &[i64],
-    source_seasonality_factors: &[f64],
-    interpolation_method: &str,
-    aggregation_method: &str,
-    sparse_fallback_policy: &str,
-    sparse_hour_minimum_observation_count: usize,
+    input: HourlySeasonalityMaterializationInput<'_>,
 ) -> Result<HourlySeasonalityMaterializationOutput, HourlyFactorContractError> {
+    let HourlySeasonalityMaterializationInput {
+        calendar_registry,
+        exchange_code,
+        range_utc,
+        interval_duration_nanos,
+        source_signal,
+        policy,
+    } = input;
+
     let settings = HourlySeasonalityMaterializationSettings::from_policy_identifiers(
-        interpolation_method,
-        aggregation_method,
-        sparse_fallback_policy,
-        sparse_hour_minimum_observation_count,
+        policy.interpolation_method,
+        policy.aggregation_method,
+        policy.sparse_fallback_policy,
+        policy.sparse_hour_minimum_observation_count,
     )?;
 
-    if source_timestamp_utc_nanos.len() != source_seasonality_factors.len() {
+    if source_signal.timestamp_utc_nanos.len() != source_signal.seasonality_factors.len() {
         return Err(HourlyFactorContractError::SourceLengthMismatch {
-            source_timestamp_count: source_timestamp_utc_nanos.len(),
-            source_factor_count: source_seasonality_factors.len(),
+            source_timestamp_count: source_signal.timestamp_utc_nanos.len(),
+            source_factor_count: source_signal.seasonality_factors.len(),
         });
     }
-    if source_timestamp_utc_nanos.is_empty() {
+    if source_signal.timestamp_utc_nanos.is_empty() {
         return Err(HourlyFactorContractError::EmptySeasonalitySourceSignal);
     }
 
     let mut source_points: Vec<SourceSeasonalityPoint> =
-        Vec::with_capacity(source_timestamp_utc_nanos.len());
+        Vec::with_capacity(source_signal.timestamp_utc_nanos.len());
 
-    for (source_position, (timestamp_utc_nanos, seasonality_factor)) in source_timestamp_utc_nanos
+    for (source_position, (timestamp_utc_nanos, seasonality_factor)) in source_signal
+        .timestamp_utc_nanos
         .iter()
         .copied()
-        .zip(source_seasonality_factors.iter().copied())
+        .zip(source_signal.seasonality_factors.iter().copied())
         .enumerate()
     {
         if !seasonality_factor.is_finite() || seasonality_factor <= 0.0 {
@@ -224,16 +249,19 @@ pub fn materialize_hourly_seasonality_factors(
         .iter()
         .map(|source_point| source_point.seasonality_factor)
         .sum();
+
     let global_mean_factor = source_factor_sum / source_points.len() as f64;
 
     let interval_indexing = build_fixed_interval_indexing(
         calendar_registry,
         exchange_code,
-        range_start_utc,
-        range_end_utc,
+        range_utc.start,
+        range_utc.end,
         interval_duration_nanos,
     )?;
+
     let mut materialized_s_h: Vec<f64> = Vec::with_capacity(interval_indexing.interval_count);
+
     let mut sparse_interval_count: usize = 0;
     let mut interpolated_interval_count: usize = 0;
     let mut fallback_interval_count: usize = 0;
@@ -378,6 +406,7 @@ fn interpolate_sparse_interval(
         HourlySeasonalityInterpolationMethod::LinearBetweenObservations => {
             let interval_midpoint_utc_nanos =
                 interval_start_utc_nanos + (interval_end_utc_nanos - interval_start_utc_nanos) / 2;
+
             let right_source_index = sorted_source_points.partition_point(|source_point| {
                 source_point.timestamp_utc_nanos < interval_midpoint_utc_nanos
             });

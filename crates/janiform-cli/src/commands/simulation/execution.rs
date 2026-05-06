@@ -52,7 +52,7 @@ pub(crate) fn run_simulate_seeded_ticks_command(
         SEEDED_TICK_SCOPE_LABEL,
         "seeded_tick",
         DirectSimulationJob::SeededTick {
-            run_config,
+            run_config: Box::new(run_config),
             export: SeededTickExportSettings {
                 columns,
                 reference_price,
@@ -99,7 +99,7 @@ pub(crate) fn run_simulate_coarse_interval_command(
         COARSE_INTERVAL_SCOPE_LABEL,
         "coarse_interval",
         DirectSimulationJob::CoarseInterval {
-            request,
+            request: Box::new(request),
             export: CoarseIntervalExportSettings {
                 columns,
                 calendar_registry,
@@ -179,9 +179,10 @@ pub(super) fn completed_raw_payload(
         DirectSimulationCompleted::SeededTick { result, .. } => {
             Ok(seeded_tick_payload_json(result))
         }
-        DirectSimulationCompleted::CoarseInterval { result, .. } => {
-            serde_json::to_value(result).map_err(|source| CliError::OutputSerialize { source })
-        }
+        DirectSimulationCompleted::CoarseInterval { result, .. } => serde_json::to_value(result)
+            .map_err(|source| CliError::OutputSerialize {
+                source: Box::new(source),
+            }),
     }
 }
 

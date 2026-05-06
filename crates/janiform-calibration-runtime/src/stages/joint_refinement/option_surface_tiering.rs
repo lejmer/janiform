@@ -705,7 +705,7 @@ fn violates_static_option_bounds(
 fn median_f64(mut values: Vec<f64>) -> f64 {
     values.sort_by(f64::total_cmp);
     let middle = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         0.5 * (values[middle - 1] + values[middle])
     } else {
         values[middle]
@@ -715,7 +715,7 @@ fn median_f64(mut values: Vec<f64>) -> f64 {
 fn median_i64(mut values: Vec<i64>) -> i64 {
     values.sort();
     let middle = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         values[middle - 1] / 2 + values[middle] / 2
     } else {
         values[middle]

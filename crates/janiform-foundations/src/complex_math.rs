@@ -1,6 +1,7 @@
 //! Shared deterministic complex arithmetic helpers.
 
 use std::fmt::{Display, Formatter};
+use std::ops::Add;
 
 use serde::Serialize;
 
@@ -34,8 +35,8 @@ impl ComplexScalar {
         self.real.hypot(self.imaginary)
     }
 
-    pub fn add(self, other: Self) -> Self {
-        Self::new(self.real + other.real, self.imaginary + other.imaginary)
+    pub fn plus(self, other: Self) -> Self {
+        self + other
     }
 
     pub fn subtract(self, other: Self) -> Self {
@@ -81,6 +82,14 @@ impl ComplexScalar {
 impl Display for ComplexScalar {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "({}+{}i)", self.real, self.imaginary)
+    }
+}
+
+impl Add for ComplexScalar {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self::new(self.real + other.real, self.imaginary + other.imaginary)
     }
 }
 

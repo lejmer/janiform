@@ -149,16 +149,16 @@ fn optimize_restart_seeds_sequential(
             break;
         }
 
-        let restart_outcome = optimize_single_restart(
-            restart_id.as_str(),
-            seed_vector.as_slice(),
+        let restart_outcome = optimize_single_restart(OptimizeSingleRestartInput {
+            restart_id: restart_id.as_str(),
+            seed_vector: seed_vector.as_slice(),
             context,
             solver_settings,
             budget_schedule,
             total_units,
-            &progress_counters,
+            progress_counters: &progress_counters,
             progress_sender,
-        );
+        });
 
         progress_state.record(&restart_outcome);
 
@@ -175,24 +175,28 @@ fn optimize_restart_seeds_sequential(
                 .weighted_objective,
         );
 
-        emit_restart_progress(
+        emit_restart_progress(RestartProgressEmissionInput {
             progress_sender,
             total_units,
-            &progress_state,
-            &restart_outcome,
-            &progress_counters,
+            progress_state: &progress_state,
+            restart_outcome: &restart_outcome,
+            progress_counters: &progress_counters,
             context,
-            progress_counters
+            active_restart_count: progress_counters
                 .active_restart_count
                 .load(Ordering::Relaxed),
-            restart_candidate_total_evaluation_budget(context, solver_settings, budget_schedule),
-            progress_counters
+            total_evaluation_budget: restart_candidate_total_evaluation_budget(
+                context,
+                solver_settings,
+                budget_schedule,
+            ),
+            aggregate_progress_percent: progress_counters
                 .aggregate_progress_percent_sum
                 .load(Ordering::Relaxed)
                 .checked_div(total_units.max(1))
                 .unwrap_or(0)
                 .min(100),
-        );
+        });
 
         if let Some(resume_store) = completed_restart_store.as_deref_mut() {
             resume_store.record_restart_outcome(&restart_outcome);
@@ -227,16 +231,16 @@ fn optimize_restart_seeds_parallel(
                 let progress_counters_for_restart = Arc::clone(&progress_counters);
 
                 scope.spawn(move |_| {
-                    let outcome = optimize_single_restart(
-                        restart_id.as_str(),
-                        seed_vector.as_slice(),
+                    let outcome = optimize_single_restart(OptimizeSingleRestartInput {
+                        restart_id: restart_id.as_str(),
+                        seed_vector: seed_vector.as_slice(),
                         context,
                         solver_settings,
                         budget_schedule,
                         total_units,
-                        progress_counters_for_restart.as_ref(),
+                        progress_counters: progress_counters_for_restart.as_ref(),
                         progress_sender,
-                    );
+                    });
                     let _ = result_sender_for_restart.send((restart_position, outcome));
                 });
             }
@@ -271,28 +275,28 @@ fn optimize_restart_seeds_parallel(
                         .weighted_objective,
                 );
 
-                emit_restart_progress(
+                emit_restart_progress(RestartProgressEmissionInput {
                     progress_sender,
                     total_units,
-                    &progress_state,
-                    &restart_outcome,
-                    progress_counters.as_ref(),
+                    progress_state: &progress_state,
+                    restart_outcome: &restart_outcome,
+                    progress_counters: progress_counters.as_ref(),
                     context,
-                    progress_counters
+                    active_restart_count: progress_counters
                         .active_restart_count
                         .load(Ordering::Relaxed),
-                    restart_candidate_total_evaluation_budget(
+                    total_evaluation_budget: restart_candidate_total_evaluation_budget(
                         context,
                         solver_settings,
                         budget_schedule,
                     ),
-                    progress_counters
+                    aggregate_progress_percent: progress_counters
                         .aggregate_progress_percent_sum
                         .load(Ordering::Relaxed)
                         .checked_div(total_units.max(1))
                         .unwrap_or(0)
                         .min(100),
-                );
+                });
 
                 if let Some(resume_store) = completed_restart_store.as_deref_mut() {
                     resume_store.record_restart_outcome(&restart_outcome);
@@ -360,16 +364,29 @@ fn joint_refinement_base_outer_cycle_count(
     JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT
 }
 
-fn optimize_single_restart(
-    restart_id: &str,
-    seed_vector: &[f64],
-    context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
+struct OptimizeSingleRestartInput<'a> {
+    restart_id: &'a str,
+    seed_vector: &'a [f64],
+    context: &'a JointRefinementContext,
+    solver_settings: &'a CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     total_units: usize,
-    progress_counters: &RestartProgressCounters,
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-) -> JointRefinementRestartOutcome {
+    progress_counters: &'a RestartProgressCounters,
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+}
+
+fn optimize_single_restart(input: OptimizeSingleRestartInput<'_>) -> JointRefinementRestartOutcome {
+    let OptimizeSingleRestartInput {
+        restart_id,
+        seed_vector,
+        context,
+        solver_settings,
+        budget_schedule,
+        total_units,
+        progress_counters,
+        progress_sender,
+    } = input;
+
     if let Err(precheck_failure) = precheck_restart_seed(seed_vector, context) {
         return build_precheck_rejected_restart_outcome(
             restart_id,
@@ -1502,19 +1519,35 @@ impl RestartProgressState {
     }
 }
 
-fn emit_restart_progress(
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+struct RestartProgressEmissionInput<'a> {
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
     total_units: usize,
-    progress_state: &RestartProgressState,
-    restart_outcome: &JointRefinementRestartOutcome,
-    progress_counters: &RestartProgressCounters,
-    context: &JointRefinementContext,
+    progress_state: &'a RestartProgressState,
+    restart_outcome: &'a JointRefinementRestartOutcome,
+    progress_counters: &'a RestartProgressCounters,
+    context: &'a JointRefinementContext,
     active_restart_count: usize,
     total_evaluation_budget: usize,
     aggregate_progress_percent: usize,
-) {
+}
+
+fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
+    let RestartProgressEmissionInput {
+        progress_sender,
+        total_units,
+        progress_state,
+        restart_outcome,
+        progress_counters,
+        context,
+        active_restart_count,
+        total_evaluation_budget,
+        aggregate_progress_percent,
+    } = input;
+
     let completed_units = progress_state.completed_units;
+
     let (best_restart_id, best_weighted_objective) = progress_counters.display_best_snapshot();
+
     let final_display_objective = compressed_final_objective(
         &restart_outcome.final_evaluation.raw_admissibility_metrics,
         joint_refinement_admissibility_thresholds(context),

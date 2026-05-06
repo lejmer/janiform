@@ -1,28 +1,20 @@
 use super::{
     DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
-    DeterministicSeasonalityCompositionError, IntradaySeasonalityEstimationError,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
-    SeasonalityDiagnosticsReportError, SeasonalityDiagnosticsReportInput,
-    SeasonalityNormalizationError, compose_deterministic_seasonality_signal,
-    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
-    estimate_intraday_seasonality, generate_seasonality_diagnostics_batch_report,
-    generate_seasonality_diagnostics_report, normalize_seasonality_factors_for_identifiability,
-    numerics::stable_sum_f64,
+    DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionInput,
+    IntradaySeasonalityEstimationError, IntradaySeasonalityEstimatorSettings,
+    IntradaySmoothingKernel, ScheduledEventOverlayDefinition, SeasonalityDiagnosticsReportError,
+    SeasonalityDiagnosticsReportInput, SeasonalityNormalizationError,
+    compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
+    estimate_day_of_year_seasonality, estimate_intraday_seasonality,
+    generate_seasonality_diagnostics_batch_report, generate_seasonality_diagnostics_report,
+    normalize_seasonality_factors_for_identifiability, numerics::stable_sum_f64,
 };
 
 #[test]
 fn intraday_estimator_recovers_non_parametric_bimodal_pattern() {
-    let mut minute_of_day_events: Vec<u16> = Vec::new();
-
-    for _ in 0..80 {
-        minute_of_day_events.push(570);
-    }
-    for _ in 0..20 {
-        minute_of_day_events.push(720);
-    }
-    for _ in 0..70 {
-        minute_of_day_events.push(930);
-    }
+    let mut minute_of_day_events: Vec<u16> = vec![570; 80];
+    minute_of_day_events.extend([720; 20]);
+    minute_of_day_events.extend([930; 70]);
 
     let estimate = estimate_intraday_seasonality(
         &minute_of_day_events,
@@ -122,23 +114,11 @@ fn intraday_estimator_rejects_empty_input() {
 
 #[test]
 fn day_of_week_estimator_recovers_synthetic_weekday_pattern() {
-    let mut day_of_week_events: Vec<u8> = Vec::new();
-
-    for _ in 0..60 {
-        day_of_week_events.push(1);
-    }
-    for _ in 0..30 {
-        day_of_week_events.push(2);
-    }
-    for _ in 0..10 {
-        day_of_week_events.push(3);
-    }
-    for _ in 0..20 {
-        day_of_week_events.push(4);
-    }
-    for _ in 0..50 {
-        day_of_week_events.push(5);
-    }
+    let mut day_of_week_events: Vec<u8> = vec![1; 60];
+    day_of_week_events.extend([2; 30]);
+    day_of_week_events.extend([3; 10]);
+    day_of_week_events.extend([4; 20]);
+    day_of_week_events.extend([5; 50]);
 
     let estimate = estimate_day_of_week_seasonality(
         &day_of_week_events,
@@ -166,15 +146,8 @@ fn day_of_week_estimator_recovers_synthetic_weekday_pattern() {
 
 #[test]
 fn day_of_year_estimator_handles_sparse_day_buckets_with_defined_fallback() {
-    let mut day_of_year_events: Vec<u16> = Vec::new();
-
-    for _ in 0..60 {
-        day_of_year_events.push(60);
-    }
-    for _ in 0..20 {
-        day_of_year_events.push(200);
-    }
-
+    let mut day_of_year_events: Vec<u16> = vec![60; 60];
+    day_of_year_events.extend([200; 20]);
     day_of_year_events.push(330);
 
     let estimate = estimate_day_of_year_seasonality(
@@ -212,31 +185,33 @@ fn deterministic_seasonality_composition_combines_components_deterministically()
     day_of_year_log_component[31] = 1.1_f64.ln();
     day_of_year_log_component[200] = 0.9_f64.ln();
 
-    let first_output = compose_deterministic_seasonality_signal(
-        &[1_000, 2_000],
-        &[570, 930],
-        &[1, 5],
-        &[32, 201],
-        60,
-        &intraday_log_component_by_bin,
-        &day_of_week_log_component,
-        &day_of_year_log_component,
-        &[],
-    )
-    .expect("composition should succeed");
+    let first_output =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_000, 2_000],
+            exchange_local_minute_of_day: &[570, 930],
+            exchange_local_day_of_week: &[1, 5],
+            exchange_local_day_of_year: &[32, 201],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &intraday_log_component_by_bin,
+            day_of_week_log_component: &day_of_week_log_component,
+            day_of_year_log_component: &day_of_year_log_component,
+            scheduled_event_overlays: &[],
+        })
+        .expect("composition should succeed");
 
-    let second_output = compose_deterministic_seasonality_signal(
-        &[1_000, 2_000],
-        &[570, 930],
-        &[1, 5],
-        &[32, 201],
-        60,
-        &intraday_log_component_by_bin,
-        &day_of_week_log_component,
-        &day_of_year_log_component,
-        &[],
-    )
-    .expect("composition should succeed");
+    let second_output =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_000, 2_000],
+            exchange_local_minute_of_day: &[570, 930],
+            exchange_local_day_of_week: &[1, 5],
+            exchange_local_day_of_year: &[32, 201],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &intraday_log_component_by_bin,
+            day_of_week_log_component: &day_of_week_log_component,
+            day_of_year_log_component: &day_of_year_log_component,
+            scheduled_event_overlays: &[],
+        })
+        .expect("composition should succeed");
 
     assert_eq!(first_output, second_output);
     assert_eq!(first_output.intraday_bin_index_by_event, vec![9, 15]);
@@ -278,37 +253,38 @@ fn deterministic_seasonality_composition_combines_components_deterministically()
 
 #[test]
 fn deterministic_seasonality_composition_applies_single_and_multiple_overlay_windows() {
-    let output = compose_deterministic_seasonality_signal(
-        &[1_000, 1_500, 5_000],
-        &[570, 600, 630],
-        &[1, 1, 1],
-        &[32, 32, 32],
-        60,
-        &vec![0.0; 24],
-        &vec![0.0; 7],
-        &vec![0.0; 366],
-        &[
-            ScheduledEventOverlayDefinition {
-                overlay_id: "cpi_release".to_string(),
-                start_timestamp_utc_nanos: 900,
-                end_timestamp_utc_nanos: 1_600,
-                log_adjustment: 0.2,
-                precedence: 1,
-                enabled: true,
-                source_label: "macro".to_string(),
-            },
-            ScheduledEventOverlayDefinition {
-                overlay_id: "earnings_call".to_string(),
-                start_timestamp_utc_nanos: 4_800,
-                end_timestamp_utc_nanos: 5_100,
-                log_adjustment: -0.1,
-                precedence: 1,
-                enabled: true,
-                source_label: "corporate".to_string(),
-            },
-        ],
-    )
-    .expect("composition with overlays should succeed");
+    let output =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_000, 1_500, 5_000],
+            exchange_local_minute_of_day: &[570, 600, 630],
+            exchange_local_day_of_week: &[1, 1, 1],
+            exchange_local_day_of_year: &[32, 32, 32],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &[0.0; 24],
+            day_of_week_log_component: &[0.0; 7],
+            day_of_year_log_component: &[0.0; 366],
+            scheduled_event_overlays: &[
+                ScheduledEventOverlayDefinition {
+                    overlay_id: "cpi_release".to_string(),
+                    start_timestamp_utc_nanos: 900,
+                    end_timestamp_utc_nanos: 1_600,
+                    log_adjustment: 0.2,
+                    precedence: 1,
+                    enabled: true,
+                    source_label: "macro".to_string(),
+                },
+                ScheduledEventOverlayDefinition {
+                    overlay_id: "earnings_call".to_string(),
+                    start_timestamp_utc_nanos: 4_800,
+                    end_timestamp_utc_nanos: 5_100,
+                    log_adjustment: -0.1,
+                    precedence: 1,
+                    enabled: true,
+                    source_label: "corporate".to_string(),
+                },
+            ],
+        })
+        .expect("composition with overlays should succeed");
 
     assert_eq!(output.special_log_component_by_event, vec![0.2, 0.2, -0.1]);
     assert_eq!(output.special_overlay_active_flags_by_event, vec![1, 1, 1]);
@@ -345,46 +321,47 @@ fn deterministic_seasonality_composition_applies_single_and_multiple_overlay_win
 
 #[test]
 fn deterministic_seasonality_composition_applies_overlap_precedence_deterministically() {
-    let output = compose_deterministic_seasonality_signal(
-        &[1_200],
-        &[570],
-        &[1],
-        &[32],
-        60,
-        &vec![0.0; 24],
-        &vec![0.0; 7],
-        &vec![0.0; 366],
-        &[
-            ScheduledEventOverlayDefinition {
-                overlay_id: "low_priority".to_string(),
-                start_timestamp_utc_nanos: 900,
-                end_timestamp_utc_nanos: 1_500,
-                log_adjustment: 0.15,
-                precedence: 1,
-                enabled: true,
-                source_label: "macro".to_string(),
-            },
-            ScheduledEventOverlayDefinition {
-                overlay_id: "high_priority".to_string(),
-                start_timestamp_utc_nanos: 1_100,
-                end_timestamp_utc_nanos: 1_300,
-                log_adjustment: 0.3,
-                precedence: 2,
-                enabled: true,
-                source_label: "macro".to_string(),
-            },
-            ScheduledEventOverlayDefinition {
-                overlay_id: "high_priority_peer".to_string(),
-                start_timestamp_utc_nanos: 1_100,
-                end_timestamp_utc_nanos: 1_300,
-                log_adjustment: 0.2,
-                precedence: 2,
-                enabled: true,
-                source_label: "macro".to_string(),
-            },
-        ],
-    )
-    .expect("composition with overlap should succeed");
+    let output =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_200],
+            exchange_local_minute_of_day: &[570],
+            exchange_local_day_of_week: &[1],
+            exchange_local_day_of_year: &[32],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &[0.0; 24],
+            day_of_week_log_component: &[0.0; 7],
+            day_of_year_log_component: &[0.0; 366],
+            scheduled_event_overlays: &[
+                ScheduledEventOverlayDefinition {
+                    overlay_id: "low_priority".to_string(),
+                    start_timestamp_utc_nanos: 900,
+                    end_timestamp_utc_nanos: 1_500,
+                    log_adjustment: 0.15,
+                    precedence: 1,
+                    enabled: true,
+                    source_label: "macro".to_string(),
+                },
+                ScheduledEventOverlayDefinition {
+                    overlay_id: "high_priority".to_string(),
+                    start_timestamp_utc_nanos: 1_100,
+                    end_timestamp_utc_nanos: 1_300,
+                    log_adjustment: 0.3,
+                    precedence: 2,
+                    enabled: true,
+                    source_label: "macro".to_string(),
+                },
+                ScheduledEventOverlayDefinition {
+                    overlay_id: "high_priority_peer".to_string(),
+                    start_timestamp_utc_nanos: 1_100,
+                    end_timestamp_utc_nanos: 1_300,
+                    log_adjustment: 0.2,
+                    precedence: 2,
+                    enabled: true,
+                    source_label: "macro".to_string(),
+                },
+            ],
+        })
+        .expect("composition with overlap should succeed");
 
     assert_eq!(output.special_overlay_active_flags_by_event, vec![1]);
     assert_eq!(output.special_log_component_by_event, vec![0.5]);
@@ -406,38 +383,40 @@ fn deterministic_seasonality_composition_applies_overlap_precedence_deterministi
 
 #[test]
 fn deterministic_seasonality_composition_is_noop_when_overlays_are_disabled() {
-    let without_overlays = compose_deterministic_seasonality_signal(
-        &[1_000, 2_000],
-        &[570, 630],
-        &[1, 1],
-        &[32, 32],
-        60,
-        &vec![0.0; 24],
-        &vec![0.0; 7],
-        &vec![0.0; 366],
-        &[],
-    )
-    .expect("base composition should succeed");
-    let with_disabled_overlay = compose_deterministic_seasonality_signal(
-        &[1_000, 2_000],
-        &[570, 630],
-        &[1, 1],
-        &[32, 32],
-        60,
-        &vec![0.0; 24],
-        &vec![0.0; 7],
-        &vec![0.0; 366],
-        &[ScheduledEventOverlayDefinition {
-            overlay_id: "disabled_overlay".to_string(),
-            start_timestamp_utc_nanos: 900,
-            end_timestamp_utc_nanos: 2_100,
-            log_adjustment: 2.0,
-            precedence: 99,
-            enabled: false,
-            source_label: "test".to_string(),
-        }],
-    )
-    .expect("composition with disabled overlay should succeed");
+    let without_overlays =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_000, 2_000],
+            exchange_local_minute_of_day: &[570, 630],
+            exchange_local_day_of_week: &[1, 1],
+            exchange_local_day_of_year: &[32, 32],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &[0.0; 24],
+            day_of_week_log_component: &[0.0; 7],
+            day_of_year_log_component: &[0.0; 366],
+            scheduled_event_overlays: &[],
+        })
+        .expect("base composition should succeed");
+    let with_disabled_overlay =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_000, 2_000],
+            exchange_local_minute_of_day: &[570, 630],
+            exchange_local_day_of_week: &[1, 1],
+            exchange_local_day_of_year: &[32, 32],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &[0.0; 24],
+            day_of_week_log_component: &[0.0; 7],
+            day_of_year_log_component: &[0.0; 366],
+            scheduled_event_overlays: &[ScheduledEventOverlayDefinition {
+                overlay_id: "disabled_overlay".to_string(),
+                start_timestamp_utc_nanos: 900,
+                end_timestamp_utc_nanos: 2_100,
+                log_adjustment: 2.0,
+                precedence: 99,
+                enabled: false,
+                source_label: "test".to_string(),
+            }],
+        })
+        .expect("composition with disabled overlay should succeed");
 
     assert_eq!(
         without_overlays.special_log_component_by_event,
@@ -466,18 +445,19 @@ fn deterministic_seasonality_composition_is_noop_when_overlays_are_disabled() {
 
 #[test]
 fn deterministic_seasonality_composition_rejects_mismatched_input_lengths() {
-    let error = compose_deterministic_seasonality_signal(
-        &[1_000, 2_000],
-        &[570, 930],
-        &[1],
-        &[32, 201],
-        60,
-        &vec![0.0; 24],
-        &vec![0.0; 7],
-        &vec![0.0; 366],
-        &[],
-    )
-    .expect_err("composition should fail for mismatched input lengths");
+    let error =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_000, 2_000],
+            exchange_local_minute_of_day: &[570, 930],
+            exchange_local_day_of_week: &[1],
+            exchange_local_day_of_year: &[32, 201],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &[0.0; 24],
+            day_of_week_log_component: &[0.0; 7],
+            day_of_year_log_component: &[0.0; 366],
+            scheduled_event_overlays: &[],
+        })
+        .expect_err("composition should fail for mismatched input lengths");
 
     assert_eq!(
         error,
@@ -495,18 +475,19 @@ fn deterministic_seasonality_composition_rejects_non_finite_log_components() {
     let mut intraday_log_component_by_bin: Vec<f64> = vec![0.0; 24];
     intraday_log_component_by_bin[9] = f64::NAN;
 
-    let error = compose_deterministic_seasonality_signal(
-        &[1_000],
-        &[570],
-        &[1],
-        &[32],
-        60,
-        &intraday_log_component_by_bin,
-        &vec![0.0; 7],
-        &vec![0.0; 366],
-        &[],
-    )
-    .expect_err("composition should fail for non-finite log components");
+    let error =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &[1_000],
+            exchange_local_minute_of_day: &[570],
+            exchange_local_day_of_week: &[1],
+            exchange_local_day_of_year: &[32],
+            intraday_minutes_per_bin: 60,
+            intraday_log_component_by_bin: &intraday_log_component_by_bin,
+            day_of_week_log_component: &[0.0; 7],
+            day_of_year_log_component: &[0.0; 366],
+            scheduled_event_overlays: &[],
+        })
+        .expect_err("composition should fail for non-finite log components");
 
     assert_eq!(
         error,
@@ -878,26 +859,27 @@ fn build_diagnostics_fixture() -> DiagnosticsFixture {
     )
     .expect("day-of-year estimation should succeed for diagnostics fixture");
 
-    let composition = compose_deterministic_seasonality_signal(
-        &timestamp_utc_nanos,
-        &exchange_local_minute_of_day,
-        &exchange_local_day_of_week,
-        &exchange_local_day_of_year,
-        intraday_estimate.minutes_per_bin,
-        &intraday_estimate.intraday_log_component_by_bin,
-        &day_of_week_estimate.day_of_week_log_component,
-        &day_of_year_estimate.day_of_year_log_component,
-        &[ScheduledEventOverlayDefinition {
-            overlay_id: "macro_release".to_string(),
-            start_timestamp_utc_nanos: 2_500,
-            end_timestamp_utc_nanos: 5_500,
-            log_adjustment: 0.2,
-            precedence: 1,
-            enabled: true,
-            source_label: "macro".to_string(),
-        }],
-    )
-    .expect("composition should succeed for diagnostics fixture");
+    let composition =
+        compose_deterministic_seasonality_signal(DeterministicSeasonalityCompositionInput {
+            timestamp_utc_nanos: &timestamp_utc_nanos,
+            exchange_local_minute_of_day: &exchange_local_minute_of_day,
+            exchange_local_day_of_week: &exchange_local_day_of_week,
+            exchange_local_day_of_year: &exchange_local_day_of_year,
+            intraday_minutes_per_bin: intraday_estimate.minutes_per_bin,
+            intraday_log_component_by_bin: &intraday_estimate.intraday_log_component_by_bin,
+            day_of_week_log_component: &day_of_week_estimate.day_of_week_log_component,
+            day_of_year_log_component: &day_of_year_estimate.day_of_year_log_component,
+            scheduled_event_overlays: &[ScheduledEventOverlayDefinition {
+                overlay_id: "macro_release".to_string(),
+                start_timestamp_utc_nanos: 2_500,
+                end_timestamp_utc_nanos: 5_500,
+                log_adjustment: 0.2,
+                precedence: 1,
+                enabled: true,
+                source_label: "macro".to_string(),
+            }],
+        })
+        .expect("composition should succeed for diagnostics fixture");
 
     DiagnosticsFixture {
         source_record_positions,

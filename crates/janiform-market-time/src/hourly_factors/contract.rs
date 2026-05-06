@@ -11,7 +11,7 @@ mod seasonality;
 mod tests;
 mod types;
 
-pub use builder::build_hourly_factor_contract;
+pub use builder::{HourlyFactorContractBuildInput, build_hourly_factor_contract};
 pub use constants::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY,
     DEFAULT_NEWS_INTENSITY_COMPONENT_AGGREGATION_POLICY,
@@ -26,8 +26,13 @@ pub use constants::{
 };
 pub use error::HourlyFactorContractError;
 pub use loader::{HourlyFactorContractPayload, load_hourly_factor_contract};
-pub use news_intensity::materialize_hourly_news_intensity_factors;
-pub use seasonality::materialize_hourly_seasonality_factors;
+pub use news_intensity::{
+    HourlyNewsIntensityMaterializationInput, materialize_hourly_news_intensity_factors,
+};
+pub use seasonality::{
+    HourlySeasonalityMaterializationInput, HourlySeasonalityMaterializationPolicy,
+    HourlySeasonalitySourceSignal, materialize_hourly_seasonality_factors,
+};
 pub use types::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata, HourlyNewsIntensityMaterializationDiagnostics,

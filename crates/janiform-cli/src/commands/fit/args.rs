@@ -226,7 +226,7 @@ pub(crate) enum FitStagedSubcommand {
 
 This command validates fit inputs and writes the prepared input file consumed by janiform fit staged run. It does not run calibration."
     )]
-    Plan(FitStagedPlanCommand),
+    Plan(Box<FitStagedPlanCommand>),
 
     #[command(
         about = "Run a prepared calibration input file.",
@@ -234,7 +234,7 @@ This command validates fit inputs and writes the prepared input file consumed by
 
 This command runs a prepared calibration input file. Disk runs write the fitted model, fit report, progress log, latest status snapshot, and checkpoints."
     )]
-    Run(FitStagedRunCommand),
+    Run(Box<FitStagedRunCommand>),
 }
 
 #[derive(Debug, Args)]

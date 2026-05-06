@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use janiform::model::factors::hourly::{
     DEFAULT_SEASONALITY_AGGREGATION_METHOD, DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
     DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT,
-    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
-    materialize_hourly_seasonality_factors,
+    HourlyFactorContractBuildInput, HourlyNewsIntensityMaterializationInput,
+    HourlySeasonalityMaterializationInput, HourlySeasonalityMaterializationPolicy,
+    HourlySeasonalitySourceSignal, build_hourly_factor_contract,
+    materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 
 use super::args::{
@@ -103,19 +105,22 @@ pub(crate) fn run_hourly_factor_materialize_seasonality(
 
     progress.observe("materialize seasonality", 3)?;
 
-    let output = materialize_hourly_seasonality_factors(
-        &calendar_registry,
-        &resolved.exchange_code,
-        resolved.range_start_utc,
-        resolved.range_end_utc,
-        resolved.interval_duration_nanos,
-        &source_timestamps,
-        &source_factors,
-        interpolation_method,
-        aggregation_method,
-        sparse_fallback_policy,
-        sparse_hour_minimum_observation_count,
-    )
+    let output = materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+        calendar_registry: &calendar_registry,
+        exchange_code: &resolved.exchange_code,
+        range_utc: resolved.range_start_utc..resolved.range_end_utc,
+        interval_duration_nanos: resolved.interval_duration_nanos,
+        source_signal: HourlySeasonalitySourceSignal {
+            timestamp_utc_nanos: &source_timestamps,
+            seasonality_factors: &source_factors,
+        },
+        policy: HourlySeasonalityMaterializationPolicy {
+            interpolation_method,
+            aggregation_method,
+            sparse_fallback_policy,
+            sparse_hour_minimum_observation_count,
+        },
+    })
     .map_err(|source| hourly_factor_argument_error("materialize seasonality", source))?;
     let payload = seasonality_materialization_payload(&output);
 
@@ -197,17 +202,17 @@ pub(crate) fn run_hourly_factor_materialize_news_intensity(
 
     progress.observe("materialize news intensity", 3)?;
 
-    let output = materialize_hourly_news_intensity_factors(
-        &calendar_registry,
-        &resolved.exchange_code,
-        resolved.range_start_utc,
-        resolved.range_end_utc,
-        resolved.interval_duration_nanos,
-        &known_timestamps,
-        surprise_baseline_intensity,
-        &surprise_multipliers,
-    )
-    .map_err(|source| hourly_factor_argument_error("materialize news intensity", source))?;
+    let output =
+        materialize_hourly_news_intensity_factors(HourlyNewsIntensityMaterializationInput {
+            calendar_registry: &calendar_registry,
+            exchange_code: &resolved.exchange_code,
+            range_utc: resolved.range_start_utc..resolved.range_end_utc,
+            interval_duration_nanos: resolved.interval_duration_nanos,
+            known_scheduled_event_timestamps_utc_nanos: &known_timestamps,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index: &surprise_multipliers,
+        })
+        .map_err(|source| hourly_factor_argument_error("materialize news intensity", source))?;
 
     let payload = news_intensity_materialization_payload(&output);
 
@@ -276,17 +281,16 @@ pub(crate) fn run_hourly_factor_build_contract(
 
     progress.observe("build contract", 4)?;
 
-    let output = build_hourly_factor_contract(
-        &calendar_registry,
-        &resolved.exchange_code,
-        resolved.range_start_utc,
-        resolved.range_end_utc,
-        resolved.interval_duration_nanos,
-        &seasonality_factors,
-        &news_intensity_factors,
-        &seasonality_method,
-        &news_intensity_method,
-    )
+    let output = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &calendar_registry,
+        exchange_code: &resolved.exchange_code,
+        range_utc: resolved.range_start_utc..resolved.range_end_utc,
+        interval_duration_nanos: resolved.interval_duration_nanos,
+        seasonality_factors: &seasonality_factors,
+        news_intensity_factors: &news_intensity_factors,
+        seasonality_materialization_method: &seasonality_method,
+        news_intensity_materialization_method: &news_intensity_method,
+    })
     .map_err(|source| hourly_factor_argument_error("build contract", source))?;
 
     let payload = hourly_factor_contract_payload(&output);

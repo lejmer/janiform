@@ -23,21 +23,26 @@ pub(crate) struct IntervalNewsArrivalDecomposition {
     pub(crate) surprise_component_intensity: f64,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ExogenousIntervalNewsSchedulingInput<'a, 'registry> {
+    pub(crate) interval_index: usize,
+    pub(crate) interval_start_utc_nanos: i64,
+    pub(crate) interval_duration_nanos: i64,
+    pub(crate) interval_duration_in_hours: f64,
+    pub(crate) interval_news_intensity: f64,
+    pub(crate) run_config: &'a SeededTickSimulationRunConfig,
+    pub(crate) interval_known_news_event_timestamps_utc_nanos: &'a [i64],
+    pub(crate) market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
+}
+
 pub(crate) fn schedule_exogenous_interval_news_updates<F>(
-    interval_index: usize,
-    interval_start_utc_nanos: i64,
-    interval_duration_nanos: i64,
-    interval_duration_in_hours: f64,
-    interval_news_intensity: f64,
-    run_config: &SeededTickSimulationRunConfig,
-    interval_known_news_event_timestamps_utc_nanos: &[i64],
-    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
+    input: ExogenousIntervalNewsSchedulingInput<'_, '_>,
     randomness_factory: &F,
 ) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
 {
-    let event_inputs = build_interval_news_event_inputs(
+    let ExogenousIntervalNewsSchedulingInput {
         interval_index,
         interval_start_utc_nanos,
         interval_duration_nanos,
@@ -45,6 +50,19 @@ where
         interval_news_intensity,
         run_config,
         interval_known_news_event_timestamps_utc_nanos,
+        market_state_resolver,
+    } = input;
+
+    let event_inputs = build_interval_news_event_inputs(
+        IntervalNewsEventInputBuildInput {
+            interval_index,
+            interval_start_utc_nanos,
+            interval_duration_nanos,
+            interval_duration_in_hours,
+            interval_news_intensity,
+            run_config,
+            interval_known_news_event_timestamps_utc_nanos,
+        },
         randomness_factory,
     )?;
 
@@ -57,7 +75,7 @@ where
     .map_err(
         |source| SeededTickSimulationRunError::SharedNewsDispatchFailure {
             interval_index,
-            source,
+            source: Box::new(source),
         },
     )?;
 
@@ -82,29 +100,46 @@ where
     Ok(exogenous_interval_updates)
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct IntervalNewsEventInputBuildInput<'a> {
+    pub(crate) interval_index: usize,
+    pub(crate) interval_start_utc_nanos: i64,
+    pub(crate) interval_duration_nanos: i64,
+    pub(crate) interval_duration_in_hours: f64,
+    pub(crate) interval_news_intensity: f64,
+    pub(crate) run_config: &'a SeededTickSimulationRunConfig,
+    pub(crate) interval_known_news_event_timestamps_utc_nanos: &'a [i64],
+}
+
 pub(crate) fn build_interval_news_event_inputs<F>(
-    interval_index: usize,
-    interval_start_utc_nanos: i64,
-    interval_duration_nanos: i64,
-    interval_duration_in_hours: f64,
-    interval_news_intensity: f64,
-    run_config: &SeededTickSimulationRunConfig,
-    interval_known_news_event_timestamps_utc_nanos: &[i64],
+    input: IntervalNewsEventInputBuildInput<'_>,
     randomness_factory: &F,
 ) -> Result<Vec<SharedNewsEventTimestampedInput>, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
 {
+    let IntervalNewsEventInputBuildInput {
+        interval_index,
+        interval_start_utc_nanos,
+        interval_duration_nanos,
+        interval_duration_in_hours,
+        interval_news_intensity,
+        run_config,
+        interval_known_news_event_timestamps_utc_nanos,
+    } = input;
+
     let mut news_count_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::ExogenousNewsCount,
         interval_index as u64,
     );
+
     let mut news_timestamp_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp,
         interval_index as u64,
     );
+
     let mut news_mark_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::ExogenousNewsMarks,
@@ -161,7 +196,7 @@ where
             .map_err(|source| {
                 SeededTickSimulationRunError::NewsMarkSamplingFailure {
                     interval_index,
-                    source,
+                    source: Box::new(source),
                 }
             })?,
         );
@@ -192,7 +227,7 @@ where
             .map_err(|source| {
                 SeededTickSimulationRunError::NewsMarkSamplingFailure {
                     interval_index,
-                    source,
+                    source: Box::new(source),
                 }
             })?,
         );

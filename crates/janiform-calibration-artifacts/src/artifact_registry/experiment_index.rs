@@ -419,17 +419,17 @@ fn validate_lookup_request(
             error_message: "limit must be positive".to_string(),
         });
     }
+
     if let (Some(start_nanos), Some(end_nanos)) = (
         request.committed_at_or_after_unix_nanos,
         request.committed_before_unix_nanos,
-    ) {
-        if start_nanos >= end_nanos {
-            return Err(CalibrationExperimentIndexError::InvalidLookupRequest {
-                error_message:
-                    "committed_at_or_after_unix_nanos must be strictly less than committed_before_unix_nanos"
-                        .to_string(),
-            });
-        }
+    ) && start_nanos >= end_nanos
+    {
+        return Err(CalibrationExperimentIndexError::InvalidLookupRequest {
+            error_message:
+                "committed_at_or_after_unix_nanos must be strictly less than committed_before_unix_nanos"
+                    .to_string(),
+        });
     }
 
     Ok(())
@@ -442,118 +442,126 @@ fn record_matches_lookup_request(
     let metadata = &record.index_metadata;
     let model_version = &metadata.model_version;
 
-    if let Some(exchange_code) = &request.exchange_code {
-        if metadata.exchange_code != *exchange_code {
-            return false;
-        }
+    if let Some(exchange_code) = &request.exchange_code
+        && metadata.exchange_code != *exchange_code
+    {
+        return false;
     }
-    if let Some(dataset_snapshot_checksum) = &request.dataset_snapshot_checksum {
-        if metadata.dataset_snapshot_checksum != *dataset_snapshot_checksum {
-            return false;
-        }
+
+    if let Some(dataset_snapshot_checksum) = &request.dataset_snapshot_checksum
+        && metadata.dataset_snapshot_checksum != *dataset_snapshot_checksum
+    {
+        return false;
     }
-    if let Some(trade_events_data_reference) = &request.trade_events_data_reference {
-        if metadata.trade_events_data_reference != *trade_events_data_reference {
-            return false;
-        }
+
+    if let Some(trade_events_data_reference) = &request.trade_events_data_reference
+        && metadata.trade_events_data_reference != *trade_events_data_reference
+    {
+        return false;
     }
-    if let Some(trade_events_reference_checksum) = &request.trade_events_reference_checksum {
-        if metadata.trade_events_reference_checksum != *trade_events_reference_checksum {
-            return false;
-        }
+
+    if let Some(trade_events_reference_checksum) = &request.trade_events_reference_checksum
+        && metadata.trade_events_reference_checksum != *trade_events_reference_checksum
+    {
+        return false;
     }
-    if let Some(option_surface_data_reference) = &request.option_surface_data_reference {
-        if metadata.option_surface_data_reference.as_ref() != Some(option_surface_data_reference) {
-            return false;
-        }
+
+    if let Some(option_surface_data_reference) = &request.option_surface_data_reference
+        && metadata.option_surface_data_reference.as_ref() != Some(option_surface_data_reference)
+    {
+        return false;
     }
-    if let Some(option_surface_reference_checksum) = &request.option_surface_reference_checksum {
-        if metadata.option_surface_reference_checksum.as_ref()
+
+    if let Some(option_surface_reference_checksum) = &request.option_surface_reference_checksum
+        && metadata.option_surface_reference_checksum.as_ref()
             != Some(option_surface_reference_checksum)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(run_contract_schema_version) = &request.run_contract_schema_version {
-        if model_version.run_contract_schema_version != *run_contract_schema_version {
-            return false;
-        }
+
+    if let Some(run_contract_schema_version) = &request.run_contract_schema_version
+        && model_version.run_contract_schema_version != *run_contract_schema_version
+    {
+        return false;
     }
-    if let Some(run_spec_schema_version) = &request.run_spec_schema_version {
-        if model_version.run_spec_schema_version != *run_spec_schema_version {
-            return false;
-        }
+
+    if let Some(run_spec_schema_version) = &request.run_spec_schema_version
+        && model_version.run_spec_schema_version != *run_spec_schema_version
+    {
+        return false;
     }
-    if let Some(stage_schema_version) = &request.seasonality_stage_output_schema_version {
-        if model_version
+
+    if let Some(stage_schema_version) = &request.seasonality_stage_output_schema_version
+        && model_version
             .seasonality_stage_output_schema_version
             .as_ref()
             != Some(stage_schema_version)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(stage_schema_version) = &request.hawkes_stage_output_schema_version {
-        if model_version.hawkes_stage_output_schema_version.as_ref() != Some(stage_schema_version) {
-            return false;
-        }
+
+    if let Some(stage_schema_version) = &request.hawkes_stage_output_schema_version
+        && model_version.hawkes_stage_output_schema_version.as_ref() != Some(stage_schema_version)
+    {
+        return false;
     }
-    if let Some(stage_schema_version) = &request.return_components_stage_output_schema_version {
-        if model_version
+
+    if let Some(stage_schema_version) = &request.return_components_stage_output_schema_version
+        && model_version
             .return_components_stage_output_schema_version
             .as_ref()
             != Some(stage_schema_version)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(stage_schema_version) = &request.mean_reversion_stage_output_schema_version {
-        if model_version
+
+    if let Some(stage_schema_version) = &request.mean_reversion_stage_output_schema_version
+        && model_version
             .mean_reversion_stage_output_schema_version
             .as_ref()
             != Some(stage_schema_version)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(stage_schema_version) = &request.joint_refinement_stage_output_schema_version {
-        if model_version
+
+    if let Some(stage_schema_version) = &request.joint_refinement_stage_output_schema_version
+        && model_version
             .joint_refinement_stage_output_schema_version
             .as_ref()
             != Some(stage_schema_version)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(seasonality_estimator_version) = &request.seasonality_estimator_version {
-        if model_version.seasonality_estimator_version.as_ref()
+
+    if let Some(seasonality_estimator_version) = &request.seasonality_estimator_version
+        && model_version.seasonality_estimator_version.as_ref()
             != Some(seasonality_estimator_version)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(diagnostics_overall_status) = request.diagnostics_overall_status {
-        if validation_summary_by_role(
+
+    if let Some(diagnostics_overall_status) = request.diagnostics_overall_status
+        && validation_summary_by_role(
             metadata,
             CalibrationArtifactManifestValidationMetricRole::Diagnostics,
         )
         .map(|summary| summary.overall_status)
             != Some(diagnostics_overall_status)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(comparison_overall_status) = request.comparison_overall_status {
-        if validation_summary_by_role(
+
+    if let Some(comparison_overall_status) = request.comparison_overall_status
+        && validation_summary_by_role(
             metadata,
             CalibrationArtifactManifestValidationMetricRole::Comparison,
         )
         .map(|summary| summary.overall_status)
             != Some(comparison_overall_status)
-        {
-            return false;
-        }
+    {
+        return false;
     }
+
     if let Some(failing_metric_id) = &request.failing_metric_id {
         let has_failing_metric = metadata.validation_metric_summaries.iter().any(|summary| {
             summary
@@ -565,15 +573,17 @@ fn record_matches_lookup_request(
             return false;
         }
     }
-    if let Some(start_nanos) = request.committed_at_or_after_unix_nanos {
-        if metadata.committed_at_unix_nanos < start_nanos {
-            return false;
-        }
+
+    if let Some(start_nanos) = request.committed_at_or_after_unix_nanos
+        && metadata.committed_at_unix_nanos < start_nanos
+    {
+        return false;
     }
-    if let Some(end_nanos) = request.committed_before_unix_nanos {
-        if metadata.committed_at_unix_nanos >= end_nanos {
-            return false;
-        }
+
+    if let Some(end_nanos) = request.committed_before_unix_nanos
+        && metadata.committed_at_unix_nanos >= end_nanos
+    {
+        return false;
     }
 
     true

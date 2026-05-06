@@ -290,15 +290,15 @@ fn infer_session_template_without_tick_records(
         return Ok(None);
     };
 
-    if let Some(timezone_name) = configured_session_timezone {
-        if timezone_name != template.timezone_name {
-            return Err(MarketDataLoadingError::InvalidValue {
-                field_path: "session_configuration.session_timezone".to_string(),
-                message: format!(
-                    "conflicts with the bundled session preset for {exchange_code}. Provide an explicit session_definition_source to override the default."
-                ),
-            });
-        }
+    if let Some(timezone_name) = configured_session_timezone
+        && timezone_name != template.timezone_name
+    {
+        return Err(MarketDataLoadingError::InvalidValue {
+            field_path: "session_configuration.session_timezone".to_string(),
+            message: format!(
+                "conflicts with the bundled session preset for {exchange_code}. Provide an explicit session_definition_source to override the default."
+            ),
+        });
     }
 
     Ok(Some(template))

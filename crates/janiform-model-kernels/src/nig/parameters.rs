@@ -79,7 +79,7 @@ impl NigParameters {
     /// \psi_{\mathrm{NIG}}(u)
     /// = i\mu u
     /// + \delta\left(
-    /// \sqrt{\alpha^2-\beta^2}
+    ///   \sqrt{\alpha^2-\beta^2}
     /// -
     /// \sqrt{\alpha^2-(\beta+i u)^2}
     /// \right).
@@ -117,6 +117,7 @@ impl NigParameters {
             &mut events,
             "alpha must be finite for characteristic exponent evaluation",
         );
+
         collect_non_finite_guardrail_event(
             &mut status,
             "beta",
@@ -124,6 +125,7 @@ impl NigParameters {
             &mut events,
             "beta must be finite for characteristic exponent evaluation",
         );
+
         collect_non_finite_guardrail_event(
             &mut status,
             "delta",
@@ -131,6 +133,7 @@ impl NigParameters {
             &mut events,
             "delta must be finite for characteristic exponent evaluation",
         );
+
         collect_non_finite_guardrail_event(
             &mut status,
             "mu",
@@ -138,6 +141,7 @@ impl NigParameters {
             &mut events,
             "mu must be finite for characteristic exponent evaluation",
         );
+
         collect_non_finite_guardrail_event(
             &mut status,
             "argument_real",
@@ -145,6 +149,7 @@ impl NigParameters {
             &mut events,
             "argument.real must be finite for characteristic exponent evaluation",
         );
+
         collect_non_finite_guardrail_event(
             &mut status,
             "argument_imaginary",
@@ -176,12 +181,14 @@ impl NigParameters {
             push_guardrail_event(
                 &mut status,
                 &mut events,
-                NigCharacteristicExponentGuardrailCode::AlphaBetaDomainViolation,
-                NigNumericalGuardrailSeverity::Error,
-                "alpha_minus_abs_beta",
-                Some(alpha_beta_margin),
-                Some(0.0),
-                "alpha must be strictly greater than abs(beta)",
+                NigCharacteristicExponentGuardrailEvent {
+                    code: NigCharacteristicExponentGuardrailCode::AlphaBetaDomainViolation,
+                    severity: NigNumericalGuardrailSeverity::Error,
+                    metric: "alpha_minus_abs_beta",
+                    observed_value: Some(alpha_beta_margin),
+                    threshold_value: Some(0.0),
+                    detail: "alpha must be strictly greater than abs(beta)",
+                },
             );
 
             return NigCharacteristicExponentEvaluationReport {
@@ -206,12 +213,14 @@ impl NigParameters {
             push_guardrail_event(
                 &mut status,
                 &mut events,
-                NigCharacteristicExponentGuardrailCode::AlphaBetaBoundaryProximity,
-                NigNumericalGuardrailSeverity::Warning,
-                "alpha_minus_abs_beta",
-                Some(alpha_beta_margin),
-                Some(alpha_beta_margin_warning_threshold),
-                "alpha is near the abs(beta) boundary and may amplify floating-point sensitivity",
+                NigCharacteristicExponentGuardrailEvent {
+                    code: NigCharacteristicExponentGuardrailCode::AlphaBetaBoundaryProximity,
+                    severity: NigNumericalGuardrailSeverity::Warning,
+                    metric: "alpha_minus_abs_beta",
+                    observed_value: Some(alpha_beta_margin),
+                    threshold_value: Some(alpha_beta_margin_warning_threshold),
+                    detail: "alpha is near the abs(beta) boundary and may amplify floating-point sensitivity",
+                },
             );
         }
 
@@ -249,12 +258,14 @@ impl NigParameters {
             push_guardrail_event(
                 &mut status,
                 &mut events,
-                NigCharacteristicExponentGuardrailCode::TransformRadicandProximity,
-                NigNumericalGuardrailSeverity::Warning,
-                "radicand_norm",
-                Some(radicand_norm),
-                Some(radicand_warning_threshold),
-                "transform radicand is near zero and branch sensitivity may increase",
+                NigCharacteristicExponentGuardrailEvent {
+                    code: NigCharacteristicExponentGuardrailCode::TransformRadicandProximity,
+                    severity: NigNumericalGuardrailSeverity::Warning,
+                    metric: "radicand_norm",
+                    observed_value: Some(radicand_norm),
+                    threshold_value: Some(radicand_warning_threshold),
+                    detail: "transform radicand is near zero and branch sensitivity may increase",
+                },
             );
         }
 
@@ -265,12 +276,14 @@ impl NigParameters {
             push_guardrail_event(
                 &mut status,
                 &mut events,
-                NigCharacteristicExponentGuardrailCode::NonFiniteEvaluationOutput,
-                NigNumericalGuardrailSeverity::Error,
-                "gamma",
-                Some(gamma),
-                None,
-                "gamma term became non-finite during characteristic exponent evaluation",
+                NigCharacteristicExponentGuardrailEvent {
+                    code: NigCharacteristicExponentGuardrailCode::NonFiniteEvaluationOutput,
+                    severity: NigNumericalGuardrailSeverity::Error,
+                    metric: "gamma",
+                    observed_value: Some(gamma),
+                    threshold_value: None,
+                    detail: "gamma term became non-finite during characteristic exponent evaluation",
+                },
             );
 
             return NigCharacteristicExponentEvaluationReport {
@@ -302,16 +315,18 @@ impl NigParameters {
             push_guardrail_event(
                 &mut status,
                 &mut events,
-                NigCharacteristicExponentGuardrailCode::CancellationSensitiveDifference,
-                NigNumericalGuardrailSeverity::Warning,
-                "cancellation_ratio",
-                Some(cancellation_ratio),
-                Some(NIG_CANCELLATION_WARNING_THRESHOLD),
-                "gamma minus square-root term is cancellation-sensitive and uses stable rationalization",
+                NigCharacteristicExponentGuardrailEvent {
+                    code: NigCharacteristicExponentGuardrailCode::CancellationSensitiveDifference,
+                    severity: NigNumericalGuardrailSeverity::Warning,
+                    metric: "cancellation_ratio",
+                    observed_value: Some(cancellation_ratio),
+                    threshold_value: Some(NIG_CANCELLATION_WARNING_THRESHOLD),
+                    detail: "gamma minus square-root term is cancellation-sensitive and uses stable rationalization",
+                },
             );
 
             let numerator = ComplexScalar::new(gamma * gamma, 0.0).subtract(radicand);
-            let denominator = ComplexScalar::new(gamma, 0.0).add(square_root_term);
+            let denominator = ComplexScalar::new(gamma, 0.0).plus(square_root_term);
 
             if let Some(rationalized_difference) = numerator.divide(denominator) {
                 gamma_minus_square_root = rationalized_difference;
@@ -320,12 +335,17 @@ impl NigParameters {
                 push_guardrail_event(
                     &mut status,
                     &mut events,
-                    NigCharacteristicExponentGuardrailCode::RationalizedDifferenceFallback,
-                    NigNumericalGuardrailSeverity::Warning,
-                    "rationalized_denominator_norm",
-                    Some(denominator.norm()),
-                    Some(super::constants::NIG_COMPLEX_DIVISION_MIN_DENOMINATOR_NORM),
-                    "rationalized difference was unstable and evaluation used direct subtraction",
+                    NigCharacteristicExponentGuardrailEvent {
+                        code:
+                            NigCharacteristicExponentGuardrailCode::RationalizedDifferenceFallback,
+                        severity: NigNumericalGuardrailSeverity::Warning,
+                        metric: "rationalized_denominator_norm",
+                        observed_value: Some(denominator.norm()),
+                        threshold_value: Some(
+                            super::constants::NIG_COMPLEX_DIVISION_MIN_DENOMINATOR_NORM,
+                        ),
+                        detail: "rationalized difference was unstable and evaluation used direct subtraction",
+                    },
                 );
             }
         }
@@ -334,18 +354,20 @@ impl NigParameters {
             ComplexScalar::new(-self.mu * argument.imaginary, self.mu * argument.real);
         let shape_term = gamma_minus_square_root.scale(self.delta);
 
-        let value = location_term.add(shape_term);
+        let value = location_term.plus(shape_term);
 
         if !value.is_finite() {
             push_guardrail_event(
                 &mut status,
                 &mut events,
-                NigCharacteristicExponentGuardrailCode::NonFiniteEvaluationOutput,
-                NigNumericalGuardrailSeverity::Error,
-                "characteristic_exponent_norm",
-                Some(value.norm()),
-                None,
-                "characteristic exponent result became non-finite",
+                NigCharacteristicExponentGuardrailEvent {
+                    code: NigCharacteristicExponentGuardrailCode::NonFiniteEvaluationOutput,
+                    severity: NigNumericalGuardrailSeverity::Error,
+                    metric: "characteristic_exponent_norm",
+                    observed_value: Some(value.norm()),
+                    threshold_value: None,
+                    detail: "characteristic exponent result became non-finite",
+                },
             );
         }
 

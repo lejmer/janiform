@@ -48,15 +48,15 @@ pub(crate) fn preprocess_timestamp_events(
 
     let input_record_count = input_records.len();
     let validated_record_count = input_record_count;
+
     let mut accepted_rows: Vec<AcceptedPreprocessedTimestampEventRow> = Vec::new();
 
     for input_record in input_records {
-        let timestamp_utc_nanos = input_record
-            .timestamp_utc
-            .timestamp_nanos_opt()
-            .ok_or_else(|| TimestampEventPreprocessingError::TimestampOutOfRange {
+        let timestamp_utc_nanos = input_record.timestamp_utc.timestamp_nanos_opt().ok_or(
+            TimestampEventPreprocessingError::TimestampOutOfRange {
                 source_record_position: input_record.source_record_position,
-            })?;
+            },
+        )?;
         let timestamp_local = input_record.timestamp_utc.with_timezone(&timezone);
         let market_state =
             resolve_market_state_for_definition_at_local(definition, timestamp_local);

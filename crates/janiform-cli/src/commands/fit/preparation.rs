@@ -151,8 +151,12 @@ pub(crate) fn prepare_fit_preview(
         }),
     };
 
-    let plan = prepare_market_data_calibration_plan(request.clone(), cpu_count)
-        .map_err(|source| CliError::FitPreparationFailed { source })?;
+    let plan =
+        prepare_market_data_calibration_plan(request.clone(), cpu_count).map_err(|source| {
+            CliError::FitPreparationFailed {
+                source: Box::new(source),
+            }
+        })?;
 
     let mut explicit_values = Vec::new();
 
@@ -237,17 +241,17 @@ pub(crate) fn prepare_fit_preview(
             "none".to_string()
         },
     )];
-    if let Some(market_profile) = &preview_inputs.market_profile {
-        if let Some(known_news_preset_name) = &market_profile.known_news_preset_name {
-            recommended_defaults.push((
-                "known-news preset".to_string(),
-                market_profile
-                    .known_news_policy
-                    .as_ref()
-                    .map(|policy| format!("{known_news_preset_name} ({policy})"))
-                    .unwrap_or_else(|| known_news_preset_name.clone()),
-            ));
-        }
+    if let Some(market_profile) = &preview_inputs.market_profile
+        && let Some(known_news_preset_name) = &market_profile.known_news_preset_name
+    {
+        recommended_defaults.push((
+            "known-news preset".to_string(),
+            market_profile
+                .known_news_policy
+                .as_ref()
+                .map(|policy| format!("{known_news_preset_name} ({policy})"))
+                .unwrap_or_else(|| known_news_preset_name.clone()),
+        ));
     }
 
     let derived_values = vec![

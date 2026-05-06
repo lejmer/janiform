@@ -23,7 +23,7 @@ use super::contracts::{
     MarketDataTickPriceInputPolicy,
 };
 use super::known_news::load_known_news_records;
-use super::normalization::{normalize_tick_row, normalize_tick_values};
+use super::normalization::{NormalizeTickValuesInput, normalize_tick_row, normalize_tick_values};
 use super::option_surface::{
     load_option_surface_records, materialize_option_surface_records_for_payload,
 };
@@ -343,15 +343,16 @@ fn load_parquet_tick_rows(
             message: "parquet source row-count metadata is unavailable".to_string(),
         })?;
 
-    let mut reader = open_projected_parquet_record_batch_reader(
+    let reader = open_projected_parquet_record_batch_reader(
         file_reference,
         "tick_data_source",
         projected_columns.as_slice(),
     )?;
+
     let mut normalized_rows = Vec::with_capacity(source_row_count);
     let mut source_row_number: usize = 0;
 
-    while let Some(batch_result) = reader.next() {
+    for batch_result in reader {
         let batch = batch_result.map_err(|error| MarketDataLoadingError::Parquet {
             field_path: "tick_data_source.path".to_string(),
             message: error.to_string(),
@@ -398,17 +399,17 @@ fn load_parquet_tick_rows(
                 &file_reference.path,
             )?;
 
-            normalized_rows.push(normalize_tick_values(
-                Some(&timestamp_raw_value),
-                explicit_price_raw_value.as_ref(),
-                bid_price_raw_value.as_ref(),
-                ask_price_raw_value.as_ref(),
-                trade_sign_raw_value.as_ref(),
+            normalized_rows.push(normalize_tick_values(NormalizeTickValuesInput {
+                timestamp_raw_value: Some(&timestamp_raw_value),
+                explicit_price_raw_value: explicit_price_raw_value.as_ref(),
+                bid_price_raw_value: bid_price_raw_value.as_ref(),
+                ask_price_raw_value: ask_price_raw_value.as_ref(),
+                trade_sign_raw_value: trade_sign_raw_value.as_ref(),
                 source_row_number,
                 column_mapping,
                 normalization_policy,
-                &file_reference.path,
-            )?);
+                source_path: &file_reference.path,
+            })?);
         }
     }
 
@@ -638,9 +639,7 @@ fn deduplicate_tick_rows(
     }
 }
 
-fn tick_record_dedup_key(
-    row: &LoadedTickRecord,
-) -> (
+type TickRecordDedupKey = (
     i64,
     Option<u64>,
     Option<u64>,
@@ -648,7 +647,9 @@ fn tick_record_dedup_key(
     Option<u64>,
     Option<u64>,
     Option<u64>,
-) {
+);
+
+fn tick_record_dedup_key(row: &LoadedTickRecord) -> TickRecordDedupKey {
     (
         row.timestamp_utc_nanos,
         normalized_float_key(row.price),

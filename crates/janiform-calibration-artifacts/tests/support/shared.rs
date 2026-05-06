@@ -664,7 +664,7 @@ pub(crate) fn build_seasonality_stage_parameter_artifact_fixture(
 
     build_calibration_stage_parameter_artifact(
         run_contract,
-        CalibrationStageParameterArtifactInput::Seasonality(
+        CalibrationStageParameterArtifactInput::Seasonality(Box::new(
             SeasonalityStageParameterArtifactInput {
                 metadata: CalibrationStageParameterBuildMetadata {
                     stage_output_schema_version:
@@ -712,7 +712,7 @@ pub(crate) fn build_seasonality_stage_parameter_artifact_fixture(
                     mean_anchor_tolerance: 1e-9,
                 },
             },
-        ),
+        )),
     )
     .expect("seasonality stage parameter artifact should build")
 }
@@ -785,7 +785,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
 
     build_calibration_stage_parameter_artifact(
         run_contract,
-        CalibrationStageParameterArtifactInput::ReturnComponents(
+        CalibrationStageParameterArtifactInput::ReturnComponents(Box::new(
             ReturnComponentsStageParameterArtifactInput {
                 metadata: CalibrationStageParameterBuildMetadata {
                     stage_output_schema_version:
@@ -825,7 +825,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 ),
                 activity_artifact_reference: None,
             },
-        ),
+        )),
     )
     .expect("return-components stage parameter artifact should build")
 }

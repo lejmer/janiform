@@ -28,22 +28,24 @@ use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnCom
 use super::debug_trace::{
     SeededTickEventDebugTraceCaptureInput, SeededTickEventDebugTraceCollector,
 };
-use super::endogenous::schedule_endogenous_interval_events_with_event_time_feedback;
+use super::endogenous::{
+    EndogenousIntervalSchedulingInput, schedule_endogenous_interval_events_with_event_time_feedback,
+};
 use super::market_state::SeededSimulationMarketStateResolver;
 use super::metadata::{
     build_event_state_snapshot, build_seeded_fine_path_metadata,
     build_seeded_tick_event_tape_metadata,
 };
 use super::news::{
-    accumulate_news_routing_totals, derive_known_news_interval_slice_bounds,
-    schedule_exogenous_interval_news_updates,
+    ExogenousIntervalNewsSchedulingInput, accumulate_news_routing_totals,
+    derive_known_news_interval_slice_bounds, schedule_exogenous_interval_news_updates,
 };
 use super::observed_state::SeededObservedState;
 use super::results::estimate_seeded_result_capacities;
 use super::time::derive_elapsed_hours;
 use super::trading_time::{
-    build_interval_open_market_segments, integrate_open_market_elapsed_hours,
-    sample_transition_trading_time_return,
+    TransitionTradingTimeReturnInput, build_interval_open_market_segments,
+    integrate_open_market_elapsed_hours, sample_transition_trading_time_return,
 };
 use super::updates::{
     IntervalStochasticUpdate, is_public_seeded_fine_path_record, map_side_to_transition_kind,
@@ -66,14 +68,15 @@ where
     let state_snapshot_capture = run_config.options.state_snapshot_capture;
     let lambda_bar = run_config.model_inputs.kernel_parameters.lambda_bar;
 
-    let driver_parameters =
-        run_config
-            .model_inputs
-            .nig_shared_plus_shift_configuration
-            .derive_driver_parameters()
-            .map_err(|source| {
-                SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration { source }
-            })?;
+    let driver_parameters = run_config
+        .model_inputs
+        .nig_shared_plus_shift_configuration
+        .derive_driver_parameters()
+        .map_err(
+            |source| SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration {
+                source: Box::new(source),
+            },
+        )?;
 
     let fine_path_metadata = build_seeded_fine_path_metadata(state_snapshot_capture);
     let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
@@ -143,12 +146,16 @@ where
 
     let mut runtime_state = initialize_runtime_state(&run_config, lambda_bar)?;
 
-    for interval_index in 0..run_config.horizon_interval_count {
+    for (interval_index, interval_open_market_segment) in interval_open_market_segments
+        .iter()
+        .enumerate()
+        .take(run_config.horizon_interval_count)
+    {
         let interval_inputs = build_interval_simulation_inputs(
             &run_config,
             interval_index,
             known_news_timestamps,
-            interval_open_market_segments[interval_index].as_slice(),
+            interval_open_market_segment.as_slice(),
             &mut runtime_state.next_known_scheduled_news_timestamp_position,
         )?;
 
@@ -333,30 +340,31 @@ where
     )?;
 
     let mut previous_timestamp_utc_nanos = interval_inputs.interval_start_utc_nanos;
+
     for interval_update in interval_updates {
-        previous_timestamp_utc_nanos = process_interval_update(
+        previous_timestamp_utc_nanos = process_interval_update(IntervalUpdateProcessingInput {
             run_config,
             randomness_factory,
             consumer,
             market_state_resolver,
             fine_path_state,
             runtime_state,
-            &interval_inputs,
+            interval_inputs: &interval_inputs,
             previous_timestamp_utc_nanos,
             interval_update,
-        )?;
+        })?;
     }
 
-    emit_interval_boundary_transition(
+    emit_interval_boundary_transition(IntervalBoundaryTransitionInput {
         run_config,
         randomness_factory,
         consumer,
         market_state_resolver,
         fine_path_state,
         runtime_state,
-        &interval_inputs,
+        interval_inputs: &interval_inputs,
         previous_timestamp_utc_nanos,
-    )
+    })
 }
 
 fn schedule_interval_stochastic_updates<F>(
@@ -376,16 +384,19 @@ where
         SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
         interval_index as u64,
     );
+
     let mut endogenous_auxiliary_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
         interval_index as u64,
     );
+
     let mut endogenous_wait_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp,
         interval_index as u64,
     );
+
     let mut endogenous_acceptance_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp,
@@ -393,27 +404,32 @@ where
     );
 
     let exogenous_interval_updates = schedule_exogenous_interval_news_updates(
-        interval_index,
-        interval_inputs.interval_start_utc_nanos,
-        interval_inputs.interval_duration_nanos,
-        interval_inputs.interval_duration_in_hours,
-        interval_inputs.interval_news_intensity,
-        run_config,
-        interval_inputs.interval_known_news_event_timestamps_utc_nanos,
-        market_state_resolver,
+        ExogenousIntervalNewsSchedulingInput {
+            interval_index,
+            interval_start_utc_nanos: interval_inputs.interval_start_utc_nanos,
+            interval_duration_nanos: interval_inputs.interval_duration_nanos,
+            interval_duration_in_hours: interval_inputs.interval_duration_in_hours,
+            interval_news_intensity: interval_inputs.interval_news_intensity,
+            run_config,
+            interval_known_news_event_timestamps_utc_nanos: interval_inputs
+                .interval_known_news_event_timestamps_utc_nanos,
+            market_state_resolver,
+        },
         randomness_factory,
     )?;
 
     endogenous_auxiliary_stream.next_unit_interval_f64();
 
     let endogenous_interval_updates = schedule_endogenous_interval_events_with_event_time_feedback(
-        interval_start_state,
-        kernel_parameters,
-        interval_inputs.interval_seasonality_factor,
-        interval_inputs.interval_start_utc_nanos,
-        interval_inputs.interval_end_utc_nanos,
-        &exogenous_interval_updates,
-        market_state_resolver,
+        EndogenousIntervalSchedulingInput {
+            interval_start_state,
+            kernel_parameters,
+            interval_seasonality_factor: interval_inputs.interval_seasonality_factor,
+            interval_start_utc_nanos: interval_inputs.interval_start_utc_nanos,
+            interval_end_utc_nanos: interval_inputs.interval_end_utc_nanos,
+            exogenous_interval_updates: &exogenous_interval_updates,
+            market_state_resolver,
+        },
         &mut endogenous_wait_stream,
         &mut endogenous_acceptance_stream,
         &mut endogenous_side_stream,
@@ -422,21 +438,37 @@ where
     merge_ordered_interval_updates(endogenous_interval_updates, exogenous_interval_updates)
 }
 
-fn process_interval_update<F, C>(
-    run_config: &SeededTickSimulationRunConfig,
-    randomness_factory: &F,
-    consumer: &mut C,
-    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
-    fine_path_state: &SeededTickSimulationStaticState,
-    runtime_state: &mut SeededTickSimulationRuntimeState,
-    interval_inputs: &IntervalSimulationInputs<'_>,
+struct IntervalUpdateProcessingInput<'a, 'registry, 'interval, F, C> {
+    run_config: &'a SeededTickSimulationRunConfig,
+    randomness_factory: &'a F,
+    consumer: &'a mut C,
+    market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
+    fine_path_state: &'a SeededTickSimulationStaticState,
+    runtime_state: &'a mut SeededTickSimulationRuntimeState,
+    interval_inputs: &'a IntervalSimulationInputs<'interval>,
     previous_timestamp_utc_nanos: i64,
     interval_update: IntervalStochasticUpdate,
+}
+
+fn process_interval_update<F, C>(
+    input: IntervalUpdateProcessingInput<'_, '_, '_, F, C>,
 ) -> Result<i64, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
     C: SeededTickSimulationTransitionConsumer,
 {
+    let IntervalUpdateProcessingInput {
+        run_config,
+        randomness_factory,
+        consumer,
+        market_state_resolver,
+        fine_path_state,
+        runtime_state,
+        interval_inputs,
+        previous_timestamp_utc_nanos,
+        interval_update,
+    } = input;
+
     let elapsed_hours_since_previous_update = derive_elapsed_hours(
         previous_timestamp_utc_nanos,
         interval_update.timestamp_utc_nanos(),
@@ -447,22 +479,23 @@ where
     let (open_jump_return, closed_gap_return) =
         realize_pending_jump_returns(runtime_state, current_market_state);
 
-    let trading_time_return = sample_transition_trading_time_return(
-        fine_path_state.driver_parameters,
-        runtime_state.next_state,
-        fine_path_state.lambda_bar,
-        run_config.model_inputs.kernel_parameters.beta,
-        interval_inputs.interval_seasonality_factor,
-        interval_inputs.interval_open_market_segments,
-        previous_timestamp_utc_nanos,
-        interval_update.timestamp_utc_nanos(),
-        interval_inputs.interval_index,
-        randomness_factory.create_substream(
-            run_config.seed,
-            SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
-            runtime_state.next_transition_index,
-        ),
-    )?;
+    let trading_time_return =
+        sample_transition_trading_time_return(TransitionTradingTimeReturnInput {
+            driver_parameters: fine_path_state.driver_parameters,
+            state: runtime_state.next_state,
+            lambda_bar: fine_path_state.lambda_bar,
+            beta: run_config.model_inputs.kernel_parameters.beta,
+            seasonality_factor: interval_inputs.interval_seasonality_factor,
+            interval_open_market_segments: interval_inputs.interval_open_market_segments,
+            previous_timestamp_utc_nanos,
+            timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+            interval_index: interval_inputs.interval_index,
+            randomness_stream: randomness_factory.create_substream(
+                run_config.seed,
+                SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
+                runtime_state.next_transition_index,
+            ),
+        })?;
 
     let total_return =
         trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
@@ -478,7 +511,7 @@ where
     .map_err(
         |source| SeededTickSimulationRunError::InvalidReturnComponents {
             interval_index: interval_inputs.interval_index,
-            source,
+            source: Box::new(source),
         },
     )?;
 
@@ -578,20 +611,35 @@ where
     Ok(interval_update.timestamp_utc_nanos())
 }
 
-fn emit_interval_boundary_transition<F, C>(
-    run_config: &SeededTickSimulationRunConfig,
-    randomness_factory: &F,
-    consumer: &mut C,
-    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
-    fine_path_state: &SeededTickSimulationStaticState,
-    runtime_state: &mut SeededTickSimulationRuntimeState,
-    interval_inputs: &IntervalSimulationInputs<'_>,
+struct IntervalBoundaryTransitionInput<'a, 'registry, 'interval, F, C> {
+    run_config: &'a SeededTickSimulationRunConfig,
+    randomness_factory: &'a F,
+    consumer: &'a mut C,
+    market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
+    fine_path_state: &'a SeededTickSimulationStaticState,
+    runtime_state: &'a mut SeededTickSimulationRuntimeState,
+    interval_inputs: &'a IntervalSimulationInputs<'interval>,
     previous_timestamp_utc_nanos: i64,
+}
+
+fn emit_interval_boundary_transition<F, C>(
+    input: IntervalBoundaryTransitionInput<'_, '_, '_, F, C>,
 ) -> Result<(), SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
     C: SeededTickSimulationTransitionConsumer,
 {
+    let IntervalBoundaryTransitionInput {
+        run_config,
+        randomness_factory,
+        consumer,
+        market_state_resolver,
+        fine_path_state,
+        runtime_state,
+        interval_inputs,
+        previous_timestamp_utc_nanos,
+    } = input;
+
     let elapsed_hours_to_interval_end = derive_elapsed_hours(
         previous_timestamp_utc_nanos,
         interval_inputs.interval_end_utc_nanos,
@@ -604,22 +652,23 @@ where
     let (open_jump_return, closed_gap_return) =
         realize_pending_jump_returns(runtime_state, boundary_market_state);
 
-    let trading_time_return = sample_transition_trading_time_return(
-        fine_path_state.driver_parameters,
-        previous_state,
-        fine_path_state.lambda_bar,
-        run_config.model_inputs.kernel_parameters.beta,
-        interval_inputs.interval_seasonality_factor,
-        interval_inputs.interval_open_market_segments,
-        previous_timestamp_utc_nanos,
-        interval_inputs.interval_end_utc_nanos,
-        interval_inputs.interval_index,
-        randomness_factory.create_substream(
-            run_config.seed,
-            SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
-            runtime_state.next_transition_index,
-        ),
-    )?;
+    let trading_time_return =
+        sample_transition_trading_time_return(TransitionTradingTimeReturnInput {
+            driver_parameters: fine_path_state.driver_parameters,
+            state: previous_state,
+            lambda_bar: fine_path_state.lambda_bar,
+            beta: run_config.model_inputs.kernel_parameters.beta,
+            seasonality_factor: interval_inputs.interval_seasonality_factor,
+            interval_open_market_segments: interval_inputs.interval_open_market_segments,
+            previous_timestamp_utc_nanos,
+            timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
+            interval_index: interval_inputs.interval_index,
+            randomness_stream: randomness_factory.create_substream(
+                run_config.seed,
+                SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
+                runtime_state.next_transition_index,
+            ),
+        })?;
 
     let total_return =
         trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
@@ -635,7 +684,7 @@ where
     .map_err(
         |source| SeededTickSimulationRunError::InvalidReturnComponents {
             interval_index: interval_inputs.interval_index,
-            source,
+            source: Box::new(source),
         },
     )?;
 

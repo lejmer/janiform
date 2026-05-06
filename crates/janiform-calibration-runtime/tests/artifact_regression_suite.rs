@@ -673,27 +673,27 @@ fn commit_persisted_artifact_regression_fixture(
     let stage_parameter_artifacts = vec![
         build_calibration_stage_parameter_artifact(
             &run_contract,
-            &CalibrationStagedRunStageReport::Seasonality(seasonality_report),
+            &CalibrationStagedRunStageReport::Seasonality(Box::new(seasonality_report)),
         )
         .expect("seasonality stage artifact should build"),
         build_calibration_stage_parameter_artifact(
             &run_contract,
-            &CalibrationStagedRunStageReport::Hawkes(hawkes_report),
+            &CalibrationStagedRunStageReport::Hawkes(Box::new(hawkes_report)),
         )
         .expect("hawkes stage artifact should build"),
         build_calibration_stage_parameter_artifact(
             &run_contract,
-            &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
+            &CalibrationStagedRunStageReport::ReturnComponents(Box::new(return_components_report)),
         )
         .expect("return-components stage artifact should build"),
         build_calibration_stage_parameter_artifact(
             &run_contract,
-            &CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report),
+            &CalibrationStagedRunStageReport::MeanReversion(Box::new(mean_reversion_report)),
         )
         .expect("mean-reversion stage artifact should build"),
         build_calibration_stage_parameter_artifact(
             &run_contract,
-            &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
+            &CalibrationStagedRunStageReport::JointRefinement(Box::new(joint_refinement_report)),
         )
         .expect("joint-refinement stage artifact should build"),
     ];

@@ -65,13 +65,13 @@ use super::utilities::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum OraclePricerSufficientStatisticsBenchmarkHarnessError {
     InvalidScenarioCatalog {
-        source: BenchmarkScenarioCatalogLoadError,
+        source: Box<BenchmarkScenarioCatalogLoadError>,
     },
     InvalidBenchmarkPolicy {
-        source: OraclePricerSufficientStatisticsBenchmarkPolicyValidationError,
+        source: Box<OraclePricerSufficientStatisticsBenchmarkPolicyValidationError>,
     },
     InvalidExecutionConfig {
-        source: OraclePricerSufficientStatisticsBenchmarkExecutionConfigError,
+        source: Box<OraclePricerSufficientStatisticsBenchmarkExecutionConfigError>,
     },
     InvalidResolvedMeasuredIterationCount {
         profile_id: String,
@@ -83,23 +83,23 @@ pub enum OraclePricerSufficientStatisticsBenchmarkHarnessError {
     },
     InvalidModelKernelParameters {
         profile_id: String,
-        source: HawkesKernelParameterError,
+        source: Box<HawkesKernelParameterError>,
     },
     InvalidModelGammaMarkConfiguration {
         profile_id: String,
-        source: NewsMarkConfigurationError,
+        source: Box<NewsMarkConfigurationError>,
     },
     InvalidOracleSolverSettings {
         profile_id: String,
-        source: ExponentialAffineTransformSolverSettingsError,
+        source: Box<ExponentialAffineTransformSolverSettingsError>,
     },
     InvalidOracleTransformInput {
         profile_id: String,
-        source: ExponentialAffineTransformInputError,
+        source: Box<ExponentialAffineTransformInputError>,
     },
     OracleSolverFailure {
         profile_id: String,
-        source: ExponentialAffineTransformSolverError,
+        source: Box<ExponentialAffineTransformSolverError>,
     },
     OracleSolverIncomplete {
         profile_id: String,
@@ -108,29 +108,29 @@ pub enum OraclePricerSufficientStatisticsBenchmarkHarnessError {
     },
     InvalidPricingEngineSettings {
         profile_id: String,
-        source: FourierInversionEngineSettingsError,
+        source: Box<FourierInversionEngineSettingsError>,
     },
     InvalidPricingMarketInputs {
         profile_id: String,
-        source: VanillaOptionPricingMarketInputsError,
+        source: Box<VanillaOptionPricingMarketInputsError>,
     },
     PricingEngineFailure {
         profile_id: String,
-        source: FourierInversionPricingError,
+        source: Box<FourierInversionPricingError>,
     },
     InvalidRiskSliceContext {
         profile_id: String,
         interval_index: usize,
-        source: SufficientStatisticsTransformSliceContextError,
+        source: Box<SufficientStatisticsTransformSliceContextError>,
     },
     SufficientStatisticsSliceSolveFailure {
         profile_id: String,
         interval_index: usize,
-        source: SufficientStatisticsTransformSliceSolveError,
+        source: Box<SufficientStatisticsTransformSliceSolveError>,
     },
     SufficientStatisticsSliceSamplingFailure {
         profile_id: String,
-        source: SufficientStatisticsTransformSliceSamplingError,
+        source: Box<SufficientStatisticsTransformSliceSamplingError>,
     },
     NonFiniteInvocationChecksum {
         profile_id: String,
@@ -261,20 +261,20 @@ impl Display for OraclePricerSufficientStatisticsBenchmarkHarnessError {
 impl Error for OraclePricerSufficientStatisticsBenchmarkHarnessError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidScenarioCatalog { source } => Some(source),
-            Self::InvalidBenchmarkPolicy { source } => Some(source),
-            Self::InvalidExecutionConfig { source } => Some(source),
-            Self::InvalidModelKernelParameters { source, .. } => Some(source),
-            Self::InvalidModelGammaMarkConfiguration { source, .. } => Some(source),
-            Self::InvalidOracleSolverSettings { source, .. } => Some(source),
-            Self::InvalidOracleTransformInput { source, .. } => Some(source),
-            Self::OracleSolverFailure { source, .. } => Some(source),
-            Self::InvalidPricingEngineSettings { source, .. } => Some(source),
-            Self::InvalidPricingMarketInputs { source, .. } => Some(source),
-            Self::PricingEngineFailure { source, .. } => Some(source),
-            Self::InvalidRiskSliceContext { source, .. } => Some(source),
-            Self::SufficientStatisticsSliceSolveFailure { source, .. } => Some(source),
-            Self::SufficientStatisticsSliceSamplingFailure { source, .. } => Some(source),
+            Self::InvalidScenarioCatalog { source } => Some(source.as_ref()),
+            Self::InvalidBenchmarkPolicy { source } => Some(source.as_ref()),
+            Self::InvalidExecutionConfig { source } => Some(source.as_ref()),
+            Self::InvalidModelKernelParameters { source, .. } => Some(source.as_ref()),
+            Self::InvalidModelGammaMarkConfiguration { source, .. } => Some(source.as_ref()),
+            Self::InvalidOracleSolverSettings { source, .. } => Some(source.as_ref()),
+            Self::InvalidOracleTransformInput { source, .. } => Some(source.as_ref()),
+            Self::OracleSolverFailure { source, .. } => Some(source.as_ref()),
+            Self::InvalidPricingEngineSettings { source, .. } => Some(source.as_ref()),
+            Self::InvalidPricingMarketInputs { source, .. } => Some(source.as_ref()),
+            Self::PricingEngineFailure { source, .. } => Some(source.as_ref()),
+            Self::InvalidRiskSliceContext { source, .. } => Some(source.as_ref()),
+            Self::SufficientStatisticsSliceSolveFailure { source, .. } => Some(source.as_ref()),
+            Self::SufficientStatisticsSliceSamplingFailure { source, .. } => Some(source.as_ref()),
             _ => None,
         }
     }
@@ -295,20 +295,29 @@ pub fn run_oracle_pricer_sufficient_statistics_benchmark_harness(
     OraclePricerSufficientStatisticsBenchmarkHarnessError,
 > {
     benchmark_policy.validate().map_err(|source| {
-        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidBenchmarkPolicy { source }
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidBenchmarkPolicy {
+            source: Box::new(source),
+        }
     })?;
+
     execution_config.validate().map_err(|source| {
-        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidExecutionConfig { source }
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidExecutionConfig {
+            source: Box::new(source),
+        }
     })?;
 
     let mut normalized_catalog = catalog.clone();
+
     normalized_catalog.validate().map_err(|source| {
-        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidScenarioCatalog { source }
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidScenarioCatalog {
+            source: Box::new(source),
+        }
     })?;
     normalized_catalog.sort_profiles_canonically();
 
     let mut profile_reports: Vec<OraclePricerSufficientStatisticsBenchmarkProfileReport> =
         Vec::with_capacity(normalized_catalog.profiles.len());
+
     let mut oracle_solver_total_operation_count: usize = 0;
     let mut pricing_total_operation_count: usize = 0;
     let mut sufficient_statistics_sampling_total_operation_count: usize = 0;
@@ -328,6 +337,7 @@ pub fn run_oracle_pricer_sufficient_statistics_benchmark_harness(
                     component: ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE,
                 }
             })?;
+
         pricing_total_operation_count = pricing_total_operation_count
             .checked_add(profile_report.pricing_metrics.measured_operation_count)
             .ok_or_else(|| {
@@ -336,6 +346,7 @@ pub fn run_oracle_pricer_sufficient_statistics_benchmark_harness(
                     component: ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING,
                 }
             })?;
+
         sufficient_statistics_sampling_total_operation_count =
             sufficient_statistics_sampling_total_operation_count
                 .checked_add(
@@ -394,7 +405,9 @@ fn run_profile_benchmark(
     OraclePricerSufficientStatisticsBenchmarkHarnessError,
 > {
     let resolved_run_length = resolve_profile_run_length(profile, execution_config)?;
+
     let equation_specification = build_equation_specification(profile, benchmark_policy)?;
+
     let oracle_solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
         profile.interval_settings.oracle_solver_step_count,
@@ -402,9 +415,10 @@ fn run_profile_benchmark(
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidOracleSolverSettings {
             profile_id: profile.profile_id.clone(),
-            source,
+            source: Box::new(source),
         }
     })?;
+
     let pricing_engine_settings = build_pricing_engine_settings(profile, benchmark_policy)?;
 
     let profile_seed = splitmix64(
@@ -412,10 +426,12 @@ fn run_profile_benchmark(
             .reproducibility_seed
             .wrapping_add(fnv1a_64(profile.profile_id.as_bytes())),
     );
+
     let oracle_component_seed =
         splitmix64(profile_seed ^ benchmark_policy.seed_partition.oracle_component_seed_salt);
     let pricing_component_seed =
         splitmix64(profile_seed ^ benchmark_policy.seed_partition.pricing_component_seed_salt);
+
     let sufficient_statistics_component_seed = splitmix64(
         profile_seed
             ^ benchmark_policy
@@ -439,12 +455,14 @@ fn run_profile_benchmark(
         |invocation_count_including_warmup| {
             let invocation_seed =
                 derive_invocation_seed(oracle_component_seed, invocation_count_including_warmup);
+
             let transform_input = build_oracle_transform_input(
                 profile,
                 benchmark_policy,
                 equation_specification,
                 invocation_seed,
             )?;
+
             let solve_result = solve_exponential_affine_transform_with_settings(
                 transform_input,
                 oracle_solver_settings,
@@ -452,9 +470,10 @@ fn run_profile_benchmark(
             .map_err(|source| {
                 OraclePricerSufficientStatisticsBenchmarkHarnessError::OracleSolverFailure {
                     profile_id: profile.profile_id.clone(),
-                    source,
+                    source: Box::new(source),
                 }
             })?;
+
             if solve_result.status != ExponentialAffineTransformIntegrationStatus::Completed {
                 return Err(
                     OraclePricerSufficientStatisticsBenchmarkHarnessError::OracleSolverIncomplete {
@@ -467,6 +486,7 @@ fn run_profile_benchmark(
                     },
                 );
             }
+
             let output = solve_result.output.ok_or_else(|| {
                 OraclePricerSufficientStatisticsBenchmarkHarnessError::OracleSolverIncomplete {
                     profile_id: profile.profile_id.clone(),
@@ -477,7 +497,9 @@ fn run_profile_benchmark(
                         .map(|guard_failure| guard_failure.code),
                 }
             })?;
+
             let checksum = output.transform_value.real + output.transform_value.imaginary;
+
             Ok(checksum)
         },
     )?;
@@ -490,6 +512,7 @@ fn run_profile_benchmark(
         |invocation_count_including_warmup| {
             let invocation_seed =
                 derive_invocation_seed(pricing_component_seed, invocation_count_including_warmup);
+
             let market_inputs = build_pricing_market_inputs(
                 profile,
                 benchmark_policy,
@@ -498,15 +521,18 @@ fn run_profile_benchmark(
             .map_err(|source| {
                 OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
                     profile_id: profile.profile_id.clone(),
-                    source,
+                    source: Box::new(source),
                 }
             })?;
+
             let payoff_type = if invocation_count_including_warmup.is_multiple_of(2) {
                 VanillaOptionPayoffType::Call
             } else {
                 VanillaOptionPayoffType::Put
             };
+
             let payoff = VanillaOptionPayoffConfiguration { payoff_type };
+
             let volatility = interpolate_range(
                 benchmark_policy.pricing_input_ranges.volatility_min,
                 benchmark_policy.pricing_input_ranges.volatility_max,
@@ -516,7 +542,7 @@ fn run_profile_benchmark(
             let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
                 OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
                     profile_id: profile.profile_id.clone(),
-                    source,
+                    source: Box::new(source),
                 }
             })?;
 
@@ -524,6 +550,7 @@ fn run_profile_benchmark(
                 - market_inputs.dividend_yield
                 - 0.5 * volatility * volatility)
                 * maturity_interval;
+
             let variance = volatility * volatility * maturity_interval;
 
             let pricing_result = price_vanilla_option_via_fourier_inversion(
@@ -534,13 +561,13 @@ fn run_profile_benchmark(
                     let i_times_argument = ComplexScalar::new(-argument.imaginary, argument.real);
                     let drift_term = i_times_argument.scale(drift);
                     let diffusion_term = argument.square().scale(-0.5 * variance);
-                    complex_exponential(drift_term.add(diffusion_term))
+                    complex_exponential(drift_term.plus(diffusion_term))
                 },
             )
             .map_err(|source| {
                 OraclePricerSufficientStatisticsBenchmarkHarnessError::PricingEngineFailure {
                     profile_id: profile.profile_id.clone(),
-                    source,
+                    source: Box::new(source),
                 }
             })?;
 
@@ -566,7 +593,7 @@ fn run_profile_benchmark(
                     .map_err(|source| {
                         OraclePricerSufficientStatisticsBenchmarkHarnessError::SufficientStatisticsSliceSamplingFailure {
                             profile_id: profile.profile_id.clone(),
-                            source,
+                            source: Box::new(source),
                         }
                     })?;
 
@@ -602,6 +629,7 @@ fn resolve_profile_run_length(
     let warmup_iteration_count = execution_config
         .warmup_iteration_count_override
         .unwrap_or(profile.run_length.warmup_iteration_count);
+
     let measured_iteration_count = execution_config
         .measured_iteration_count_override
         .unwrap_or(profile.run_length.measured_iteration_count);
@@ -643,6 +671,7 @@ where
                 component,
             }
         })?;
+
     let measured_operation_count = run_length
         .measured_iteration_count
         .checked_mul(operations_per_iteration)
@@ -655,6 +684,7 @@ where
 
     let mut invocation_count_including_warmup: usize = 0;
     let mut invocation_checksum = 0.0_f64;
+
     for _ in 0..warmup_operation_count {
         invocation_count_including_warmup = invocation_count_including_warmup.saturating_add(1);
         let invocation_result = run_invocation(invocation_count_including_warmup)?;
@@ -671,6 +701,7 @@ where
     }
 
     let started_at = Instant::now();
+
     for _ in 0..measured_operation_count {
         invocation_count_including_warmup = invocation_count_including_warmup.saturating_add(1);
         let invocation_result = run_invocation(invocation_count_including_warmup)?;
@@ -685,8 +716,10 @@ where
         }
         invocation_checksum += invocation_result;
     }
+
     let measured_elapsed_seconds = started_at.elapsed().as_secs_f64();
     let mean_latency_seconds = measured_elapsed_seconds / measured_operation_count as f64;
+
     let throughput_operations_per_second =
         measured_operation_count as f64 / measured_elapsed_seconds.max(f64::EPSILON);
 
@@ -700,6 +733,7 @@ where
             },
         );
     }
+
     if !mean_latency_seconds.is_finite() {
         return Err(
             OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidMetricComputation {
@@ -710,6 +744,7 @@ where
             },
         );
     }
+
     if !throughput_operations_per_second.is_finite() {
         return Err(
             OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidMetricComputation {
@@ -720,6 +755,7 @@ where
             },
         );
     }
+
     if !invocation_checksum.is_finite() {
         return Err(
             OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidMetricComputation {

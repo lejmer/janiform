@@ -15,18 +15,23 @@ use super::time::derive_elapsed_hours;
 use super::updates::{IntervalStochasticUpdate, map_seeded_tick_side_to_hawkes_side};
 use super::validation::map_transition_error_to_seeded_simulation_run_error;
 
+#[derive(Clone, Copy)]
+pub(crate) struct EndogenousIntervalSchedulingInput<'a, 'registry> {
+    pub(crate) interval_start_state: HawkesExcitationState,
+    pub(crate) kernel_parameters: HawkesKernelParameters,
+    pub(crate) interval_seasonality_factor: f64,
+    pub(crate) interval_start_utc_nanos: i64,
+    pub(crate) interval_end_utc_nanos: i64,
+    pub(crate) exogenous_interval_updates: &'a [IntervalStochasticUpdate],
+    pub(crate) market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
+}
+
 pub(crate) fn schedule_endogenous_interval_events_with_event_time_feedback<
     WaitStream,
     AcceptanceStream,
     SideStream,
 >(
-    interval_start_state: HawkesExcitationState,
-    kernel_parameters: HawkesKernelParameters,
-    interval_seasonality_factor: f64,
-    interval_start_utc_nanos: i64,
-    interval_end_utc_nanos: i64,
-    exogenous_interval_updates: &[IntervalStochasticUpdate],
-    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
+    input: EndogenousIntervalSchedulingInput<'_, '_>,
     endogenous_wait_stream: &mut WaitStream,
     endogenous_acceptance_stream: &mut AcceptanceStream,
     endogenous_side_stream: &mut SideStream,
@@ -36,6 +41,16 @@ where
     AcceptanceStream: SimulationRandomnessStream,
     SideStream: SimulationRandomnessStream,
 {
+    let EndogenousIntervalSchedulingInput {
+        interval_start_state,
+        kernel_parameters,
+        interval_seasonality_factor,
+        interval_start_utc_nanos,
+        interval_end_utc_nanos,
+        exogenous_interval_updates,
+        market_state_resolver,
+    } = input;
+
     let interval_duration_in_hours =
         (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / NANOS_PER_HOUR as f64;
 
@@ -68,16 +83,18 @@ where
         );
 
         simulate_endogenous_segment(
-            &mut scheduling_state,
-            kernel_parameters,
-            interval_seasonality_factor,
-            segment_end_utc_nanos,
-            baseline_total_intensity,
-            market_state_resolver,
+            EndogenousSegmentSimulationInput {
+                scheduling_state: &mut scheduling_state,
+                kernel_parameters,
+                interval_seasonality_factor,
+                segment_end_utc_nanos,
+                baseline_total_intensity,
+                market_state_resolver,
+                endogenous_interval_updates: &mut endogenous_interval_updates,
+            },
             endogenous_wait_stream,
             endogenous_acceptance_stream,
             endogenous_side_stream,
-            &mut endogenous_interval_updates,
         )?;
 
         if segment_end_utc_nanos == interval_end_utc_nanos
@@ -114,23 +131,37 @@ struct EndogenousSchedulingState {
     next_exogenous_update_position: usize,
 }
 
-fn simulate_endogenous_segment<WaitStream, AcceptanceStream, SideStream>(
-    scheduling_state: &mut EndogenousSchedulingState,
+struct EndogenousSegmentSimulationInput<'a, 'registry> {
+    scheduling_state: &'a mut EndogenousSchedulingState,
     kernel_parameters: HawkesKernelParameters,
     interval_seasonality_factor: f64,
     segment_end_utc_nanos: i64,
     baseline_total_intensity: f64,
-    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
+    market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
+    endogenous_interval_updates: &'a mut Vec<IntervalStochasticUpdate>,
+}
+
+fn simulate_endogenous_segment<WaitStream, AcceptanceStream, SideStream>(
+    input: EndogenousSegmentSimulationInput<'_, '_>,
     endogenous_wait_stream: &mut WaitStream,
     endogenous_acceptance_stream: &mut AcceptanceStream,
     endogenous_side_stream: &mut SideStream,
-    endogenous_interval_updates: &mut Vec<IntervalStochasticUpdate>,
 ) -> Result<(), SeededTickSimulationRunError>
 where
     WaitStream: SimulationRandomnessStream,
     AcceptanceStream: SimulationRandomnessStream,
     SideStream: SimulationRandomnessStream,
 {
+    let EndogenousSegmentSimulationInput {
+        scheduling_state,
+        kernel_parameters,
+        interval_seasonality_factor,
+        segment_end_utc_nanos,
+        baseline_total_intensity,
+        market_state_resolver,
+        endogenous_interval_updates,
+    } = input;
+
     while scheduling_state.simulated_timestamp_utc_nanos < segment_end_utc_nanos
         && endogenous_interval_updates.len() < MAX_STOCHASTIC_UPDATES_PER_INTERVAL as usize
     {

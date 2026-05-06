@@ -109,7 +109,7 @@ pub enum CliError {
     #[diagnostic(code(janiform_cli::fit_preparation_failed))]
     FitPreparationFailed {
         #[source]
-        source: janiform::calibration::staged::CalibrationMarketDataPreparationError,
+        source: Box<janiform::calibration::staged::CalibrationMarketDataPreparationError>,
     },
 
     #[error("failed to write staged execution input `{}`", path.display())]
@@ -133,14 +133,14 @@ pub enum CliError {
     StagedExecutionInputParse {
         path: PathBuf,
         #[source]
-        source: serde_json::Error,
+        source: Box<serde_json::Error>,
     },
 
     #[error("failed to build staged execution plan")]
     #[diagnostic(code(janiform_cli::staged_execution_plan_failed))]
     StagedExecutionPlanFailed {
         #[source]
-        source: janiform::calibration::staged::CalibrationStagedExecutionBridgeError,
+        source: Box<janiform::calibration::staged::CalibrationStagedExecutionBridgeError>,
     },
 
     #[error("fit execution failed: {message}")]
@@ -159,7 +159,7 @@ pub enum CliError {
     #[diagnostic(code(janiform_cli::fit_event_log))]
     FitEventLog {
         #[source]
-        source: janiform_event_log::EventLogError,
+        source: Box<janiform_event_log::EventLogError>,
     },
 
     #[error("`--trace-events` requires an event stream selected with `--events jsonl`")]
@@ -177,14 +177,14 @@ pub enum CliError {
     #[diagnostic(code(janiform_cli::output_serialize))]
     OutputSerialize {
         #[source]
-        source: serde_json::Error,
+        source: Box<serde_json::Error>,
     },
 
     #[error("failed to render command progress")]
     #[diagnostic(code(janiform_cli::output_progress))]
     OutputProgress {
         #[source]
-        source: janiform_terminal_ui::ProgressContractError,
+        source: Box<janiform_terminal_ui::ProgressContractError>,
     },
 
     #[error("failed to read {artifact_name} artifact `{}`", path.display())]
@@ -202,7 +202,7 @@ pub enum CliError {
         artifact_name: &'static str,
         path: PathBuf,
         #[source]
-        source: serde_json::Error,
+        source: Box<serde_json::Error>,
     },
 
     #[error("malformed {artifact_name} artifact `{}`: {message}", path.display())]
@@ -235,7 +235,7 @@ pub enum CliError {
     PresetUserFileInvalid {
         path: PathBuf,
         #[source]
-        source: janiform::calibration::presets::PresetWorkflowResolutionError,
+        source: Box<janiform::calibration::presets::PresetWorkflowResolutionError>,
     },
 
     #[error(
@@ -248,7 +248,7 @@ pub enum CliError {
         scope: String,
         preset_name: String,
         #[source]
-        source: janiform::calibration::presets::PresetWorkflowResolutionError,
+        source: Box<janiform::calibration::presets::PresetWorkflowResolutionError>,
     },
 
     #[error("preset runtime payload for workflow `{command_path}` is malformed: {message}")]
@@ -356,7 +356,9 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
     fn from(value: janiform_workflows::error::WorkflowError) -> Self {
         match value {
             janiform_workflows::error::WorkflowError::StagedExecutionPlanFailed { source } => {
-                Self::StagedExecutionPlanFailed { source }
+                Self::StagedExecutionPlanFailed {
+                    source: Box::new(source),
+                }
             }
             janiform_workflows::error::WorkflowError::CalendarRegistryLoadFailed { message }
             | janiform_workflows::error::WorkflowError::FitExecutionFailed { message }
@@ -428,7 +430,7 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                 Self::ArtifactParse {
                     artifact_name: "validation",
                     path,
-                    source,
+                    source: Box::new(source),
                 }
             }
             janiform_workflows::error::WorkflowError::ValidationArtifactMalformed {
@@ -452,17 +454,21 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                     message,
                 }
             }
-            janiform_workflows::error::WorkflowError::FitEventLog { source } => {
-                Self::FitEventLog { source }
-            }
+            janiform_workflows::error::WorkflowError::FitEventLog { source } => Self::FitEventLog {
+                source: Box::new(source),
+            },
             janiform_workflows::error::WorkflowError::OutputSerialize { source } => {
-                Self::OutputSerialize { source }
+                Self::OutputSerialize {
+                    source: Box::new(source),
+                }
             }
             janiform_workflows::error::WorkflowError::OutputWrite { source } => {
                 Self::OutputWrite { source }
             }
             janiform_workflows::error::WorkflowError::OutputProgress { source } => {
-                Self::OutputProgress { source }
+                Self::OutputProgress {
+                    source: Box::new(source),
+                }
             }
         }
     }

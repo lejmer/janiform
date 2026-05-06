@@ -144,7 +144,7 @@ pub enum EndogenousAnchorMaterializationError {
     },
     TransformSliceExpectationFailure {
         interval_index: usize,
-        source: SufficientStatisticsTransformSliceSamplingError,
+        source: Box<SufficientStatisticsTransformSliceSamplingError>,
     },
     BuySideExpectationFailure {
         interval_index: usize,
@@ -271,7 +271,7 @@ impl Error for EndogenousAnchorMaterializationError {
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
             Self::InvalidExpectedIntervalStatistics { source, .. } => Some(source),
             Self::TransformSliceSolveFailure { source, .. } => Some(source),
-            Self::TransformSliceExpectationFailure { source, .. } => Some(source),
+            Self::TransformSliceExpectationFailure { source, .. } => Some(source.as_ref()),
             Self::BuySideExpectationFailure { source, .. } => Some(source),
             Self::SellSideExpectationFailure { source, .. } => Some(source),
             Self::ExpectedGapJumpMarkFailure { source } => Some(source),

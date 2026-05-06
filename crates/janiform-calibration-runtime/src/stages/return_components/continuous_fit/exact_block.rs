@@ -80,15 +80,19 @@ pub(super) fn evaluate_exact_block_likelihood(
 }
 
 pub(super) fn build_exact_block_input(
-    configuration: NigSharedPlusShiftConfiguration,
-    observed_return: f64,
-    business_time_scale: f64,
-    sell_share_proxy: f64,
-    integrated_buy_intensity: f64,
-    integrated_sell_intensity: f64,
-    block_member_index: usize,
-    log_density_resolution: f64,
+    input: ExactBlockInputBuildInput,
 ) -> Result<ExactBlockInput, ExactBlockStructuralFailure> {
+    let ExactBlockInputBuildInput {
+        configuration,
+        observed_return,
+        business_time_scale,
+        sell_share_proxy,
+        integrated_buy_intensity,
+        integrated_sell_intensity,
+        block_member_index,
+        log_density_resolution,
+    } = input;
+
     let mut failure_context = ExactLikelihoodFailureContext {
         evaluator_kind: None,
         observed_return,
@@ -165,6 +169,18 @@ pub(super) fn build_exact_block_input(
         standardized_return,
         classification,
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ExactBlockInputBuildInput {
+    pub(super) configuration: NigSharedPlusShiftConfiguration,
+    pub(super) observed_return: f64,
+    pub(super) business_time_scale: f64,
+    pub(super) sell_share_proxy: f64,
+    pub(super) integrated_buy_intensity: f64,
+    pub(super) integrated_sell_intensity: f64,
+    pub(super) block_member_index: usize,
+    pub(super) log_density_resolution: f64,
 }
 
 fn classify_exact_block(

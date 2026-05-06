@@ -85,22 +85,12 @@ pub struct OraclePricerSufficientStatisticsBenchmarkPolicy {
     pub seed_partition: OraclePricerSufficientStatisticsBenchmarkSeedPartition,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
     pub warmup_iteration_count_override: Option<usize>,
     pub measured_iteration_count_override: Option<usize>,
     pub reproducibility_seed: u64,
-}
-
-impl Default for OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
-    fn default() -> Self {
-        Self {
-            warmup_iteration_count_override: None,
-            measured_iteration_count_override: None,
-            reproducibility_seed: 0,
-        }
-    }
 }
 
 impl OraclePricerSufficientStatisticsBenchmarkExecutionConfig {

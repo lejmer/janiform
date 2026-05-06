@@ -699,7 +699,7 @@ fn seeded_hawkes_transition_schedule_and_state_path_are_repeatable() {
         HawkesInvariantCheckClass::DeterministicEquation,
     );
 
-    let seed = 2026_02_19_u64;
+    let seed = 20_260_219_u64;
     let step_count = 16;
 
     let initial_state = HawkesExcitationState {

@@ -389,16 +389,18 @@ fn build_sparse_scenario_input(
     }
 }
 
+type SufficientStatisticsRecordFixture = (f64, f64, u64, u64, f64, f64, f64, f64, f64, f64);
+
 fn build_coarse_path(
     interval_delta: f64,
-    records: &[(f64, f64, u64, u64, f64, f64, f64, f64, f64, f64)],
+    records: &[SufficientStatisticsRecordFixture],
 ) -> SufficientStatisticsPath {
     build_path(29, interval_delta, records)
 }
 
 fn build_fine_path(
     interval_delta: f64,
-    records: &[(f64, f64, u64, u64, f64, f64, f64, f64, f64, f64)],
+    records: &[SufficientStatisticsRecordFixture],
 ) -> SufficientStatisticsPath {
     build_path(31, interval_delta, records)
 }
@@ -406,7 +408,7 @@ fn build_fine_path(
 fn build_path(
     seed: u64,
     interval_delta: f64,
-    records: &[(f64, f64, u64, u64, f64, f64, f64, f64, f64, f64)],
+    records: &[SufficientStatisticsRecordFixture],
 ) -> SufficientStatisticsPath {
     let records = records
         .iter()

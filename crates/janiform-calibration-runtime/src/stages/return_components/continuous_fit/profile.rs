@@ -253,8 +253,12 @@ pub(super) fn build_scale_bucket_profiles(
 
     let mut bucket_member_indices = vec![Vec::new(), Vec::new(), Vec::new(), Vec::new()];
 
-    for aligned_index in 0..aligned_count {
-        let business_time_scale = business_time_scales[aligned_index];
+    for (aligned_index, business_time_scale) in business_time_scales
+        .iter()
+        .copied()
+        .enumerate()
+        .take(aligned_count)
+    {
         if !business_time_scale.is_finite() || business_time_scale <= 0.0 {
             continue;
         }

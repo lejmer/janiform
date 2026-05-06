@@ -93,11 +93,9 @@ pub fn run_fit_workflow(
     let mut execution_input = prepared_workflow.execution_input;
     execution_input.request.resume_settings = resume_settings;
 
-    if emitted_start_summary {
-        if let Some(mut terminal_output) = observer.terminal_output {
-            terminal_output.emit_start_summary = false;
-            observer.terminal_output = Some(terminal_output);
-        }
+    if emitted_start_summary && let Some(mut terminal_output) = observer.terminal_output {
+        terminal_output.emit_start_summary = false;
+        observer.terminal_output = Some(terminal_output);
     }
 
     run_staged_fit_execution_workflow(

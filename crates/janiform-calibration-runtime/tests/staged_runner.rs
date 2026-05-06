@@ -40,10 +40,13 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
         None,
     );
     let calendar_registry = calibration_stage_test_registry();
+
     let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
     let mut inputs = staged_run_inputs(true, true, true);
+
     inputs.joint_refinement_option_pricing_input =
         Some(joint_refinement_stage_option_pricing_input_fixture());
+
     let mut observed_events = Vec::<CalibrationStagedRunObserverEvent>::new();
 
     let report = run_staged_calibration_with_checkpointing_and_observer(
@@ -58,10 +61,8 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     assert!(
         observed_events.iter().any(|event| matches!(
             event,
-            CalibrationStagedRunObserverEvent::StageProgress {
-                stage: CalibrationStage::JointRefinement,
-                ..
-            }
+            CalibrationStagedRunObserverEvent::StageProgress(progress)
+                if progress.stage == CalibrationStage::JointRefinement
         )),
         "expected staged runner to emit joint refinement progress events, report was: {report:#?}"
     );
@@ -69,18 +70,14 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     let baseline_local_option_pricing_labels = observed_events
         .iter()
         .filter_map(|event| match event {
-            CalibrationStagedRunObserverEvent::StageProgress {
-                stage,
-                progress_phase,
-                current_item_label,
-                ..
-            } if *stage == CalibrationStage::JointRefinement
-                && *progress_phase
-                    == CalibrationStageProgressPhase::JointRefinement(
-                        JointRefinementStageProgressPhase::BaselineLocalEvaluation,
-                    ) =>
+            CalibrationStagedRunObserverEvent::StageProgress(progress)
+                if progress.stage == CalibrationStage::JointRefinement
+                    && progress.progress_phase
+                        == CalibrationStageProgressPhase::JointRefinement(
+                            JointRefinementStageProgressPhase::BaselineLocalEvaluation,
+                        ) =>
             {
-                current_item_label.as_deref()
+                progress.current_item_label.as_deref()
             }
             _ => None,
         })
@@ -100,18 +97,14 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     let baseline_final_cache_labels = observed_events
         .iter()
         .filter_map(|event| match event {
-            CalibrationStagedRunObserverEvent::StageProgress {
-                stage,
-                progress_phase,
-                current_item_label,
-                ..
-            } if *stage == CalibrationStage::JointRefinement
-                && *progress_phase
-                    == CalibrationStageProgressPhase::JointRefinement(
-                        JointRefinementStageProgressPhase::BaselineFinalEvaluation,
-                    ) =>
+            CalibrationStagedRunObserverEvent::StageProgress(progress)
+                if progress.stage == CalibrationStage::JointRefinement
+                    && progress.progress_phase
+                        == CalibrationStageProgressPhase::JointRefinement(
+                            JointRefinementStageProgressPhase::BaselineFinalEvaluation,
+                        ) =>
             {
-                current_item_label.as_deref()
+                progress.current_item_label.as_deref()
             }
             _ => None,
         })
@@ -135,18 +128,14 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     let baseline_final_nested_option_pricing_labels = observed_events
         .iter()
         .filter_map(|event| match event {
-            CalibrationStagedRunObserverEvent::StageProgress {
-                stage,
-                progress_phase,
-                current_item_label,
-                ..
-            } if *stage == CalibrationStage::JointRefinement
-                && *progress_phase
-                    == CalibrationStageProgressPhase::JointRefinement(
-                        JointRefinementStageProgressPhase::BaselineFinalEvaluation,
-                    ) =>
+            CalibrationStagedRunObserverEvent::StageProgress(progress)
+                if progress.stage == CalibrationStage::JointRefinement
+                    && progress.progress_phase
+                        == CalibrationStageProgressPhase::JointRefinement(
+                            JointRefinementStageProgressPhase::BaselineFinalEvaluation,
+                        ) =>
             {
-                current_item_label.as_deref()
+                progress.current_item_label.as_deref()
             }
             _ => None,
         })
@@ -166,11 +155,11 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     let joint_refinement_digit_only_item_labels = observed_events
         .iter()
         .filter_map(|event| match event {
-            CalibrationStagedRunObserverEvent::StageProgress {
-                stage,
-                current_item_label,
-                ..
-            } if *stage == CalibrationStage::JointRefinement => current_item_label.as_deref(),
+            CalibrationStagedRunObserverEvent::StageProgress(progress)
+                if progress.stage == CalibrationStage::JointRefinement =>
+            {
+                progress.current_item_label.as_deref()
+            }
             _ => None,
         })
         .filter(|label| {
@@ -186,18 +175,14 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     let baseline_coarse_consistency_labels = observed_events
         .iter()
         .filter_map(|event| match event {
-            CalibrationStagedRunObserverEvent::StageProgress {
-                stage,
-                progress_phase,
-                current_item_label,
-                ..
-            } if *stage == CalibrationStage::JointRefinement
-                && *progress_phase
-                    == CalibrationStageProgressPhase::JointRefinement(
-                        JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
-                    ) =>
+            CalibrationStagedRunObserverEvent::StageProgress(progress)
+                if progress.stage == CalibrationStage::JointRefinement
+                    && progress.progress_phase
+                        == CalibrationStageProgressPhase::JointRefinement(
+                            JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+                        ) =>
             {
-                current_item_label.as_deref()
+                progress.current_item_label.as_deref()
             }
             _ => None,
         })
@@ -218,6 +203,7 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
         None,
     );
     let calendar_registry = calibration_stage_test_registry();
+
     let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
 
     let report = run_staged_calibration_with_checkpointing(
@@ -315,6 +301,7 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
         None,
     );
     let calendar_registry = calibration_stage_test_registry();
+
     let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
 
     let report = run_staged_calibration_with_checkpointing(
@@ -445,7 +432,9 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         CalibrationExecutionMode::Memory,
         None,
     );
+
     let mut first_memory_checkpoint_store = CalibrationMemoryCheckpointStore::new();
+
     let first_memory_report = run_staged_calibration_with_checkpointing(
         &memory_contract,
         &calendar_registry,
@@ -453,7 +442,9 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         Some(&mut first_memory_checkpoint_store),
         None,
     );
+
     let mut second_memory_checkpoint_store = CalibrationMemoryCheckpointStore::new();
+
     let second_memory_report = run_staged_calibration_with_checkpointing(
         &memory_contract,
         &calendar_registry,
@@ -468,11 +459,13 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
     );
 
     let checkpoint_directory = temporary_checkpoint_directory("repeat-full-disk");
+
     let disk_contract = build_run_contract_with_mode_and_resume(
         "run-repeat-disk",
         CalibrationExecutionMode::Disk,
         None,
     );
+
     let first_disk_report = run_staged_calibration_with_checkpointing(
         &disk_contract,
         &calendar_registry,
@@ -480,7 +473,9 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         None,
         Some(checkpoint_directory.as_path()),
     );
+
     let second_checkpoint_directory = temporary_checkpoint_directory("repeat-full-disk-second");
+
     let second_disk_report = run_staged_calibration_with_checkpointing(
         &disk_contract,
         &calendar_registry,
@@ -503,11 +498,13 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
     let calendar_registry = calibration_stage_test_registry();
 
     let disk_checkpoint_directory = temporary_checkpoint_directory("disk-dataset-snapshot");
+
     let disk_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-disk-dataset-snapshot",
         CalibrationExecutionMode::Disk,
         None,
     );
+
     let disk_report = run_staged_calibration_with_checkpointing(
         &disk_contract,
         &calendar_registry,
@@ -523,9 +520,11 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
         disk_checkpoint_directory.as_path(),
         disk_contract.run_spec.run_id.as_str(),
     );
+
     let disk_artifact =
         load_calibration_dataset_snapshot_artifact_from_disk(disk_artifact_path.as_path())
             .expect("disk-mode run should persist dataset snapshot artifact");
+
     assert_eq!(disk_artifact.run_id, disk_contract.run_spec.run_id);
     assert_eq!(disk_artifact.execution_mode, CalibrationExecutionMode::Disk);
     assert_eq!(
@@ -541,12 +540,15 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
     );
 
     let memory_checkpoint_directory = temporary_checkpoint_directory("memory-dataset-snapshot");
+
     let memory_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-memory-dataset-snapshot",
         CalibrationExecutionMode::Memory,
         None,
     );
+
     let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+
     let memory_report = run_staged_calibration_with_checkpointing(
         &memory_contract,
         &calendar_registry,
@@ -554,6 +556,7 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
         Some(&mut checkpoint_store),
         Some(memory_checkpoint_directory.as_path()),
     );
+
     assert_eq!(
         memory_report.status,
         CalibrationStageExecutionStatus::Success
@@ -576,11 +579,13 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
 
     let disk_checkpoint_directory =
         temporary_checkpoint_directory("disk-stage-parameter-artifacts");
+
     let disk_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-disk-stage-parameter-artifacts",
         CalibrationExecutionMode::Disk,
         None,
     );
+
     let disk_report = run_staged_calibration_with_checkpointing(
         &disk_contract,
         &calendar_registry,
@@ -588,6 +593,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         None,
         Some(disk_checkpoint_directory.as_path()),
     );
+
     assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
 
     for stage in [
@@ -602,6 +608,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         );
         let artifact = load_calibration_stage_parameter_artifact_from_disk(artifact_path.as_path())
             .expect("disk-mode run should persist stage parameter artifact");
+
         assert_eq!(artifact.run_id, disk_contract.run_spec.run_id);
         assert_eq!(artifact.execution_mode, CalibrationExecutionMode::Disk);
         assert_eq!(artifact.stage, stage);
@@ -624,6 +631,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
     );
     let manifest = load_calibration_artifact_manifest_from_disk(manifest_path.as_path())
         .expect("disk-mode run should persist artifact manifest");
+
     assert_eq!(manifest.run_id, disk_contract.run_spec.run_id);
     assert_eq!(manifest.execution_mode, CalibrationExecutionMode::Disk);
     assert_eq!(
@@ -647,12 +655,15 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
 
     let memory_checkpoint_directory =
         temporary_checkpoint_directory("memory-stage-parameter-artifacts");
+
     let memory_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-memory-stage-parameter-artifacts",
         CalibrationExecutionMode::Memory,
         None,
     );
+
     let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+
     let memory_report = run_staged_calibration_with_checkpointing(
         &memory_contract,
         &calendar_registry,
@@ -660,6 +671,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         Some(&mut checkpoint_store),
         Some(memory_checkpoint_directory.as_path()),
     );
+
     assert_eq!(
         memory_report.status,
         CalibrationStageExecutionStatus::Success
@@ -681,6 +693,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .exists()
         );
     }
+
     assert!(
         !calibration_artifact_manifest_path(
             memory_checkpoint_directory.as_path(),
@@ -696,7 +709,9 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
 #[test]
 fn staged_runner_rejects_silent_overwrite_of_committed_disk_artifacts() {
     let calendar_registry = calibration_stage_test_registry();
+
     let checkpoint_directory = temporary_checkpoint_directory("disk-overwrite-protection");
+
     let run_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-disk-overwrite-protection",
         CalibrationExecutionMode::Disk,
@@ -710,6 +725,7 @@ fn staged_runner_rejects_silent_overwrite_of_committed_disk_artifacts() {
         None,
         Some(checkpoint_directory.as_path()),
     );
+
     assert_eq!(
         first_report.status,
         CalibrationStageExecutionStatus::Success
@@ -722,10 +738,12 @@ fn staged_runner_rejects_silent_overwrite_of_committed_disk_artifacts() {
         None,
         Some(checkpoint_directory.as_path()),
     );
+
     assert_eq!(
         second_report.status,
         CalibrationStageExecutionStatus::Failure
     );
+
     match second_report.failure {
         Some(CalibrationStagedRunFailure::ArtifactManifestPersistFailed { error_message }) => {
             assert!(error_message.contains("already exists"));

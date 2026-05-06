@@ -41,7 +41,7 @@ pub(super) fn simulation_from_model_artifact_output_to_py_object(
                 Py::new(
                     py,
                     PySeededTickSimulationNativeResult {
-                        output: native_result,
+                        output: *native_result,
                     },
                 )?,
             )?;

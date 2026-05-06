@@ -948,6 +948,10 @@ fn evaluate_return_components_candidate(
 }
 
 #[pyfunction]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn estimate_current_state_from_observed_data(
     py: Python<'_>,
     kernel_parameters: &Bound<'_, PyAny>,
@@ -1049,6 +1053,10 @@ fn estimate_current_state_from_observed_data(
 
 #[pyfunction]
 #[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, intraday_minutes_per_bin, intraday_factor_by_bin, day_of_week_factor, day_of_year_factor))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python keyword API."
+)]
 fn materialize_runtime_structural_seasonality(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,

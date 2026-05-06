@@ -453,7 +453,7 @@ fn trading_time_weighted_exponent_composition_matches_manual_assembly() {
         .sell_side_parameters
         .characteristic_exponent(argument.scale(-1.0))
         .scale(integrated_sell_intensity);
-    let expected_combined = expected_buy_side.add(expected_sell_side);
+    let expected_combined = expected_buy_side.plus(expected_sell_side);
 
     assert_complex_close(
         observed.buy_side_weighted_exponent,

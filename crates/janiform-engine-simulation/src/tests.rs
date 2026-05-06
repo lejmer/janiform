@@ -485,16 +485,16 @@ fn seeded_simulation_debug_trace_schema_exposes_required_fields() {
     )
     .expect("debug trace schema run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![0.25],
-        vec![0.5],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.25],
+        sell_timestamp_draws: vec![0.5],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -609,16 +609,16 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
     )
     .expect("debug trace correctness run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0, 0.0],
-        vec![0.0],
-        vec![0.99, 0.0],
-        vec![0.0, 0.0],
-        vec![0.0],
-        vec![0.3],
-        vec![0.5, 0.25, 0.5],
-        vec![0.25, 0.5],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0, 0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.99, 0.0],
+        sell_timestamp_draws: vec![0.0, 0.0],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![0.3],
+        news_severity_draws: vec![0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.25, 0.5],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -727,16 +727,16 @@ fn seeded_simulation_suppresses_endogenous_events_while_market_is_closed() {
     )
     .expect("closed-market run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![0.1, 0.2, 0.3],
-        vec![0.0, 0.0, 0.0],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.1, 0.2, 0.3],
+        sell_timestamp_draws: vec![0.0, 0.0, 0.0],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -792,16 +792,16 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
     )
     .expect("two-interval closed-window run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0, 0.0],
-        vec![0.0, 0.0],
-        vec![],
-        vec![],
-        vec![0.0, 0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0, 0.0],
+        sell_count_draws: vec![0.0, 0.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0, 0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -849,25 +849,27 @@ fn exogenous_interval_news_scheduler_routes_surprise_news_into_closed_market_gap
     )
     .expect("closed-market surprise-news run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![1.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![0.0],
-        vec![0.25],
-        vec![0.5, 0.25, 0.5],
-        vec![0.25, 0.5],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![1.0],
+        sell_count_draws: vec![1.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![0.25],
+        news_severity_draws: vec![0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.25, 0.5],
+    });
 
     let event_inputs = super::runtime::build_interval_news_event_inputs(
-        0,
-        closed_interval_start_utc_nanos,
-        NANOS_PER_HOUR,
-        1.0,
-        1.0,
-        &run_config,
-        &[],
+        super::runtime::IntervalNewsEventInputBuildInput {
+            interval_index: 0,
+            interval_start_utc_nanos: closed_interval_start_utc_nanos,
+            interval_duration_nanos: NANOS_PER_HOUR,
+            interval_duration_in_hours: 1.0,
+            interval_news_intensity: 1.0,
+            run_config: &run_config,
+            interval_known_news_event_timestamps_utc_nanos: &[],
+        },
         &scripted_factory,
     )
     .expect("closed-market surprise-news input generation should complete");
@@ -919,16 +921,16 @@ fn seeded_simulation_debug_trace_sampling_and_chunking_controls_limit_payload_si
     )
     .expect("debug trace sampling and chunking run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![0.1, 0.2, 0.3],
-        vec![0.4, 0.5, 0.6],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.1, 0.2, 0.3],
+        sell_timestamp_draws: vec![0.4, 0.5, 0.6],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -1235,16 +1237,16 @@ fn seeded_simulation_mean_reversion_decay_matches_pure_exponential_reference() {
     )
     .expect("mean-reversion decay run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -1293,16 +1295,16 @@ fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
     )
     .expect("positive-kappa constant-anchor run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let zero_kappa_result = run_seeded_tick_event_simulation_with_randomness_factory(
         zero_kappa_config,
@@ -1339,16 +1341,16 @@ fn seeded_simulation_does_not_decay_mean_reversion_during_closed_interval() {
     )
     .expect("closed-interval mean-reversion run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -1414,16 +1416,16 @@ fn seeded_simulation_anchor_reset_applies_exactly_once_per_interval_boundary() {
     )
     .expect("anchor-reset run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -1500,16 +1502,16 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
     )
     .expect("feedback run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0, 0.0, 0.0],
-        vec![0.0],
-        vec![0.95, 0.35, 0.0],
-        vec![0.0, 0.0, 0.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0, 0.0, 0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.95, 0.35, 0.0],
+        sell_timestamp_draws: vec![0.0, 0.0, 0.0],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let no_feedback_result = run_seeded_tick_event_simulation_with_randomness_factory(
         no_feedback_run_config,
@@ -1544,16 +1546,16 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
     )
     .expect("regression-guard run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.25, 0.75],
-        vec![0.0],
-        vec![0.25],
-        vec![0.75, 0.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.25, 0.75],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.25],
+        sell_timestamp_draws: vec![0.75, 0.0],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("regression-guard run should complete");
@@ -1595,16 +1597,16 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
     )
     .expect("fine-aggregation integration run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0; 16],
-        vec![0.0; 4],
-        vec![0.95, 0.95, 0.0],
-        vec![0.0; 16],
-        vec![1.0, 1.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0; 16],
+        sell_count_draws: vec![0.0; 4],
+        buy_timestamp_draws: vec![0.95, 0.95, 0.0],
+        sell_timestamp_draws: vec![0.0; 16],
+        news_count_draws: vec![1.0, 1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("fine-aggregation integration run should complete");
@@ -1679,16 +1681,16 @@ fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy
     )
     .expect("known-surprise tie-ordering run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![0.3],
-        vec![0.3],
-        vec![0.0],
-        vec![0.3],
-        vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
-        vec![0.75, 0.2, 0.25, 0.3],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.3],
+        sell_timestamp_draws: vec![0.3],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![0.3],
+        news_severity_draws: vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.75, 0.2, 0.25, 0.3],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("known-surprise tie-ordering run should complete");
@@ -1874,16 +1876,16 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
     )
     .expect("decomposition-fixture run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-        vec![0.2, 0.1],
-        vec![0.3, 0.6],
-        vec![0.5; 64],
-        vec![0.5; 64],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![],
+        sell_count_draws: vec![],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.2, 0.1],
+        news_timestamp_draws: vec![0.3, 0.6],
+        news_severity_draws: vec![0.5; 64],
+        news_return_jump_draws: vec![0.5; 64],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("decomposition-fixture run should complete");
@@ -1979,16 +1981,16 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
     )
     .expect("open-window news routing run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![1.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![1.0],
-        vec![],
-        vec![0.5, 0.25, 0.5],
-        vec![0.25, 0.5],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![1.0],
+        sell_count_draws: vec![1.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.25, 0.5],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("open-window news routing run should complete");
@@ -2071,16 +2073,16 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
     )
     .expect("closed-window news routing run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![1.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![1.0],
-        vec![],
-        vec![0.5, 0.25, 0.5],
-        vec![0.25, 0.5],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![1.0],
+        sell_count_draws: vec![1.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.25, 0.5],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("closed-window news routing run should complete");
@@ -2176,16 +2178,16 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
     )
     .expect("early-close boundary routing run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![1.0, 1.0],
-        vec![1.0, 1.0],
-        vec![],
-        vec![],
-        vec![1.0, 1.0],
-        vec![],
-        vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
-        vec![0.75, 0.5, 0.75, 0.5],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![1.0, 1.0],
+        sell_count_draws: vec![1.0, 1.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![1.0, 1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.75, 0.5, 0.75, 0.5],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("early-close boundary routing run should complete");
@@ -2252,16 +2254,16 @@ fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
     )
     .expect("invalid return-jump mark run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![1.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![0.0],
-        vec![0.3],
-        vec![0.5, 0.25, 0.5],
-        vec![0.75, f64::NAN],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![1.0],
+        sell_count_draws: vec![1.0],
+        buy_timestamp_draws: vec![],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![0.3],
+        news_severity_draws: vec![0.5, 0.25, 0.5],
+        news_return_jump_draws: vec![0.75, f64::NAN],
+    });
     let error =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect_err("invalid generated return-jump mark must fail");
@@ -2480,16 +2482,16 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
         }),
     )
     .expect("snapshot boundary run config should initialize");
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![1.0],
-        vec![0.99],
-        vec![],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![1.0],
+        buy_timestamp_draws: vec![0.99],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("snapshot boundary run should complete");
@@ -2530,16 +2532,16 @@ fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
     )
     .expect("fine-path schema run config should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![1.0],
-        vec![0.25],
-        vec![],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![1.0],
+        buy_timestamp_draws: vec![0.25],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -2601,16 +2603,16 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
     )
     .expect("schema run config without snapshot should initialize");
 
-    let scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![1.0],
-        vec![0.25],
-        vec![],
-        vec![0.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![1.0],
+        buy_timestamp_draws: vec![0.25],
+        sell_timestamp_draws: vec![],
+        news_count_draws: vec![0.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let run_result_without_snapshot = run_seeded_tick_event_simulation_with_randomness_factory(
         run_config_without_snapshot,
@@ -2764,16 +2766,16 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
     )
     .expect("first serialization run config should initialize");
 
-    let first_scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![0.8],
-        vec![0.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let first_scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.8],
+        sell_timestamp_draws: vec![0.0],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let first_result = run_seeded_tick_event_simulation_with_randomness_factory(
         first_run_config,
@@ -2812,16 +2814,16 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
     )
     .expect("second serialization run config should initialize");
 
-    let second_scripted_factory = ScriptedRandomnessFactory::new(
-        vec![0.0],
-        vec![0.0],
-        vec![0.99],
-        vec![0.0],
-        vec![1.0],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let second_scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.0],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.99],
+        sell_timestamp_draws: vec![0.0],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
 
     let second_result = run_seeded_tick_event_simulation_with_randomness_factory(
         second_run_config,
@@ -2977,17 +2979,31 @@ struct ScriptedRandomnessFactory {
     news_return_jump_draws: Vec<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct ScriptedRandomnessFactoryDraws {
+    buy_count_draws: Vec<f64>,
+    sell_count_draws: Vec<f64>,
+    buy_timestamp_draws: Vec<f64>,
+    sell_timestamp_draws: Vec<f64>,
+    news_count_draws: Vec<f64>,
+    news_timestamp_draws: Vec<f64>,
+    news_severity_draws: Vec<f64>,
+    news_return_jump_draws: Vec<f64>,
+}
+
 impl ScriptedRandomnessFactory {
-    fn new(
-        buy_count_draws: Vec<f64>,
-        sell_count_draws: Vec<f64>,
-        buy_timestamp_draws: Vec<f64>,
-        sell_timestamp_draws: Vec<f64>,
-        news_count_draws: Vec<f64>,
-        news_timestamp_draws: Vec<f64>,
-        news_severity_draws: Vec<f64>,
-        news_return_jump_draws: Vec<f64>,
-    ) -> Self {
+    fn new(draws: ScriptedRandomnessFactoryDraws) -> Self {
+        let ScriptedRandomnessFactoryDraws {
+            buy_count_draws,
+            sell_count_draws,
+            buy_timestamp_draws,
+            sell_timestamp_draws,
+            news_count_draws,
+            news_timestamp_draws,
+            news_severity_draws,
+            news_return_jump_draws,
+        } = draws;
+
         Self {
             buy_count_draws,
             sell_count_draws,
@@ -3563,14 +3579,7 @@ fn configure_mean_reversion_runtime_inputs(
     end_anchor_values: &[f64],
     initial_observed_log_price: f64,
 ) {
-    let anchor_model = if end_anchor_values
-        .iter()
-        .all(|anchor_value| (*anchor_value - start_anchor_value).abs() <= 1.0e-12)
-    {
-        MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level()
-    } else {
-        MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level()
-    };
+    let anchor_model = MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level();
 
     model_inputs.mean_reversion_fitted_parameters =
         MeanReversionFittedParameters::try_new(kappa, anchor_model)

@@ -114,28 +114,28 @@ fn parse_regression_calendar_cases(
         })?;
 
         let fixture_id = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "calendar_cases",
             "fixture_id",
         )?;
 
         let exchange_code = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "calendar_cases",
             "exchange_code",
         )?;
 
         let timestamp_text = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "calendar_cases",
             "timestamp_utc",
         )?;
 
         let expected_state = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "calendar_cases",
             "expected_state",
@@ -176,56 +176,56 @@ fn parse_regression_seasonality_cases(
         })?;
 
         let fixture_id = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "fixture_id",
         )?;
 
         let exchange_code = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "exchange_code",
         )?;
 
         let range_start_utc_text = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "range_start_utc",
         )?;
 
         let range_end_utc_text = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "range_end_utc",
         )?;
 
         let seasonality_source_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "seasonality_source",
         )?;
 
         let news_intensity_source_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "news_intensity_source",
         )?;
 
         let expected_s_h_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "expected_s_h",
         )?;
 
         let expected_nu_h_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "seasonality_cases",
             "expected_nu_h",
@@ -286,21 +286,21 @@ fn parse_open_closed_gap_leakage_regression_cases(
         })?;
 
         let fixture_id = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "gap_behavior_cases",
             "fixture_id",
         )?;
 
         let exchange_code = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "gap_behavior_cases",
             "exchange_code",
         )?;
 
         let raw_scenario_class = parse_required_string_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "gap_behavior_cases",
             "scenario_class",
@@ -308,7 +308,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
         let scenario_class = parse_news_semantics_scenario_class(raw_scenario_class.as_str())?;
 
         let initial_j_t_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "gap_behavior_cases",
             "initial_j_t",
@@ -326,7 +326,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
         }
 
         let initial_m_t_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "gap_behavior_cases",
             "initial_m_t",
@@ -344,7 +344,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
         }
 
         let initial_g_t_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "gap_behavior_cases",
             "initial_g_t",
@@ -362,12 +362,12 @@ fn parse_open_closed_gap_leakage_regression_cases(
         }
 
         let deterministic_replay_metadata =
-            parse_deterministic_replay_metadata(&case_mapping, case_position)?;
+            parse_deterministic_replay_metadata(case_mapping, case_position)?;
 
-        let issue_traceability = parse_issue_traceability_metadata(&case_mapping, case_position)?;
+        let issue_traceability = parse_issue_traceability_metadata(case_mapping, case_position)?;
 
         let injected_events_value = parse_required_field(
-            &case_mapping,
+            case_mapping,
             case_position,
             "gap_behavior_cases",
             "injected_events",
@@ -390,21 +390,21 @@ fn parse_open_closed_gap_leakage_regression_cases(
             })?;
 
             let event_id = parse_required_string_field(
-                &event_mapping,
+                event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "event_id",
             )?;
 
             let timestamp_utc_text = parse_required_string_field(
-                &event_mapping,
+                event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "timestamp_utc",
             )?;
 
             let raw_news_arrival_component = parse_required_string_field(
-                &event_mapping,
+                event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "news_arrival_component",
@@ -414,7 +414,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
                 parse_news_arrival_component(raw_news_arrival_component.as_str())?;
 
             let shared_severity_mark_value = parse_required_field(
-                &event_mapping,
+                event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "shared_severity_mark",
@@ -432,7 +432,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
             }
 
             let coupled_gap_jump_mark_value = parse_required_field(
-                &event_mapping,
+                event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "coupled_return_jump_mark",
@@ -451,25 +451,25 @@ fn parse_open_closed_gap_leakage_regression_cases(
             }
 
             let observed_activity_coupling_j_t_increment_override = parse_optional_f64_field(
-                &event_mapping,
+                event_mapping,
                 "observed_activity_coupling_j_t_increment_override",
                 &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
             )?;
 
             let observed_open_jump_m_t_increment_override = parse_optional_f64_field(
-                &event_mapping,
+                event_mapping,
                 "observed_open_jump_m_t_increment_override",
                 &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
             )?;
 
             let observed_closed_gap_g_t_increment_override = parse_optional_f64_field(
-                &event_mapping,
+                event_mapping,
                 "observed_closed_gap_g_t_increment_override",
                 &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
             )?;
 
             let observed_trading_return_increment_override = parse_optional_f64_field(
-                &event_mapping,
+                event_mapping,
                 "observed_trading_return_increment_override",
                 &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
             )?;
@@ -509,14 +509,14 @@ fn parse_required_field<'py>(
     field_group_name: &str,
     field_name: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
-    Ok(mapping
+    mapping
         .contains(field_name)?
         .then(|| mapping.get_item(field_name))
         .ok_or_else(|| {
             SeasonalityInputValidationError::new_err(format!(
                 "{field_group_name}[{case_position}] is missing required field '{field_name}'",
             ))
-        })??)
+        })?
 }
 
 fn parse_required_string_field(
@@ -631,42 +631,42 @@ fn parse_deterministic_replay_metadata(
     })?;
 
     let replay_baseline_id = parse_required_string_field(
-        &replay_mapping,
+        replay_mapping,
         case_position,
         "gap_behavior_cases",
         "replay_baseline_id",
     )?;
 
     let event_calendar_binding_id = parse_required_string_field(
-        &replay_mapping,
+        replay_mapping,
         case_position,
         "gap_behavior_cases",
         "event_calendar_binding_id",
     )?;
 
     let jump_observation_binding_id = parse_required_string_field(
-        &replay_mapping,
+        replay_mapping,
         case_position,
         "gap_behavior_cases",
         "jump_observation_binding_id",
     )?;
 
     let gap_observation_binding_id = parse_required_string_field(
-        &replay_mapping,
+        replay_mapping,
         case_position,
         "gap_behavior_cases",
         "gap_observation_binding_id",
     )?;
 
     let candidate_selection_policy_id = parse_required_string_field(
-        &replay_mapping,
+        replay_mapping,
         case_position,
         "gap_behavior_cases",
         "candidate_selection_policy_id",
     )?;
 
     let candidate_selection_rank_value = parse_required_field(
-        &replay_mapping,
+        replay_mapping,
         case_position,
         "gap_behavior_cases",
         "candidate_selection_rank",
@@ -711,14 +711,14 @@ fn parse_issue_traceability_metadata(
     })?;
 
     let issue_id = parse_required_string_field(
-        &issue_mapping,
+        issue_mapping,
         case_position,
         "gap_behavior_cases",
         "issue_id",
     )?;
 
     let semantic_focus_tags = parse_required_string_list(
-        &issue_mapping,
+        issue_mapping,
         case_position,
         "gap_behavior_cases",
         "semantic_focus_tags",
