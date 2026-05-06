@@ -53,11 +53,10 @@ impl<K> Default for VolatileProgressGate<K> {
 }
 
 pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> usize {
-    if total_units == 0 {
-        return 0;
-    }
-
-    completed_units.saturating_mul(100) / total_units
+    completed_units
+        .saturating_mul(100)
+        .checked_div(total_units)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
