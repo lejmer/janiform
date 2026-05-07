@@ -7,7 +7,8 @@ use super::planning_rendering::{
     render_inspect_human, render_plan_human, render_staged_plan_human,
 };
 use super::preparation::{
-    FitPreparationOverrides, PreparedFitPreview, prepare_fit_preview, write_staged_execution_input,
+    FitPreparationOverrides, FitPreviewOptions, PreparedFitPreview, prepare_fit_preview,
+    write_staged_execution_input,
 };
 use crate::commands::fit::FitInspectCommand;
 use crate::commands::fit::FitPlanCommand;
@@ -28,15 +29,17 @@ pub(crate) fn run_fit_plan(
         context,
         &command.inputs,
         &command.run,
-        command.workflow_scope,
-        command.execution_mode.map(calibration_execution_mode),
-        command.cpu_count,
-        FitPreparationOverrides {
-            mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
-            dynamics_search_restart_candidate_budget: command
-                .dynamics_search_restart_candidate_budget,
+        FitPreviewOptions {
+            workflow_scope: command.workflow_scope,
+            execution_mode: command.execution_mode.map(calibration_execution_mode),
+            cpu_count: command.cpu_count,
+            overrides: FitPreparationOverrides {
+                mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
+                dynamics_search_restart_candidate_budget: command
+                    .dynamics_search_restart_candidate_budget,
+            },
+            no_persist: false,
         },
-        false,
     )?;
 
     let staged_artifact_path = write_staged_execution_input(
@@ -58,11 +61,13 @@ pub(crate) fn run_fit_inspect(
         context,
         &command.inputs,
         &command.run,
-        command.workflow_scope,
-        None,
-        command.cpu_count,
-        FitPreparationOverrides::default(),
-        false,
+        FitPreviewOptions {
+            workflow_scope: command.workflow_scope,
+            execution_mode: None,
+            cpu_count: command.cpu_count,
+            overrides: FitPreparationOverrides::default(),
+            no_persist: false,
+        },
     )?;
 
     emit_inspect_output(context, &prepared)
@@ -78,11 +83,13 @@ pub(crate) fn run_fit_staged_plan(
         context,
         &command.inputs,
         &command.run,
-        command.workflow_scope,
-        Some(CalibrationExecutionMode::Disk),
-        command.cpu_count,
-        FitPreparationOverrides::default(),
-        false,
+        FitPreviewOptions {
+            workflow_scope: command.workflow_scope,
+            execution_mode: Some(CalibrationExecutionMode::Disk),
+            cpu_count: command.cpu_count,
+            overrides: FitPreparationOverrides::default(),
+            no_persist: false,
+        },
     )?;
 
     let staged_artifact_path = write_staged_execution_input(

@@ -253,12 +253,18 @@ fn mixed_exact_likelihood_reports_tilted_block_counts() {
             &optimizer_context,
             ContinuousLikelihoodFidelityTier::Full,
         );
+    let expected_tilted_mixed_blocks = calibration_sample.observed_returns.len()
+        + optimizer_context
+            .scale_bucket_profiles
+            .iter()
+            .map(|profile| profile.member_indices.len())
+            .sum::<usize>();
 
     assert_eq!(
         exact_likelihood_diagnostics
             .evaluator_block_counts
             .tilted_mixed_inversion_block_count,
-        calibration_sample.observed_returns.len(),
+        expected_tilted_mixed_blocks,
         "failures={:?}",
         exact_likelihood_diagnostics.failures
     );

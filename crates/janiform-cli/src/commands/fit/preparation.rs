@@ -36,6 +36,15 @@ pub(crate) struct FitPreparationOverrides {
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct FitPreviewOptions {
+    pub(crate) workflow_scope: Option<WorkflowScope>,
+    pub(crate) execution_mode: Option<CalibrationExecutionMode>,
+    pub(crate) cpu_count: Option<usize>,
+    pub(crate) overrides: FitPreparationOverrides,
+    pub(crate) no_persist: bool,
+}
+
 #[derive(Debug)]
 pub(crate) struct PreparedFitPreview {
     pub(crate) request: CalibrationMarketDataPreparationRequest,
@@ -62,14 +71,12 @@ pub(crate) fn prepare_fit_preview(
     context: &CommandContext,
     inputs: &TickDataOptions,
     run: &options::RunIdentityOptions,
-    workflow_scope: Option<WorkflowScope>,
-    execution_mode: Option<CalibrationExecutionMode>,
-    cpu_count: Option<usize>,
-    overrides: FitPreparationOverrides,
-    no_persist: bool,
+    preview_options: FitPreviewOptions,
 ) -> Result<PreparedFitPreview, CliError> {
-    let effective_workflow_scope =
-        resolve_workflow_scope(workflow_scope, inputs.option_surface_path.is_some())?;
+    let effective_workflow_scope = resolve_workflow_scope(
+        preview_options.workflow_scope,
+        inputs.option_surface_path.is_some(),
+    )?;
 
     let prepared_inputs =
         prepare_market_data_command_inputs(context, inputs, effective_workflow_scope)?;
@@ -84,7 +91,7 @@ pub(crate) fn prepare_fit_preview(
         )?,
     };
 
-    let output_directory = if no_persist {
+    let output_directory = if preview_options.no_persist {
         std::env::temp_dir()
             .join("janiform-no-persist")
             .join(format!("{}-{}", run_id, std::process::id()))
@@ -117,10 +124,12 @@ pub(crate) fn prepare_fit_preview(
         market_profile: prepared_inputs.market_profile,
     };
 
-    let execution_mode = if no_persist {
+    let execution_mode = if preview_options.no_persist {
         CalibrationExecutionMode::Memory
     } else {
-        execution_mode.unwrap_or(CalibrationExecutionMode::Disk)
+        preview_options
+            .execution_mode
+            .unwrap_or(CalibrationExecutionMode::Disk)
     };
 
     let request = CalibrationMarketDataPreparationRequest {
@@ -150,23 +159,23 @@ pub(crate) fn prepare_fit_preview(
             carry_rate: 0.0,
         }),
         pricing_interval_schedule_policy: Default::default(),
-        dynamics_search_restart_candidate_budget: overrides
+        dynamics_search_restart_candidate_budget: preview_options
+            .overrides
             .dynamics_search_restart_candidate_budget,
         joint_refinement_option_refinement_candidate_count_override: None,
         joint_refinement_audit_option_pricing_enabled: false,
         known_news_inputs: prepared_inputs.known_news_inputs,
-        mean_reversion: overrides.mean_reversion_grid_interval_hours.map(|hours| {
-            CalibrationMarketDataMeanReversionConfiguration {
+        mean_reversion: preview_options
+            .overrides
+            .mean_reversion_grid_interval_hours
+            .map(|hours| CalibrationMarketDataMeanReversionConfiguration {
                 calibration_grid_interval_hours: Some(hours),
-            }
-        }),
+            }),
     };
 
-    let plan =
-        prepare_market_data_calibration_plan(request.clone(), cpu_count).map_err(|source| {
-            CliError::FitPreparationFailed {
-                source: Box::new(source),
-            }
+    let plan = prepare_market_data_calibration_plan(request.clone(), preview_options.cpu_count)
+        .map_err(|source| CliError::FitPreparationFailed {
+            source: Box::new(source),
         })?;
 
     let mut explicit_values = Vec::new();
@@ -175,7 +184,10 @@ pub(crate) fn prepare_fit_preview(
     push_if_present(
         &mut explicit_values,
         "workflow scope",
-        workflow_scope.map(workflow_scope_argument_label).as_deref(),
+        preview_options
+            .workflow_scope
+            .map(workflow_scope_argument_label)
+            .as_deref(),
     );
     push_if_present(
         &mut explicit_values,

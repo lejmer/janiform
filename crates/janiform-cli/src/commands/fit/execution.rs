@@ -21,7 +21,9 @@ use serde_json::json;
 
 use super::args::FitCommand;
 use super::args::StagedExecutionOptions;
-use super::preparation::{FitPreparationOverrides, PreparedFitPreview, prepare_fit_preview};
+use super::preparation::{
+    FitPreparationOverrides, FitPreviewOptions, PreparedFitPreview, prepare_fit_preview,
+};
 use crate::commands::options::CalibrationStageOption;
 use crate::commands::shared::calibration::calibration_execution_mode;
 use crate::commands::shared::calibration::calibration_stage;
@@ -43,15 +45,17 @@ pub(crate) fn run_fit_command(
         context,
         &command.inputs,
         &command.run,
-        command.workflow_scope,
-        command.execution_mode.map(calibration_execution_mode),
-        command.cpu_count,
-        FitPreparationOverrides {
-            mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
-            dynamics_search_restart_candidate_budget: command
-                .dynamics_search_restart_candidate_budget,
+        FitPreviewOptions {
+            workflow_scope: command.workflow_scope,
+            execution_mode: command.execution_mode.map(calibration_execution_mode),
+            cpu_count: command.cpu_count,
+            overrides: FitPreparationOverrides {
+                mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
+                dynamics_search_restart_candidate_budget: command
+                    .dynamics_search_restart_candidate_budget,
+            },
+            no_persist: command.no_persist,
         },
-        command.no_persist,
     )?;
 
     let execution_input = apply_resume_settings(

@@ -11,7 +11,8 @@ use super::super::contracts::{
     ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
 };
 use super::super::progress::{
-    send_return_components_convergence_progress, send_return_components_progress,
+    ReturnComponentsConvergenceProgress, send_return_components_convergence_progress,
+    send_return_components_progress,
 };
 use super::bounds::{
     nig_search_point_from_configuration, relative_share_from_beta_ratios,
@@ -193,16 +194,21 @@ fn fit_effective_zero_drift_nig_via_em(
 
             send_return_components_convergence_progress(
                 progress_context.progress_sender,
-                ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
-                progress_context
-                    .completed_seed_count
-                    .load(Ordering::Relaxed),
-                progress_context.total_seed_count,
-                None,
-                completed_evaluation_count,
-                None,
-                best_objective,
-                convergence_ratio(objective_improvement, objective_tolerance),
+                ReturnComponentsConvergenceProgress {
+                    phase: ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+                    completed_units: progress_context
+                        .completed_seed_count
+                        .load(Ordering::Relaxed),
+                    total_units: progress_context.total_seed_count,
+                    current_item_label: None,
+                    current_evaluation_count: completed_evaluation_count,
+                    current_weighted_objective: None,
+                    best_weighted_objective: best_objective,
+                    current_convergence_ratio: convergence_ratio(
+                        objective_improvement,
+                        objective_tolerance,
+                    ),
+                },
             );
         }
 
