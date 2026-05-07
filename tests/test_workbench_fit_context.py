@@ -2692,6 +2692,7 @@ def _write_fit_report(
                 "source_row_count": source_row_count,
                 "retained_row_count": source_row_count,
                 "dropped_duplicate_row_count": 0,
+                "dropped_invalid_row_count": 0,
                 "sort_records_by_timestamp": True,
                 "applied_timestamp_timezone": "UTC",
                 "canonical_value_field": "trade_price",
