@@ -15,7 +15,15 @@ use janiform_cli::CliExitCode;
 const HOUR_DURATION_NANOS: i64 = 3_600_000_000_000;
 
 fn janiform_command() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_janiform"))
+    let working_directory = temporary_run_directory("command-cwd");
+
+    std::fs::create_dir_all(&working_directory)
+        .expect("temporary command working directory should be created");
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_janiform"));
+    command.current_dir(working_directory);
+
+    command
 }
 
 #[test]
@@ -153,7 +161,10 @@ fn dev_deterministic_regression_json_runs_native_harness() {
 
 #[test]
 fn dev_open_closed_gap_leakage_regression_uses_default_fixtures() {
+    let source_tree = source_tree_path();
+
     let output = janiform_command()
+        .current_dir(source_tree)
         .args(["--json", "dev", "regression", "open-closed-gap-leakage"])
         .output()
         .expect("open/closed gap regression command should execute");
@@ -2089,9 +2100,11 @@ fn temporary_run_directory(label: &str) -> std::path::PathBuf {
 }
 
 fn source_fixture_path(path: &str) -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(path)
+    source_tree_path().join(path)
+}
+
+fn source_tree_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 fn write_tick_csv(path: &std::path::Path) {
