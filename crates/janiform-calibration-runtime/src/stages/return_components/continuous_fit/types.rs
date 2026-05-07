@@ -5,6 +5,7 @@ use std::{
 };
 
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use serde::{Deserialize, Serialize};
 
 use super::super::contracts::{
     ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
@@ -26,6 +27,23 @@ pub(crate) struct ContinuousLikelihoodObjective {
     pub(crate) conditional_negative_log_likelihood: f64,
     pub(crate) boundary_penalty: f64,
     pub(crate) log_likelihood_shift: f64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ContinuousLikelihoodEvaluatorCounts {
+    pub(crate) closed_form_buy: usize,
+    pub(crate) closed_form_sell: usize,
+    pub(crate) tilted_mixed: usize,
+}
+
+impl ContinuousLikelihoodEvaluatorCounts {
+    pub(crate) fn add(self, other: Self) -> Self {
+        Self {
+            closed_form_buy: self.closed_form_buy.saturating_add(other.closed_form_buy),
+            closed_form_sell: self.closed_form_sell.saturating_add(other.closed_form_sell),
+            tilted_mixed: self.tilted_mixed.saturating_add(other.tilted_mixed),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -254,7 +272,7 @@ pub(super) struct NigShapeSearchBounds {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ContinuousReturnOptimizerContext {
+pub(crate) struct ContinuousReturnOptimizerContext {
     pub(super) observed_returns: Vec<f64>,
     pub(super) business_time_scales: Vec<f64>,
     pub(super) mean_business_time_scale: f64,

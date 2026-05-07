@@ -453,6 +453,12 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_coarse_consistency_fit: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub exact_closed_form_buy_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exact_closed_form_sell_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exact_tilted_mixed_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub current_convergence_ratio: Option<f64>,
 }
 

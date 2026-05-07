@@ -63,8 +63,10 @@ report: JaniformFitReport = result.report
 To keep the fitted model as a file for later Python or CLI work:
 
 ```python
-model.save(".janiform/runs/eurusd-fit/artifacts/model.jf")
+model.save()
 ```
+
+With no path argument, the Rust-backed save writes `.janiform/runs/<run-id>/artifacts/model.jf`. Pass a path to `model.save(...)` when automation needs a specific location.
 
 For option-aware calibration, pass an option surface as well. The surface can contain multiple strikes, expiries, and option types. If the file contains more than one quote timestamp, pass `option_surface_valuation_time_utc` so the calibration process can know which valuation snapshot to target.
 
@@ -112,6 +114,8 @@ The fitted model and fit report are written to:
 .janiform/runs/<run-id>/artifacts/model.jf
 .janiform/runs/<run-id>/artifacts/report.json
 ```
+
+Use `--no-persist` for one-off CLI dry runs that should not keep a run directory or fitted model artifact.
 
 The tick-data path can also be supplied positionally for the main fit command and `fit inspect`:
 

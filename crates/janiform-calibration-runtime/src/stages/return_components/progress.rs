@@ -50,6 +50,8 @@ pub(crate) fn send_return_components_convergence_progress(
     total_units: usize,
     current_item_label: Option<&str>,
     current_evaluation_count: usize,
+    current_weighted_objective: Option<f64>,
+    best_weighted_objective: Option<f64>,
     current_convergence_ratio: Option<f64>,
 ) {
     send_return_components_progress_update(
@@ -57,6 +59,8 @@ pub(crate) fn send_return_components_convergence_progress(
         ReturnComponentsStageProgressUpdate {
             current_item_label: current_item_label.map(str::to_string),
             current_evaluation_count: Some(current_evaluation_count),
+            current_weighted_objective,
+            best_weighted_objective,
             current_convergence_ratio,
             ..ReturnComponentsStageProgressUpdate::new(phase, completed_units, total_units)
         },

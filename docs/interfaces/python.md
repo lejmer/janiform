@@ -16,10 +16,10 @@ Most workflows start in one of these modules:
 
 | Module                             | Purpose                                                                                                               |
 |------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `janiform.calibration`             | Fit models and read fit reports.                                                                                     |
+| `janiform.calibration`             | Fit models and read fit reports.                                                                                      |
 | `janiform.calibration.market_data` | Pass explicit market-data settings such as column mappings, normalization choices, workflow scope, and preprocessing. |
 | `janiform.calibration.presets`     | Work with bundled presets and with your own registered presets.                                                       |
-| `janiform.model`                   | Load, save, simulate, and price from a fitted model.                                                                 |
+| `janiform.model`                   | Load, save, simulate, and price from a fitted model.                                                                  |
 | `janiform.simulation`              | Run simulation workflows directly when you need more control over simulation inputs or progress reporting.            |
 | `janiform.pricing`                 | Work with standalone pricing requests, pricing results, progress reporting, and schedule policies.                    |
 | `janiform.pricing.fitted`          | Work with pricing inputs and result contracts returned by fitted-model pricing methods.                               |
@@ -168,10 +168,10 @@ run.json
 You can also save a fitted model directly:
 
 ```python
-model.save(".janiform/runs/eurusd-fit/artifacts/model.jf")
+model.save()
 ```
 
-That file can later be loaded with `JaniformModel.load(...)` in Python or passed to CLI commands that accept `--model-path`.
+With no path argument, the Rust-backed save writes `.janiform/runs/<run-id>/artifacts/model.jf`. Pass a path to `model.save(...)` when you want a specific artifact location. That file can later be loaded with `JaniformModel.load(...)` in Python or passed to CLI commands that accept `--model-path`.
 
 This mode keeps results on disk and works well when you move between Python and the CLI.
 

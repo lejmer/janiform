@@ -26,7 +26,7 @@ use crate::stages::joint_metrics::{
     JointRefinementRollingVarianceActivityMetric,
 };
 use crate::stages::return_components::{
-    ReturnComponentsObservedOpenSessionReturn,
+    ContinuousLikelihoodEvaluatorCounts, ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
     ReturnComponentsStageContinuousReturnCalibrationSample,
     build_continuous_return_calibration_sample_from_components,
@@ -270,6 +270,7 @@ fn build_test_restart_outcome(
         fitted_parameters: build_test_joint_fitted_parameters(),
         raw_admissibility_metrics: build_test_raw_admissibility_metrics(&breakdown),
         breakdown,
+        exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts::default(),
         objective_terms: Vec::new(),
         invalid_reason: None,
     };

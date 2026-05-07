@@ -247,6 +247,8 @@ def _successful_full_model_payload(
             run_id=run_id,
             configuration=configuration,
         ),
+        "resolved_configuration": _resolved_configuration_payload(configuration),
+        "session_resolution": _session_resolution_payload(configuration),
     }
 
 

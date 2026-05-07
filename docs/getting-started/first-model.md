@@ -43,7 +43,9 @@ from janiform.model import JaniformModel
 from janiform.simulation import JaniformSimulationResult
 
 estimator = JaniformEstimator()
-model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet")
+model: JaniformModel = estimator.fit(
+    tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet",
+)
 simulation: JaniformSimulationResult = model.simulate(horizon_interval_count=24)
 
 df: pd.DataFrame = simulation.to_pandas()
@@ -52,11 +54,13 @@ print(df.head())
 
 This fits the model in memory, simulates 24 one-hour intervals, converts the simulation result to a pandas data frame, and prints the first rows.
 
-If you want to keep the fitted model for later Python or CLI work, save it directly:
+If you want to keep the fitted model for later Python or CLI work, save it explicitly:
 
 ```python
-model.save(".janiform/runs/first-model/artifacts/model.jf")
+model.save()
 ```
+
+With no path argument, the Rust-backed save writes `.janiform/runs/<run-id>/artifacts/model.jf`. You can also pass a path to `model.save(...)`.
 
 ## Plot the simulated data
 
@@ -92,7 +96,7 @@ The simulate command reads that model and writes its own output using the defaul
 
 ## Outputs
 
-After the Python example, you have a fitted model object and a simulation result object in memory. You can inspect the simulated rows immediately, and save the model later with `model.save(...)` when you want a durable artifact.
+After the Python example, you have a fitted model object and a simulation result object in memory. If you called `model.save()`, the durable model artifact lives under `.janiform/runs/<run-id>/artifacts/model.jf`.
 
 After the CLI example, you have a saved run directory under `.janiform/runs/first-model`. The fitted model lives in `artifacts/model.jf`, and the simulation command writes path data and a small run manifest in the default output location.
 

@@ -238,10 +238,13 @@ Python and CLI workflows share the same saved model file.
 Example:
 
 ```python
-model.save(".janiform/runs/eurusd-fit/artifacts/model.jf")
+model = estimator.fit(
+    tick_data_path="data/Synthetic_EURUSD_Data_1M_ticks.parquet",
+)
+model.save()
 ```
 
-That file can then be:
+The Rust-backed save writes `.janiform/runs/<run-id>/artifacts/model.jf` by default. That file can then be:
 
 - loaded again in Python with `JaniformModel.load(...)`
 - passed to CLI commands through `--model-path`
@@ -268,6 +271,9 @@ janiform --json inspect run .janiform/runs/eurusd-fit
 ### Fit in Python and continue in the CLI
 
 ```python
+model = estimator.fit(
+    tick_data_path="data/Synthetic_EURUSD_Data_1M_ticks.parquet",
+)
 model.save(".janiform/runs/eurusd-fit/artifacts/model.jf")
 ```
 

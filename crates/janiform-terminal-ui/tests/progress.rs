@@ -158,3 +158,53 @@ fn adapter_seeds_planned_work_items_as_waiting() {
         vec!["Eval"]
     );
 }
+
+#[test]
+fn adapter_clears_work_items_when_phase_changes() {
+    let mut adapter = ProgressAdapter::hidden();
+    adapter.observe(ProgressEvent::RunStarted {
+        run_id: "fit-20260426".to_string(),
+        scope: "staged calibration".to_string(),
+        input_count: 1,
+        output_path: None,
+        stage_sequence: vec!["return components".to_string()],
+    });
+    adapter.observe(ProgressEvent::StageStarted {
+        stage: "return components".to_string(),
+        stage_number: 1,
+        stage_count: 1,
+    });
+    adapter.observe(ProgressEvent::StageProgress {
+        phase: "continuous NIG proxy EM".to_string(),
+        measure: ProgressMeasure::bounded(1, 1).expect("test progress should be valid"),
+        work_item_label: Some("proxy EM search points ready".to_string()),
+        work_item_progress_percent: Some(100),
+        planned_work_item_labels: Vec::new(),
+        work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Evals")],
+        work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "17")],
+        latest_signal: Some("proxy EM search points ready".to_string()),
+    });
+    adapter.observe(ProgressEvent::StageProgress {
+        phase: "continuous NIG seed scoring".to_string(),
+        measure: ProgressMeasure::bounded(0, 12).expect("test progress should be valid"),
+        work_item_label: None,
+        work_item_progress_percent: None,
+        planned_work_item_labels: Vec::new(),
+        work_item_columns: Vec::new(),
+        work_item_metrics: Vec::new(),
+        latest_signal: Some("score proxy EM search points".to_string()),
+    });
+
+    let snapshot = adapter.snapshot();
+
+    assert_eq!(
+        snapshot.phase.as_deref(),
+        Some("continuous NIG seed scoring")
+    );
+    assert_eq!(
+        snapshot.latest_signal.as_deref(),
+        Some("score proxy EM search points")
+    );
+    assert!(snapshot.work_items.is_empty());
+    assert!(snapshot.work_item_columns.is_empty());
+}

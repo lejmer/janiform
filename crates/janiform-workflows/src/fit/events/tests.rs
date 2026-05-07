@@ -1,0 +1,169 @@
+use super::*;
+
+#[test]
+fn proxy_em_progress_signal_uses_global_eval_best_and_short_conv_label() {
+    let progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+        None,
+        Some(17),
+        None,
+        Some(1.25),
+        Some(0.5),
+    );
+
+    assert_eq!(
+        stage_progress_signal(&progress),
+        Some("evals 17, best 1.250000, conv. 0.500000".to_string())
+    );
+}
+
+#[test]
+fn work_item_phase_start_keeps_latest_signal_when_parallel_metrics_are_absent() {
+    let progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("score proxy EM search points"),
+        None,
+        None,
+        None,
+        None,
+    );
+
+    assert_eq!(
+        stage_progress_signal(&progress),
+        Some("score proxy EM search points".to_string())
+    );
+}
+
+#[test]
+fn zero_total_phase_progress_uses_unbounded_terminal_measure() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("score proxy EM search points"),
+        None,
+        None,
+        None,
+        None,
+    );
+    progress.total_units = 0;
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("zero-total progress should remain displayable");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            measure,
+            latest_signal,
+            ..
+        }) => {
+            assert_eq!(measure, UiProgressMeasure::Unbounded);
+            assert_eq!(
+                latest_signal.as_deref(),
+                Some("score proxy EM search points")
+            );
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
+fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("halton_01"),
+        Some(12),
+        Some(59),
+        Some(0.5),
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::RestartOptimization,
+    );
+
+    progress.current_parameter_block = Some("nig".to_string());
+    progress.current_restart_best_weighted_objective = Some(0.5);
+
+    progress.exact_closed_form_buy_count = Some(3);
+    progress.exact_closed_form_sell_count = Some(4);
+    progress.exact_tilted_mixed_count = Some(5);
+
+    assert_eq!(
+        work_item_table_columns(&progress)
+            .into_iter()
+            .map(|column| (column.key, column.label))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "Evals".to_string()),
+            ("block".to_string(), "Blk".to_string()),
+            ("current_objective".to_string(), "Cur. obj.".to_string()),
+            ("best_objective".to_string(), "Best obj.".to_string()),
+            ("final_objective".to_string(), "Final obj.".to_string()),
+            ("exact_buy".to_string(), "CF-B".to_string()),
+            ("exact_sell".to_string(), "CF-S".to_string()),
+            ("exact_mixed".to_string(), "Mix".to_string()),
+        ]
+    );
+
+    assert_eq!(
+        work_item_table_metrics(&progress)
+            .into_iter()
+            .map(|metric| (metric.key, metric.value))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "12/59".to_string()),
+            ("block".to_string(), "nig".to_string()),
+            ("best_objective".to_string(), "0.500000".to_string()),
+            ("exact_buy".to_string(), "3".to_string()),
+            ("exact_sell".to_string(), "4".to_string()),
+            ("exact_mixed".to_string(), "5".to_string()),
+        ]
+    );
+}
+
+fn return_components_progress_event(
+    phase: ReturnComponentsStageProgressPhase,
+    current_item_label: Option<&str>,
+    current_evaluation_count: Option<usize>,
+    total_evaluation_budget: Option<usize>,
+    best_weighted_objective: Option<f64>,
+    current_convergence_ratio: Option<f64>,
+) -> CalibrationStagedRunStageProgressEvent {
+    CalibrationStagedRunStageProgressEvent {
+        run_id: "test-run".to_string(),
+        stage: CalibrationStage::ReturnComponents,
+        stage_index: 3,
+        stage_count: 5,
+        progress_phase: CalibrationStageProgressPhase::ReturnComponents(phase),
+        completed_units: 0,
+        total_units: 1,
+        stage_progress_percent: None,
+        aggregate_progress_percent: None,
+        current_item_label: current_item_label.map(str::to_string),
+        current_restart_id: None,
+        planned_work_item_labels: Vec::new(),
+        active_restart_count: None,
+        current_parameter_block: None,
+        completed_outer_cycles: None,
+        total_outer_cycles: None,
+        current_evaluation_count,
+        total_evaluation_budget,
+        evaluation_progress_percent: None,
+        valid_completed_units: None,
+        cumulative_local_evaluation_count: None,
+        current_weighted_objective: None,
+        current_restart_best_weighted_objective: None,
+        current_candidate_assessment: None,
+        best_restart_id: None,
+        best_weighted_objective,
+        current_coarse_consistency_fit: None,
+        best_coarse_consistency_fit: None,
+        exact_closed_form_buy_count: None,
+        exact_closed_form_sell_count: None,
+        exact_tilted_mixed_count: None,
+        current_convergence_ratio,
+    }
+}

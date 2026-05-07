@@ -34,6 +34,15 @@ struct SimpsonPanel {
     tolerance: f64,
 }
 
+/// Maximum refined Simpson panels for one tilted mixed inversion block.
+///
+/// This is the deterministic work-budget contract for the exact likelihood
+/// fallback: candidates whose certified density would require more panels are
+/// rejected as numerically infeasible instead of consuming unbounded optimizer
+/// time.
+const TILTED_MIXED_ADAPTIVE_SIMPSON_REFINED_PANEL_BUDGET: usize = 65_536;
+const TILTED_MIXED_ADAPTIVE_SIMPSON_REFINED_PANEL_BUDGET_AS_F64: f64 = 65_536.0;
+
 pub(super) fn evaluate_tilted_mixed_exact_block(
     configuration: NigSharedPlusShiftConfiguration,
     driver_parameters: NigBuySellDriverParameters,
@@ -172,6 +181,38 @@ pub(super) fn evaluate_tilted_mixed_exact_block(
                     },
                 )
             })?;
+
+    if minimum_oscillation_panel_count_exceeds_budget(
+        block_input.observed_return,
+        integration_upper_bound,
+    ) {
+        return Err(ExactBlockStructuralFailure::new(
+            block_input.block_member_index,
+            ReturnComponentsStageExactLikelihoodFailureReason::IntegrationStepCountOverflow,
+            ExactLikelihoodFailureContext {
+                evaluator_kind: Some(
+                    ReturnComponentsStageExactLikelihoodEvaluatorKind::TiltedMixedInversion,
+                ),
+                observed_return: block_input.observed_return,
+                business_time_scale: block_input.business_time_scale,
+                sell_share_proxy: block_input.sell_share_proxy,
+                integrated_buy_intensity: block_input.integrated_buy_intensity,
+                integrated_sell_intensity: block_input.integrated_sell_intensity,
+                block_standard_deviation: Some(block_input.block_standard_deviation),
+                standardized_return: Some(block_input.standardized_return),
+                tilt_theta: Some(tilt_selection.theta),
+                tilt_domain_lower_theta_exclusive: Some(
+                    tilt_selection.domain.lower_theta_exclusive,
+                ),
+                tilt_domain_upper_theta_exclusive: Some(
+                    tilt_selection.domain.upper_theta_exclusive,
+                ),
+                standardized_decay_scale: Some(1.0 / tail_envelope.weighted_decay_rate),
+                integration_upper_bound: Some(integration_upper_bound),
+                log_density_resolution,
+            },
+        ));
+    }
 
     let integral_tail_upper_bound =
         integral_tail_upper_bound(tail_envelope, integration_upper_bound);
@@ -421,6 +462,28 @@ fn integral_tail_upper_bound(
         / tail_envelope.weighted_decay_rate
 }
 
+fn minimum_oscillation_panel_count_exceeds_budget(
+    observed_return: f64,
+    integration_upper_bound: f64,
+) -> bool {
+    if !observed_return.is_finite()
+        || !integration_upper_bound.is_finite()
+        || integration_upper_bound < 0.0
+    {
+        return true;
+    }
+
+    let absolute_return = observed_return.abs();
+    if absolute_return == 0.0 || integration_upper_bound == 0.0 {
+        return false;
+    }
+
+    let minimum_panel_count = (integration_upper_bound * absolute_return / PI).ceil();
+
+    !minimum_panel_count.is_finite()
+        || minimum_panel_count > TILTED_MIXED_ADAPTIVE_SIMPSON_REFINED_PANEL_BUDGET_AS_F64
+}
+
 fn tilted_integrand(
     driver_parameters: NigBuySellDriverParameters,
     block_input: ExactBlockInput,
@@ -494,6 +557,7 @@ fn adaptive_simpson_integral_estimate(
 
     let mut total_estimate = 0.0;
     let mut total_error_upper_bound = 0.0;
+    let mut refined_panel_count = 1usize;
 
     while let Some(panel) = stack.pop() {
         let midpoint = 0.5 * (panel.lower + panel.upper);
@@ -540,6 +604,12 @@ fn adaptive_simpson_integral_estimate(
         }
 
         let split_tolerance = 0.5 * panel.tolerance;
+        refined_panel_count = refined_panel_count
+            .checked_add(1)
+            .filter(|count| *count <= TILTED_MIXED_ADAPTIVE_SIMPSON_REFINED_PANEL_BUDGET)
+            .ok_or(
+                ReturnComponentsStageExactLikelihoodFailureReason::IntegrationStepCountOverflow,
+            )?;
 
         stack.push(SimpsonPanel {
             lower: midpoint,
@@ -619,4 +689,32 @@ fn log_sum_exp(left: f64, right: f64) -> f64 {
 
     let maximum = left.max(right);
     maximum + ((left - maximum).exp() + (right - maximum).exp()).ln()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        TILTED_MIXED_ADAPTIVE_SIMPSON_REFINED_PANEL_BUDGET_AS_F64,
+        minimum_oscillation_panel_count_exceeds_budget,
+    };
+
+    #[test]
+    fn oscillation_panel_precheck_rejects_candidates_beyond_budget() {
+        let excessive_upper_bound = (TILTED_MIXED_ADAPTIVE_SIMPSON_REFINED_PANEL_BUDGET_AS_F64
+            + 1.0)
+            * std::f64::consts::PI;
+
+        assert!(minimum_oscillation_panel_count_exceeds_budget(
+            1.0,
+            excessive_upper_bound
+        ));
+    }
+
+    #[test]
+    fn oscillation_panel_precheck_allows_zero_return() {
+        assert!(!minimum_oscillation_panel_count_exceeds_budget(
+            0.0,
+            f64::MAX
+        ));
+    }
 }

@@ -338,7 +338,13 @@ fn should_observe_staged_event(
         return true;
     }
     if progress.current_item_label.is_some()
-        && progress.current_evaluation_count == Some(0)
+        && progress.current_evaluation_count.is_none()
+        && progress.evaluation_progress_percent.is_none()
+    {
+        return true;
+    }
+    if progress.current_item_label.is_some()
+        && progress.current_parameter_block.is_some()
         && progress.evaluation_progress_percent.is_none()
     {
         return true;
@@ -508,4 +514,146 @@ fn write_execution_artifacts(
     )?;
 
     Ok((report_payload, Some(model_payload)))
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform_calibration_runtime::JointRefinementStageProgressPhase;
+    use janiform_calibration_runtime::ReturnComponentsStageProgressPhase;
+
+    use super::*;
+
+    #[test]
+    fn progress_gate_observes_labelled_phase_start_without_eval_metrics() {
+        let mut progress_gate = VolatileProgressGate::default();
+
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &return_components_stage_progress_event(
+                ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+                1,
+                1,
+                Some("proxy EM search points ready"),
+                None,
+                None,
+            )
+        ));
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &return_components_stage_progress_event(
+                ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+                0,
+                12,
+                Some("score proxy EM search points"),
+                None,
+                None,
+            )
+        ));
+    }
+
+    #[test]
+    fn progress_gate_observes_restart_block_start_without_eval_metrics() {
+        let mut progress_gate = VolatileProgressGate::default();
+
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &joint_refinement_restart_progress_event("baseline", None, Some(1), Some(1),)
+        ));
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &joint_refinement_restart_progress_event("midpoint", Some("nig"), Some(0), None,)
+        ));
+    }
+
+    fn return_components_stage_progress_event(
+        phase: ReturnComponentsStageProgressPhase,
+        completed_units: usize,
+        total_units: usize,
+        current_item_label: Option<&str>,
+        current_evaluation_count: Option<usize>,
+        evaluation_progress_percent: Option<usize>,
+    ) -> CalibrationStagedRunObserverEvent {
+        CalibrationStagedRunObserverEvent::StageProgress(Box::new(
+            janiform_calibration_runtime::CalibrationStagedRunStageProgressEvent {
+                run_id: "test-run".to_string(),
+                stage: CalibrationStage::ReturnComponents,
+                stage_index: 3,
+                stage_count: 5,
+                progress_phase: CalibrationStageProgressPhase::ReturnComponents(phase),
+                completed_units,
+                total_units,
+                stage_progress_percent: None,
+                aggregate_progress_percent: None,
+                current_item_label: current_item_label.map(str::to_string),
+                current_restart_id: None,
+                planned_work_item_labels: Vec::new(),
+                active_restart_count: None,
+                current_parameter_block: None,
+                completed_outer_cycles: None,
+                total_outer_cycles: None,
+                current_evaluation_count,
+                total_evaluation_budget: None,
+                evaluation_progress_percent,
+                valid_completed_units: None,
+                cumulative_local_evaluation_count: None,
+                current_weighted_objective: None,
+                current_restart_best_weighted_objective: None,
+                current_candidate_assessment: None,
+                best_restart_id: None,
+                best_weighted_objective: None,
+                current_coarse_consistency_fit: None,
+                best_coarse_consistency_fit: None,
+                exact_closed_form_buy_count: None,
+                exact_closed_form_sell_count: None,
+                exact_tilted_mixed_count: None,
+                current_convergence_ratio: None,
+            },
+        ))
+    }
+
+    fn joint_refinement_restart_progress_event(
+        restart_id: &str,
+        current_parameter_block: Option<&str>,
+        current_evaluation_count: Option<usize>,
+        evaluation_progress_percent: Option<usize>,
+    ) -> CalibrationStagedRunObserverEvent {
+        CalibrationStagedRunObserverEvent::StageProgress(Box::new(
+            janiform_calibration_runtime::CalibrationStagedRunStageProgressEvent {
+                run_id: "test-run".to_string(),
+                stage: CalibrationStage::JointRefinement,
+                stage_index: 5,
+                stage_count: 5,
+                progress_phase: CalibrationStageProgressPhase::JointRefinement(
+                    JointRefinementStageProgressPhase::RestartOptimization,
+                ),
+                completed_units: 0,
+                total_units: 6,
+                stage_progress_percent: None,
+                aggregate_progress_percent: None,
+                current_item_label: Some(restart_id.to_string()),
+                current_restart_id: Some(restart_id.to_string()),
+                planned_work_item_labels: Vec::new(),
+                active_restart_count: Some(5),
+                current_parameter_block: current_parameter_block.map(str::to_string),
+                completed_outer_cycles: current_parameter_block.map(|_| 0),
+                total_outer_cycles: Some(1),
+                current_evaluation_count,
+                total_evaluation_budget: Some(59),
+                evaluation_progress_percent,
+                valid_completed_units: Some(0),
+                cumulative_local_evaluation_count: Some(0),
+                current_weighted_objective: None,
+                current_restart_best_weighted_objective: None,
+                current_candidate_assessment: None,
+                best_restart_id: None,
+                best_weighted_objective: None,
+                current_coarse_consistency_fit: None,
+                best_coarse_consistency_fit: None,
+                exact_closed_form_buy_count: None,
+                exact_closed_form_sell_count: None,
+                exact_tilted_mixed_count: None,
+                current_convergence_ratio: None,
+            },
+        ))
+    }
 }

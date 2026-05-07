@@ -23,6 +23,7 @@ use crate::commands::shared::calibration::tick_price_input_policy;
 use crate::commands::shared::inputs::market_data_input_file_reference;
 use crate::commands::shared::inputs::optional_input_file;
 use crate::commands::shared::inputs::required_input_file;
+use crate::commands::shared::market_profiles::resolve_explicit_market_profile;
 use crate::context::CommandContext;
 use crate::error::CliError;
 
@@ -52,8 +53,11 @@ pub(crate) fn prepare_market_data_command_inputs(
     validate_known_news_arguments(inputs)?;
 
     let tick_data_path = required_input_file(context, "--tick-data-path", &inputs.tick_data_path)?;
+    let explicit_market_profile = resolve_explicit_market_profile(context, inputs)?;
 
-    let inferred_market_profile = if inputs.exchange_code.is_none()
+    let market_profile = if explicit_market_profile.is_some() {
+        explicit_market_profile
+    } else if inputs.exchange_code.is_none()
         && inputs.session_definition_path.is_none()
         && inputs.session_timezone.is_none()
     {
@@ -100,7 +104,7 @@ pub(crate) fn prepare_market_data_command_inputs(
             .timestamp_timezone
             .clone()
             .or_else(|| {
-                inferred_market_profile
+                market_profile
                     .as_ref()
                     .and_then(|profile| profile.timestamp_timezone_name.clone())
             })
@@ -169,7 +173,7 @@ pub(crate) fn prepare_market_data_command_inputs(
 
     let exchange_code = match inputs.exchange_code.clone() {
         Some(exchange_code) => exchange_code,
-        None => inferred_market_profile
+        None => market_profile
             .as_ref()
             .map(|profile| profile.exchange_code.clone())
             .ok_or(CliError::MissingRequiredArgument {
@@ -185,7 +189,7 @@ pub(crate) fn prepare_market_data_command_inputs(
         tick_data_source,
         option_surface_source,
         known_news_inputs,
-        market_profile: inferred_market_profile,
+        market_profile,
         session_configuration: MarketDataSessionConfiguration {
             exchange_code,
             session_definition_source,

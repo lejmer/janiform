@@ -80,6 +80,8 @@ pub struct ReturnComponentsStageProgressUpdate {
     pub current_evaluation_count: Option<usize>,
     pub total_evaluation_budget: Option<usize>,
     pub evaluation_progress_percent: Option<usize>,
+    pub current_weighted_objective: Option<f64>,
+    pub best_weighted_objective: Option<f64>,
     pub current_convergence_ratio: Option<f64>,
 }
 
@@ -98,6 +100,8 @@ impl ReturnComponentsStageProgressUpdate {
             current_evaluation_count: None,
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
+            current_weighted_objective: None,
+            best_weighted_objective: None,
             current_convergence_ratio: None,
         }
     }

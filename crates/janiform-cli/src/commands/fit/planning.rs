@@ -36,6 +36,7 @@ pub(crate) fn run_fit_plan(
             dynamics_search_restart_candidate_budget: command
                 .dynamics_search_restart_candidate_budget,
         },
+        false,
     )?;
 
     let staged_artifact_path = write_staged_execution_input(
@@ -61,6 +62,7 @@ pub(crate) fn run_fit_inspect(
         None,
         command.cpu_count,
         FitPreparationOverrides::default(),
+        false,
     )?;
 
     emit_inspect_output(context, &prepared)
@@ -80,6 +82,7 @@ pub(crate) fn run_fit_staged_plan(
         Some(CalibrationExecutionMode::Disk),
         command.cpu_count,
         FitPreparationOverrides::default(),
+        false,
     )?;
 
     let staged_artifact_path = write_staged_execution_input(

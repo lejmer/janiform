@@ -66,6 +66,7 @@ pub(crate) fn prepare_fit_preview(
     execution_mode: Option<CalibrationExecutionMode>,
     cpu_count: Option<usize>,
     overrides: FitPreparationOverrides,
+    no_persist: bool,
 ) -> Result<PreparedFitPreview, CliError> {
     let effective_workflow_scope =
         resolve_workflow_scope(workflow_scope, inputs.option_surface_path.is_some())?;
@@ -83,9 +84,15 @@ pub(crate) fn prepare_fit_preview(
         )?,
     };
 
-    let output_directory = match &run.output_dir {
-        Some(path) => context.paths().output_path(path),
-        None => default_run_output_directory(context, &run_id),
+    let output_directory = if no_persist {
+        std::env::temp_dir()
+            .join("janiform-no-persist")
+            .join(format!("{}-{}", run_id, std::process::id()))
+    } else {
+        match &run.output_dir {
+            Some(path) => context.paths().output_path(path),
+            None => default_run_output_directory(context, &run_id),
+        }
     };
 
     let paths = fit_workflow_paths(output_directory.clone());
@@ -110,7 +117,11 @@ pub(crate) fn prepare_fit_preview(
         market_profile: prepared_inputs.market_profile,
     };
 
-    let execution_mode = execution_mode.unwrap_or(CalibrationExecutionMode::Disk);
+    let execution_mode = if no_persist {
+        CalibrationExecutionMode::Memory
+    } else {
+        execution_mode.unwrap_or(CalibrationExecutionMode::Disk)
+    };
 
     let request = CalibrationMarketDataPreparationRequest {
         schema_version: FIT_PREPARATION_REQUEST_SCHEMA_VERSION.to_string(),

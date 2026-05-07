@@ -52,6 +52,16 @@ Disk execution is the durable mode for long-running calibration. It writes the r
     pub(crate) execution_mode: Option<ExecutionMode>,
 
     #[arg(
+        long = "no-persist",
+        conflicts_with_all = ["output_dir", "execution_mode"],
+        help = "Run fit without keeping the run directory or model artifact.",
+        long_help = "Run fit without keeping the run directory or model artifact.
+
+By default, janiform fit writes a durable run directory for downstream CLI commands. Use --no-persist for dry runs and one-off checks where the fitted model does not need to be reused."
+    )]
+    pub(crate) no_persist: bool,
+
+    #[arg(
         long,
         value_name = "COUNT",
         help = "CPU count available to calibration preparation."

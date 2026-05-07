@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -51,6 +51,11 @@ class JaniformModel:
     metadata: dict[str, Any]
     resolved_configuration: ResolvedPresetWorkflowConfiguration
     session_resolution: MarketDataSessionResolution
+    _model_payload: Optional[dict[str, Any]] = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def fitted_parameters(self) -> dict[str, Any]:
@@ -61,6 +66,42 @@ class JaniformModel:
         summary["fitted_parameters"] = deepcopy(self.parameters)
 
         return summary
+
+    def _native_model_payload(self) -> dict[str, Any]:
+        if self._model_payload is None:
+            raise RuntimeError(
+                "JaniformModel does not carry a Rust model payload. Refit through the "
+                "native fit workflow or load a Rust-written model.jf artifact."
+            )
+
+        return deepcopy(self._model_payload)
+
+    def save(self, path: Optional[str | Path] = None) -> Path:
+        from ._native_api import native_module
+        from .calibration.errors import calibration_execution_error
+
+        raw_output = native_module().save_model_artifact(
+            {
+                "model_payload": self._native_model_payload(),
+                "path": None if path is None else str(Path(path)),
+            }
+        )
+        if not isinstance(raw_output, dict):
+            raise calibration_execution_error(
+                "native model artifact save returned an invalid output payload",
+                entrypoint="model.save",
+                context={"field": "output"},
+            )
+
+        raw_path = raw_output.get("path")
+        if not isinstance(raw_path, str):
+            raise calibration_execution_error(
+                "native model artifact save returned an invalid path",
+                entrypoint="model.save",
+                context={"field": "output.path"},
+            )
+
+        return Path(raw_path)
 
     def simulate(
         self,
@@ -309,15 +350,6 @@ class JaniformModel:
             request=request,
         )
 
-    def save(self, path: str | Path) -> None:
-        from .calibration.fit._runtime.metadata import serialize_model_payload
-
-        model_path = Path(path)
-        model_path.write_text(
-            serialize_model_payload(self),
-            encoding="utf-8",
-        )
-
     @staticmethod
     def load(path: str | Path) -> JaniformModel:
         from .calibration.errors import calibration_error
@@ -362,15 +394,48 @@ class JaniformModel:
         raw_metadata = payload.get("metadata")
         raw_resolved_configuration = payload.get("resolved_configuration")
         raw_session_resolution = payload.get("session_resolution")
+        report_preparation_payload = (
+            _model_sibling_report_preparation_payload(model_path)
+            if not isinstance(raw_resolved_configuration, dict)
+            or not isinstance(raw_session_resolution, dict)
+            else None
+        )
+        if not isinstance(raw_session_resolution, dict):
+            raw_session_resolution = _required_preparation_payload_field(
+                report_preparation_payload,
+                "session_resolution",
+            )
+        if not isinstance(raw_resolved_configuration, dict) and isinstance(
+            raw_session_resolution,
+            dict,
+        ):
+            raw_resolved_configuration = _resolved_configuration_payload_from_session_resolution(
+                raw_session_resolution
+            )
+        if not isinstance(raw_resolved_configuration, dict):
+            raw_resolved_configuration = _required_preparation_payload_field(
+                report_preparation_payload,
+                "resolved_configuration",
+            )
 
         if not isinstance(raw_parameters, dict):
             raise calibration_error("parameters", "must be an object")
         if not isinstance(raw_metadata, dict):
             raise calibration_error("metadata", "must be an object")
+        raw_metadata = _model_metadata_with_recovered_input_inference(
+            raw_metadata,
+            report_preparation_payload,
+        )
         if not isinstance(raw_resolved_configuration, dict):
             raise calibration_error("resolved_configuration", "must be an object")
         if not isinstance(raw_session_resolution, dict):
             raise calibration_error("session_resolution", "must be an object")
+
+        model_payload = deepcopy(payload)
+        model_payload["parameters"] = deepcopy(raw_parameters)
+        model_payload["metadata"] = deepcopy(raw_metadata)
+        model_payload["resolved_configuration"] = deepcopy(raw_resolved_configuration)
+        model_payload["session_resolution"] = deepcopy(raw_session_resolution)
 
         try:
             workflow_scope = CalibrationMarketDataWorkflowScope(workflow_scope_value)
@@ -393,7 +458,130 @@ class JaniformModel:
                 raw_session_resolution,
                 field_path="session_resolution",
             ),
+            _model_payload=model_payload,
         )
+
+
+def _model_sibling_report_preparation_payload(model_path: Path) -> Optional[dict[str, Any]]:
+    from .calibration.errors import calibration_error
+
+    report_path = model_path.with_name("report.json")
+    try:
+        report_payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        raise calibration_error(
+            "path",
+            f"sibling fit report path `{report_path}` could not be read: {error}",
+        ) from error
+    except json.JSONDecodeError as error:
+        raise calibration_error(
+            "path",
+            f"sibling fit report path `{report_path}` does not contain valid JSON: {error.msg}",
+        ) from error
+
+    if not isinstance(report_payload, dict):
+        raise calibration_error("path", "sibling fit report payload must be a JSON object")
+
+    raw_preparation_payload = report_payload.get("preparation")
+    if not isinstance(raw_preparation_payload, dict):
+        return None
+
+    return raw_preparation_payload
+
+
+def _required_preparation_payload_field(
+    preparation_payload: Optional[dict[str, Any]],
+    field_name: str,
+) -> Any:
+    from .calibration.errors import calibration_error
+
+    if preparation_payload is None:
+        raise calibration_error(field_name, "must be an object")
+
+    raw_field_payload = preparation_payload.get(field_name)
+    if not isinstance(raw_field_payload, dict):
+        raise calibration_error(field_name, "must be an object")
+
+    return raw_field_payload
+
+
+def _resolved_configuration_payload_from_session_resolution(
+    raw_session_resolution: dict[str, Any],
+) -> dict[str, Any]:
+    from .calibration.presets.resolution import resolve_preset_workflow_configuration
+    from .calibration.sessions.contracts import MarketDataSessionResolution
+
+    session_resolution = MarketDataSessionResolution.from_mapping(
+        raw_session_resolution,
+        field_path="session_resolution",
+    )
+
+    return resolve_preset_workflow_configuration(
+        inferred_session_resolution=session_resolution,
+    ).to_payload()
+
+
+def _model_metadata_with_recovered_input_inference(
+    raw_metadata: dict[str, Any],
+    preparation_payload: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    if isinstance(raw_metadata.get("input_inference"), dict):
+        return raw_metadata
+
+    recovered_input_inference = _recovered_input_inference_payload(preparation_payload)
+    if recovered_input_inference is None:
+        return raw_metadata
+
+    metadata = deepcopy(raw_metadata)
+    metadata["input_inference"] = recovered_input_inference
+
+    return metadata
+
+
+def _recovered_input_inference_payload(
+    preparation_payload: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    if preparation_payload is None:
+        return None
+
+    raw_input_inference = preparation_payload.get("input_inference")
+    if isinstance(raw_input_inference, dict):
+        return raw_input_inference
+
+    request = preparation_payload.get("request")
+    if not isinstance(request, dict):
+        return None
+
+    tick_data_source = request.get("tick_data_source")
+    column_mapping = request.get("column_mapping")
+    normalization_policy = request.get("normalization_policy")
+    if (
+        not isinstance(tick_data_source, dict)
+        or not isinstance(column_mapping, dict)
+        or not isinstance(normalization_policy, dict)
+    ):
+        return None
+
+    tick_data_column_mapping = column_mapping.get("tick_data")
+    if not isinstance(tick_data_column_mapping, dict):
+        return None
+
+    recovered_input_inference = {
+        "tick_data_source": {
+            "file_format": tick_data_source.get("file_format", "parquet"),
+        },
+        "tick_data_column_mapping": tick_data_column_mapping,
+        "timestamp_timezone_source": "explicit",
+        "normalization_policy": normalization_policy,
+    }
+    if isinstance(request.get("run_id"), str):
+        recovered_input_inference["run_id"] = request["run_id"]
+    if isinstance(request.get("workflow_scope"), str):
+        recovered_input_inference["workflow_scope"] = request["workflow_scope"]
+
+    return recovered_input_inference
 
 
 __all__ = ["JaniformModel"]

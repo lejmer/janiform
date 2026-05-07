@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 
@@ -27,6 +28,8 @@ use crate::stages::return_components::execution::{
 struct ProxyEmProgressContext<'a> {
     progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
     completed_seed_count: &'a AtomicUsize,
+    completed_evaluation_count: &'a AtomicUsize,
+    best_objective: &'a Mutex<Option<f64>>,
     total_seed_count: usize,
     seed_label: String,
 }
@@ -38,6 +41,8 @@ pub(super) fn build_effective_nig_em_search_points(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<NigShapeSearchPoint> {
     let completed_seed_count = AtomicUsize::new(0);
+    let completed_evaluation_count = AtomicUsize::new(0);
+    let best_objective = Mutex::new(None);
     let total_seed_count = moment_seed_candidates.len();
 
     let mut refined_search_points: Vec<NigShapeSearchPoint> = moment_seed_candidates
@@ -53,6 +58,8 @@ pub(super) fn build_effective_nig_em_search_points(
             let progress_context = ProxyEmProgressContext {
                 progress_sender,
                 completed_seed_count: &completed_seed_count,
+                completed_evaluation_count: &completed_evaluation_count,
+                best_objective: &best_objective,
                 total_seed_count,
                 seed_label,
             };
@@ -151,7 +158,7 @@ fn fit_effective_zero_drift_nig_via_em(
     )?;
 
     let maximum_iteration_count = solver_settings.max_iterations.max(1);
-    for iteration_index in 0..maximum_iteration_count {
+    for _ in 0..maximum_iteration_count {
         let e_step_statistics = build_e_step_statistics(
             current_parameters,
             aligned_observed_returns,
@@ -177,6 +184,13 @@ fn fit_effective_zero_drift_nig_via_em(
         let objective_improvement = current_objective - next_objective;
 
         if let Some(progress_context) = progress_context {
+            let completed_evaluation_count = progress_context
+                .completed_evaluation_count
+                .fetch_add(1, Ordering::Relaxed)
+                + 1;
+            let best_objective =
+                record_proxy_em_best_objective(progress_context.best_objective, next_objective);
+
             send_return_components_convergence_progress(
                 progress_context.progress_sender,
                 ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
@@ -184,8 +198,10 @@ fn fit_effective_zero_drift_nig_via_em(
                     .completed_seed_count
                     .load(Ordering::Relaxed),
                 progress_context.total_seed_count,
-                Some(progress_context.seed_label.as_str()),
-                iteration_index + 1,
+                None,
+                completed_evaluation_count,
+                None,
+                best_objective,
                 convergence_ratio(objective_improvement, objective_tolerance),
             );
         }
@@ -199,6 +215,26 @@ fn fit_effective_zero_drift_nig_via_em(
     }
 
     Some(current_parameters)
+}
+
+fn record_proxy_em_best_objective(
+    best_objective: &Mutex<Option<f64>>,
+    objective: f64,
+) -> Option<f64> {
+    if !objective.is_finite() {
+        return best_objective.lock().ok().and_then(|guard| *guard);
+    }
+
+    let Ok(mut best_objective_guard) = best_objective.lock() else {
+        return None;
+    };
+
+    match *best_objective_guard {
+        Some(current_best_objective) if current_best_objective <= objective => {}
+        _ => *best_objective_guard = Some(objective),
+    }
+
+    *best_objective_guard
 }
 
 fn convergence_ratio(objective_improvement: f64, objective_tolerance: f64) -> Option<f64> {

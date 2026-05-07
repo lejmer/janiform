@@ -48,7 +48,6 @@ from .support import (
     runtime_schedule_hourly_factor_contract_coverage,
 )
 from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
-from ..metadata import build_model_persistence_payload
 from ..payloads import (
     mean_reversion_fitted_parameters_for_model,
     prepare_model_runtime_factors_for_model,
@@ -102,7 +101,7 @@ def price_option_for_model(
             continuation_payload["observed_price"] = spot
 
     request_payload: dict[str, Any] = {
-        "model_payload": build_model_persistence_payload(model),
+        "model_payload": model._native_model_payload(),
         "run_id": (
             None
             if output_path is None

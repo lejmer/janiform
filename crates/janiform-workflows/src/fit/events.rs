@@ -187,8 +187,7 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
             Some(ProgressEvent::StageProgress {
                 phase: phase_label(&progress.progress_phase).to_string(),
-                measure: UiProgressMeasure::bounded(progress.completed_units, progress.total_units)
-                    .map_err(|source| WorkflowError::OutputProgress { source })?,
+                measure: stage_progress_measure(progress)?,
                 work_item_label: progress_work_item_label(
                     &progress.progress_phase,
                     progress.current_item_label.as_deref(),
@@ -217,6 +216,17 @@ pub fn progress_event_from_staged_event(
     };
 
     Ok(progress_event)
+}
+
+fn stage_progress_measure(
+    progress: &CalibrationStagedRunStageProgressEvent,
+) -> Result<UiProgressMeasure, WorkflowError> {
+    if progress.total_units == 0 {
+        return Ok(UiProgressMeasure::Unbounded);
+    }
+
+    UiProgressMeasure::bounded(progress.completed_units, progress.total_units)
+        .map_err(|source| WorkflowError::OutputProgress { source })
 }
 
 pub(crate) fn append_artifact_event(
@@ -289,14 +299,15 @@ fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> O
         progress.current_item_label.as_deref(),
     )
     .is_some()
-    {
-        return parallel_stage_progress_signal(
+        && let Some(signal) = parallel_stage_progress_signal(
             progress.active_restart_count,
             progress.valid_completed_units,
             progress.cumulative_local_evaluation_count,
             progress.best_weighted_objective,
             progress.best_coarse_consistency_fit,
-        );
+        )
+    {
+        return Some(signal);
     }
 
     let mut parts = Vec::new();
@@ -323,7 +334,7 @@ fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> O
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
     }
     if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
-        parts.push(format!("convergence {current_convergence_ratio:.6}"));
+        parts.push(format!("conv. {current_convergence_ratio:.6}"));
     }
 
     (!parts.is_empty()).then(|| parts.join(", "))
@@ -346,7 +357,7 @@ fn parallel_stage_progress_signal(
     }
     if let Some(cumulative_local_evaluation_count) = cumulative_local_evaluation_count {
         parts.push(format!(
-            "cumulative eval {cumulative_local_evaluation_count}"
+            "cumulative evals {cumulative_local_evaluation_count}"
         ));
     }
     if let Some(best_weighted_objective) = best_weighted_objective {
@@ -380,7 +391,10 @@ fn work_item_table_columns(
         || progress.current_evaluation_count.is_some()
         || progress.total_evaluation_budget.is_some()
     {
-        columns.push(ProgressWorkItemColumn::new("eval", "Eval"));
+        columns.push(ProgressWorkItemColumn::new("eval", "Evals"));
+    }
+    if uses_restart_optimization_columns || progress.current_parameter_block.is_some() {
+        columns.push(ProgressWorkItemColumn::new("block", "Blk"));
     }
     if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
         columns.push(ProgressWorkItemColumn::new(
@@ -404,6 +418,15 @@ fn work_item_table_columns(
     }
     if progress.current_convergence_ratio.is_some() {
         columns.push(ProgressWorkItemColumn::new("convergence", "Conv."));
+    }
+    if progress.exact_closed_form_buy_count.is_some() {
+        columns.push(ProgressWorkItemColumn::new("exact_buy", "CF-B"));
+    }
+    if progress.exact_closed_form_sell_count.is_some() {
+        columns.push(ProgressWorkItemColumn::new("exact_sell", "CF-S"));
+    }
+    if progress.exact_tilted_mixed_count.is_some() {
+        columns.push(ProgressWorkItemColumn::new("exact_mixed", "Mix"));
     }
 
     columns
@@ -430,6 +453,12 @@ fn work_item_table_metrics(
         progress.total_evaluation_budget,
     ) {
         metrics.push(ProgressWorkItemMetric::new("eval", evaluation_label));
+    }
+    if let Some(current_parameter_block) = progress.current_parameter_block.as_deref() {
+        metrics.push(ProgressWorkItemMetric::new(
+            "block",
+            current_parameter_block.to_string(),
+        ));
     }
 
     if let Some(current_weighted_objective) = progress.current_weighted_objective {
@@ -470,6 +499,24 @@ fn work_item_table_metrics(
             format!("{current_convergence_ratio:.6}"),
         ));
     }
+    if let Some(exact_closed_form_buy_count) = progress.exact_closed_form_buy_count {
+        metrics.push(ProgressWorkItemMetric::new(
+            "exact_buy",
+            exact_closed_form_buy_count.to_string(),
+        ));
+    }
+    if let Some(exact_closed_form_sell_count) = progress.exact_closed_form_sell_count {
+        metrics.push(ProgressWorkItemMetric::new(
+            "exact_sell",
+            exact_closed_form_sell_count.to_string(),
+        ));
+    }
+    if let Some(exact_tilted_mixed_count) = progress.exact_tilted_mixed_count {
+        metrics.push(ProgressWorkItemMetric::new(
+            "exact_mixed",
+            exact_tilted_mixed_count.to_string(),
+        ));
+    }
 
     metrics
 }
@@ -483,10 +530,10 @@ fn push_evaluation_signal(
         match total_evaluation_budget {
             Some(total_evaluation_budget) => {
                 parts.push(format!(
-                    "eval {current_evaluation_count}/{total_evaluation_budget}"
+                    "evals {current_evaluation_count}/{total_evaluation_budget}"
                 ));
             }
-            None => parts.push(format!("eval {current_evaluation_count}")),
+            None => parts.push(format!("evals {current_evaluation_count}")),
         }
     }
 }
@@ -654,3 +701,6 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
         _ => "stage progress",
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -34,14 +34,33 @@ def build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload() -> di
 
 
 def update_model_mean_reversion_payload(model: Any, mean_reversion_payload: dict[str, Any]) -> None:
-    joint_refinement_parameters = model.parameters.get("joint_refinement")
+    _update_model_parameters_mean_reversion_payload(
+        model.parameters,
+        mean_reversion_payload,
+    )
+
+    model_payload = model._model_payload
+    if isinstance(model_payload, dict):
+        raw_parameters = model_payload.get("parameters")
+        if isinstance(raw_parameters, dict):
+            _update_model_parameters_mean_reversion_payload(
+                raw_parameters,
+                mean_reversion_payload,
+            )
+
+
+def _update_model_parameters_mean_reversion_payload(
+    parameters: dict[str, Any],
+    mean_reversion_payload: dict[str, Any],
+) -> None:
+    joint_refinement_parameters = parameters.get("joint_refinement")
 
     if not isinstance(joint_refinement_parameters, dict):
-        model.parameters["return_components"]["fitted_parameters"][
+        parameters["return_components"]["fitted_parameters"][
             "mean_reversion_fitted_parameters"
         ] = mean_reversion_payload
 
-        model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
+        parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
 
         return
 

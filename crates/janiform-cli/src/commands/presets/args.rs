@@ -15,6 +15,16 @@ pub(crate) enum PresetCategory {
     KnownNews,
 }
 
+impl PresetCategory {
+    pub(crate) fn registry_value(self) -> &'static str {
+        match self {
+            Self::MarketProfile => "market_profile",
+            Self::Session => "session",
+            Self::KnownNews => "known_news",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum PresetRegistryScope {
     #[value(help = "Resolve from built-in and user-registered presets.")]
@@ -26,6 +36,16 @@ pub(crate) enum PresetRegistryScope {
         help = "Resolve only from user-registered presets."
     )]
     UserRegistered,
+}
+
+impl PresetRegistryScope {
+    pub(crate) fn registry_value(self) -> Option<&'static str> {
+        match self {
+            Self::Auto => None,
+            Self::BuiltIn => Some("built_in"),
+            Self::UserRegistered => Some("user_registered"),
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -135,7 +155,7 @@ pub(crate) struct PresetsShowRegistryArgs {
     pub(crate) registry: PresetRegistryArgs,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Default)]
 pub(crate) struct PresetRegistryArgs {
     #[arg(
         long,

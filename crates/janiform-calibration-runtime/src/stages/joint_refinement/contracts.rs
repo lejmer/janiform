@@ -282,6 +282,9 @@ pub struct JointRefinementStageProgressUpdate {
     pub best_weighted_objective: Option<f64>,
     pub current_coarse_consistency_fit: Option<f64>,
     pub best_coarse_consistency_fit: Option<f64>,
+    pub exact_closed_form_buy_count: Option<usize>,
+    pub exact_closed_form_sell_count: Option<usize>,
+    pub exact_tilted_mixed_count: Option<usize>,
 }
 
 impl JointRefinementStageProgressUpdate {
@@ -314,6 +317,9 @@ impl JointRefinementStageProgressUpdate {
             best_weighted_objective: None,
             current_coarse_consistency_fit: None,
             best_coarse_consistency_fit: None,
+            exact_closed_form_buy_count: None,
+            exact_closed_form_sell_count: None,
+            exact_tilted_mixed_count: None,
         }
     }
 

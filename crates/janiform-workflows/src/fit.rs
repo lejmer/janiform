@@ -12,6 +12,7 @@ mod workflow;
 pub use artifacts::build_fit_report_payload;
 pub use artifacts::build_model_payload;
 pub use artifacts::build_staged_response_payload;
+pub use artifacts::write_model_payload_artifact;
 pub use events::failed_stage_label;
 pub use events::failure_reason;
 pub use events::progress_event_from_staged_event;

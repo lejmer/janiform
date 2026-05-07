@@ -26,7 +26,9 @@ use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTer
 use crate::stages::joint_refinement::option_surface_tiering::{
     JointRefinementOptionSurfaceTierKind, JointRefinementOptionSurfaceTierSet,
 };
-use crate::stages::return_components::ReturnComponentsStageContinuousReturnCalibrationSample;
+use crate::stages::return_components::{
+    ContinuousLikelihoodEvaluatorCounts, ReturnComponentsStageContinuousReturnCalibrationSample,
+};
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
@@ -72,6 +74,7 @@ pub(crate) struct JointRefinementDeterministicCacheKey {
 pub(crate) struct JointRefinementDeterministicEvaluation {
     pub(crate) modeled_open_event_rate_per_hour: f64,
     pub(crate) raw_aggregated_likelihood_fit: f64,
+    pub(crate) exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
     pub(crate) raw_expected_activity_shape_fit: Option<f64>,
     pub(crate) raw_expected_activity_level_fit: Option<f64>,
 }
@@ -452,6 +455,7 @@ pub(crate) struct JointRefinementCandidateEvaluation {
     pub(crate) fitted_parameters: JointRefinementStageFittedParameters,
     pub(crate) breakdown: JointRefinementStageObjectiveBreakdown,
     pub(crate) raw_admissibility_metrics: JointRefinementRawAdmissibilityMetrics,
+    pub(crate) exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
     pub(crate) objective_terms: Vec<JointRefinementStageObjectiveTermDiagnostic>,
     pub(crate) invalid_reason: Option<String>,
 }

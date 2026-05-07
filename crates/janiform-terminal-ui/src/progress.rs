@@ -147,6 +147,10 @@ impl ProgressAdapter {
                 work_item_metrics,
                 latest_signal,
             } => {
+                if self.snapshot.phase.as_deref() != Some(phase.as_str()) {
+                    self.clear_work_item_details();
+                }
+
                 self.snapshot.phase = Some(phase.clone());
                 self.snapshot.measure = Some(measure);
                 self.snapshot.latest_signal = latest_signal.clone();
@@ -387,6 +391,10 @@ impl ProgressAdapter {
         self.snapshot.measure = None;
         self.snapshot.latest_signal = None;
 
+        self.clear_work_item_details();
+    }
+
+    fn clear_work_item_details(&mut self) {
         self.snapshot.work_items.clear();
         self.snapshot.work_item_columns.clear();
         self.active_work_started_at_by_label.clear();

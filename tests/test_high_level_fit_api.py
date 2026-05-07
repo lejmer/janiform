@@ -13,6 +13,7 @@ import pandas
 import pytest
 from pyarrow import parquet
 
+import janiform._native_api as native_api_module
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
@@ -1304,7 +1305,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
     ]
 
 
-def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metadata(
+def test_high_level_model_load_preserves_rust_model_artifact_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1313,13 +1314,11 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
         monkeypatch,
         run_id="high-level-model-persistence",
     )
-    first_path = tmp_path / "model-first.json"
-    second_path = tmp_path / "model-second.json"
+    model_path = tmp_path / "model.json"
 
-    model.save(first_path)
-    loaded_model = JaniformModel.load(first_path)
-    loaded_model.save(second_path)
-    persisted_payload = json.loads(first_path.read_text(encoding="utf-8"))
+    _write_rust_model_artifact(model, model_path)
+    loaded_model = JaniformModel.load(model_path)
+    persisted_payload = json.loads(model_path.read_text(encoding="utf-8"))
 
     assert loaded_model.parameters == model.parameters
     assert loaded_model.metadata == model.metadata
@@ -1348,8 +1347,93 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
         "day_of_week_factor",
         "day_of_year_factor",
     }
-    assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
-    assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
+    assert model_path.read_text(encoding="utf-8").startswith("{\n  ")
+
+
+def test_high_level_model_save_dispatches_model_payload_to_native_artifact_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-native-save",
+    )
+    captured_requests: list[dict[str, Any]] = []
+
+    def _save_model_artifact(request: dict[str, Any]) -> dict[str, str]:
+        captured_requests.append(request)
+
+        return {"path": str(tmp_path / "model.jf")}
+
+    monkeypatch.setattr(
+        native_api_module,
+        "native_module",
+        lambda: SimpleNamespace(save_model_artifact=_save_model_artifact),
+    )
+
+    saved_path = model.save()
+    explicit_saved_path = model.save(tmp_path / "explicit-model.jf")
+
+    assert saved_path == tmp_path / "model.jf"
+    assert explicit_saved_path == tmp_path / "model.jf"
+    assert captured_requests[0] == {
+        "model_payload": model._native_model_payload(),
+        "path": None,
+    }
+    assert captured_requests[1] == {
+        "model_payload": model._native_model_payload(),
+        "path": str(tmp_path / "explicit-model.jf"),
+    }
+
+
+def test_high_level_model_load_recovers_cli_runtime_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-cli-model-load",
+    )
+    artifact_directory = tmp_path / "run" / "artifacts"
+    artifact_directory.mkdir(parents=True)
+    model_path = artifact_directory / "model.jf"
+    report_path = artifact_directory / "report.json"
+
+    _write_rust_model_artifact(model, model_path)
+    model_payload = json.loads(model_path.read_text(encoding="utf-8"))
+    expected_input_inference = deepcopy(model_payload["metadata"]["input_inference"])
+    model_payload["resolved_configuration"] = None
+    model_payload["metadata"]["input_inference"] = None
+    model_path.write_text(json.dumps(model_payload), encoding="utf-8")
+    report_path.write_text(
+        json.dumps(
+            {
+                "preparation": {
+                    "request": {
+                        "run_id": expected_input_inference["run_id"],
+                        "workflow_scope": expected_input_inference["workflow_scope"],
+                        "tick_data_source": expected_input_inference["tick_data_source"],
+                        "column_mapping": {
+                            "tick_data": expected_input_inference["tick_data_column_mapping"],
+                        },
+                        "normalization_policy": expected_input_inference["normalization_policy"],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded_model = JaniformModel.load(model_path)
+
+    assert loaded_model.session_resolution == model.session_resolution
+    assert loaded_model.resolved_configuration.session.inferred_from_data is True
+    assert loaded_model.resolved_configuration.session.inference_resolution == model.session_resolution
+    assert loaded_model.resolved_configuration.known_news.selected_preset is not None
+    assert loaded_model.resolved_configuration.known_news.selected_preset.preset_name == "none"
+    assert loaded_model.metadata["input_inference"] == expected_input_inference
 
 
 def test_high_level_fit_records_diagnostic_artifact_families_from_staged_response_dicts(
@@ -1428,7 +1512,7 @@ def test_high_level_fit_records_diagnostic_artifact_families_from_staged_respons
     )
 
 
-def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reversion_block(
+def test_high_level_model_load_preserves_endogenous_mean_reversion_block(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1447,7 +1531,7 @@ def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reve
 
     persisted_model_path = tmp_path / "model-mean-reversion.json"
 
-    model.save(persisted_model_path)
+    _write_rust_model_artifact(model, persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
 
     assert (
@@ -1470,7 +1554,7 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
 
     persisted_model_path = tmp_path / "model.json"
 
-    model.save(persisted_model_path)
+    _write_rust_model_artifact(model, persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
 
     calendar_registry = CalendarRegistry(
@@ -1538,7 +1622,7 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
     )
     persisted_model_path = tmp_path / "model.json"
 
-    model.save(persisted_model_path)
+    _write_rust_model_artifact(model, persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
 
     loaded_model.parameters["seasonality"] = {
@@ -1612,7 +1696,7 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
 
     persisted_model_path = tmp_path / "missing-structural-seasonality-model.json"
 
-    model.save(persisted_model_path)
+    _write_rust_model_artifact(model, persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
 
     loaded_model.parameters["seasonality"] = {
@@ -2951,6 +3035,14 @@ def test_high_level_model_price_option_requires_reference_price_to_derive_pricin
         build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35),
     )
     cast(dict[str, Any], model.metadata["simulation_output_preferences"]).pop("reference_price", None)
+    model_payload = model._model_payload
+    assert isinstance(model_payload, dict)
+    payload_metadata = model_payload["metadata"]
+    assert isinstance(payload_metadata, dict)
+    cast(dict[str, Any], payload_metadata["simulation_output_preferences"]).pop(
+        "reference_price",
+        None,
+    )
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         model.price_option(
@@ -4283,6 +4375,14 @@ def _build_full_workflow_model(
         run_id=run_id,
         tick_data_path=tick_data_path,
         tick_data_format=CalibrationInputFileFormat.CSV,
+    )
+
+
+def _write_rust_model_artifact(model: JaniformModel, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(model._native_model_payload(), indent=2, sort_keys=True),
+        encoding="utf-8",
     )
 
 
