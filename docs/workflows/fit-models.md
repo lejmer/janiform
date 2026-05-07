@@ -253,6 +253,20 @@ Disk execution uses the run directory as the persistence root. Checkpoint files 
 
 A stage token is valid only after that stage has completed and written its checkpoint. For most resumes, use `last-success` unless you need to force a specific earlier checkpoint.
 
+When adding an option surface to a completed tick-only fit, resume from `mean_reversion` and start at `joint-refinement`. The earlier tick-data stages are reused, while joint refinement reuses persisted dynamics restart outcomes and recomputes option-dependent selection and option-pricing tiers for the supplied option surface:
+
+```bash
+janiform fit data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet \
+  --option-surface-path data/databento-converted/ES_OPT-BBO-1min/janiform_option_surface.parquet \
+  --option-surface-valuation-time-utc 2026-04-01T23:59:00Z \
+  --market-profile es_futures_globex \
+  --run-id es_continuous_20260507T195059Z \
+  --resume-checkpoint-reference checkpoint://es_continuous_20260507T195059Z/mean_reversion \
+  --resume-from-stage joint-refinement
+```
+
+Joint-refinement resume state is finer grained than the top-level stage checkpoint. Dynamics restart outcomes are reusable across tick-only and option-aware joint refinement when the run id and stage seed match. Restart selection is reused only when it was built for the same option-pricing context and has enough candidate frontier width. Option search, selection, and audit tier pricing artifacts are scoped to a fingerprint of the option-pricing context so changing the option surface recomputes only the option-dependent work.
+
 You can use the fit report and event log to confirm which stage completed before resuming.
 
 ## Troubleshooting
@@ -275,7 +289,7 @@ Naive timestamps need an explicit timezone convention. For tick data, pass `--ti
 
 **Option fit fails because the snapshot is ambiguous**
 
-Pass `option_surface_valuation_time_utc` in Python or `--option-surface-valuation-time-utc` in the CLI so the calibration targets one quote timestamp.
+Pass `option_surface_valuation_time_utc` in Python or `--option-surface-valuation-time-utc` in the CLI so the calibration targets one quote timestamp. Option rows that cannot provide a usable bid/ask quote are filtered and counted in the option surface source summary.
 
 **A fit takes a long time**
 

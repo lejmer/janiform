@@ -611,6 +611,7 @@ mod tests {
                 source_row_count: 10,
                 retained_row_count: 10,
                 dropped_duplicate_row_count: 0,
+                dropped_invalid_row_count: 0,
                 sort_records_by_timestamp: true,
                 applied_timestamp_timezone: None,
                 canonical_value_field: None,

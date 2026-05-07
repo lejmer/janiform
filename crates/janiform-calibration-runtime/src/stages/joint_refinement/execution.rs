@@ -51,7 +51,10 @@ pub(crate) use report::{
     build_joint_simulation_summaries, option_pricing_execution_failure_message,
     simulation_infrastructure_failure_message,
 };
-pub(crate) use resume_state::{JointRefinementResumeStore, PersistedRestartSelectionArtifacts};
+pub(crate) use resume_state::{
+    JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
+    option_pricing_context_fingerprint,
+};
 pub(crate) use selection::{
     JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE,
     JointRefinementAdmissibilityThresholds, build_joint_candidate_frontier_diagnostics,

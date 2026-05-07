@@ -207,6 +207,7 @@ pub(crate) fn run_option_refinement(
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
+    option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> Result<JointRefinementOptionRefinementResult, JointRefinementStageExecutionFailure> {
@@ -233,6 +234,7 @@ pub(crate) fn run_option_refinement(
         context,
         solver_settings,
         dynamics_candidates,
+        option_context_fingerprint,
         progress_sender,
         resume_store.as_deref_mut(),
     );
@@ -251,6 +253,7 @@ pub(crate) fn run_option_refinement(
     let selection_candidates = evaluate_selection_tier_candidates(
         context,
         selection_frontier,
+        option_context_fingerprint,
         progress_sender,
         resume_store,
     );
@@ -387,6 +390,7 @@ fn refine_search_tier_candidates(
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
+    option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> Vec<SearchTierCandidate> {
@@ -406,8 +410,10 @@ fn refine_search_tier_candidates(
 
     for (source_rank, dynamics_candidate) in dynamics_candidates.iter().enumerate() {
         if let Some(resume_store) = resume_store.as_deref_mut()
-            && let Some(mut resumed_candidate) =
-                resume_store.search_tier_candidate(dynamics_candidate.restart_id.as_str())
+            && let Some(mut resumed_candidate) = resume_store.search_tier_candidate(
+                option_context_fingerprint,
+                dynamics_candidate.restart_id.as_str(),
+            )
         {
             resumed_candidate.source_rank = source_rank;
 
@@ -488,7 +494,7 @@ fn refine_search_tier_candidates(
     for (source_rank, candidate) in unresolved_results {
         if let Some(candidate) = candidate {
             if let Some(resume_store) = resume_store.as_deref_mut() {
-                resume_store.record_search_tier_candidate(&candidate);
+                resume_store.record_search_tier_candidate(option_context_fingerprint, &candidate);
             }
 
             candidate_slots[source_rank] = Some(candidate);
@@ -872,6 +878,7 @@ fn scale_trust_region_settings_for_pricing_block(
 fn evaluate_selection_tier_candidates(
     context: &JointRefinementContext,
     search_candidates: Vec<SearchTierCandidate>,
+    option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> Vec<OptionRefinedCandidate> {
@@ -892,8 +899,8 @@ fn evaluate_selection_tier_candidates(
     for (candidate_position, search_candidate) in search_candidates.into_iter().enumerate() {
         let restart_id = search_candidate.restart_outcome.restart_id.clone();
         if let Some(resume_store) = resume_store.as_deref_mut()
-            && let Some(mut resumed_candidate) =
-                resume_store.selection_tier_candidate(restart_id.as_str())
+            && let Some(mut resumed_candidate) = resume_store
+                .selection_tier_candidate(option_context_fingerprint, restart_id.as_str())
         {
             resumed_candidate.source_rank = search_candidate.source_rank;
 
@@ -968,7 +975,8 @@ fn evaluate_selection_tier_candidates(
     for (candidate_position, candidate) in unresolved_results {
         if let Some(candidate) = candidate {
             if let Some(resume_store) = resume_store.as_deref_mut() {
-                resume_store.record_selection_tier_candidate(&candidate);
+                resume_store
+                    .record_selection_tier_candidate(option_context_fingerprint, &candidate);
             }
             candidate_slots[candidate_position] = Some(candidate);
         }

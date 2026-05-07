@@ -24,6 +24,7 @@ class LoadedMarketDataSourceSummary(ContractModel):
     source_row_count: int
     retained_row_count: int
     dropped_duplicate_row_count: int
+    dropped_invalid_row_count: int
     sort_records_by_timestamp: bool
     applied_timestamp_timezone: Optional[str]
     canonical_value_field: Optional[str] = None

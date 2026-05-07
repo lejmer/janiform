@@ -198,6 +198,7 @@ pub struct MarketDataSourceSummary {
     pub source_row_count: usize,
     pub retained_row_count: usize,
     pub dropped_duplicate_row_count: usize,
+    pub dropped_invalid_row_count: usize,
     pub sort_records_by_timestamp: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied_timestamp_timezone: Option<String>,

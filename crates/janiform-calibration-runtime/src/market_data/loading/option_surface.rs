@@ -57,7 +57,7 @@ pub(super) fn load_option_surface_records(
         &option_surface_input.source.path,
     )?;
 
-    let (mut normalized_rows, source_row_count) = match option_surface_input.source.file_format {
+    let loaded_rows = match option_surface_input.source.file_format {
         MarketDataInputFileFormat::Csv => load_csv_option_surface_rows(
             &MarketDataOptionSurfaceLoadingInput {
                 source: option_surface_input.source.clone(),
@@ -79,6 +79,7 @@ pub(super) fn load_option_surface_records(
             });
         }
     };
+    let mut normalized_rows = loaded_rows.normalized_rows;
 
     let mut seen_keys = HashSet::new();
     for normalized in &normalized_rows {
@@ -119,9 +120,10 @@ pub(super) fn load_option_surface_records(
             path: option_surface_input.source.path.clone(),
             file_format: file_format_string(option_surface_input.source.file_format).to_string(),
             provenance_label: option_surface_input.source.provenance_label.clone(),
-            source_row_count,
+            source_row_count: loaded_rows.source_row_count,
             retained_row_count,
             dropped_duplicate_row_count: 0,
+            dropped_invalid_row_count: loaded_rows.dropped_invalid_row_count,
             sort_records_by_timestamp: effective_normalization_policy.sort_records_by_timestamp,
             applied_timestamp_timezone: Some(
                 effective_normalization_policy.timestamp_timezone.clone(),
@@ -134,32 +136,48 @@ pub(super) fn load_option_surface_records(
     })
 }
 
+struct LoadedOptionSurfaceRows {
+    normalized_rows: Vec<LoadedOptionSurfaceRecord>,
+    source_row_count: usize,
+    dropped_invalid_row_count: usize,
+}
+
 fn load_csv_option_surface_rows(
     option_surface_input: &MarketDataOptionSurfaceLoadingInput,
     normalization_policy: &MarketDataNormalizationPolicy,
-) -> Result<(Vec<LoadedOptionSurfaceRecord>, usize), MarketDataLoadingError> {
+) -> Result<LoadedOptionSurfaceRows, MarketDataLoadingError> {
     let raw_rows = load_rows(&option_surface_input.source, "option_surface_source")?;
     let source_row_count = raw_rows.len();
 
     let mut normalized_rows = Vec::with_capacity(source_row_count);
+    let mut dropped_invalid_row_count = 0usize;
 
     for (row_index, raw_row) in raw_rows.iter().enumerate() {
-        normalized_rows.push(normalize_option_surface_row(
+        let normalized_row = normalize_option_surface_row(
             raw_row,
             row_index + 1,
             &option_surface_input.column_mapping,
             normalization_policy,
             &option_surface_input.source.path,
-        )?);
+        )?;
+
+        match normalized_row {
+            Some(row) => normalized_rows.push(row),
+            None => dropped_invalid_row_count = dropped_invalid_row_count.saturating_add(1),
+        }
     }
 
-    Ok((normalized_rows, source_row_count))
+    Ok(LoadedOptionSurfaceRows {
+        normalized_rows,
+        source_row_count,
+        dropped_invalid_row_count,
+    })
 }
 
 fn load_parquet_option_surface_rows(
     option_surface_input: &MarketDataOptionSurfaceLoadingInput,
     normalization_policy: &MarketDataNormalizationPolicy,
-) -> Result<(Vec<LoadedOptionSurfaceRecord>, usize), MarketDataLoadingError> {
+) -> Result<LoadedOptionSurfaceRows, MarketDataLoadingError> {
     let projected_columns = required_option_surface_source_columns(
         &option_surface_input.column_mapping,
         normalization_policy,
@@ -180,6 +198,7 @@ fn load_parquet_option_surface_rows(
 
     let mut normalized_rows = Vec::with_capacity(source_row_count);
     let mut source_row_number: usize = 0;
+    let mut dropped_invalid_row_count = 0usize;
 
     for batch_result in reader {
         let batch = batch_result.map_err(|error| MarketDataLoadingError::Parquet {
@@ -253,8 +272,8 @@ fn load_parquet_option_surface_rows(
                 &option_surface_input.source.path,
             )?;
 
-            normalized_rows.push(normalize_option_surface_values(
-                NormalizeOptionSurfaceValuesInput {
+            let normalized_row =
+                normalize_option_surface_values(NormalizeOptionSurfaceValuesInput {
                     quote_timestamp_raw_value: Some(&quote_timestamp_raw_value),
                     expiry_timestamp_raw_value: Some(&expiry_timestamp_raw_value),
                     strike_raw_value: Some(&strike_raw_value),
@@ -267,12 +286,20 @@ fn load_parquet_option_surface_rows(
                     column_mapping: &option_surface_input.column_mapping,
                     normalization_policy,
                     source_path: &option_surface_input.source.path,
-                },
-            )?);
+                })?;
+
+            match normalized_row {
+                Some(row) => normalized_rows.push(row),
+                None => dropped_invalid_row_count = dropped_invalid_row_count.saturating_add(1),
+            }
         }
     }
 
-    Ok((normalized_rows, source_row_count))
+    Ok(LoadedOptionSurfaceRows {
+        normalized_rows,
+        source_row_count,
+        dropped_invalid_row_count,
+    })
 }
 
 pub fn materialize_option_surface_records_for_payload(
@@ -301,7 +328,7 @@ pub(super) fn normalize_option_surface_row(
     column_mapping: &MarketDataOptionSurfaceColumnMapping,
     normalization_policy: &MarketDataNormalizationPolicy,
     source_path: &str,
-) -> Result<LoadedOptionSurfaceRecord, MarketDataLoadingError> {
+) -> Result<Option<LoadedOptionSurfaceRecord>, MarketDataLoadingError> {
     normalize_option_surface_values(NormalizeOptionSurfaceValuesInput {
         quote_timestamp_raw_value: column_mapping
             .quote_timestamp_column
@@ -359,7 +386,7 @@ pub(super) struct NormalizeOptionSurfaceValuesInput<'a> {
 
 pub(super) fn normalize_option_surface_values(
     input: NormalizeOptionSurfaceValuesInput<'_>,
-) -> Result<LoadedOptionSurfaceRecord, MarketDataLoadingError> {
+) -> Result<Option<LoadedOptionSurfaceRecord>, MarketDataLoadingError> {
     let NormalizeOptionSurfaceValuesInput {
         quote_timestamp_raw_value,
         expiry_timestamp_raw_value,
@@ -474,7 +501,43 @@ pub(super) fn normalize_option_surface_values(
         None => None,
     };
 
-    let quote_value = match normalization_policy.option_quote_input_policy {
+    let Some(quote_value) = derive_option_quote_value(
+        normalization_policy.option_quote_input_policy,
+        mid_price,
+        bid_price,
+        ask_price,
+        implied_volatility,
+        &row_field_path,
+        column_mapping,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(LoadedOptionSurfaceRecord {
+        quote_timestamp_utc_nanos: quote_timestamp,
+        expiry_timestamp_utc_nanos: expiry_timestamp,
+        strike,
+        option_type,
+        quote_value,
+        mid_price,
+        bid_price,
+        ask_price,
+        implied_volatility,
+        source_row_number,
+    }))
+}
+
+fn derive_option_quote_value(
+    quote_input_policy: Option<MarketDataOptionQuoteInputPolicy>,
+    mid_price: Option<f64>,
+    bid_price: Option<f64>,
+    ask_price: Option<f64>,
+    implied_volatility: Option<f64>,
+    row_field_path: &str,
+    column_mapping: &MarketDataOptionSurfaceColumnMapping,
+) -> Result<Option<f64>, MarketDataLoadingError> {
+    match quote_input_policy {
         Some(MarketDataOptionQuoteInputPolicy::MidPriceColumn) => mid_price.ok_or_else(|| {
             MarketDataLoadingError::InvalidValue {
                 field_path: format!(
@@ -483,21 +546,11 @@ pub(super) fn normalize_option_surface_values(
                 ),
                 message: "is required for mid_price_column option normalization and cannot be blank".to_string(),
             }
-        })?,
+        }).map(Some),
         Some(MarketDataOptionQuoteInputPolicy::BidAskMidpoint) => match (bid_price, ask_price) {
-            (Some(bid), Some(ask)) if ask >= bid => (bid + ask) / 2.0,
-            (Some(_), Some(_)) => {
-                return Err(MarketDataLoadingError::InvalidValue {
-                    field_path: row_field_path,
-                    message: "ask price must be greater than or equal to bid price for option bid_ask_midpoint derivation".to_string(),
-                })
-            }
-            _ => {
-                return Err(MarketDataLoadingError::InvalidValue {
-                    field_path: row_field_path,
-                    message: "bid_column and ask_column must both contain values to derive option bid_ask_midpoint".to_string(),
-                })
-            }
+            (Some(bid), Some(ask)) if ask > bid => Ok(Some((bid + ask) / 2.0)),
+            (Some(_), Some(_)) => Ok(None),
+            _ => Ok(None),
         },
         Some(MarketDataOptionQuoteInputPolicy::ImpliedVolatilityColumn) => {
             implied_volatility.ok_or_else(|| MarketDataLoadingError::InvalidValue {
@@ -509,28 +562,13 @@ pub(super) fn normalize_option_surface_values(
                         .unwrap_or("implied_volatility")
                 ),
                 message: "is required for implied_volatility_column option normalization and cannot be blank".to_string(),
-            })?
+            }).map(Some)
         }
-        None => {
-            return Err(MarketDataLoadingError::InvalidValue {
+        None => Err(MarketDataLoadingError::InvalidValue {
                 field_path: "normalization_policy.option_quote_input_policy".to_string(),
                 message: "is required to normalize option_surface_source".to_string(),
-            })
-        }
-    };
-
-    Ok(LoadedOptionSurfaceRecord {
-        quote_timestamp_utc_nanos: quote_timestamp,
-        expiry_timestamp_utc_nanos: expiry_timestamp,
-        strike,
-        option_type,
-        quote_value,
-        mid_price,
-        bid_price,
-        ask_price,
-        implied_volatility,
-        source_row_number,
-    })
+            }),
+    }
 }
 
 type OptionSurfaceRecordDedupKey = (
@@ -805,6 +843,7 @@ mod tests {
 
         assert_eq!(output.summary.source_row_count, 2);
         assert_eq!(output.summary.retained_row_count, 2);
+        assert_eq!(output.summary.dropped_invalid_row_count, 0);
         assert_eq!(output.option_surface_records.len(), 2);
         assert_eq!(output.option_surface_records[0].strike, 4200.0);
         assert_eq!(output.option_surface_records[0].option_type, "put");
@@ -815,5 +854,86 @@ mod tests {
             output.summary.value_mapping_policy.as_deref(),
             Some("bid_ask_midpoint")
         );
+    }
+
+    #[test]
+    fn load_option_surface_records_filters_unusable_bid_ask_midpoint_rows() {
+        let parquet_path = unique_test_path("option-surface-crossed.parquet");
+        let schema = Arc::new(Schema::new(vec![
+            Field::new(
+                "quote_time",
+                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                false,
+            ),
+            Field::new(
+                "expiry_time",
+                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                false,
+            ),
+            Field::new("strike_price", DataType::Float64, false),
+            Field::new("option_kind", DataType::Utf8, false),
+            Field::new("best_bid", DataType::Float64, false),
+            Field::new("best_ask", DataType::Float64, true),
+        ]));
+
+        write_parquet_record_batch(
+            parquet_path.as_path(),
+            schema,
+            vec![
+                Arc::new(TimestampNanosecondArray::from(vec![
+                    1_711_957_600_000_000_000_i64,
+                    1_711_957_600_000_000_000_i64,
+                    1_711_957_600_000_000_000_i64,
+                ])) as ArrayRef,
+                Arc::new(TimestampNanosecondArray::from(vec![
+                    1_712_476_800_000_000_000_i64,
+                    1_712_476_800_000_000_000_i64,
+                    1_712_476_800_000_000_000_i64,
+                ])) as ArrayRef,
+                Arc::new(Float64Array::from(vec![4200.0_f64, 4300.0_f64, 4400.0_f64])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["put", "call", "call"])) as ArrayRef,
+                Arc::new(Float64Array::from(vec![8.0_f64, 14.0_f64, 5.0_f64])) as ArrayRef,
+                Arc::new(Float64Array::from(vec![
+                    Some(9.0_f64),
+                    Some(13.0_f64),
+                    None,
+                ])) as ArrayRef,
+            ],
+        );
+
+        let output = load_option_surface_records(
+            &MarketDataOptionSurfaceLoadingInput {
+                source: MarketDataInputFileReference {
+                    path: parquet_path.to_string_lossy().into_owned(),
+                    file_format: MarketDataInputFileFormat::Parquet,
+                    provenance_label: "options".to_string(),
+                },
+                column_mapping: MarketDataOptionSurfaceColumnMapping {
+                    quote_timestamp_column: Some("quote_time".to_string()),
+                    expiry_timestamp_column: Some("expiry_time".to_string()),
+                    strike_column: Some("strike_price".to_string()),
+                    option_type_column: Some("option_kind".to_string()),
+                    mid_price_column: None,
+                    bid_column: Some("best_bid".to_string()),
+                    ask_column: Some("best_ask".to_string()),
+                    implied_volatility_column: None,
+                },
+            },
+            &MarketDataNormalizationPolicy {
+                timestamp_timezone: "UTC".to_string(),
+                sort_records_by_timestamp: true,
+                duplicate_record_policy: None,
+                tick_price_input_policy: None,
+                option_quote_input_policy: None,
+            },
+        )
+        .expect("option-surface rows with unusable bid/ask quotes should be filtered");
+
+        assert_eq!(output.summary.source_row_count, 3);
+        assert_eq!(output.summary.retained_row_count, 1);
+        assert_eq!(output.summary.dropped_invalid_row_count, 2);
+        assert_eq!(output.option_surface_records.len(), 1);
+        assert_eq!(output.option_surface_records[0].strike, 4200.0);
+        assert_eq!(output.option_surface_records[0].quote_value, 8.5);
     }
 }

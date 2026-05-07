@@ -512,6 +512,7 @@ def _source_summary_from_payload(
         source_row_count=int(raw_payload["source_row_count"]),
         retained_row_count=int(raw_payload["retained_row_count"]),
         dropped_duplicate_row_count=int(raw_payload["dropped_duplicate_row_count"]),
+        dropped_invalid_row_count=int(raw_payload["dropped_invalid_row_count"]),
         sort_records_by_timestamp=bool(raw_payload["sort_records_by_timestamp"]),
         applied_timestamp_timezone=raw_payload.get("applied_timestamp_timezone"),
         canonical_value_field=raw_payload.get("canonical_value_field"),
