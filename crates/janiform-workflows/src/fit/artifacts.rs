@@ -4,6 +4,14 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use janiform_calibration_artifacts::{
+    CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
+    CalibrationStage, CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
+    calibration_stage_parameter_artifact_path, load_calibration_stage_parameter_artifact_from_disk,
+};
 use janiform_calibration_runtime::{
     CalibrationStageExecutionStatus, CalibrationStagedExecutionInput, CalibrationStagedRunReport,
     CalibrationStagedRunStageReport,
@@ -96,7 +104,8 @@ pub fn build_model_payload(
     report_payload: &Value,
     preparation_payload: Option<&Value>,
 ) -> Result<Value, WorkflowError> {
-    let parameters = extract_model_parameters(report)?;
+    let parameters = extract_model_parameters(execution_input, report)?;
+
     let workflow_scope_id = workflow_scope_id(execution_input);
     let model_preparation_payload =
         preparation_payload.or_else(|| report_payload.get("preparation"));
@@ -104,6 +113,7 @@ pub fn build_model_payload(
         optional_preparation_field(model_preparation_payload, "resolved_configuration");
     let session_resolution =
         optional_preparation_field(model_preparation_payload, "session_resolution");
+
     let metadata = build_model_metadata(
         execution_input,
         report,
@@ -157,6 +167,7 @@ where
         path: path.to_path_buf(),
         source,
     })?;
+
     let mut writer = BufWriter::new(file);
 
     serde_json::to_writer_pretty(&mut writer, payload)
@@ -309,6 +320,7 @@ fn session_provenance(component: &Value) -> Value {
 
 fn known_news_provenance(component: &Value) -> Value {
     let mut provenance = base_component_provenance(component);
+
     provenance.insert(
         "recommended_preset".to_string(),
         component
@@ -337,6 +349,7 @@ fn known_news_provenance(component: &Value) -> Value {
 
 fn base_component_provenance(component: &Value) -> Map<String, Value> {
     let mut provenance = Map::new();
+
     provenance.insert(
         "source_kind".to_string(),
         source_kind(component)
@@ -443,10 +456,10 @@ fn compact_stage_report_payload(
 
 fn compact_stage_report_from_parts<T>(
     stage_report_kind: &str,
-    stage: janiform_calibration_artifacts::CalibrationStage,
+    stage: CalibrationStage,
     status: CalibrationStageExecutionStatus,
     run_id: &str,
-    execution_mode: janiform_calibration_artifacts::CalibrationExecutionMode,
+    execution_mode: CalibrationExecutionMode,
     handoff_policy: &str,
     failure: &Option<T>,
 ) -> Result<Value, WorkflowError>
@@ -469,9 +482,72 @@ where
     }))
 }
 
-fn extract_model_parameters(report: &CalibrationStagedRunReport) -> Result<Value, WorkflowError> {
+fn extract_model_parameters(
+    execution_input: &CalibrationStagedExecutionInput,
+    report: &CalibrationStagedRunReport,
+) -> Result<Value, WorkflowError> {
     let mut stage_parameters = ModelStageParameters::default();
 
+    apply_resumed_disk_stage_parameter_artifacts(execution_input, report, &mut stage_parameters)?;
+    apply_stage_reports_to_model_parameters(report, &mut stage_parameters)?;
+
+    Ok(Value::Object(stage_parameters.into_model_parameters()))
+}
+
+fn apply_resumed_disk_stage_parameter_artifacts(
+    execution_input: &CalibrationStagedExecutionInput,
+    report: &CalibrationStagedRunReport,
+    stage_parameters: &mut ModelStageParameters,
+) -> Result<(), WorkflowError> {
+    if execution_input.request.execution_mode != CalibrationExecutionMode::Disk
+        || execution_input.request.resume_settings.is_none()
+    {
+        return Ok(());
+    }
+
+    let Some(runtime_resources) = &execution_input.runtime_resources else {
+        return Ok(());
+    };
+    let Some(disk_checkpoint_directory) = &runtime_resources.disk_checkpoint_directory else {
+        return Ok(());
+    };
+
+    let disk_checkpoint_directory = Path::new(disk_checkpoint_directory);
+
+    for stage in execution_input.request.selected_stages.iter().copied() {
+        if report
+            .stage_reports
+            .iter()
+            .any(|stage_report| stage_report_stage(stage_report) == stage)
+        {
+            continue;
+        }
+
+        let artifact_path = calibration_stage_parameter_artifact_path(
+            disk_checkpoint_directory,
+            execution_input.request.run_id.as_str(),
+            stage,
+        );
+
+        let artifact = load_calibration_stage_parameter_artifact_from_disk(artifact_path.as_path())
+            .map_err(|source| WorkflowError::ModelValidationFailed {
+                field: "model_payload.parameters",
+                message: format!(
+                    "failed to load resumed stage parameter artifact `{}`: {source}",
+                    artifact_path.display()
+                ),
+            })?;
+
+        apply_stage_parameter_artifact_to_model_parameters(&artifact, stage_parameters)?;
+    }
+
+    Ok(())
+}
+
+fn apply_stage_reports_to_model_parameters(
+    report: &CalibrationStagedRunReport,
+    stage_parameters: &mut ModelStageParameters,
+) -> Result<(), WorkflowError> {
     for stage_report in &report.stage_reports {
         match stage_report {
             CalibrationStagedRunStageReport::Seasonality(report) => {
@@ -503,7 +579,45 @@ fn extract_model_parameters(report: &CalibrationStagedRunReport) -> Result<Value
         }
     }
 
-    Ok(Value::Object(stage_parameters.into_model_parameters()))
+    Ok(())
+}
+
+fn stage_report_stage(stage_report: &CalibrationStagedRunStageReport) -> CalibrationStage {
+    match stage_report {
+        CalibrationStagedRunStageReport::Seasonality(_) => CalibrationStage::Seasonality,
+        CalibrationStagedRunStageReport::Hawkes(_) => CalibrationStage::Hawkes,
+        CalibrationStagedRunStageReport::ReturnComponents(_) => CalibrationStage::ReturnComponents,
+        CalibrationStagedRunStageReport::MeanReversion(_) => CalibrationStage::MeanReversion,
+        CalibrationStagedRunStageReport::JointRefinement(_) => CalibrationStage::JointRefinement,
+    }
+}
+
+fn apply_stage_parameter_artifact_to_model_parameters(
+    artifact: &CalibrationStageParameterArtifact,
+    stage_parameters: &mut ModelStageParameters,
+) -> Result<(), WorkflowError> {
+    match &artifact.stage_parameters {
+        CalibrationStageParameterPayload::Seasonality(payload) => {
+            stage_parameters.seasonality = Some(seasonality_parameters_from_artifact(payload));
+        }
+        CalibrationStageParameterPayload::Hawkes(payload) => {
+            stage_parameters.hawkes = Some(hawkes_parameters_from_artifact(payload)?);
+        }
+        CalibrationStageParameterPayload::ReturnComponents(payload) => {
+            stage_parameters.return_components =
+                Some(return_components_parameters_from_artifact(payload)?);
+        }
+        CalibrationStageParameterPayload::MeanReversion(payload) => {
+            stage_parameters.mean_reversion =
+                Some(mean_reversion_parameters_from_artifact(payload)?);
+        }
+        CalibrationStageParameterPayload::JointRefinement(payload) => {
+            stage_parameters.joint_refinement =
+                Some(joint_refinement_parameters_from_artifact(payload)?);
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Default)]
@@ -516,8 +630,8 @@ struct ModelStageParameters {
 }
 
 impl ModelStageParameters {
-    fn into_model_parameters(self) -> serde_json::Map<String, Value> {
-        let mut parameters = serde_json::Map::new();
+    fn into_model_parameters(self) -> Map<String, Value> {
+        let mut parameters = Map::new();
 
         if let Some(seasonality) = self.seasonality {
             parameters.insert("seasonality".to_string(), seasonality);
@@ -558,11 +672,37 @@ fn seasonality_parameters(
     })
 }
 
+fn seasonality_parameters_from_artifact(
+    payload: &janiform_calibration_artifacts::SeasonalityStageParameterPayload,
+) -> Value {
+    json!({
+        "schema_version": payload.composition_schema_version,
+        "exchange_code": payload.exchange_code,
+        "intraday_minutes_per_bin": payload.intraday_minutes_per_bin,
+        "intraday_factor_by_bin": payload.intraday_factor_by_bin,
+        "day_of_week_factor": payload.day_of_week_factor,
+        "day_of_year_factor": payload.day_of_year_factor,
+    })
+}
+
 fn hawkes_parameters(
     payload: &janiform_calibration_runtime::HawkesStageFittedPayload,
 ) -> Result<Value, WorkflowError> {
     Ok(json!({
         "schema_version": payload.schema_version,
+        "selected_candidate_id": payload.selected_candidate_id,
+        "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
+        "seasonality_input_transport": payload.seasonality_input_transport,
+        "seasonality_dataset_id": payload.seasonality_dataset_id,
+        "seasonality_artifact_reference": payload.seasonality_artifact_reference,
+    }))
+}
+
+fn hawkes_parameters_from_artifact(
+    payload: &janiform_calibration_artifacts::HawkesStageParameterPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
         "selected_candidate_id": payload.selected_candidate_id,
         "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
         "seasonality_input_transport": payload.seasonality_input_transport,
@@ -588,6 +728,35 @@ fn return_components_parameters(
     }))
 }
 
+fn return_components_parameters_from_artifact(
+    payload: &janiform_calibration_artifacts::ReturnComponentsStageParameterPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
+        "selected_candidate_id": payload.selected_candidate_id,
+        "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
+        "candidate_generation_policy": payload.candidate_generation_policy,
+        "objective_weighting_policy": payload.objective_weighting_policy,
+        "objective_metric_bucket_policy": payload.objective_metric_bucket_policy,
+        "activity_input_transport": payload.activity_input_transport,
+        "activity_selected_hawkes_candidate_id": payload.activity_selected_hawkes_candidate_id,
+        "activity_artifact_reference": payload.activity_artifact_reference,
+    }))
+}
+
+fn mean_reversion_parameters_from_artifact(
+    payload: &janiform_calibration_artifacts::MeanReversionStageParameterPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
+        "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
+        "diagnostics": serialize_payload(&payload.diagnostics)?,
+        "return_components_input_transport": payload.return_components_input_transport,
+        "return_components_selected_candidate_id": payload.return_components_selected_candidate_id,
+        "return_components_artifact_reference": payload.return_components_artifact_reference,
+    }))
+}
+
 fn joint_refinement_parameters(
     payload: &janiform_calibration_runtime::JointRefinementStageFittedPayload,
 ) -> Result<Value, WorkflowError> {
@@ -598,6 +767,18 @@ fn joint_refinement_parameters(
         "objective_breakdown": serialize_payload(&payload.objective_breakdown)?,
         "optimizer_diagnostics": serialize_payload(&payload.optimizer_diagnostics)?,
         "option_calibration_diagnostics": serialize_payload(&payload.option_calibration_diagnostics)?,
+    }))
+}
+
+fn joint_refinement_parameters_from_artifact(
+    payload: &janiform_calibration_artifacts::JointRefinementStageParameterPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
+        "selected_candidate_id": payload.selected_candidate_id,
+        "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
+        "objective_breakdown": serialize_payload(&payload.objective_breakdown)?,
+        "optimizer_diagnostics": serialize_payload(&payload.optimizer_diagnostics)?,
     }))
 }
 
@@ -644,7 +825,7 @@ fn model_parameter_stage_keys(parameters: &Value) -> Vec<String> {
 }
 
 fn selected_candidate_ids(report: &CalibrationStagedRunReport) -> Value {
-    let mut selected = serde_json::Map::new();
+    let mut selected = Map::new();
 
     for stage_report in &report.stage_reports {
         match stage_report {
