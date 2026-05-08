@@ -68,6 +68,38 @@ fn zero_total_phase_progress_uses_unbounded_terminal_measure() {
 }
 
 #[test]
+fn resumed_run_started_event_marks_preceding_terminal_stages_completed() {
+    let progress_event =
+        progress_event_from_staged_event(&CalibrationStagedRunObserverEvent::RunStarted {
+            run_id: "test-run".to_string(),
+            execution_mode: janiform_calibration_artifacts::CalibrationExecutionMode::Disk,
+            stage_count: 5,
+            stage_sequence: vec![
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
+                CalibrationStage::JointRefinement,
+            ],
+            completed_stage_count: 4,
+            resumed_from_checkpoint_reference: Some(
+                "checkpoint://test-run/mean_reversion".to_string(),
+            ),
+            resumed_from_last_successful_stage: Some(CalibrationStage::MeanReversion),
+            started_from_stage: Some(CalibrationStage::JointRefinement),
+        })
+        .expect("run-started event should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::RunStarted {
+            completed_stage_count,
+            ..
+        }) => assert_eq!(completed_stage_count, 4),
+        _ => panic!("expected run started progress event"),
+    }
+}
+
+#[test]
 fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,

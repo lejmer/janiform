@@ -32,6 +32,7 @@ pub(super) fn start_simulation_progress(
         input_count,
         output_path: output_path.map(janiform_terminal_ui::format_path),
         stage_sequence: Vec::new(),
+        completed_stage_count: 0,
     });
 
     progress_adapter

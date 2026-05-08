@@ -24,6 +24,7 @@ fn adapter_coalesces_structured_events_until_draw() {
         input_count: 3,
         output_path: Some(".janiform/runs/fit".to_string()),
         stage_sequence: vec!["seasonality".to_string(), "return components".to_string()],
+        completed_stage_count: 0,
     });
     adapter.observe(ProgressEvent::StageStarted {
         stage: "return components".to_string(),
@@ -106,6 +107,42 @@ fn adapter_coalesces_structured_events_until_draw() {
 }
 
 #[test]
+fn adapter_marks_leading_stages_completed_when_run_starts_from_resume() {
+    let mut adapter = ProgressAdapter::hidden();
+    adapter.observe(ProgressEvent::RunStarted {
+        run_id: "fit-20260426".to_string(),
+        scope: "staged calibration".to_string(),
+        input_count: 1,
+        output_path: None,
+        stage_sequence: vec![
+            "seasonality".to_string(),
+            "event activity".to_string(),
+            "return distribution".to_string(),
+            "mean reversion".to_string(),
+            "refine dynamics".to_string(),
+        ],
+        completed_stage_count: 4,
+    });
+
+    let snapshot = adapter.snapshot();
+
+    assert_eq!(
+        snapshot
+            .stages
+            .iter()
+            .map(|stage| format!("{:?}", stage.status))
+            .collect::<Vec<_>>(),
+        vec![
+            "Completed",
+            "Completed",
+            "Completed",
+            "Completed",
+            "Pending",
+        ]
+    );
+}
+
+#[test]
 fn adapter_seeds_planned_work_items_as_waiting() {
     let mut adapter = ProgressAdapter::hidden();
     adapter.observe(ProgressEvent::RunStarted {
@@ -114,6 +151,7 @@ fn adapter_seeds_planned_work_items_as_waiting() {
         input_count: 1,
         output_path: None,
         stage_sequence: vec!["joint refinement".to_string()],
+        completed_stage_count: 0,
     });
     adapter.observe(ProgressEvent::StageStarted {
         stage: "joint refinement".to_string(),
@@ -168,6 +206,7 @@ fn adapter_clears_work_items_when_phase_changes() {
         input_count: 1,
         output_path: None,
         stage_sequence: vec!["return components".to_string()],
+        completed_stage_count: 0,
     });
     adapter.observe(ProgressEvent::StageStarted {
         stage: "return components".to_string(),

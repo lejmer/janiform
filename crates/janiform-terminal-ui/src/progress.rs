@@ -101,6 +101,7 @@ impl ProgressAdapter {
                 input_count,
                 output_path,
                 stage_sequence,
+                completed_stage_count,
             } => {
                 self.snapshot.run_id = Some(run_id);
                 self.snapshot.scope = Some(scope);
@@ -113,7 +114,11 @@ impl ProgressAdapter {
                     .map(|(stage_index, name)| ProgressStageSnapshot {
                         name,
                         stage_number: stage_index + 1,
-                        status: ProgressStageStatus::Pending,
+                        status: if stage_index < completed_stage_count {
+                            ProgressStageStatus::Completed
+                        } else {
+                            ProgressStageStatus::Pending
+                        },
                         elapsed: None,
                     })
                     .collect();

@@ -161,6 +161,7 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::RunStarted {
             run_id,
             stage_sequence,
+            completed_stage_count,
             ..
         } => Some(ProgressEvent::RunStarted {
             run_id: run_id.clone(),
@@ -173,6 +174,7 @@ pub fn progress_event_from_staged_event(
                 .map(stage_label)
                 .map(str::to_string)
                 .collect(),
+            completed_stage_count: *completed_stage_count,
         }),
         CalibrationStagedRunObserverEvent::StageStarted {
             stage,

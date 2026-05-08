@@ -362,6 +362,7 @@ pub enum CalibrationStagedRunObserverEvent {
         execution_mode: CalibrationExecutionMode,
         stage_count: usize,
         stage_sequence: Vec<CalibrationStage>,
+        completed_stage_count: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
         resumed_from_checkpoint_reference: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]

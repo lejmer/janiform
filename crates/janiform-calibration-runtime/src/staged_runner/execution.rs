@@ -411,6 +411,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
 
     let run_start_time = Instant::now();
     let started_from_stage = execution_stage_order.get(start_position).copied();
+    let completed_stage_count = start_position;
 
     emit_observer_event(
         &mut observer,
@@ -419,6 +420,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             execution_mode: run_spec.execution_mode,
             stage_count: execution_stage_order.len(),
             stage_sequence: execution_stage_order.clone(),
+            completed_stage_count,
             resumed_from_checkpoint_reference: resumed_from_checkpoint_reference.clone(),
             resumed_from_last_successful_stage,
             started_from_stage,
