@@ -63,7 +63,6 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.market_data.contracts import CalibrationExecutionMode
-from janiform.calibration.presets import PresetCategory
 from janiform.calibration.staged import (
     CalibrationOptimizerSettings,
     CalibrationResumeSettings,
@@ -84,7 +83,6 @@ from janiform.mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
 )
 from janiform.pricing import (
     AutoActivityCompressedPricingIntervalSchedulePolicy,

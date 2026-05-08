@@ -1,4 +1,3 @@
-import math
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
