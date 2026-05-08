@@ -4315,7 +4315,7 @@
 | [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationdiagnostics) | contract_model | 17 fields |
 | [`MarketDataCalibrationPreparationProvenance`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationprovenance) | contract_model | 11 fields |
 | [`MarketDataCalibrationRequest`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationrequest) | contract_model | 19 fields |
-| [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationsourcesummary) | contract_model | 10 fields |
+| [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationsourcesummary) | contract_model | 11 fields |
 | [`MarketDataSourceProbe`](#python-api-symbol-janiform-calibration-market-data-marketdatasourceprobe) | contract_model | 5 fields |
 | [`NormalizedMarketDataSource`](#python-api-symbol-janiform-calibration-market-data-normalizedmarketdatasource) | contract_model | 4 fields |
 | [`PreparedMarketDataCalibration`](#python-api-symbol-janiform-calibration-market-data-preparedmarketdatacalibration) | contract_model | 11 fields |
@@ -4518,8 +4518,8 @@
 ### `MarketDataCalibrationSourceSummary`
 
 - Kind: `contract_model`
-- Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
-- Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
+- Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
+- Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `dropped_invalid_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
 
 <a id="python-api-symbol-janiform-calibration-market-data-marketdatasourceprobe"></a>
 ### `MarketDataSourceProbe`
@@ -4847,14 +4847,14 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`LoadedMarketDataSourceSummary`](#python-api-symbol-janiform-calibration-market-data-ingestion-loadedmarketdatasourcesummary) | contract_model | 10 fields |
+| [`LoadedMarketDataSourceSummary`](#python-api-symbol-janiform-calibration-market-data-ingestion-loadedmarketdatasourcesummary) | contract_model | 11 fields |
 
 <a id="python-api-symbol-janiform-calibration-market-data-ingestion-loadedmarketdatasourcesummary"></a>
 ### `LoadedMarketDataSourceSummary`
 
 - Kind: `contract_model`
-- Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
-- Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
+- Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
+- Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `dropped_invalid_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
 
 <a id="python-api-module-janiform-calibration-market-data-request"></a>
 ## `janiform.calibration.market_data.request`
@@ -4998,7 +4998,7 @@
 |--------|------|---------|
 | [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationdiagnostics) | contract_model | 17 fields |
 | [`MarketDataCalibrationPreparationProvenance`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationprovenance) | contract_model | 11 fields |
-| [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationsourcesummary) | contract_model | 10 fields |
+| [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationsourcesummary) | contract_model | 11 fields |
 | [`PreparedMarketDataCalibration`](#python-api-symbol-janiform-calibration-market-data-workflow-preparedmarketdatacalibration) | contract_model | 11 fields |
 | [`prepare_market_data_calibration`](#python-api-symbol-janiform-calibration-market-data-workflow-prepare-market-data-calibration) | function | (request: 'MarketDataCalibrationRequest', *, cpu_count: 'Optional[int]' = None) -> 'PreparedMarketDataCalibration' |
 | [`run_market_data_calibration`](#python-api-symbol-janiform-calibration-market-data-workflow-run-market-data-calibration) | function | (request: 'MarketDataCalibrationRequest') -> 'StagedCalibrationResponse' |
@@ -5021,8 +5021,8 @@
 ### `MarketDataCalibrationSourceSummary`
 
 - Kind: `contract_model`
-- Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
-- Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
+- Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
+- Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `dropped_invalid_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
 
 <a id="python-api-symbol-janiform-calibration-market-data-workflow-preparedmarketdatacalibration"></a>
 ### `PreparedMarketDataCalibration`

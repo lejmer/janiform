@@ -5,10 +5,11 @@ use janiform_workflows::error::WorkflowError;
 use janiform_workflows::fit::{
     FitWorkflowObserver, FitWorkflowOutput, FitWorkflowRequest,
     run_fit_workflow as run_fit_workflow_core, run_staged_fit_execution_workflow,
+    write_model_payload_artifact,
 };
 use janiform_workflows::terminal::{stderr_progress_adapter, terminal_summary_policy};
 use pyo3::prelude::{Bound, Py, PyResult, Python};
-use pyo3::types::{PyAny, PyModule, PyModuleMethods};
+use pyo3::types::{PyAny, PyDict, PyDictMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
 
 use crate::CalibrationExecutionError;
@@ -23,12 +24,14 @@ use super::output::{
 };
 use super::request::{
     FitFullRunRequestPayload, FitPrepareRequestPayload, FitPreparedRunRequestPayload,
+    ModelArtifactSaveRequestPayload,
 };
 
 pub(crate) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(prepare_fit_workflow, module)?)?;
     module.add_function(wrap_pyfunction!(run_prepared_fit_workflow, module)?)?;
     module.add_function(wrap_pyfunction!(run_fit_workflow, module)?)?;
+    module.add_function(wrap_pyfunction!(save_model_artifact, module)?)?;
     Ok(())
 }
 
@@ -123,6 +126,31 @@ fn run_prepared_fit_workflow(
     raise_fit_progress_callback_error(&callback_error_state)?;
 
     fit_workflow_output_to_py_object(py, workflow_output)
+}
+
+#[pyfunction]
+#[pyo3(signature = (request))]
+fn save_model_artifact(py: Python<'_>, request: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    let request: ModelArtifactSaveRequestPayload =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize model artifact save request: {source}"
+            ))
+        })?;
+
+    let model_path = py
+        .detach(move || {
+            write_model_payload_artifact(
+                &request.model_payload,
+                request.path.as_deref().map(std::path::Path::new),
+            )
+        })
+        .map_err(workflow_error_to_py_error)?;
+
+    let result = PyDict::new(py);
+    result.set_item("path", model_path.display().to_string())?;
+
+    Ok(result.into_any().unbind())
 }
 
 fn run_workflow_from_request(

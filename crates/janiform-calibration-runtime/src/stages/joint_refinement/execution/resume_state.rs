@@ -1,12 +1,15 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts;
 use super::option_refinement::{OptionRefinedCandidate, SearchTierCandidate};
+use super::state::{JointRefinementOptionPricingContext, JointRefinementOptionTierPricingInputs};
 use super::{
     JointRefinementCoarseConsistencySummary, JointRefinementOptionTierPricingArtifact,
     JointRefinementRestartOutcome,
@@ -15,16 +18,40 @@ use super::{
 const JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION: &str =
     "janiform.joint_refinement.resume_state.v1";
 const JOINT_REFINEMENT_RESUME_STATE_FILENAME: &str = "joint-refinement.resume_state.json";
+const JOINT_REFINEMENT_OPTION_PRICING_CONTEXT_FINGERPRINT_POLICY: &str =
+    "joint_refinement_option_pricing_context_sha256_canonical_tiers_and_pricing_inputs.v1";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct PersistedRestartSelectionArtifacts {
     pub(crate) best_restart_id: String,
     pub(crate) option_refinement_candidate_frontier_ids: Vec<String>,
+    #[serde(default)]
+    pub(crate) selected_restart_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) option_pricing_context_fingerprint: Option<String>,
     pub(crate) coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
     pub(crate) selection_coarse_consistency_by_restart_id:
         BTreeMap<String, JointRefinementCoarseConsistencySummary>,
     pub(crate) coarse_consistency_wall_clock_millis: u64,
+}
+
+impl PersistedRestartSelectionArtifacts {
+    pub(crate) fn matches_resume_context(
+        &self,
+        valid_restart_ids: &BTreeSet<String>,
+        selected_restart_count: usize,
+        option_pricing_context_fingerprint: Option<&str>,
+    ) -> bool {
+        self.option_pricing_context_fingerprint.as_deref() == option_pricing_context_fingerprint
+            && self.selected_restart_count >= selected_restart_count
+            && self.option_refinement_candidate_frontier_ids.len() >= selected_restart_count
+            && self
+                .option_refinement_candidate_frontier_ids
+                .iter()
+                .all(|restart_id| valid_restart_ids.contains(restart_id))
+            && valid_restart_ids.contains(&self.best_restart_id)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,18 +120,30 @@ impl PersistedSelectionTierCandidate {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct PersistedSelectedOptionRefinement {
+    pub(crate) restart_id: String,
+    pub(crate) search_tier_pricing_artifact: JointRefinementOptionTierPricingArtifact,
+    pub(crate) selection_tier_pricing_artifact: JointRefinementOptionTierPricingArtifact,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct JointRefinementResumeState {
     schema_version: String,
     run_id: String,
     stage_seed: u64,
     restart_outcomes_by_id: BTreeMap<String, JointRefinementRestartOutcome>,
     restart_selection: Option<PersistedRestartSelectionArtifacts>,
-    search_tier_candidates_by_restart_id: BTreeMap<String, PersistedSearchTierCandidate>,
-    selection_tier_candidates_by_restart_id: BTreeMap<String, PersistedSelectionTierCandidate>,
-    selected_search_tier_pricing_artifact: Option<JointRefinementOptionTierPricingArtifact>,
-    selected_selection_tier_pricing_artifact: Option<JointRefinementOptionTierPricingArtifact>,
-    selected_audit_tier_pricing_artifact: Option<JointRefinementOptionTierPricingArtifact>,
-    selected_restart_id: Option<String>,
+    #[serde(default)]
+    search_tier_candidates_by_option_context:
+        BTreeMap<String, BTreeMap<String, PersistedSearchTierCandidate>>,
+    #[serde(default)]
+    selection_tier_candidates_by_option_context:
+        BTreeMap<String, BTreeMap<String, PersistedSelectionTierCandidate>>,
+    #[serde(default)]
+    selected_option_refinement_by_context: BTreeMap<String, PersistedSelectedOptionRefinement>,
+    #[serde(default)]
+    audit_tier_pricing_artifact_by_context:
+        BTreeMap<String, JointRefinementOptionTierPricingArtifact>,
 }
 
 impl JointRefinementResumeState {
@@ -115,12 +154,10 @@ impl JointRefinementResumeState {
             stage_seed,
             restart_outcomes_by_id: BTreeMap::new(),
             restart_selection: None,
-            search_tier_candidates_by_restart_id: BTreeMap::new(),
-            selection_tier_candidates_by_restart_id: BTreeMap::new(),
-            selected_search_tier_pricing_artifact: None,
-            selected_selection_tier_pricing_artifact: None,
-            selected_audit_tier_pricing_artifact: None,
-            selected_restart_id: None,
+            search_tier_candidates_by_option_context: BTreeMap::new(),
+            selection_tier_candidates_by_option_context: BTreeMap::new(),
+            selected_option_refinement_by_context: BTreeMap::new(),
+            audit_tier_pricing_artifact_by_context: BTreeMap::new(),
         }
     }
 }
@@ -165,9 +202,14 @@ impl JointRefinementResumeStore {
         self.state.restart_selection.as_ref()
     }
 
-    pub(crate) fn search_tier_candidate(&self, restart_id: &str) -> Option<SearchTierCandidate> {
+    pub(crate) fn search_tier_candidate(
+        &self,
+        option_context_fingerprint: &str,
+        restart_id: &str,
+    ) -> Option<SearchTierCandidate> {
         self.state
-            .search_tier_candidates_by_restart_id
+            .search_tier_candidates_by_option_context
+            .get(option_context_fingerprint)?
             .get(restart_id)
             .cloned()
             .map(PersistedSearchTierCandidate::into_runtime)
@@ -175,43 +217,46 @@ impl JointRefinementResumeStore {
 
     pub(crate) fn selection_tier_candidate(
         &self,
+        option_context_fingerprint: &str,
         restart_id: &str,
     ) -> Option<OptionRefinedCandidate> {
         self.state
-            .selection_tier_candidates_by_restart_id
+            .selection_tier_candidates_by_option_context
+            .get(option_context_fingerprint)?
             .get(restart_id)
             .cloned()
             .map(PersistedSelectionTierCandidate::into_runtime)
     }
 
-    pub(crate) fn selected_restart_id(&self) -> Option<&str> {
-        self.state.selected_restart_id.as_deref()
-    }
-
-    pub(crate) fn selected_search_tier_pricing_artifact(
+    pub(crate) fn selected_option_refinement(
         &self,
-    ) -> Option<Arc<JointRefinementOptionTierPricingArtifact>> {
+        option_context_fingerprint: &str,
+    ) -> Option<(
+        String,
+        Arc<JointRefinementOptionTierPricingArtifact>,
+        Arc<JointRefinementOptionTierPricingArtifact>,
+    )> {
         self.state
-            .selected_search_tier_pricing_artifact
-            .clone()
-            .map(Arc::new)
-    }
-
-    pub(crate) fn selected_selection_tier_pricing_artifact(
-        &self,
-    ) -> Option<Arc<JointRefinementOptionTierPricingArtifact>> {
-        self.state
-            .selected_selection_tier_pricing_artifact
-            .clone()
-            .map(Arc::new)
+            .selected_option_refinement_by_context
+            .get(option_context_fingerprint)
+            .map(|refinement| {
+                // Intentional clones decouple the returned runtime artifacts from persisted store state.
+                (
+                    refinement.restart_id.clone(),
+                    Arc::new(refinement.search_tier_pricing_artifact.clone()),
+                    Arc::new(refinement.selection_tier_pricing_artifact.clone()),
+                )
+            })
     }
 
     pub(crate) fn selected_audit_tier_pricing_artifact(
         &self,
+        option_context_fingerprint: &str,
     ) -> Option<Arc<JointRefinementOptionTierPricingArtifact>> {
         self.state
-            .selected_audit_tier_pricing_artifact
-            .clone()
+            .audit_tier_pricing_artifact_by_context
+            .get(option_context_fingerprint)
+            .cloned()
             .map(Arc::new)
     }
 
@@ -230,41 +275,65 @@ impl JointRefinementResumeStore {
         self.persist();
     }
 
-    pub(crate) fn record_search_tier_candidate(&mut self, candidate: &SearchTierCandidate) {
-        self.state.search_tier_candidates_by_restart_id.insert(
-            candidate.restart_outcome.restart_id.clone(),
-            PersistedSearchTierCandidate::from_runtime(candidate),
-        );
+    pub(crate) fn record_search_tier_candidate(
+        &mut self,
+        option_context_fingerprint: &str,
+        candidate: &SearchTierCandidate,
+    ) {
+        self.state
+            .search_tier_candidates_by_option_context
+            .entry(option_context_fingerprint.to_string())
+            .or_default()
+            .insert(
+                candidate.restart_outcome.restart_id.clone(),
+                PersistedSearchTierCandidate::from_runtime(candidate),
+            );
         self.persist();
     }
 
-    pub(crate) fn record_selection_tier_candidate(&mut self, candidate: &OptionRefinedCandidate) {
-        self.state.selection_tier_candidates_by_restart_id.insert(
-            candidate.restart_outcome.restart_id.clone(),
-            PersistedSelectionTierCandidate::from_runtime(candidate),
-        );
+    pub(crate) fn record_selection_tier_candidate(
+        &mut self,
+        option_context_fingerprint: &str,
+        candidate: &OptionRefinedCandidate,
+    ) {
+        self.state
+            .selection_tier_candidates_by_option_context
+            .entry(option_context_fingerprint.to_string())
+            .or_default()
+            .insert(
+                candidate.restart_outcome.restart_id.clone(),
+                PersistedSelectionTierCandidate::from_runtime(candidate),
+            );
         self.persist();
     }
 
     pub(crate) fn record_selected_option_refinement(
         &mut self,
+        option_context_fingerprint: &str,
         restart_id: &str,
         search_tier_pricing_artifact: &JointRefinementOptionTierPricingArtifact,
         selection_tier_pricing_artifact: &JointRefinementOptionTierPricingArtifact,
     ) {
-        self.state.selected_restart_id = Some(restart_id.to_string());
-        self.state.selected_search_tier_pricing_artifact =
-            Some(search_tier_pricing_artifact.clone());
-        self.state.selected_selection_tier_pricing_artifact =
-            Some(selection_tier_pricing_artifact.clone());
+        self.state.selected_option_refinement_by_context.insert(
+            option_context_fingerprint.to_string(),
+            PersistedSelectedOptionRefinement {
+                restart_id: restart_id.to_string(),
+                search_tier_pricing_artifact: search_tier_pricing_artifact.clone(),
+                selection_tier_pricing_artifact: selection_tier_pricing_artifact.clone(),
+            },
+        );
         self.persist();
     }
 
     pub(crate) fn record_audit_tier_pricing_artifact(
         &mut self,
+        option_context_fingerprint: &str,
         audit_tier_pricing_artifact: &JointRefinementOptionTierPricingArtifact,
     ) {
-        self.state.selected_audit_tier_pricing_artifact = Some(audit_tier_pricing_artifact.clone());
+        self.state.audit_tier_pricing_artifact_by_context.insert(
+            option_context_fingerprint.to_string(),
+            audit_tier_pricing_artifact.clone(),
+        );
         self.persist();
     }
 
@@ -277,6 +346,141 @@ impl JointRefinementResumeStore {
             let _ = error;
         }
     }
+}
+
+pub(crate) fn option_pricing_context_fingerprint(
+    option_pricing_context: &JointRefinementOptionPricingContext,
+) -> String {
+    let fingerprint_payload = json!({
+        "policy": JOINT_REFINEMENT_OPTION_PRICING_CONTEXT_FINGERPRINT_POLICY,
+        "valuation_time_utc_nanos": option_pricing_context.valuation_time_utc_nanos,
+        "boundary_input": option_pricing_context.boundary_input,
+        "snapshot_maturity_intervals": option_pricing_context.snapshot_maturity_intervals,
+        "snapshot_maturity_terminal_interval_indices": option_pricing_context
+            .snapshot_maturity_terminal_interval_indices,
+        "carry_input": option_pricing_context.carry_input,
+        "option_surface_tiers": option_surface_tiers_fingerprint_payload(
+            option_pricing_context,
+        ),
+        "tier_pricing_inputs": {
+            "search": tier_pricing_inputs_fingerprint_payload(
+                &option_pricing_context.tier_pricing_inputs.search,
+            ),
+            "selection": tier_pricing_inputs_fingerprint_payload(
+                &option_pricing_context.tier_pricing_inputs.selection,
+            ),
+            "audit": tier_pricing_inputs_fingerprint_payload(
+                &option_pricing_context.tier_pricing_inputs.audit,
+            ),
+        },
+    });
+
+    let payload_bytes = serde_json::to_vec(&fingerprint_payload)
+        .unwrap_or_else(|error| error.to_string().into_bytes());
+
+    let digest = Sha256::digest(payload_bytes.as_slice());
+    format!("{digest:x}")
+}
+
+fn option_surface_tiers_fingerprint_payload(
+    option_pricing_context: &JointRefinementOptionPricingContext,
+) -> serde_json::Value {
+    let tiers = &option_pricing_context.option_surface_tiers;
+
+    json!({
+        "valid_input_quote_count": tiers.valid_input_quote_count,
+        "dropped_input_quote_count": tiers.dropped_input_quote_count,
+        "canonical_quotes": tiers
+            .canonical_quotes
+            .iter()
+            .map(|quote| {
+                json!({
+                    "source_position": quote.source_position,
+                    "quote_timestamp_utc_nanos": quote.quote_timestamp_utc_nanos,
+                    "expiry_timestamp_utc_nanos": quote.expiry_timestamp_utc_nanos,
+                    "terminal_interval_index": quote.terminal_interval_index,
+                    "maturity_interval_bits": quote.maturity_interval.to_bits(),
+                    "strike_bits": quote.strike.to_bits(),
+                    "payoff_type": quote.payoff_type,
+                    "bid_price_bits": quote.bid_price.to_bits(),
+                    "ask_price_bits": quote.ask_price.to_bits(),
+                    "observed_mid_price_bits": quote.observed_mid_price.to_bits(),
+                    "source_observed_mid_price_bits": quote
+                        .source_observed_mid_price
+                        .to_bits(),
+                    "absolute_spread_bits": quote.absolute_spread.to_bits(),
+                    "relative_spread_bits": quote.relative_spread.to_bits(),
+                    "log_forward_moneyness_bits": quote.log_forward_moneyness.to_bits(),
+                    "staleness_nanos": quote.staleness_nanos,
+                    "violates_static_bounds": quote.violates_static_bounds,
+                })
+            })
+            .collect::<Vec<_>>(),
+        "search": option_surface_tier_fingerprint_payload(&tiers.search),
+        "selection": option_surface_tier_fingerprint_payload(&tiers.selection),
+        "audit": option_surface_tier_fingerprint_payload(&tiers.audit),
+    })
+}
+
+fn option_surface_tier_fingerprint_payload(
+    tier: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTier,
+) -> serde_json::Value {
+    json!({
+        "tier_kind": tier.tier_kind,
+        "maturity_count": tier.maturity_count,
+        "maturity_representatives": tier
+            .maturity_representatives
+            .iter()
+            .map(|representative| {
+                json!({
+                    "terminal_interval_index": representative.terminal_interval_index,
+                    "maturity_interval_bits": representative.maturity_interval.to_bits(),
+                    "expiry_timestamp_utc_nanos": representative.expiry_timestamp_utc_nanos,
+                    "maturity_weight": representative.maturity_weight,
+                    "quote_indices": representative.quote_indices,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn tier_pricing_inputs_fingerprint_payload(
+    tier_inputs: &JointRefinementOptionTierPricingInputs,
+) -> serde_json::Value {
+    json!({
+        "runtime_interval_schedule": tier_inputs.runtime_interval_schedule,
+        "interval_factors": tier_inputs.interval_factors,
+        "grid_batch_pricing_request": tier_inputs.grid_batch_pricing_request,
+        "spectral_collocation_node_count_override": tier_inputs
+            .spectral_collocation_node_count_override,
+        "observed_nodes": tier_inputs
+            .observed_nodes
+            .iter()
+            .map(|node| {
+                json!({
+                    "quote_timestamp_utc_nanos": node.quote_timestamp_utc_nanos,
+                    "expiry_timestamp_utc_nanos": node.expiry_timestamp_utc_nanos,
+                    "strike_bits": node.strike.to_bits(),
+                    "payoff_type": node.payoff_type,
+                    "bid_price_bits": node.bid_price.to_bits(),
+                    "ask_price_bits": node.ask_price.to_bits(),
+                    "observed_mid_price_bits": node.observed_mid_price.to_bits(),
+                    "maturity_weight": node.maturity_weight,
+                    "location": {
+                        "grid_index": node.location.grid_index,
+                        "maturity_index": node.location.maturity_index,
+                        "strike_index": node.location.strike_index,
+                    },
+                })
+            })
+            .collect::<Vec<_>>(),
+        "maturity_interval_bits": tier_inputs
+            .maturity_intervals
+            .iter()
+            .map(|value: &f64| value.to_bits())
+            .collect::<Vec<_>>(),
+        "maturity_terminal_interval_indices": tier_inputs.maturity_terminal_interval_indices,
+    })
 }
 
 fn load_resume_state_from_disk(
@@ -378,10 +582,34 @@ mod tests {
 
         let ignored_store =
             JointRefinementResumeStore::load(Some(directory.as_path()), "run-001", 17);
-        assert!(ignored_store.selected_restart_id().is_none());
+        assert!(ignored_store.restart_selection().is_none());
         assert!(persisted_path.exists());
 
         let _ = fs::remove_file(persisted_path);
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn restart_selection_resume_requires_matching_option_context_and_frontier_width() {
+        let selection = super::PersistedRestartSelectionArtifacts {
+            best_restart_id: "baseline".to_string(),
+            option_refinement_candidate_frontier_ids: vec![
+                "baseline".to_string(),
+                "halton_01".to_string(),
+            ],
+            selected_restart_count: 2,
+            option_pricing_context_fingerprint: Some("options-a".to_string()),
+            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            selection_coarse_consistency_by_restart_id: Default::default(),
+            coarse_consistency_wall_clock_millis: 0,
+        };
+        let valid_restart_ids = ["baseline".to_string(), "halton_01".to_string()]
+            .into_iter()
+            .collect();
+
+        assert!(selection.matches_resume_context(&valid_restart_ids, 2, Some("options-a")));
+        assert!(!selection.matches_resume_context(&valid_restart_ids, 3, Some("options-a")));
+        assert!(!selection.matches_resume_context(&valid_restart_ids, 2, Some("options-b")));
+        assert!(!selection.matches_resume_context(&valid_restart_ids, 2, None));
     }
 }

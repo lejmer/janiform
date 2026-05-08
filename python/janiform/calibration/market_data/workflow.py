@@ -36,6 +36,7 @@ class MarketDataCalibrationSourceSummary(ContractModel):
     source_row_count: int
     retained_row_count: int
     dropped_duplicate_row_count: int
+    dropped_invalid_row_count: int
     sort_records_by_timestamp: bool
     applied_timestamp_timezone: Optional[str]
     canonical_value_field: Optional[str] = None
@@ -53,6 +54,7 @@ class MarketDataCalibrationSourceSummary(ContractModel):
             source_row_count=int(raw_payload["source_row_count"]),
             retained_row_count=int(raw_payload["retained_row_count"]),
             dropped_duplicate_row_count=int(raw_payload["dropped_duplicate_row_count"]),
+            dropped_invalid_row_count=int(raw_payload["dropped_invalid_row_count"]),
             sort_records_by_timestamp=bool(raw_payload["sort_records_by_timestamp"]),
             applied_timestamp_timezone=(
                 str(raw_payload["applied_timestamp_timezone"])
@@ -256,6 +258,7 @@ def _build_market_data_source_summary(
         source_row_count=source_summary.source_row_count,
         retained_row_count=source_summary.retained_row_count,
         dropped_duplicate_row_count=source_summary.dropped_duplicate_row_count,
+        dropped_invalid_row_count=source_summary.dropped_invalid_row_count,
         sort_records_by_timestamp=source_summary.sort_records_by_timestamp,
         applied_timestamp_timezone=source_summary.applied_timestamp_timezone,
         canonical_value_field=source_summary.canonical_value_field,

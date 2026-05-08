@@ -76,6 +76,7 @@ pub(super) fn load_known_news_records(
             source_row_count,
             retained_row_count: normalized_rows.len(),
             dropped_duplicate_row_count: 0,
+            dropped_invalid_row_count: 0,
             sort_records_by_timestamp: true,
             applied_timestamp_timezone: known_news_input.calendar_timezone.clone(),
             canonical_value_field: None,

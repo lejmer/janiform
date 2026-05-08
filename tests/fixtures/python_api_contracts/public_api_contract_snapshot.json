@@ -671,13 +671,14 @@
             "source_row_count",
             "retained_row_count",
             "dropped_duplicate_row_count",
+            "dropped_invalid_row_count",
             "sort_records_by_timestamp",
             "applied_timestamp_timezone",
             "canonical_value_field",
             "value_mapping_policy"
           ],
           "kind": "contract_model",
-          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
         },
         "MarketDataSourceProbe": {
           "field_names": [
@@ -1076,13 +1077,14 @@
             "source_row_count",
             "retained_row_count",
             "dropped_duplicate_row_count",
+            "dropped_invalid_row_count",
             "sort_records_by_timestamp",
             "applied_timestamp_timezone",
             "canonical_value_field",
             "value_mapping_policy"
           ],
           "kind": "contract_model",
-          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
         }
       }
     },
@@ -1324,13 +1326,14 @@
             "source_row_count",
             "retained_row_count",
             "dropped_duplicate_row_count",
+            "dropped_invalid_row_count",
             "sort_records_by_timestamp",
             "applied_timestamp_timezone",
             "canonical_value_field",
             "value_mapping_policy"
           ],
           "kind": "contract_model",
-          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
         },
         "PreparedMarketDataCalibration": {
           "field_names": [

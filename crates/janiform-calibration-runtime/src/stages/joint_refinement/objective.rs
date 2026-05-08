@@ -25,7 +25,9 @@ use crate::stages::joint_metrics::{
     log_ratio_distance, normalized_profile_distance, zero_aware_normalized_bucket_value,
 };
 use crate::stages::return_components::{
-    ContinuousLikelihoodFidelityTier, evaluate_configuration_likelihood_objective,
+    ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
+    ContinuousReturnOptimizerContext, build_continuous_return_optimizer_context,
+    evaluate_configuration_likelihood_objective_with_context_and_counts,
     rescale_continuous_return_calibration_sample_business_time_scales,
 };
 use janiform_calibration_artifacts::{
@@ -37,6 +39,19 @@ use janiform_model_kernels::hawkes::HawkesKernelParameters;
 use super::contracts::{JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate};
 
 pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
+
+#[derive(Debug, Clone)]
+pub(super) struct JointRefinementAggregatedLikelihoodContexts {
+    tick: ContinuousReturnOptimizerContext,
+    five_minute: ContinuousReturnOptimizerContext,
+    fifteen_minute: ContinuousReturnOptimizerContext,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct JointRefinementLikelihoodFitWithCounts {
+    pub(super) fit: f64,
+    pub(super) exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
+}
 
 pub(super) fn evaluate_joint_candidate(
     parameter_vector: &[f64],
@@ -68,10 +83,10 @@ pub(super) fn evaluate_joint_candidate(
     candidate_evaluation
 }
 
-pub(super) fn evaluate_joint_candidate_nig_block_search_objective(
+pub(super) fn evaluate_joint_candidate_nig_block_search_objective_with_counts(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
-) -> Option<f64> {
+) -> Option<JointRefinementLikelihoodFitWithCounts> {
     let fitted_parameters = parameter_vector_to_fitted_parameters(parameter_vector, context)?;
     if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
         context
@@ -80,26 +95,67 @@ pub(super) fn evaluate_joint_candidate_nig_block_search_objective(
         return None;
     }
 
-    let modeled_open_event_rate_per_hour =
-        modeled_open_event_rate_per_hour(&fitted_parameters, context);
+    let likelihood_contexts =
+        build_joint_refinement_aggregated_likelihood_contexts_for_fitted_parameters(
+            &fitted_parameters,
+            context,
+        );
 
-    let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
-        &fitted_parameters,
-        modeled_open_event_rate_per_hour,
+    evaluate_joint_candidate_nig_block_search_objective_with_contexts(
+        parameter_vector,
         context,
+        &likelihood_contexts,
+    )
+}
+
+pub(super) fn build_joint_refinement_nig_block_likelihood_contexts(
+    current_vector: &[f64],
+    context: &JointRefinementContext,
+) -> Option<JointRefinementAggregatedLikelihoodContexts> {
+    let fitted_parameters = parameter_vector_to_fitted_parameters(current_vector, context)?;
+
+    Some(
+        build_joint_refinement_aggregated_likelihood_contexts_for_fitted_parameters(
+            &fitted_parameters,
+            context,
+        ),
+    )
+}
+
+pub(super) fn evaluate_joint_candidate_nig_block_search_objective_with_contexts(
+    parameter_vector: &[f64],
+    context: &JointRefinementContext,
+    likelihood_contexts: &JointRefinementAggregatedLikelihoodContexts,
+) -> Option<JointRefinementLikelihoodFitWithCounts> {
+    let fitted_parameters = parameter_vector_to_fitted_parameters(parameter_vector, context)?;
+    if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
+        context
+            .profiling_state
+            .record_invalid_candidate_evaluation();
+        return None;
+    }
+
+    let likelihood_fit = raw_aggregated_likelihood_fit_for_contexts_with_counts(
+        fitted_parameters
+            .return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration,
+        likelihood_contexts,
         ContinuousLikelihoodFidelityTier::Local,
     );
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
 
     let likelihood_search_score = threshold_relative_likelihood_search_score(
-        raw_aggregated_likelihood_fit,
+        likelihood_fit.fit,
         thresholds.aggregated_likelihood_fit,
     );
 
     likelihood_search_score
         .is_finite()
-        .then_some(likelihood_search_score)
+        .then_some(JointRefinementLikelihoodFitWithCounts {
+            fit: likelihood_search_score,
+            exact_likelihood_evaluator_counts: likelihood_fit.exact_likelihood_evaluator_counts,
+        })
 }
 
 pub(super) fn evaluate_joint_fitted_candidate_restart_admission_score(
@@ -604,6 +660,8 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     JointRefinementCandidateEvaluation {
         fitted_parameters,
         raw_admissibility_metrics,
+        exact_likelihood_evaluator_counts: deterministic_evaluation
+            .exact_likelihood_evaluator_counts,
         objective_terms: build_joint_objective_term_diagnostics(
             resolved_seed_summaries.as_slice(),
             &context.observed_data,
@@ -1017,6 +1075,7 @@ pub(crate) fn invalid_candidate_evaluation(
             rv_activity_coupling_fit: 100.0,
             price_span_sanity_fit: 100.0,
         },
+        exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts::default(),
         objective_terms: Vec::new(),
         breakdown: JointRefinementStageObjectiveBreakdown {
             aggregated_likelihood_fit: 100.0,
@@ -1082,7 +1141,7 @@ fn build_deterministic_evaluation_for_fidelity(
     let modeled_open_event_rate_per_hour =
         modeled_open_event_rate_per_hour(fitted_parameters, context);
 
-    let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
+    let aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity_with_counts(
         fitted_parameters,
         modeled_open_event_rate_per_hour,
         context,
@@ -1094,7 +1153,9 @@ fn build_deterministic_evaluation_for_fidelity(
 
     let deterministic_evaluation = JointRefinementDeterministicEvaluation {
         modeled_open_event_rate_per_hour,
-        raw_aggregated_likelihood_fit,
+        raw_aggregated_likelihood_fit: aggregated_likelihood_fit.fit,
+        exact_likelihood_evaluator_counts: aggregated_likelihood_fit
+            .exact_likelihood_evaluator_counts,
         raw_expected_activity_shape_fit: expected_hourly_tick_counts.as_ref().map(
             |expected_hourly_tick_counts| {
                 activity_shape_fit_for_counts(
@@ -1203,12 +1264,40 @@ fn modeled_open_event_rate_per_hour(
     .unwrap_or(context.observed_data.observed_open_event_rate_per_hour)
 }
 
-fn raw_aggregated_likelihood_fit_for_fidelity(
+fn raw_aggregated_likelihood_fit_for_fidelity_with_counts(
     fitted_parameters: &JointRefinementStageFittedParameters,
     modeled_open_event_rate_per_hour: f64,
     context: &JointRefinementContext,
     fidelity_tier: ContinuousLikelihoodFidelityTier,
-) -> f64 {
+) -> JointRefinementLikelihoodFitWithCounts {
+    let likelihood_contexts = build_joint_refinement_aggregated_likelihood_contexts(
+        modeled_open_event_rate_per_hour,
+        context,
+    );
+
+    raw_aggregated_likelihood_fit_for_contexts_with_counts(
+        fitted_parameters
+            .return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration,
+        &likelihood_contexts,
+        fidelity_tier,
+    )
+}
+
+fn build_joint_refinement_aggregated_likelihood_contexts_for_fitted_parameters(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> JointRefinementAggregatedLikelihoodContexts {
+    let modeled_open_event_rate_per_hour =
+        modeled_open_event_rate_per_hour(fitted_parameters, context);
+
+    build_joint_refinement_aggregated_likelihood_contexts(modeled_open_event_rate_per_hour, context)
+}
+
+fn build_joint_refinement_aggregated_likelihood_contexts(
+    modeled_open_event_rate_per_hour: f64,
+    context: &JointRefinementContext,
+) -> JointRefinementAggregatedLikelihoodContexts {
     let observed_5m_sample =
         crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
             context.observed_data.observed_5m_intervals.as_slice(),
@@ -1234,35 +1323,50 @@ fn raw_aggregated_likelihood_fit_for_fidelity(
                 .max(1.0e-8),
     );
 
-    [
-        evaluate_configuration_likelihood_objective(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-            &observed_tick_sample,
+    JointRefinementAggregatedLikelihoodContexts {
+        tick: build_continuous_return_optimizer_context(&observed_tick_sample),
+        five_minute: build_continuous_return_optimizer_context(&observed_5m_sample),
+        fifteen_minute: build_continuous_return_optimizer_context(&observed_15m_sample),
+    }
+}
+
+fn raw_aggregated_likelihood_fit_for_contexts_with_counts(
+    configuration: janiform_model_kernels::nig::NigSharedPlusShiftConfiguration,
+    likelihood_contexts: &JointRefinementAggregatedLikelihoodContexts,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> JointRefinementLikelihoodFitWithCounts {
+    let (tick_objective, tick_counts) =
+        evaluate_configuration_likelihood_objective_with_context_and_counts(
+            configuration,
+            &likelihood_contexts.tick,
             fidelity_tier,
-        )
-        .shifted_objective_score,
-        evaluate_configuration_likelihood_objective(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-            &observed_5m_sample,
+        );
+    let (five_minute_objective, five_minute_counts) =
+        evaluate_configuration_likelihood_objective_with_context_and_counts(
+            configuration,
+            &likelihood_contexts.five_minute,
             fidelity_tier,
-        )
-        .shifted_objective_score,
-        evaluate_configuration_likelihood_objective(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-            &observed_15m_sample,
+        );
+    let (fifteen_minute_objective, fifteen_minute_counts) =
+        evaluate_configuration_likelihood_objective_with_context_and_counts(
+            configuration,
+            &likelihood_contexts.fifteen_minute,
             fidelity_tier,
-        )
-        .shifted_objective_score,
-    ]
-    .into_iter()
-    .sum::<f64>()
-        / 3.0
+        );
+
+    JointRefinementLikelihoodFitWithCounts {
+        fit: [
+            tick_objective.shifted_objective_score,
+            five_minute_objective.shifted_objective_score,
+            fifteen_minute_objective.shifted_objective_score,
+        ]
+        .into_iter()
+        .sum::<f64>()
+            / 3.0,
+        exact_likelihood_evaluator_counts: tick_counts
+            .add(five_minute_counts)
+            .add(fifteen_minute_counts),
+    }
 }
 
 fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {

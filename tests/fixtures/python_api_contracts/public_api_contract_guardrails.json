@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "8779b3501a364f93bcd754bfddd3398cef2d5306430bec20b7aa52bc5be3c9f1",
+  "approved_snapshot_sha256": "1cd08ca84fcef9e2a2828a34120083cb7e674e61c742e6951c7ef369fdd6ea2a",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1373,6 +1373,21 @@
       "updated_surfaces": [
         "janiform.stylized_facts.contracts",
         "janiform.stylized_facts.workflows"
+      ]
+    },
+    {
+      "approved_on": "2026-05-08",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Market-data source summaries now expose invalid source-row drops separately from duplicate drops so option-surface quote filtering is visible to Python callers and generated reports.",
+      "snapshot_sha256": "1cd08ca84fcef9e2a2828a34120083cb7e674e61c742e6951c7ef369fdd6ea2a",
+      "summary": "Expose invalid-row counts in market-data source summaries.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.ingestion",
+        "janiform.calibration.market_data.workflow"
       ]
     }
   ],

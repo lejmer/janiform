@@ -3,22 +3,9 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping
 
-from ....contracts import serialize_pretty_json
 from ....mean_reversion import MeanReversionFittedParameters
 from ...errors import calibration_error
 from .shared import MODEL_PERSISTENCE_SCHEMA_VERSION
-
-
-def build_model_persistence_payload(model: Any) -> dict[str, Any]:
-    return {
-        "schema_version": MODEL_PERSISTENCE_SCHEMA_VERSION,
-        "run_id": model.run_id,
-        "workflow_scope": model.workflow_scope.value,
-        "parameters": deepcopy(model.parameters),
-        "metadata": deepcopy(model.metadata),
-        "resolved_configuration": model.resolved_configuration.to_payload(),
-        "session_resolution": model.session_resolution.to_payload(),
-    }
 
 
 def validate_model_persistence_schema_version(raw_schema_version: Any) -> None:
@@ -103,7 +90,3 @@ def normalize_return_components_mean_reversion_block(
         dict(raw_mean_reversion),
         field_path=f"{field_path}.mean_reversion_fitted_parameters",
     ).to_payload()
-
-
-def serialize_model_payload(model: Any) -> str:
-    return serialize_pretty_json(build_model_persistence_payload(model))

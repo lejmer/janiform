@@ -123,7 +123,7 @@ pub(crate) fn rescale_continuous_return_calibration_sample_business_time_scales(
     )
 }
 
-pub(super) fn build_continuous_return_optimizer_context(
+pub(crate) fn build_continuous_return_optimizer_context(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> ContinuousReturnOptimizerContext {
     let business_time_floor =

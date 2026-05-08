@@ -57,6 +57,12 @@ def run_fit_workflow(
     progress_mode: WorkflowProgressMode,
     progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> NativeFitWorkflowOutput:
+    temporary_directory: Optional[TemporaryDirectory[str]] = None
+    workflow_output_dir: Optional[str | Path] = output_dir
+    if workflow_output_dir is None:
+        temporary_directory = TemporaryDirectory()
+        workflow_output_dir = temporary_directory.name
+
     request_payload = {
         "preparation_request": _fit_preparation_request_payload(
             configuration,
@@ -70,7 +76,7 @@ def run_fit_workflow(
             option_surface_valuation_time_utc=option_surface_valuation_time_utc,
             carry=carry,
         ),
-        "output_dir": None if output_dir is None else str(Path(output_dir)),
+        "output_dir": str(Path(workflow_output_dir)),
         "resume_settings": None if resume_settings is None else resume_settings.to_payload(),
         "progress_mode": native_terminal_progress_mode(progress_mode),
         "emit_machine_events": progress_mode == WorkflowProgressMode.JSONL,
@@ -83,9 +89,13 @@ def run_fit_workflow(
             progress_callback,
         )
     except Exception as error:
+        _cleanup_temporary_directory(temporary_directory)
+
         _raise_fit_workflow_error(native, error)
 
     if not isinstance(raw_output, dict):
+        _cleanup_temporary_directory(temporary_directory)
+
         raise calibration_integration_error(
             "native fit workflow returned an invalid output payload",
             entrypoint="fit",
@@ -95,7 +105,7 @@ def run_fit_workflow(
 
     return _validate_native_fit_workflow_output(
         raw_output,
-        temporary_directory=None,
+        temporary_directory=temporary_directory,
     )
 
 

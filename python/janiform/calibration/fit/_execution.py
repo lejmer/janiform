@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext, redirect_stdout
+from copy import deepcopy
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -211,7 +212,7 @@ def _build_fit_outputs_from_native(
     if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
         return fit_report, None
 
-    model_parameters, model_metadata = _validated_native_model_payload(
+    model_parameters, model_metadata, model_payload = _validated_native_model_payload(
         native_output.model_payload
     )
 
@@ -222,6 +223,7 @@ def _build_fit_outputs_from_native(
         metadata=model_metadata,
         resolved_configuration=fit_report.resolved_configuration,
         session_resolution=fit_report.session_resolution,
+        _model_payload=model_payload,
     )
 
     return fit_report, model
@@ -229,7 +231,7 @@ def _build_fit_outputs_from_native(
 
 def _validated_native_model_payload(
     native_model_payload: Optional[dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if native_model_payload is None:
         raise calibration_integration_error(
             "native fit workflow did not return a model payload for a successful fit",
@@ -256,4 +258,8 @@ def _validated_native_model_payload(
             context={"field": "model_payload.metadata"},
         )
 
-    return normalize_model_parameters(raw_parameters), raw_metadata
+    return (
+        normalize_model_parameters(raw_parameters),
+        deepcopy(raw_metadata),
+        deepcopy(native_model_payload),
+    )

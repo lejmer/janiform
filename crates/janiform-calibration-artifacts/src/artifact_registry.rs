@@ -101,6 +101,6 @@ pub use validation_metric::{
 };
 pub use writer::{
     CALIBRATION_ARTIFACT_ATOMIC_COMMIT_POLICY, CALIBRATION_ARTIFACT_PARTIAL_WRITE_RECOVERY_POLICY,
-    CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter,
-    CalibrationArtifactRunWriterError,
+    CALIBRATION_ARTIFACT_RESUME_REPLACEMENT_POLICY, CalibrationArtifactRunPreparationMode,
+    CalibrationArtifactRunWriter, CalibrationArtifactRunWriterError,
 };

@@ -130,6 +130,43 @@ pub(crate) fn fitted_model_context(
     })
 }
 
+pub(crate) fn validate_persisted_model_payload(model_payload: &Value) -> Result<(), WorkflowError> {
+    let model: PersistedModelPayload =
+        serde_json::from_value(model_payload.clone()).map_err(|source| {
+            validation_error(
+                "model_payload",
+                format!("failed to deserialize model: {source}"),
+            )
+        })?;
+
+    if model.schema_version != MODEL_SCHEMA_VERSION {
+        return Err(validation_error(
+            "model_payload.schema_version",
+            format!("must be `{MODEL_SCHEMA_VERSION}`"),
+        ));
+    }
+
+    if model.run_id.trim().is_empty() {
+        return Err(validation_error(
+            "model_payload.run_id",
+            "must be non-empty",
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn persisted_model_run_id(model_payload: &Value) -> Result<String, WorkflowError> {
+    validate_persisted_model_payload(model_payload)?;
+
+    let run_id = model_payload
+        .get("run_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| validation_error("model_payload.run_id", "must be a string"))?;
+
+    Ok(run_id.to_string())
+}
+
 pub(crate) fn model_reference_price(model: &PersistedModelPayload) -> Result<f64, WorkflowError> {
     let reference_price = model
         .metadata

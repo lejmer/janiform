@@ -69,6 +69,8 @@ pub enum ProgressEvent {
         output_path: Option<String>,
         /// User-facing ordered stage sequence.
         stage_sequence: Vec<String>,
+        /// Number of leading stages that completed before this progress view started.
+        completed_stage_count: usize,
     },
     /// A stage has started.
     StageStarted {

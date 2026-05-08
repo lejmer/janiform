@@ -2,6 +2,17 @@ use std::sync::mpsc::Sender;
 
 use super::contracts::{ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate};
 
+pub(crate) struct ReturnComponentsConvergenceProgress<'a> {
+    pub(crate) phase: ReturnComponentsStageProgressPhase,
+    pub(crate) completed_units: usize,
+    pub(crate) total_units: usize,
+    pub(crate) current_item_label: Option<&'a str>,
+    pub(crate) current_evaluation_count: usize,
+    pub(crate) current_weighted_objective: Option<f64>,
+    pub(crate) best_weighted_objective: Option<f64>,
+    pub(crate) current_convergence_ratio: Option<f64>,
+}
+
 pub(crate) fn send_return_components_progress(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
     phase: ReturnComponentsStageProgressPhase,
@@ -45,20 +56,21 @@ pub(crate) fn send_return_components_evaluation_progress(
 
 pub(crate) fn send_return_components_convergence_progress(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
-    phase: ReturnComponentsStageProgressPhase,
-    completed_units: usize,
-    total_units: usize,
-    current_item_label: Option<&str>,
-    current_evaluation_count: usize,
-    current_convergence_ratio: Option<f64>,
+    progress: ReturnComponentsConvergenceProgress<'_>,
 ) {
     send_return_components_progress_update(
         progress_sender,
         ReturnComponentsStageProgressUpdate {
-            current_item_label: current_item_label.map(str::to_string),
-            current_evaluation_count: Some(current_evaluation_count),
-            current_convergence_ratio,
-            ..ReturnComponentsStageProgressUpdate::new(phase, completed_units, total_units)
+            current_item_label: progress.current_item_label.map(str::to_string),
+            current_evaluation_count: Some(progress.current_evaluation_count),
+            current_weighted_objective: progress.current_weighted_objective,
+            best_weighted_objective: progress.best_weighted_objective,
+            current_convergence_ratio: progress.current_convergence_ratio,
+            ..ReturnComponentsStageProgressUpdate::new(
+                progress.phase,
+                progress.completed_units,
+                progress.total_units,
+            )
         },
     );
 }

@@ -63,8 +63,10 @@ report: JaniformFitReport = result.report
 To keep the fitted model as a file for later Python or CLI work:
 
 ```python
-model.save(".janiform/runs/eurusd-fit/artifacts/model.jf")
+model.save()
 ```
+
+With no path argument, `model.save()` writes `.janiform/runs/<run-id>/artifacts/model.jf`. Pass a path to `model.save(...)` when automation needs a specific location.
 
 For option-aware calibration, pass an option surface as well. The surface can contain multiple strikes, expiries, and option types. If the file contains more than one quote timestamp, pass `option_surface_valuation_time_utc` so the calibration process can know which valuation snapshot to target.
 
@@ -112,6 +114,8 @@ The fitted model and fit report are written to:
 .janiform/runs/<run-id>/artifacts/model.jf
 .janiform/runs/<run-id>/artifacts/report.json
 ```
+
+Use `--no-persist` for one-off CLI dry runs that should not keep a run directory or fitted model artifact.
 
 The tick-data path can also be supplied positionally for the main fit command and `fit inspect`:
 
@@ -163,7 +167,7 @@ The model is the primary output. Everything else exists to explain, audit, resum
 | Fitted model     | `JaniformModel` from `fit(...)`                       | `artifacts/model.jf`                             |
 | Fit result       | `JaniformFitResult` from `fit_with_report(...)`       | `artifacts/report.json`                          |
 | Fit report       | `JaniformFitReport` from `JaniformFitResult.report`   | `artifacts/model.jf` and `artifacts/report.json` |
-| Progress events  | Rust-owned event mappings through `progress_callback` | `events.jsonl` in the run directory              |
+| Progress events  | `progress_callback`                                   | `events.jsonl` in the run directory              |
 | Latest run state | Not written by the in-memory path                     | `latest-state.json` in the run directory         |
 | Checkpoints      | Available only through disk-backed execution          | `checkpoints/` in the run directory              |
 
@@ -237,6 +241,7 @@ janiform fit \
 
 Checkpoint references use `checkpoint://<run-id>/<checkpoint-token>`. The run id is the original fit run.
 Disk execution uses the run directory as the persistence root. Checkpoint files live below `checkpoints/`, while staged calibration artifacts live below `artifacts/calibration/`.
+Resume runs stage a copy of the committed artifact set, update it during execution, and replace the committed artifact set only after the resumed run succeeds.
 
 | Checkpoint token    | Meaning                                                                   |
 |---------------------|---------------------------------------------------------------------------|
@@ -248,6 +253,65 @@ Disk execution uses the run directory as the persistence root. Checkpoint files 
 | `joint_refinement`  | Resume from the checkpoint written after final dynamics refinement.       |
 
 A stage token is valid only after that stage has completed and written its checkpoint. For most resumes, use `last-success` unless you need to force a specific earlier checkpoint.
+
+When adding an option surface to a completed tick-only fit, resume from `mean_reversion` and start at `joint-refinement`. The earlier tick-data stages are reused, while joint refinement reuses persisted dynamics restart outcomes and recomputes option-dependent selection and option-pricing tiers for the supplied option surface:
+
+```bash
+janiform fit data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet \
+  --option-surface-path data/databento-converted/ES_OPT-BBO-1min/janiform_option_surface.parquet \
+  --option-surface-valuation-time-utc 2026-04-01T23:59:00Z \
+  --market-profile es_futures_globex \
+  --run-id es_continuous_20260507T195059Z \
+  --resume-checkpoint-reference checkpoint://es_continuous_20260507T195059Z/mean_reversion \
+  --resume-from-stage joint-refinement
+```
+
+Joint-refinement resume state is finer grained than the top-level stage checkpoint. Dynamics restart outcomes are reusable across tick-only and option-aware joint refinement when the run id and stage seed match. Restart selection is reused only when it was built for the same option-pricing context and has enough candidate frontier width. Option search, selection, and audit tier pricing artifacts are scoped to a fingerprint of the option-pricing context so changing the option surface recomputes only the option-dependent work.
+
+The same resume flow is available from Python. Use disk output preferences, pass `output_dir` as the directory that contains the run folders, and point `disk_checkpoint_directory` at the run directory. For the CLI default layout, `output_dir` is `.janiform/runs` and `disk_checkpoint_directory` is `.janiform/runs/<run-id>`:
+
+```python
+from datetime import UTC, datetime
+from pathlib import Path
+
+from janiform.calibration import JaniformEstimator
+from janiform.calibration.market_data import (
+    CalibrationMarketDataOutputPreferences,
+)
+from janiform.calibration.staged import (
+    CalibrationExecutionMode,
+    CalibrationResumeSettings,
+    CalibrationResumeSource,
+    CalibrationStage,
+)
+
+run_id = "es_continuous_20260507T195059Z"
+output_root = Path(".janiform") / "runs"
+run_directory = output_root / run_id
+
+estimator = JaniformEstimator(
+    market_profile="es_futures_globex",
+    output_preferences=CalibrationMarketDataOutputPreferences(
+        execution_mode=CalibrationExecutionMode.DISK,
+        disk_checkpoint_directory=str(run_directory),
+    ),
+)
+
+result = estimator.fit_with_report(
+    run_id=run_id,
+    tick_data_path=Path("data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet"),
+    option_surface_path=Path(
+        "data/databento-converted/ES_OPT-BBO-1min/janiform_option_surface.parquet"
+    ),
+    option_surface_valuation_time_utc=datetime(2026, 4, 1, 23, 59, tzinfo=UTC),
+    output_dir=output_root,
+    resume_settings=CalibrationResumeSettings(
+        source=CalibrationResumeSource.PERSISTED_CHECKPOINT_REFERENCE,
+        checkpoint_reference=f"checkpoint://{run_id}/mean_reversion",
+        resume_from_stage=CalibrationStage.JOINT_REFINEMENT,
+    ),
+)
+```
 
 You can use the fit report and event log to confirm which stage completed before resuming.
 
@@ -271,7 +335,7 @@ Naive timestamps need an explicit timezone convention. For tick data, pass `--ti
 
 **Option fit fails because the snapshot is ambiguous**
 
-Pass `option_surface_valuation_time_utc` in Python or `--option-surface-valuation-time-utc` in the CLI so the calibration targets one quote timestamp.
+Pass `option_surface_valuation_time_utc` in Python or `--option-surface-valuation-time-utc` in the CLI so the calibration targets one quote timestamp. Option rows that cannot provide a usable bid/ask quote are filtered and counted in the option surface source summary.
 
 **A fit takes a long time**
 

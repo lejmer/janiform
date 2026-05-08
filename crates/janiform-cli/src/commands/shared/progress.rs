@@ -47,6 +47,7 @@ impl TerminalCommandProgress {
                     .iter()
                     .map(|phase| (*phase).to_string())
                     .collect(),
+                completed_stage_count: 0,
             });
 
             adapter
@@ -256,6 +257,7 @@ mod tests {
                 input_count: 1,
                 output_path: None,
                 stage_sequence: vec!["load".to_string(), "write".to_string()],
+                completed_stage_count: 0,
             });
 
         progress

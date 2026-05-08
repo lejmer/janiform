@@ -115,7 +115,11 @@ impl CalibrationStageCheckpointMetadata {
                 },
             );
         }
-        if self.execution_stage_order != run_contract.execution_stage_order {
+        if !execution_stage_orders_are_compatible(
+            self.execution_stage_order.as_slice(),
+            run_contract.execution_stage_order.as_slice(),
+            self.completed_stage,
+        ) {
             return Err(
                 CalibrationStageCheckpointCompatibilityError::ExecutionStageOrderMismatch {
                     expected: run_contract.execution_stage_order.clone(),
@@ -186,6 +190,33 @@ impl CalibrationStageCheckpointMetadata {
 
         Ok(())
     }
+}
+
+fn execution_stage_orders_are_compatible(
+    checkpoint_execution_order: &[CalibrationStage],
+    run_execution_order: &[CalibrationStage],
+    completed_stage: CalibrationStage,
+) -> bool {
+    if !run_execution_order.starts_with(checkpoint_execution_order) {
+        return false;
+    }
+
+    let Some(checkpoint_completed_position) = checkpoint_execution_order
+        .iter()
+        .position(|stage| *stage == completed_stage)
+    else {
+        return false;
+    };
+
+    let Some(run_completed_position) = run_execution_order
+        .iter()
+        .position(|stage| *stage == completed_stage)
+    else {
+        return false;
+    };
+
+    checkpoint_execution_order[..=checkpoint_completed_position]
+        == run_execution_order[..=run_completed_position]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

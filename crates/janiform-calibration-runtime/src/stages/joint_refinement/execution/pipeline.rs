@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -61,7 +61,8 @@ use super::{
     desired_joint_refinement_option_refinement_candidate_count,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_admissibility_thresholds,
     joint_refinement_budget_schedule, joint_restart_outcome_is_admissible, optimize_restart_seeds,
-    ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact, run_option_refinement,
+    option_pricing_context_fingerprint, ordered_parameter_bits,
+    resolve_option_surface_tier_pricing_artifact, run_option_refinement,
     select_restart_outcomes_with_lazy_coarse_consistency,
     simulation_infrastructure_failure_message, with_joint_refinement_thread_pool,
 };
@@ -1313,15 +1314,15 @@ fn run_option_refinement_if_enabled(
         return Ok(());
     }
 
-    if let (Some(selected_restart_id), Some(search_tier_artifact), Some(selection_tier_artifact)) = (
-        resume_store.selected_restart_id(),
-        resume_store.selected_search_tier_pricing_artifact(),
-        resume_store.selected_selection_tier_pricing_artifact(),
-    ) && let Some(selected_restart_outcome) = restart_search_artifacts
-        .option_refinement_candidate_frontier
-        .iter()
-        .find(|restart_outcome| restart_outcome.restart_id == selected_restart_id)
-        .cloned()
+    let option_context_fingerprint = require_option_context_fingerprint(bootstrap_context)?;
+
+    if let Some((selected_restart_id, search_tier_artifact, selection_tier_artifact)) =
+        resume_store.selected_option_refinement(option_context_fingerprint.as_str())
+        && let Some(selected_restart_outcome) = restart_search_artifacts
+            .option_refinement_candidate_frontier
+            .iter()
+            .find(|restart_outcome| restart_outcome.restart_id == selected_restart_id)
+            .cloned()
     {
         restart_search_artifacts.best_restart = selected_restart_outcome;
         restart_search_artifacts.selected_option_search_tier_pricing_artifact =
@@ -1338,6 +1339,7 @@ fn run_option_refinement_if_enabled(
         restart_search_artifacts
             .option_refinement_candidate_frontier
             .as_slice(),
+        option_context_fingerprint.as_str(),
         progress_sender,
         Some(resume_store),
     )?;
@@ -1357,6 +1359,7 @@ fn run_option_refinement_if_enabled(
             .as_ref(),
     ) {
         resume_store.record_selected_option_refinement(
+            option_context_fingerprint.as_str(),
             restart_search_artifacts.best_restart.restart_id.as_str(),
             search_artifact.as_ref(),
             selection_artifact.as_ref(),
@@ -1377,7 +1380,11 @@ fn run_audit_option_pricing_if_enabled(
         return Ok(());
     }
 
-    if let Some(audit_artifact) = resume_store.selected_audit_tier_pricing_artifact() {
+    let option_context_fingerprint = require_option_context_fingerprint(bootstrap_context)?;
+
+    if let Some(audit_artifact) =
+        resume_store.selected_audit_tier_pricing_artifact(option_context_fingerprint.as_str())
+    {
         restart_search_artifacts.selected_option_audit_tier_pricing_artifact = Some(audit_artifact);
         return Ok(());
     }
@@ -1427,9 +1434,27 @@ fn run_audit_option_pricing_if_enabled(
     restart_search_artifacts.selected_option_audit_tier_pricing_artifact =
         Some(audit_artifact.clone());
 
-    resume_store.record_audit_tier_pricing_artifact(audit_artifact.as_ref());
+    resume_store.record_audit_tier_pricing_artifact(
+        option_context_fingerprint.as_str(),
+        audit_artifact.as_ref(),
+    );
 
     Ok(())
+}
+
+fn require_option_context_fingerprint(
+    bootstrap_context: &JointRefinementContext,
+) -> Result<String, JointRefinementStageExecutionFailure> {
+    bootstrap_context
+        .option_pricing_context
+        .as_ref()
+        .map(option_pricing_context_fingerprint)
+        .ok_or_else(
+            || JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: "joint option refinement requires an option pricing context"
+                    .to_string(),
+            },
+        )
 }
 
 fn select_restart_outcome(
@@ -1481,21 +1506,25 @@ fn select_restart_outcome(
         1
     };
 
+    let option_context_fingerprint = prepared_bootstrap
+        .bootstrap_context
+        .option_pricing_context
+        .as_ref()
+        .map(option_pricing_context_fingerprint);
+    let valid_restart_ids = valid_selectable_restart_outcome_refs
+        .iter()
+        .map(|restart_outcome| restart_outcome.restart_id.clone())
+        .collect::<BTreeSet<_>>();
+
     let persisted_selection = resume_store
         .restart_selection()
         .cloned()
         .filter(|selection| {
-            selection
-                .option_refinement_candidate_frontier_ids
-                .iter()
-                .all(|restart_id| {
-                    valid_selectable_restart_outcome_refs
-                        .iter()
-                        .any(|restart_outcome| restart_outcome.restart_id == *restart_id)
-                })
-                && valid_selectable_restart_outcome_refs
-                    .iter()
-                    .any(|restart_outcome| restart_outcome.restart_id == selection.best_restart_id)
+            selection.matches_resume_context(
+                &valid_restart_ids,
+                selected_restart_count,
+                option_context_fingerprint.as_deref(),
+            )
         });
 
     emit_restart_candidate_screening_progress(
@@ -1590,6 +1619,8 @@ fn select_restart_outcome(
             .iter()
             .map(|restart_outcome| restart_outcome.restart_id.clone())
             .collect(),
+        selected_restart_count,
+        option_pricing_context_fingerprint: option_context_fingerprint,
         coarse_consistency_artifacts_by_restart_id: selection_artifacts
             .coarse_consistency_artifacts_by_restart_id
             .clone(),

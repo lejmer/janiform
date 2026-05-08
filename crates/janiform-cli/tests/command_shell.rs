@@ -15,7 +15,15 @@ use janiform_cli::CliExitCode;
 const HOUR_DURATION_NANOS: i64 = 3_600_000_000_000;
 
 fn janiform_command() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_janiform"))
+    let working_directory = temporary_run_directory("command-cwd");
+
+    std::fs::create_dir_all(&working_directory)
+        .expect("temporary command working directory should be created");
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_janiform"));
+    command.current_dir(working_directory);
+
+    command
 }
 
 #[test]
@@ -61,6 +69,22 @@ fn root_help_shows_primary_command_tree() {
             "missing global option `{expected_global_option}` in help:\n{stdout}"
         );
     }
+}
+
+#[test]
+fn fit_help_shows_no_persist_opt_out() {
+    let output = janiform_command()
+        .args(["fit", "--help"])
+        .output()
+        .expect("janiform fit --help should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+    assert!(
+        stdout.contains("--no-persist"),
+        "missing --no-persist in fit help:\n{stdout}"
+    );
 }
 
 #[test]
@@ -137,7 +161,10 @@ fn dev_deterministic_regression_json_runs_native_harness() {
 
 #[test]
 fn dev_open_closed_gap_leakage_regression_uses_default_fixtures() {
+    let source_tree = source_tree_path();
+
     let output = janiform_command()
+        .current_dir(source_tree)
         .args(["--json", "dev", "regression", "open-closed-gap-leakage"])
         .output()
         .expect("open/closed gap regression command should execute");
@@ -1534,6 +1561,47 @@ fn fit_plan_json_prepares_seasonality_without_running_calibration() {
 }
 
 #[test]
+fn fit_plan_accepts_explicit_market_profile_preset() {
+    let workspace = temporary_run_directory("fit-plan-market-profile");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    write_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--market-profile",
+            "us_equity_cash",
+            "--workflow-scope",
+            "seasonality-only",
+            "--run-id",
+            "profile-plan-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(payload["command_id"], "fit.plan");
+    assert_eq!(payload["run_id"], "profile-plan-test");
+    assert_eq!(payload["market_profile"]["profile_name"], "us_equity_cash");
+    assert_eq!(payload["market_profile"]["session_preset_name"], "XNYS");
+    assert_eq!(payload["session_resolution"]["exchange_code"], "XNYS");
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
 fn fit_inspect_human_separates_user_inputs_and_inference() {
     let workspace = temporary_run_directory("fit-inspect");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
@@ -2032,9 +2100,11 @@ fn temporary_run_directory(label: &str) -> std::path::PathBuf {
 }
 
 fn source_fixture_path(path: &str) -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(path)
+    source_tree_path().join(path)
+}
+
+fn source_tree_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 fn write_tick_csv(path: &std::path::Path) {

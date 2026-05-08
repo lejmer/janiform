@@ -1084,6 +1084,9 @@ def run_fit_workflow(
 ) -> object: ...
 
 
+def save_model_artifact(request: object) -> object: ...
+
+
 def run_coarse_simulation(
     request: object,
     event_callback: Optional[object] = None,

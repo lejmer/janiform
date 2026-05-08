@@ -16,10 +16,10 @@ use super::exact_block::{
     ExactBlockInputBuildInput, ExactLikelihoodFailureContext, build_exact_block_input,
     evaluate_exact_block_likelihood,
 };
-use super::sample::build_continuous_return_optimizer_context;
 use super::types::{
-    ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjective,
-    ContinuousReturnOptimizerContext, ReturnComponentsStageContinuousReturnCalibrationSample,
+    ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
+    ContinuousLikelihoodObjective, ContinuousReturnOptimizerContext,
+    ReturnComponentsStageContinuousReturnCalibrationSample,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -50,6 +50,30 @@ pub(super) struct ExactEvaluatorBlockCounts {
     pub(super) closed_form_single_side_buy_block_count: usize,
     pub(super) closed_form_single_side_sell_block_count: usize,
     pub(super) tilted_mixed_inversion_block_count: usize,
+}
+
+impl ExactEvaluatorBlockCounts {
+    fn add_assign(&mut self, other: Self) {
+        self.closed_form_single_side_buy_block_count = self
+            .closed_form_single_side_buy_block_count
+            .saturating_add(other.closed_form_single_side_buy_block_count);
+        self.closed_form_single_side_sell_block_count = self
+            .closed_form_single_side_sell_block_count
+            .saturating_add(other.closed_form_single_side_sell_block_count);
+        self.tilted_mixed_inversion_block_count = self
+            .tilted_mixed_inversion_block_count
+            .saturating_add(other.tilted_mixed_inversion_block_count);
+    }
+}
+
+impl From<ExactEvaluatorBlockCounts> for ContinuousLikelihoodEvaluatorCounts {
+    fn from(counts: ExactEvaluatorBlockCounts) -> Self {
+        Self {
+            closed_form_buy: counts.closed_form_single_side_buy_block_count,
+            closed_form_sell: counts.closed_form_single_side_sell_block_count,
+            tilted_mixed: counts.tilted_mixed_inversion_block_count,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -98,13 +122,21 @@ impl ExactBlockStructuralFailure {
     }
 }
 
-pub(crate) fn evaluate_configuration_likelihood_objective(
+pub(crate) fn evaluate_configuration_likelihood_objective_with_context_and_counts(
     configuration: NigSharedPlusShiftConfiguration,
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    optimizer_context: &ContinuousReturnOptimizerContext,
     fidelity_tier: ContinuousLikelihoodFidelityTier,
-) -> ContinuousLikelihoodObjective {
-    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
-    continuous_block_likelihood_objective(configuration, &optimizer_context, fidelity_tier)
+) -> (
+    ContinuousLikelihoodObjective,
+    ContinuousLikelihoodEvaluatorCounts,
+) {
+    let (objective, diagnostics) = continuous_block_likelihood_objective_with_failures(
+        configuration,
+        optimizer_context,
+        fidelity_tier,
+    );
+
+    (objective, diagnostics.evaluator_block_counts.into())
 }
 
 #[cfg(test)]
@@ -239,6 +271,9 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
                                     None => scope_evaluation
                                         .average_log_likelihood_error_upper_bound,
                                 });
+                            diagnostics_summary
+                                .evaluator_block_counts
+                                .add_assign(scope_evaluation.evaluator_block_counts);
 
                             scope_evaluation.average_negative_log_likelihood_estimate
                         }
@@ -267,6 +302,9 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
                                     None => scope_evaluation
                                         .average_log_likelihood_error_upper_bound,
                                 });
+                            diagnostics_summary
+                                .evaluator_block_counts
+                                .add_assign(scope_evaluation.evaluator_block_counts);
 
                             f64::INFINITY
                         }

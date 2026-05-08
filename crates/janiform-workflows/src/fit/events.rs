@@ -161,6 +161,7 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::RunStarted {
             run_id,
             stage_sequence,
+            completed_stage_count,
             ..
         } => Some(ProgressEvent::RunStarted {
             run_id: run_id.clone(),
@@ -173,6 +174,7 @@ pub fn progress_event_from_staged_event(
                 .map(stage_label)
                 .map(str::to_string)
                 .collect(),
+            completed_stage_count: *completed_stage_count,
         }),
         CalibrationStagedRunObserverEvent::StageStarted {
             stage,
@@ -187,8 +189,7 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
             Some(ProgressEvent::StageProgress {
                 phase: phase_label(&progress.progress_phase).to_string(),
-                measure: UiProgressMeasure::bounded(progress.completed_units, progress.total_units)
-                    .map_err(|source| WorkflowError::OutputProgress { source })?,
+                measure: stage_progress_measure(progress)?,
                 work_item_label: progress_work_item_label(
                     &progress.progress_phase,
                     progress.current_item_label.as_deref(),
@@ -211,12 +212,23 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::RunCompleted { .. } => None,
         CalibrationStagedRunObserverEvent::RunFailed { failure, .. } => {
             Some(ProgressEvent::RunFailed {
-                reason: serialized_failure_reason(failure)?,
+                reason: human_failure_reason(failure),
             })
         }
     };
 
     Ok(progress_event)
+}
+
+fn stage_progress_measure(
+    progress: &CalibrationStagedRunStageProgressEvent,
+) -> Result<UiProgressMeasure, WorkflowError> {
+    if progress.total_units == 0 {
+        return Ok(UiProgressMeasure::Unbounded);
+    }
+
+    UiProgressMeasure::bounded(progress.completed_units, progress.total_units)
+        .map_err(|source| WorkflowError::OutputProgress { source })
 }
 
 pub(crate) fn append_artifact_event(
@@ -246,7 +258,7 @@ pub(crate) fn append_artifact_event(
 /// Resolve a user-facing failure reason from a staged run report.
 pub fn failure_reason(report: &CalibrationStagedRunReport) -> Result<String, WorkflowError> {
     match report.failure.as_ref() {
-        Some(failure) => serialized_failure_reason(failure),
+        Some(failure) => Ok(human_failure_reason(failure)),
         None => Ok("staged calibration did not complete successfully".to_string()),
     }
 }
@@ -283,20 +295,93 @@ fn serialized_failure_reason(
     serde_json::to_string(failure).map_err(|source| WorkflowError::OutputSerialize { source })
 }
 
+fn human_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
+    match failure {
+        CalibrationStagedRunFailure::InvalidRunContract { error_message } => {
+            format!("invalid run contract: {error_message}")
+        }
+        CalibrationStagedRunFailure::MissingMemoryCheckpointStore => {
+            "memory-mode resume requires an in-memory checkpoint store".to_string()
+        }
+        CalibrationStagedRunFailure::MissingDiskCheckpointDirectory => {
+            "disk-mode execution requires a checkpoint directory".to_string()
+        }
+        CalibrationStagedRunFailure::MissingResumeCheckpointForRun { run_id } => {
+            format!("no resume checkpoint is available for run `{run_id}`")
+        }
+        CalibrationStagedRunFailure::DatasetSnapshotPersistFailed {
+            artifact_reference,
+            error_message,
+        } => format!("failed to persist dataset snapshot `{artifact_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+            stage,
+            artifact_reference,
+            error_message,
+        } => format!(
+            "failed to persist {} artifact `{artifact_reference}`: {error_message}",
+            stage_label(*stage)
+        ),
+        CalibrationStagedRunFailure::ArtifactManifestPersistFailed { error_message } => {
+            format!("failed to persist calibration artifact manifest: {error_message}")
+        }
+        CalibrationStagedRunFailure::MissingStageInput { stage } => {
+            format!("missing input for {}", stage_label(*stage))
+        }
+        CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+            required_stage,
+            consuming_stage,
+        } => format!(
+            "{} requires an in-memory payload from {}",
+            stage_label(*consuming_stage),
+            stage_label(*required_stage)
+        ),
+        CalibrationStagedRunFailure::InvalidCheckpointReference {
+            checkpoint_reference,
+            error_message,
+        } => format!("invalid checkpoint reference `{checkpoint_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::CheckpointLoadFailed {
+            checkpoint_reference,
+            error_message,
+        } => format!("failed to load checkpoint `{checkpoint_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::CheckpointCompatibilityFailed {
+            checkpoint_reference,
+            error_message,
+        } => format!("checkpoint `{checkpoint_reference}` is not compatible: {error_message}"),
+        CalibrationStagedRunFailure::CheckpointPersistFailed {
+            checkpoint_reference,
+            error_message,
+        } => format!("failed to persist checkpoint `{checkpoint_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::MissingCheckpointMetadataForSuccessfulStage { stage } => {
+            format!(
+                "{} completed without checkpoint metadata",
+                stage_label(*stage)
+            )
+        }
+        CalibrationStagedRunFailure::StageExecutionFailed {
+            stage,
+            error_message,
+        } => match error_message {
+            Some(message) => format!("{} failed: {message}", stage_label(*stage)),
+            None => format!("{} failed", stage_label(*stage)),
+        },
+    }
+}
+
 fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> Option<String> {
     if progress_work_item_label(
         &progress.progress_phase,
         progress.current_item_label.as_deref(),
     )
     .is_some()
-    {
-        return parallel_stage_progress_signal(
+        && let Some(signal) = parallel_stage_progress_signal(
             progress.active_restart_count,
             progress.valid_completed_units,
             progress.cumulative_local_evaluation_count,
             progress.best_weighted_objective,
             progress.best_coarse_consistency_fit,
-        );
+        )
+    {
+        return Some(signal);
     }
 
     let mut parts = Vec::new();
@@ -304,6 +389,7 @@ fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> O
     if let Some(current_item_label) = progress.current_item_label.as_deref() {
         parts.push(current_item_label.to_string());
     }
+
     push_evaluation_signal(
         &mut parts,
         progress.current_evaluation_count,
@@ -323,7 +409,7 @@ fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> O
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
     }
     if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
-        parts.push(format!("convergence {current_convergence_ratio:.6}"));
+        parts.push(format!("conv. {current_convergence_ratio:.6}"));
     }
 
     (!parts.is_empty()).then(|| parts.join(", "))
@@ -346,7 +432,7 @@ fn parallel_stage_progress_signal(
     }
     if let Some(cumulative_local_evaluation_count) = cumulative_local_evaluation_count {
         parts.push(format!(
-            "cumulative eval {cumulative_local_evaluation_count}"
+            "cumulative evals {cumulative_local_evaluation_count}"
         ));
     }
     if let Some(best_weighted_objective) = best_weighted_objective {
@@ -380,7 +466,10 @@ fn work_item_table_columns(
         || progress.current_evaluation_count.is_some()
         || progress.total_evaluation_budget.is_some()
     {
-        columns.push(ProgressWorkItemColumn::new("eval", "Eval"));
+        columns.push(ProgressWorkItemColumn::new("eval", "Evals"));
+    }
+    if uses_restart_optimization_columns || progress.current_parameter_block.is_some() {
+        columns.push(ProgressWorkItemColumn::new("block", "Blk"));
     }
     if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
         columns.push(ProgressWorkItemColumn::new(
@@ -404,6 +493,15 @@ fn work_item_table_columns(
     }
     if progress.current_convergence_ratio.is_some() {
         columns.push(ProgressWorkItemColumn::new("convergence", "Conv."));
+    }
+    if progress.exact_closed_form_buy_count.is_some() {
+        columns.push(ProgressWorkItemColumn::new("exact_buy", "CF-B"));
+    }
+    if progress.exact_closed_form_sell_count.is_some() {
+        columns.push(ProgressWorkItemColumn::new("exact_sell", "CF-S"));
+    }
+    if progress.exact_tilted_mixed_count.is_some() {
+        columns.push(ProgressWorkItemColumn::new("exact_mixed", "Mix"));
     }
 
     columns
@@ -430,6 +528,12 @@ fn work_item_table_metrics(
         progress.total_evaluation_budget,
     ) {
         metrics.push(ProgressWorkItemMetric::new("eval", evaluation_label));
+    }
+    if let Some(current_parameter_block) = progress.current_parameter_block.as_deref() {
+        metrics.push(ProgressWorkItemMetric::new(
+            "block",
+            current_parameter_block.to_string(),
+        ));
     }
 
     if let Some(current_weighted_objective) = progress.current_weighted_objective {
@@ -470,6 +574,24 @@ fn work_item_table_metrics(
             format!("{current_convergence_ratio:.6}"),
         ));
     }
+    if let Some(exact_closed_form_buy_count) = progress.exact_closed_form_buy_count {
+        metrics.push(ProgressWorkItemMetric::new(
+            "exact_buy",
+            exact_closed_form_buy_count.to_string(),
+        ));
+    }
+    if let Some(exact_closed_form_sell_count) = progress.exact_closed_form_sell_count {
+        metrics.push(ProgressWorkItemMetric::new(
+            "exact_sell",
+            exact_closed_form_sell_count.to_string(),
+        ));
+    }
+    if let Some(exact_tilted_mixed_count) = progress.exact_tilted_mixed_count {
+        metrics.push(ProgressWorkItemMetric::new(
+            "exact_mixed",
+            exact_tilted_mixed_count.to_string(),
+        ));
+    }
 
     metrics
 }
@@ -483,10 +605,10 @@ fn push_evaluation_signal(
         match total_evaluation_budget {
             Some(total_evaluation_budget) => {
                 parts.push(format!(
-                    "eval {current_evaluation_count}/{total_evaluation_budget}"
+                    "evals {current_evaluation_count}/{total_evaluation_budget}"
                 ));
             }
-            None => parts.push(format!("eval {current_evaluation_count}")),
+            None => parts.push(format!("evals {current_evaluation_count}")),
         }
     }
 }
@@ -654,3 +776,6 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
         _ => "stage progress",
     }
 }
+
+#[cfg(test)]
+mod tests;

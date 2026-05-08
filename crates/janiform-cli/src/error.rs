@@ -105,7 +105,7 @@ pub enum CliError {
         message: String,
     },
 
-    #[error("failed to prepare fit plan")]
+    #[error("failed to prepare fit plan: {source}")]
     #[diagnostic(code(janiform_cli::fit_preparation_failed))]
     FitPreparationFailed {
         #[source]

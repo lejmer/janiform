@@ -21,7 +21,9 @@ use serde_json::json;
 
 use super::args::FitCommand;
 use super::args::StagedExecutionOptions;
-use super::preparation::{FitPreparationOverrides, PreparedFitPreview, prepare_fit_preview};
+use super::preparation::{
+    FitPreparationOverrides, FitPreviewOptions, PreparedFitPreview, prepare_fit_preview,
+};
 use crate::commands::options::CalibrationStageOption;
 use crate::commands::shared::calibration::calibration_execution_mode;
 use crate::commands::shared::calibration::calibration_stage;
@@ -43,13 +45,16 @@ pub(crate) fn run_fit_command(
         context,
         &command.inputs,
         &command.run,
-        command.workflow_scope,
-        command.execution_mode.map(calibration_execution_mode),
-        command.cpu_count,
-        FitPreparationOverrides {
-            mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
-            dynamics_search_restart_candidate_budget: command
-                .dynamics_search_restart_candidate_budget,
+        FitPreviewOptions {
+            workflow_scope: command.workflow_scope,
+            execution_mode: command.execution_mode.map(calibration_execution_mode),
+            cpu_count: command.cpu_count,
+            overrides: FitPreparationOverrides {
+                mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
+                dynamics_search_restart_candidate_budget: command
+                    .dynamics_search_restart_candidate_budget,
+            },
+            no_persist: command.no_persist,
         },
     )?;
 
@@ -59,11 +64,36 @@ pub(crate) fn run_fit_command(
         command.resume_from_stage,
     );
 
-    run_execution_input(
+    let result = run_execution_input(
         context,
         execution_input,
         ExecutionArtifacts::PreparedFit(&prepared),
-    )
+        !command.no_persist,
+    );
+
+    if command.no_persist {
+        let cleanup_result =
+            remove_no_persist_output_directory(prepared.paths.output_directory.clone());
+
+        result?;
+
+        cleanup_result?;
+
+        return Ok(());
+    }
+
+    result
+}
+
+fn remove_no_persist_output_directory(output_directory: PathBuf) -> Result<(), CliError> {
+    match fs::remove_dir_all(&output_directory) {
+        Ok(()) => Ok(()),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(CliError::FitArtifactWrite {
+            path: output_directory,
+            source,
+        }),
+    }
 }
 
 pub(crate) fn run_fit_staged_run_command(
@@ -115,6 +145,7 @@ pub(crate) fn run_fit_staged_run_command(
         ExecutionArtifacts::StagedInput {
             execution_input_path,
         },
+        true,
     )
 }
 
@@ -212,6 +243,7 @@ fn run_execution_input(
     context: &CommandContext,
     execution_input: CalibrationStagedExecutionInput,
     artifacts: ExecutionArtifacts<'_>,
+    persist_outputs: bool,
 ) -> Result<(), CliError> {
     let paths = artifacts.paths(context, &execution_input);
     let input_paths = artifacts.input_paths(&execution_input);
@@ -251,6 +283,7 @@ fn run_execution_input(
         &completion_execution_input,
         &completion_paths,
         &output,
+        persist_outputs,
     )?;
 
     if output.report.status != CalibrationStageExecutionStatus::Success {
@@ -267,14 +300,25 @@ fn emit_completion_output(
     execution_input: &CalibrationStagedExecutionInput,
     paths: &FitWorkflowPaths,
     output: &FitWorkflowOutput,
+    persist_outputs: bool,
 ) -> Result<(), CliError> {
     match context.output_mode() {
-        OutputMode::Json => write_json_payload(&fit_completion_json_payload(
-            execution_input,
-            &output.report,
-            paths,
-            output.event_log_path.as_path(),
-        )),
+        OutputMode::Json => {
+            let mut payload = fit_completion_json_payload(
+                execution_input,
+                &output.report,
+                paths,
+                output.event_log_path.as_path(),
+            );
+            if !persist_outputs {
+                payload["model_path"] = Value::Null;
+                payload["report_path"] = Value::Null;
+                payload["event_log_path"] = Value::Null;
+                payload["persisted"] = Value::Bool(false);
+            }
+
+            write_json_payload(&payload)
+        }
         OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }

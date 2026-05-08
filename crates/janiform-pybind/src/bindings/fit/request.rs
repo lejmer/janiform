@@ -64,6 +64,12 @@ pub(super) struct FitPrepareRequestPayload {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct ModelArtifactSaveRequestPayload {
+    pub(super) model_payload: Value,
+    pub(super) path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct FitWorkflowPathsPayload {
     output_directory: String,
     model_path: String,

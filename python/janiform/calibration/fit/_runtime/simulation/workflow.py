@@ -29,7 +29,6 @@ from .....simulation.seeded import SeededTickSimulationResponse
 from .....simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ....errors import calibration_error
 from ...state import CurrentStateEstimationRequest
-from ..metadata import build_model_persistence_payload
 from ..payloads import current_state_tick_data_column_mapping_for_model
 from ..shared import DEFAULT_SIMULATION_INTERVAL
 
@@ -194,7 +193,7 @@ def _build_simulation_from_model_artifact_request(
 
     return {
         "run_id": run_id,
-        "model_payload": build_model_persistence_payload(model),
+        "model_payload": model._native_model_payload(),
         "simulation_kind": simulation_kind.value,
         "seed": seed,
         "start_time_utc": start_time_utc.isoformat(),

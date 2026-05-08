@@ -156,6 +156,19 @@ Disk execution writes a run directory with the fitted model, fit report, progres
 ###### **Options:**
 
 * `--tick-data-path <PATH>` — Tick data input file.
+* `--market-profile <NAME>` — Market profile preset name.
+
+   When omitted, Janiform may infer a bundled market profile from the tick-data file name if no explicit session hints are supplied.
+* `--market-profile-scope <MARKET_PROFILE_SCOPE>` — Registry scope for --market-profile. Defaults to built-in.
+
+  Possible values:
+  - `built_in`:
+    Resolve from built-in presets.
+  - `user_registered`:
+    Resolve from user-registered presets.
+
+* `--preset-registry <PATH>` — User preset registry manifest path.
+* `--user-preset <PATH>` — User preset file path.
 * `--tick-data-format <TICK_DATA_FORMAT>` — Tick data file format.
 
   Possible values:
@@ -267,6 +280,9 @@ Disk execution writes a run directory with the fitted model, fit report, progres
   - `disk`:
     Save run outputs and checkpoints to disk.
 
+* `--no-persist` — Run fit without keeping the run directory or model artifact.
+
+   By default, janiform fit writes a durable run directory for downstream CLI commands. Use --no-persist for dry runs and one-off checks where the fitted model does not need to be reused.
 * `--cpu-count <COUNT>` — CPU count available to calibration preparation.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
@@ -301,6 +317,19 @@ This command resolves the supplied market-data inputs and calibration scope, the
 ###### **Options:**
 
 * `--tick-data-path <PATH>` — Tick data input file.
+* `--market-profile <NAME>` — Market profile preset name.
+
+   When omitted, Janiform may infer a bundled market profile from the tick-data file name if no explicit session hints are supplied.
+* `--market-profile-scope <MARKET_PROFILE_SCOPE>` — Registry scope for --market-profile. Defaults to built-in.
+
+  Possible values:
+  - `built_in`:
+    Resolve from built-in presets.
+  - `user_registered`:
+    Resolve from user-registered presets.
+
+* `--preset-registry <PATH>` — User preset registry manifest path.
+* `--user-preset <PATH>` — User preset file path.
 * `--tick-data-format <TICK_DATA_FORMAT>` — Tick data file format.
 
   Possible values:
@@ -415,6 +444,19 @@ This command prepares the same calibration plan used by the default fit command,
 ###### **Options:**
 
 * `--tick-data-path <PATH>` — Tick data input file.
+* `--market-profile <NAME>` — Market profile preset name.
+
+   When omitted, Janiform may infer a bundled market profile from the tick-data file name if no explicit session hints are supplied.
+* `--market-profile-scope <MARKET_PROFILE_SCOPE>` — Registry scope for --market-profile. Defaults to built-in.
+
+  Possible values:
+  - `built_in`:
+    Resolve from built-in presets.
+  - `user_registered`:
+    Resolve from user-registered presets.
+
+* `--preset-registry <PATH>` — User preset registry manifest path.
+* `--user-preset <PATH>` — User preset file path.
 * `--tick-data-format <TICK_DATA_FORMAT>` — Tick data file format.
 
   Possible values:
@@ -579,6 +621,19 @@ This command validates fit inputs and writes the prepared input file consumed by
 ###### **Options:**
 
 * `--tick-data-path <PATH>` — Tick data input file.
+* `--market-profile <NAME>` — Market profile preset name.
+
+   When omitted, Janiform may infer a bundled market profile from the tick-data file name if no explicit session hints are supplied.
+* `--market-profile-scope <MARKET_PROFILE_SCOPE>` — Registry scope for --market-profile. Defaults to built-in.
+
+  Possible values:
+  - `built_in`:
+    Resolve from built-in presets.
+  - `user_registered`:
+    Resolve from user-registered presets.
+
+* `--preset-registry <PATH>` — User preset registry manifest path.
+* `--user-preset <PATH>` — User preset file path.
 * `--tick-data-format <TICK_DATA_FORMAT>` — Tick data file format.
 
   Possible values:

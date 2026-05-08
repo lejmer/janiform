@@ -10,7 +10,7 @@ use janiform_calibration_artifacts::{
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
 use janiform_foundations::numeric::coverage_ratio;
-use janiform_foundations::time::{NANOS_PER_HOUR_F64, duration_nanos_to_hours};
+use janiform_foundations::time::{NANOS_PER_HOUR_F64, duration_nanos_to_hours, format_utc_nanos};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -48,6 +48,8 @@ const RETURN_COMPONENTS_BOUNDARY_POLICY_ID: &str =
     "close_open_boundaries_are_resolved_from_calendar_state_transitions.v1";
 const RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID: &str =
     "continuous_nig_fit_uses_filtered_observed_open_session_returns_and_stage_search.v1";
+const OPTION_SURFACE_UNUSABLE_QUOTE_FILTER_POLICY_ID: &str =
+    "option_surface_rows_without_usable_bid_ask_quotes_are_filtered.v1";
 const DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID: &str = "seasonality.session_filter=open_only";
 const DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID: &str =
     "seasonality.sparse_hour_event_threshold=1";
@@ -783,10 +785,21 @@ fn selected_option_snapshot_nodes_from_loading_output(
                 ));
             }
             _ => {
-                return Err(CalibrationMarketDataPreparationError::from(
-                    "joint option calibration requires option_surface_valuation_time_utc when the option file contains multiple quote timestamps"
-                        .to_string(),
-                ));
+                let first_timestamp = unique_quote_timestamps
+                    .first()
+                    .map(|timestamp| format_utc_nanos(*timestamp))
+                    .unwrap_or_else(|| "unknown".to_string());
+                let last_timestamp = unique_quote_timestamps
+                    .last()
+                    .map(|timestamp| format_utc_nanos(*timestamp))
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                return Err(CalibrationMarketDataPreparationError::from(format!(
+                    "joint option calibration requires option_surface_valuation_time_utc when the option file contains multiple quote timestamps. found {} retained quote timestamps from {} to {}; set option_surface_valuation_time_utc to one retained quote timestamp",
+                    unique_quote_timestamps.len(),
+                    first_timestamp,
+                    last_timestamp,
+                )));
             }
         }
     };
@@ -1413,6 +1426,13 @@ fn prepared_market_data_plan_from_loading_output(
         &request.optimizer_settings_by_stage,
     ) {
         derivation_policies.push(DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID.to_string());
+    }
+    if loading_output
+        .option_surface_summary
+        .as_ref()
+        .is_some_and(|summary| summary.dropped_invalid_row_count > 0)
+    {
+        derivation_policies.push(OPTION_SURFACE_UNUSABLE_QUOTE_FILTER_POLICY_ID.to_string());
     }
 
     let provenance = CalibrationMarketDataPreparationProvenance {

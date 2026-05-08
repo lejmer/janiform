@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::ValueEnum;
 
+use crate::commands::presets::PresetRegistryArgs;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum ExecutionMode {
     #[value(help = "Keep supported intermediate results in memory.")]
@@ -73,6 +75,26 @@ pub(crate) enum DuplicateRecordPolicy {
     KeepLast,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum PresetReferenceRegistryScope {
+    #[value(name = "built_in", help = "Resolve from built-in presets.")]
+    BuiltIn,
+    #[value(
+        name = "user_registered",
+        help = "Resolve from user-registered presets."
+    )]
+    UserRegistered,
+}
+
+impl PresetReferenceRegistryScope {
+    pub(crate) fn registry_value(self) -> &'static str {
+        match self {
+            Self::BuiltIn => "built_in",
+            Self::UserRegistered => "user_registered",
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub(crate) struct RunIdentityOptions {
     #[arg(long, value_name = "ID", help = "Stable run identifier.")]
@@ -119,6 +141,27 @@ When omitted, Janiform chooses a default output path for the command."
 pub(crate) struct TickDataOptions {
     #[arg(long, value_name = "PATH", help = "Tick data input file.")]
     pub(crate) tick_data_path: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Market profile preset name.",
+        long_help = "Market profile preset name.
+
+When omitted, Janiform may infer a bundled market profile from the tick-data file name if no explicit session hints are supplied."
+    )]
+    pub(crate) market_profile: Option<String>,
+
+    #[arg(
+        long,
+        requires = "market_profile",
+        value_enum,
+        help = "Registry scope for --market-profile. Defaults to built-in."
+    )]
+    pub(crate) market_profile_scope: Option<PresetReferenceRegistryScope>,
+
+    #[command(flatten)]
+    pub(crate) preset_registry: PresetRegistryArgs,
 
     #[arg(long, value_enum, help = "Tick data file format.")]
     pub(crate) tick_data_format: Option<InputFileFormat>,

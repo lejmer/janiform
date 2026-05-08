@@ -14,10 +14,14 @@ use crate::stages::joint_refinement::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
 use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
+use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
 
 use super::super::objective::{
-    compressed_final_objective, dynamics_block_search_objective, evaluate_joint_candidate,
-    evaluate_joint_candidate_nig_block_search_objective, invalid_candidate_evaluation,
+    JointRefinementAggregatedLikelihoodContexts,
+    build_joint_refinement_nig_block_likelihood_contexts, compressed_final_objective,
+    dynamics_block_search_objective, evaluate_joint_candidate,
+    evaluate_joint_candidate_nig_block_search_objective_with_contexts,
+    evaluate_joint_candidate_nig_block_search_objective_with_counts, invalid_candidate_evaluation,
 };
 use super::super::setup::parameter_vector_to_fitted_parameters;
 use super::selection::admissibility_threshold_from_sample_count;
@@ -72,6 +76,12 @@ struct RestartCandidateProgress<'a> {
     last_evaluation_progress_percent: Option<usize>,
     current_restart_best_weighted_objective: Option<f64>,
     finished: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ParameterBlockObjectiveEvaluation {
+    objective: f64,
+    exact_likelihood_evaluator_counts: Option<ContinuousLikelihoodEvaluatorCounts>,
 }
 
 pub(crate) fn optimize_restart_seeds(
@@ -1062,6 +1072,10 @@ fn optimize_parameter_block(
         );
     }
 
+    let nig_likelihood_contexts = (parameter_block_label == "nig")
+        .then(|| build_joint_refinement_nig_block_likelihood_contexts(current_vector, context))
+        .flatten();
+
     let Some(initial_block_objective) = evaluate_parameter_block_objective(
         current_vector,
         block_indices,
@@ -1069,6 +1083,7 @@ fn optimize_parameter_block(
         context,
         solver_settings,
         parameter_block_label,
+        nig_likelihood_contexts.as_ref(),
     ) else {
         restart_progress.record_evaluation(parameter_block_label, outer_cycle, None);
         return (current_vector.to_vec(), "invalid_step", 1);
@@ -1081,7 +1096,7 @@ fn optimize_parameter_block(
     );
 
     if restart_block_initial_objective_is_noncompetitive(
-        initial_block_objective,
+        initial_block_objective.objective,
         restart_progress.counters,
     ) {
         return (
@@ -1098,7 +1113,7 @@ fn optimize_parameter_block(
         }
 
         if let Some(initial_block_objective) = pending_initial_block_objective.take() {
-            return Some(initial_block_objective);
+            return Some(initial_block_objective.objective);
         }
 
         let full_vector = substitute_block(current_vector, block_indices, block_vector);
@@ -1114,10 +1129,11 @@ fn optimize_parameter_block(
             context,
             solver_settings,
             parameter_block_label,
+            nig_likelihood_contexts.as_ref(),
         );
         restart_progress.record_evaluation(parameter_block_label, outer_cycle, block_objective);
 
-        block_objective
+        block_objective.map(|evaluation| evaluation.objective)
     };
 
     let optimizer_result = optimize_bounded_powell(
@@ -1145,13 +1161,28 @@ fn evaluate_parameter_block_objective(
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     parameter_block_label: &'static str,
-) -> Option<f64> {
+    nig_likelihood_contexts: Option<&JointRefinementAggregatedLikelihoodContexts>,
+) -> Option<ParameterBlockObjectiveEvaluation> {
     let full_vector = substitute_block(current_vector, block_indices, block_vector);
 
     match parameter_block_label {
-        "nig" => {
-            evaluate_joint_candidate_nig_block_search_objective(full_vector.as_slice(), context)
+        "nig" => match nig_likelihood_contexts {
+            Some(likelihood_contexts) => {
+                evaluate_joint_candidate_nig_block_search_objective_with_contexts(
+                    full_vector.as_slice(),
+                    context,
+                    likelihood_contexts,
+                )
+            }
+            None => evaluate_joint_candidate_nig_block_search_objective_with_counts(
+                full_vector.as_slice(),
+                context,
+            ),
         }
+        .map(|evaluation| ParameterBlockObjectiveEvaluation {
+            objective: evaluation.fit,
+            exact_likelihood_evaluator_counts: Some(evaluation.exact_likelihood_evaluator_counts),
+        }),
         _ => {
             let candidate_evaluation = evaluate_joint_candidate(
                 full_vector.as_slice(),
@@ -1161,10 +1192,15 @@ fn evaluate_parameter_block_objective(
             );
 
             candidate_evaluation.invalid_reason.is_none().then_some(
-                dynamics_block_search_objective(
-                    &candidate_evaluation.raw_admissibility_metrics,
-                    joint_refinement_admissibility_thresholds(context),
-                ),
+                ParameterBlockObjectiveEvaluation {
+                    objective: dynamics_block_search_objective(
+                        &candidate_evaluation.raw_admissibility_metrics,
+                        joint_refinement_admissibility_thresholds(context),
+                    ),
+                    exact_likelihood_evaluator_counts: Some(
+                        candidate_evaluation.exact_likelihood_evaluator_counts,
+                    ),
+                },
             )
         }
     }
@@ -1368,10 +1404,11 @@ impl<'a> RestartCandidateProgress<'a> {
         &mut self,
         parameter_block_label: &'static str,
         completed_outer_cycles: usize,
-        weighted_objective: Option<f64>,
+        evaluation: Option<ParameterBlockObjectiveEvaluation>,
     ) {
         self.current_evaluation_count = self.current_evaluation_count.saturating_add(1);
 
+        let weighted_objective = evaluation.map(|evaluation| evaluation.objective);
         if let Some(weighted_objective) = weighted_objective {
             self.current_restart_best_weighted_objective = Some(
                 self.current_restart_best_weighted_objective
@@ -1396,7 +1433,7 @@ impl<'a> RestartCandidateProgress<'a> {
             Some(completed_outer_cycles),
             Some(progress_percent),
             Some(self.counters.active_restart_count.load(Ordering::Relaxed)),
-            weighted_objective,
+            evaluation,
         );
     }
 
@@ -1464,8 +1501,11 @@ impl<'a> RestartCandidateProgress<'a> {
         completed_outer_cycles: Option<usize>,
         evaluation_progress_percent: Option<usize>,
         active_restart_count: Option<usize>,
-        current_weighted_objective: Option<f64>,
+        evaluation: Option<ParameterBlockObjectiveEvaluation>,
     ) {
+        let current_weighted_objective = evaluation.map(|evaluation| evaluation.objective);
+        let exact_likelihood_evaluator_counts =
+            evaluation.and_then(|evaluation| evaluation.exact_likelihood_evaluator_counts);
         let (best_restart_id, best_weighted_objective) = self.counters.display_best_snapshot();
         let completed_progress_state = self.counters.completed_progress_state();
         let completed_progress_totals = (completed_progress_state.completed_units > 0).then_some((
@@ -1496,6 +1536,12 @@ impl<'a> RestartCandidateProgress<'a> {
                     .current_restart_best_weighted_objective,
                 best_restart_id,
                 best_weighted_objective,
+                exact_closed_form_buy_count: exact_likelihood_evaluator_counts
+                    .map(|counts| counts.closed_form_buy),
+                exact_closed_form_sell_count: exact_likelihood_evaluator_counts
+                    .map(|counts| counts.closed_form_sell),
+                exact_tilted_mixed_count: exact_likelihood_evaluator_counts
+                    .map(|counts| counts.tilted_mixed),
                 ..JointRefinementStageProgressUpdate::new(
                     JointRefinementStageProgressPhase::RestartOptimization,
                     self.counters.completed_units.load(Ordering::Relaxed),
@@ -1573,6 +1619,24 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
             current_candidate_assessment: None,
             best_restart_id,
             best_weighted_objective,
+            exact_closed_form_buy_count: Some(
+                restart_outcome
+                    .final_evaluation
+                    .exact_likelihood_evaluator_counts
+                    .closed_form_buy,
+            ),
+            exact_closed_form_sell_count: Some(
+                restart_outcome
+                    .final_evaluation
+                    .exact_likelihood_evaluator_counts
+                    .closed_form_sell,
+            ),
+            exact_tilted_mixed_count: Some(
+                restart_outcome
+                    .final_evaluation
+                    .exact_likelihood_evaluator_counts
+                    .tilted_mixed,
+            ),
             ..JointRefinementStageProgressUpdate::new(
                 JointRefinementStageProgressPhase::RestartOptimization,
                 completed_units,
@@ -1676,9 +1740,10 @@ mod tests {
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
     use super::{
-        RestartCandidateProgress, RestartProgressCounters, RestartProgressState,
-        precheck_hawkes_structural_domain, precheck_nig_return_composition_domain,
-        precheck_restart_seed_vector_contract, restart_block_initial_objective_is_noncompetitive,
+        ParameterBlockObjectiveEvaluation, RestartCandidateProgress, RestartProgressCounters,
+        RestartProgressState, precheck_hawkes_structural_domain,
+        precheck_nig_return_composition_domain, precheck_restart_seed_vector_contract,
+        restart_block_initial_objective_is_noncompetitive,
         restart_block_progress_evaluation_budget, runtime_branching_workload_is_infeasible,
         select_restart_stop_reason, summary_simulation_event_capacity_is_infeasible,
     };
@@ -1761,6 +1826,13 @@ mod tests {
         }
     }
 
+    fn parameter_block_objective_for_test(objective: f64) -> ParameterBlockObjectiveEvaluation {
+        ParameterBlockObjectiveEvaluation {
+            objective,
+            exact_likelihood_evaluator_counts: None,
+        }
+    }
+
     #[test]
     fn running_restart_evaluation_progress_is_capped_below_completion() {
         let (progress_sender, _progress_receiver) = mpsc::channel();
@@ -1817,10 +1889,14 @@ mod tests {
             finished: false,
         };
 
-        baseline_progress.record_evaluation("nig", 1, Some(10.0));
+        baseline_progress.record_evaluation(
+            "nig",
+            1,
+            Some(parameter_block_objective_for_test(10.0)),
+        );
         progress_receiver.recv().unwrap();
 
-        halton_progress.record_evaluation("nig", 1, Some(4.0));
+        halton_progress.record_evaluation("nig", 1, Some(parameter_block_objective_for_test(4.0)));
 
         let progress_update = progress_receiver.recv().unwrap();
 
@@ -1858,7 +1934,7 @@ mod tests {
             finished: false,
         };
 
-        restart_progress.record_evaluation("nig", 1, Some(3.0));
+        restart_progress.record_evaluation("nig", 1, Some(parameter_block_objective_for_test(3.0)));
 
         let progress_update = progress_receiver.recv().unwrap();
 

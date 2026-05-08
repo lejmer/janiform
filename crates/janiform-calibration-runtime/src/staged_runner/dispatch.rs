@@ -200,13 +200,17 @@ pub(super) fn run_stage_for_staged_execution(
                                     .evaluation_progress_percent,
                                 valid_completed_units: None,
                                 cumulative_local_evaluation_count: None,
-                                current_weighted_objective: None,
+                                current_weighted_objective: progress_update
+                                    .current_weighted_objective,
                                 current_restart_best_weighted_objective: None,
                                 current_candidate_assessment: None,
                                 best_restart_id: None,
-                                best_weighted_objective: None,
+                                best_weighted_objective: progress_update.best_weighted_objective,
                                 current_coarse_consistency_fit: None,
                                 best_coarse_consistency_fit: None,
+                                exact_closed_form_buy_count: None,
+                                exact_closed_form_sell_count: None,
+                                exact_tilted_mixed_count: None,
                                 current_convergence_ratio: progress_update
                                     .current_convergence_ratio,
                             },
@@ -473,6 +477,11 @@ pub(super) fn run_stage_for_staged_execution(
                                     .current_coarse_consistency_fit,
                                 best_coarse_consistency_fit: progress_update
                                     .best_coarse_consistency_fit,
+                                exact_closed_form_buy_count: progress_update
+                                    .exact_closed_form_buy_count,
+                                exact_closed_form_sell_count: progress_update
+                                    .exact_closed_form_sell_count,
+                                exact_tilted_mixed_count: progress_update.exact_tilted_mixed_count,
                                 current_convergence_ratio: None,
                             },
                         )));

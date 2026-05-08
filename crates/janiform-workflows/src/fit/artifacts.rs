@@ -2,6 +2,7 @@ use std::fs;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 use janiform_calibration_runtime::{
     CalibrationStageExecutionStatus, CalibrationStagedExecutionInput, CalibrationStagedRunReport,
@@ -97,14 +98,17 @@ pub fn build_model_payload(
 ) -> Result<Value, WorkflowError> {
     let parameters = extract_model_parameters(report)?;
     let workflow_scope_id = workflow_scope_id(execution_input);
+    let model_preparation_payload =
+        preparation_payload.or_else(|| report_payload.get("preparation"));
     let resolved_configuration =
-        optional_preparation_field(preparation_payload, "resolved_configuration");
-    let session_resolution = optional_preparation_field(preparation_payload, "session_resolution");
+        optional_preparation_field(model_preparation_payload, "resolved_configuration");
+    let session_resolution =
+        optional_preparation_field(model_preparation_payload, "session_resolution");
     let metadata = build_model_metadata(
         execution_input,
         report,
         report_payload,
-        preparation_payload,
+        model_preparation_payload,
         &parameters,
     );
 
@@ -117,6 +121,25 @@ pub fn build_model_payload(
         "resolved_configuration": resolved_configuration,
         "session_resolution": session_resolution,
     }))
+}
+
+/// Write a canonical fitted model payload artifact.
+pub fn write_model_payload_artifact(
+    model_payload: &Value,
+    path: Option<&Path>,
+) -> Result<PathBuf, WorkflowError> {
+    let run_id = crate::model::persisted_model_run_id(model_payload)?;
+    let model_path = path.map(Path::to_path_buf).unwrap_or_else(|| {
+        PathBuf::from(".janiform")
+            .join("runs")
+            .join(run_id)
+            .join("artifacts")
+            .join("model.jf")
+    });
+
+    write_pretty_json(model_path.as_path(), model_payload)?;
+
+    Ok(model_path)
 }
 
 pub(crate) fn write_pretty_json<T>(path: &Path, payload: &T) -> Result<(), WorkflowError>

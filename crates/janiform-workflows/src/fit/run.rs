@@ -125,6 +125,7 @@ fn observe_preparation_started(
         input_count: preparation_input_count(request),
         output_path: None,
         stage_sequence: Vec::new(),
+        completed_stage_count: 0,
     });
 
     progress_adapter

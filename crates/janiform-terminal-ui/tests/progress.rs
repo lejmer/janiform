@@ -24,6 +24,7 @@ fn adapter_coalesces_structured_events_until_draw() {
         input_count: 3,
         output_path: Some(".janiform/runs/fit".to_string()),
         stage_sequence: vec!["seasonality".to_string(), "return components".to_string()],
+        completed_stage_count: 0,
     });
     adapter.observe(ProgressEvent::StageStarted {
         stage: "return components".to_string(),
@@ -106,6 +107,42 @@ fn adapter_coalesces_structured_events_until_draw() {
 }
 
 #[test]
+fn adapter_marks_leading_stages_completed_when_run_starts_from_resume() {
+    let mut adapter = ProgressAdapter::hidden();
+    adapter.observe(ProgressEvent::RunStarted {
+        run_id: "fit-20260426".to_string(),
+        scope: "staged calibration".to_string(),
+        input_count: 1,
+        output_path: None,
+        stage_sequence: vec![
+            "seasonality".to_string(),
+            "event activity".to_string(),
+            "return distribution".to_string(),
+            "mean reversion".to_string(),
+            "refine dynamics".to_string(),
+        ],
+        completed_stage_count: 4,
+    });
+
+    let snapshot = adapter.snapshot();
+
+    assert_eq!(
+        snapshot
+            .stages
+            .iter()
+            .map(|stage| format!("{:?}", stage.status))
+            .collect::<Vec<_>>(),
+        vec![
+            "Completed",
+            "Completed",
+            "Completed",
+            "Completed",
+            "Pending",
+        ]
+    );
+}
+
+#[test]
 fn adapter_seeds_planned_work_items_as_waiting() {
     let mut adapter = ProgressAdapter::hidden();
     adapter.observe(ProgressEvent::RunStarted {
@@ -114,6 +151,7 @@ fn adapter_seeds_planned_work_items_as_waiting() {
         input_count: 1,
         output_path: None,
         stage_sequence: vec!["joint refinement".to_string()],
+        completed_stage_count: 0,
     });
     adapter.observe(ProgressEvent::StageStarted {
         stage: "joint refinement".to_string(),
@@ -157,4 +195,55 @@ fn adapter_seeds_planned_work_items_as_waiting() {
             .collect::<Vec<_>>(),
         vec!["Eval"]
     );
+}
+
+#[test]
+fn adapter_clears_work_items_when_phase_changes() {
+    let mut adapter = ProgressAdapter::hidden();
+    adapter.observe(ProgressEvent::RunStarted {
+        run_id: "fit-20260426".to_string(),
+        scope: "staged calibration".to_string(),
+        input_count: 1,
+        output_path: None,
+        stage_sequence: vec!["return components".to_string()],
+        completed_stage_count: 0,
+    });
+    adapter.observe(ProgressEvent::StageStarted {
+        stage: "return components".to_string(),
+        stage_number: 1,
+        stage_count: 1,
+    });
+    adapter.observe(ProgressEvent::StageProgress {
+        phase: "continuous NIG proxy EM".to_string(),
+        measure: ProgressMeasure::bounded(1, 1).expect("test progress should be valid"),
+        work_item_label: Some("proxy EM search points ready".to_string()),
+        work_item_progress_percent: Some(100),
+        planned_work_item_labels: Vec::new(),
+        work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Evals")],
+        work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "17")],
+        latest_signal: Some("proxy EM search points ready".to_string()),
+    });
+    adapter.observe(ProgressEvent::StageProgress {
+        phase: "continuous NIG seed scoring".to_string(),
+        measure: ProgressMeasure::bounded(0, 12).expect("test progress should be valid"),
+        work_item_label: None,
+        work_item_progress_percent: None,
+        planned_work_item_labels: Vec::new(),
+        work_item_columns: Vec::new(),
+        work_item_metrics: Vec::new(),
+        latest_signal: Some("score proxy EM search points".to_string()),
+    });
+
+    let snapshot = adapter.snapshot();
+
+    assert_eq!(
+        snapshot.phase.as_deref(),
+        Some("continuous NIG seed scoring")
+    );
+    assert_eq!(
+        snapshot.latest_signal.as_deref(),
+        Some("score proxy EM search points")
+    );
+    assert!(snapshot.work_items.is_empty());
+    assert!(snapshot.work_item_columns.is_empty());
 }

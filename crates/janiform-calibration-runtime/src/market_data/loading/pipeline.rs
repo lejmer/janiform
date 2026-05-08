@@ -459,6 +459,7 @@ fn finalize_tick_load_output(
             source_row_count,
             retained_row_count: source_row_count.saturating_sub(dropped_duplicate_row_count),
             dropped_duplicate_row_count,
+            dropped_invalid_row_count: 0,
             sort_records_by_timestamp: normalization_policy.sort_records_by_timestamp,
             applied_timestamp_timezone: Some(normalization_policy.timestamp_timezone.clone()),
             canonical_value_field: normalization_policy

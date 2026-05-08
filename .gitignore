@@ -227,6 +227,7 @@ target-*
 pull_requests/
 
 # Codex
+.agents/
 .codex/
 
 # Janiform exports
