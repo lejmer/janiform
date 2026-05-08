@@ -171,9 +171,11 @@ You can also save a fitted model directly:
 model.save()
 ```
 
-With no path argument, the Rust-backed save writes `.janiform/runs/<run-id>/artifacts/model.jf`. Pass a path to `model.save(...)` when you want a specific artifact location. That file can later be loaded with `JaniformModel.load(...)` in Python or passed to CLI commands that accept `--model-path`.
+With no path argument, `model.save()` writes `.janiform/runs/<run-id>/artifacts/model.jf`. Pass a path to `model.save(...)` when you want a specific artifact location. That file can later be loaded with `JaniformModel.load(...)` in Python or passed to CLI commands that accept `--model-path`.
 
 This mode keeps results on disk and works well when you move between Python and the CLI.
+
+To resume from a persisted checkpoint, pass `resume_settings` to `fit(...)` or `fit_with_report(...)` and configure disk output preferences. Set `output_dir` to the directory that contains the run folders. In the default CLI layout, `output_dir` is `.janiform/runs` and the run directory is `.janiform/runs/<run-id>`.
 
 ## Automation
 

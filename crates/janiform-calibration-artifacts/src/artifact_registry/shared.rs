@@ -369,14 +369,21 @@ where
         .map_err(|source| serialization_failed(source.to_string()))?;
 
     let temporary_path = target_path.with_extension("json.tmp");
+
     let mut temporary_file = File::create(&temporary_path)
         .map_err(|source| write_failed(&temporary_path, source.to_string()))?;
+
     temporary_file
         .write_all(serialized.as_slice())
         .map_err(|source| write_failed(&temporary_path, source.to_string()))?;
     temporary_file
         .sync_all()
         .map_err(|source| write_failed(&temporary_path, source.to_string()))?;
+
+    if target_path.exists() {
+        fs::remove_file(target_path)
+            .map_err(|source| write_failed(target_path, source.to_string()))?;
+    }
 
     fs::rename(&temporary_path, target_path)
         .map_err(|source| rename_failed(&temporary_path, target_path, source.to_string()))?;
@@ -407,6 +414,7 @@ where
             ),
         ));
     };
+
     fs::create_dir_all(run_directory).map_err(|source| {
         CalibrationArtifactIoError::create_directory_failed(
             artifact_kind,

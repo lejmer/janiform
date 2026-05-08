@@ -105,11 +105,7 @@ def _fit_workflow_runner_from_staged_runner(
         carry: Any,
         progress_callback: Any,
     ) -> NativeFitWorkflowOutput:
-        _ = resume_settings
-        _ = option_surface_path
-        _ = option_surface_format
         _ = option_surface_provenance_label
-        _ = option_surface_valuation_time_utc
         _ = carry
 
         if progress_event is not None and progress_callback is not None:
@@ -123,6 +119,11 @@ def _fit_workflow_runner_from_staged_runner(
         staged_response, raw_response_payload = staged_runner(
             prepared_handle,
             configuration=configuration,
+            output_dir=output_dir,
+            resume_settings=resume_settings,
+            option_surface_path=option_surface_path,
+            option_surface_format=option_surface_format,
+            option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         )
         model_payload = (
             None

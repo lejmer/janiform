@@ -3848,6 +3848,87 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
     }
 
 
+def test_high_level_fit_forwards_persisted_resume_and_option_surface_to_native_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,100.5,sell",
+                "2026-02-02T20:59:00Z,101.0,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    option_surface_path = tmp_path / "option_surface.parquet"
+    option_surface_path.write_bytes(b"native workflow is mocked")
+
+    run_id = "high-level-fit-option-resume"
+    output_directory = tmp_path / ".janiform" / "runs"
+    valuation_time_utc = datetime(2026, 4, 1, 23, 59, tzinfo=UTC)
+    resume_settings = CalibrationResumeSettings(
+        source=CalibrationResumeSource.PERSISTED_CHECKPOINT_REFERENCE,
+        resume_from_stage=CalibrationStage.JOINT_REFINEMENT,
+        checkpoint_reference=f"checkpoint://{run_id}/mean_reversion",
+    )
+    captured_native_inputs: dict[str, Any] = {}
+
+    def capturing_runner(
+        *args: Any,
+        **kwargs: Any,
+    ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
+        _ = args
+        captured_native_inputs.update(kwargs)
+
+        return _successful_full_model_staged_runner_payload(run_id)
+
+    patch_fit_workflow_runner(
+        monkeypatch,
+        capturing_runner,
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        output_preferences=CalibrationMarketDataOutputPreferences(
+            execution_mode=CalibrationExecutionMode.DISK,
+            disk_checkpoint_directory=str(output_directory / run_id),
+        ),
+        market_profile="us_equity_cash",
+    )
+
+    fit_result = estimator.fit_with_report(
+        run_id=run_id,
+        resume_settings=resume_settings,
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+        option_surface_path=option_surface_path,
+        option_surface_format=CalibrationInputFileFormat.PARQUET,
+        option_surface_valuation_time_utc=valuation_time_utc,
+        output_dir=output_directory,
+    )
+
+    assert fit_result.succeeded is True
+    assert captured_native_inputs["resume_settings"] == resume_settings
+    assert captured_native_inputs["output_dir"] == output_directory
+    assert captured_native_inputs["option_surface_path"] == option_surface_path
+    assert captured_native_inputs["option_surface_format"] == CalibrationInputFileFormat.PARQUET
+    assert captured_native_inputs["option_surface_valuation_time_utc"] == valuation_time_utc
+
+
 def test_high_level_fit_reuses_single_native_preparation_pass_when_session_is_explicit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

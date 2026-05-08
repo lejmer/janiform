@@ -25,6 +25,7 @@ use janiform_calibration_runtime::{
 use support::shared::{
     BTreeSet, build_pre_joint_run_contract_with_mode_and_resume,
     build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
+    build_through_mean_reversion_run_contract_with_mode_and_resume,
     calibration_stage_test_registry, fs, hawkes_stage_constraint_violating_candidate_fixture,
     joint_refinement_stage_option_pricing_input_fixture, json,
     normalize_joint_refinement_runtime_profile_for_reproducibility,
@@ -750,6 +751,75 @@ fn staged_runner_rejects_silent_overwrite_of_committed_disk_artifacts() {
         }
         _ => panic!("expected committed artifact overwrite to fail before execution"),
     }
+
+    let _ = fs::remove_dir_all(checkpoint_directory);
+}
+
+#[test]
+fn staged_runner_disk_resume_replaces_committed_artifacts_after_success() {
+    let calendar_registry = calibration_stage_test_registry();
+    let checkpoint_directory = temporary_checkpoint_directory("disk-resume-replace-artifacts");
+    let run_id = "run-disk-resume-replace-artifacts";
+
+    let initial_run_contract = build_through_mean_reversion_run_contract_with_mode_and_resume(
+        run_id,
+        CalibrationExecutionMode::Disk,
+        None,
+    );
+    let initial_report = run_staged_calibration_with_checkpointing(
+        &initial_run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        None,
+        Some(checkpoint_directory.as_path()),
+    );
+    assert_eq!(
+        initial_report.status,
+        CalibrationStageExecutionStatus::Success
+    );
+    assert!(
+        calibration_stage_parameter_artifact_path(
+            checkpoint_directory.as_path(),
+            run_id,
+            CalibrationStage::MeanReversion,
+        )
+        .is_file()
+    );
+
+    let resume_run_contract = build_run_contract_with_mode_and_resume(
+        run_id,
+        CalibrationExecutionMode::Disk,
+        Some(CalibrationResumeSettings::persisted_checkpoint_reference(
+            calibration_checkpoint_reference_for_stage(run_id, CalibrationStage::MeanReversion),
+            Some(CalibrationStage::JointRefinement),
+        )),
+    );
+    let resume_report = run_staged_calibration_with_checkpointing(
+        &resume_run_contract,
+        &calendar_registry,
+        staged_run_inputs(false, false, true),
+        None,
+        Some(checkpoint_directory.as_path()),
+    );
+
+    assert_eq!(
+        resume_report.status,
+        CalibrationStageExecutionStatus::Success,
+        "resume failure: {:#?}",
+        resume_report.failure
+    );
+    assert_eq!(
+        resume_report.started_from_stage,
+        Some(CalibrationStage::JointRefinement)
+    );
+    assert!(
+        calibration_stage_parameter_artifact_path(
+            checkpoint_directory.as_path(),
+            run_id,
+            CalibrationStage::JointRefinement,
+        )
+        .is_file()
+    );
 
     let _ = fs::remove_dir_all(checkpoint_directory);
 }

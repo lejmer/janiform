@@ -15,6 +15,8 @@ pub const CALIBRATION_ARTIFACT_ATOMIC_COMMIT_POLICY: &str =
     "stage_all_run_artifacts_under_pending_then_publish_with_single_directory_rename.v1";
 pub const CALIBRATION_ARTIFACT_PARTIAL_WRITE_RECOVERY_POLICY: &str =
     "fresh_runs_quarantine_stale_pending_or_incomplete_run_directories_before_restarting.v1";
+pub const CALIBRATION_ARTIFACT_RESUME_REPLACEMENT_POLICY: &str =
+    "resume_runs_seed_pending_artifacts_from_committed_run_and_replace_committed_on_success.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CalibrationArtifactRunPreparationMode {
@@ -28,6 +30,7 @@ pub struct CalibrationArtifactRunWriter {
     run_id: String,
     pending_run_directory: PathBuf,
     committed_run_directory: PathBuf,
+    replace_committed_on_commit: bool,
 }
 
 impl CalibrationArtifactRunWriter {
@@ -94,20 +97,27 @@ impl CalibrationArtifactRunWriter {
             }
             CalibrationArtifactRunPreparationMode::ResumeRun => {
                 if committed_run_directory.exists() {
-                    return Err(
-                        CalibrationArtifactRunWriterError::CommittedRunAlreadyExists {
-                            run_id: run_id.to_string(),
-                            path: committed_run_directory.display().to_string(),
-                        },
-                    );
-                }
-
-                fs::create_dir_all(&pending_run_directory).map_err(|source| {
-                    CalibrationArtifactRunWriterError::CreateDirectoryFailed {
-                        path: pending_run_directory.display().to_string(),
-                        error_message: source.to_string(),
+                    if pending_run_directory.exists() {
+                        quarantine_run_directory(
+                            &pending_run_directory,
+                            &quarantine_runs_root_directory,
+                            run_id,
+                            "stale_pending_resume",
+                        )?;
                     }
-                })?;
+
+                    copy_run_directory(&committed_run_directory, &pending_run_directory)?;
+                } else if pending_run_directory.exists() {
+                    // Resume after an incomplete disk run continues from the existing
+                    // pending artifact set because no committed artifact set exists yet.
+                } else {
+                    fs::create_dir_all(&pending_run_directory).map_err(|source| {
+                        CalibrationArtifactRunWriterError::CreateDirectoryFailed {
+                            path: pending_run_directory.display().to_string(),
+                            error_message: source.to_string(),
+                        }
+                    })?;
+                }
             }
         }
 
@@ -116,6 +126,7 @@ impl CalibrationArtifactRunWriter {
             run_id: run_id.to_string(),
             pending_run_directory,
             committed_run_directory,
+            replace_committed_on_commit: mode == CalibrationArtifactRunPreparationMode::ResumeRun,
         })
     }
 
@@ -141,6 +152,22 @@ impl CalibrationArtifactRunWriter {
             );
         }
 
+        let replaced_committed_directory =
+            if self.committed_run_directory.exists() && self.replace_committed_on_commit {
+                let quarantine_root_directory = calibration_quarantine_artifact_runs_root_directory(
+                    self.persistence_root_directory.as_path(),
+                );
+
+                Some(quarantine_run_directory(
+                    &self.committed_run_directory,
+                    &quarantine_root_directory,
+                    self.run_id.as_str(),
+                    "replaced_committed",
+                )?)
+            } else {
+                None
+            };
+
         if self.committed_run_directory.exists() {
             return Err(
                 CalibrationArtifactRunWriterError::CommittedRunAlreadyExists {
@@ -151,11 +178,17 @@ impl CalibrationArtifactRunWriter {
         }
 
         fs::rename(&self.pending_run_directory, &self.committed_run_directory).map_err(
-            |source| CalibrationArtifactRunWriterError::CommitRenameFailed {
-                run_id: self.run_id.clone(),
-                source_path: self.pending_run_directory.display().to_string(),
-                target_path: self.committed_run_directory.display().to_string(),
-                error_message: source.to_string(),
+            |source| {
+                if let Some(replaced_directory) = replaced_committed_directory.as_ref() {
+                    let _ = fs::rename(replaced_directory, &self.committed_run_directory);
+                }
+
+                CalibrationArtifactRunWriterError::CommitRenameFailed {
+                    run_id: self.run_id.clone(),
+                    source_path: self.pending_run_directory.display().to_string(),
+                    target_path: self.committed_run_directory.display().to_string(),
+                    error_message: source.to_string(),
+                }
             },
         )?;
 
@@ -175,6 +208,57 @@ impl CalibrationArtifactRunWriter {
     }
 }
 
+fn copy_run_directory(
+    source_directory: &Path,
+    target_directory: &Path,
+) -> Result<(), CalibrationArtifactRunWriterError> {
+    fs::create_dir_all(target_directory).map_err(|source| {
+        CalibrationArtifactRunWriterError::CreateDirectoryFailed {
+            path: target_directory.display().to_string(),
+            error_message: source.to_string(),
+        }
+    })?;
+
+    for entry in fs::read_dir(source_directory).map_err(|source| {
+        CalibrationArtifactRunWriterError::ReadDirectoryFailed {
+            path: source_directory.display().to_string(),
+            error_message: source.to_string(),
+        }
+    })? {
+        let entry =
+            entry.map_err(
+                |source| CalibrationArtifactRunWriterError::ReadDirectoryFailed {
+                    path: source_directory.display().to_string(),
+                    error_message: source.to_string(),
+                },
+            )?;
+
+        let source_path = entry.path();
+        let target_path = target_directory.join(entry.file_name());
+
+        let file_type = entry.file_type().map_err(|source| {
+            CalibrationArtifactRunWriterError::ReadDirectoryFailed {
+                path: source_path.display().to_string(),
+                error_message: source.to_string(),
+            }
+        })?;
+
+        if file_type.is_dir() {
+            copy_run_directory(source_path.as_path(), target_path.as_path())?;
+        } else if file_type.is_file() {
+            fs::copy(source_path.as_path(), target_path.as_path()).map_err(|source| {
+                CalibrationArtifactRunWriterError::CopyFileFailed {
+                    source_path: source_path.display().to_string(),
+                    target_path: target_path.display().to_string(),
+                    error_message: source.to_string(),
+                }
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 fn quarantine_run_directory(
     source_directory: &Path,
     quarantine_root_directory: &Path,
@@ -190,6 +274,7 @@ fn quarantine_run_directory(
 
     let target_directory =
         next_quarantine_run_directory(quarantine_root_directory, run_id, reason_token)?;
+
     fs::rename(source_directory, &target_directory).map_err(|source| {
         CalibrationArtifactRunWriterError::QuarantineRenameFailed {
             run_id: run_id.to_string(),
@@ -225,6 +310,15 @@ fn next_quarantine_run_directory(
 pub enum CalibrationArtifactRunWriterError {
     CreateDirectoryFailed {
         path: String,
+        error_message: String,
+    },
+    ReadDirectoryFailed {
+        path: String,
+        error_message: String,
+    },
+    CopyFileFailed {
+        source_path: String,
+        target_path: String,
         error_message: String,
     },
     CommittedRunAlreadyExists {
@@ -267,6 +361,21 @@ impl Display for CalibrationArtifactRunWriterError {
             } => write!(
                 formatter,
                 "failed to create persistence directory `{path}`: {error_message}"
+            ),
+            Self::ReadDirectoryFailed {
+                path,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to read artifact directory `{path}`: {error_message}"
+            ),
+            Self::CopyFileFailed {
+                source_path,
+                target_path,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to copy artifact from `{source_path}` to `{target_path}`: {error_message}"
             ),
             Self::CommittedRunAlreadyExists { run_id, path } => write!(
                 formatter,

@@ -210,7 +210,7 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::RunCompleted { .. } => None,
         CalibrationStagedRunObserverEvent::RunFailed { failure, .. } => {
             Some(ProgressEvent::RunFailed {
-                reason: serialized_failure_reason(failure)?,
+                reason: human_failure_reason(failure),
             })
         }
     };
@@ -256,7 +256,7 @@ pub(crate) fn append_artifact_event(
 /// Resolve a user-facing failure reason from a staged run report.
 pub fn failure_reason(report: &CalibrationStagedRunReport) -> Result<String, WorkflowError> {
     match report.failure.as_ref() {
-        Some(failure) => serialized_failure_reason(failure),
+        Some(failure) => Ok(human_failure_reason(failure)),
         None => Ok("staged calibration did not complete successfully".to_string()),
     }
 }
@@ -293,6 +293,78 @@ fn serialized_failure_reason(
     serde_json::to_string(failure).map_err(|source| WorkflowError::OutputSerialize { source })
 }
 
+fn human_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
+    match failure {
+        CalibrationStagedRunFailure::InvalidRunContract { error_message } => {
+            format!("invalid run contract: {error_message}")
+        }
+        CalibrationStagedRunFailure::MissingMemoryCheckpointStore => {
+            "memory-mode resume requires an in-memory checkpoint store".to_string()
+        }
+        CalibrationStagedRunFailure::MissingDiskCheckpointDirectory => {
+            "disk-mode execution requires a checkpoint directory".to_string()
+        }
+        CalibrationStagedRunFailure::MissingResumeCheckpointForRun { run_id } => {
+            format!("no resume checkpoint is available for run `{run_id}`")
+        }
+        CalibrationStagedRunFailure::DatasetSnapshotPersistFailed {
+            artifact_reference,
+            error_message,
+        } => format!("failed to persist dataset snapshot `{artifact_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+            stage,
+            artifact_reference,
+            error_message,
+        } => format!(
+            "failed to persist {} artifact `{artifact_reference}`: {error_message}",
+            stage_label(*stage)
+        ),
+        CalibrationStagedRunFailure::ArtifactManifestPersistFailed { error_message } => {
+            format!("failed to persist calibration artifact manifest: {error_message}")
+        }
+        CalibrationStagedRunFailure::MissingStageInput { stage } => {
+            format!("missing input for {}", stage_label(*stage))
+        }
+        CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+            required_stage,
+            consuming_stage,
+        } => format!(
+            "{} requires an in-memory payload from {}",
+            stage_label(*consuming_stage),
+            stage_label(*required_stage)
+        ),
+        CalibrationStagedRunFailure::InvalidCheckpointReference {
+            checkpoint_reference,
+            error_message,
+        } => format!("invalid checkpoint reference `{checkpoint_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::CheckpointLoadFailed {
+            checkpoint_reference,
+            error_message,
+        } => format!("failed to load checkpoint `{checkpoint_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::CheckpointCompatibilityFailed {
+            checkpoint_reference,
+            error_message,
+        } => format!("checkpoint `{checkpoint_reference}` is not compatible: {error_message}"),
+        CalibrationStagedRunFailure::CheckpointPersistFailed {
+            checkpoint_reference,
+            error_message,
+        } => format!("failed to persist checkpoint `{checkpoint_reference}`: {error_message}"),
+        CalibrationStagedRunFailure::MissingCheckpointMetadataForSuccessfulStage { stage } => {
+            format!(
+                "{} completed without checkpoint metadata",
+                stage_label(*stage)
+            )
+        }
+        CalibrationStagedRunFailure::StageExecutionFailed {
+            stage,
+            error_message,
+        } => match error_message {
+            Some(message) => format!("{} failed: {message}", stage_label(*stage)),
+            None => format!("{} failed", stage_label(*stage)),
+        },
+    }
+}
+
 fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> Option<String> {
     if progress_work_item_label(
         &progress.progress_phase,
@@ -315,6 +387,7 @@ fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> O
     if let Some(current_item_label) = progress.current_item_label.as_deref() {
         parts.push(current_item_label.to_string());
     }
+
     push_evaluation_signal(
         &mut parts,
         progress.current_evaluation_count,
