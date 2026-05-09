@@ -55,6 +55,7 @@ if (Have-Cmd "uv") {
     $UseUvPackageInstaller = $true
     $env:UV_PROJECT_ENVIRONMENT = $VenvDir
     if ($ReleaseWheel) {
+        uv sync --no-install-project
         uv pip install "maturin>=1.9,<2.0"
     }
     else {

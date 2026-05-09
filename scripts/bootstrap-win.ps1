@@ -58,10 +58,11 @@ if (Have-Cmd "uv") {
     Activate-Venv
 
     if ($ReleaseWheel) {
+        uv sync --no-install-project
         uv pip install "maturin>=1.9,<2.0"
     }
     else {
-        # Install project and dev extra into the chosen local venv
+        # Install project and dev extra into the chosen local venv.
         uv sync --extra dev
     }
 }
@@ -75,7 +76,7 @@ elseif (Have-Cmd "python") {
         Install-ReleaseBuildToolWithPip
     }
     else {
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         Install-EditableWithPip
     }
 }
@@ -89,7 +90,7 @@ elseif (Have-Cmd "py") {
         Install-ReleaseBuildToolWithPip
     }
     else {
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         Install-EditableWithPip
     }
 }

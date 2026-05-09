@@ -64,9 +64,10 @@ if have_cmd uv; then
     activate_venv
 
     if [ "${RELEASE_WHEEL}" = true ]; then
+        uv sync --no-install-project
         uv pip install "maturin>=1.9,<2.0"
     else
-        # Install project and dev extra into the chosen local venv
+        # Install project and dev extra into the chosen local venv.
         uv sync --extra dev
     fi
 
@@ -79,7 +80,7 @@ elif have_cmd python3; then
     if [ "${RELEASE_WHEEL}" = true ]; then
         install_release_build_tool_with_pip
     else
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         install_editable_with_pip
     fi
 
@@ -92,7 +93,7 @@ elif have_cmd python; then
     if [ "${RELEASE_WHEEL}" = true ]; then
         install_release_build_tool_with_pip
     else
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         install_editable_with_pip
     fi
 

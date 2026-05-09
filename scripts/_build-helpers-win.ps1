@@ -51,7 +51,7 @@ function Build-ReleaseWheel {
     }
 
     if ($UseUvPackageInstaller) {
-        uv pip install --reinstall ($wheelPaths[0]).FullName
+        uv pip install --reinstall --no-deps ($wheelPaths[0]).FullName
     }
     else {
         python -m pip install --force-reinstall ($wheelPaths[0]).FullName

@@ -94,7 +94,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install build frontend
-        run: python -m pip install --upgrade pip "maturin>=1.9,<2.0"
+        run: python -m pip install --upgrade pip uv "maturin>=1.9,<2.0"
 
       - name: Build Linux wheel and sdist
         run: |
@@ -105,7 +105,13 @@ jobs:
         run: python scripts/ci/check_wheel_contents.py dist/*.whl
 
       - name: Smoke installed Linux wheel
-        run: python scripts/ci/smoke_installed_wheel.py --wheel dist/*.whl --expected-version "${{ needs.validate-tag.outputs.version }}"
+        run: |
+          python -m venv .wheel-smoke
+          UV_PROJECT_ENVIRONMENT=.wheel-smoke uv sync --no-install-project --frozen
+          ./.wheel-smoke/bin/python scripts/ci/smoke_installed_wheel.py \
+            --wheel dist/*.whl \
+            --no-deps \
+            --expected-version "${{ needs.validate-tag.outputs.version }}"
 
       - name: Smoke installed sdist
         run: |
@@ -116,7 +122,11 @@ jobs:
           python scripts/ci/smoke_installed_wheel.py --expected-version "${{ needs.validate-tag.outputs.version }}"
 
       - name: Check built wheel version
-        run: python scripts/ci/check_release_version.py --version "${{ needs.validate-tag.outputs.version }}" --wheel dist/*.whl --check-installed
+        run: |
+          ./.wheel-smoke/bin/python scripts/ci/check_release_version.py \
+            --version "${{ needs.validate-tag.outputs.version }}" \
+            --wheel dist/*.whl \
+            --check-installed
 
       - name: Build Linux standalone CLI archive
         run: |
@@ -155,7 +165,7 @@ jobs:
 
       - name: Install build frontend
         shell: pwsh
-        run: python -m pip install --upgrade pip "maturin>=1.9,<2.0"
+        run: python -m pip install --upgrade pip uv "maturin>=1.9,<2.0"
 
       - name: Build Windows wheel
         shell: pwsh
@@ -167,11 +177,24 @@ jobs:
 
       - name: Smoke installed Windows wheel
         shell: pwsh
-        run: python scripts/ci/smoke_installed_wheel.py --wheel (Get-ChildItem dist -Filter "*.whl").FullName --expected-version "${{ needs.validate-tag.outputs.version }}"
+        run: |
+          python -m venv .wheel-smoke
+          $env:UV_PROJECT_ENVIRONMENT = ".wheel-smoke"
+          $wheelPath = (Get-ChildItem dist -Filter "*.whl").FullName
+          uv sync --no-install-project --frozen
+          .\.wheel-smoke\Scripts\python scripts/ci/smoke_installed_wheel.py `
+            --wheel $wheelPath `
+            --no-deps `
+            --expected-version "${{ needs.validate-tag.outputs.version }}"
 
       - name: Check built wheel version
         shell: pwsh
-        run: python scripts/ci/check_release_version.py --version "${{ needs.validate-tag.outputs.version }}" --wheel (Get-ChildItem dist -Filter "*.whl").FullName --check-installed
+        run: |
+          $wheelPath = (Get-ChildItem dist -Filter "*.whl").FullName
+          .\.wheel-smoke\Scripts\python scripts/ci/check_release_version.py `
+            --version "${{ needs.validate-tag.outputs.version }}" `
+            --wheel $wheelPath `
+            --check-installed
 
       - name: Build Windows standalone CLI archive
         shell: pwsh

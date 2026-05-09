@@ -50,7 +50,7 @@ build_release_wheel() {
     fi
 
     if [ "${USE_UV_PACKAGE_INSTALLER}" = true ]; then
-        uv pip install --reinstall "${wheel_paths[0]}"
+        uv pip install --reinstall --no-deps "${wheel_paths[0]}"
     else
         python -m pip install --force-reinstall "${wheel_paths[0]}"
     fi

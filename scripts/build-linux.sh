@@ -61,6 +61,7 @@ if have_cmd uv; then
     USE_UV_PACKAGE_INSTALLER=true
     export UV_PROJECT_ENVIRONMENT="${VENV_DIR}"
     if [ "${RELEASE_WHEEL}" = true ]; then
+        uv sync --no-install-project
         uv pip install "maturin>=1.9,<2.0"
     else
         uv sync --extra dev
