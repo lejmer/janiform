@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Duration, Months, NaiveDate, Utc};
+use janiform_foundations::time::parse_utc_datetime;
 use serde::{Deserialize, Serialize};
 
 use crate::interval_schedule::{
@@ -229,12 +230,6 @@ enum EntryKind {
     ExpiryTimestamp,
     ExpiryDate,
     Tenor,
-}
-
-fn parse_utc_datetime(raw_value: &str) -> Result<DateTime<Utc>, ()> {
-    DateTime::parse_from_rfc3339(raw_value)
-        .map(|value| value.with_timezone(&Utc))
-        .map_err(|_| ())
 }
 
 fn parse_iso_date(raw_value: &str) -> Result<NaiveDate, ()> {

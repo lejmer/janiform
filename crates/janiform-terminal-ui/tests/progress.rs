@@ -16,6 +16,14 @@ fn bounded_progress_requires_real_positive_totals() {
 }
 
 #[test]
+fn percent_progress_caps_display_percent_without_units() {
+    assert_eq!(
+        ProgressMeasure::percent(150),
+        ProgressMeasure::Percent { percent: 100 }
+    );
+}
+
+#[test]
 fn adapter_coalesces_structured_events_until_draw() {
     let mut adapter = ProgressAdapter::hidden();
     adapter.observe(ProgressEvent::RunStarted {

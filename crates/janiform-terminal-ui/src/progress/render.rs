@@ -145,6 +145,9 @@ impl ProgressRenderState {
                 total_units,
                 self.snapshot.latest_signal.as_deref(),
             )),
+            Some(ProgressMeasure::Percent { percent }) => {
+                Some(self.percent_progress_line(percent, self.snapshot.latest_signal.as_deref()))
+            }
             Some(ProgressMeasure::Unbounded) => self
                 .snapshot
                 .latest_signal
@@ -161,6 +164,19 @@ impl ProgressRenderState {
         signal: Option<&str>,
     ) -> String {
         let progress = self.styled_progress_bar(completed_units, total_units);
+
+        match signal {
+            Some(signal) => format!(
+                "   {} {progress}, {}",
+                self.styled_label("Progress:"),
+                self.styled_value(signal)
+            ),
+            None => format!("   {} {progress}", self.styled_label("Progress:")),
+        }
+    }
+
+    fn percent_progress_line(&self, percent: usize, signal: Option<&str>) -> String {
+        let progress = self.styled_percent_progress_bar(percent);
 
         match signal {
             Some(signal) => format!(
@@ -351,6 +367,13 @@ impl ProgressRenderState {
             "{percent:>3}% {} {completed_units}/{total_units}",
             self.styled_bar(&bar)
         )
+    }
+
+    fn styled_percent_progress_bar(&self, percent: usize) -> String {
+        let percent = percent.min(100);
+        let bar = progress_bar_label(percent, 100);
+
+        format!("{percent:>3}% {}", self.styled_bar(&bar))
     }
 
     fn styled_bar(&self, text: &str) -> String {

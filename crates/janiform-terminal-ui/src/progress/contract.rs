@@ -30,6 +30,11 @@ pub enum ProgressMeasure {
         /// Total units.
         total_units: usize,
     },
+    /// Percent progress when displaying unit counts would be misleading.
+    Percent {
+        /// Completed percent.
+        percent: usize,
+    },
     /// Unbounded progress where only a spinner can be truthful.
     Unbounded,
 }
@@ -51,6 +56,13 @@ impl ProgressMeasure {
             completed_units,
             total_units,
         })
+    }
+
+    /// Create percent progress without exposing internal unit counts.
+    pub fn percent(percent: usize) -> Self {
+        Self::Percent {
+            percent: percent.min(100),
+        }
     }
 }
 

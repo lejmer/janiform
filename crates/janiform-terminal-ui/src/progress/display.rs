@@ -62,6 +62,7 @@ pub(super) fn progress_measure_label(measure: ProgressMeasure) -> String {
             progress_percent(completed_units, total_units),
             progress_bar_label(completed_units, total_units)
         ),
+        ProgressMeasure::Percent { percent } => progress_percent_label(percent),
         ProgressMeasure::Unbounded => "-".to_string(),
     }
 }

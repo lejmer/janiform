@@ -272,6 +272,15 @@ impl ProgressAdapter {
                 self.enable_steady_tick();
                 self.start_message_refresh();
             }
+            ProgressMeasure::Percent { percent } => {
+                let progress_bar = self.progress_bar_for_bounded(100);
+
+                progress_bar.set_message(message);
+                progress_bar.set_position(u64::try_from(percent.min(100))?);
+
+                self.enable_steady_tick();
+                self.start_message_refresh();
+            }
             ProgressMeasure::Unbounded => {
                 let progress_bar = self.progress_bar_for_unbounded();
 

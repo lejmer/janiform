@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use chrono::{DateTime, Utc};
 use janiform_foundations::strings::is_non_empty_string;
+use janiform_foundations::time::parse_utc_datetime;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -187,15 +187,13 @@ impl CalibrationArtifactManifestIndexMetadata {
             }
         }
 
-        let committed_at =
-            DateTime::parse_from_rfc3339(self.committed_at_utc.as_str()).map_err(|_| {
-                CalibrationArtifactManifestError::InvalidCommittedAtTimestamp {
-                    found: self.committed_at_utc.clone(),
-                }
-            })?;
-        let normalized_committed_at = committed_at.with_timezone(&Utc);
+        let committed_at = parse_utc_datetime(self.committed_at_utc.as_str()).map_err(|_| {
+            CalibrationArtifactManifestError::InvalidCommittedAtTimestamp {
+                found: self.committed_at_utc.clone(),
+            }
+        })?;
 
-        let expected_unix_nanos = normalized_committed_at.timestamp_nanos_opt().ok_or(
+        let expected_unix_nanos = committed_at.timestamp_nanos_opt().ok_or(
             CalibrationArtifactManifestError::InvalidCommittedAtTimestamp {
                 found: self.committed_at_utc.clone(),
             },

@@ -10,7 +10,9 @@ use janiform_calibration_artifacts::{
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
 use janiform_foundations::numeric::coverage_ratio;
-use janiform_foundations::time::{NANOS_PER_HOUR_F64, duration_nanos_to_hours, format_utc_nanos};
+use janiform_foundations::time::{
+    NANOS_PER_HOUR_F64, duration_nanos_to_hours, format_utc_nanos, parse_utc_datetime,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -1502,9 +1504,7 @@ fn prepared_market_data_plan_from_loading_output(
 fn parse_timestamp_utc(
     raw_timestamp: &str,
 ) -> Result<DateTime<Utc>, CalibrationMarketDataPreparationError> {
-    DateTime::parse_from_rfc3339(raw_timestamp)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(|_| {
+    parse_utc_datetime(raw_timestamp).map_err(|_| {
             CalibrationMarketDataPreparationError::from(format!(
                 "joint option calibration received invalid option_surface_valuation_time_utc: {raw_timestamp}"
             ))
