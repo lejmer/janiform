@@ -16,8 +16,9 @@ use super::column_resolution::{
 use super::contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
     MarketDataLoadingError, MarketDataLoadingOutput, MarketDataLoadingRequest,
-    MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput,
-    MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataNormalizationPolicy, MarketDataNormalizedOptionSurfaceOutput,
+    MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
+    MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
     MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
     MarketDataSourceProbePayload, MarketDataSourceSummary, MarketDataTickDataColumnMapping,
     MarketDataTickPriceInputPolicy,
@@ -146,6 +147,21 @@ pub fn normalize_market_data_source(
         tick_data_summary: tick_output.summary,
         reference_price: tick_output.reference_price,
         fit_warning: tick_output.fit_warning,
+    })
+}
+
+pub fn normalize_option_surface_source(
+    option_surface_input: &MarketDataOptionSurfaceLoadingInput,
+    normalization_policy: &MarketDataNormalizationPolicy,
+) -> Result<MarketDataNormalizedOptionSurfaceOutput, MarketDataLoadingError> {
+    let option_surface_output =
+        load_option_surface_records(option_surface_input, normalization_policy)?;
+
+    Ok(MarketDataNormalizedOptionSurfaceOutput {
+        option_surface_records: materialize_option_surface_records_for_payload(
+            option_surface_output.option_surface_records.as_slice(),
+        ),
+        option_surface_summary: option_surface_output.summary,
     })
 }
 

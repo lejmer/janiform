@@ -39,7 +39,7 @@ pub struct FitWorkflowOutput {
     pub execution_duration: Duration,
 }
 
-/// Human completion view for a fit workflow.
+/// Terminal completion view for a fit workflow.
 #[derive(Debug)]
 pub(super) enum FitCompletionView {
     /// Successful completion summary.
@@ -48,7 +48,7 @@ pub(super) enum FitCompletionView {
     Failure(FailureBlock),
 }
 
-/// Build the human start summary for a fit workflow.
+/// Build the terminal start summary for a fit workflow.
 pub(super) fn fit_start_summary(
     execution_input: &CalibrationStagedExecutionInput,
     input_paths: &[String],
@@ -64,7 +64,7 @@ pub(super) fn fit_start_summary(
     )
 }
 
-/// Build the human start summary once preparation inputs are resolved.
+/// Build the terminal start summary once preparation inputs are resolved.
 pub(super) fn fit_preparation_start_summary(
     preparation_request: &CalibrationMarketDataPreparationRequest,
     paths: &FitWorkflowPaths,
@@ -106,7 +106,7 @@ pub fn fit_completion_json_payload(
     })
 }
 
-/// Build the human completion view for a fit workflow.
+/// Build the terminal completion view for a fit workflow.
 pub(super) fn fit_completion_view(
     report: &CalibrationStagedRunReport,
     paths: &FitWorkflowPaths,

@@ -109,7 +109,7 @@ fn emit_plan_output(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&plan_json(prepared, staged_artifact_path)),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_plan_human(prepared, staged_artifact_path, context);
 
             context
@@ -127,7 +127,7 @@ fn emit_inspect_output(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&inspect_json(prepared)),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_inspect_human(prepared, context);
 
             context
@@ -146,7 +146,7 @@ fn emit_staged_plan_output(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&staged_plan_json(prepared, staged_artifact_path)),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_staged_plan_human(prepared, staged_artifact_path, context);
 
             context
@@ -159,7 +159,7 @@ fn emit_staged_plan_output(
 
 fn emit_progress(context: &CommandContext, message: &str) -> Result<(), CliError> {
     match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => context
+        OutputMode::Terminal | OutputMode::Quiet => context
             .stderr_renderer()
             .write_stderr(message)
             .map_err(|source| CliError::OutputWrite { source }),

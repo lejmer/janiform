@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter};
-use std::path::PathBuf;
 
 use clap::Args;
 use clap::Subcommand;
@@ -7,6 +6,7 @@ use clap::ValueEnum;
 
 use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
+use crate::commands::options::TickDataOptions;
 
 #[derive(Debug, Args)]
 #[command(
@@ -49,7 +49,7 @@ This command reads a saved Janiform model and the supplied vanilla option terms.
 
 This command reads a saved Janiform model and an observed option snapshot, then writes pricing results for that snapshot."
     )]
-    ObservedOptions(ObservedOptionPricingCommand),
+    ObservedOptions(Box<ObservedOptionPricingCommand>),
 }
 
 #[derive(Debug, Args)]
@@ -81,12 +81,56 @@ pub(crate) struct ObservedOptionPricingCommand {
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
 
+    #[command(flatten)]
+    pub(crate) market_data: TickDataOptions,
+
     #[arg(
         long,
-        value_name = "PATH",
-        help = "Observed option snapshot input file."
+        value_name = "UTC",
+        help = "Observed option valuation timestamp as RFC 3339 UTC."
     )]
-    pub(crate) option_surface_path: Option<PathBuf>,
+    pub(crate) valuation_time_utc: Option<String>,
+
+    #[arg(long, value_enum, help = "Observed option type filter.")]
+    pub(crate) option_type: Option<PricePayoffType>,
+
+    #[arg(
+        long,
+        value_name = "RATE",
+        default_value_t = 0.0,
+        help = "Continuously compounded risk-free rate."
+    )]
+    pub(crate) risk_free_rate: f64,
+
+    #[arg(
+        long,
+        value_name = "RATE",
+        default_value_t = 0.0,
+        help = "Continuously compounded dividend yield."
+    )]
+    pub(crate) dividend_yield: f64,
+
+    #[arg(
+        long,
+        help = "Price a single-expiry surface panel instead of one snapshot."
+    )]
+    pub(crate) surface: bool,
+
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Number of surface valuation times to retain."
+    )]
+    pub(crate) valuation_count: Option<usize>,
+
+    #[arg(
+        long,
+        help = "Use every retained quote timestamp for single-expiry surface pricing."
+    )]
+    pub(crate) use_all_valuation_times: bool,
+
+    #[arg(long, value_name = "COUNT", help = "CPU count for native pricing.")]
+    pub(crate) cpu_count: Option<usize>,
 
     #[command(flatten)]
     pub(crate) output_path: OutputPathOptions,

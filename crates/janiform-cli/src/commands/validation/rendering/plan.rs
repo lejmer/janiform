@@ -21,7 +21,7 @@ pub(crate) fn emit_stylized_facts_validation_plan(
 ) -> Result<(), CliError> {
     match context.output_mode() {
         OutputMode::Json => write_json_payload(plan),
-        OutputMode::Human | OutputMode::Quiet => write_terminal_output(
+        OutputMode::Terminal | OutputMode::Quiet => write_terminal_output(
             context,
             &format!("{}\n", render_plan_human(plan, &context.stdout_renderer())),
         ),

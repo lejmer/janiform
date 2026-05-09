@@ -35,7 +35,7 @@ pub(crate) fn run_inspect_model(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&model),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_model(
                 &model,
                 &model_path,

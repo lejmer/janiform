@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
+use janiform_foundations::json::document::{JsonDocumentWriteError, write_pretty_json_document};
 use janiform_foundations::strings::validate_non_empty_string;
 use serde::{Deserialize, Serialize};
 
@@ -638,12 +639,12 @@ fn write_report_bundle_artifacts(
         StylizedFactHorizonComparisonArtifactKind::TableSummary,
     );
 
-    write_json_file(
+    write_report_json_artifact(
         report_path.as_path(),
         report_bundle,
         StylizedFactHorizonComparisonArtifactKind::ReportBundle,
     )?;
-    write_json_file(
+    write_report_json_artifact(
         table_path.as_path(),
         &report_bundle.table_summary,
         StylizedFactHorizonComparisonArtifactKind::TableSummary,
@@ -652,24 +653,35 @@ fn write_report_bundle_artifacts(
     Ok(())
 }
 
-fn write_json_file(
+fn write_report_json_artifact(
     path: &Path,
     payload: &impl Serialize,
     artifact_kind: StylizedFactHorizonComparisonArtifactKind,
 ) -> Result<(), StylizedFactHorizonComparisonReportGenerationError> {
-    let serialized = serde_json::to_vec_pretty(payload).map_err(|source| {
-        StylizedFactHorizonComparisonReportGenerationError::ArtifactExportSerializationFailed {
-            artifact_kind,
-            details: source.to_string(),
-        }
-    })?;
+    write_pretty_json_document(path, payload)
+        .map_err(|source| report_json_write_error(source, artifact_kind))
+}
 
-    fs::write(path, serialized).map_err(|source| {
-        StylizedFactHorizonComparisonReportGenerationError::ArtifactExportWriteFailed {
-            path: path.display().to_string(),
-            details: source.to_string(),
+fn report_json_write_error(
+    source: JsonDocumentWriteError,
+    artifact_kind: StylizedFactHorizonComparisonArtifactKind,
+) -> StylizedFactHorizonComparisonReportGenerationError {
+    match source {
+        JsonDocumentWriteError::Serialize { source } => {
+            StylizedFactHorizonComparisonReportGenerationError::ArtifactExportSerializationFailed {
+                artifact_kind,
+                details: source.to_string(),
+            }
         }
-    })
+        JsonDocumentWriteError::CreateDirectory { path, source }
+        | JsonDocumentWriteError::Create { path, source }
+        | JsonDocumentWriteError::Write { path, source } => {
+            StylizedFactHorizonComparisonReportGenerationError::ArtifactExportWriteFailed {
+                path: path.display().to_string(),
+                details: source.to_string(),
+            }
+        }
+    }
 }
 
 fn exported_path(

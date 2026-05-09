@@ -275,10 +275,6 @@ pub enum CliError {
 }
 
 impl CliError {
-    pub(crate) fn unimplemented(command_path: &'static str) -> Self {
-        Self::UnimplementedCommand { command_path }
-    }
-
     pub fn exit_code(&self) -> CliExitCode {
         match self {
             Self::ArgumentParse { .. } => CliExitCode::CommandLineUsage,

@@ -1,13 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use janiform::pricing::VanillaOptionPricingRunResult;
+use serde::Serialize;
 use serde_json::json;
 
-use crate::artifact_io::write_pretty_json_file;
+use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
 /// Pricing artifact paths.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PricingArtifactPaths {
     /// Run directory.
     pub run_directory: PathBuf,
@@ -45,9 +46,13 @@ pub(super) fn write_pricing_artifacts(
     model_run_id: &str,
     run_result: &VanillaOptionPricingRunResult,
 ) -> Result<(), WorkflowError> {
-    write_json_file(&paths.primary_output_path, run_result)?;
+    write_pretty_json_file(
+        &paths.primary_output_path,
+        run_result,
+        ArtifactWriteKind::Pricing,
+    )?;
 
-    write_json_file(
+    write_pretty_json_file(
         &paths.report_path,
         &json!({
             "schema_version": "janiform.workflow_report.v1",
@@ -56,9 +61,10 @@ pub(super) fn write_pricing_artifacts(
             "response": run_result.response,
             "run_diagnostics": run_result.run_diagnostics,
         }),
+        ArtifactWriteKind::Pricing,
     )?;
 
-    write_json_file(
+    write_pretty_json_file(
         &paths.manifest_path,
         &json!({
             "schema_version": "janiform.run_manifest.v1",
@@ -71,20 +77,6 @@ pub(super) fn write_pricing_artifacts(
                 "model_run_id": model_run_id,
             },
         }),
-    )
-}
-
-fn write_json_file<T>(path: &Path, payload: &T) -> Result<(), WorkflowError>
-where
-    T: serde::Serialize + ?Sized,
-{
-    write_pretty_json_file(
-        path,
-        payload,
-        |path, source| WorkflowError::PricingArtifactWrite {
-            path: path.to_path_buf(),
-            source,
-        },
-        |source| WorkflowError::OutputSerialize { source },
+        ArtifactWriteKind::Pricing,
     )
 }

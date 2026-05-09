@@ -191,6 +191,13 @@ pub struct MarketDataNormalizedTickOutput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct MarketDataNormalizedOptionSurfaceOutput {
+    pub option_surface_records: Vec<MarketDataNormalizedOptionSurfaceRecord>,
+    pub option_surface_summary: MarketDataSourceSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MarketDataSourceSummary {
     pub path: String,
     pub file_format: String,
@@ -225,6 +232,16 @@ pub struct MarketDataNormalizedOptionSurfaceRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub implied_volatility: Option<f64>,
     pub source_row_number: usize,
+}
+
+impl MarketDataNormalizedOptionSurfaceRecord {
+    /// Return the explicit mid price, or the bid/ask midpoint when both sides are available.
+    pub fn observed_mid_price(&self) -> Option<f64> {
+        self.mid_price.or(match (self.bid_price, self.ask_price) {
+            (Some(bid_price), Some(ask_price)) => Some(0.5 * (bid_price + ask_price)),
+            _ => None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

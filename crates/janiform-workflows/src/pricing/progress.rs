@@ -77,7 +77,7 @@ pub(super) fn complete_pricing_progress(
         .map_err(|source| WorkflowError::OutputWrite { source })
 }
 
-fn pricing_progress_phase_label(phase: PricingProgressPhase) -> &'static str {
+pub(super) fn pricing_progress_phase_label(phase: PricingProgressPhase) -> &'static str {
     match phase {
         PricingProgressPhase::GroupProgress => "pricing groups",
         PricingProgressPhase::MaturityProgress => "pricing maturities",

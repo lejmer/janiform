@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any, Optional
+
+import pandas
 
 from ...._pricing_node_validation import validate_option_pricing_node_payload
 from janiform.contracts.collections import (
@@ -30,6 +33,13 @@ from janiform.pricing import (
 )
 from janiform.pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
 from janiform.pricing.errors import _pricing_error
+
+
+def native_datetime(raw_value: Any, *, field_path: str) -> datetime:
+    try:
+        return pandas.Timestamp(raw_value).to_pydatetime().astimezone(UTC)
+    except (TypeError, ValueError) as error:
+        raise _pricing_error(field_path, "must be a UTC timestamp") from error
 
 
 def tuple_of_positive_floats(

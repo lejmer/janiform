@@ -28,7 +28,7 @@ pub(crate) fn run_inspect_run(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&payload),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_run_state(
                 &payload.state,
                 &run_directory,

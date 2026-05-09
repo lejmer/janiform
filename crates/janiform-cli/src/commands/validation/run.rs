@@ -48,7 +48,10 @@ fn run_validation(
     let request = workflow_request(context, &options)?;
     let plan = build_stylized_facts_validation_plan(&request)?;
 
-    if matches!(context.output_mode(), OutputMode::Human | OutputMode::Quiet) {
+    if matches!(
+        context.output_mode(),
+        OutputMode::Terminal | OutputMode::Quiet
+    ) {
         write_terminal_output(
             context,
             &format!("{}\n", render_plan_human(&plan, &context.stdout_renderer())),

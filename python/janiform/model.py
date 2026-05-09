@@ -283,6 +283,7 @@ class JaniformModel:
         risk_free_rate: float = 0.0,
         dividend_yield: float = 0.0,
         cpu_count: Optional[int] = None,
+        output_path: Optional[str | Path] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformObservedOptionSnapshotPricingResult:
@@ -298,6 +299,7 @@ class JaniformModel:
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             cpu_count=cpu_count,
+            output_path=output_path,
             silent=silent,
             progress_mode=progress_mode,
         )
@@ -315,6 +317,7 @@ class JaniformModel:
         valuation_count: Optional[int] = None,
         use_all_valuation_times: bool = False,
         cpu_count: Optional[int] = None,
+        output_path: Optional[str | Path] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformObservedOptionSurfacePricingResult:
@@ -332,6 +335,7 @@ class JaniformModel:
             valuation_count=valuation_count,
             use_all_valuation_times=use_all_valuation_times,
             cpu_count=cpu_count,
+            output_path=output_path,
             silent=silent,
             progress_mode=progress_mode,
         )

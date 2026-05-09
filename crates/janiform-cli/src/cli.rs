@@ -23,8 +23,8 @@ use crate::context::GlobalCliOptions;
 This command-line interface fits the model from market data, then uses fitted models for simulation, derivative valuation, reporting, and validation. Use command help for details on each task.
 
 Output modes:
-  default human output writes summaries to stdout and progress to stderr
-  --quiet limits human output to final status and output paths
+  default terminal output writes summaries to stdout and progress to stderr
+  --quiet limits terminal output to final status and output paths
   --silent suppresses normal output while preserving warnings and errors
   --json writes one final JSON object to stdout
   --events jsonl writes machine events to stderr

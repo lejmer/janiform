@@ -1,6 +1,3 @@
-use std::fs;
-use std::io::BufWriter;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -21,6 +18,9 @@ use serde_json::Map;
 use serde_json::Value;
 use serde_json::json;
 
+use crate::artifact_io::{
+    ArtifactWriteKind, write_pretty_json_file as write_workflow_pretty_json_file,
+};
 use crate::error::WorkflowError;
 
 use super::scope::{WorkflowScopeId, workflow_scope_id};
@@ -156,34 +156,7 @@ pub(crate) fn write_pretty_json<T>(path: &Path, payload: &T) -> Result<(), Workf
 where
     T: Serialize + ?Sized,
 {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| WorkflowError::FitArtifactWrite {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-
-    let file = fs::File::create(path).map_err(|source| WorkflowError::FitArtifactWrite {
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    let mut writer = BufWriter::new(file);
-
-    serde_json::to_writer_pretty(&mut writer, payload)
-        .map_err(|source| WorkflowError::OutputSerialize { source })?;
-
-    writeln!(writer).map_err(|source| WorkflowError::FitArtifactWrite {
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    writer
-        .flush()
-        .map_err(|source| WorkflowError::FitArtifactWrite {
-            path: path.to_path_buf(),
-            source,
-        })
+    write_workflow_pretty_json_file(path, payload, ArtifactWriteKind::Fit)
 }
 
 fn calibration_scope_id(workflow_scope_id: WorkflowScopeId) -> CalibrationScopeId {

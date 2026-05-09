@@ -18,13 +18,13 @@ pub(super) fn emit_hourly_output(
     payload: &Value,
     output_path: Option<&Path>,
     title: &'static str,
-    human_rows: Vec<KeyValueRow>,
+    terminal_rows: Vec<KeyValueRow>,
 ) -> Result<(), CliError> {
     emit_json_or_success_summary(
         context,
         payload,
         title,
-        human_rows,
+        terminal_rows,
         output_path_rows(output_path),
     )
 }

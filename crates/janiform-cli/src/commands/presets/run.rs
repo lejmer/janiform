@@ -73,7 +73,7 @@ pub(crate) fn run_presets_list(
 
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&payload),
-        OutputMode::Human => write_terminal_output(
+        OutputMode::Terminal => write_terminal_output(
             context,
             &rendering::render_presets_list(&payload, &context.stdout_renderer())?,
         ),
@@ -123,7 +123,7 @@ pub(crate) fn run_presets_show(
 
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&artifact),
-        OutputMode::Human => write_terminal_output(
+        OutputMode::Terminal => write_terminal_output(
             context,
             &rendering::render_presets_show(
                 &artifact,
@@ -236,7 +236,7 @@ pub(crate) fn run_presets_export(
 
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&payload),
-        OutputMode::Human => write_terminal_output(
+        OutputMode::Terminal => write_terminal_output(
             context,
             &rendering::render_presets_export(
                 &payload,

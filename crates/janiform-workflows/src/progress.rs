@@ -59,12 +59,77 @@ pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> us
         .unwrap_or(0)
 }
 
+pub(crate) fn format_cpu_count(cpu_count: usize) -> String {
+    match cpu_count {
+        1 => "1 CPU".to_string(),
+        _ => format!("{cpu_count} CPUs"),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProgressUnitTracker {
+    completed_units: usize,
+    total_units: usize,
+}
+
+impl ProgressUnitTracker {
+    pub(crate) const fn new(total_units: usize) -> Self {
+        Self {
+            completed_units: 0,
+            total_units,
+        }
+    }
+
+    pub(crate) fn planned_for_totals(total_units: &[usize]) -> Vec<Self> {
+        total_units.iter().copied().map(Self::new).collect()
+    }
+
+    pub(crate) const fn completed_units(&self) -> usize {
+        self.completed_units
+    }
+
+    pub(crate) const fn total_units(&self) -> usize {
+        self.total_units
+    }
+
+    pub(crate) fn record(&mut self, completed_units: usize) -> usize {
+        let previous_completed_units = self.completed_units;
+        self.completed_units = self
+            .completed_units
+            .max(completed_units)
+            .min(self.total_units);
+
+        self.completed_units - previous_completed_units
+    }
+
+    pub(crate) fn complete(&mut self) -> usize {
+        self.record(self.total_units)
+    }
+}
+
+pub(crate) fn total_tracked_progress_units(trackers: &[ProgressUnitTracker]) -> usize {
+    trackers
+        .iter()
+        .map(ProgressUnitTracker::total_units)
+        .fold(0usize, usize::saturating_add)
+}
+
+pub(crate) fn completed_tracked_progress_units(trackers: &[ProgressUnitTracker]) -> usize {
+    trackers
+        .iter()
+        .map(ProgressUnitTracker::completed_units)
+        .fold(0usize, usize::saturating_add)
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
-    use super::{VolatileProgressGate, progress_percent};
+    use super::{
+        ProgressUnitTracker, VolatileProgressGate, completed_tracked_progress_units,
+        format_cpu_count, progress_percent, total_tracked_progress_units,
+    };
 
     #[test]
     fn volatile_progress_gate_emits_first_update() {
@@ -96,5 +161,23 @@ mod tests {
     fn progress_percent_uses_bounded_integer_units() {
         assert_eq!(progress_percent(4, 10), 40);
         assert_eq!(progress_percent(1, 0), 0);
+    }
+
+    #[test]
+    fn format_cpu_count_uses_singular_for_one_cpu() {
+        assert_eq!(format_cpu_count(1), "1 CPU");
+        assert_eq!(format_cpu_count(4), "4 CPUs");
+    }
+
+    #[test]
+    fn progress_unit_tracker_records_monotonic_bounded_progress() {
+        let mut trackers = ProgressUnitTracker::planned_for_totals(&[100, 200]);
+
+        assert_eq!(trackers[0].record(25), 25);
+        assert_eq!(trackers[0].record(20), 0);
+        assert_eq!(trackers[1].record(250), 200);
+
+        assert_eq!(completed_tracked_progress_units(&trackers), 225);
+        assert_eq!(total_tracked_progress_units(&trackers), 300);
     }
 }

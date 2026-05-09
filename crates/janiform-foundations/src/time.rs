@@ -241,6 +241,18 @@ pub fn floor_to_interval_utc_nanos(timestamp_utc_nanos: i64, interval_duration_n
     timestamp_utc_nanos.div_euclid(interval_duration_nanos) * interval_duration_nanos
 }
 
+/// Checked floor of a UTC nanosecond timestamp to the containing interval boundary.
+///
+/// The interval duration must be strictly positive.
+pub fn checked_floor_to_interval_utc_nanos(
+    timestamp_utc_nanos: i64,
+    interval_duration_nanos: i64,
+) -> Option<i64> {
+    timestamp_utc_nanos
+        .div_euclid(interval_duration_nanos)
+        .checked_mul(interval_duration_nanos)
+}
+
 /// Ceil a UTC nanosecond timestamp to the next interval boundary.
 ///
 /// The interval duration must be strictly positive.
@@ -253,9 +265,29 @@ pub fn ceil_to_interval_utc_nanos(timestamp_utc_nanos: i64, interval_duration_na
     }
 }
 
+/// Checked ceil of a UTC nanosecond timestamp to the next interval boundary.
+///
+/// The interval duration must be strictly positive.
+pub fn checked_ceil_to_interval_utc_nanos(
+    timestamp_utc_nanos: i64,
+    interval_duration_nanos: i64,
+) -> Option<i64> {
+    let floor = checked_floor_to_interval_utc_nanos(timestamp_utc_nanos, interval_duration_nanos)?;
+    if floor == timestamp_utc_nanos {
+        return Some(floor);
+    }
+
+    floor.checked_add(interval_duration_nanos)
+}
+
 /// Floor a UTC nanosecond timestamp to the containing hour boundary.
 pub fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
     floor_to_interval_utc_nanos(timestamp_utc_nanos, NANOS_PER_HOUR)
+}
+
+/// Checked floor of a UTC nanosecond timestamp to the containing hour boundary.
+pub fn checked_floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Option<i64> {
+    checked_floor_to_interval_utc_nanos(timestamp_utc_nanos, NANOS_PER_HOUR)
 }
 
 /// Ceil a UTC nanosecond timestamp to the next hour boundary.
@@ -263,13 +295,18 @@ pub fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
     ceil_to_interval_utc_nanos(timestamp_utc_nanos, NANOS_PER_HOUR)
 }
 
+/// Checked ceil of a UTC nanosecond timestamp to the next hour boundary.
+pub fn checked_ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Option<i64> {
+    checked_ceil_to_interval_utc_nanos(timestamp_utc_nanos, NANOS_PER_HOUR)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         NANOS_PER_HOUR, ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
-        duration_nanos_to_hours, elapsed_between_utc_timestamps, floor_to_hour_utc_nanos,
-        floor_to_interval_utc_nanos, format_utc_nanos, parse_duration_spec_nanos,
-        parse_utc_datetime, utc_nanos,
+        checked_ceil_to_hour_utc_nanos, checked_floor_to_hour_utc_nanos, duration_nanos_to_hours,
+        elapsed_between_utc_timestamps, floor_to_hour_utc_nanos, floor_to_interval_utc_nanos,
+        format_utc_nanos, parse_duration_spec_nanos, parse_utc_datetime, utc_nanos,
     };
 
     #[test]
@@ -295,6 +332,19 @@ mod tests {
             2 * NANOS_PER_HOUR
         );
         assert_eq!(ceil_to_hour_utc_nanos(NANOS_PER_HOUR), NANOS_PER_HOUR);
+    }
+
+    #[test]
+    fn checked_hour_rounding_reports_overflow() {
+        assert_eq!(
+            checked_floor_to_hour_utc_nanos(NANOS_PER_HOUR + 123),
+            Some(NANOS_PER_HOUR)
+        );
+        assert_eq!(
+            checked_ceil_to_hour_utc_nanos(NANOS_PER_HOUR + 123),
+            Some(2 * NANOS_PER_HOUR)
+        );
+        assert_eq!(checked_ceil_to_hour_utc_nanos(i64::MAX), None);
     }
 
     #[test]

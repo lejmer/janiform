@@ -15,6 +15,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::output::{StylizedFactsValidationCacheLevel, StylizedFactsValidationPlan};
+use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
 pub(super) const DERIVED_COMPARISON_REQUEST_FILE_NAME: &str = "comparison_request.json";
@@ -145,13 +146,7 @@ pub(super) fn write_json_artifact<T: Serialize + ?Sized>(
     path: &Path,
     value: &T,
 ) -> Result<(), WorkflowError> {
-    let payload = serde_json::to_vec_pretty(value)
-        .map_err(|source| WorkflowError::OutputSerialize { source })?;
-
-    fs::write(path, payload).map_err(|source| WorkflowError::ValidationArtifactWrite {
-        path: path.to_path_buf(),
-        source,
-    })
+    write_pretty_json_file(path, value, ArtifactWriteKind::Validation)
 }
 
 pub(super) fn cache_artifacts(

@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
+use janiform_foundations::json::document::{JsonDocumentWriteError, write_pretty_json_document};
 use serde::{Deserialize, Serialize};
 
 use super::super::contracts::RegressionCaseStatus;
@@ -1217,7 +1218,7 @@ where
         .artifact_root_uri
         .clone();
 
-    write_json_file(path, value).map_err(|error_message| {
+    write_scale_consistency_json_artifact(path, value).map_err(|error_message| {
         ScaleConsistencyBatchOrchestratorError::ArtifactPersistenceFailed {
             export_directory: export_directory.clone(),
             error_message,
@@ -1257,31 +1258,26 @@ fn batch_report_path(
         .join(format!("{}.batch_report.json", artifact_output.file_stem)))
 }
 
-fn write_json_file<T>(path: &Path, value: &T) -> Result<(), String>
+fn write_scale_consistency_json_artifact<T>(path: &Path, value: &T) -> Result<(), String>
 where
     T: Serialize,
 {
-    let Some(parent_directory) = path.parent() else {
-        return Err(format!(
-            "path `{}` does not have a parent directory",
-            path.display()
-        ));
-    };
+    write_pretty_json_document(path, value).map_err(scale_consistency_json_write_error)
+}
 
-    fs::create_dir_all(parent_directory).map_err(|error| {
-        format!(
-            "failed to create directory `{}`: {error}",
-            parent_directory.display()
-        )
-    })?;
-
-    let serialized = serde_json::to_vec_pretty(value)
-        .map_err(|error| format!("failed to serialize JSON payload: {error}"))?;
-
-    fs::write(path, serialized)
-        .map_err(|error| format!("failed to write `{}`: {error}", path.display()))?;
-
-    Ok(())
+fn scale_consistency_json_write_error(error: JsonDocumentWriteError) -> String {
+    match error {
+        JsonDocumentWriteError::CreateDirectory { path, source } => {
+            format!("failed to create directory `{}`: {source}", path.display())
+        }
+        JsonDocumentWriteError::Create { path, source }
+        | JsonDocumentWriteError::Write { path, source } => {
+            format!("failed to write `{}`: {source}", path.display())
+        }
+        JsonDocumentWriteError::Serialize { source } => {
+            format!("failed to serialize JSON payload: {source}")
+        }
+    }
 }
 
 fn load_batch_checkpoint_from_disk(path: &Path) -> Result<ScaleConsistencyBatchCheckpoint, String> {

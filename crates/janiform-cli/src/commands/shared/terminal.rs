@@ -18,7 +18,7 @@ pub(crate) fn terminal_output_for_context(
     context: &CommandContext,
 ) -> Option<TerminalSummaryPolicy> {
     match context.output_mode() {
-        OutputMode::Human => Some(TerminalSummaryPolicy::start_and_completion(
+        OutputMode::Terminal => Some(TerminalSummaryPolicy::start_and_completion(
             context.stdout_renderer(),
         )),
         OutputMode::Quiet => Some(TerminalSummaryPolicy::completion_only(
@@ -32,7 +32,7 @@ pub(crate) fn terminal_progress_adapter_for_context(
     context: &CommandContext,
 ) -> Option<ProgressAdapter> {
     match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
+        OutputMode::Terminal | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
         OutputMode::Json | OutputMode::Silent => None,
     }
 }
@@ -71,7 +71,7 @@ pub(crate) fn emit_json_or_success_summary<T>(
     context: &CommandContext,
     payload: &T,
     title: impl Into<String>,
-    human_rows: Vec<KeyValueRow>,
+    terminal_rows: Vec<KeyValueRow>,
     quiet_rows: Vec<KeyValueRow>,
 ) -> Result<(), CliError>
 where
@@ -81,12 +81,12 @@ where
 
     match context.output_mode() {
         OutputMode::Json => write_json_payload(payload),
-        OutputMode::Human => write_terminal_summary(
+        OutputMode::Terminal => write_terminal_summary(
             context,
             CompletionSummary {
                 title: title.clone(),
                 status: CompletionSummaryStatus::Succeeded,
-                rows: human_rows,
+                rows: terminal_rows,
             },
         ),
         OutputMode::Quiet => write_terminal_summary(

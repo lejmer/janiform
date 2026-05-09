@@ -251,7 +251,7 @@ fn run_execution_input(
     let terminal_output = terminal_output_for_context(context);
 
     let mut progress_adapter = match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
+        OutputMode::Terminal | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
         OutputMode::Json | OutputMode::Silent => None,
     };
 
@@ -319,7 +319,7 @@ fn emit_completion_output(
 
             write_json_payload(&payload)
         }
-        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }
 

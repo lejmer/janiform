@@ -24,6 +24,7 @@ use crate::commands::presets::run_presets_show;
 use crate::commands::pricing::PriceSubcommand;
 use crate::commands::pricing::run_price_command;
 use crate::commands::pricing::run_price_fitted_model_command;
+use crate::commands::pricing::run_price_observed_options_command;
 use crate::commands::reporting::ReportSubcommand;
 use crate::commands::reporting::run_report_fit;
 use crate::commands::seasonality::SeasonalitySubcommand;
@@ -143,11 +144,9 @@ fn dispatch_price(
         Some(PriceSubcommand::FittedModel(command)) => {
             run_price_fitted_model_command(context, command)
         }
-        Some(PriceSubcommand::ObservedOptions(_)) => not_implemented("price observed-options"),
+        Some(PriceSubcommand::ObservedOptions(command)) => {
+            run_price_observed_options_command(context, *command)
+        }
         None => run_price_command(context, command),
     }
-}
-
-fn not_implemented(command_path: &'static str) -> Result<(), CliError> {
-    Err(CliError::unimplemented(command_path))
 }

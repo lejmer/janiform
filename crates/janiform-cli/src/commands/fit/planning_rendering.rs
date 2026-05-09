@@ -13,7 +13,7 @@ use crate::commands::shared::terminal::ArtifactListItem;
 use crate::commands::shared::terminal::render_artifact_list;
 use crate::context::CommandContext;
 
-/// Render human CLI plan and inspection views for prepared fit requests.
+/// Render terminal CLI plan and inspection views for prepared fit requests.
 ///
 /// These views are command-planning screens, not workflow execution lifecycle
 /// output. Fit execution start/progress/completion UX is owned by

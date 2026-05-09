@@ -14,7 +14,7 @@ pub(super) fn emit_deterministic_regression_output(
 ) -> Result<(), CliError> {
     match context.output_mode() {
         OutputMode::Json => write_json_payload(report),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let output = render_deterministic_regression_human(report);
 
             if report.summary.failed_case_count == 0 {
@@ -33,7 +33,7 @@ pub(super) fn emit_open_closed_gap_leakage_output(
 ) -> Result<(), CliError> {
     match context.output_mode() {
         OutputMode::Json => write_json_payload(report),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let output = render_open_closed_gap_leakage_human(report);
 
             if report.summary.failed_case_count == 0 {

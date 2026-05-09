@@ -829,10 +829,12 @@ fn selected_option_snapshot_nodes_from_loading_output(
             )));
         }
 
-        let observed_mid_price = match record.mid_price {
-            Some(mid_price) => mid_price,
-            None => 0.5 * (bid_price + ask_price),
-        };
+        let observed_mid_price = record.observed_mid_price().ok_or_else(|| {
+            CalibrationMarketDataPreparationError::from(format!(
+                "joint option calibration requires observed mid prices for option row {}",
+                record.source_row_number
+            ))
+        })?;
         if !observed_mid_price.is_finite() {
             return Err(CalibrationMarketDataPreparationError::from(format!(
                 "joint option calibration requires finite observed mid prices for option row {}",

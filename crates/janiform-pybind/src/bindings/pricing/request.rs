@@ -10,7 +10,9 @@ use janiform::pricing::{
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
     materialize_schedule_interval_factors,
 };
-use janiform_workflows::pricing::FittedModelSingleOptionPricingRequest;
+use janiform_workflows::pricing::{
+    FittedModelSingleOptionPricingRequest, ObservedOptionsPricingRequest,
+};
 use janiform_workflows::terminal::TerminalProgressMode;
 use pyo3::prelude::{Bound, PyResult};
 use pyo3::types::PyAny;
@@ -83,6 +85,15 @@ pub(super) struct PricingActivityCompressedScheduleRequestPayload {
 pub(super) struct FittedModelSingleOptionPricingWorkflowPayload {
     #[serde(flatten)]
     pub(super) request: FittedModelSingleOptionPricingRequest,
+    #[serde(default)]
+    pub(super) progress_mode: TerminalProgressMode,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ObservedOptionsPricingWorkflowPayload {
+    #[serde(flatten)]
+    pub(super) request: ObservedOptionsPricingRequest,
     #[serde(default)]
     pub(super) progress_mode: TerminalProgressMode,
 }

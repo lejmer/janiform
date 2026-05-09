@@ -3,8 +3,10 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -20,6 +22,28 @@ pub enum JsonDocumentLoadError {
     Parse {
         path: PathBuf,
         source: serde_json::Error,
+    },
+}
+
+/// Error raised when a JSON document cannot be written to disk.
+#[derive(Debug)]
+pub enum JsonDocumentWriteError {
+    /// The document parent directory could not be created.
+    CreateDirectory {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// The document file could not be created.
+    Create {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// The document payload could not be serialized.
+    Serialize { source: serde_json::Error },
+    /// The document payload could not be written.
+    Write {
+        path: PathBuf,
+        source: std::io::Error,
     },
 }
 
@@ -44,11 +68,53 @@ impl Display for JsonDocumentLoadError {
     }
 }
 
+impl Display for JsonDocumentWriteError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CreateDirectory { path, source } => {
+                write!(
+                    formatter,
+                    "failed to create JSON document directory `{}`: {source}",
+                    path.display()
+                )
+            }
+            Self::Create { path, source } => {
+                write!(
+                    formatter,
+                    "failed to create JSON document `{}`: {source}",
+                    path.display()
+                )
+            }
+            Self::Serialize { source } => {
+                write!(formatter, "failed to serialize JSON document: {source}")
+            }
+            Self::Write { path, source } => {
+                write!(
+                    formatter,
+                    "failed to write JSON document `{}`: {source}",
+                    path.display()
+                )
+            }
+        }
+    }
+}
+
 impl Error for JsonDocumentLoadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Read { source, .. } => Some(source),
             Self::Parse { source, .. } => Some(source),
+        }
+    }
+}
+
+impl Error for JsonDocumentWriteError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::CreateDirectory { source, .. }
+            | Self::Create { source, .. }
+            | Self::Write { source, .. } => Some(source),
+            Self::Serialize { source } => Some(source),
         }
     }
 }
@@ -69,6 +135,31 @@ where
     })?;
 
     serde_json::from_str(&contents).map_err(|source| JsonDocumentLoadError::Parse {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+/// Write a pretty-printed JSON document to a filesystem path.
+pub fn write_pretty_json_document<T>(path: &Path, payload: &T) -> Result<(), JsonDocumentWriteError>
+where
+    T: Serialize + ?Sized,
+{
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| JsonDocumentWriteError::CreateDirectory {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+
+    let mut file = fs::File::create(path).map_err(|source| JsonDocumentWriteError::Create {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    serde_json::to_writer_pretty(&mut file, payload)
+        .map_err(|source| JsonDocumentWriteError::Serialize { source })?;
+
+    writeln!(file).map_err(|source| JsonDocumentWriteError::Write {
         path: path.to_path_buf(),
         source,
     })

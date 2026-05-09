@@ -37,8 +37,9 @@ from janiform.pricing import (
     VanillaOptionPricingStatus,
 )
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
-from ..grids import JaniformVanillaOptionGridBatchPricingResult
 from janiform.pricing.errors import _pricing_error
+from ..grids import JaniformVanillaOptionGridBatchPricingResult
+from ..internal.common import native_datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +77,43 @@ class JaniformObservedOptionSnapshotPricingResult:
     valuation_time_utc: datetime
     spot: float
     nodes: tuple[JaniformObservedOptionSnapshotNode, ...]
-    raw_result: JaniformVanillaOptionGridBatchPricingResult = field(repr=False)
+    raw_result: Optional[JaniformVanillaOptionGridBatchPricingResult] = field(repr=False)
+
+    @staticmethod
+    def from_native_snapshot_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str = "snapshot_result",
+    ) -> JaniformObservedOptionSnapshotPricingResult:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        raw_nodes = raw_payload.get("nodes")
+        if not isinstance(raw_nodes, list):
+            raise _pricing_error(f"{field_path}.nodes", "must be an array")
+
+        return JaniformObservedOptionSnapshotPricingResult(
+            valuation_time_utc=native_datetime(
+                raw_payload.get("valuation_time_utc"),
+                field_path=f"{field_path}.valuation_time_utc",
+            ),
+            spot=float(raw_payload["spot"]),
+            nodes=tuple(
+                _snapshot_node_from_native_mapping(
+                    raw_node,
+                    field_path=f"{field_path}.nodes[{node_index}]",
+                )
+                for node_index, raw_node in enumerate(raw_nodes)
+            ),
+            raw_result=(
+                None
+                if raw_payload.get("raw_result") is None
+                else JaniformVanillaOptionGridBatchPricingResult.from_mapping(
+                    raw_payload.get("raw_result"),
+                    field_path=f"{field_path}.raw_result",
+                )
+            ),
+        )
 
     def to_pandas(self) -> Any:
         rows = [
@@ -145,3 +182,57 @@ __all__ = [
     "JaniformObservedOptionSnapshotNode",
     "JaniformObservedOptionSnapshotPricingResult",
 ]
+
+
+def _snapshot_node_from_native_mapping(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> JaniformObservedOptionSnapshotNode:
+    if not isinstance(raw_payload, dict):
+        raise _pricing_error(field_path, "must be an object")
+
+    return JaniformObservedOptionSnapshotNode(
+        quote_timestamp_utc=native_datetime(
+            raw_payload.get("quote_timestamp_utc"),
+            field_path=f"{field_path}.quote_timestamp_utc",
+        ),
+        expiry_timestamp_utc=native_datetime(
+            raw_payload.get("expiry_timestamp_utc"),
+            field_path=f"{field_path}.expiry_timestamp_utc",
+        ),
+        strike=float(raw_payload["strike"]),
+        option_type=VanillaOptionPayoffType(raw_payload["option_type"]),
+        risk_free_rate=float(raw_payload["risk_free_rate"]),
+        dividend_yield=float(raw_payload["dividend_yield"]),
+        maturity_interval=float(raw_payload["maturity_interval"]),
+        observed_bid_price=_optional_float(raw_payload.get("observed_bid_price")),
+        observed_ask_price=_optional_float(raw_payload.get("observed_ask_price")),
+        observed_mid_price=_optional_float(raw_payload.get("observed_mid_price")),
+        model_price=_optional_float(raw_payload.get("model_price")),
+        model_implied_volatility=_optional_float(raw_payload.get("model_implied_volatility")),
+        implied_volatility_inversion_status=(
+            None
+            if raw_payload.get("implied_volatility_inversion_status") is None
+            else VanillaOptionImpliedVolatilityInversionStatus(
+                raw_payload["implied_volatility_inversion_status"]
+            )
+        ),
+        pricing_status=VanillaOptionPricingStatus(raw_payload["pricing_status"]),
+        pricing_failure_stage=(
+            None
+            if raw_payload.get("pricing_failure_stage") is None
+            else VanillaOptionPricingFailureStage(raw_payload["pricing_failure_stage"])
+        ),
+        pricing_failure_reason=raw_payload.get("pricing_failure_reason"),
+        forward_price=_optional_float(raw_payload.get("forward_price")),
+        discount_factor=_optional_float(raw_payload.get("discount_factor")),
+        boundary_state_norm=_optional_float(raw_payload.get("boundary_state_norm")),
+    )
+
+
+def _optional_float(raw_value: Any) -> Optional[float]:
+    if raw_value is None:
+        return None
+
+    return float(raw_value)

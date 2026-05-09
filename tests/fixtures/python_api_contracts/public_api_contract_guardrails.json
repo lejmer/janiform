@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "1cd08ca84fcef9e2a2828a34120083cb7e674e61c742e6951c7ef369fdd6ea2a",
+  "approved_snapshot_sha256": "d2957c8c3ff42fd64375b344c4fb0ef2a6bc921e8af12353c2c0bd5a77bf35eb",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -385,9 +385,9 @@
         "docs/reference/python-api.md",
         "docs/reference/python-api.md"
       ],
-      "rationale": "Duplicate tick rows are now preserved by default and the human-facing workflow commands render structured errors while still exposing the same public modules, so the approved snapshot must record the removed duplicate-record error enum member, the optional normalization policy field, and the updated CLI error helper signature.",
+      "rationale": "Duplicate tick rows are now preserved by default and the terminal-facing workflow commands render structured errors while still exposing the same public modules, so the approved snapshot must record the removed duplicate-record error enum member, the optional normalization policy field, and the updated CLI error helper signature.",
       "snapshot_sha256": "40a6336c4222bda9a7489d5ff25493904b5539d098143d3add4840d7428e5a3b",
-      "summary": "Approve duplicate-preserving tick normalization defaults and structured human CLI error rendering."
+      "summary": "Approve duplicate-preserving tick normalization defaults and structured terminal CLI error rendering."
     },
     {
       "approved_on": "2026-03-17",
@@ -1388,6 +1388,19 @@
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.ingestion",
         "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-05-09",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Observed-options pricing now returns native result payloads without embedding the large raw grid-batch result inside each snapshot. The Python ergonomic snapshot wrapper therefore treats raw_result as optional while preserving the priced node contract.",
+      "snapshot_sha256": "d2957c8c3ff42fd64375b344c4fb0ef2a6bc921e8af12353c2c0bd5a77bf35eb",
+      "summary": "Make observed snapshot raw grid payload optional.",
+      "updated_surfaces": [
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_snapshot"
       ]
     }
   ],

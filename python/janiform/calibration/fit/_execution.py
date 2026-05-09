@@ -135,7 +135,7 @@ def _run_fit_with_native_progress(
         default_mode=(
             WorkflowProgressMode.NONE
             if configuration.silent
-            else WorkflowProgressMode.HUMAN
+            else WorkflowProgressMode.TERMINAL
         ),
     )
 

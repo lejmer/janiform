@@ -989,6 +989,19 @@ fn build_cached_interval_operators(
             .map(|deviation| base_context.build_row_state(deviation))
             .collect::<Result<Vec<_>, _>>()?;
 
+        let collect_extended_gradient_diagnostics = observer.as_ref().is_some();
+        let mut transition_row_progress_observer = |completed_row_count| {
+            emit_pricing_progress(
+                observer,
+                PricingProgressEvent::transition_row_progress(
+                    completed_row_count,
+                    collocation_nodes.len(),
+                    Some(interval_offset),
+                    Some(maximum_maturity_count),
+                ),
+            );
+        };
+
         let (row_operators, row_theta_states, row_solve_diagnostics) =
             solve_interval_row_frequency_batches_adaptively(
                 IntervalRowFrequencyBatchAdaptiveSolveInput {
@@ -998,10 +1011,11 @@ fn build_cached_interval_operators(
                     theta_hints: theta_hints.as_slice(),
                     spectral_domain,
                     driver_parameters,
-                    collect_extended_gradient_diagnostics: observer.as_ref().is_some(),
+                    collect_extended_gradient_diagnostics,
                     collect_theta_warm_start_sensitivities: theta_warm_start_state.is_some(),
                     pricing_thread_pool,
                     cpu_count,
+                    progress_observer: Some(&mut transition_row_progress_observer),
                 },
             )?;
 
@@ -2091,7 +2105,6 @@ fn basis_phase_sensitivity(
     }
 }
 
-#[derive(Clone, Copy)]
 struct IntervalRowFrequencyBatchAdaptiveSolveInput<'a> {
     base_context: &'a LocalTransitionRequestContext,
     collocation_nodes: &'a [f64],
@@ -2103,6 +2116,7 @@ struct IntervalRowFrequencyBatchAdaptiveSolveInput<'a> {
     collect_theta_warm_start_sensitivities: bool,
     pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
+    progress_observer: Option<&'a mut dyn FnMut(usize)>,
 }
 
 fn solve_interval_row_frequency_batches_adaptively(
@@ -2126,6 +2140,7 @@ fn solve_interval_row_frequency_batches_adaptively(
         collect_theta_warm_start_sensitivities,
         pricing_thread_pool,
         cpu_count,
+        mut progress_observer,
     } = input;
 
     let row_count = collocation_nodes.len();
@@ -2152,6 +2167,7 @@ fn solve_interval_row_frequency_batches_adaptively(
                 collect_theta_warm_start_sensitivities,
                 pricing_thread_pool,
                 cpu_count,
+                progress_observer,
             },
         );
     }
@@ -2214,10 +2230,14 @@ fn solve_interval_row_frequency_batches_adaptively(
             seeded_solutions
         };
 
+    let mut completed_row_count = 0usize;
+
     for (row_index, solution) in seeded_row_solutions {
         row_solve_diagnostics.record(&solution);
         solved_theta_warm_start_states[row_index] = Some(solution.theta_warm_start_state);
         solved_rows[row_index] = Some(solution.solution);
+        completed_row_count += 1;
+        emit_interval_row_progress(&mut progress_observer, completed_row_count);
     }
 
     let mut active_segments = seeded_row_indices
@@ -2318,6 +2338,8 @@ fn solve_interval_row_frequency_batches_adaptively(
                 Some(solution.theta_warm_start_state);
 
             solved_rows[midpoint_row_index] = Some(solution.solution);
+            completed_row_count += 1;
+            emit_interval_row_progress(&mut progress_observer, completed_row_count);
         }
 
         let mut next_segments = Vec::new();
@@ -2386,7 +2408,6 @@ fn derive_parallel_adaptive_seed_row_indices(
     seeded_row_indices
 }
 
-#[derive(Clone, Copy)]
 struct NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'a> {
     base_context: &'a LocalTransitionRequestContext,
     row_states: &'a [LocalTransitionRowState],
@@ -2397,6 +2418,7 @@ struct NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'a> {
     collect_theta_warm_start_sensitivities: bool,
     pricing_thread_pool: Option<&'a rayon::ThreadPool>,
     cpu_count: Option<usize>,
+    progress_observer: Option<&'a mut dyn FnMut(usize)>,
 }
 
 fn solve_nested_interval_row_frequency_batches_with_shared_theta(
@@ -2419,6 +2441,7 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
         collect_theta_warm_start_sensitivities: _collect_theta_warm_start_sensitivities,
         pricing_thread_pool,
         cpu_count,
+        mut progress_observer,
     } = input;
 
     let representative_row_index = row_states
@@ -2445,6 +2468,7 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
         pricing_thread_pool,
         cpu_count,
     )?;
+    emit_interval_row_progress(&mut progress_observer, 1);
 
     let shared_batch_started_at = Instant::now();
     let shared_kernel = solve_shared_row_frequency_batch_kernel(
@@ -2484,6 +2508,7 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
 
         row_operators
     };
+    emit_interval_row_progress(&mut progress_observer, row_states.len());
 
     let (buy_shift_configuration_gradient_norm, sell_shift_configuration_gradient_norm) =
         resolve_shift_configuration_gradient_norms(driver_parameters, theta)?;
@@ -2532,6 +2557,15 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
             gradient_norm_sample_count: row_states.len(),
         },
     ))
+}
+
+fn emit_interval_row_progress(
+    progress_observer: &mut Option<&mut dyn FnMut(usize)>,
+    completed_row_count: usize,
+) {
+    if let Some(progress_observer) = progress_observer.as_deref_mut() {
+        progress_observer(completed_row_count);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -3366,23 +3400,39 @@ mod tests {
             "test fixture should require true adaptive midpoint certification"
         );
 
-        let (solved_rows, _, _) = solve_interval_row_frequency_batches_adaptively(
-            IntervalRowFrequencyBatchAdaptiveSolveInput {
-                base_context: &base_context,
-                collocation_nodes: collocation_nodes.as_slice(),
-                row_states: row_states.as_slice(),
-                theta_hints: &vec![None; collocation_nodes.len()],
-                spectral_domain,
-                driver_parameters,
-                collect_extended_gradient_diagnostics: false,
-                collect_theta_warm_start_sensitivities: false,
-                pricing_thread_pool: None,
-                cpu_count: Some(1),
-            },
-        )
-        .expect("adaptive interval operator solve should succeed");
+        let theta_hints = vec![None; collocation_nodes.len()];
+        let mut row_progress_counts = Vec::new();
+        let (solved_rows, _, _) = {
+            let mut row_progress_observer = |completed_row_count| {
+                row_progress_counts.push(completed_row_count);
+            };
+
+            solve_interval_row_frequency_batches_adaptively(
+                IntervalRowFrequencyBatchAdaptiveSolveInput {
+                    base_context: &base_context,
+                    collocation_nodes: collocation_nodes.as_slice(),
+                    row_states: row_states.as_slice(),
+                    theta_hints: theta_hints.as_slice(),
+                    spectral_domain,
+                    driver_parameters,
+                    collect_extended_gradient_diagnostics: false,
+                    collect_theta_warm_start_sensitivities: false,
+                    pricing_thread_pool: None,
+                    cpu_count: Some(1),
+                    progress_observer: Some(&mut row_progress_observer),
+                },
+            )
+            .expect("adaptive interval operator solve should succeed")
+        };
 
         assert_eq!(solved_rows.len(), collocation_nodes.len());
+        assert_eq!(row_progress_counts.last(), Some(&collocation_nodes.len()));
+        assert!(
+            row_progress_counts
+                .windows(2)
+                .all(|window| window[0] <= window[1]),
+            "row progress should never move backwards"
+        );
 
         for (row_state, solved_row) in row_states.iter().zip(solved_rows.iter()) {
             assert!(

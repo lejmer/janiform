@@ -21,7 +21,7 @@ pub const fn tick_price_policy_label(policy: MarketDataTickPriceInputPolicy) -> 
     }
 }
 
-/// Render a workflow scope for human summaries.
+/// Render a workflow scope for terminal summaries.
 pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> &'static str {
     match scope {
         CalibrationMarketDataWorkflowScope::SeasonalityOnly => "seasonality only",
@@ -34,7 +34,7 @@ pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> 
     }
 }
 
-/// Render a persisted workflow-scope token for human summaries.
+/// Render a persisted workflow-scope token for terminal summaries.
 pub fn workflow_scope_label_from_token(scope: &str) -> String {
     match scope {
         "seasonality_only" => "seasonality only".to_string(),
@@ -57,7 +57,7 @@ pub const fn stage_label(stage: CalibrationStage) -> &'static str {
     }
 }
 
-/// Render a persisted stage token for human summaries.
+/// Render a persisted stage token for terminal summaries.
 pub fn stage_label_from_token(stage: &str) -> String {
     let label = match stage {
         "seasonality" => "Fit seasonality",

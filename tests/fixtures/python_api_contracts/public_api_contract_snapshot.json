@@ -5910,7 +5910,7 @@
             "raw_result"
           ],
           "kind": "contract_model",
-          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'JaniformVanillaOptionGridBatchPricingResult') -> 'None'"
+          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'"
         },
         "JaniformObservedOptionSurfaceNode": {
           "field_names": [
@@ -6173,7 +6173,7 @@
             "raw_result"
           ],
           "kind": "contract_model",
-          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'JaniformVanillaOptionGridBatchPricingResult') -> 'None'"
+          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'"
         }
       }
     },

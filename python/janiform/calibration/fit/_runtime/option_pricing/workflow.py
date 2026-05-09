@@ -256,7 +256,7 @@ def native_pricing_terminal_progress_mode(
     silent: bool,
     progress_mode: WorkflowProgressMode | str,
 ) -> str:
-    default_mode = WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN
+    default_mode = WorkflowProgressMode.NONE if silent else WorkflowProgressMode.TERMINAL
 
     resolved_mode = resolve_workflow_progress_mode(
         progress_mode,

@@ -3598,7 +3598,7 @@
 ### `JaniformObservedOptionSnapshotPricingResult`
 
 - Kind: `contract_model`
-- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'JaniformVanillaOptionGridBatchPricingResult') -> 'None'`
+- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'`
 - Fields: `valuation_time_utc`, `spot`, `nodes`, `raw_result`
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsurfacenode"></a>
@@ -3728,7 +3728,7 @@
 ### `JaniformObservedOptionSnapshotPricingResult`
 
 - Kind: `contract_model`
-- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'JaniformVanillaOptionGridBatchPricingResult') -> 'None'`
+- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'`
 - Fields: `valuation_time_utc`, `spot`, `nodes`, `raw_result`
 
 <a id="python-api-module-janiform-pricing-fitted-market-snapshot-inputs"></a>

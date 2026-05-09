@@ -19,6 +19,7 @@ use super::progress::{
     emit_simulation_plan, emit_simulation_started,
 };
 use crate::error::WorkflowError;
+use crate::progress::ProgressUnitTracker;
 use crate::simulation::{
     DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, DirectSimulationCompleted, ModelArtifactSimulationKind,
     ModelArtifactSimulationWorkflowRequest, SimulationOutputColumns,
@@ -145,20 +146,15 @@ fn simulate_validation_paths_serial(
             },
         );
 
-        let mut path_completed_interval_units = 0usize;
+        let mut path_progress_units = ProgressUnitTracker::new(simulated_interval_count);
 
         let output = {
             let mut progress_observer = |event: SimulationProgressEvent| {
-                let path_event_completed_units =
-                    event.completed_units.min(simulated_interval_count);
-
-                if path_event_completed_units <= path_completed_interval_units {
+                let completed_delta = path_progress_units.record(event.completed_units);
+                if completed_delta == 0 {
                     return;
                 }
 
-                let completed_delta = path_event_completed_units - path_completed_interval_units;
-
-                path_completed_interval_units = path_event_completed_units;
                 completed_interval_units += completed_delta;
 
                 emit_simulation_interval_progress(
@@ -166,7 +162,7 @@ fn simulate_validation_paths_serial(
                     SimulationIntervalProgressInput {
                         path_position,
                         seed,
-                        path_completed_intervals: path_completed_interval_units,
+                        path_completed_intervals: path_progress_units.completed_units(),
                         path_total_intervals: simulated_interval_count,
                         completed_units: completed_interval_units,
                         total_units: total_interval_units,
@@ -188,9 +184,7 @@ fn simulate_validation_paths_serial(
             )?
         };
 
-        if path_completed_interval_units < simulated_interval_count {
-            completed_interval_units += simulated_interval_count - path_completed_interval_units;
-        }
+        completed_interval_units += path_progress_units.complete();
 
         emit_simulation_completed(
             observer,
@@ -300,8 +294,8 @@ fn simulate_validation_paths_parallel(
     let mut completed_interval_units = 0usize;
     let mut next_started_position = active_initial_count;
 
-    let mut path_completed_interval_units = (0..generated_seeds.len())
-        .map(|_| 0usize)
+    let mut path_progress_units = (0..generated_seeds.len())
+        .map(|_| ProgressUnitTracker::new(simulated_interval_count))
         .collect::<Vec<_>>();
 
     let mut outputs = (0..generated_seeds.len()).map(|_| None).collect::<Vec<_>>();
@@ -313,9 +307,6 @@ fn simulate_validation_paths_parallel(
                 seed,
                 event,
             } => {
-                let path_event_completed_units =
-                    event.completed_units.min(simulated_interval_count);
-
                 let Some(path_started_flag) = path_started.get_mut(path_position) else {
                     return Err(WorkflowError::ValidationInputFailed {
                         field: "validate stylized-facts",
@@ -340,22 +331,18 @@ fn simulate_validation_paths_parallel(
                     *path_started_flag = true;
                 }
 
-                let Some(path_completed_interval_units) =
-                    path_completed_interval_units.get_mut(path_position)
-                else {
+                let Some(path_progress_units) = path_progress_units.get_mut(path_position) else {
                     return Err(WorkflowError::ValidationInputFailed {
                         field: "validate stylized-facts",
                         message: "simulation progress referenced an unknown path".to_string(),
                     });
                 };
 
-                if path_event_completed_units <= *path_completed_interval_units {
+                let completed_delta = path_progress_units.record(event.completed_units);
+                if completed_delta == 0 {
                     continue;
                 }
 
-                let completed_delta = path_event_completed_units - *path_completed_interval_units;
-
-                *path_completed_interval_units = path_event_completed_units;
                 completed_interval_units += completed_delta;
 
                 emit_simulation_interval_progress(
@@ -363,7 +350,7 @@ fn simulate_validation_paths_parallel(
                     SimulationIntervalProgressInput {
                         path_position,
                         seed,
-                        path_completed_intervals: path_event_completed_units,
+                        path_completed_intervals: path_progress_units.completed_units(),
                         path_total_intervals: simulated_interval_count,
                         completed_units: completed_interval_units,
                         total_units: total_interval_units,
@@ -389,19 +376,14 @@ fn simulate_validation_paths_parallel(
 
         *path_started_flag = true;
 
-        let Some(path_completed_interval_units) =
-            path_completed_interval_units.get_mut(path_position)
-        else {
+        let Some(path_progress_units) = path_progress_units.get_mut(path_position) else {
             return Err(WorkflowError::ValidationInputFailed {
                 field: "validate stylized-facts",
                 message: "simulation result referenced an unknown path".to_string(),
             });
         };
 
-        if *path_completed_interval_units < simulated_interval_count {
-            completed_interval_units += simulated_interval_count - *path_completed_interval_units;
-            *path_completed_interval_units = simulated_interval_count;
-        }
+        completed_interval_units += path_progress_units.complete();
 
         emit_simulation_completed(
             observer,

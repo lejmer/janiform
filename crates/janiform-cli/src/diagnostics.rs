@@ -12,7 +12,7 @@ use crate::error::CliError;
 pub(crate) fn write_error(error: CliError, context: &CommandContext) -> io::Result<()> {
     match context.output_mode() {
         OutputMode::Json => write_json_error(error),
-        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => {
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => {
             write_terminal_error(error, context.stderr_renderer())
         }
     }
@@ -24,7 +24,7 @@ pub(crate) fn write_error_without_context(
 ) -> io::Result<()> {
     match output_mode_from_options(options) {
         OutputMode::Json => write_json_error(error),
-        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => write_terminal_error(
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => write_terminal_error(
             error,
             janiform_terminal_ui::TerminalRenderer::new(false, None),
         ),

@@ -5,7 +5,7 @@ use super::super::progress::{
     StylizedFactsValidationProgressEvent, StylizedFactsValidationProgressPhase,
 };
 use super::super::workflow::StylizedFactsValidationWorkflowObserver;
-use crate::progress::progress_percent;
+use crate::progress::{format_cpu_count, progress_percent};
 
 struct MetricProgressUpdate {
     completed_units: usize,
@@ -196,13 +196,6 @@ fn format_metric_task_count(task_count: usize) -> String {
     match task_count {
         1 => "1 metric task".to_string(),
         _ => format!("{task_count} metric tasks"),
-    }
-}
-
-fn format_cpu_count(cpu_count: usize) -> String {
-    match cpu_count {
-        1 => "1 CPU".to_string(),
-        _ => format!("{cpu_count} CPUs"),
     }
 }
 

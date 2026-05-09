@@ -76,7 +76,7 @@ def run_seeded_tick_event_simulation(
         else:
             resolved_progress_mode = resolve_workflow_progress_mode(
                 progress_mode,
-                default_mode=WorkflowProgressMode.HUMAN,
+                default_mode=WorkflowProgressMode.TERMINAL,
             )
 
             native_run_kwargs["progress_mode"] = native_terminal_progress_mode(

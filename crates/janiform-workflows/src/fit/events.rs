@@ -212,7 +212,7 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::RunCompleted { .. } => None,
         CalibrationStagedRunObserverEvent::RunFailed { failure, .. } => {
             Some(ProgressEvent::RunFailed {
-                reason: human_failure_reason(failure),
+                reason: terminal_failure_reason(failure),
             })
         }
     };
@@ -258,7 +258,7 @@ pub(crate) fn append_artifact_event(
 /// Resolve a user-facing failure reason from a staged run report.
 pub fn failure_reason(report: &CalibrationStagedRunReport) -> Result<String, WorkflowError> {
     match report.failure.as_ref() {
-        Some(failure) => Ok(human_failure_reason(failure)),
+        Some(failure) => Ok(terminal_failure_reason(failure)),
         None => Ok("staged calibration did not complete successfully".to_string()),
     }
 }
@@ -295,7 +295,7 @@ fn serialized_failure_reason(
     serde_json::to_string(failure).map_err(|source| WorkflowError::OutputSerialize { source })
 }
 
-fn human_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
+fn terminal_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
     match failure {
         CalibrationStagedRunFailure::InvalidRunContract { error_message } => {
             format!("invalid run contract: {error_message}")

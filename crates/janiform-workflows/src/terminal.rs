@@ -12,8 +12,8 @@ use crate::error::WorkflowError;
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalProgressMode {
-    /// Render human terminal progress.
-    Human,
+    /// Render terminal progress.
+    Terminal,
     /// Do not render terminal progress.
     #[default]
     None,
@@ -23,10 +23,10 @@ impl TerminalProgressMode {
     /// Parse a boundary string into a terminal progress mode.
     pub fn from_boundary_value(value: &str) -> Result<Self, String> {
         match value {
-            "human" => Ok(Self::Human),
+            "terminal" => Ok(Self::Terminal),
             "none" => Ok(Self::None),
             _ => Err(format!(
-                "progress_mode must be either 'human' or 'none', received '{value}'"
+                "progress_mode must be either 'terminal' or 'none', received '{value}'"
             )),
         }
     }
@@ -35,7 +35,7 @@ impl TerminalProgressMode {
 /// Build the stderr progress adapter for a terminal progress mode.
 pub fn stderr_progress_adapter(progress_mode: TerminalProgressMode) -> Option<ProgressAdapter> {
     match progress_mode {
-        TerminalProgressMode::Human => Some(ProgressAdapter::stderr()),
+        TerminalProgressMode::Terminal => Some(ProgressAdapter::stderr()),
         TerminalProgressMode::None => None,
     }
 }
@@ -50,7 +50,7 @@ pub fn terminal_summary_policy(
     progress_mode: TerminalProgressMode,
 ) -> Option<TerminalSummaryPolicy> {
     match progress_mode {
-        TerminalProgressMode::Human => Some(TerminalSummaryPolicy::start_and_completion(
+        TerminalProgressMode::Terminal => Some(TerminalSummaryPolicy::start_and_completion(
             stdout_terminal_renderer(),
         )),
         TerminalProgressMode::None => None,
