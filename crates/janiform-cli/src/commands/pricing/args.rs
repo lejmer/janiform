@@ -40,7 +40,7 @@ pub(crate) enum PriceSubcommand {
 
 This command reads a saved Janiform model and the supplied vanilla option terms. It writes pricing.json as the primary pricing result and pricing_report.json for optional diagnostics."
     )]
-    FittedModel(FittedModelPricingCommand),
+    FittedModel(Box<FittedModelPricingCommand>),
 
     #[command(
         name = "observed-options",

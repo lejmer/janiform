@@ -142,7 +142,7 @@ fn dispatch_price(
 ) -> Result<(), CliError> {
     match command.command.take() {
         Some(PriceSubcommand::FittedModel(command)) => {
-            run_price_fitted_model_command(context, command)
+            run_price_fitted_model_command(context, *command)
         }
         Some(PriceSubcommand::ObservedOptions(command)) => {
             run_price_observed_options_command(context, *command)
