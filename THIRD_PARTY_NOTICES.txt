@@ -875,6 +875,12 @@ Package Inventory
   repository: https://github.com/rayon-rs/rayon
   legal files: LICENSE-APACHE, LICENSE-MIT
 
+- rustdct 0.7.1
+  license: MIT OR Apache-2.0
+  source: registry+https://github.com/rust-lang/crates.io-index
+  repository: https://github.com/ejmahler/rust_dct
+  legal files: LICENSE-APACHE, LICENSE-MIT
+
 - rustfft 6.4.1
   license: MIT OR Apache-2.0
   source: registry+https://github.com/rust-lang/crates.io-index
@@ -1679,6 +1685,7 @@ Applies to:
 - colorchoice 1.0.5 (LICENSE-APACHE)
 - is_terminal_polyfill 1.70.2 (LICENSE-APACHE)
 - once_cell_polyfill 1.70.2 (LICENSE-APACHE)
+- rustdct 0.7.1 (LICENSE-APACHE)
 - rustfft 6.4.1 (LICENSE-APACHE)
 - serde_spanned 1.1.1 (LICENSE-APACHE)
 - strength_reduce 0.2.4 (LICENSE-APACHE)
@@ -9285,6 +9292,7 @@ DEALINGS IN THE SOFTWARE.
 Text 092
 -------------------------------------------------------------------------------
 Applies to:
+- rustdct 0.7.1 (LICENSE-MIT)
 - rustfft 6.4.1 (LICENSE-MIT)
 - strength_reduce 0.2.4 (LICENSE-MIT)
 

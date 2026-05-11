@@ -1607,7 +1607,8 @@ fn select_restart_outcome(
         selection_coarse_consistency_by_restart_id.get(diagnostic_best_restart.restart_id.as_str()),
     )?;
 
-    let option_refinement_candidate_frontier = admissible_selected_restart_outcomes
+    let option_refinement_candidate_frontier = selection_artifacts
+        .selected_restart_outcomes
         .iter()
         .copied()
         .cloned()

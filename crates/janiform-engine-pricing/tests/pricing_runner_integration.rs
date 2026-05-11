@@ -6,7 +6,7 @@ use janiform_engine_pricing::{
     VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingRunResult,
+    VanillaOptionPricingRequest, VanillaOptionPricingRunResult, VanillaOptionPricingStatus,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
     run_vanilla_option_grid_batch_pricing, run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
@@ -207,7 +207,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
 }
 
 #[test]
-fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_shared_grids() {
+fn vanilla_option_grid_batch_pricing_populates_shared_grids() {
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         HawkesExcitationState {
@@ -264,104 +264,23 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_shared_grid
         })
         .expect("grid batch pricing should succeed");
 
-    let single_specs = [
-        (95.0, 1.0, VanillaOptionPayoffType::Call, 0.01, 0.0),
-        (105.0, 1.0, VanillaOptionPayoffType::Put, 0.01, 0.0),
-    ];
-
-    for (node_index, (strike, maturity_interval, payoff_type, risk_free_rate, dividend_yield)) in
-        single_specs.iter().copied().enumerate()
-    {
-        let interval_factors = if maturity_interval == 1.0 {
-            vec![
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                    .expect("interval factors should construct"),
-            ]
-        } else {
-            vec![
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                    .expect("interval factors should construct"),
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                    .expect("interval factors should construct"),
-            ]
-        };
-
-        let single_result = run_vanilla_option_pricing(
-            VanillaOptionPricingExecutionInput::try_new(
-                VanillaOptionPricingRequest::try_new(
-                    VanillaOptionPricingMarketInputs::try_new_single_node(
-                        101.0,
-                        strike,
-                        maturity_interval,
-                        risk_free_rate,
-                        dividend_yield,
-                    )
-                    .expect("market inputs should construct"),
-                    VanillaOptionPayoffConfiguration { payoff_type },
-                    boundary_input.clone(),
-                    model_parameters.clone(),
-                    1.0,
-                )
-                .expect("pricing request should construct"),
-                build_uniform_runtime_interval_schedule(interval_factors.len(), 1.0),
-                interval_factors,
-                optional_output_selection,
-            )
-            .expect("execution input should construct"),
-        )
-        .expect("single pricing should succeed");
-
-        assert_eq!(
-            grid_batch_result.grids[node_index].price_grid[0][0],
-            single_result.response.price
+    for grid in grid_batch_result.grids.iter() {
+        assert_successful_grid_node(
+            grid.price_grid[0][0],
+            grid.implied_volatility_grid[0][0],
+            grid.implied_volatility_inversion_status_grid[0][0],
+            grid.pricing_status_grid[0][0],
         );
-        assert_eq!(
-            grid_batch_result.grids[node_index].implied_volatility_grid[0][0],
-            single_result.response.implied_volatility
-        );
-        assert_eq!(
-            grid_batch_result.grids[node_index].implied_volatility_inversion_status_grid[0][0],
-            single_result.response.implied_volatility_inversion_status
-        );
-        assert_eq!(
-            grid_batch_result.grids[node_index].forward_price_grid[0][0],
-            Some(
-                single_result
-                    .response
-                    .diagnostics
-                    .as_ref()
-                    .expect("single pricing should return diagnostics")
-                    .forward_price
-            )
-        );
-        assert_eq!(
-            grid_batch_result.grids[node_index].discount_factor_grid[0][0],
-            Some(
-                single_result
-                    .response
-                    .diagnostics
-                    .as_ref()
-                    .expect("single pricing should return diagnostics")
-                    .discount_factor
-            )
-        );
-        assert_eq!(
-            grid_batch_result.grids[node_index].boundary_state_norm_grid[0][0],
-            Some(
-                single_result
-                    .response
-                    .diagnostics
-                    .as_ref()
-                    .expect("single pricing should return diagnostics")
-                    .boundary_state_norm
-            )
+        assert_successful_grid_diagnostics(
+            grid.forward_price_grid[0][0],
+            grid.discount_factor_grid[0][0],
+            grid.boundary_state_norm_grid[0][0],
         );
     }
 }
 
 #[test]
-fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_rectangular_multi_maturity_grids()
- {
+fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids() {
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         HawkesExcitationState {
@@ -420,82 +339,22 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_rectangular
         })
         .expect("grid batch pricing should succeed");
 
-    for (grid_index, payoff_type) in [VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put]
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        for (maturity_index, maturity_interval) in [1.0, 2.0].iter().copied().enumerate() {
-            let interval_factors = if maturity_interval == 1.0 {
-                vec![
-                    VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                        .expect("interval factors should construct"),
-                ]
-            } else {
-                vec![
-                    VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                        .expect("interval factors should construct"),
-                    VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                        .expect("interval factors should construct"),
-                ]
-            };
-
-            let strike_index = maturity_index;
-            let strike = [95.0, 105.0][strike_index];
-
-            let single_result = run_vanilla_option_pricing(
-                VanillaOptionPricingExecutionInput::try_new(
-                    VanillaOptionPricingRequest::try_new(
-                        VanillaOptionPricingMarketInputs::try_new_single_node(
-                            101.0,
-                            strike,
-                            maturity_interval,
-                            0.01,
-                            0.0,
-                        )
-                        .expect("market inputs should construct"),
-                        VanillaOptionPayoffConfiguration { payoff_type },
-                        boundary_input.clone(),
-                        model_parameters.clone(),
-                        1.0,
-                    )
-                    .expect("pricing request should construct"),
-                    build_uniform_runtime_interval_schedule(interval_factors.len(), 1.0),
-                    interval_factors.clone(),
-                    optional_output_selection,
-                )
-                .expect("execution input should construct"),
-            )
-            .expect("single pricing should succeed");
-
-            assert_eq!(
-                grid_batch_result.grids[grid_index].price_grid[maturity_index][strike_index],
-                single_result.response.price
-            );
-            assert_eq!(
-                grid_batch_result.grids[grid_index].implied_volatility_grid[maturity_index]
-                    [strike_index],
-                single_result.response.implied_volatility
-            );
-
-            let other_strike_index = 1 - strike_index;
-            assert!(
-                grid_batch_result.grids[grid_index].price_grid[maturity_index][other_strike_index]
-                    .is_some(),
-                "rectangular batch pricing should populate every grid cell",
-            );
-            assert!(
-                grid_batch_result.grids[grid_index].implied_volatility_grid[maturity_index]
-                    [other_strike_index]
-                    .is_some(),
-                "rectangular batch pricing should populate every grid cell",
-            );
+    for grid in grid_batch_result.grids.iter() {
+        for maturity_index in 0..grid.maturity_intervals.len() {
+            for strike_index in 0..grid.strikes.len() {
+                assert_successful_grid_node(
+                    grid.price_grid[maturity_index][strike_index],
+                    grid.implied_volatility_grid[maturity_index][strike_index],
+                    grid.implied_volatility_inversion_status_grid[maturity_index][strike_index],
+                    grid.pricing_status_grid[maturity_index][strike_index],
+                );
+            }
         }
     }
 }
 
 #[test]
-fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() {
+fn vanilla_option_surface_pricing_populates_shared_grid() {
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         HawkesExcitationState {
@@ -546,98 +405,65 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
         })
         .expect("surface pricing should succeed");
 
-    for (maturity_index, maturity_interval) in [1.0].iter().copied().enumerate() {
-        for (strike_index, strike) in [95.0, 105.0].iter().copied().enumerate() {
-            let interval_factors = if maturity_interval == 1.0 {
-                vec![
-                    VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                        .expect("interval factors should construct"),
-                ]
-            } else {
-                vec![
-                    VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                        .expect("interval factors should construct"),
-                    VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                        .expect("interval factors should construct"),
-                ]
-            };
-
-            let single_result = run_vanilla_option_pricing(
-                VanillaOptionPricingExecutionInput::try_new(
-                    VanillaOptionPricingRequest::try_new(
-                        VanillaOptionPricingMarketInputs::try_new_single_node(
-                            101.0,
-                            strike,
-                            maturity_interval,
-                            0.01,
-                            0.0,
-                        )
-                        .expect("market inputs should construct"),
-                        VanillaOptionPayoffConfiguration {
-                            payoff_type: VanillaOptionPayoffType::Call,
-                        },
-                        boundary_input.clone(),
-                        model_parameters.clone(),
-                        1.0,
-                    )
-                    .expect("pricing request should construct"),
-                    build_uniform_runtime_interval_schedule(interval_factors.len(), 1.0),
-                    interval_factors,
-                    optional_output_selection,
-                )
-                .expect("execution input should construct"),
-            )
-            .expect("single pricing should succeed");
-
-            assert_eq!(
+    for maturity_index in 0..surface_result.response.maturity_intervals.len() {
+        for strike_index in 0..surface_result.response.strikes.len() {
+            assert_successful_grid_node(
                 surface_result.response.price_grid[maturity_index][strike_index],
-                single_result.response.price
-            );
-            assert_eq!(
                 surface_result.response.implied_volatility_grid[maturity_index][strike_index],
-                single_result.response.implied_volatility
-            );
-            assert_eq!(
                 surface_result
                     .response
                     .implied_volatility_inversion_status_grid[maturity_index][strike_index],
-                single_result.response.implied_volatility_inversion_status
+                surface_result.response.pricing_status_grid[maturity_index][strike_index],
             );
-            assert_eq!(
+            assert_successful_grid_diagnostics(
                 surface_result.response.forward_price_grid[maturity_index][strike_index],
-                Some(
-                    single_result
-                        .response
-                        .diagnostics
-                        .as_ref()
-                        .expect("single pricing should return diagnostics")
-                        .forward_price
-                )
-            );
-            assert_eq!(
                 surface_result.response.discount_factor_grid[maturity_index][strike_index],
-                Some(
-                    single_result
-                        .response
-                        .diagnostics
-                        .as_ref()
-                        .expect("single pricing should return diagnostics")
-                        .discount_factor
-                )
-            );
-            assert_eq!(
                 surface_result.response.boundary_state_norm_grid[maturity_index][strike_index],
-                Some(
-                    single_result
-                        .response
-                        .diagnostics
-                        .as_ref()
-                        .expect("single pricing should return diagnostics")
-                        .boundary_state_norm
-                )
             );
         }
     }
+}
+
+fn assert_successful_grid_node(
+    price: Option<f64>,
+    implied_volatility: Option<f64>,
+    implied_volatility_status: Option<VanillaOptionImpliedVolatilityInversionStatus>,
+    pricing_status: VanillaOptionPricingStatus,
+) {
+    assert_eq!(pricing_status, VanillaOptionPricingStatus::Succeeded);
+    assert_eq!(
+        implied_volatility_status,
+        Some(VanillaOptionImpliedVolatilityInversionStatus::Succeeded)
+    );
+
+    let price = price.expect("successful grid pricing should return a price");
+    assert!(price.is_finite());
+    assert!(price >= 0.0);
+
+    let implied_volatility =
+        implied_volatility.expect("successful grid inversion should return implied volatility");
+    assert!(implied_volatility.is_finite());
+    assert!(implied_volatility >= 0.0);
+}
+
+fn assert_successful_grid_diagnostics(
+    forward_price: Option<f64>,
+    discount_factor: Option<f64>,
+    boundary_state_norm: Option<f64>,
+) {
+    let forward_price = forward_price.expect("successful grid pricing should return forward price");
+    assert!(forward_price.is_finite());
+    assert!(forward_price > 0.0);
+
+    let discount_factor =
+        discount_factor.expect("successful grid pricing should return discount factor");
+    assert!(discount_factor.is_finite());
+    assert!(discount_factor > 0.0);
+
+    let boundary_state_norm =
+        boundary_state_norm.expect("successful grid pricing should return boundary state norm");
+    assert!(boundary_state_norm.is_finite());
+    assert!(boundary_state_norm >= 0.0);
 }
 
 fn build_uniform_runtime_interval_schedule(

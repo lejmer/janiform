@@ -38,7 +38,6 @@ pub(crate) use sample::{
     continuous_return_calibration_sample_observed_returns,
     rescale_continuous_return_calibration_sample_business_time_scales,
 };
-pub(crate) use shape_mapping::exact_configuration_and_gradient_from_shape_search_point_for_calibration_sample;
 pub(crate) use types::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,

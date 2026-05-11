@@ -222,11 +222,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         .iter()
         .any(|candidate_state| candidate_state.admissible);
 
-    let mut ranked_restart_candidates = optimistic_candidate_states
-        .iter()
-        .filter(|candidate_state| candidate_state.admissible)
-        .copied()
-        .collect::<Vec<_>>();
+    let mut ranked_restart_candidates = optimistic_candidate_states.clone();
 
     ranked_restart_candidates.sort_by(|left, right| {
         compare_joint_candidate_ordering_states(
@@ -259,7 +255,8 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
     });
 
     let mut progress_state = LazyCoarseConsistencyProgressState::default();
-    let mut selected_restart_outcomes = Vec::new();
+    let mut admissible_restart_outcomes = Vec::new();
+    let mut fallback_restart_outcomes = Vec::new();
 
     for candidate_state in ranked_restart_candidates {
         let Some(restart_group) = find_restart_group(
@@ -287,13 +284,17 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
         });
 
-        let current_artifacts = resolve_restart_group_coarse_consistency(
-            &mut coarse_consistency_cache,
-            context,
-            restart_group,
-            baseline_artifacts,
-            progress_sender,
-        );
+        let current_artifacts = if candidate_state.admissible {
+            resolve_restart_group_coarse_consistency(
+                &mut coarse_consistency_cache,
+                context,
+                restart_group,
+                baseline_artifacts,
+                progress_sender,
+            )
+        } else {
+            None
+        };
 
         let current_coarse_consistency_fit = progress_state.record(
             candidate_state.restart_outcome.restart_id.as_str(),
@@ -321,27 +322,39 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
                 restart_group.representative.restart_id.as_str(),
             )
         {
-            selected_restart_outcomes.push(selected_restart_outcome);
+            admissible_restart_outcomes.push(selected_restart_outcome);
 
-            if selected_restart_outcomes.len() >= selected_restart_count {
+            if admissible_restart_outcomes.len() >= selected_restart_count {
                 return JointRefinementLazyCoarseConsistencySelection {
-                    selected_restart_outcomes,
+                    selected_restart_outcomes: admissible_restart_outcomes,
                     coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
                         .artifacts_by_restart_id,
                 };
             }
+        } else if let Some(fallback_restart_outcome) = find_restart_outcome(
+            restart_outcomes,
+            restart_group.representative.restart_id.as_str(),
+        ) {
+            fallback_restart_outcomes.push(fallback_restart_outcome);
         }
     }
 
-    for selected_restart_outcome in &selected_restart_outcomes {
-        ensure_selected_restart_artifacts(
-            &mut coarse_consistency_cache,
-            context,
-            restart_groups.as_slice(),
-            Some(selected_restart_outcome),
-            baseline_artifacts,
-            progress_sender,
-        );
+    let mut selected_restart_outcomes = admissible_restart_outcomes;
+    for fallback_restart_outcome in fallback_restart_outcomes {
+        if selected_restart_outcomes.len() >= selected_restart_count {
+            break;
+        }
+
+        if selected_restart_outcomes
+            .iter()
+            .any(|selected_restart_outcome| {
+                selected_restart_outcome.restart_id == fallback_restart_outcome.restart_id
+            })
+        {
+            continue;
+        }
+
+        selected_restart_outcomes.push(fallback_restart_outcome);
     }
 
     JointRefinementLazyCoarseConsistencySelection {
@@ -452,50 +465,6 @@ fn resolve_restart_group_coarse_consistency(
     );
 
     Some(resolved_artifacts)
-}
-
-fn ensure_selected_restart_artifacts(
-    coarse_consistency_cache: &mut LazyCoarseConsistencyCache,
-    context: &JointRefinementContext,
-    restart_groups: &[JointRefinementRestartOutcomeGroup<'_>],
-    selected_restart_outcome: Option<&JointRefinementRestartOutcome>,
-    baseline_artifacts: &JointRefinementCoarseConsistencyArtifacts,
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-) {
-    let Some(selected_restart_outcome) = selected_restart_outcome else {
-        return;
-    };
-
-    let Some(selected_restart_group) =
-        find_restart_group(restart_groups, selected_restart_outcome.restart_id.as_str())
-    else {
-        return;
-    };
-
-    if coarse_consistency_cache
-        .artifacts_by_restart_id
-        .contains_key(selected_restart_outcome.restart_id.as_str())
-    {
-        return;
-    }
-
-    if let Some(selected_artifacts) = build_joint_candidate_coarse_consistency_artifacts(
-        context,
-        &selected_restart_outcome.final_evaluation.fitted_parameters,
-        Some(selected_restart_group.parameter_bits.as_slice()),
-        Some(baseline_artifacts.summary.raw_fit),
-        Some(JointRefinementCoarseConsistencyProgress {
-            sender: progress_sender,
-            phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
-            current_item_label: Some(selected_restart_outcome.restart_id.as_str()),
-        }),
-    ) {
-        assign_coarse_consistency_artifacts_to_restart_group(
-            &mut coarse_consistency_cache.artifacts_by_restart_id,
-            selected_restart_group,
-            &selected_artifacts,
-        );
-    }
 }
 
 pub(crate) fn coarse_consistency_summary_is_admissible(

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
@@ -28,7 +28,7 @@ use crate::current_state::{
 };
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageOptionPricingInput,
-    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
+    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate, progress_percent,
 };
 use crate::stages::joint_refinement::option_surface_tiering::{
     JointRefinementCanonicalOptionQuote, JointRefinementOptionSurfaceTier,
@@ -82,7 +82,6 @@ struct OptionPricingHorizon {
     hourly_coverage_interval_count: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
 pub(crate) struct OptionPricingProgressInput<'a> {
     pub(crate) progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
     pub(crate) progress_phase: Option<JointRefinementStageProgressPhase>,
@@ -95,6 +94,8 @@ pub(crate) struct OptionPricingProgressInput<'a> {
     pub(crate) current_evaluation_count: Option<usize>,
     pub(crate) total_evaluation_budget: Option<usize>,
     pub(crate) evaluation_progress_percent: Option<usize>,
+    pub(crate) current_weighted_objective: Option<f64>,
+    pub(crate) progress_snapshot_source: Option<&'a dyn OptionPricingProgressSnapshotSource>,
 }
 
 impl<'a> OptionPricingProgressInput<'a> {
@@ -111,8 +112,29 @@ impl<'a> OptionPricingProgressInput<'a> {
             current_evaluation_count: None,
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
+            current_weighted_objective: None,
+            progress_snapshot_source: None,
         }
     }
+}
+
+pub(crate) struct OptionPricingProgressSnapshot {
+    pub(crate) completed_units: usize,
+    pub(crate) aggregate_progress_percent: Option<usize>,
+    pub(crate) active_restart_count: Option<usize>,
+    pub(crate) current_evaluation_count: Option<usize>,
+    pub(crate) total_evaluation_budget: Option<usize>,
+    pub(crate) evaluation_progress_percent: Option<usize>,
+    pub(crate) current_weighted_objective: Option<f64>,
+    pub(crate) best_restart_id: Option<String>,
+    pub(crate) best_weighted_objective: Option<f64>,
+}
+
+pub(crate) trait OptionPricingProgressSnapshotSource {
+    fn option_pricing_progress_snapshot(
+        &self,
+        pricing_event_progress_percent: Option<usize>,
+    ) -> OptionPricingProgressSnapshot;
 }
 
 struct OptionGridBatchPricingRunInput<'a, 'theta> {
@@ -823,18 +845,26 @@ fn run_option_grid_batch_pricing(
         progress.total_units,
     ) {
         let mut pricing_progress_observer = |event: PricingProgressEvent| {
+            let snapshot = option_pricing_progress_snapshot(&progress, &event, completed_units);
+
             let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-                current_item_label: Some(format_option_pricing_progress_item(&event)),
+                aggregate_progress_percent: snapshot.aggregate_progress_percent,
+                current_item_label: Some(format_option_pricing_work_item(&progress, &event)),
                 current_restart_id: progress.current_restart_id.map(str::to_string),
-                active_restart_count: progress.active_restart_count,
-                current_evaluation_count: progress.current_evaluation_count,
-                total_evaluation_budget: progress.total_evaluation_budget,
-                evaluation_progress_percent: progress.evaluation_progress_percent,
-                best_restart_id: progress.best_restart_id.map(str::to_string),
-                best_weighted_objective: progress.best_weighted_objective,
+                active_restart_count: snapshot.active_restart_count,
+                current_evaluation_count: snapshot.current_evaluation_count,
+                total_evaluation_budget: snapshot.total_evaluation_budget,
+                evaluation_progress_percent: snapshot.evaluation_progress_percent,
+                current_weighted_objective: snapshot.current_weighted_objective,
+                current_pricing_interval_index: event.current_interval_index,
+                total_pricing_interval_count: event.total_intervals,
+                completed_pricing_row_count: pricing_progress_completed_row_count(&event),
+                total_pricing_row_count: pricing_progress_total_row_count(&event),
+                best_restart_id: snapshot.best_restart_id,
+                best_weighted_objective: snapshot.best_weighted_objective,
                 ..JointRefinementStageProgressUpdate::new(
                     progress_phase,
-                    completed_units,
+                    snapshot.completed_units,
                     total_units,
                 )
             });
@@ -858,6 +888,54 @@ fn run_option_grid_batch_pricing(
     );
 
     pricing_result.map_err(|source| format!("joint option pricing evaluation failed: {source}"))
+}
+
+fn option_pricing_progress_snapshot(
+    progress: &OptionPricingProgressInput<'_>,
+    event: &PricingProgressEvent,
+    completed_units: usize,
+) -> OptionPricingProgressSnapshot {
+    match progress.progress_snapshot_source {
+        Some(source) => {
+            source.option_pricing_progress_snapshot(pricing_event_progress_percent(event))
+        }
+        None => OptionPricingProgressSnapshot {
+            completed_units,
+            aggregate_progress_percent: None,
+            active_restart_count: progress.active_restart_count,
+            current_evaluation_count: progress.current_evaluation_count,
+            total_evaluation_budget: progress.total_evaluation_budget,
+            evaluation_progress_percent: progress.evaluation_progress_percent,
+            current_weighted_objective: progress.current_weighted_objective,
+            best_restart_id: progress.best_restart_id.map(str::to_string),
+            best_weighted_objective: progress.best_weighted_objective,
+        },
+    }
+}
+
+fn pricing_event_progress_percent(event: &PricingProgressEvent) -> Option<usize> {
+    match event.phase {
+        PricingProgressPhase::TransitionRowProgress => {
+            let interval_index = event.current_interval_index?;
+            let total_intervals = event.total_intervals?;
+            if total_intervals == 0 || event.total_units == 0 {
+                return None;
+            }
+
+            let completed_row_count = event.completed_units.min(event.total_units);
+            let completed_progress_units = interval_index
+                .min(total_intervals)
+                .saturating_mul(event.total_units)
+                .saturating_add(completed_row_count);
+            let total_progress_units = total_intervals.saturating_mul(event.total_units);
+
+            Some(progress_percent(
+                completed_progress_units,
+                total_progress_units,
+            ))
+        }
+        _ => Some(progress_percent(event.completed_units, event.total_units)),
+    }
 }
 
 pub(crate) fn resolve_option_surface_tier_pricing_artifact(
@@ -1041,35 +1119,11 @@ fn build_option_surface_tier_pricing_inputs(
         runtime_interval_schedule: runtime_interval_schedule.clone(),
         interval_factors: interval_factors.to_vec(),
         grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest { spot, grids },
-        spectral_collocation_node_count_override: reduced_tier_collocation_node_count_override(
-            option_surface_tiers,
-            tier_kind,
-        ),
+        spectral_collocation_node_count_override: None,
         observed_nodes,
         maturity_intervals,
         maturity_terminal_interval_indices,
     })
-}
-
-fn reduced_tier_collocation_node_count_override(
-    option_surface_tiers: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierSet,
-    tier_kind: JointRefinementOptionSurfaceTierKind,
-) -> Option<usize> {
-    reduced_tier_collocation_node_count(match tier_kind {
-        JointRefinementOptionSurfaceTierKind::Search => option_surface_tiers.search.maturity_count,
-        JointRefinementOptionSurfaceTierKind::Selection => {
-            option_surface_tiers.selection.maturity_count
-        }
-        JointRefinementOptionSurfaceTierKind::Audit => 0,
-    })
-}
-
-fn reduced_tier_collocation_node_count(retained_maturity_count: usize) -> Option<usize> {
-    if retained_maturity_count == 0 {
-        return None;
-    }
-
-    Some(retained_maturity_count.saturating_mul(2).saturating_add(1))
 }
 
 fn option_surface_tier_by_kind(
@@ -1266,7 +1320,9 @@ fn build_option_surface_tier_pricing_artifact(
         cache_key,
         tier_kind,
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
-        spectral_collocation_node_count: tier_inputs.spectral_collocation_node_count_override,
+        spectral_collocation_node_count: resolve_pricing_result_collocation_node_count(
+            pricing_result,
+        ),
         score,
         maturity_scores,
         node_diagnostics,
@@ -1276,6 +1332,25 @@ fn build_option_surface_tier_pricing_artifact(
         maturity_intervals: tier_inputs.maturity_intervals.clone(),
         maturity_terminal_interval_indices: tier_inputs.maturity_terminal_interval_indices.clone(),
     })
+}
+
+fn resolve_pricing_result_collocation_node_count(
+    pricing_result: &VanillaOptionGridBatchPricingRunResult,
+) -> Option<usize> {
+    let mut node_counts = BTreeSet::new();
+
+    for grid in &pricing_result.grids {
+        for maturity_summary in &grid.maturity_summaries {
+            let summary = maturity_summary.as_ref()?;
+            node_counts.insert(summary.collocation_node_count);
+        }
+    }
+
+    if node_counts.len() == 1 {
+        node_counts.first().copied()
+    } else {
+        None
+    }
 }
 
 pub(crate) fn build_option_calibration_diagnostics(
@@ -1330,9 +1405,7 @@ pub(crate) fn build_option_calibration_diagnostics(
         .map(|reduced_model_artifact| {
             reduced_model_diagnostics_from_artifact(
                 reduced_model_artifact,
-                option_pricing_block_evaluation_budget(
-                    context.active_parameter_layout.nig_block.len(),
-                ),
+                option_pricing_block_evaluation_budget(),
             )
         })
         .or_else(|| {
@@ -1341,9 +1414,7 @@ pub(crate) fn build_option_calibration_diagnostics(
                 .map(|reduced_model_artifact| {
                     reduced_model_diagnostics_from_artifact(
                         reduced_model_artifact,
-                        option_pricing_block_evaluation_budget(
-                            context.active_parameter_layout.nig_block.len(),
-                        ),
+                        option_pricing_block_evaluation_budget(),
                     )
                 })
         });
@@ -1503,6 +1574,45 @@ fn option_surface_tier_kind_label(tier_kind: JointRefinementOptionSurfaceTierKin
     }
 }
 
+fn format_option_pricing_work_item(
+    progress: &OptionPricingProgressInput<'_>,
+    event: &PricingProgressEvent,
+) -> String {
+    progress
+        .current_restart_id
+        .map(str::to_string)
+        .or_else(|| {
+            progress
+                .progress_phase
+                .map(option_pricing_phase_label)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| format_option_pricing_progress_item(event))
+}
+
+fn option_pricing_phase_label(phase: JointRefinementStageProgressPhase) -> &'static str {
+    match phase {
+        JointRefinementStageProgressPhase::OptionSearchTierRefinement => "option search",
+        JointRefinementStageProgressPhase::OptionSelectionTierEvaluation => "option selection",
+        JointRefinementStageProgressPhase::OptionAuditTierEvaluation => "option audit",
+        _ => "option pricing",
+    }
+}
+
+fn pricing_progress_completed_row_count(event: &PricingProgressEvent) -> Option<usize> {
+    match event.phase {
+        PricingProgressPhase::TransitionRowProgress => Some(event.completed_units),
+        _ => None,
+    }
+}
+
+fn pricing_progress_total_row_count(event: &PricingProgressEvent) -> Option<usize> {
+    match event.phase {
+        PricingProgressPhase::TransitionRowProgress => Some(event.total_units),
+        _ => None,
+    }
+}
+
 fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
     match event.phase {
         PricingProgressPhase::GroupProgress => {
@@ -1521,75 +1631,14 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
         PricingProgressPhase::IntervalProgress => {
             format_progress_counts("interval", event.total_units, event.current_interval_index)
         }
-        PricingProgressPhase::TransitionRowProgress => {
-            let mut detail = match event.total_intervals {
-                Some(total_intervals) => format!(
-                    "interval {}/{}",
-                    display_position(event.current_interval_index, event.completed_units),
-                    total_intervals,
-                ),
-                None => "interval".to_string(),
-            };
-
-            if let (
-                Some(seed_exact_transition_row_count),
-                Some(shared_theta_transition_row_count),
-                Some(certified_transition_row_count),
-                Some(fallback_exact_transition_row_count),
-            ) = (
-                event.seed_exact_transition_row_count,
-                event.shared_theta_transition_row_count,
-                event.certified_transition_row_count,
-                event.fallback_exact_transition_row_count,
-            ) {
-                detail.push_str(&format!(
-                    " seed={} shared={} cert={} fallback={}",
-                    seed_exact_transition_row_count,
-                    shared_theta_transition_row_count,
-                    certified_transition_row_count,
-                    fallback_exact_transition_row_count
-                ));
-            }
-
-            if let (
-                Some(theta_search_elapsed_millis),
-                Some(theta_certification_elapsed_millis),
-                Some(row_batch_elapsed_millis),
-            ) = (
-                event.theta_search_elapsed_millis,
-                event.theta_certification_elapsed_millis,
-                event.row_batch_elapsed_millis,
-            ) {
-                detail.push_str(&format!(
-                    " theta={}ms certify={}ms batch={}ms",
-                    theta_search_elapsed_millis,
-                    theta_certification_elapsed_millis,
-                    row_batch_elapsed_millis
-                ));
-            }
-
-            if let (
-                Some(average_buy_shift_configuration_gradient_norm),
-                Some(average_sell_shift_configuration_gradient_norm),
-            ) = (
-                event.average_buy_shift_configuration_gradient_norm,
-                event.average_sell_shift_configuration_gradient_norm,
-            ) {
-                detail.push_str(&format!(
-                    " buy_g={average_buy_shift_configuration_gradient_norm:.3e} sell_g={average_sell_shift_configuration_gradient_norm:.3e}"
-                ));
-            }
-
-            if let Some(average_core_log_moment_shift_configuration_gradient_norm) =
-                event.average_core_log_moment_shift_configuration_gradient_norm
-            {
-                detail.push_str(&format!(
-                    " core_g={average_core_log_moment_shift_configuration_gradient_norm:.3e}"
-                ));
-            }
-
-            detail
-        }
+        PricingProgressPhase::TransitionRowProgress => match event.total_intervals {
+            Some(total_intervals) => format!(
+                "interval {}/{}",
+                display_position(event.current_interval_index, event.completed_units),
+                total_intervals,
+            ),
+            None => "interval".to_string(),
+        },
         PricingProgressPhase::StrikePricingProgress => {
             let strike_index = display_position(event.current_strike_index, event.completed_units);
             let total_strikes = event.total_strikes.unwrap_or(event.total_units);
@@ -1788,9 +1837,10 @@ mod tests {
         PricingIntervalSchedulePolicy, PricingProgressEvent, PricingProgressPhase,
         VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
         VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
-        VanillaOptionGridRequest, VanillaOptionPayoffType, VanillaOptionPricingModelParameters,
-        VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingStatus,
-        materialize_schedule_interval_factors, run_vanilla_option_grid_batch_pricing,
+        VanillaOptionGridRequest, VanillaOptionMaturitySummary, VanillaOptionPayoffType,
+        VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+        VanillaOptionPricingStatus, materialize_schedule_interval_factors,
+        run_vanilla_option_grid_batch_pricing,
     };
     use janiform_foundations::time::NANOS_PER_HOUR;
     use janiform_market_time::calendar::ExchangeCalendarRegistry;
@@ -1803,9 +1853,8 @@ mod tests {
         build_option_boundary_input, build_option_grid_batch_pricing_request,
         build_option_surface_tier_pricing_artifact, build_surprise_multipliers_for_interval_grid,
         derive_pricing_interval_schedule, estimate_option_pricing_current_state,
-        format_option_pricing_progress_item, pricing_nig_configuration,
-        reduced_tier_collocation_node_count, resolve_option_runtime_interval_schedule,
-        validate_option_spot,
+        format_option_pricing_progress_item, pricing_event_progress_percent,
+        pricing_nig_configuration, resolve_option_runtime_interval_schedule, validate_option_spot,
     };
     use crate::adapters::load_hourly_factor_contract_for_calibration;
     use crate::stages::hawkes::HawkesStageFittedPayload;
@@ -1925,16 +1974,6 @@ mod tests {
             total_intervals: Some(1890),
             current_strike_index: None,
             total_strikes: None,
-            seed_exact_transition_row_count: None,
-            shared_theta_transition_row_count: None,
-            certified_transition_row_count: None,
-            fallback_exact_transition_row_count: None,
-            theta_search_elapsed_millis: None,
-            theta_certification_elapsed_millis: None,
-            row_batch_elapsed_millis: None,
-            average_buy_shift_configuration_gradient_norm: None,
-            average_sell_shift_configuration_gradient_norm: None,
-            average_core_log_moment_shift_configuration_gradient_norm: None,
         };
 
         assert_eq!(
@@ -1944,10 +1983,21 @@ mod tests {
     }
 
     #[test]
-    fn reduced_tier_collocation_node_count_tracks_retained_maturity_resolution() {
-        assert_eq!(reduced_tier_collocation_node_count(0), None);
-        assert_eq!(reduced_tier_collocation_node_count(1), Some(3));
-        assert_eq!(reduced_tier_collocation_node_count(5), Some(11));
+    fn transition_row_progress_percent_includes_interval_and_row_position() {
+        let event = PricingProgressEvent {
+            phase: PricingProgressPhase::TransitionRowProgress,
+            completed_units: 32,
+            total_units: 64,
+            current_group_index: None,
+            current_maturity_index: None,
+            total_maturities: None,
+            current_interval_index: Some(4),
+            total_intervals: Some(10),
+            current_strike_index: None,
+            total_strikes: None,
+        };
+
+        assert_eq!(pricing_event_progress_percent(&event), Some(45));
     }
 
     fn sample_option_runtime_interval_schedule(
@@ -2242,6 +2292,7 @@ mod tests {
         );
         assert_eq!(artifact.maturity_scores[1].maturity_weight, 1);
         assert_eq!(artifact.aggregate_diagnostics.len(), 5);
+        assert_eq!(artifact.spectral_collocation_node_count, Some(7));
 
         let total_maturity_weight = artifact
             .maturity_scores
@@ -2371,7 +2422,17 @@ mod tests {
             discount_factor_grid: vec![vec![None; strike_count]],
             boundary_state_norm_grid: vec![vec![None; strike_count]],
             node_price_sensitivity_grid: None,
-            maturity_summaries: vec![None],
+            maturity_summaries: vec![Some(VanillaOptionMaturitySummary {
+                maturity_interval,
+                terminal_anchor_value: 0.0,
+                deviation_domain_lower_bound: -1.0,
+                deviation_domain_upper_bound: 1.0,
+                collocation_node_count: 7,
+                collocation_nodes: Vec::new(),
+                interval_summaries: Vec::new(),
+                representative_transform: None,
+                integration_quality: None,
+            })],
         }
     }
 

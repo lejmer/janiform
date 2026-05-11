@@ -41,9 +41,9 @@ pub(crate) use option_refinement::{
 #[cfg(test)]
 pub(crate) use pipeline::ensure_valid_selected_restart_outcome;
 pub(crate) use pricing_context::{
-    OptionPricingProgressInput, OptionSurfaceTierPricingArtifactResolutionInput,
-    build_option_calibration_diagnostics, build_option_pricing_context,
-    resolve_option_surface_tier_pricing_artifact,
+    OptionPricingProgressInput, OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
+    OptionSurfaceTierPricingArtifactResolutionInput, build_option_calibration_diagnostics,
+    build_option_pricing_context, resolve_option_surface_tier_pricing_artifact,
 };
 pub(crate) use report::{
     baseline_buckets_from_evaluation, build_joint_finalist_seed_summaries,

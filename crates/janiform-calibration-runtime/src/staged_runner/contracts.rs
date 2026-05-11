@@ -436,6 +436,14 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evaluation_progress_percent: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_pricing_interval_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_pricing_interval_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_pricing_row_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_pricing_row_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub valid_completed_units: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cumulative_local_evaluation_count: Option<usize>,

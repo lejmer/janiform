@@ -624,6 +624,12 @@ def _successful_full_model_parameters_payload() -> dict[str, Any]:
     joint_refinement_payload = deepcopy(stage_reports[4]["fitted_stage_payload"])
     joint_refinement_payload.pop("baseline_hawkes_fitted_parameters", None)
     joint_refinement_payload.pop("baseline_return_components_fitted_parameters", None)
+    joint_refinement_payload.pop("objective_breakdown", None)
+    joint_refinement_payload.pop("optimizer_diagnostics", None)
+    joint_refinement_payload.pop("candidate_frontier", None)
+    joint_refinement_payload.pop("simulation_summaries", None)
+    joint_refinement_payload.pop("coarse_tick_consistency", None)
+    joint_refinement_payload.pop("option_calibration_diagnostics", None)
 
     return {
         "seasonality": {

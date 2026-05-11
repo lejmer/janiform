@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 
+use super::constants::MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT;
 use super::contracts::{
     AnchoredVanillaOptionPricingBoundaryInput, SpectralPricingIntervalDiagnostics,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingFailureStage,
@@ -227,7 +228,7 @@ impl VanillaOptionGridBatchPricingExecutionInput {
         }
 
         if let Some(collocation_node_count) = self.spectral_collocation_node_count_override
-            && collocation_node_count == 0
+            && collocation_node_count < MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT
         {
             return Err(
                 VanillaOptionGridBatchPricingExecutionInputError::InvalidCollocationNodeCount {
@@ -332,7 +333,7 @@ impl Display for VanillaOptionGridBatchPricingExecutionInputError {
             ),
             Self::InvalidCollocationNodeCount { value } => write!(
                 formatter,
-                "grid batch pricing spectral_collocation_node_count_override must be strictly positive when provided, found {value}"
+                "grid batch pricing spectral_collocation_node_count_override must be at least {MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT}, found {value}"
             ),
         }
     }

@@ -21,8 +21,8 @@ use janiform_model_kernels::nig::{
 };
 
 use super::constants::{
-    SPECTRAL_PRICING_COLLOCATION_POLICY, SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
-    SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY,
+    MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT, SPECTRAL_PRICING_COLLOCATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY,
     SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
     VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
@@ -849,7 +849,7 @@ impl SpectralPricingDiagnostics {
             });
         }
 
-        if self.collocation_node_count == 0 {
+        if self.collocation_node_count < MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT {
             return Err(
                 SpectralPricingDiagnosticsError::InvalidCollocationNodeCount {
                     value: self.collocation_node_count,
@@ -943,7 +943,7 @@ impl Display for SpectralPricingDiagnosticsError {
             ),
             Self::InvalidCollocationNodeCount { value } => write!(
                 formatter,
-                "collocation_node_count must be at least 1, found {value}"
+                "collocation_node_count must be at least {MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT}, found {value}"
             ),
             Self::EmptyIntervalDiagnostics => write!(
                 formatter,
@@ -1719,7 +1719,7 @@ impl VanillaOptionPricingCalibrationHooks {
             .price
             .ok_or(VanillaOptionPricingCalibrationHooksError::MissingResponsePrice)?;
 
-        let log_moneyness = (strike / market_inputs.spot).ln();
+        let log_moneyness = strike.ln() - market_inputs.spot.ln();
         let forward_moneyness = diagnostics.forward_price / strike;
 
         let integration_quality_diagnostics =

@@ -26,7 +26,6 @@ pub(crate) use continuous_fit::{
     build_continuous_return_optimizer_context, build_nig_moment_seed_configurations,
     continuous_return_calibration_sample_observed_returns, distribution_profile_fit_score,
     evaluate_configuration_likelihood_objective_with_context_and_counts,
-    exact_configuration_and_gradient_from_shape_search_point_for_calibration_sample,
     nig_configuration_from_search_point, nig_search_bounds_for_calibration_sample,
     nig_search_point_from_configuration,
     rescale_continuous_return_calibration_sample_business_time_scales,

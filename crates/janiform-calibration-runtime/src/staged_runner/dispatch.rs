@@ -198,6 +198,10 @@ pub(super) fn run_stage_for_staged_execution(
                                 total_evaluation_budget: progress_update.total_evaluation_budget,
                                 evaluation_progress_percent: progress_update
                                     .evaluation_progress_percent,
+                                current_pricing_interval_index: None,
+                                total_pricing_interval_count: None,
+                                completed_pricing_row_count: None,
+                                total_pricing_row_count: None,
                                 valid_completed_units: None,
                                 cumulative_local_evaluation_count: None,
                                 current_weighted_objective: progress_update
@@ -462,6 +466,13 @@ pub(super) fn run_stage_for_staged_execution(
                                 total_evaluation_budget: progress_update.total_evaluation_budget,
                                 evaluation_progress_percent: progress_update
                                     .evaluation_progress_percent,
+                                current_pricing_interval_index: progress_update
+                                    .current_pricing_interval_index,
+                                total_pricing_interval_count: progress_update
+                                    .total_pricing_interval_count,
+                                completed_pricing_row_count: progress_update
+                                    .completed_pricing_row_count,
+                                total_pricing_row_count: progress_update.total_pricing_row_count,
                                 valid_completed_units: progress_update.valid_completed_units,
                                 cumulative_local_evaluation_count: progress_update
                                     .cumulative_local_evaluation_count,

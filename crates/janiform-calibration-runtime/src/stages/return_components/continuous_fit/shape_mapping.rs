@@ -6,11 +6,7 @@ use super::super::execution::{
     round_negative_candidate_value, round_positive_candidate_value, round_signed_candidate_value,
 };
 use super::likelihood::{maximum_open_beta_ratio, minimum_open_beta_ratio};
-use super::sample::build_continuous_return_optimizer_context;
-use super::types::{
-    ContinuousReturnOptimizerContext, NigShapeSearchPoint,
-    ReturnComponentsStageContinuousReturnCalibrationSample,
-};
+use super::types::{ContinuousReturnOptimizerContext, NigShapeSearchPoint};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct NigSharedPlusShiftConfigurationSearchPointGradient {
@@ -210,15 +206,6 @@ fn delta_center_shape_search_point_gradient(
         -delta_center * weighted_inverse_gamma_ratio_cubed_sell_coordinate_derivative
             / weighted_inverse_gamma_ratio_cubed,
     ])
-}
-
-pub(crate) fn exact_configuration_and_gradient_from_shape_search_point_for_calibration_sample(
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    shape_search_point: NigShapeSearchPoint,
-) -> Option<NigSharedPlusShiftConfigurationSearchPointMapping> {
-    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
-
-    exact_configuration_and_gradient_from_shape_search_point(&optimizer_context, shape_search_point)
 }
 
 pub(super) fn ratio_to_coordinate(ratio: f64) -> f64 {

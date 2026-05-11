@@ -557,7 +557,7 @@ fn prepared_transition_row_kernel_matches_direct_row_expectations() {
 }
 
 #[test]
-fn core_pure_imaginary_log_moment_plus_local_adjustment_matches_row_diagnostics() {
+fn core_pure_imaginary_log_moment_matches_row_diagnostics() {
     let pricing_request = build_non_nested_transition_request();
 
     let transition_context = transition_context_for_request(&pricing_request);
@@ -592,7 +592,14 @@ fn core_pure_imaginary_log_moment_plus_local_adjustment_matches_row_diagnostics(
     assert_eq!(
         diagnostics.observed_log_moment_exponent,
         core_evaluation.observed_log_moment_exponent
-            + transition_row.local_martingale_deviation_adjustment
+    );
+    assert_eq!(
+        diagnostics.target_log_moment_exponent,
+        transition_row.target_log_moment_exponent
+    );
+    assert_eq!(
+        diagnostics.residual,
+        core_evaluation.observed_log_moment_exponent - transition_row.target_log_moment_exponent
     );
 }
 

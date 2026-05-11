@@ -652,12 +652,11 @@ impl<'a> IntervalTiltCurve<'a> {
     ) -> Result<LocalTiltResidualEvaluation, super::characteristic::AnchoredLocalTiltSolveError>
     {
         let core_evaluation = self.evaluate_core_log_moment(theta)?;
-        let observed_log_moment_exponent = core_evaluation.observed_log_moment_exponent
-            + transition_row.local_martingale_deviation_adjustment;
 
         Ok(LocalTiltResidualEvaluation {
-            observed_log_moment_exponent,
-            residual: observed_log_moment_exponent - transition_row.target_log_moment_exponent,
+            observed_log_moment_exponent: core_evaluation.observed_log_moment_exponent,
+            residual: core_evaluation.observed_log_moment_exponent
+                - transition_row.target_log_moment_exponent,
         })
     }
 }
@@ -833,12 +832,6 @@ pub(crate) fn build_spectral_compatibility_integration_diagnostics(
             numeric_quality_is_poor: false,
         },
     }
-}
-
-fn core_target_log_moment_exponent_for_transition_row(
-    transition_row: &LocalTransitionRowState,
-) -> f64 {
-    transition_row.target_log_moment_exponent - transition_row.local_martingale_deviation_adjustment
 }
 
 pub(crate) fn evaluate_core_pure_imaginary_log_moment_exponent_for_tilt(
@@ -1066,8 +1059,7 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
         }
     }
 
-    let core_target_log_moment_exponent =
-        core_target_log_moment_exponent_for_transition_row(transition_row);
+    let core_target_log_moment_exponent = transition_row.target_log_moment_exponent;
     let (theta, core_evaluation) =
         build_local_tilt_bracket_with_search_domain_and_residual_evaluator(
             interval_tilt_curve.search_domain,
@@ -1095,17 +1087,11 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
 
     interval_tilt_curve.last_solved_theta = Some(theta);
 
-    let evaluation = LocalTiltResidualEvaluation {
-        observed_log_moment_exponent: core_evaluation.observed_log_moment_exponent
-            + transition_row.local_martingale_deviation_adjustment,
-        residual: core_evaluation.residual,
-    };
-
     let diagnostics = build_local_tilt_diagnostics_for_row(
         interval_tilt_curve.transition_context,
         transition_row,
         theta,
-        evaluation,
+        core_evaluation,
     );
 
     Ok((theta, Some(diagnostics)))

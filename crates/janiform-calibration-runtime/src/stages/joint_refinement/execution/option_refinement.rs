@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -8,26 +9,18 @@ use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::stages::hawkes::stationary_open_event_rate_per_hour;
-use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageProgressPhase,
     JointRefinementStageProgressUpdate,
 };
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
-use crate::stages::optimization::{
-    BoundedTrustRegionOptimizerSettings, optimize_bounded_trust_region_quadratic,
-};
-use crate::stages::return_components::{
-    NigShapeSearchPoint,
-    exact_configuration_and_gradient_from_shape_search_point_for_calibration_sample,
-};
 
 use super::super::setup::parameter_vector_to_fitted_parameters;
 use super::selection::admissibility_threshold_from_sample_count;
 use super::{
     JointRefinementContext, JointRefinementOptionTierPricingArtifact,
     JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
+    OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
     OptionSurfaceTierPricingArtifactResolutionInput, joint_refinement_parallel_worker_count,
     ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact,
     with_joint_refinement_thread_pool,
@@ -43,6 +36,7 @@ struct OptionRefinementProgressContext<'a> {
     current_restart_id: &'a str,
     shared_progress_state: Arc<OptionRefinementSharedProgressState>,
     current_evaluation_count: Cell<usize>,
+    current_weighted_objective: Cell<Option<f64>>,
     total_evaluation_budget: usize,
 }
 
@@ -56,27 +50,106 @@ impl OptionRefinementProgressContext<'_> {
         self.current_evaluation_count.get()
     }
 
+    fn record_weighted_objective(&self, weighted_objective: f64) {
+        self.current_weighted_objective
+            .set(Some(weighted_objective));
+    }
+
+    fn current_weighted_objective(&self) -> Option<f64> {
+        self.current_weighted_objective.get()
+    }
+
     const fn total_evaluation_budget(&self) -> usize {
         self.total_evaluation_budget
     }
 
-    fn running_evaluation_progress_percent(&self) -> usize {
-        self.current_evaluation_count()
+    fn running_pricing_progress_percent(
+        &self,
+        pricing_event_progress_percent: Option<usize>,
+    ) -> usize {
+        let completed_evaluation_count = self.current_evaluation_count().saturating_sub(1);
+        let current_evaluation_progress_percent = pricing_event_progress_percent.unwrap_or(0);
+        completed_evaluation_count
             .saturating_mul(100)
+            .saturating_add(current_evaluation_progress_percent.min(100))
             .checked_div(self.total_evaluation_budget.max(1))
             .unwrap_or(0)
             .min(99)
     }
 
+    fn record_progress_percent(&self, progress_percent: usize) {
+        self.shared_progress_state
+            .record_candidate_progress(self.current_restart_id, progress_percent);
+    }
+
     fn shared_progress_snapshot(&self) -> OptionRefinementSharedProgressSnapshot {
-        self.shared_progress_state.snapshot()
+        self.shared_progress_state.snapshot(self.total_units)
+    }
+}
+
+impl OptionPricingProgressSnapshotSource for OptionRefinementProgressContext<'_> {
+    fn option_pricing_progress_snapshot(
+        &self,
+        pricing_event_progress_percent: Option<usize>,
+    ) -> OptionPricingProgressSnapshot {
+        self.record_progress_percent(
+            self.running_pricing_progress_percent(pricing_event_progress_percent),
+        );
+
+        let shared_snapshot = self.shared_progress_snapshot();
+
+        OptionPricingProgressSnapshot {
+            completed_units: shared_snapshot.completed_units,
+            aggregate_progress_percent: Some(shared_snapshot.aggregate_progress_percent),
+            active_restart_count: None,
+            current_evaluation_count: Some(self.current_evaluation_count()),
+            total_evaluation_budget: Some(self.total_evaluation_budget()),
+            evaluation_progress_percent: Some(
+                self.running_pricing_progress_percent(pricing_event_progress_percent),
+            ),
+            current_weighted_objective: self.current_weighted_objective(),
+            best_restart_id: shared_snapshot.best_restart_id,
+            best_weighted_objective: shared_snapshot.best_weighted_objective,
+        }
+    }
+}
+
+struct SelectionTierPricingProgressSnapshotSource<'a> {
+    shared_progress_state: &'a OptionRefinementSharedProgressState,
+    restart_id: &'a str,
+    total_units: usize,
+}
+
+impl OptionPricingProgressSnapshotSource for SelectionTierPricingProgressSnapshotSource<'_> {
+    fn option_pricing_progress_snapshot(
+        &self,
+        pricing_event_progress_percent: Option<usize>,
+    ) -> OptionPricingProgressSnapshot {
+        if let Some(pricing_event_progress_percent) = pricing_event_progress_percent {
+            self.shared_progress_state
+                .record_candidate_progress(self.restart_id, pricing_event_progress_percent);
+        }
+
+        let shared_snapshot = self.shared_progress_state.snapshot(self.total_units);
+
+        OptionPricingProgressSnapshot {
+            completed_units: shared_snapshot.completed_units,
+            aggregate_progress_percent: Some(shared_snapshot.aggregate_progress_percent),
+            active_restart_count: None,
+            current_evaluation_count: None,
+            total_evaluation_budget: None,
+            evaluation_progress_percent: None,
+            current_weighted_objective: None,
+            best_restart_id: shared_snapshot.best_restart_id,
+            best_weighted_objective: shared_snapshot.best_weighted_objective,
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 struct OptionRefinementSharedProgressSnapshot {
     completed_units: usize,
-    active_candidate_count: usize,
+    aggregate_progress_percent: usize,
     best_restart_id: Option<String>,
     best_weighted_objective: Option<f64>,
 }
@@ -84,12 +157,12 @@ struct OptionRefinementSharedProgressSnapshot {
 #[derive(Debug, Default)]
 struct OptionRefinementSharedProgressState {
     completed_units: AtomicUsize,
-    active_candidate_count: AtomicUsize,
+    candidate_progress_percent_by_restart_id: Mutex<BTreeMap<String, usize>>,
     best_completed_candidate: Mutex<Option<(String, f64)>>,
 }
 
 impl OptionRefinementSharedProgressState {
-    fn snapshot(&self) -> OptionRefinementSharedProgressSnapshot {
+    fn snapshot(&self, total_units: usize) -> OptionRefinementSharedProgressSnapshot {
         let best_candidate_guard = self
             .best_completed_candidate
             .lock()
@@ -102,23 +175,37 @@ impl OptionRefinementSharedProgressState {
             })
             .unwrap_or((None, None));
 
+        let aggregate_progress_percent = self.aggregate_progress_percent(total_units);
+
         OptionRefinementSharedProgressSnapshot {
             completed_units: self.completed_units.load(Ordering::Relaxed),
-            active_candidate_count: self.active_candidate_count.load(Ordering::Relaxed),
+            aggregate_progress_percent,
             best_restart_id,
             best_weighted_objective,
         }
     }
 
-    fn record_candidate_started(&self) -> OptionRefinementSharedProgressSnapshot {
-        self.active_candidate_count.fetch_add(1, Ordering::Relaxed);
-        self.snapshot()
+    fn record_candidate_started(
+        &self,
+        restart_id: &str,
+        total_units: usize,
+    ) -> OptionRefinementSharedProgressSnapshot {
+        let mut candidate_progress_guard = self
+            .candidate_progress_percent_by_restart_id
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        candidate_progress_guard.insert(restart_id.to_string(), 0);
+        drop(candidate_progress_guard);
+
+        self.snapshot(total_units)
     }
 
     fn record_candidate_completed(
         &self,
         restart_id: &str,
         weighted_objective: Option<f64>,
+        total_units: usize,
     ) -> OptionRefinementSharedProgressSnapshot {
         if let Some(weighted_objective) = weighted_objective {
             let mut best_candidate_guard = self
@@ -137,16 +224,24 @@ impl OptionRefinementSharedProgressState {
             drop(best_candidate_guard);
         }
 
-        self.completed_units.fetch_add(1, Ordering::Relaxed);
-        self.active_candidate_count.fetch_sub(1, Ordering::Relaxed);
+        let mut candidate_progress_guard = self
+            .candidate_progress_percent_by_restart_id
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-        self.snapshot()
+        candidate_progress_guard.remove(restart_id);
+        drop(candidate_progress_guard);
+
+        self.completed_units.fetch_add(1, Ordering::Relaxed);
+
+        self.snapshot(total_units)
     }
 
     fn record_resumed_candidate(
         &self,
         restart_id: &str,
         weighted_objective: f64,
+        total_units: usize,
     ) -> OptionRefinementSharedProgressSnapshot {
         let mut best_candidate_guard = self
             .best_completed_candidate
@@ -164,7 +259,38 @@ impl OptionRefinementSharedProgressState {
         drop(best_candidate_guard);
 
         self.completed_units.fetch_add(1, Ordering::Relaxed);
-        self.snapshot()
+        self.snapshot(total_units)
+    }
+
+    fn record_candidate_progress(&self, restart_id: &str, progress_percent: usize) {
+        let mut candidate_progress_guard = self
+            .candidate_progress_percent_by_restart_id
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let candidate_progress = candidate_progress_guard
+            .entry(restart_id.to_string())
+            .or_insert(0);
+        *candidate_progress = (*candidate_progress).max(progress_percent.min(100));
+    }
+
+    fn aggregate_progress_percent(&self, total_units: usize) -> usize {
+        let candidate_progress_guard = self
+            .candidate_progress_percent_by_restart_id
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let active_progress_percent_sum = candidate_progress_guard.values().sum::<usize>();
+        let completed_progress_percent_sum = self
+            .completed_units
+            .load(Ordering::Relaxed)
+            .saturating_mul(100);
+
+        completed_progress_percent_sum
+            .saturating_add(active_progress_percent_sum)
+            .checked_div(total_units.max(1))
+            .unwrap_or(0)
+            .min(100)
     }
 }
 
@@ -205,7 +331,7 @@ pub(crate) fn desired_joint_refinement_option_refinement_candidate_count(
 
 pub(crate) fn run_option_refinement(
     context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
+    _solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
     option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
@@ -232,7 +358,6 @@ pub(crate) fn run_option_refinement(
 
     let search_candidates = refine_search_tier_candidates(
         context,
-        solver_settings,
         dynamics_candidates,
         option_context_fingerprint,
         progress_sender,
@@ -320,14 +445,11 @@ fn option_refinement_selection_score_ceiling(
 }
 
 fn resolved_option_refinement_candidate_parallelism(
-    available_stage_thread_count: usize,
-    total_pricing_cpu_count: usize,
-    candidate_count: usize,
+    _available_stage_thread_count: usize,
+    _total_pricing_cpu_count: usize,
+    _candidate_count: usize,
 ) -> usize {
-    candidate_count
-        .min(available_stage_thread_count.max(1))
-        .min(total_pricing_cpu_count.max(1))
-        .max(1)
+    1
 }
 
 fn resolved_option_refinement_candidate_pricing_cpu_count(
@@ -388,7 +510,6 @@ fn context_with_option_pricing_cpu_count(
 
 fn refine_search_tier_candidates(
     context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
     option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
@@ -420,6 +541,7 @@ fn refine_search_tier_candidates(
             let progress_snapshot = shared_progress_state.record_resumed_candidate(
                 dynamics_candidate.restart_id.as_str(),
                 resumed_candidate.search_tier_score,
+                total_units,
             );
 
             candidate_slots[source_rank] = Some(resumed_candidate.clone());
@@ -430,7 +552,8 @@ fn refine_search_tier_candidates(
                 current_weighted_objective: Some(resumed_candidate.search_tier_score),
                 best_restart_id: progress_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: progress_snapshot.best_weighted_objective,
-                active_restart_count: Some(progress_snapshot.active_candidate_count),
+                active_restart_count: None,
+                aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
                 ..OptionRefinementProgressEmissionInput::new(
                     progress_sender,
                     JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -459,7 +582,6 @@ fn refine_search_tier_candidates(
                     refine_parallel_search_tier_candidate(
                         ParallelSearchTierCandidateRefinementInput {
                             context,
-                            solver_settings,
                             source_rank: *source_rank,
                             dynamics_candidate,
                             progress_sender,
@@ -477,7 +599,6 @@ fn refine_search_tier_candidates(
                     refine_parallel_search_tier_candidate(
                         ParallelSearchTierCandidateRefinementInput {
                             context,
-                            solver_settings,
                             source_rank: *source_rank,
                             dynamics_candidate,
                             progress_sender,
@@ -506,7 +627,6 @@ fn refine_search_tier_candidates(
 
 fn refine_single_search_tier_candidate(
     context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidate: &JointRefinementRestartOutcome,
     progress_context: Option<&OptionRefinementProgressContext<'_>>,
     pricing_cpu_count: usize,
@@ -519,7 +639,7 @@ fn refine_single_search_tier_candidate(
 
     let mut theta_warm_start_state = SpectralThetaWarmStartState::new();
 
-    let initial_candidate = scored_pricing_vector(
+    scored_pricing_vector(
         &refinement_context,
         dynamics_candidate,
         dynamics_candidate.parameter_vector.as_slice(),
@@ -527,29 +647,11 @@ fn refine_single_search_tier_candidate(
         JointRefinementOptionSurfaceTierKind::Search,
         Some(&mut theta_warm_start_state),
         progress_context,
-    )?;
-
-    let optimized_candidate = optimize_pricing_block(
-        &refinement_context,
-        solver_settings,
-        dynamics_candidate,
-        source_dynamics_parameter_bits.as_slice(),
-        &mut theta_warm_start_state,
-        progress_context,
     )
-    .ok();
-
-    Ok(match optimized_candidate {
-        Some(candidate) if candidate.search_tier_score < initial_candidate.search_tier_score => {
-            candidate
-        }
-        _ => initial_candidate,
-    })
 }
 
 struct ParallelSearchTierCandidateRefinementInput<'a> {
     context: &'a JointRefinementContext,
-    solver_settings: &'a CalibrationOptimizerSettings,
     source_rank: usize,
     dynamics_candidate: &'a JointRefinementRestartOutcome,
     progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
@@ -563,7 +665,6 @@ fn refine_parallel_search_tier_candidate(
 ) -> (usize, Option<SearchTierCandidate>) {
     let ParallelSearchTierCandidateRefinementInput {
         context,
-        solver_settings,
         source_rank,
         dynamics_candidate,
         progress_sender,
@@ -572,13 +673,14 @@ fn refine_parallel_search_tier_candidate(
         pricing_cpu_count,
     } = input;
 
-    let started_snapshot = shared_progress_state.record_candidate_started();
+    let started_snapshot = shared_progress_state
+        .record_candidate_started(dynamics_candidate.restart_id.as_str(), total_units);
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
         best_restart_id: started_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: started_snapshot.best_weighted_objective,
-        active_restart_count: Some(started_snapshot.active_candidate_count),
+        active_restart_count: None,
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -594,14 +696,12 @@ fn refine_parallel_search_tier_candidate(
         current_restart_id: dynamics_candidate.restart_id.as_str(),
         shared_progress_state: Arc::clone(&shared_progress_state),
         current_evaluation_count: Cell::new(0),
-        total_evaluation_budget: option_refinement_candidate_total_evaluation_budget(
-            context.active_parameter_layout.nig_block.len(),
-        ),
+        current_weighted_objective: Cell::new(None),
+        total_evaluation_budget: option_refinement_candidate_total_evaluation_budget(),
     };
 
     let refined_candidate = refine_single_search_tier_candidate(
         context,
-        solver_settings,
         dynamics_candidate,
         Some(&progress_context),
         pricing_cpu_count,
@@ -620,6 +720,7 @@ fn refine_parallel_search_tier_candidate(
         refined_candidate
             .as_ref()
             .map(|candidate| candidate.search_tier_score),
+        total_units,
     );
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
@@ -629,7 +730,8 @@ fn refine_parallel_search_tier_candidate(
             .map(|candidate| candidate.search_tier_score),
         best_restart_id: finished_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: finished_snapshot.best_weighted_objective,
-        active_restart_count: Some(finished_snapshot.active_candidate_count),
+        active_restart_count: None,
+        aggregate_progress_percent: Some(finished_snapshot.aggregate_progress_percent),
         current_evaluation_count: Some(progress_context.current_evaluation_count()),
         total_evaluation_budget: Some(progress_context.total_evaluation_budget()),
         evaluation_progress_percent: Some(100),
@@ -642,237 +744,6 @@ fn refine_parallel_search_tier_candidate(
     });
 
     (source_rank, refined_candidate)
-}
-
-fn optimize_pricing_block(
-    refinement_context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
-    dynamics_candidate: &JointRefinementRestartOutcome,
-    source_dynamics_parameter_bits: &[u64],
-    theta_warm_start_state: &mut SpectralThetaWarmStartState,
-    progress_context: Option<&OptionRefinementProgressContext<'_>>,
-) -> Result<SearchTierCandidate, String> {
-    let block_indices = refinement_context
-        .active_parameter_layout
-        .nig_block
-        .as_slice();
-    if block_indices.is_empty() {
-        return scored_pricing_vector(
-            refinement_context,
-            dynamics_candidate,
-            dynamics_candidate.parameter_vector.as_slice(),
-            source_dynamics_parameter_bits,
-            JointRefinementOptionSurfaceTierKind::Search,
-            Some(theta_warm_start_state),
-            progress_context,
-        );
-    }
-
-    let initial_point = block_indices
-        .iter()
-        .map(|parameter_index| dynamics_candidate.parameter_vector[*parameter_index])
-        .collect::<Vec<_>>();
-
-    let lower_bounds = block_indices
-        .iter()
-        .map(|parameter_index| refinement_context.lower_bounds[*parameter_index])
-        .collect::<Vec<_>>();
-
-    let upper_bounds = block_indices
-        .iter()
-        .map(|parameter_index| refinement_context.upper_bounds[*parameter_index])
-        .collect::<Vec<_>>();
-
-    let search_coordinate_scaling =
-        derive_pricing_block_search_coordinate_scaling(refinement_context, dynamics_candidate);
-
-    let scaled_initial_point = scale_pricing_block_coordinates(
-        initial_point.as_slice(),
-        search_coordinate_scaling.as_slice(),
-    );
-
-    let scaled_lower_bounds = scale_pricing_block_coordinates(
-        lower_bounds.as_slice(),
-        search_coordinate_scaling.as_slice(),
-    );
-
-    let scaled_upper_bounds = scale_pricing_block_coordinates(
-        upper_bounds.as_slice(),
-        search_coordinate_scaling.as_slice(),
-    );
-
-    let scaled_trust_region_settings = scale_trust_region_settings_for_pricing_block(
-        option_pricing_block_trust_region_settings(solver_settings, block_indices.len()),
-        search_coordinate_scaling.as_slice(),
-    );
-
-    let mut evaluate_block = |scaled_block_vector: &[f64]| -> Option<f64> {
-        let block_vector = unscale_pricing_block_coordinates(
-            scaled_block_vector,
-            search_coordinate_scaling.as_slice(),
-        );
-
-        let pricing_vector = substitute_pricing_block(
-            dynamics_candidate.parameter_vector.as_slice(),
-            block_indices,
-            block_vector.as_slice(),
-        );
-
-        scored_pricing_vector(
-            refinement_context,
-            dynamics_candidate,
-            pricing_vector.as_slice(),
-            source_dynamics_parameter_bits,
-            JointRefinementOptionSurfaceTierKind::Search,
-            Some(theta_warm_start_state),
-            progress_context,
-        )
-        .ok()
-        .map(|candidate| candidate.search_tier_score)
-    };
-
-    let optimizer_result = optimize_bounded_trust_region_quadratic(
-        scaled_initial_point.as_slice(),
-        scaled_lower_bounds.as_slice(),
-        scaled_upper_bounds.as_slice(),
-        scaled_trust_region_settings,
-        &mut evaluate_block,
-    )
-    .ok_or_else(|| "pricing block optimizer found no valid option-pricing step".to_string())?;
-
-    let optimized_block_vector = unscale_pricing_block_coordinates(
-        optimizer_result.best_point.as_slice(),
-        search_coordinate_scaling.as_slice(),
-    );
-
-    let pricing_vector = substitute_pricing_block(
-        dynamics_candidate.parameter_vector.as_slice(),
-        block_indices,
-        optimized_block_vector.as_slice(),
-    );
-
-    scored_pricing_vector(
-        refinement_context,
-        dynamics_candidate,
-        pricing_vector.as_slice(),
-        source_dynamics_parameter_bits,
-        JointRefinementOptionSurfaceTierKind::Search,
-        Some(theta_warm_start_state),
-        progress_context,
-    )
-}
-
-fn derive_pricing_block_search_coordinate_scaling(
-    refinement_context: &JointRefinementContext,
-    dynamics_candidate: &JointRefinementRestartOutcome,
-) -> Vec<f64> {
-    let nig_block = refinement_context
-        .active_parameter_layout
-        .nig_block
-        .as_slice();
-    if nig_block.len() != 4 {
-        return vec![1.0; nig_block.len()];
-    }
-
-    let Some(modeled_open_event_rate_per_hour) = stationary_open_event_rate_per_hour(
-        &dynamics_candidate
-            .final_evaluation
-            .fitted_parameters
-            .hawkes_fitted_parameters,
-    ) else {
-        return vec![1.0; nig_block.len()];
-    };
-
-    let calibration_sample = build_continuous_calibration_sample_from_aggregated_intervals(
-        refinement_context
-            .observed_data
-            .observed_15m_intervals
-            .as_slice(),
-        modeled_open_event_rate_per_hour,
-        refinement_context
-            .observed_data
-            .observed_open_event_rate_per_hour,
-        refinement_context.observed_data.fallback_sell_share_proxy,
-    );
-
-    let search_point = NigShapeSearchPoint {
-        log_alpha: dynamics_candidate.parameter_vector[nig_block[0]],
-        buy_skew_coordinate: dynamics_candidate.parameter_vector[nig_block[1]],
-        sell_relative_coordinate: dynamics_candidate.parameter_vector[nig_block[2]],
-        log_delta_offset: dynamics_candidate.parameter_vector[nig_block[3]],
-    };
-
-    let Some(mapping) =
-        exact_configuration_and_gradient_from_shape_search_point_for_calibration_sample(
-            &calibration_sample,
-            search_point,
-        )
-    else {
-        return vec![1.0; nig_block.len()];
-    };
-
-    let gradient = mapping.gradient;
-    [
-        gradient.alpha_gradient[0]
-            .hypot(gradient.beta_0_gradient[0])
-            .hypot(gradient.delta_gradient[0])
-            .hypot(gradient.delta_beta_gradient[0]),
-        gradient.alpha_gradient[1]
-            .hypot(gradient.beta_0_gradient[1])
-            .hypot(gradient.delta_gradient[1])
-            .hypot(gradient.delta_beta_gradient[1]),
-        gradient.alpha_gradient[2]
-            .hypot(gradient.beta_0_gradient[2])
-            .hypot(gradient.delta_gradient[2])
-            .hypot(gradient.delta_beta_gradient[2]),
-        gradient.alpha_gradient[3]
-            .hypot(gradient.beta_0_gradient[3])
-            .hypot(gradient.delta_gradient[3])
-            .hypot(gradient.delta_beta_gradient[3]),
-    ]
-    .into_iter()
-    .map(|scale: f64| {
-        if scale.is_finite() && scale > 0.0 {
-            scale
-        } else {
-            1.0
-        }
-    })
-    .collect()
-}
-
-fn scale_pricing_block_coordinates(point: &[f64], scaling: &[f64]) -> Vec<f64> {
-    point
-        .iter()
-        .zip(scaling.iter())
-        .map(|(coordinate, scale)| coordinate * scale)
-        .collect()
-}
-
-fn unscale_pricing_block_coordinates(scaled_point: &[f64], scaling: &[f64]) -> Vec<f64> {
-    scaled_point
-        .iter()
-        .zip(scaling.iter())
-        .map(|(coordinate, scale)| coordinate / scale)
-        .collect()
-}
-
-fn scale_trust_region_settings_for_pricing_block(
-    settings: BoundedTrustRegionOptimizerSettings,
-    scaling: &[f64],
-) -> BoundedTrustRegionOptimizerSettings {
-    let minimum_positive_scale = scaling
-        .iter()
-        .copied()
-        .filter(|scale| scale.is_finite() && *scale > 0.0)
-        .min_by(f64::total_cmp)
-        .unwrap_or(1.0);
-
-    BoundedTrustRegionOptimizerSettings {
-        absolute_tolerance: settings.absolute_tolerance * minimum_positive_scale,
-        minimum_trust_region_radius: settings.minimum_trust_region_radius * minimum_positive_scale,
-        ..settings
-    }
 }
 
 fn evaluate_selection_tier_candidates(
@@ -907,6 +778,7 @@ fn evaluate_selection_tier_candidates(
             let progress_snapshot = shared_progress_state.record_resumed_candidate(
                 restart_id.as_str(),
                 resumed_candidate.selection_tier_score,
+                total_units,
             );
 
             candidate_slots[candidate_position] = Some(resumed_candidate.clone());
@@ -917,7 +789,8 @@ fn evaluate_selection_tier_candidates(
                 current_weighted_objective: Some(resumed_candidate.selection_tier_score),
                 best_restart_id: progress_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: progress_snapshot.best_weighted_objective,
-                active_restart_count: Some(progress_snapshot.active_candidate_count),
+                active_restart_count: None,
+                aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
                 ..OptionRefinementProgressEmissionInput::new(
                     progress_sender,
                     JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
@@ -998,9 +871,6 @@ fn scored_pricing_vector(
         progress_context.record_evaluation_started();
     }
 
-    let shared_progress_snapshot =
-        progress_context.map(|context| context.shared_progress_snapshot());
-
     let fitted_parameters =
         parameter_vector_to_fitted_parameters(pricing_vector, refinement_context)
             .ok_or_else(|| "pricing block parameter conversion failed".to_string())?;
@@ -1019,26 +889,22 @@ fn scored_pricing_vector(
             progress: OptionPricingProgressInput {
                 progress_sender: progress_context.and_then(|context| context.progress_sender),
                 progress_phase: progress_context.map(|context| context.phase),
-                completed_units: shared_progress_snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.completed_units),
+                completed_units: progress_context
+                    .map(|context| context.shared_progress_snapshot().completed_units),
                 total_units: progress_context.map(|context| context.total_units),
                 current_restart_id: progress_context.map(|context| context.current_restart_id),
-                best_restart_id: shared_progress_snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.best_restart_id.as_deref()),
-                best_weighted_objective: shared_progress_snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.best_weighted_objective),
-                active_restart_count: shared_progress_snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.active_candidate_count),
+                best_restart_id: None,
+                best_weighted_objective: None,
+                active_restart_count: None,
                 current_evaluation_count: progress_context
                     .map(|context| context.current_evaluation_count()),
                 total_evaluation_budget: progress_context
                     .map(|context| context.total_evaluation_budget()),
-                evaluation_progress_percent: progress_context
-                    .map(|context| context.running_evaluation_progress_percent()),
+                evaluation_progress_percent: None,
+                current_weighted_objective: progress_context
+                    .and_then(|context| context.current_weighted_objective()),
+                progress_snapshot_source: progress_context
+                    .map(|context| context as &dyn OptionPricingProgressSnapshotSource),
             },
         },
     )?;
@@ -1046,6 +912,10 @@ fn scored_pricing_vector(
     let search_tier_score = pricing_artifact
         .score
         .root_mean_square_spread_normalized_residual;
+
+    if let Some(progress_context) = progress_context {
+        progress_context.record_weighted_objective(search_tier_score);
+    }
 
     Ok(SearchTierCandidate {
         source_rank: 0,
@@ -1071,13 +941,13 @@ fn evaluate_parallel_selection_tier_candidate(
 ) -> (usize, Option<OptionRefinedCandidate>) {
     let restart_id = search_candidate.restart_outcome.restart_id.as_str();
 
-    let started_snapshot = shared_progress_state.record_candidate_started();
+    let started_snapshot = shared_progress_state.record_candidate_started(restart_id, total_units);
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(restart_id),
         best_restart_id: started_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: started_snapshot.best_weighted_objective,
-        active_restart_count: Some(started_snapshot.active_candidate_count),
+        active_restart_count: None,
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
@@ -1093,7 +963,12 @@ fn evaluate_parallel_selection_tier_candidate(
         &selection_context,
     );
 
-    let best_snapshot = shared_progress_state.snapshot();
+    let best_snapshot = shared_progress_state.snapshot(total_units);
+    let selection_progress_snapshot_source = SelectionTierPricingProgressSnapshotSource {
+        shared_progress_state: shared_progress_state.as_ref(),
+        restart_id,
+        total_units,
+    };
 
     let selection_artifact = resolve_option_surface_tier_pricing_artifact(
         OptionSurfaceTierPricingArtifactResolutionInput {
@@ -1119,10 +994,12 @@ fn evaluate_parallel_selection_tier_candidate(
                 current_restart_id: Some(restart_id),
                 best_restart_id: best_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: best_snapshot.best_weighted_objective,
-                active_restart_count: Some(best_snapshot.active_candidate_count),
+                active_restart_count: None,
                 current_evaluation_count: None,
                 total_evaluation_budget: None,
                 evaluation_progress_percent: None,
+                current_weighted_objective: None,
+                progress_snapshot_source: Some(&selection_progress_snapshot_source),
             },
         },
     )
@@ -1147,6 +1024,7 @@ fn evaluate_parallel_selection_tier_candidate(
         refined_candidate
             .as_ref()
             .map(|candidate| candidate.selection_tier_score),
+        total_units,
     );
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
@@ -1156,7 +1034,8 @@ fn evaluate_parallel_selection_tier_candidate(
             .map(|candidate| candidate.selection_tier_score),
         best_restart_id: finished_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: finished_snapshot.best_weighted_objective,
-        active_restart_count: Some(finished_snapshot.active_candidate_count),
+        active_restart_count: None,
+        aggregate_progress_percent: Some(finished_snapshot.aggregate_progress_percent),
         current_evaluation_count: Some(1),
         total_evaluation_budget: Some(1),
         evaluation_progress_percent: Some(100),
@@ -1241,34 +1120,12 @@ fn restart_outcome_with_pricing_block(
     }
 }
 
-pub(crate) fn option_pricing_block_evaluation_budget(active_nig_block_dimension: usize) -> usize {
-    active_nig_block_dimension
-        .saturating_mul(6)
-        .saturating_add(1)
+pub(crate) fn option_pricing_block_evaluation_budget() -> usize {
+    1
 }
 
-fn option_refinement_candidate_total_evaluation_budget(active_nig_block_dimension: usize) -> usize {
-    if active_nig_block_dimension == 0 {
-        return 1;
-    }
-
-    option_pricing_block_evaluation_budget(active_nig_block_dimension).saturating_add(2)
-}
-
-fn option_pricing_block_trust_region_settings(
-    solver_settings: &CalibrationOptimizerSettings,
-    active_nig_block_dimension: usize,
-) -> BoundedTrustRegionOptimizerSettings {
-    BoundedTrustRegionOptimizerSettings {
-        absolute_tolerance: solver_settings.absolute_tolerance,
-        relative_tolerance: solver_settings.relative_tolerance,
-        minimum_trust_region_radius: solver_settings.absolute_tolerance,
-        initial_trust_region_radius_fraction: 0.25,
-        interpolation_point_target: active_nig_block_dimension
-            .saturating_mul(2)
-            .saturating_add(1),
-        evaluation_budget: option_pricing_block_evaluation_budget(active_nig_block_dimension),
-    }
+fn option_refinement_candidate_total_evaluation_budget() -> usize {
+    option_pricing_block_evaluation_budget()
 }
 
 fn pricing_block_parameter_bits(
@@ -1281,20 +1138,6 @@ fn pricing_block_parameter_bits(
         .iter()
         .map(|parameter_index| parameter_vector[*parameter_index].to_bits())
         .collect()
-}
-
-fn substitute_pricing_block(
-    current_vector: &[f64],
-    block_indices: &[usize],
-    block_vector: &[f64],
-) -> Vec<f64> {
-    let mut updated = current_vector.to_vec();
-
-    for (block_position, parameter_index) in block_indices.iter().enumerate() {
-        updated[*parameter_index] = block_vector[block_position];
-    }
-
-    updated
 }
 
 struct OptionRefinementProgressEmissionInput<'a> {
@@ -1311,6 +1154,7 @@ struct OptionRefinementProgressEmissionInput<'a> {
     current_evaluation_count: Option<usize>,
     total_evaluation_budget: Option<usize>,
     evaluation_progress_percent: Option<usize>,
+    aggregate_progress_percent: Option<usize>,
 }
 
 impl<'a> OptionRefinementProgressEmissionInput<'a> {
@@ -1334,6 +1178,7 @@ impl<'a> OptionRefinementProgressEmissionInput<'a> {
             current_evaluation_count: None,
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
+            aggregate_progress_percent: None,
         }
     }
 }
@@ -1353,10 +1198,12 @@ fn emit_option_refinement_progress(input: OptionRefinementProgressEmissionInput<
         current_evaluation_count,
         total_evaluation_budget,
         evaluation_progress_percent,
+        aggregate_progress_percent,
     } = input;
 
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+            aggregate_progress_percent,
             current_restart_id: current_restart_id.map(str::to_string),
             current_item_label: current_item_label.map(str::to_string),
             active_restart_count,
@@ -1373,12 +1220,16 @@ fn emit_option_refinement_progress(input: OptionRefinementProgressEmissionInput<
 
 #[cfg(test)]
 mod tests {
-    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+    use std::cell::Cell;
+    use std::sync::Arc;
+
+    use crate::stages::joint_refinement::contracts::JointRefinementStageProgressPhase;
+    use crate::stages::joint_refinement::execution::OptionPricingProgressSnapshotSource;
 
     use super::{
         JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT,
+        OptionRefinementProgressContext, OptionRefinementSharedProgressState,
         desired_joint_refinement_option_refinement_candidate_count,
-        option_pricing_block_trust_region_settings,
         option_refinement_candidate_total_evaluation_budget,
         option_refinement_selection_score_ceiling,
         resolved_option_refinement_candidate_parallelism,
@@ -1402,53 +1253,42 @@ mod tests {
     }
 
     #[test]
-    fn pricing_block_budget_uses_low_dimension_trust_region_model() {
-        let solver_settings =
-            CalibrationOptimizerSettings::try_new("joint-test", 256, 4, 1.0e-6, 2.0e-6, 10.0)
-                .expect("solver settings should validate");
-
-        let trust_region_settings = option_pricing_block_trust_region_settings(&solver_settings, 4);
-
-        assert_eq!(trust_region_settings.interpolation_point_target, 9);
-        assert_eq!(trust_region_settings.evaluation_budget, 25);
-        assert_eq!(
-            trust_region_settings.initial_trust_region_radius_fraction,
-            0.25
-        );
-        assert_eq!(trust_region_settings.absolute_tolerance, 1.0e-6);
-        assert_eq!(trust_region_settings.relative_tolerance, 2.0e-6);
+    fn option_refinement_candidate_budget_counts_search_pricing_run() {
+        assert_eq!(option_refinement_candidate_total_evaluation_budget(), 1);
     }
 
     #[test]
-    fn option_refinement_candidate_budget_counts_initial_and_final_pricing_runs() {
-        assert_eq!(option_refinement_candidate_total_evaluation_budget(0), 1);
-        assert_eq!(option_refinement_candidate_total_evaluation_budget(4), 27);
-    }
-
-    #[test]
-    fn option_refinement_parallelism_is_bounded_by_candidates_and_available_capacity() {
+    fn option_refinement_parallelism_uses_full_pricing_cpu_budget_per_candidate() {
         assert_eq!(
             resolved_option_refinement_candidate_parallelism(24, 24, 5),
-            5
+            1
         );
         assert_eq!(
             resolved_option_refinement_candidate_parallelism(2, 24, 5),
-            2
+            1
         );
         assert_eq!(
             resolved_option_refinement_candidate_parallelism(24, 3, 5),
+            1
+        );
+    }
+
+    #[test]
+    fn option_refinement_candidate_pricing_cpu_count_keeps_total_cpu_budget_for_single_candidate() {
+        assert_eq!(
+            resolved_option_refinement_candidate_pricing_cpu_count(24, 1),
+            24
+        );
+        assert_eq!(
+            resolved_option_refinement_candidate_pricing_cpu_count(3, 1),
             3
         );
     }
 
     #[test]
-    fn option_refinement_candidate_pricing_cpu_count_partitions_total_cpu_budget() {
+    fn option_refinement_candidate_pricing_cpu_count_remains_positive_for_empty_budget() {
         assert_eq!(
-            resolved_option_refinement_candidate_pricing_cpu_count(24, 5),
-            4
-        );
-        assert_eq!(
-            resolved_option_refinement_candidate_pricing_cpu_count(3, 5),
+            resolved_option_refinement_candidate_pricing_cpu_count(0, 1),
             1
         );
     }
@@ -1465,5 +1305,60 @@ mod tests {
             ),
             2.5
         );
+    }
+
+    #[test]
+    fn option_refinement_progress_context_retains_latest_completed_objective() {
+        let progress_context = OptionRefinementProgressContext {
+            progress_sender: None,
+            phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            total_units: 5,
+            current_restart_id: "baseline",
+            shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
+            current_evaluation_count: Cell::new(0),
+            current_weighted_objective: Cell::new(None),
+            total_evaluation_budget: 1,
+        };
+
+        assert_eq!(progress_context.current_weighted_objective(), None);
+
+        progress_context.record_weighted_objective(12.5);
+
+        assert_eq!(progress_context.current_weighted_objective(), Some(12.5));
+    }
+
+    #[test]
+    fn option_refinement_progress_context_reports_pricing_progress_inside_single_evaluation() {
+        let progress_context = OptionRefinementProgressContext {
+            progress_sender: None,
+            phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            total_units: 5,
+            current_restart_id: "baseline",
+            shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
+            current_evaluation_count: Cell::new(0),
+            current_weighted_objective: Cell::new(None),
+            total_evaluation_budget: 1,
+        };
+
+        progress_context.record_evaluation_started();
+
+        let snapshot = progress_context.option_pricing_progress_snapshot(Some(25));
+
+        assert_eq!(snapshot.evaluation_progress_percent, Some(25));
+    }
+
+    #[test]
+    fn option_refinement_shared_progress_counts_active_partial_work() {
+        let progress_state = OptionRefinementSharedProgressState::default();
+
+        progress_state.record_candidate_started("baseline", 5);
+        progress_state.record_candidate_started("halton_05", 5);
+        progress_state.record_candidate_progress("baseline", 25);
+        progress_state.record_candidate_progress("halton_05", 50);
+
+        let snapshot = progress_state.snapshot(5);
+
+        assert_eq!(snapshot.completed_units, 0);
+        assert_eq!(snapshot.aggregate_progress_percent, 15);
     }
 }

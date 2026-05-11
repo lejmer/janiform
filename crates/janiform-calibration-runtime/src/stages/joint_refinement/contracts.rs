@@ -273,6 +273,10 @@ pub struct JointRefinementStageProgressUpdate {
     pub current_evaluation_count: Option<usize>,
     pub total_evaluation_budget: Option<usize>,
     pub evaluation_progress_percent: Option<usize>,
+    pub current_pricing_interval_index: Option<usize>,
+    pub total_pricing_interval_count: Option<usize>,
+    pub completed_pricing_row_count: Option<usize>,
+    pub total_pricing_row_count: Option<usize>,
     pub valid_completed_units: Option<usize>,
     pub cumulative_local_evaluation_count: Option<usize>,
     pub current_weighted_objective: Option<f64>,
@@ -308,6 +312,10 @@ impl JointRefinementStageProgressUpdate {
             current_evaluation_count: None,
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
+            current_pricing_interval_index: None,
+            total_pricing_interval_count: None,
+            completed_pricing_row_count: None,
+            total_pricing_row_count: None,
             valid_completed_units: None,
             cumulative_local_evaluation_count: None,
             current_weighted_objective: None,
@@ -384,7 +392,7 @@ fn joint_refinement_stage_progress_percent(
     0
 }
 
-fn progress_percent(completed_units: usize, total_units: usize) -> usize {
+pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> usize {
     if total_units == 0 {
         return 0;
     }

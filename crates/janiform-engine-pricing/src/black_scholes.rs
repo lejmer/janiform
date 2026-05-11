@@ -64,8 +64,9 @@ pub fn black_scholes_price(
         };
     }
 
-    let log_forward_moneyness = (market_inputs.spot / strike).ln()
+    let log_forward_moneyness = market_inputs.spot.ln() - strike.ln()
         + (market_inputs.risk_free_rate - market_inputs.dividend_yield) * maturity_interval;
+
     let d1 = (log_forward_moneyness + 0.5 * total_standard_deviation * total_standard_deviation)
         / total_standard_deviation;
     let d2 = d1 - total_standard_deviation;

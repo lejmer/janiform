@@ -223,6 +223,10 @@ pub fn progress_event_from_staged_event(
 fn stage_progress_measure(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Result<UiProgressMeasure, WorkflowError> {
+    if let Some(aggregate_progress_percent) = progress.aggregate_progress_percent {
+        return Ok(UiProgressMeasure::percent(aggregate_progress_percent));
+    }
+
     if progress.total_units == 0 {
         return Ok(UiProgressMeasure::Unbounded);
     }
@@ -468,8 +472,17 @@ fn work_item_table_columns(
     {
         columns.push(ProgressWorkItemColumn::new("eval", "Evals"));
     }
+    if progress.current_pricing_interval_index.is_some()
+        || progress.total_pricing_interval_count.is_some()
+    {
+        columns.push(ProgressWorkItemColumn::new("pricing_interval", "Interval"));
+    }
+    if progress.completed_pricing_row_count.is_some() || progress.total_pricing_row_count.is_some()
+    {
+        columns.push(ProgressWorkItemColumn::new("pricing_rows", "Rows"));
+    }
     if uses_restart_optimization_columns || progress.current_parameter_block.is_some() {
-        columns.push(ProgressWorkItemColumn::new("block", "Blk"));
+        columns.push(ProgressWorkItemColumn::new("block", "Block"));
     }
     if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
         columns.push(ProgressWorkItemColumn::new(
@@ -495,10 +508,10 @@ fn work_item_table_columns(
         columns.push(ProgressWorkItemColumn::new("convergence", "Conv."));
     }
     if progress.exact_closed_form_buy_count.is_some() {
-        columns.push(ProgressWorkItemColumn::new("exact_buy", "CF-B"));
+        columns.push(ProgressWorkItemColumn::new("exact_buy", "CF-Buy"));
     }
     if progress.exact_closed_form_sell_count.is_some() {
-        columns.push(ProgressWorkItemColumn::new("exact_sell", "CF-S"));
+        columns.push(ProgressWorkItemColumn::new("exact_sell", "CF-Sell"));
     }
     if progress.exact_tilted_mixed_count.is_some() {
         columns.push(ProgressWorkItemColumn::new("exact_mixed", "Mix"));
@@ -528,6 +541,21 @@ fn work_item_table_metrics(
         progress.total_evaluation_budget,
     ) {
         metrics.push(ProgressWorkItemMetric::new("eval", evaluation_label));
+    }
+    if let Some(interval_label) = pricing_progress_position_label(
+        progress.current_pricing_interval_index,
+        progress.total_pricing_interval_count,
+    ) {
+        metrics.push(ProgressWorkItemMetric::new(
+            "pricing_interval",
+            interval_label,
+        ));
+    }
+    if let Some(row_label) = pricing_progress_count_label(
+        progress.completed_pricing_row_count,
+        progress.total_pricing_row_count,
+    ) {
+        metrics.push(ProgressWorkItemMetric::new("pricing_rows", row_label));
     }
     if let Some(current_parameter_block) = progress.current_parameter_block.as_deref() {
         metrics.push(ProgressWorkItemMetric::new(
@@ -623,6 +651,36 @@ fn evaluation_label(
         }
         None => current_evaluation_count.to_string(),
     })
+}
+
+fn pricing_progress_position_label(
+    current_index: Option<usize>,
+    total_count: Option<usize>,
+) -> Option<String> {
+    match (current_index, total_count) {
+        (Some(current_index), Some(total_count)) => Some(format!(
+            "{}/{}",
+            current_index.saturating_add(1),
+            total_count
+        )),
+        (Some(current_index), None) => Some(current_index.saturating_add(1).to_string()),
+        (None, Some(total_count)) => Some(format!("-/{total_count}")),
+        (None, None) => None,
+    }
+}
+
+fn pricing_progress_count_label(
+    completed_count: Option<usize>,
+    total_count: Option<usize>,
+) -> Option<String> {
+    match (completed_count, total_count) {
+        (Some(completed_count), Some(total_count)) => {
+            Some(format!("{completed_count}/{total_count}"))
+        }
+        (Some(completed_count), None) => Some(completed_count.to_string()),
+        (None, Some(total_count)) => Some(format!("-/{total_count}")),
+        (None, None) => None,
+    }
 }
 
 fn progress_work_item_label(

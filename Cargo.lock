@@ -1073,7 +1073,7 @@ dependencies = [
  "janiform-market-time",
  "janiform-model-kernels",
  "rayon",
- "rustfft",
+ "rustdct",
  "serde",
  "serde_json",
  "statrs",
@@ -1962,6 +1962,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "rustdct"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b61555105d6a9bf98797c063c362a1d24ed8ab0431655e38f1cf51e52089551"
+dependencies = [
+ "rustfft",
 ]
 
 [[package]]

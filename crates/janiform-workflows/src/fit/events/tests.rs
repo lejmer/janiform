@@ -130,12 +130,12 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
             .collect::<Vec<_>>(),
         vec![
             ("eval".to_string(), "Evals".to_string()),
-            ("block".to_string(), "Blk".to_string()),
+            ("block".to_string(), "Block".to_string()),
             ("current_objective".to_string(), "Cur. obj.".to_string()),
             ("best_objective".to_string(), "Best obj.".to_string()),
             ("final_objective".to_string(), "Final obj.".to_string()),
-            ("exact_buy".to_string(), "CF-B".to_string()),
-            ("exact_sell".to_string(), "CF-S".to_string()),
+            ("exact_buy".to_string(), "CF-Buy".to_string()),
+            ("exact_sell".to_string(), "CF-Sell".to_string()),
             ("exact_mixed".to_string(), "Mix".to_string()),
         ]
     );
@@ -153,6 +153,72 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
             ("exact_sell".to_string(), "4".to_string()),
             ("exact_mixed".to_string(), "5".to_string()),
         ]
+    );
+}
+
+#[test]
+fn option_refinement_progress_table_includes_pricing_interval_and_rows() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("restart_01"),
+        Some(1),
+        Some(27),
+        None,
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+    );
+
+    progress.current_pricing_interval_index = Some(24);
+    progress.total_pricing_interval_count = Some(943);
+    progress.completed_pricing_row_count = Some(1);
+    progress.total_pricing_row_count = Some(27);
+
+    assert_eq!(
+        work_item_table_columns(&progress)
+            .into_iter()
+            .map(|column| (column.key, column.label))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "Evals".to_string()),
+            ("pricing_interval".to_string(), "Interval".to_string()),
+            ("pricing_rows".to_string(), "Rows".to_string()),
+        ]
+    );
+
+    assert_eq!(
+        work_item_table_metrics(&progress)
+            .into_iter()
+            .map(|metric| (metric.key, metric.value))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "1/27".to_string()),
+            ("pricing_interval".to_string(), "25/943".to_string()),
+            ("pricing_rows".to_string(), "1/27".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn stage_progress_measure_uses_aggregate_percent_when_available() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("restart_01"),
+        Some(1),
+        Some(27),
+        None,
+        None,
+    );
+
+    progress.aggregate_progress_percent = Some(40);
+
+    assert_eq!(
+        stage_progress_measure(&progress).expect("progress measure should validate"),
+        UiProgressMeasure::percent(40),
     );
 }
 
@@ -184,6 +250,10 @@ fn return_components_progress_event(
         current_evaluation_count,
         total_evaluation_budget,
         evaluation_progress_percent: None,
+        current_pricing_interval_index: None,
+        total_pricing_interval_count: None,
+        completed_pricing_row_count: None,
+        total_pricing_row_count: None,
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
         current_weighted_objective: None,

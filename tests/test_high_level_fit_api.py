@@ -1352,6 +1352,11 @@ def test_high_level_model_load_preserves_rust_model_artifact_metadata(
         "session_resolution",
     }
     assert set(persisted_payload["parameters"]) == {"seasonality", "joint_refinement"}
+    assert set(persisted_payload["parameters"]["joint_refinement"]) == {
+        "schema_version",
+        "selected_candidate_id",
+        "fitted_parameters",
+    }
     assert (
         persisted_payload["parameters"]["joint_refinement"]["fitted_parameters"][
             "return_components_fitted_parameters"
