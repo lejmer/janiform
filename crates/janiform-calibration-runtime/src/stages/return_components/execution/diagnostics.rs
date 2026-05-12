@@ -272,7 +272,7 @@ pub(crate) fn theoretical_net_process_moments(
     let sell_weight = open_session_sell_share_proxy.clamp(0.0, 1.0);
     let buy_weight = 1.0 - sell_weight;
 
-    let mean_return = buy_weight * buy_unit_cumulants.0 - sell_weight * sell_unit_cumulants.0;
+    let mean_return = 0.0;
     let variance = buy_weight * buy_unit_cumulants.1 + sell_weight * sell_unit_cumulants.1;
     if !variance.is_finite() || variance <= return_components_stage_positive_domain_floor() {
         return None;

@@ -36,8 +36,8 @@
 
     Let \(\Delta_{\mathrm{ref}} > 0\) be the persisted reference interval, let
     \(\psi_{\mathrm{ref}} \in [0,1]\) be the persisted pressure persistence per
-    reference interval, let \(c\) be the persisted pressure-to-level gain, and
-    define
+    reference interval, let \(c \in [0,1]\) be the persisted pressure-to-level
+    gain, and define
     \[
         \psi_h = \psi_{\mathrm{ref}}^{\Delta_h / \Delta_{\mathrm{ref}}}.
     \]
@@ -214,11 +214,28 @@
         \qquad
         \Delta_\beta<0.
     \]
+    Let the side mean per unit business time be
+    \[
+        m_\pm=\mu+\delta\frac{\beta_\pm}{\sqrt{\alpha^2-\beta_\pm^2}},
+        \qquad
+        \beta_+=\beta_0,\quad \beta_-=\beta_0+\Delta_\beta.
+    \]
+    Trading-time increments use the buy-minus-sell convention with side mean compensation:
+    \[
+        X_{\mathrm{trading}}
+        =
+        (L^+_{A^+}-A^+m_+) - (L^-_{A^-}-A^-m_-).
+    \]
+    Thus activity changes the trading-time variance and clustering, but the trading-time
+    block has zero conditional drift:
+    \[
+        \mathbb{E}\!\left[X_{\mathrm{trading}}\mid A^+,A^-\right]=0.
+    \]
     Conditional characteristic function of \(\Delta X_t=X_{t+\Delta}-X_t\):
     \[
         \mathbb{E}\!\left[e^{iu\Delta X_t}\mid A^+,A^-\right]
         =
-        \exp\!\Big(A^+\psi_+(u)+A^-\psi_-(-u)\Big)\,\varphi_{\Delta M+\Delta G}(u).
+        \exp\!\Big(A^+(\psi_+(u)-ium_+)+A^-(\psi_-(-u)+ium_-)\Big)\,\varphi_{\Delta M+\Delta G}(u).
     \]
 
     \section*{7. Structured Asymmetry and Constraints}

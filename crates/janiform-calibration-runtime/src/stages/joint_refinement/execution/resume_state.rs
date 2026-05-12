@@ -45,7 +45,7 @@ impl PersistedRestartSelectionArtifacts {
     ) -> bool {
         self.option_pricing_context_fingerprint.as_deref() == option_pricing_context_fingerprint
             && self.selected_restart_count >= selected_restart_count
-            && self.option_refinement_candidate_frontier_ids.len() >= selected_restart_count
+            && !self.option_refinement_candidate_frontier_ids.is_empty()
             && self
                 .option_refinement_candidate_frontier_ids
                 .iter()
@@ -590,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_selection_resume_requires_matching_option_context_and_frontier_width() {
+    fn restart_selection_resume_requires_matching_option_context_and_selection_width() {
         let selection = super::PersistedRestartSelectionArtifacts {
             best_restart_id: "baseline".to_string(),
             option_refinement_candidate_frontier_ids: vec![
@@ -611,5 +611,16 @@ mod tests {
         assert!(!selection.matches_resume_context(&valid_restart_ids, 3, Some("options-a")));
         assert!(!selection.matches_resume_context(&valid_restart_ids, 2, Some("options-b")));
         assert!(!selection.matches_resume_context(&valid_restart_ids, 2, None));
+
+        let filtered_selection = super::PersistedRestartSelectionArtifacts {
+            selected_restart_count: 5,
+            ..selection
+        };
+
+        assert!(filtered_selection.matches_resume_context(
+            &valid_restart_ids,
+            5,
+            Some("options-a")
+        ));
     }
 }

@@ -104,6 +104,12 @@ fn materialize_runtime_seasonality_grid(
         "seasonality.day_of_week_factor",
     )?;
 
+    let hour_of_week_factor = numeric_sequence(
+        seasonality_parameters,
+        "hour_of_week_factor",
+        "seasonality.hour_of_week_factor",
+    )?;
+
     let day_of_year_factor = numeric_sequence(
         seasonality_parameters,
         "day_of_year_factor",
@@ -134,6 +140,7 @@ fn materialize_runtime_seasonality_grid(
             intraday_minutes_per_bin,
             intraday_factor_by_bin,
             day_of_week_factor,
+            hour_of_week_factor,
             day_of_year_factor,
         },
     )

@@ -14,6 +14,7 @@ pub(super) fn joint_refinement_seasonality_factors_from_payload(
         intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
         intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
         day_of_week_factor: payload.day_of_week_factor.clone(),
+        hour_of_week_factor: payload.hour_of_week_factor.clone(),
         day_of_year_factor: payload.day_of_year_factor.clone(),
     }
 }
@@ -30,6 +31,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
+                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
                 },
             );
@@ -38,6 +40,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
+                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
                 });
         }

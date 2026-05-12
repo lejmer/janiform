@@ -487,6 +487,10 @@ fn build_option_hourly_factor_contract(
                     .seasonality_factors_input
                     .day_of_week_factor
                     .as_slice(),
+                hour_of_week_factor: stage_input
+                    .seasonality_factors_input
+                    .hour_of_week_factor
+                    .as_slice(),
                 day_of_year_factor: stage_input
                     .seasonality_factors_input
                     .day_of_year_factor
@@ -2441,6 +2445,7 @@ mod tests {
         intraday_minutes_per_bin: u16,
         intraday_factor_by_bin: Vec<f64>,
         day_of_week_factor: Vec<f64>,
+        hour_of_week_factor: Vec<f64>,
         day_of_year_factor: Vec<f64>,
     }
 
@@ -2627,6 +2632,7 @@ mod tests {
             intraday_minutes_per_bin: seasonality_fixture.intraday_minutes_per_bin,
             intraday_factor_by_bin: seasonality_fixture.intraday_factor_by_bin,
             day_of_week_factor: seasonality_fixture.day_of_week_factor,
+            hour_of_week_factor: seasonality_fixture.hour_of_week_factor,
             day_of_year_factor: seasonality_fixture.day_of_year_factor,
         };
 
@@ -2763,6 +2769,7 @@ mod tests {
                         .intraday_factor_by_bin
                         .as_slice(),
                     day_of_week_factor: seasonality_factors_input.day_of_week_factor.as_slice(),
+                    hour_of_week_factor: seasonality_factors_input.hour_of_week_factor.as_slice(),
                     day_of_year_factor: seasonality_factors_input.day_of_year_factor.as_slice(),
                     range_start_utc_nanos: hourly_coverage_start_utc_nanos,
                     range_end_utc_nanos: hourly_coverage_end_utc_nanos,

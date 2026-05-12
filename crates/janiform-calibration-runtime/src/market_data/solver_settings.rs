@@ -4,6 +4,8 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::numeric::strictly_positive_machine_value;
 use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
 
+use crate::information_depth::support_information_depth;
+
 use super::loading::MarketDataLoadingOutput;
 
 pub(crate) const DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID: &str = "missing_stage_solver_settings_are_derived_from_stage_geometry_support_and_machine_resolution.v1";
@@ -347,12 +349,6 @@ fn stage_geometry_complexity_units(geometry: StageSolverGeometry) -> usize {
         .max(1)
         .saturating_mul(support_information_depth(geometry.support_count))
         .saturating_add(geometry.candidate_geometry_count.max(1))
-}
-
-fn support_information_depth(support_count: usize) -> usize {
-    usize::try_from(support_count.max(1).ilog2())
-        .unwrap_or(usize::MAX)
-        .saturating_add(1)
 }
 
 fn derived_relative_tolerance(geometry: StageSolverGeometry) -> f64 {

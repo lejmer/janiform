@@ -124,8 +124,6 @@ pub(super) struct NigSearchRegime {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ContinuousMomentTargets {
-    pub(super) sample_count: usize,
-    pub(super) mean_return: f64,
     pub(super) return_volatility: f64,
     pub(super) adjusted_skewness: f64,
     pub(super) adjusted_excess_kurtosis: f64,
@@ -146,8 +144,6 @@ impl ContinuousReturnDistributionProfile {
 impl ContinuousMomentTargets {
     pub(super) fn from_profile(observed_profile: ContinuousReturnDistributionProfile) -> Self {
         Self {
-            sample_count: observed_profile.sample_count,
-            mean_return: observed_profile.mean_return,
             return_volatility: observed_profile.return_volatility,
             adjusted_skewness: observed_profile.adjusted_skewness,
             adjusted_excess_kurtosis: observed_profile.adjusted_excess_kurtosis.max(0.0),

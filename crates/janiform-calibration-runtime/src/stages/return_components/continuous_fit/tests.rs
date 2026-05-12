@@ -10,6 +10,11 @@ use super::bounds::{
     relative_share_from_beta_ratios, sell_beta_ratio_from_relative_share, theoretical_alpha_bounds,
     theoretical_search_bounds,
 };
+use super::budget::{
+    ContinuousNigFitBudgets, continuous_nig_search_coordinate_count,
+    effective_zero_drift_nig_em_parameter_count, family_aligned_candidate_count,
+    proxy_em_iteration_budget,
+};
 use super::likelihood::{
     NetTradingTimeReturnLogDensityInput, alpha_beta_boundary_penalty,
     average_negative_log_likelihood_resolution, closed_form_single_side_log_density,
@@ -27,6 +32,7 @@ use super::types::{
     ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjective, NigShapeSearchPoint,
     ReturnComponentsStageContinuousReturnCalibrationSample,
 };
+use crate::information_depth::support_information_depth;
 use crate::stages::return_components::contracts::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageExactLikelihoodEvaluatorKind,
     ReturnComponentsStageExactLikelihoodFailureReason,
@@ -36,6 +42,79 @@ use crate::stages::return_components::contracts::{
 const TEST_OPTIMIZER_SAMPLE_COUNT: usize = 96;
 const TEST_OPTIMIZER_MAX_ITERATIONS: usize = 12;
 const TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT: usize = 24;
+
+#[test]
+fn continuous_nig_fit_budgets_split_generation_breadth_from_user_iteration_cap() {
+    let calibration_sample = test_optimizer_calibration_sample();
+    let low_iteration_settings =
+        CalibrationOptimizerSettings::try_new("adaptive_search", 1, 1, 1.0e-8, 1.0e-6, 1.0)
+            .expect("solver settings should validate");
+    let high_iteration_settings =
+        CalibrationOptimizerSettings::try_new("adaptive_search", 4096, 1, 1.0e-8, 1.0e-6, 1.0)
+            .expect("solver settings should validate");
+
+    let low_iteration_budgets = ContinuousNigFitBudgets::from_calibration_sample(
+        &calibration_sample,
+        &low_iteration_settings,
+    );
+    let high_iteration_budgets = ContinuousNigFitBudgets::from_calibration_sample(
+        &calibration_sample,
+        &high_iteration_settings,
+    );
+
+    assert_eq!(low_iteration_budgets, high_iteration_budgets);
+
+    let family_count = super::types::BasinSeedFamily::ALL.len();
+    let support_depth = support_information_depth(calibration_sample.observed_profile.sample_count);
+    let scale_regime_count = calibration_sample.scale_bucket_profiles.len().max(1);
+    let expected_frontier_count =
+        family_aligned_candidate_count(family_count * scale_regime_count, family_count);
+    let expected_generation_count = family_aligned_candidate_count(
+        family_count * continuous_nig_search_coordinate_count() * support_depth,
+        family_count,
+    );
+
+    assert_eq!(
+        low_iteration_budgets.seed_frontier_candidate_count,
+        expected_frontier_count
+    );
+    assert_eq!(
+        low_iteration_budgets.moment_candidate_generation_count,
+        expected_generation_count
+    );
+    assert_eq!(
+        low_iteration_budgets.basin_seed_candidate_count,
+        family_count
+    );
+}
+
+#[test]
+fn proxy_em_iteration_budget_tracks_objective_resolution_depth() {
+    let sample_count = TEST_OPTIMIZER_SAMPLE_COUNT;
+    let solver_settings =
+        CalibrationOptimizerSettings::try_new("proxy_em", 1, 1, 1.0e-8, 1.0e-6, 0.0)
+            .expect("solver settings should validate");
+
+    let objective_resolution = average_negative_log_likelihood_resolution(sample_count);
+    let solver_objective_tolerance = solver_settings
+        .absolute_tolerance
+        .max(solver_settings.relative_tolerance);
+    let mut resolved_tolerance = solver_objective_tolerance;
+    let mut binary_resolution_depth = 0usize;
+    while resolved_tolerance < objective_resolution {
+        resolved_tolerance *= 2.0;
+        binary_resolution_depth += 1;
+    }
+
+    let expected_budget = effective_zero_drift_nig_em_parameter_count()
+        * binary_resolution_depth.max(support_information_depth(sample_count));
+
+    assert_eq!(
+        proxy_em_iteration_budget(sample_count, &solver_settings),
+        expected_budget
+    );
+    assert!(expected_budget > solver_settings.max_iterations);
+}
 
 #[test]
 fn skew_ratio_coordinate_round_trip_stays_inside_open_domain() {
@@ -632,6 +711,7 @@ fn moment_seed_candidates_surface_multiple_search_regimes() {
         &calibration_sample,
         theoretical_bounds,
         TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
+        super::types::BasinSeedFamily::ALL.len(),
         None,
     );
 

@@ -27,7 +27,6 @@ use janiform_model_kernels::return_decomposition::{
 use janiform_model_kernels::risk_neutral::{
     EsscherTransformError, NigEsscherTiltDomain,
     derive_nig_esscher_tilt_domain_for_pure_imaginary_argument,
-    evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument,
 };
 
 use super::constants::{
@@ -410,9 +409,8 @@ fn evaluate_local_tilt_residual(
     target_log_moment_exponent: f64,
     theta: f64,
 ) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError> {
-    let buy_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.buy_side_parameters,
+    let buy_side_log_moment_exponent = driver_parameters
+        .differentiate_buy_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
             BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
             theta,
         )
@@ -423,11 +421,11 @@ fn evaluate_local_tilt_residual(
                 source,
                 true,
             )
-        })?;
+        })?
+        .observed_log_moment_exponent;
 
-    let sell_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.sell_side_parameters,
+    let sell_side_log_moment_exponent = driver_parameters
+        .differentiate_sell_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
             SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
             theta,
         )
@@ -438,7 +436,8 @@ fn evaluate_local_tilt_residual(
                 source,
                 false,
             )
-        })?;
+        })?
+        .observed_log_moment_exponent;
 
     let observed_log_moment_exponent = return_decomposition.a_plus.mul_add(
         buy_side_log_moment_exponent,

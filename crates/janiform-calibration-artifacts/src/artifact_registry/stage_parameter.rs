@@ -129,6 +129,7 @@ pub struct SeasonalityStageParameterPayload {
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
+    pub hour_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
     pub normalization_metadata: SeasonalityStageNormalizationMetadata,
 }
@@ -360,6 +361,7 @@ impl CalibrationStageParameterArtifact {
                 )?;
                 if payload.intraday_factor_by_bin.is_empty()
                     || payload.day_of_week_factor.is_empty()
+                    || payload.hour_of_week_factor.is_empty()
                     || payload.day_of_year_factor.is_empty()
                 {
                     return Err(
@@ -631,6 +633,7 @@ pub struct SeasonalityStageParameterArtifactInput {
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
+    pub hour_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
     pub normalization_metadata: SeasonalityStageNormalizationMetadata,
 }
@@ -1144,6 +1147,7 @@ fn build_seasonality_stage_parameter_artifact(
                 intraday_minutes_per_bin: input.intraday_minutes_per_bin,
                 intraday_factor_by_bin: input.intraday_factor_by_bin,
                 day_of_week_factor: input.day_of_week_factor,
+                hour_of_week_factor: input.hour_of_week_factor,
                 day_of_year_factor: input.day_of_year_factor,
                 normalization_metadata: input.normalization_metadata,
             },

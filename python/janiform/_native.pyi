@@ -1020,6 +1020,7 @@ def materialize_runtime_structural_seasonality(
     intraday_minutes_per_bin: int,
     intraday_factor_by_bin: object,
     day_of_week_factor: object,
+    hour_of_week_factor: object,
     day_of_year_factor: object,
 ) -> object: ...
 

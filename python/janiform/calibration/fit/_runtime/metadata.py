@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any, Mapping
+from typing import Any
 
 from ....mean_reversion import MeanReversionFittedParameters
 from ...errors import calibration_error
@@ -25,6 +26,7 @@ def normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, A
         for field_name in (
             "intraday_factor_by_bin",
             "day_of_week_factor",
+            "hour_of_week_factor",
             "day_of_year_factor",
         ):
             raw_value = raw_seasonality.get(field_name)

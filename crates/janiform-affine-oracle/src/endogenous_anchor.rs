@@ -383,7 +383,7 @@ pub fn materialize_endogenous_anchor_path(
 
         let expected_buy_increment = driver_parameters
             .buy_side_parameters
-            .expected_increment(expected_statistics.expected_a_plus)
+            .expected_mean_compensated_increment(expected_statistics.expected_a_plus)
             .map_err(
                 |source| EndogenousAnchorMaterializationError::BuySideExpectationFailure {
                     interval_index,
@@ -392,7 +392,7 @@ pub fn materialize_endogenous_anchor_path(
             )?;
         let expected_sell_increment = driver_parameters
             .sell_side_parameters
-            .expected_increment(expected_statistics.expected_a_minus)
+            .expected_mean_compensated_increment(expected_statistics.expected_a_minus)
             .map_err(
                 |source| EndogenousAnchorMaterializationError::SellSideExpectationFailure {
                     interval_index,

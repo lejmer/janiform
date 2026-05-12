@@ -77,6 +77,14 @@ impl MeanReversionAnchorModel {
                 value: source.value.to_string(),
             },
         )?;
+        if !(0.0..=1.0).contains(&self.pressure_level_gain) {
+            return Err(
+                MeanReversionAnchorModelValidationError::OutOfUnitIntervalField {
+                    field: "pressure_level_gain",
+                    value: self.pressure_level_gain,
+                },
+            );
+        }
 
         Ok(())
     }

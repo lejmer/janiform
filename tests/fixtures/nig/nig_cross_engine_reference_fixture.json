@@ -26,15 +26,15 @@
       "integrated_sell_intensity": 0.9,
       "expected_buy_side_weighted_exponent": {
         "real": -0.12884294981400618,
-        "imaginary": -0.14010085544905018
+        "imaginary": 0.015600581636001688
       },
       "expected_sell_side_weighted_exponent": {
         "real": -0.09901738801144061,
-        "imaginary": 0.1445353532827305
+        "imaginary": -0.016089796396308413
       },
       "expected_combined_weighted_exponent": {
         "real": -0.2278603378254468,
-        "imaginary": 0.004434497833680329
+        "imaginary": -0.0004892147603067255
       },
       "tags": [
         "deterministic_numeric",
@@ -51,16 +51,16 @@
       "integrated_buy_intensity": 0.8,
       "integrated_sell_intensity": 1.1,
       "expected_buy_side_weighted_exponent": {
-        "real": -0.16133708175369096,
-        "imaginary": 0.28347125524671685
+        "real": -0.22521459440396865,
+        "imaginary": 0.12377747362102264
       },
       "expected_sell_side_weighted_exponent": {
-        "real": -0.33745928070150727,
-        "imaginary": -0.04896459634385758
+        "real": -0.2065795291111793,
+        "imaginary": 0.27823478263196244
       },
       "expected_combined_weighted_exponent": {
-        "real": -0.4987963624551982,
-        "imaginary": 0.23450665890285927
+        "real": -0.43179412351514795,
+        "imaginary": 0.4020122562529851
       },
       "tags": [
         "deterministic_numeric",
@@ -77,16 +77,16 @@
       "integrated_buy_intensity": 0.6,
       "integrated_sell_intensity": 0.4,
       "expected_buy_side_weighted_exponent": {
-        "real": -0.23508555205859516,
-        "imaginary": 0.38903894099971803
+        "real": -0.06740708135161623,
+        "imaginary": 0.5806714789505512
       },
       "expected_sell_side_weighted_exponent": {
-        "real": -0.20012771646523772,
-        "imaginary": 0.5272618990918873
+        "real": -0.3667019457620188,
+        "imaginary": 0.3368913513241375
       },
       "expected_combined_weighted_exponent": {
-        "real": -0.4352132685238329,
-        "imaginary": 0.9163008400916053
+        "real": -0.434109027113635,
+        "imaginary": 0.9175628302746887
       },
       "tags": [
         "deterministic_numeric",
@@ -103,7 +103,7 @@
       "integrated_buy_intensity": 0.75,
       "integrated_sell_intensity": 0.45,
       "characteristic_function_argument_real": 0.7,
-      "expected_return_mean": -0.012686903099911384,
+      "expected_return_mean": 0.0,
       "expected_return_variance": 0.4645059121527307,
       "mean_tolerance": 0.04,
       "variance_tolerance": 0.07,

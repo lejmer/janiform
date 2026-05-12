@@ -663,6 +663,10 @@ fn materialize_runtime_state(
                     .seasonality_factors_input
                     .day_of_week_factor
                     .as_slice(),
+                hour_of_week_factor: stage_input
+                    .seasonality_factors_input
+                    .hour_of_week_factor
+                    .as_slice(),
                 day_of_year_factor: stage_input
                     .seasonality_factors_input
                     .day_of_year_factor
@@ -692,6 +696,10 @@ fn materialize_runtime_state(
             stage_input
                 .seasonality_factors_input
                 .day_of_week_factor
+                .as_slice(),
+            stage_input
+                .seasonality_factors_input
+                .hour_of_week_factor
                 .as_slice(),
             stage_input
                 .seasonality_factors_input
@@ -1573,11 +1581,6 @@ fn select_restart_outcome(
     let admissibility_thresholds =
         joint_refinement_admissibility_thresholds(&prepared_bootstrap.bootstrap_context);
 
-    let admissible_selected_restart_outcomes = filter_admissible_restart_outcomes(
-        selection_artifacts.selected_restart_outcomes.as_slice(),
-        admissibility_thresholds,
-        &selection_coarse_consistency_by_restart_id,
-    );
     let diagnostic_best_restart = selection_artifacts
         .selected_restart_outcomes
         .first()
@@ -1589,9 +1592,15 @@ fn select_restart_outcome(
                 .clone()
         });
 
-    let best_restart = admissible_selected_restart_outcomes
+    let option_refinement_candidate_frontier =
+        option_refinement_candidate_frontier_from_selected_outcomes(
+            selection_artifacts.selected_restart_outcomes.as_slice(),
+            admissibility_thresholds,
+            &selection_coarse_consistency_by_restart_id,
+        );
+
+    let best_restart = option_refinement_candidate_frontier
         .first()
-        .copied()
         .cloned()
         .unwrap_or_else(|| diagnostic_best_restart.clone());
 
@@ -1606,13 +1615,6 @@ fn select_restart_outcome(
         admissibility_thresholds,
         selection_coarse_consistency_by_restart_id.get(diagnostic_best_restart.restart_id.as_str()),
     )?;
-
-    let option_refinement_candidate_frontier = selection_artifacts
-        .selected_restart_outcomes
-        .iter()
-        .copied()
-        .cloned()
-        .collect::<Vec<_>>();
 
     resume_store.record_restart_selection(PersistedRestartSelectionArtifacts {
         best_restart_id: best_restart.restart_id.clone(),
@@ -1640,6 +1642,24 @@ fn select_restart_outcome(
         selection_coarse_consistency_by_restart_id,
         coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
     })
+}
+
+pub(crate) fn option_refinement_candidate_frontier_from_selected_outcomes(
+    selected_restart_outcomes: &[&JointRefinementRestartOutcome],
+    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
+    coarse_consistency_by_restart_id: &BTreeMap<
+        String,
+        super::JointRefinementCoarseConsistencySummary,
+    >,
+) -> Vec<JointRefinementRestartOutcome> {
+    filter_admissible_restart_outcomes(
+        selected_restart_outcomes,
+        thresholds,
+        coarse_consistency_by_restart_id,
+    )
+    .into_iter()
+    .cloned()
+    .collect()
 }
 
 fn ensure_simulation_infrastructure_available(

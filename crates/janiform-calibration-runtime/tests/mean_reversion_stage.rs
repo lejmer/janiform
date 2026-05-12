@@ -348,6 +348,13 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
         payload.diagnostics.model_selection_policy,
         "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1"
     );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .all(|candidate| (0.0..=1.0).contains(&candidate.anchor_model.pressure_level_gain))
+    );
 }
 
 #[test]

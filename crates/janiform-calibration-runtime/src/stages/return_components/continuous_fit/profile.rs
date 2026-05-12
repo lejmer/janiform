@@ -145,13 +145,7 @@ pub(super) fn distribution_profile_fit_breakdown(
     );
 
     let location_fit = root_mean_square_or_infinity(
-        [
-            mean_return_fit,
-            median_return_fit,
-            lower_quartile_fit,
-            upper_quartile_fit,
-        ]
-        .as_slice(),
+        [median_return_fit, lower_quartile_fit, upper_quartile_fit].as_slice(),
     );
 
     let scale_fit = root_mean_square_or_infinity(

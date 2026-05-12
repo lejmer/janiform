@@ -310,6 +310,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                 day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                 day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
             },
             hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
@@ -335,6 +336,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
@@ -410,6 +412,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
@@ -439,6 +442,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
@@ -516,6 +520,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
                     seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                         intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                         day_of_week_factor: seasonality_payload.day_of_week_factor,
                         day_of_year_factor: seasonality_payload.day_of_year_factor,
                     },
@@ -584,6 +589,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
             seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
@@ -643,6 +649,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
             seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },

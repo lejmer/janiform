@@ -39,7 +39,10 @@ pub(crate) use option_refinement::{
     desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,
 };
 #[cfg(test)]
-pub(crate) use pipeline::ensure_valid_selected_restart_outcome;
+pub(crate) use pipeline::{
+    ensure_valid_selected_restart_outcome,
+    option_refinement_candidate_frontier_from_selected_outcomes,
+};
 pub(crate) use pricing_context::{
     OptionPricingProgressInput, OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
     OptionSurfaceTierPricingArtifactResolutionInput, build_option_calibration_diagnostics,

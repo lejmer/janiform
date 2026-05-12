@@ -56,6 +56,11 @@ def build_runtime_hourly_seasonality_source_from_model(
         "day_of_week_factor",
         "seasonality.day_of_week_factor",
     )
+    hour_of_week_factors = require_payload_numeric_sequence(
+        seasonality_parameters,
+        "hour_of_week_factor",
+        "seasonality.hour_of_week_factor",
+    )
     day_of_year_factors = require_payload_numeric_sequence(
         seasonality_parameters,
         "day_of_year_factor",
@@ -72,6 +77,7 @@ def build_runtime_hourly_seasonality_source_from_model(
         intraday_minutes_per_bin=intraday_minutes_per_bin,
         intraday_factors=intraday_factors,
         day_of_week_factors=day_of_week_factors,
+        hour_of_week_factors=hour_of_week_factors,
         day_of_year_factors=day_of_year_factors,
     )
 
@@ -184,6 +190,7 @@ def materialize_runtime_structural_seasonality_grid(
     intraday_minutes_per_bin: int,
     intraday_factors: tuple[float, ...],
     day_of_week_factors: tuple[float, ...],
+    hour_of_week_factors: tuple[float, ...],
     day_of_year_factors: tuple[float, ...],
 ) -> RuntimeStructuralSeasonalityGrid:
     native_payload = native_module().materialize_runtime_structural_seasonality(
@@ -195,6 +202,7 @@ def materialize_runtime_structural_seasonality_grid(
         intraday_minutes_per_bin,
         intraday_factors,
         day_of_week_factors,
+        hour_of_week_factors,
         day_of_year_factors,
     )
     payload_mapping = cast(Mapping[str, Any], native_payload)
@@ -212,13 +220,16 @@ def materialize_runtime_structural_seasonality_grid(
 def contains_structural_seasonality_parameters(seasonality_parameters: Mapping[str, Any]) -> bool:
     intraday_factor_by_bin = seasonality_parameters.get("intraday_factor_by_bin")
     day_of_week_factor = seasonality_parameters.get("day_of_week_factor")
+    hour_of_week_factor = seasonality_parameters.get("hour_of_week_factor")
     day_of_year_factor = seasonality_parameters.get("day_of_year_factor")
     has_structural_factor_sequences = (
         isinstance(intraday_factor_by_bin, tuple | list)
         and isinstance(day_of_week_factor, tuple | list)
+        and isinstance(hour_of_week_factor, tuple | list)
         and isinstance(day_of_year_factor, tuple | list)
         and len(intraday_factor_by_bin) > 0
         and len(day_of_week_factor) > 0
+        and len(hour_of_week_factor) > 0
         and len(day_of_year_factor) > 0
     )
     if not has_structural_factor_sequences:

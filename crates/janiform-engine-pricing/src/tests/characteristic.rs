@@ -25,7 +25,6 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
-use janiform_model_kernels::risk_neutral::evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument;
 
 use super::support::{
     assert_complex_close, disabled_boundary_input, oracle_output_with_transform_value,
@@ -50,9 +49,8 @@ fn pricing_path_preserves_sell_side_minus_u_sign_handling() {
     let composed =
         compose_nig_trading_time_exponent(driver_parameters, argument, return_decomposition);
 
-    let expected_sell_side_minus_u = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument.scale(-1.0));
+    let expected_sell_side_minus_u =
+        driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
     assert_complex_close(
         composed.sell_side_weighted_exponent,
         expected_sell_side_minus_u,
@@ -87,9 +85,8 @@ fn full_characteristic_function_assembly_uses_trading_time_factor_when_news_jump
     )
     .expect("full CF assembly should succeed with valid finite inputs");
 
-    let expected_sell_side_minus_u = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument.scale(-1.0));
+    let expected_sell_side_minus_u =
+        driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
     assert_complex_close(
         assembled
             .trading_time_exponent_contributions
@@ -356,8 +353,7 @@ fn edge_mode_buy_only_disables_sell_and_news_jump_components_in_full_cf_assembly
     .expect("buy-only edge mode CF assembly should succeed");
 
     let expected_buy = driver_parameters
-        .buy_side_parameters
-        .characteristic_exponent(argument)
+        .buy_side_characteristic_exponent(argument)
         .scale(1.2);
     let expected_trading = complex_exponential(expected_buy);
 
@@ -424,8 +420,7 @@ fn edge_mode_sell_only_preserves_minus_u_sign_and_disables_news_jump_components(
     .expect("sell-only edge mode CF assembly should succeed");
 
     let expected_sell = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument.scale(-1.0))
+        .sell_side_characteristic_exponent_for_return_composition(argument)
         .scale(1.1);
     let expected_trading = complex_exponential(expected_sell);
 
@@ -1146,20 +1141,18 @@ fn pricing_request_for_local_tilt(
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
         .expect("valid shared-plus-shift payload should derive drivers");
-    let buy_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.buy_side_parameters,
-            -1.0,
-            theta,
+    let buy_side_log_moment_exponent = driver_parameters
+        .differentiate_buy_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
+            -1.0, theta,
         )
-        .expect("buy-side transformed exponent should construct");
-    let sell_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.sell_side_parameters,
-            1.0,
-            theta,
+        .expect("buy-side transformed exponent should construct")
+        .observed_log_moment_exponent;
+    let sell_side_log_moment_exponent = driver_parameters
+        .differentiate_sell_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
+            1.0, theta,
         )
-        .expect("sell-side transformed exponent should construct");
+        .expect("sell-side transformed exponent should construct")
+        .observed_log_moment_exponent;
 
     let combined = return_decomposition.a_plus.mul_add(
         buy_side_log_moment_exponent,

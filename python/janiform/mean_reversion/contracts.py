@@ -58,6 +58,11 @@ class MeanReversionAnchorModel(ContractModel):
             "pressure_level_gain",
             _mean_reversion_error,
         )
+        if not 0.0 <= self.pressure_level_gain <= 1.0:
+            raise _mean_reversion_error(
+                "pressure_level_gain",
+                "must lie in the unit interval",
+            )
 
     def to_payload(self) -> dict[str, Any]:
         return {

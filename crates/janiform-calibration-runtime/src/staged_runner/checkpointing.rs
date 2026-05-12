@@ -56,6 +56,7 @@ pub(super) fn build_stage_parameter_artifact_input(
                         intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                         day_of_week_factor: payload.day_of_week_factor.clone(),
+                        hour_of_week_factor: payload.hour_of_week_factor.clone(),
                         day_of_year_factor: payload.day_of_year_factor.clone(),
                         normalization_metadata: payload.normalization_metadata.clone(),
                     },

@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use super::super::objective::{
     JointCandidateBreakdownComparisonInput, business_time_bucket_return_scale_fit,
@@ -18,7 +19,8 @@ use super::{
     desired_joint_refinement_restart_candidate_budget, ensure_valid_selected_restart_outcome,
     extend_joint_coarse_tick_consistency_metrics_for_seed, joint_raw_metrics_are_admissible,
     joint_raw_metrics_are_dynamics_feasible, joint_refinement_budget_schedule,
-    joint_refinement_restart_block_powell_settings, sampled_observed_tick_returns,
+    joint_refinement_restart_block_powell_settings,
+    option_refinement_candidate_frontier_from_selected_outcomes, sampled_observed_tick_returns,
 };
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
@@ -871,6 +873,54 @@ fn admissible_candidate_ordering_rejects_inadmissible_restart_when_available() {
     });
 
     assert_eq!(ordering, Ordering::Less);
+}
+
+#[test]
+fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
+    let admissible_restart = build_test_restart_outcome(
+        "admissible_restart",
+        build_test_joint_breakdown(1.0, 1.0, 1.2),
+    );
+
+    let fallback_restart = build_test_restart_outcome(
+        "fallback_restart",
+        JointRefinementStageObjectiveBreakdown {
+            activity_level_fit: 3.0,
+            ..build_test_joint_breakdown(0.8, 0.8, 0.7)
+        },
+    );
+
+    let selected_restart_outcomes = vec![&admissible_restart, &fallback_restart];
+    let mut coarse_consistency_by_restart_id = BTreeMap::new();
+    coarse_consistency_by_restart_id.insert(
+        "admissible_restart".to_string(),
+        JointRefinementCoarseConsistencySummary {
+            raw_fit: 1.0,
+            normalized_fit: 1.0,
+            admissibility_threshold: 2.0,
+        },
+    );
+    coarse_consistency_by_restart_id.insert(
+        "fallback_restart".to_string(),
+        JointRefinementCoarseConsistencySummary {
+            raw_fit: 1.0,
+            normalized_fit: 1.0,
+            admissibility_threshold: 2.0,
+        },
+    );
+
+    let option_frontier = option_refinement_candidate_frontier_from_selected_outcomes(
+        selected_restart_outcomes.as_slice(),
+        build_test_admissibility_thresholds(),
+        &coarse_consistency_by_restart_id,
+    );
+
+    let frontier_ids = option_frontier
+        .iter()
+        .map(|restart_outcome| restart_outcome.restart_id.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(frontier_ids, vec!["admissible_restart"]);
 }
 
 #[test]

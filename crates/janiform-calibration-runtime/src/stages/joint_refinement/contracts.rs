@@ -137,6 +137,7 @@ pub struct JointRefinementStageSeasonalityFactorsInput {
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
+    pub hour_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
 }
 

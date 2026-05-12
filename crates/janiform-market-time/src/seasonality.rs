@@ -8,6 +8,7 @@ mod discrete;
 mod intraday;
 mod normalization;
 mod numerics;
+mod weekly;
 
 pub use calendar_buckets::{
     DayOfWeekSeasonalityDiagnostics, DayOfWeekSeasonalityEstimateOutput,
@@ -26,13 +27,14 @@ pub use constants::{
     DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION,
-    INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    HOUR_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION, INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION,
     SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION,
 };
 pub(crate) use constants::{
-    DAYS_PER_WEEK, DAYS_PER_YEAR, IDENTIFIABILITY_NORMALIZATION_POLICY,
-    IDENTIFIABILITY_TARGET_MEAN_FACTOR, INPUT_SNAPSHOT_FINGERPRINT_ALGORITHM, MINUTES_PER_DAY,
+    DAYS_PER_WEEK, DAYS_PER_YEAR, HOURS_PER_DAY, HOURS_PER_WEEK,
+    IDENTIFIABILITY_NORMALIZATION_POLICY, IDENTIFIABILITY_TARGET_MEAN_FACTOR,
+    INPUT_SNAPSHOT_FINGERPRINT_ALGORITHM, MINUTES_PER_DAY, MINUTES_PER_HOUR,
     SPECIAL_OVERLAY_MERGE_POLICY, SPECIAL_OVERLAY_PRECEDENCE_POLICY,
     SPECIAL_OVERLAY_WINDOW_BOUNDARY_POLICY,
 };
@@ -48,6 +50,11 @@ pub use intraday::{
     IntradaySeasonalityDiagnostics, IntradaySeasonalityEstimateOutput,
     IntradaySeasonalityEstimationError, IntradaySeasonalityEstimatorSettings,
     IntradaySmoothingKernel, estimate_intraday_seasonality,
+};
+pub use weekly::{
+    HourOfWeekSeasonalityDiagnostics, HourOfWeekSeasonalityEstimateOutput,
+    HourOfWeekSeasonalityEstimationError, HourOfWeekSeasonalityEstimatorSettings,
+    estimate_hour_of_week_seasonality,
 };
 
 #[cfg(test)]

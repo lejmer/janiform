@@ -8,7 +8,8 @@ use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
 use serde::Deserialize;
 use serde::Serialize;
 
-const MIN_MARKET_PROFILE_INSTRUMENT_TOKEN_LENGTH: usize = 3;
+// Bundled market-profile roots include two-character symbols such as ES and US.
+const MIN_MARKET_PROFILE_INSTRUMENT_TOKEN_LENGTH: usize = 2;
 const BUNDLED_MARKET_PROFILE_SOURCE_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../presets/sources/market_profiles/market_profile_presets.json"
@@ -131,7 +132,8 @@ struct BundledSessionSourceDocument {
 /// The inference uses the first bundled instrument token in the file stem, for
 /// example `EURUSD_665k_ticks.parquet` and
 /// `Synthetic_EURUSD_Data_1M_ticks.parquet` both map to `eurusd_spot` when that
-/// bundled profile is available.
+/// bundled profile is available. Two-character roots are included because
+/// listed futures contracts such as ES use two-character instrument tokens.
 pub fn infer_bundled_market_profile_from_tick_data_path(
     path: &Path,
 ) -> Result<Option<ResolvedMarketProfile>, MarketDataPresetInferenceError> {
@@ -280,6 +282,31 @@ mod tests {
         assert_eq!(
             inferred_profile.default_calibration_hint_ids,
             vec!["fx_spot_defaults".to_string()]
+        );
+    }
+
+    #[test]
+    fn infers_es_futures_globex_profile_from_two_character_instrument_token() {
+        let inferred_profile = infer_bundled_market_profile_from_tick_data_path(Path::new(
+            "ES_continuous_ticks.parquet",
+        ))
+        .expect("bundled profile inference should succeed")
+        .expect("ES token should select a bundled profile");
+
+        assert_eq!(inferred_profile.profile_name, "es_futures_globex");
+        assert_eq!(inferred_profile.session_preset_name, "XCME");
+        assert_eq!(inferred_profile.exchange_code, "XCME");
+        assert_eq!(
+            inferred_profile.timestamp_timezone_name.as_deref(),
+            Some("UTC")
+        );
+        assert_eq!(
+            inferred_profile.known_news_preset_name.as_deref(),
+            Some("none")
+        );
+        assert_eq!(
+            inferred_profile.default_calibration_hint_ids,
+            vec!["equity_index_futures_defaults".to_string()]
         );
     }
 }

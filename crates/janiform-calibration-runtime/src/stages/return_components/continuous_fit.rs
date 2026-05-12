@@ -1,4 +1,5 @@
 mod bounds;
+mod budget;
 mod closed_form;
 mod constants;
 mod exact_block;

@@ -661,7 +661,7 @@ mod tests {
             .expect("test kernel parameters should validate"),
             mean_reversion_fitted_parameters: MeanReversionFittedParameters::try_new(
                 0.25,
-                MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 1.25),
+                MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),
             )
             .expect("test mean-reversion parameters should validate"),
             reference_price: 100.0,

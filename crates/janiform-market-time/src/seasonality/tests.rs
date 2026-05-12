@@ -1,14 +1,19 @@
 use super::{
     DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
     DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionInput,
-    IntradaySeasonalityEstimationError, IntradaySeasonalityEstimatorSettings,
-    IntradaySmoothingKernel, ScheduledEventOverlayDefinition, SeasonalityDiagnosticsReportError,
-    SeasonalityDiagnosticsReportInput, SeasonalityNormalizationError,
-    compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
-    estimate_day_of_year_seasonality, estimate_intraday_seasonality,
+    HourOfWeekSeasonalityEstimatorSettings, IntradaySeasonalityEstimationError,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
+    SeasonalityDiagnosticsReportError, SeasonalityDiagnosticsReportInput,
+    SeasonalityNormalizationError, compose_deterministic_seasonality_signal,
+    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
+    estimate_hour_of_week_seasonality, estimate_intraday_seasonality,
     generate_seasonality_diagnostics_batch_report, generate_seasonality_diagnostics_report,
     normalize_seasonality_factors_for_identifiability, numerics::stable_sum_f64,
 };
+
+const TEST_MINUTES_PER_HOUR: u16 = 60;
+const TEST_HOURS_PER_DAY: usize = 24;
+const TEST_DAYS_PER_WEEK: usize = 7;
 
 #[test]
 fn intraday_estimator_recovers_non_parametric_bimodal_pattern() {
@@ -136,6 +141,50 @@ fn day_of_week_estimator_recovers_synthetic_weekday_pattern() {
 
     let mean_factor =
         estimate.day_of_week_factor.iter().sum::<f64>() / estimate.day_of_week_factor.len() as f64;
+
+    assert!((mean_factor - 1.0).abs() < 1e-12);
+    assert_eq!(
+        estimate.diagnostics.input_event_count,
+        day_of_week_events.len()
+    );
+}
+
+#[test]
+fn hour_of_week_estimator_keeps_weekday_hour_cells_joint() {
+    let mut day_of_week_events: Vec<u8> = vec![1; 40];
+    let mut minute_of_day_events: Vec<u16> = vec![9 * TEST_MINUTES_PER_HOUR; 40];
+
+    day_of_week_events.extend([2; 60]);
+    minute_of_day_events.extend([15 * TEST_MINUTES_PER_HOUR; 60]);
+
+    day_of_week_events.extend([2; 10]);
+    minute_of_day_events.extend([9 * TEST_MINUTES_PER_HOUR; 10]);
+
+    let estimate = estimate_hour_of_week_seasonality(
+        &day_of_week_events,
+        &minute_of_day_events,
+        HourOfWeekSeasonalityEstimatorSettings {
+            minimum_bucket_events: 2,
+            pseudocount: 1e-6,
+        },
+    )
+    .expect("hour-of-week estimation should succeed");
+
+    let monday_nine = 9;
+    let tuesday_nine = TEST_HOURS_PER_DAY + 9;
+    let tuesday_fifteen = TEST_HOURS_PER_DAY + 15;
+
+    assert!(
+        estimate.hour_of_week_factor[tuesday_fifteen] > estimate.hour_of_week_factor[monday_nine]
+    );
+    assert!(estimate.hour_of_week_factor[monday_nine] > estimate.hour_of_week_factor[tuesday_nine]);
+    assert_eq!(
+        estimate.sparse_bucket_flags[TEST_DAYS_PER_WEEK * TEST_HOURS_PER_DAY - 1],
+        1
+    );
+
+    let mean_factor = estimate.hour_of_week_factor.iter().sum::<f64>()
+        / estimate.hour_of_week_factor.len() as f64;
 
     assert!((mean_factor - 1.0).abs() < 1e-12);
     assert_eq!(

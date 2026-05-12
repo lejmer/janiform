@@ -10,7 +10,7 @@ use janiform_model_kernels::mean_reversion::{
 fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
     let fitted_parameters = MeanReversionFittedParameters::try_new(
         0.25,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 1.25),
+        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),
     )
     .expect("mean reversion fitted parameters should validate");
 
@@ -22,7 +22,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
         serde_json::json!({
             "reference_interval_hours": 24.0,
             "pressure_persistence_per_reference_interval": 0.5,
-            "pressure_level_gain": 1.25,
+            "pressure_level_gain": 0.75,
         })
     );
 
@@ -67,6 +67,25 @@ fn endogenous_mean_reversion_anchor_model_rejects_unknown_fields() {
             .to_string()
             .contains("unknown field `anchor_value`")
     );
+}
+
+#[test]
+fn endogenous_mean_reversion_anchor_model_rejects_pressure_gain_outside_unit_interval() {
+    for pressure_level_gain in [-0.1, 1.1] {
+        let error = MeanReversionAnchorModel::endogenous_core_pressure_level(
+            24.0,
+            0.5,
+            pressure_level_gain,
+        )
+        .validate()
+        .expect_err("pressure-level gain outside the unit interval must fail validation");
+
+        assert!(
+            error
+                .to_string()
+                .contains("pressure_level_gain must lie in [0, 1]")
+        );
+    }
 }
 
 #[test]

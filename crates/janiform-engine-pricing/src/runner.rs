@@ -1786,7 +1786,7 @@ fn tilted_nig_expected_increment(
     business_time_increment_scale: f64,
     theta: f64,
 ) -> Result<f64, VanillaOptionPricingRunError> {
-    janiform_model_kernels::nig::NigParameters::try_new(
+    let tilted_expected_increment = janiform_model_kernels::nig::NigParameters::try_new(
         physical_parameters.alpha,
         physical_parameters.beta - theta,
         physical_parameters.delta,
@@ -1798,11 +1798,21 @@ fn tilted_nig_expected_increment(
         },
     )?
     .expected_increment(business_time_increment_scale)
-    .map_err(
-        |source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+    .map_err(|source| {
+        VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
             message: source.to_string(),
-        },
-    )
+        }
+    })?;
+
+    let physical_expected_increment = physical_parameters
+        .expected_increment(business_time_increment_scale)
+        .map_err(
+            |source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                message: source.to_string(),
+            },
+        )?;
+
+    Ok(tilted_expected_increment - physical_expected_increment)
 }
 
 pub(crate) fn infer_expected_news_loading_under_local_measure_for_row(

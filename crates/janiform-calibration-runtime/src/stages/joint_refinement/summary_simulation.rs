@@ -1079,7 +1079,7 @@ pub(crate) mod tests {
     fn run_config_preserves_candidate_mean_reversion_parameters() {
         let mut fixture = joint_refinement_summary_fixture();
         let mean_reversion_fitted_parameters =
-            MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 1.25)
+            MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 0.75)
                 .expect("mean-reversion fixture parameters should validate");
         fixture
             .fitted_parameters
@@ -1396,6 +1396,7 @@ pub(crate) mod tests {
                             .intraday_factor_by_bin
                             .as_slice(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.as_slice(),
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.as_slice(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.as_slice(),
                         range_start_utc_nanos: observed_data
                             .hourly_simulation_start_utc

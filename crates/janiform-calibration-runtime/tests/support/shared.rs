@@ -1512,6 +1512,7 @@ fn stage_parameter_artifact_input(
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
+                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
                     normalization_metadata: payload.normalization_metadata.clone(),
                 }),
@@ -2512,6 +2513,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                         intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                         day_of_week_factor: seasonality_payload.day_of_week_factor,
                         day_of_year_factor: seasonality_payload.day_of_year_factor,
                     },

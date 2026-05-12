@@ -39,6 +39,7 @@ pub(super) fn build_effective_nig_em_search_points(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     moment_seed_candidates: &[ScoredNigCandidate],
     solver_settings: &CalibrationOptimizerSettings,
+    maximum_iteration_count: usize,
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<NigShapeSearchPoint> {
     let completed_seed_count = AtomicUsize::new(0);
@@ -70,6 +71,7 @@ pub(super) fn build_effective_nig_em_search_points(
                 calibration_sample.business_time_scales.as_slice(),
                 initial_parameters,
                 solver_settings,
+                maximum_iteration_count,
                 Some(&progress_context),
             )?;
 
@@ -136,6 +138,7 @@ fn fit_effective_zero_drift_nig_via_em(
     business_time_scales: &[f64],
     initial_parameters: NigParameters,
     solver_settings: &CalibrationOptimizerSettings,
+    maximum_iteration_count: usize,
     progress_context: Option<&ProxyEmProgressContext>,
 ) -> Option<NigParameters> {
     if observed_returns.is_empty() || business_time_scales.is_empty() {
@@ -158,8 +161,7 @@ fn fit_effective_zero_drift_nig_via_em(
         aligned_business_time_scales,
     )?;
 
-    let maximum_iteration_count = solver_settings.max_iterations.max(1);
-    for _ in 0..maximum_iteration_count {
+    for _ in 0..maximum_iteration_count.max(1) {
         let e_step_statistics = build_e_step_statistics(
             current_parameters,
             aligned_observed_returns,
@@ -544,6 +546,7 @@ mod tests {
             business_time_scales.as_slice(),
             initial_parameters,
             &solver_settings,
+            24,
             None,
         )
         .expect("em fit should converge");
@@ -578,6 +581,7 @@ mod tests {
             &calibration_sample,
             theoretical_bounds,
             BasinSeedFamily::ALL.len(),
+            BasinSeedFamily::ALL.len(),
             None,
         );
 
@@ -589,6 +593,7 @@ mod tests {
             &calibration_sample,
             moment_seed_candidates.as_slice(),
             &solver_settings,
+            24,
             None,
         );
 

@@ -87,6 +87,7 @@ pub(super) fn build_moment_seed_candidates(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     theoretical_search_bounds: NigShapeSearchBounds,
     moment_candidate_count: usize,
+    retained_candidate_count: usize,
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<ScoredNigCandidate> {
     let moment_targets = ContinuousMomentTargets::from_profile(calibration_sample.observed_profile);
@@ -159,7 +160,7 @@ pub(super) fn build_moment_seed_candidates(
     let retained_candidates = super::optimization::retain_diverse_scored_candidates(
         ranked_candidates,
         theoretical_search_bounds,
-        BasinSeedFamily::ALL.len(),
+        retained_candidate_count.max(BasinSeedFamily::ALL.len()),
     );
 
     let retained_candidates =
@@ -438,23 +439,16 @@ fn moment_seed_objective_score(
     optimizer_context: &ContinuousReturnOptimizerContext,
     moment_targets: ContinuousMomentTargets,
 ) -> Option<f64> {
-    let (fitted_mean_return, fitted_variance, fitted_skewness, fitted_excess_kurtosis) =
+    let (_, fitted_variance, fitted_skewness, fitted_excess_kurtosis) =
         theoretical_net_process_moments(
             configuration,
             optimizer_context.open_session_sell_share_proxy,
         )?;
 
-    let mean_scale = (moment_targets.return_volatility
-        / (moment_targets.sample_count.max(2) as f64).sqrt())
-    .max(return_components_stage_positive_domain_floor().sqrt());
-
     let variance_scale = moment_targets
         .return_volatility
         .powi(2)
         .max(return_components_stage_positive_domain_floor());
-
-    let mean_fit =
-        scale_aware_absolute_error(fitted_mean_return, moment_targets.mean_return, mean_scale);
 
     let variance_fit = scale_aware_absolute_error(fitted_variance, variance_scale, variance_scale);
 
@@ -471,7 +465,7 @@ fn moment_seed_objective_score(
     );
 
     Some(root_mean_square_or_infinity(
-        [mean_fit, variance_fit, skewness_fit, excess_kurtosis_fit].as_slice(),
+        [variance_fit, skewness_fit, excess_kurtosis_fit].as_slice(),
     ))
 }
 

@@ -22,6 +22,7 @@ use super::bounds::{
     build_moment_seed_candidates, build_search_regimes_from_moment_seeds,
     configuration_from_shape_search_point, theoretical_search_bounds,
 };
+use super::budget::ContinuousNigFitBudgets;
 use super::likelihood::{
     continuous_block_likelihood_objective, continuous_block_likelihood_objective_with_failures,
     simulate_matched_scale_returns,
@@ -56,12 +57,10 @@ pub(crate) fn build_nig_search_candidates_with_progress(
     let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
 
     with_continuous_fit_thread_pool(solver_settings.cpu_count, || {
-        let candidate_budget = solver_settings
-            .max_iterations
-            .max(BasinSeedFamily::ALL.len());
+        let fit_budgets =
+            ContinuousNigFitBudgets::from_calibration_sample(calibration_sample, solver_settings);
 
-        let moment_candidate_count =
-            family_aligned_candidate_count(candidate_budget, BasinSeedFamily::ALL.len());
+        let moment_candidate_count = fit_budgets.moment_candidate_generation_count;
 
         let theoretical_search_bounds =
             theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
@@ -79,6 +78,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             calibration_sample,
             theoretical_search_bounds,
             moment_candidate_count,
+            fit_budgets.seed_frontier_candidate_count,
             progress_sender,
         );
 
@@ -102,6 +102,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             calibration_sample,
             moment_seed_candidates.as_slice(),
             solver_settings,
+            fit_budgets.proxy_em_iteration_count,
             progress_sender,
         );
 
@@ -167,6 +168,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
         let seed_candidates = build_basin_seed_candidates(
             seed_frontier_candidates.as_slice(),
             broad_search_regimes.as_slice(),
+            fit_budgets.basin_seed_candidate_count,
         );
 
         send_return_components_progress(
@@ -202,7 +204,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
         let retained_basin_candidates = retain_distinct_basin_candidates(
             optimized_seed_candidates,
             search_bounds,
-            BasinSeedFamily::ALL.len(),
+            fit_budgets.basin_seed_candidate_count,
         );
 
         send_return_components_progress(
@@ -291,13 +293,10 @@ pub(crate) fn build_nig_moment_seed_configurations(
 ) -> Vec<janiform_model_kernels::nig::NigSharedPlusShiftConfiguration> {
     with_continuous_fit_thread_pool(solver_settings.cpu_count, || {
         let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+        let fit_budgets =
+            ContinuousNigFitBudgets::from_calibration_sample(calibration_sample, solver_settings);
 
-        let broad_candidate_count = solver_settings
-            .max_iterations
-            .max(BasinSeedFamily::ALL.len());
-
-        let moment_candidate_count =
-            family_aligned_candidate_count(broad_candidate_count, BasinSeedFamily::ALL.len());
+        let moment_candidate_count = fit_budgets.moment_candidate_generation_count;
 
         let search_bounds =
             theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
@@ -307,6 +306,7 @@ pub(crate) fn build_nig_moment_seed_configurations(
             calibration_sample,
             search_bounds,
             moment_candidate_count,
+            fit_budgets.seed_frontier_candidate_count,
             None,
         )
         .into_iter()
@@ -541,22 +541,10 @@ pub(super) fn candidate_configuration_key(
     )
 }
 
-fn family_aligned_candidate_count(candidate_budget: usize, family_count: usize) -> usize {
-    if family_count == 0 {
-        return candidate_budget.max(1);
-    }
-
-    let requested_budget = candidate_budget.max(family_count);
-    let rounded_family_count = requested_budget
-        .div_ceil(family_count)
-        .saturating_mul(family_count);
-
-    rounded_family_count.max(family_count)
-}
-
 fn build_basin_seed_candidates(
     scored_candidates: &[ScoredNigCandidate],
     broad_search_regimes: &[NigSearchRegime],
+    maximum_seed_count: usize,
 ) -> Vec<SeededNigCandidate> {
     let mut ranked_candidates = scored_candidates.to_vec();
 
@@ -622,7 +610,7 @@ fn build_basin_seed_candidates(
 
     let mut retained_regimes = BTreeSet::new();
     for scored_candidate in deduplicated_candidates {
-        if retained_candidates.len() >= BasinSeedFamily::ALL.len() {
+        if retained_candidates.len() >= maximum_seed_count {
             break;
         }
 
