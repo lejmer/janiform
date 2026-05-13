@@ -41,10 +41,28 @@ pub struct SurpriseNewsDeterministicIntensityProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReturnMarkHourOfWeekScaleProfile {
+    pub hour_of_week_factors: Vec<f64>,
+    pub profile_resolution_hours: usize,
+    pub fit_policy: String,
+    pub normalization_policy: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TickGridObservationModel {
+    pub tick_size: Option<f64>,
+    pub tick_size_source: String,
+    pub inference_policy: String,
+    pub observation_policy: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
+    pub return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile,
+    pub tick_grid_observation_model: TickGridObservationModel,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
 }
 

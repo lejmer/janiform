@@ -27,6 +27,7 @@ use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
     JointRefinementRollingVarianceActivityMetric,
 };
+use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic;
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
@@ -36,7 +37,8 @@ use crate::stages::return_components::{
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, HawkesStageFittedParameters,
     JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
-    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
+    ReturnComponentsStageFittedParameters, ReturnMarkHourOfWeekScaleProfile,
+    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
 };
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
@@ -110,6 +112,22 @@ fn build_test_calibration_sample() -> ReturnComponentsStageContinuousReturnCalib
         vec![0.48, 0.53, 0.51, 0.47, 0.55, 0.49],
         0.5,
     )
+}
+
+fn build_test_objective_term(
+    metric_id: &str,
+    observed_value: f64,
+    simulated_value: f64,
+) -> JointRefinementStageObjectiveTermDiagnostic {
+    JointRefinementStageObjectiveTermDiagnostic {
+        metric_id: metric_id.to_string(),
+        target_id: metric_id.to_string(),
+        target_family: "return_scale".to_string(),
+        observed_value,
+        simulated_value,
+        uncertainty_scale: observed_value.abs(),
+        normalized_error: 0.0,
+    }
 }
 
 fn build_test_joint_breakdown(
@@ -252,6 +270,18 @@ fn build_test_joint_fitted_parameters() -> JointRefinementStageFittedParameters 
             profile_resolution_hours: 1,
             fit_policy: "test".to_string(),
             normalization_policy: "test".to_string(),
+        },
+        return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
+            hour_of_week_factors: vec![1.0; 24 * 7],
+            profile_resolution_hours: 1,
+            fit_policy: "test".to_string(),
+            normalization_policy: "test".to_string(),
+        },
+        tick_grid_observation_model: TickGridObservationModel {
+            tick_size: None,
+            tick_size_source: "test".to_string(),
+            inference_policy: "test".to_string(),
+            observation_policy: "test".to_string(),
         },
         mean_reversion_fitted_parameters:
             MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
@@ -403,6 +433,7 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
             upper_bounds: upper_bounds.as_slice(),
             baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
             return_component_basin_diagnostics: &[],
+            baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
             restart_candidate_budget: 8,
             halton_seed_is_accepted: Box::new(|_| true),
@@ -416,6 +447,7 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
             upper_bounds: upper_bounds.as_slice(),
             baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
             return_component_basin_diagnostics: &[],
+            baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
             restart_candidate_budget: 8,
             halton_seed_is_accepted: Box::new(|_| true),
@@ -427,6 +459,62 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
     assert_eq!(first_restart_seeds[1].0, "activity_aligned");
     assert_eq!(first_restart_seeds[2].0, "midpoint");
     assert_eq!(first_restart_seeds[3].0, "halton_01");
+}
+
+#[test]
+fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+
+    let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+
+    let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
+    let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+    let baseline_final_objective_terms = vec![
+        build_test_objective_term("joint.return_scale.mean_absolute_return_15m", 1.0, 2.0),
+        build_test_objective_term("joint.return_scale.tick_realized_variance", 4.0, 25.0),
+    ];
+
+    let restart_seeds =
+        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+            baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+            active_parameter_layout: &active_parameter_layout,
+            lower_bounds: lower_bounds.as_slice(),
+            upper_bounds: upper_bounds.as_slice(),
+            baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+            return_component_basin_diagnostics: &[],
+            baseline_final_objective_terms: baseline_final_objective_terms.as_slice(),
+            activity_log_shift: 0.25,
+            restart_candidate_budget: 8,
+            halton_seed_is_accepted: Box::new(|_| true),
+        });
+
+    let log_lambda_index = active_parameter_layout.log_lambda_scale_index;
+    let log_delta_offset_index = active_parameter_layout.nig_block[3];
+    let mean_absolute_return_delta_shift = 0.5f64.ln();
+    let tick_realized_variance_delta_shift = 0.4f64.ln();
+
+    assert_eq!(restart_seeds.len(), 8);
+    assert_eq!(restart_seeds[2].0, "return_scale_mean_absolute_return_15m");
+    assert_eq!(
+        restart_seeds[2].1[log_delta_offset_index],
+        mean_absolute_return_delta_shift
+    );
+    assert_eq!(
+        restart_seeds[3].0,
+        "return_scale_mean_absolute_return_15m_activity_aligned"
+    );
+    assert_eq!(
+        restart_seeds[3].1[log_delta_offset_index],
+        mean_absolute_return_delta_shift
+    );
+    assert_eq!(restart_seeds[3].1[log_lambda_index], 0.25);
+    assert_eq!(restart_seeds[4].0, "return_scale_tick_realized_variance");
+    assert_eq!(
+        restart_seeds[4].1[log_delta_offset_index],
+        tick_realized_variance_delta_shift
+    );
 }
 
 #[test]
@@ -450,6 +538,7 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
             upper_bounds: upper_bounds.as_slice(),
             baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
             return_component_basin_diagnostics: &[],
+            baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
             restart_candidate_budget: 6,
             halton_seed_is_accepted: Box::new(|_| {
@@ -485,6 +574,7 @@ fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_b
             upper_bounds: upper_bounds.as_slice(),
             baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
             return_component_basin_diagnostics: &[],
+            baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
             restart_candidate_budget: 6,
             halton_seed_is_accepted: Box::new(|_| {
@@ -531,6 +621,7 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
             upper_bounds: upper_bounds.as_slice(),
             baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
             return_component_basin_diagnostics: basin_diagnostics.as_slice(),
+            baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
             restart_candidate_budget: 8,
             halton_seed_is_accepted: Box::new(|_| true),
@@ -774,24 +865,28 @@ fn sampled_observed_tick_returns_use_raw_open_session_returns() {
     let observed_open_session_returns = vec![
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 1,
+            elapsed_same_session_hours: 1.0,
             log_return: 0.01,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 2,
+            elapsed_same_session_hours: 1.0,
             log_return: 0.02,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 3,
+            elapsed_same_session_hours: 1.0,
             log_return: 0.03,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 4,
+            elapsed_same_session_hours: 1.0,
             log_return: 0.04,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,

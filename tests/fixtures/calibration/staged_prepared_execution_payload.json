@@ -189,18 +189,21 @@
     "observed_open_session_returns": [
       {
         "return_timestamp_utc_nanos": 1770046200000000000,
+        "elapsed_same_session_hours": 0.5,
         "log_return": 0.004,
         "post_shock_activity_lift": 1.0,
         "sell_share_proxy": 0.48
       },
       {
         "return_timestamp_utc_nanos": 1770048300000000000,
+        "elapsed_same_session_hours": 0.5833333333333334,
         "log_return": 0.018,
         "post_shock_activity_lift": 1.35,
         "sell_share_proxy": 0.62
       },
       {
         "return_timestamp_utc_nanos": 1770123600000000000,
+        "elapsed_same_session_hours": 1.0,
         "log_return": -0.006,
         "post_shock_activity_lift": 0.95,
         "sell_share_proxy": 0.57

@@ -311,7 +311,6 @@ pub(crate) struct JointRefinementContext {
     pub(crate) calendar_registry: ExchangeCalendarRegistry,
     pub(crate) exchange_code: String,
     pub(crate) runtime_hourly_seasonality_factors: Vec<f64>,
-    pub(crate) max_runtime_hourly_seasonality_factor: f64,
     pub(crate) observed_data: JointRefinementObservedData,
     pub(crate) baseline_modeled_open_event_rate_per_hour: f64,
     pub(crate) baseline_hawkes_fitted_parameters: HawkesStageFittedParameters,

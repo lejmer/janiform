@@ -24,8 +24,8 @@ use crate::stages::return_components::{
 };
 
 use super::contracts::{
-    JointRefinementStageHawkesInput, JointRefinementStageProgressPhase,
-    JointRefinementStageProgressUpdate,
+    JointRefinementStageHawkesInput, JointRefinementStageObjectiveTermDiagnostic,
+    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
 use super::execution::{
     JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND,
@@ -41,6 +41,55 @@ use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
     JointRefinementStagePricingBlockFittedParameters, ReturnComponentsStageFittedParameters,
 };
+
+const RETURN_SCALE_REALIZED_VARIANCE_15M_METRIC_ID: &str = "joint.return_scale";
+const RETURN_SCALE_MEAN_ABSOLUTE_RETURN_15M_METRIC_ID: &str =
+    "joint.return_scale.mean_absolute_return_15m";
+const RETURN_SCALE_TICK_REALIZED_VARIANCE_METRIC_ID: &str =
+    "joint.return_scale.tick_realized_variance";
+const RETURN_SCALE_TICK_MEAN_ABSOLUTE_RETURN_METRIC_ID: &str =
+    "joint.return_scale.tick_mean_absolute_return";
+const RETURN_SCALE_ALIGNMENT_METRICS: [ReturnScaleAlignmentMetric; 4] = [
+    ReturnScaleAlignmentMetric {
+        metric_id: RETURN_SCALE_REALIZED_VARIANCE_15M_METRIC_ID,
+        seed_label: "realized_variance_15m",
+        scale_mapping: ReturnScaleAlignmentScaleMapping::Quadratic,
+    },
+    ReturnScaleAlignmentMetric {
+        metric_id: RETURN_SCALE_MEAN_ABSOLUTE_RETURN_15M_METRIC_ID,
+        seed_label: "mean_absolute_return_15m",
+        scale_mapping: ReturnScaleAlignmentScaleMapping::Linear,
+    },
+    ReturnScaleAlignmentMetric {
+        metric_id: RETURN_SCALE_TICK_REALIZED_VARIANCE_METRIC_ID,
+        seed_label: "tick_realized_variance",
+        scale_mapping: ReturnScaleAlignmentScaleMapping::Quadratic,
+    },
+    ReturnScaleAlignmentMetric {
+        metric_id: RETURN_SCALE_TICK_MEAN_ABSOLUTE_RETURN_METRIC_ID,
+        seed_label: "tick_mean_absolute_return",
+        scale_mapping: ReturnScaleAlignmentScaleMapping::Linear,
+    },
+];
+
+#[derive(Debug, Clone, Copy)]
+struct ReturnScaleAlignmentMetric {
+    metric_id: &'static str,
+    seed_label: &'static str,
+    scale_mapping: ReturnScaleAlignmentScaleMapping,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ReturnScaleAlignmentScaleMapping {
+    Linear,
+    Quadratic,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReturnScaleAlignmentLogDeltaShift {
+    seed_label: &'static str,
+    log_delta_shift: f64,
+}
 
 pub(super) fn parameter_vector_to_fitted_parameters(
     parameter_vector: &[f64],
@@ -181,6 +230,14 @@ pub(super) fn parameter_vector_to_fitted_parameters(
                 surprise_deterministic_intensity_profile: context
                     .baseline_return_components_fitted_parameters
                     .surprise_deterministic_intensity_profile
+                    .clone(),
+                return_mark_hour_of_week_scale_profile: context
+                    .baseline_return_components_fitted_parameters
+                    .return_mark_hour_of_week_scale_profile
+                    .clone(),
+                tick_grid_observation_model: context
+                    .baseline_return_components_fitted_parameters
+                    .tick_grid_observation_model
                     .clone(),
                 mean_reversion_fitted_parameters: context
                     .baseline_mean_reversion_fitted_parameters
@@ -373,6 +430,7 @@ pub(super) fn build_restart_seeds(input: RestartSeedsBuildInput<'_>) -> Vec<(Str
         upper_bounds,
         baseline_15m_calibration_sample,
         return_component_basin_diagnostics,
+        baseline_final_objective_terms,
         activity_log_shift,
         joint_context,
         solver_settings,
@@ -394,6 +452,7 @@ pub(super) fn build_restart_seeds(input: RestartSeedsBuildInput<'_>) -> Vec<(Str
         upper_bounds,
         baseline_15m_calibration_sample,
         return_component_basin_diagnostics,
+        baseline_final_objective_terms,
         activity_log_shift,
     );
 
@@ -447,6 +506,7 @@ pub(super) struct RestartSeedsBuildInput<'a> {
         &'a ReturnComponentsStageContinuousReturnCalibrationSample,
     pub(super) return_component_basin_diagnostics:
         &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    pub(super) baseline_final_objective_terms: &'a [JointRefinementStageObjectiveTermDiagnostic],
     pub(super) activity_log_shift: f64,
     pub(super) joint_context: &'a JointRefinementContext,
     pub(super) solver_settings: &'a CalibrationOptimizerSettings,
@@ -465,6 +525,7 @@ pub(super) fn build_restart_seeds_with_halton_acceptance(
         upper_bounds,
         baseline_15m_calibration_sample,
         return_component_basin_diagnostics,
+        baseline_final_objective_terms,
         activity_log_shift,
         restart_candidate_budget,
         halton_seed_is_accepted,
@@ -479,6 +540,7 @@ pub(super) fn build_restart_seeds_with_halton_acceptance(
         upper_bounds,
         baseline_15m_calibration_sample,
         return_component_basin_diagnostics,
+        baseline_final_objective_terms,
         activity_log_shift,
     );
 
@@ -520,6 +582,7 @@ pub(super) struct RestartSeedsWithHaltonAcceptanceBuildInput<'a> {
         &'a ReturnComponentsStageContinuousReturnCalibrationSample,
     pub(super) return_component_basin_diagnostics:
         &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    pub(super) baseline_final_objective_terms: &'a [JointRefinementStageObjectiveTermDiagnostic],
     pub(super) activity_log_shift: f64,
     pub(super) restart_candidate_budget: usize,
     pub(super) halton_seed_is_accepted: HaltonSeedAcceptancePredicate<'a>,
@@ -532,6 +595,7 @@ fn build_core_restart_seed_candidates(
     upper_bounds: &[f64],
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    baseline_final_objective_terms: &[JointRefinementStageObjectiveTermDiagnostic],
     activity_log_shift: f64,
 ) -> Vec<(String, Vec<f64>)> {
     let mut baseline = baseline_parameter_vector.to_vec();
@@ -556,11 +620,22 @@ fn build_core_restart_seed_candidates(
 
     clamp_in_place(midpoint.as_mut_slice(), lower_bounds, upper_bounds);
 
-    let mut restart_candidates = vec![
-        ("baseline".to_string(), baseline),
-        ("activity_aligned".to_string(), activity_aligned),
-        ("midpoint".to_string(), midpoint),
-    ];
+    let mut restart_candidates = vec![("baseline".to_string(), baseline)];
+
+    restart_candidates.push(("activity_aligned".to_string(), activity_aligned));
+
+    restart_candidates.extend(joint_return_scale_alignment_restart_seeds(
+        JointReturnScaleAlignmentSeedsBuildInput {
+            baseline_parameter_vector,
+            active_parameter_layout,
+            lower_bounds,
+            upper_bounds,
+            baseline_final_objective_terms,
+            activity_log_shift,
+        },
+    ));
+
+    restart_candidates.push(("midpoint".to_string(), midpoint));
 
     restart_candidates.extend(joint_nig_basin_restart_seeds(
         JointNigRestartSeedsBuildInput {
@@ -589,6 +664,120 @@ fn build_core_restart_seed_candidates(
     ));
 
     restart_candidates
+}
+
+struct JointReturnScaleAlignmentSeedsBuildInput<'a> {
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
+    baseline_final_objective_terms: &'a [JointRefinementStageObjectiveTermDiagnostic],
+    activity_log_shift: f64,
+}
+
+fn joint_return_scale_alignment_restart_seeds(
+    input: JointReturnScaleAlignmentSeedsBuildInput<'_>,
+) -> Vec<(String, Vec<f64>)> {
+    let JointReturnScaleAlignmentSeedsBuildInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_final_objective_terms,
+        activity_log_shift,
+    } = input;
+
+    return_scale_alignment_log_delta_shifts(baseline_final_objective_terms)
+        .into_iter()
+        .flat_map(|alignment| {
+            let mut baseline_scale_aligned = baseline_parameter_vector.to_vec();
+            apply_nig_log_delta_offset_shift(
+                baseline_scale_aligned.as_mut_slice(),
+                active_parameter_layout,
+                alignment.log_delta_shift,
+            );
+            clamp_in_place(
+                baseline_scale_aligned.as_mut_slice(),
+                lower_bounds,
+                upper_bounds,
+            );
+
+            let mut activity_scale_aligned = baseline_parameter_vector.to_vec();
+
+            apply_nig_log_delta_offset_shift(
+                activity_scale_aligned.as_mut_slice(),
+                active_parameter_layout,
+                alignment.log_delta_shift,
+            );
+
+            apply_activity_alignment(
+                activity_scale_aligned.as_mut_slice(),
+                active_parameter_layout,
+                activity_log_shift,
+            );
+
+            clamp_in_place(
+                activity_scale_aligned.as_mut_slice(),
+                lower_bounds,
+                upper_bounds,
+            );
+
+            vec![
+                (
+                    format!("return_scale_{}", alignment.seed_label),
+                    baseline_scale_aligned,
+                ),
+                (
+                    format!("return_scale_{}_activity_aligned", alignment.seed_label),
+                    activity_scale_aligned,
+                ),
+            ]
+        })
+        .collect()
+}
+
+fn return_scale_alignment_log_delta_shifts(
+    objective_terms: &[JointRefinementStageObjectiveTermDiagnostic],
+) -> Vec<ReturnScaleAlignmentLogDeltaShift> {
+    RETURN_SCALE_ALIGNMENT_METRICS
+        .iter()
+        .filter_map(|alignment_metric| {
+            objective_terms
+                .iter()
+                .find(|term| term.metric_id == alignment_metric.metric_id)
+                .and_then(|term| return_scale_alignment_ratio(term, alignment_metric.scale_mapping))
+                .map(|scale_ratio| ReturnScaleAlignmentLogDeltaShift {
+                    seed_label: alignment_metric.seed_label,
+                    log_delta_shift: scale_ratio.ln(),
+                })
+        })
+        .collect()
+}
+
+fn return_scale_alignment_ratio(
+    objective_term: &JointRefinementStageObjectiveTermDiagnostic,
+    scale_mapping: ReturnScaleAlignmentScaleMapping,
+) -> Option<f64> {
+    if !objective_term.observed_value.is_finite()
+        || !objective_term.simulated_value.is_finite()
+        || objective_term.observed_value <= 0.0
+        || objective_term.simulated_value <= 0.0
+    {
+        return None;
+    }
+
+    let observed_to_simulated_ratio =
+        objective_term.observed_value / objective_term.simulated_value;
+    if !observed_to_simulated_ratio.is_finite() || observed_to_simulated_ratio <= 0.0 {
+        return None;
+    }
+
+    let scale_ratio = match scale_mapping {
+        ReturnScaleAlignmentScaleMapping::Linear => observed_to_simulated_ratio,
+        ReturnScaleAlignmentScaleMapping::Quadratic => observed_to_simulated_ratio.sqrt(),
+    };
+
+    scale_ratio.is_finite().then_some(scale_ratio)
 }
 
 fn finalize_restart_seed_candidates(
@@ -1313,6 +1502,14 @@ fn apply_nig_alpha_delta_search_point(
 ) {
     parameter_vector[active_parameter_layout.nig_block[0]] = search_point.log_alpha;
     parameter_vector[active_parameter_layout.nig_block[3]] = search_point.log_delta_offset;
+}
+
+fn apply_nig_log_delta_offset_shift(
+    parameter_vector: &mut [f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    log_delta_offset_shift: f64,
+) {
+    parameter_vector[active_parameter_layout.nig_block[3]] += log_delta_offset_shift;
 }
 
 pub(super) fn observed_activity_log_shift(

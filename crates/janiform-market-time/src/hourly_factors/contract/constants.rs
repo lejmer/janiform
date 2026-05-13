@@ -33,6 +33,3 @@ pub const DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY: &str =
 /// Public default surprise-control policy, overrideable through the hourly-factor contract.
 pub const DEFAULT_SURPRISE_NEWS_INTENSITY_CONTROL_POLICY: &str =
     "interval_indexed_surprise_multiplier_with_default_one.v1";
-
-/// Exact one-second duration in nanoseconds used for interval arithmetic only.
-pub(super) const ONE_SECOND_NANOS: i64 = 1_000_000_000;

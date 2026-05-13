@@ -462,24 +462,28 @@ fn equal_business_time_blocks_preserve_order_and_total_mass() {
     let observed_returns = vec![
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 1,
+            elapsed_same_session_hours: 1.0,
             log_return: 0.01,
             post_shock_activity_lift: 1.0,
             sell_share_proxy: 0.0,
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 2,
+            elapsed_same_session_hours: 1.0,
             log_return: -0.02,
             post_shock_activity_lift: 2.0,
             sell_share_proxy: 1.0,
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 3,
+            elapsed_same_session_hours: 1.0,
             log_return: 0.03,
             post_shock_activity_lift: 3.0,
             sell_share_proxy: 0.0,
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 4,
+            elapsed_same_session_hours: 1.0,
             log_return: 0.04,
             post_shock_activity_lift: 4.0,
             sell_share_proxy: 1.0,
@@ -821,7 +825,9 @@ fn optimizer_context_uses_reduced_fidelity_supports_when_scale_buckets_exist() {
 fn optimizer_context_keeps_small_samples_at_full_fidelity() {
     let configuration = NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
         .expect("configuration should validate");
+
     let calibration_sample = synthetic_calibration_sample_from_configuration(configuration);
+
     let small_sample = ReturnComponentsStageContinuousReturnCalibrationSample {
         observed_returns: calibration_sample.observed_returns[..48].to_vec(),
         business_time_scales: calibration_sample.business_time_scales[..48].to_vec(),
@@ -835,6 +841,7 @@ fn optimizer_context_keeps_small_samples_at_full_fidelity() {
         ),
         open_session_sell_share_proxy: calibration_sample.open_session_sell_share_proxy,
     };
+
     let optimizer_context = build_continuous_return_optimizer_context(&small_sample);
 
     assert!(small_sample.scale_bucket_profiles.is_empty());
@@ -855,16 +862,21 @@ fn optimizer_context_keeps_small_samples_at_full_fidelity() {
 fn test_optimizer_calibration_sample() -> ReturnComponentsStageContinuousReturnCalibrationSample {
     let configuration = NigSharedPlusShiftConfiguration::try_new(120.0, -24.0, 2.5e-4, 0.0, -10.0)
         .expect("configuration should validate");
+
     let driver_parameters = configuration
         .derive_driver_parameters()
         .expect("driver parameters should derive");
+
     let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(91);
+
     let business_time_scales: Vec<f64> = (0..TEST_OPTIMIZER_SAMPLE_COUNT)
         .map(|sample_index| 0.8 + sample_index as f64 / 80.0)
         .collect();
+
     let sell_share_proxies: Vec<f64> = (0..TEST_OPTIMIZER_SAMPLE_COUNT)
         .map(|sample_index| 0.25 + 0.50 * ((sample_index % 13) as f64 / 12.0))
         .collect();
+
     let observed_returns: Vec<f64> = business_time_scales
         .iter()
         .zip(sell_share_proxies.iter())
@@ -900,6 +912,7 @@ fn test_optimizer_calibration_sample() -> ReturnComponentsStageContinuousReturnC
 #[test]
 fn moment_seed_configurations_are_available_without_local_optimization() {
     let calibration_sample = test_optimizer_calibration_sample();
+
     let solver_settings =
         CalibrationOptimizerSettings::try_new("return-components-test", 64, 1, 1.0e-6, 1.0e-6, 1.0)
             .expect("test optimizer settings should be valid");

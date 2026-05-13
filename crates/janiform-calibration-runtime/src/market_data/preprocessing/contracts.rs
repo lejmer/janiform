@@ -15,6 +15,8 @@ pub struct MarketDataTranslationPreprocessingRequest {
     pub exchange_code: String,
     pub trade_events_data_reference: String,
     pub tick_records: Vec<MarketDataTranslationTickRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_price: Option<f64>,
     #[serde(default)]
     pub known_news_records: Vec<MarketDataTranslationKnownNewsRecord>,
     #[serde(default)]
@@ -55,6 +57,8 @@ pub struct MarketDataTranslationSeasonalityPreprocessingSettings {
 pub struct MarketDataTranslationReturnComponentsPreprocessingSettings {
     pub intraday_jump_threshold_multiplier: f64,
     pub close_open_gap_tolerance_multiplier: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tick_size: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -126,6 +130,9 @@ pub enum MarketDataTranslationPreprocessingError {
     },
     HawkesRequiresDirectionalLabelDiagnostics,
     MissingOpenSessionPriceObservations,
+    InvalidTickGridReferencePrice {
+        reference_price: Option<f64>,
+    },
     InvalidSessionBoundary {
         exchange_code: String,
         timestamp_utc_nanos: i64,
@@ -191,6 +198,10 @@ impl Display for MarketDataTranslationPreprocessingError {
             Self::MissingOpenSessionPriceObservations => write!(
                 formatter,
                 "full calibration requires at least two open-session price observations"
+            ),
+            Self::InvalidTickGridReferencePrice { reference_price } => write!(
+                formatter,
+                "tick-grid observation preprocessing requires a finite positive reference price, found `{reference_price:?}`"
             ),
             Self::InvalidSessionBoundary {
                 exchange_code,

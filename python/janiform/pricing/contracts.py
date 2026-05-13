@@ -67,7 +67,7 @@ from ..contracts.base import (
 )
 from ..errors import JaniformValidationError
 from ..hourly_factors import HourlyFactorContract
-from .._timestamps import NANOS_PER_HOUR
+from .._timestamps import NANOS_PER_HOUR, hours_to_exact_nanoseconds
 
 if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
@@ -114,7 +114,6 @@ VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: tuple[str, ...] = (
 PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY = (
     "solve_state_dependent_local_tilt_against_endogenous_q_martingale_target.v1"
 )
-_PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
 
 def _parse_hawkes_kernel_parameters(
@@ -916,10 +915,15 @@ class VanillaOptionPricingRequest(ContractModel):
                 "must be an AnchoredVanillaOptionPricingBoundaryInput",
             )
 
-        if (
-            abs(self.boundary_input.interval_delta - self.interval_delta)
-            > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        ):
+        try:
+            interval_duration_nanos = hours_to_exact_nanoseconds(self.interval_delta)
+            boundary_interval_duration_nanos = hours_to_exact_nanoseconds(
+                self.boundary_input.interval_delta
+            )
+        except ValueError as e:
+            raise _pricing_error("interval_delta", str(e)) from e
+
+        if boundary_interval_duration_nanos != interval_duration_nanos:
             raise _pricing_error(
                 "interval_delta",
                 (

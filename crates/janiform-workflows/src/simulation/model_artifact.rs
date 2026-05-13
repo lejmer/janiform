@@ -274,6 +274,15 @@ fn build_direct_job(
                     mean_reversion_runtime_interval_anchors: runtime_interval_anchors,
                     initial_mean_reversion_boundary_state,
                     hourly_factor_contract,
+                    return_mark_hour_of_week_factors: context
+                        .return_components_fitted_parameters
+                        .return_mark_hour_of_week_scale_profile
+                        .hour_of_week_factors
+                        .clone(),
+                    observed_price_tick_size: context
+                        .return_components_fitted_parameters
+                        .tick_grid_observation_model
+                        .tick_size,
                     // Intentional copy because seeded simulation owns runtime inputs
                     // while export settings continue to use the shared context.
                     calendar_registry: context.calendar_registry.clone(),
@@ -338,6 +347,15 @@ fn build_direct_job(
                     .return_components_fitted_parameters
                     .news_process_configuration
                     .clone(),
+                context
+                    .return_components_fitted_parameters
+                    .return_mark_hour_of_week_scale_profile
+                    .hour_of_week_factors
+                    .clone(),
+                context
+                    .return_components_fitted_parameters
+                    .tick_grid_observation_model
+                    .tick_size,
                 // Intentional copies because coarse simulation owns serialized
                 // calendar identity independent of the shared workflow context.
                 context.calendar_registry_artifact.clone(),

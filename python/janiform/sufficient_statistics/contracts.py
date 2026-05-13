@@ -172,7 +172,6 @@ SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
 
 # Public sufficient-statistics request default in hours, and callers can override it on the request payload.
 DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA = 1.0
-_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,11 +221,8 @@ class SufficientStatisticsModelInputs(ContractModel):
 
     def __post_init__(self) -> None:
         if (
-            abs(
-                self.initial_mean_reversion_boundary_state.anchor_value
-                - self.mean_reversion_runtime_interval_anchors.start_anchor_value
-            )
-            > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
+            self.initial_mean_reversion_boundary_state.anchor_value
+            != self.mean_reversion_runtime_interval_anchors.start_anchor_value
         ):
             raise _sufficient_statistics_error(
                 "model_inputs.initial_mean_reversion_boundary_state.anchor_value",
@@ -354,7 +350,17 @@ class SufficientStatisticsRunRequest(ContractModel):
         for interval_index, observed_interval_delta in enumerate(
             runtime_interval_anchors.interval_deltas[: self.horizon_interval_count]
         ):
-            if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
+            try:
+                observed_interval_duration_nanos = hours_to_exact_nanoseconds(
+                    observed_interval_delta
+                )
+            except ValueError as e:
+                raise _sufficient_statistics_error(
+                    f"model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
+                    str(e),
+                ) from e
+
+            if observed_interval_duration_nanos != expected_interval_duration_nanos:
                 raise _sufficient_statistics_error(
                     f"model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
                     f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",

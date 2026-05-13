@@ -54,6 +54,8 @@ struct SeededTickSimulationRequestDocument {
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
     hourly_factor_summary: SeededTickHourlyFactorSummary,
+    return_mark_hour_of_week_factors: Vec<f64>,
+    observed_price_tick_size: Option<f64>,
     #[serde(default)]
     debug_trace_enabled: bool,
     #[serde(default = "default_sample_every_nth_transition")]
@@ -150,6 +152,8 @@ pub(crate) fn load_seeded_tick_simulation_request(
                 .mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state: document.initial_mean_reversion_boundary_state,
             hourly_factor_contract,
+            return_mark_hour_of_week_factors: document.return_mark_hour_of_week_factors,
+            observed_price_tick_size: document.observed_price_tick_size,
             calendar_registry,
         },
         Some(run_options),

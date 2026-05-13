@@ -46,6 +46,7 @@ pub fn evaluate_exponential_affine_transform_hamiltonians(
     d_vector: ExponentialAffineTransformDVector,
 ) -> ExponentialAffineTransformHamiltonians {
     let equation_specification = transform_input.equation_specification;
+
     let d_dot_k_plus = d_vector.dot_loadings(equation_specification.k_plus());
     let d_dot_k_minus = d_vector.dot_loadings(equation_specification.k_minus());
 
@@ -65,44 +66,35 @@ pub fn evaluate_exponential_affine_transform_hamiltonians(
 
 /// Evaluate the ODE RHS for the 4 `D_ij` equations and `C` equation.
 ///
-/// Equation reference from compact model spec section 8:
-/// - `D_++' = -beta * D_++ + s_h * H_plus`
-/// - `D_+-' = -beta * D_+- + s_h * H_plus`
-/// - `D_-+' = -beta * D_-+ + s_h * H_minus`
-/// - `D_--' = -beta * D_-- + s_h * H_minus`
+/// Equation reference from compact model spec section 9:
+/// - `D_++' = -beta * D_++ + H_plus`
+/// - `D_+-' = -beta * D_+- + H_plus`
+/// - `D_-+' = -beta * D_-+ + H_minus`
+/// - `D_--' = -beta * D_-- + H_minus`
 /// - `C' = s_h * lambda_bar * (H_plus + H_minus) + nu_h_total * ((1 - theta_U * (D · r))^(-k_U) - 1)`
 pub fn evaluate_exponential_affine_transform_ode_rhs(
     transform_input: ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
 ) -> ExponentialAffineTransformOdeRhs {
     let equation_specification = transform_input.equation_specification;
+
     let hamiltonians =
         evaluate_exponential_affine_transform_hamiltonians(transform_input, d_vector);
+
     let beta = equation_specification.hawkes_kernel_parameters.beta;
 
     let d_derivative = ExponentialAffineTransformDVector::new(
-        d_vector
-            .plus_plus
-            .scale(-beta)
-            .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
-        d_vector
-            .plus_minus
-            .scale(-beta)
-            .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
-        d_vector
-            .minus_plus
-            .scale(-beta)
-            .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
-        d_vector
-            .minus_minus
-            .scale(-beta)
-            .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
+        d_vector.plus_plus.scale(-beta).plus(hamiltonians.h_plus),
+        d_vector.plus_minus.scale(-beta).plus(hamiltonians.h_plus),
+        d_vector.minus_plus.scale(-beta).plus(hamiltonians.h_minus),
+        d_vector.minus_minus.scale(-beta).plus(hamiltonians.h_minus),
     );
 
     let trading_term = hamiltonians
         .h_plus
         .plus(hamiltonians.h_minus)
         .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar);
+
     let news_term = evaluate_gamma_moment_news_term(transform_input, d_vector);
 
     ExponentialAffineTransformOdeRhs::new(d_derivative, trading_term.plus(news_term))
@@ -129,8 +121,10 @@ fn evaluate_gamma_moment_news_term(
             .dot_loadings(equation_specification.r())
             .scale(gamma_configuration.scale_theta),
     );
+
     let gamma_moment =
         complex_pow_real_exponent_principal(one_minus_theta_d_dot_r, -gamma_configuration.shape_k);
+
     gamma_moment
         .subtract(ComplexScalar::new(1.0, 0.0))
         .scale(transform_input.news_intensity.total_nu_h())

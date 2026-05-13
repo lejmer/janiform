@@ -1317,10 +1317,7 @@ fn build_joint_refinement_aggregated_likelihood_contexts(
         &context
             .observed_data
             .observed_tick_continuous_return_calibration_sample,
-        modeled_open_event_rate_per_hour
-            / context
-                .baseline_modeled_open_event_rate_per_hour
-                .max(1.0e-8),
+        modeled_open_event_rate_per_hour / context.baseline_modeled_open_event_rate_per_hour,
     );
 
     JointRefinementAggregatedLikelihoodContexts {
@@ -1945,7 +1942,7 @@ fn bowley_skewness_or_zero(values: &[f64]) -> f64 {
 
 fn violates_runtime_seasonality_scaled_stationarity(
     fitted_parameters: &JointRefinementStageFittedParameters,
-    context: &JointRefinementContext,
+    _context: &JointRefinementContext,
 ) -> bool {
     let Ok(stability_check) = HawkesKernelParameters::check_spectral_radius_stability(
         fitted_parameters
@@ -1963,8 +1960,7 @@ fn violates_runtime_seasonality_scaled_stationarity(
         return true;
     };
 
-    context.max_runtime_hourly_seasonality_factor * stability_check.spectral_radius_alpha_over_beta
-        >= 1.0
+    stability_check.spectral_radius_alpha_over_beta >= 1.0
 }
 
 #[cfg(test)]

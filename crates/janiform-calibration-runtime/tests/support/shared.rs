@@ -2659,30 +2659,35 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
         observed_open_session_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.004,
                 post_shock_activity_lift: 1.00,
                 sell_share_proxy: 0.48,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.018,
                 post_shock_activity_lift: 1.35,
                 sell_share_proxy: 0.62,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: -0.014,
                 post_shock_activity_lift: 1.10,
                 sell_share_proxy: 0.58,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 19, 15, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.010,
                 post_shock_activity_lift: 0.95,
                 sell_share_proxy: 0.41,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 20, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: -0.003,
                 post_shock_activity_lift: 0.92,
                 sell_share_proxy: 0.55,
@@ -2731,6 +2736,19 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
             )
             .expect("double-exponential base-shock configuration should validate"),
             coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
+        },
+        return_mark_hour_of_week_scale_profile:
+            janiform_calibration_artifacts::ReturnMarkHourOfWeekScaleProfile {
+                hour_of_week_factors: vec![1.0; 24 * 7],
+                profile_resolution_hours: 1,
+                fit_policy: "test".to_string(),
+                normalization_policy: "test".to_string(),
+            },
+        tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
+            tick_size: None,
+            tick_size_source: "test".to_string(),
+            inference_policy: "test".to_string(),
+            observation_policy: "test".to_string(),
         },
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,

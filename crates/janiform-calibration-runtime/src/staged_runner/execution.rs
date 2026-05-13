@@ -49,6 +49,9 @@ use crate::diagnostics::artifacts::{
     build_diagnostic_artifact_bundle, persist_diagnostic_artifact_bundle,
 };
 use crate::diagnostics::types::CalibrationDiagnosticRuntimeProfileEntry;
+use crate::stages::return_components::{
+    ReturnComponentsStageCandidateDiagnostic, ReturnComponentsStageExecutionFailure,
+};
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -983,7 +986,7 @@ fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport)
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
-            serialized_failure_error_message(report.failure.as_ref())
+            return_components_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             serialized_failure_error_message(report.failure.as_ref())
@@ -1009,6 +1012,44 @@ where
         .map(ToString::to_string)
 }
 
+fn return_components_failure_error_message(
+    failure: Option<&ReturnComponentsStageExecutionFailure>,
+) -> Option<String> {
+    match failure {
+        Some(ReturnComponentsStageExecutionFailure::ConstraintViolationsForAllCandidates {
+            candidate_diagnostics,
+        }) => Some(return_components_all_candidates_rejected_message(
+            candidate_diagnostics.as_slice(),
+        )),
+        source => serialized_failure_error_message(source),
+    }
+}
+
+fn return_components_all_candidates_rejected_message(
+    candidate_diagnostics: &[ReturnComponentsStageCandidateDiagnostic],
+) -> String {
+    let Some(best_candidate) = candidate_diagnostics.iter().min_by(|left, right| {
+        left.penalized_objective_value
+            .total_cmp(&right.penalized_objective_value)
+            .then_with(|| left.candidate_id.cmp(&right.candidate_id))
+    }) else {
+        return "all return distribution candidates violated constraints, but no candidate diagnostics were recorded".to_string();
+    };
+
+    let first_violation_message = best_candidate
+        .constraint_violations
+        .first()
+        .map(|violation| violation.message.as_str())
+        .unwrap_or("no violation detail was recorded");
+
+    format!(
+        "all return distribution candidates violated constraints; best candidate `{}` had {} violation(s): {}",
+        best_candidate.candidate_id,
+        best_candidate.constraint_violation_count,
+        first_violation_message
+    )
+}
+
 fn validate_run_contract_for_staged_execution(
     run_contract: &CalibrationRunContract,
 ) -> Result<(), String> {
@@ -1018,12 +1059,14 @@ fn validate_run_contract_for_staged_execution(
             CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, run_contract.schema_version
         ));
     }
+
     if run_contract.run_spec_schema_version != CALIBRATION_RUN_SPEC_SCHEMA_VERSION {
         return Err(format!(
             "run_contract.run_spec_schema_version must be `{}`, found `{}`",
             CALIBRATION_RUN_SPEC_SCHEMA_VERSION, run_contract.run_spec_schema_version
         ));
     }
+
     if run_contract.stage_graph_schema_version != CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION {
         return Err(format!(
             "run_contract.stage_graph_schema_version must be `{}`, found `{}`",
@@ -1036,6 +1079,7 @@ fn validate_run_contract_for_staged_execution(
         &run_contract.stage_graph,
     )
     .map_err(|source| source.to_string())?;
+
     if resolved_execution_order != run_contract.execution_stage_order {
         return Err(format!(
             "run_contract.execution_stage_order is stale, expected `{:?}`, found `{:?}`",

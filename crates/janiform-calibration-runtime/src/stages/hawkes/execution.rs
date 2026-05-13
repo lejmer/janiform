@@ -93,8 +93,7 @@ impl From<&HawkesStageObservedSourceRegime> for HawkesObservedSourceRegimeKey {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct SeasonalityScaledStationarityCheck {
-    max_seasonality_factor: f64,
+struct EndogenousStationarityCheck {
     spectral_radius_alpha_over_beta: f64,
     effective_branching_ratio: f64,
 }
@@ -709,18 +708,13 @@ fn prepare_hawkes_candidate(
         );
 
     if let Some(stationarity_check) = validation_report.derived_alpha.and_then(|derived_alpha| {
-        check_seasonality_scaled_stationarity(
-            max_runtime_hourly_seasonality_factor,
-            derived_alpha,
-            adjusted_candidate_input.beta,
-        )
+        check_endogenous_stationarity(derived_alpha, adjusted_candidate_input.beta)
     }) {
         external_constraint_violation_count = external_constraint_violation_count.saturating_add(1);
 
         warnings.push(format!(
-            "seasonality-scaled effective branching ratio {:.6} reaches or exceeds 1.0 with max seasonality factor {:.6}",
+            "endogenous Hawkes branching ratio {:.6} reaches or exceeds 1.0",
             stationarity_check.effective_branching_ratio,
-            stationarity_check.max_seasonality_factor,
         ));
     }
 
@@ -1236,17 +1230,15 @@ fn adjust_candidate_for_deseasonalized_activity(
     (candidate_input.clone(), 1.0)
 }
 
-fn check_seasonality_scaled_stationarity(
-    max_seasonality_factor: f64,
+fn check_endogenous_stationarity(
     derived_alpha: HawkesKernelLoadings,
     beta: f64,
-) -> Option<SeasonalityScaledStationarityCheck> {
+) -> Option<EndogenousStationarityCheck> {
     let spectral_radius_alpha_over_beta = spectral_radius_alpha_over_beta(derived_alpha, beta);
 
-    let effective_branching_ratio = max_seasonality_factor * spectral_radius_alpha_over_beta;
+    let effective_branching_ratio = spectral_radius_alpha_over_beta;
     if effective_branching_ratio >= 1.0 {
-        return Some(SeasonalityScaledStationarityCheck {
-            max_seasonality_factor,
+        return Some(EndogenousStationarityCheck {
             spectral_radius_alpha_over_beta,
             effective_branching_ratio,
         });
@@ -1286,8 +1278,7 @@ fn derive_candidate_implied_metrics(
     let endogenous_branching_ratio =
         spectral_radius_alpha_over_beta(derived_alpha, candidate_input.beta);
 
-    let max_runtime_effective_branching_ratio =
-        max_runtime_hourly_seasonality_factor * endogenous_branching_ratio;
+    let max_runtime_effective_branching_ratio = endogenous_branching_ratio;
 
     let self_excitation_ratio =
         (derived_alpha.plus_plus + derived_alpha.minus_minus) / (2.0 * candidate_input.beta);

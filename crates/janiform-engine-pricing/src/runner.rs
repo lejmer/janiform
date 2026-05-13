@@ -1868,26 +1868,6 @@ pub(crate) fn infer_expected_news_loading_under_local_measure_for_row(
         return Ok(0.0);
     }
 
-    if transition_context.interval_factors.s_h == 0.0 {
-        let expected_severity_mark = transition_context
-            .model_parameters
-            .news_process_configuration
-            .shared_mark_law
-            .gamma_severity_marks
-            .expected_severity_mark()
-            .map_err(|source| {
-                VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-                    message: source.to_string(),
-                }
-            })?;
-
-        return Ok(expected_scaled_news_loading(
-            &transition_context.model_parameters,
-            endogenous_factors,
-            expected_severity_mark,
-        ));
-    }
-
     let kernel_parameters = transition_context.model_parameters.hawkes_kernel_parameters;
 
     let target_plus_before = transition_context.hawkes_boundary_state.y_plus_plus
@@ -1898,19 +1878,15 @@ pub(crate) fn infer_expected_news_loading_under_local_measure_for_row(
     let baseline_expected_business_time =
         kernel_parameters.lambda_bar * endogenous_factors.s_h * endogenous_factors.delta;
 
-    let observed_integrated_target_plus = (expected_statistics.expected_a_plus
-        - baseline_expected_business_time)
-        / endogenous_factors.s_h;
-    let observed_integrated_target_minus = (expected_statistics.expected_a_minus
-        - baseline_expected_business_time)
-        / endogenous_factors.s_h;
+    let observed_integrated_target_plus =
+        expected_statistics.expected_a_plus - baseline_expected_business_time;
+    let observed_integrated_target_minus =
+        expected_statistics.expected_a_minus - baseline_expected_business_time;
 
-    let matrix_a =
-        -kernel_parameters.beta + endogenous_factors.s_h * kernel_parameters.alpha.plus_plus;
-    let matrix_b = endogenous_factors.s_h * kernel_parameters.alpha.plus_minus;
-    let matrix_c = endogenous_factors.s_h * kernel_parameters.alpha.minus_plus;
-    let matrix_d =
-        -kernel_parameters.beta + endogenous_factors.s_h * kernel_parameters.alpha.minus_minus;
+    let matrix_a = -kernel_parameters.beta + kernel_parameters.alpha.plus_plus;
+    let matrix_b = kernel_parameters.alpha.plus_minus;
+    let matrix_c = kernel_parameters.alpha.minus_plus;
+    let matrix_d = -kernel_parameters.beta + kernel_parameters.alpha.minus_minus;
 
     let base_source_plus = endogenous_factors.s_h
         * kernel_parameters.lambda_bar

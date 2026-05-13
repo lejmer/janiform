@@ -191,7 +191,7 @@ fn coarse_simulation_rejects_known_news_factor_misalignment_at_runner_boundary()
 }
 
 #[test]
-fn coarse_simulation_surfaces_transform_slice_solver_failures() {
+fn coarse_simulation_surfaces_first_moment_projection_failures() {
     let model_inputs = build_model_inputs_with_components(
         build_sufficient_statistics_model_inputs(
             HawkesKernelParameters::try_new(
@@ -234,11 +234,11 @@ fn coarse_simulation_surfaces_transform_slice_solver_failures() {
     );
 
     let error = run_coarse_simulation(run_request)
-        .expect_err("extreme solver inputs must surface a runner-level solve failure");
+        .expect_err("extreme first-moment inputs must surface a runner-level projection failure");
 
     assert!(matches!(
         error,
-        CoarseSimulationRunError::TransformSliceSolveFailure {
+        CoarseSimulationRunError::EndogenousFirstMomentProjectionFailure {
             interval_index: 0,
             ..
         }
@@ -438,6 +438,8 @@ fn build_model_inputs_with_components(
     CoarseSimulationModelInputs::try_new(
         sufficient_statistics_model_inputs,
         news_process_configuration,
+        vec![1.0; 24 * 7],
+        None,
         build_calendar_registry_artifact(),
         "XNYS",
     )

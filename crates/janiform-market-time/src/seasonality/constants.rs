@@ -18,7 +18,7 @@ pub(crate) const MINUTES_PER_HOUR: usize = 60;
 // Exact hour count for one wall-clock day.
 pub(crate) const HOURS_PER_DAY: usize = 24;
 // Exact hourly bucket count for a full local calendar week.
-pub(crate) const HOURS_PER_WEEK: usize = 168;
+pub const HOURS_PER_WEEK: usize = 168;
 // Exact weekday count for day-of-week seasonality factors.
 pub(crate) const DAYS_PER_WEEK: usize = 7;
 // Calendar-year support includes leap-day indexing, so the factor table always has 366 slots.

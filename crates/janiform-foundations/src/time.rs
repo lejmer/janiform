@@ -71,9 +71,74 @@ impl Display for DurationSpecParseError {
 
 impl Error for DurationSpecParseError {}
 
+/// Error returned when a floating-point duration in hours cannot be represented as UTC nanoseconds.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DurationHoursToNanosError {
+    /// The value is not finite or is not strictly positive.
+    NonPositiveOrNonFinite { value: f64 },
+    /// The value does not land on the UTC nanosecond grid.
+    NotRepresentableAsUtcNanoseconds {
+        duration_hours: f64,
+        implied_duration_nanos: f64,
+    },
+}
+
+impl Display for DurationHoursToNanosError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NonPositiveOrNonFinite { value } => {
+                write!(formatter, "must be finite and positive, found {value}")
+            }
+            Self::NotRepresentableAsUtcNanoseconds {
+                duration_hours,
+                implied_duration_nanos,
+            } => write!(
+                formatter,
+                "{duration_hours} hours implies {implied_duration_nanos} nanoseconds, which is not representable as an integer UTC nanosecond duration"
+            ),
+        }
+    }
+}
+
+impl Error for DurationHoursToNanosError {}
+
 /// Convert a fixed-width UTC nanosecond duration to hours.
 pub fn duration_nanos_to_hours(duration_nanos: i64) -> f64 {
     duration_nanos as f64 * HOURS_PER_NANOSECOND
+}
+
+/// Convert a positive duration in hours to an exact UTC nanosecond duration.
+pub fn duration_hours_to_nanos(duration_hours: f64) -> Result<i64, DurationHoursToNanosError> {
+    if !duration_hours.is_finite() || duration_hours <= 0.0 {
+        return Err(DurationHoursToNanosError::NonPositiveOrNonFinite {
+            value: duration_hours,
+        });
+    }
+
+    let implied_duration_nanos = duration_hours * NANOS_PER_HOUR_F64;
+    let rounded_duration_nanos = implied_duration_nanos.round();
+    let rounding_tolerance = hour_duration_nanosecond_rounding_tolerance(implied_duration_nanos);
+    if !implied_duration_nanos.is_finite()
+        || rounded_duration_nanos <= 0.0
+        || (implied_duration_nanos - rounded_duration_nanos).abs() > rounding_tolerance
+    {
+        return Err(
+            DurationHoursToNanosError::NotRepresentableAsUtcNanoseconds {
+                duration_hours,
+                implied_duration_nanos,
+            },
+        );
+    }
+
+    Ok(rounded_duration_nanos as i64)
+}
+
+/// Convert the elapsed UTC nanoseconds between two timestamps to hours.
+pub fn elapsed_utc_nanos_to_hours(
+    previous_timestamp_utc_nanos: i64,
+    timestamp_utc_nanos: i64,
+) -> f64 {
+    duration_nanos_to_hours(timestamp_utc_nanos - previous_timestamp_utc_nanos)
 }
 
 /// Parse an RFC 3339 timestamp string and normalize it to UTC.
@@ -92,12 +157,17 @@ pub fn elapsed_between_utc_timestamps(start: Option<&str>, end: Option<&str>) ->
 
 /// Format UTC nanoseconds since the Unix epoch as an RFC 3339 timestamp when representable.
 pub fn format_utc_nanos(timestamp_nanos: i64) -> String {
+    utc_datetime_from_nanos(timestamp_nanos)
+        .map(|timestamp| timestamp.to_rfc3339())
+        .unwrap_or_else(|| timestamp_nanos.to_string())
+}
+
+/// Convert UTC nanoseconds since the Unix epoch into a `DateTime<Utc>` when representable.
+pub fn utc_datetime_from_nanos(timestamp_nanos: i64) -> Option<DateTime<Utc>> {
     let seconds = timestamp_nanos.div_euclid(NANOS_PER_SECOND);
     let nanos = timestamp_nanos.rem_euclid(NANOS_PER_SECOND) as u32;
 
     DateTime::from_timestamp(seconds, nanos)
-        .map(|timestamp| timestamp.to_rfc3339())
-        .unwrap_or_else(|| timestamp_nanos.to_string())
 }
 
 /// Parse a pandas-style duration spec into an exact UTC nanosecond duration.
@@ -111,6 +181,7 @@ pub fn parse_duration_spec_nanos(value: &str) -> Result<i64, DurationSpecParseEr
 
     let unit_nanos = duration_unit_nanos(raw_unit)?;
     let (mantissa, scale) = parse_decimal_number(raw_number)?;
+
     let scaled_nanos = mantissa
         .checked_mul(unit_nanos as u128)
         .ok_or(DurationSpecParseError::OutOfRange)?;
@@ -228,6 +299,12 @@ fn parse_decimal_number(value: &str) -> Result<(u128, u128), DurationSpecParseEr
     Ok((mantissa, scale))
 }
 
+fn hour_duration_nanosecond_rounding_tolerance(implied_duration_nanos: f64) -> f64 {
+    // One relative roundoff unit permits f64 hour-to-nanosecond conversion noise without
+    // accepting fractional-nanosecond durations as valid grid intervals.
+    f64::EPSILON * implied_duration_nanos.abs().max(1.0)
+}
+
 fn duration_unit_nanos(unit: &str) -> Result<i64, DurationSpecParseError> {
     let normalized = unit.to_ascii_lowercase();
     let nanos = match normalized.as_str() {
@@ -325,12 +402,13 @@ pub fn checked_ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        NANOS_PER_HOUR, ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
-        checked_ceil_to_hour_utc_nanos, checked_floor_to_hour_utc_nanos,
-        deserialize_optional_utc_datetime, deserialize_utc_datetime, duration_nanos_to_hours,
-        elapsed_between_utc_timestamps, floor_to_hour_utc_nanos, floor_to_interval_utc_nanos,
-        format_utc_nanos, parse_duration_spec_nanos, parse_utc_datetime, serialize_utc_datetime,
-        utc_nanos,
+        DurationHoursToNanosError, NANOS_PER_HOUR, ceil_to_hour_utc_nanos,
+        ceil_to_interval_utc_nanos, checked_ceil_to_hour_utc_nanos,
+        checked_floor_to_hour_utc_nanos, deserialize_optional_utc_datetime,
+        deserialize_utc_datetime, duration_hours_to_nanos, duration_nanos_to_hours,
+        elapsed_between_utc_timestamps, elapsed_utc_nanos_to_hours, floor_to_hour_utc_nanos,
+        floor_to_interval_utc_nanos, format_utc_nanos, parse_duration_spec_nanos,
+        parse_utc_datetime, serialize_utc_datetime, utc_datetime_from_nanos, utc_nanos,
     };
     use chrono::{DateTime, Utc};
     use serde::{Deserialize, Serialize};
@@ -377,6 +455,35 @@ mod tests {
     fn duration_nanos_to_hours_matches_hour_boundary_constant() {
         assert_eq!(duration_nanos_to_hours(NANOS_PER_HOUR), 1.0);
         assert_eq!(duration_nanos_to_hours(NANOS_PER_HOUR / 4), 0.25);
+    }
+
+    #[test]
+    fn duration_hours_to_nanos_accepts_integer_nanosecond_grid_round_trip() {
+        let duration_hours = duration_nanos_to_hours(NANOS_PER_HOUR / 7);
+
+        assert_eq!(
+            duration_hours_to_nanos(duration_hours),
+            Ok(NANOS_PER_HOUR / 7)
+        );
+    }
+
+    #[test]
+    fn duration_hours_to_nanos_rejects_fractional_nanosecond_grid() {
+        let error = duration_hours_to_nanos(1.0 / 7.0)
+            .expect_err("fractional nanosecond duration should be rejected");
+
+        assert!(matches!(
+            error,
+            DurationHoursToNanosError::NotRepresentableAsUtcNanoseconds { .. }
+        ));
+    }
+
+    #[test]
+    fn elapsed_utc_nanos_to_hours_matches_timestamp_delta() {
+        assert_eq!(
+            elapsed_utc_nanos_to_hours(100, 100 + NANOS_PER_HOUR / 2),
+            0.5
+        );
     }
 
     #[test]
@@ -448,6 +555,14 @@ mod tests {
         assert_eq!(
             format_utc_nanos(1_000_000_001),
             "1970-01-01T00:00:01.000000001+00:00"
+        );
+    }
+
+    #[test]
+    fn utc_datetime_from_nanos_reconstructs_utc_timestamp() {
+        assert_eq!(
+            utc_datetime_from_nanos(1_000_000_001).map(|timestamp| timestamp.to_rfc3339()),
+            Some("1970-01-01T00:00:01.000000001+00:00".to_string())
         );
     }
 

@@ -116,36 +116,42 @@ mod tests {
             &[
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 1,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 1.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -2.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 3.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 5.0e-3,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 5,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 8.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 6,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 6.0e-3,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
@@ -174,24 +180,28 @@ mod tests {
             &[
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 1,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 1.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -2.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 3.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 5.0e-3,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,

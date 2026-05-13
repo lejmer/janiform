@@ -229,6 +229,11 @@ pub(super) fn build_equal_business_time_blocks(
             .map(|(observation, _)| observation.log_return)
             .sum::<f64>();
 
+        let total_elapsed_same_session_hours = aligned_pairs
+            .iter()
+            .map(|(observation, _)| observation.elapsed_same_session_hours)
+            .sum::<f64>();
+
         let weighted_activity_lift = weighted_average(
             aligned_pairs
                 .iter()
@@ -238,6 +243,7 @@ pub(super) fn build_equal_business_time_blocks(
                 .collect::<Vec<_>>()
                 .as_slice(),
         );
+
         let weighted_sell_share = weighted_average(
             aligned_pairs
                 .iter()
@@ -256,6 +262,7 @@ pub(super) fn build_equal_business_time_blocks(
         return vec![(
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: last_observation.return_timestamp_utc_nanos,
+                elapsed_same_session_hours: total_elapsed_same_session_hours,
                 log_return: total_log_return,
                 post_shock_activity_lift: weighted_activity_lift,
                 sell_share_proxy: weighted_sell_share,
@@ -266,12 +273,16 @@ pub(super) fn build_equal_business_time_blocks(
 
     let mut aggregated_blocks: Vec<(ReturnComponentsObservedOpenSessionReturn, f64)> =
         Vec::with_capacity(target_block_count);
+
     let mut running_log_return = 0.0;
+    let mut running_elapsed_same_session_hours = 0.0;
     let mut running_business_time = 0.0;
     let mut running_weighted_activity_lift = 0.0;
     let mut running_weighted_sell_share = 0.0;
     let mut running_weight_sum = 0.0;
+
     let mut emitted_block_count = 0usize;
+
     let mut cumulative_business_time = 0.0;
 
     for (aligned_index, (observation, business_time_scale)) in aligned_pairs.iter().enumerate() {
@@ -283,6 +294,7 @@ pub(super) fn build_equal_business_time_blocks(
             };
 
         running_log_return += observation.log_return;
+        running_elapsed_same_session_hours += observation.elapsed_same_session_hours;
         running_business_time += positive_business_time;
         running_weighted_activity_lift +=
             observation.post_shock_activity_lift * positive_business_time;
@@ -292,6 +304,7 @@ pub(super) fn build_equal_business_time_blocks(
 
         let remaining_observation_count = aligned_pairs.len().saturating_sub(aligned_index + 1);
         let remaining_block_count = target_block_count.saturating_sub(emitted_block_count + 1);
+
         let should_emit = aligned_index + 1 == aligned_pairs.len()
             || remaining_observation_count == remaining_block_count
             || cumulative_business_time
@@ -307,6 +320,7 @@ pub(super) fn build_equal_business_time_blocks(
         aggregated_blocks.push((
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: observation.return_timestamp_utc_nanos,
+                elapsed_same_session_hours: running_elapsed_same_session_hours,
                 log_return: running_log_return,
                 post_shock_activity_lift: running_weighted_activity_lift / weight_denominator,
                 sell_share_proxy: (running_weighted_sell_share / weight_denominator)
@@ -318,6 +332,7 @@ pub(super) fn build_equal_business_time_blocks(
         emitted_block_count += 1;
 
         running_log_return = 0.0;
+        running_elapsed_same_session_hours = 0.0;
         running_business_time = 0.0;
         running_weighted_activity_lift = 0.0;
         running_weighted_sell_share = 0.0;

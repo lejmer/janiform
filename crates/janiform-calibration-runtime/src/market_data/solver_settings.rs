@@ -550,6 +550,7 @@ mod tests {
                         observed_open_session_returns: vec![
                             CalibrationReturnComponentsObservedOpenSessionReturn {
                                 return_timestamp_utc_nanos: 1,
+                                elapsed_same_session_hours: 1.0,
                                 log_return: 0.01,
                                 post_shock_activity_lift: 0.0,
                                 sell_share_proxy: 0.5,
@@ -579,6 +580,20 @@ mod tests {
                                     janiform_model_kernels::news::CoupledGapMarkConfiguration {
                                         sigma_g: 0.5,
                                     },
+                            },
+                        return_mark_hour_of_week_scale_profile:
+                            janiform_calibration_artifacts::ReturnMarkHourOfWeekScaleProfile {
+                                hour_of_week_factors: vec![1.0; 24 * 7],
+                                profile_resolution_hours: 1,
+                                fit_policy: "test".to_string(),
+                                normalization_policy: "test".to_string(),
+                            },
+                        tick_grid_observation_model:
+                            janiform_calibration_artifacts::TickGridObservationModel {
+                                tick_size: None,
+                                tick_size_source: "test".to_string(),
+                                inference_policy: "test".to_string(),
+                                observation_policy: "test".to_string(),
                             },
                         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                             continuous_distribution_fit_weight: 1.0,

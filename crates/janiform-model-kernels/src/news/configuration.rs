@@ -3,7 +3,7 @@ use serde::Serialize;
 use statrs::function::gamma::ln_gamma;
 
 use janiform_foundations::randomness::SimulationRandomnessStream;
-use janiform_foundations::time::NANOS_PER_HOUR_F64;
+use janiform_foundations::time::{NANOS_PER_HOUR_F64, utc_datetime_from_nanos};
 
 use super::errors::{
     CoupledGapMarkConstructionError, DoubleExponentialBaseShockSamplingError,
@@ -18,9 +18,7 @@ use super::interface::{
     NewsArrivalIntensityGenerator, NewsBaseShockMarkSampler, NewsCoupledMarkConstructor,
     NewsMarkInterfaceError, NewsMarkInterfaceStage, NewsSeverityMarkSampler,
 };
-use super::sampling::{
-    sample_exponential_with_rate, sample_gamma_shape_scale, utc_timestamp_from_nanos,
-};
+use super::sampling::{sample_exponential_with_rate, sample_gamma_shape_scale};
 
 /// Known scheduled-news arrival configuration with explicit UTC anchors.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,7 +31,7 @@ impl KnownNewsArrivalConfiguration {
     pub fn validate(&self) -> Result<(), NewsArrivalConfigurationError> {
         let mut previous_timestamp_utc_nanos: Option<i64> = None;
         for &timestamp_utc_nanos in &self.scheduled_event_timestamps_utc_nanos {
-            if utc_timestamp_from_nanos(timestamp_utc_nanos).is_none() {
+            if utc_datetime_from_nanos(timestamp_utc_nanos).is_none() {
                 return Err(
                     NewsArrivalConfigurationError::InvalidKnownScheduledTimestampUtcNanos {
                         value: timestamp_utc_nanos,
@@ -125,14 +123,14 @@ impl NewsArrivalConfiguration {
                 },
             );
         }
-        if utc_timestamp_from_nanos(intensity_input.interval_start_utc_nanos).is_none() {
+        if utc_datetime_from_nanos(intensity_input.interval_start_utc_nanos).is_none() {
             return Err(
                 NewsComponentIntensityEvaluationError::InvalidIntervalStartTimestampUtcNanos {
                     value: intensity_input.interval_start_utc_nanos,
                 },
             );
         }
-        if utc_timestamp_from_nanos(intensity_input.interval_end_utc_nanos).is_none() {
+        if utc_datetime_from_nanos(intensity_input.interval_end_utc_nanos).is_none() {
             return Err(
                 NewsComponentIntensityEvaluationError::InvalidIntervalEndTimestampUtcNanos {
                     value: intensity_input.interval_end_utc_nanos,

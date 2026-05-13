@@ -24,7 +24,8 @@ pub(crate) use entrypoint::run_joint_refinement_calibration_stage_with_progress_
 #[cfg(test)]
 pub(crate) use coarse_consistency::extend_joint_coarse_tick_consistency_metrics_for_seed;
 pub(crate) use coarse_consistency::{
-    build_joint_candidate_coarse_consistency_artifacts, build_joint_coarse_tick_consistency_metrics,
+    build_joint_candidate_coarse_consistency_artifacts_result,
+    build_joint_coarse_tick_consistency_metrics,
 };
 #[cfg(test)]
 pub(crate) use inputs::sampled_observed_tick_returns;

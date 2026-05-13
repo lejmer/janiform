@@ -111,8 +111,9 @@ pub(crate) use janiform_calibration_artifacts::{
     MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
     MeanReversionStageParameterPayload, ReturnComponentsStageFittedParameters,
     ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
-    SeasonalityStageNormalizationMetadata, SeasonalityStageParameterArtifactInput,
-    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
+    ReturnMarkHourOfWeekScaleProfile, SeasonalityStageNormalizationMetadata,
+    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
+    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
     build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
     build_calibration_stage_parameter_artifact, calibration_artifact_manifest_path,
     calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
@@ -779,6 +780,18 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                     .to_string(),
             normalization_policy: "exposure_weighted_mean_one_over_source_window.v1"
                 .to_string(),
+        },
+        return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
+            hour_of_week_factors: vec![1.0; 168],
+            profile_resolution_hours: 1,
+            fit_policy: "test".to_string(),
+            normalization_policy: "test".to_string(),
+        },
+        tick_grid_observation_model: TickGridObservationModel {
+            tick_size: None,
+            tick_size_source: "test".to_string(),
+            inference_policy: "test".to_string(),
+            observation_policy: "test".to_string(),
         },
         mean_reversion_fitted_parameters:
             build_endogenous_mean_reversion_parameters(),

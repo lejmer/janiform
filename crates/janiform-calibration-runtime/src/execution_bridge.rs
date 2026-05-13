@@ -9,6 +9,7 @@ use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationRunContract, CalibrationRunContractError,
     CalibrationRunSpec, CalibrationStage, CalibrationStageDependency, CalibrationStageGraph,
     JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
+    ReturnMarkHourOfWeekScaleProfile, TickGridObservationModel,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
 use janiform_market_time::calendar::{
@@ -326,6 +327,7 @@ pub struct CalibrationReturnComponentsDetectedIntradayJumpCandidate {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsObservedOpenSessionReturn {
     pub return_timestamp_utc_nanos: i64,
+    pub elapsed_same_session_hours: f64,
     pub log_return: f64,
     pub post_shock_activity_lift: f64,
     pub sell_share_proxy: f64,
@@ -379,6 +381,8 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
+    pub return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile,
+    pub tick_grid_observation_model: TickGridObservationModel,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
 }
 
@@ -954,6 +958,8 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
             close_open_gap_detection_policy: self.close_open_gap_detection_policy.into_core(),
             open_session_sell_share_proxy: self.open_session_sell_share_proxy,
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
+            return_mark_hour_of_week_scale_profile: self.return_mark_hour_of_week_scale_profile,
+            tick_grid_observation_model: self.tick_grid_observation_model,
             objective_metric_weights: self.objective_metric_weights.into_core(),
         }
     }
@@ -1004,6 +1010,7 @@ impl CalibrationReturnComponentsObservedOpenSessionReturn {
     fn into_core(self) -> ReturnComponentsObservedOpenSessionReturn {
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
+            elapsed_same_session_hours: self.elapsed_same_session_hours,
             log_return: self.log_return,
             post_shock_activity_lift: self.post_shock_activity_lift,
             sell_share_proxy: self.sell_share_proxy,
@@ -1221,6 +1228,7 @@ mod tests {
         CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
         CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+        ReturnMarkHourOfWeekScaleProfile, TickGridObservationModel,
     };
     use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
     use janiform_model_kernels::hawkes::{
@@ -1359,12 +1367,14 @@ mod tests {
                     observed_open_session_returns: vec![
                         CalibrationReturnComponentsObservedOpenSessionReturn {
                             return_timestamp_utc_nanos: 1_770_046_200_000_000_000,
+                            elapsed_same_session_hours: 1.0,
                             log_return: 0.004,
                             post_shock_activity_lift: 1.00,
                             sell_share_proxy: 0.50,
                         },
                         CalibrationReturnComponentsObservedOpenSessionReturn {
                             return_timestamp_utc_nanos: 1_770_048_300_000_000_000,
+                            elapsed_same_session_hours: 1.0,
                             log_return: 0.018,
                             post_shock_activity_lift: 1.35,
                             sell_share_proxy: 0.50,
@@ -1398,6 +1408,18 @@ mod tests {
                             DoubleExponentialBaseShockConfiguration::try_new(0.45, 8.0, 10.0)
                                 .expect("base shock configuration should validate"),
                         coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
+                    },
+                    return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
+                        hour_of_week_factors: vec![1.0; 24 * 7],
+                        profile_resolution_hours: 1,
+                        fit_policy: "test".to_string(),
+                        normalization_policy: "test".to_string(),
+                    },
+                    tick_grid_observation_model: TickGridObservationModel {
+                        tick_size: None,
+                        tick_size_source: "test".to_string(),
+                        inference_policy: "test".to_string(),
+                        observation_policy: "test".to_string(),
                     },
                     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                         continuous_distribution_fit_weight: 1.0,

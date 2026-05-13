@@ -35,7 +35,6 @@ use crate::stages::return_components::{
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
     build_runtime_hourly_seasonality_factors_from_components,
-    maximum_realizable_runtime_hourly_seasonality_factor_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -53,11 +52,11 @@ use super::{
     JointRefinementProfilingState, JointRefinementRestartOutcome, JointRefinementResumeStore,
     OptionPricingProgressInput, OptionSurfaceTierPricingArtifactResolutionInput,
     PersistedRestartSelectionArtifacts, baseline_buckets_from_evaluation,
-    build_joint_candidate_coarse_consistency_artifacts, build_joint_candidate_frontier_diagnostics,
-    build_joint_finalist_seed_summaries, build_joint_refinement_stage_failure_report,
-    build_joint_restart_diagnostics, build_joint_simulation_summaries, build_observed_data,
-    build_option_calibration_diagnostics, build_option_pricing_context,
-    build_summary_simulation_session_context,
+    build_joint_candidate_coarse_consistency_artifacts_result,
+    build_joint_candidate_frontier_diagnostics, build_joint_finalist_seed_summaries,
+    build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
+    build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
+    build_option_pricing_context, build_summary_simulation_session_context,
     desired_joint_refinement_option_refinement_candidate_count,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_admissibility_thresholds,
     joint_refinement_budget_schedule, joint_restart_outcome_is_admissible, optimize_restart_seeds,
@@ -585,8 +584,6 @@ fn build_bootstrap_context(
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
         runtime_hourly_seasonality_factors: runtime_materialization
             .runtime_hourly_seasonality_factors,
-        max_runtime_hourly_seasonality_factor: runtime_materialization
-            .max_runtime_hourly_seasonality_factor,
         observed_data,
         baseline_modeled_open_event_rate_per_hour: resolved_stage_payloads
             .baseline_modeled_open_event_rate_per_hour,
@@ -632,7 +629,6 @@ struct BootstrapContextBuildInput<'a> {
 
 struct RuntimeMaterialization {
     runtime_hourly_seasonality_factors: Vec<f64>,
-    max_runtime_hourly_seasonality_factor: f64,
     summary_simulation_session_context:
         super::super::summary_simulation::JointRefinementSummarySimulationSessionContext,
 }
@@ -684,36 +680,6 @@ fn materialize_runtime_state(
             }
         })?;
 
-    let max_runtime_hourly_seasonality_factor =
-        maximum_realizable_runtime_hourly_seasonality_factor_from_components(
-            stage_input
-                .seasonality_factors_input
-                .intraday_minutes_per_bin,
-            stage_input
-                .seasonality_factors_input
-                .intraday_factor_by_bin
-                .as_slice(),
-            stage_input
-                .seasonality_factors_input
-                .day_of_week_factor
-                .as_slice(),
-            stage_input
-                .seasonality_factors_input
-                .hour_of_week_factor
-                .as_slice(),
-            stage_input
-                .seasonality_factors_input
-                .day_of_year_factor
-                .as_slice(),
-        )
-        .map_err(|error_message| {
-            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-                error_message: format!(
-                    "joint refinement runtime seasonality upper-bound estimation failed: {error_message}"
-                ),
-            }
-        })?;
-
     let summary_simulation_session_context = build_summary_simulation_session_context(
         calendar_registry,
         observed_data,
@@ -732,7 +698,6 @@ fn materialize_runtime_state(
 
     Ok(RuntimeMaterialization {
         runtime_hourly_seasonality_factors,
-        max_runtime_hourly_seasonality_factor,
         summary_simulation_session_context,
     })
 }
@@ -870,22 +835,31 @@ fn establish_baseline_evaluation(
 
     let baseline_coarse_consistency_artifacts = if baseline_candidate_is_valid {
         emit_coarse_consistency_progress(progress_sender, 0, 1, "baseline coarse_consistency");
-        build_joint_candidate_coarse_consistency_artifacts(
-            bootstrap_context,
-            &normalized_baseline_final_evaluation.fitted_parameters,
-            Some(baseline_parameter_bits.as_slice()),
-            None,
-            Some(
-                super::coarse_consistency::JointRefinementCoarseConsistencyProgress {
-                    sender: progress_sender,
-                    phase: JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
-                    current_item_label: Some("baseline coarse_consistency"),
-                },
-            ),
-        )
-        .inspect(|_| {
-            emit_coarse_consistency_progress(progress_sender, 1, 1, "baseline coarse_consistency");
-        })
+        let baseline_coarse_consistency_artifacts =
+            build_joint_candidate_coarse_consistency_artifacts_result(
+                bootstrap_context,
+                &normalized_baseline_final_evaluation.fitted_parameters,
+                Some(baseline_parameter_bits.as_slice()),
+                None,
+                Some(
+                    super::coarse_consistency::JointRefinementCoarseConsistencyProgress {
+                        sender: progress_sender,
+                        phase:
+                            JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+                        current_item_label: Some("baseline coarse_consistency"),
+                    },
+                ),
+            )
+            .map_err(|source| {
+                JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
+                    error_message: format!(
+                        "baseline coarse consistency evaluation failed: {source}"
+                    ),
+                }
+            })?;
+
+        emit_coarse_consistency_progress(progress_sender, 1, 1, "baseline coarse_consistency");
+        Some(baseline_coarse_consistency_artifacts)
     } else {
         None
     };
@@ -1123,6 +1097,7 @@ fn run_restart_search(
         stage_input,
         resolved_stage_payloads,
         prepared_bootstrap,
+        baseline_evaluation_artifacts,
         progress_sender,
     );
 
@@ -1212,6 +1187,7 @@ fn build_restart_search_plan(
     stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     prepared_bootstrap: &PreparedBootstrapContext,
+    baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> RestartSearchPlan {
     let restart_seeds = build_restart_seeds(RestartSeedsBuildInput {
@@ -1230,6 +1206,11 @@ fn build_restart_search_plan(
                 .as_slice()
         })
         .unwrap_or(&[]),
+        baseline_final_objective_terms: baseline_evaluation_artifacts
+            .baseline_restart_outcome
+            .final_evaluation
+            .objective_terms
+            .as_slice(),
         activity_log_shift: observed_activity_log_shift(
             prepared_bootstrap
                 .bootstrap_context

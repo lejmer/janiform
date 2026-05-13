@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
+use janiform_foundations::time::utc_datetime_from_nanos;
 use janiform_model_kernels::news::{
     NewsArrivalComponent, NewsComponentMarkScaleConfiguration, NewsMarkInterfaceError,
     SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
@@ -10,7 +10,7 @@ use janiform_model_kernels::news::{
 
 use crate::artifacts::SeededTickSimulationNewsRoutingTotals;
 use crate::config::SeededTickSimulationRunConfig;
-use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, ONE_SECOND_NANOS};
+use crate::constants::MAX_STOCHASTIC_UPDATES_PER_INTERVAL;
 use crate::error::SeededTickSimulationRunError;
 
 use super::buffers::try_reserve_simulation_buffer;
@@ -291,10 +291,9 @@ pub(crate) fn validate_known_scheduled_news_timestamps(
     known_scheduled_news_event_timestamps_utc_nanos: &[i64],
 ) -> Result<(), SeededTickSimulationRunError> {
     let mut previous_timestamp_utc_nanos: Option<i64> = None;
+
     for &timestamp_utc_nanos in known_scheduled_news_event_timestamps_utc_nanos {
-        let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
-        let nanoseconds = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
-        if DateTime::<Utc>::from_timestamp(seconds, nanoseconds).is_none() {
+        if utc_datetime_from_nanos(timestamp_utc_nanos).is_none() {
             return Err(
                 SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
                     value: timestamp_utc_nanos,

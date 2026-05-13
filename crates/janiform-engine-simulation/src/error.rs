@@ -61,9 +61,27 @@ pub enum SeededTickSimulationRunError {
         current_interval_start_utc_nanos: i64,
     },
     SeasonalityScaledEndogenousInstability {
-        max_seasonality_factor: f64,
         spectral_radius_alpha_over_beta: f64,
         effective_branching_ratio: f64,
+    },
+    ReturnMarkHourOfWeekFactorCountMismatch {
+        expected_factor_count: usize,
+        observed_factor_count: usize,
+    },
+    InvalidReturnMarkHourOfWeekFactor {
+        factor_index: usize,
+        value: f64,
+    },
+    InvalidObservedPriceTickSize {
+        value: f64,
+    },
+    InvalidExchangeTimezoneName {
+        timezone_name: String,
+    },
+    TickGridProjectionFailed {
+        interval_index: usize,
+        previous_observed_log_price: f64,
+        raw_total_return: f64,
     },
     InvalidDebugTraceSamplingStride {
         value: u64,
@@ -229,12 +247,41 @@ impl Display for SeededTickSimulationRunError {
                 "hourly_factor_contract interval coverage must be consecutive, interval {previous_interval_index} end ({previous_interval_end_utc_nanos}) must equal interval {current_interval_index} start ({current_interval_start_utc_nanos})"
             ),
             Self::SeasonalityScaledEndogenousInstability {
-                max_seasonality_factor,
                 spectral_radius_alpha_over_beta,
                 effective_branching_ratio,
             } => write!(
                 formatter,
-                "seasonality-scaled endogenous branching must remain below 1.0, found max_s_h={max_seasonality_factor}, spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
+                "endogenous Hawkes branching must remain below 1.0, found spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
+            ),
+            Self::ReturnMarkHourOfWeekFactorCountMismatch {
+                expected_factor_count,
+                observed_factor_count,
+            } => write!(
+                formatter,
+                "return_mark_hour_of_week_factors length must be {expected_factor_count}, found {observed_factor_count}"
+            ),
+            Self::InvalidReturnMarkHourOfWeekFactor {
+                factor_index,
+                value,
+            } => write!(
+                formatter,
+                "return_mark_hour_of_week_factors[{factor_index}] must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidObservedPriceTickSize { value } => write!(
+                formatter,
+                "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
+            ),
+            Self::InvalidExchangeTimezoneName { timezone_name } => write!(
+                formatter,
+                "hourly_factor_contract.exchange_timezone_name must be a valid IANA timezone name, found `{timezone_name}`"
+            ),
+            Self::TickGridProjectionFailed {
+                interval_index,
+                previous_observed_log_price,
+                raw_total_return,
+            } => write!(
+                formatter,
+                "interval {interval_index} tick-grid observation projection failed for previous_observed_log_price={previous_observed_log_price} and raw_total_return={raw_total_return}"
             ),
             Self::InvalidDebugTraceSamplingStride { value } => write!(
                 formatter,

@@ -3,7 +3,6 @@ use serde::Serialize;
 pub(crate) use crate::stages::seasonality_runtime::{
     RuntimeHourlySeasonalityFactorsBuildInput,
     build_runtime_hourly_seasonality_factors_from_components,
-    maximum_realizable_runtime_hourly_seasonality_factor_from_components,
     maximum_runtime_hourly_seasonality_factor_from_payload,
 };
 use janiform_calibration_artifacts::{

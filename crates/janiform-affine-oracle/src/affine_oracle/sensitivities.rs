@@ -326,22 +326,22 @@ fn evaluate_transform_sensitivity_ode_rhs(
                 .d_vector
                 .plus_plus
                 .scale(-beta)
-                .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_plus),
             integration_state
                 .d_vector
                 .plus_minus
                 .scale(-beta)
-                .plus(hamiltonians.h_plus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_plus),
             integration_state
                 .d_vector
                 .minus_plus
                 .scale(-beta)
-                .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_minus),
             integration_state
                 .d_vector
                 .minus_minus
                 .scale(-beta)
-                .plus(hamiltonians.h_minus.scale(transform_input.s_h)),
+                .plus(hamiltonians.h_minus),
         ),
         c_derivative: hamiltonians
             .h_plus
@@ -360,22 +360,22 @@ fn evaluate_transform_sensitivity_ode_rhs(
                 .u_plus_d_vector
                 .plus_plus
                 .scale(-beta)
-                .plus(u_plus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_plus_derivative),
             integration_state
                 .u_plus_d_vector
                 .plus_minus
                 .scale(-beta)
-                .plus(u_plus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_plus_derivative),
             integration_state
                 .u_plus_d_vector
                 .minus_plus
                 .scale(-beta)
-                .plus(u_plus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_minus_derivative),
             integration_state
                 .u_plus_d_vector
                 .minus_minus
                 .scale(-beta)
-                .plus(u_plus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_plus_h_minus_derivative),
         ),
         u_plus_c_derivative: u_plus_h_plus_derivative
             .plus(u_plus_h_minus_derivative)
@@ -386,22 +386,22 @@ fn evaluate_transform_sensitivity_ode_rhs(
                 .u_minus_d_vector
                 .plus_plus
                 .scale(-beta)
-                .plus(u_minus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_plus_derivative),
             integration_state
                 .u_minus_d_vector
                 .plus_minus
                 .scale(-beta)
-                .plus(u_minus_h_plus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_plus_derivative),
             integration_state
                 .u_minus_d_vector
                 .minus_plus
                 .scale(-beta)
-                .plus(u_minus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_minus_derivative),
             integration_state
                 .u_minus_d_vector
                 .minus_minus
                 .scale(-beta)
-                .plus(u_minus_h_minus_derivative.scale(transform_input.s_h)),
+                .plus(u_minus_h_minus_derivative),
         ),
         u_minus_c_derivative: u_minus_h_plus_derivative
             .plus(u_minus_h_minus_derivative)

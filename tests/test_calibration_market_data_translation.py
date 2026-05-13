@@ -193,6 +193,11 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert closed_sample["post_shock_activity_lift"] == pytest.approx(1.0)
 
     assert len(return_components_input["observed_open_session_returns"]) == 4
+    elapsed_hours = [
+        observation["elapsed_same_session_hours"]
+        for observation in return_components_input["observed_open_session_returns"]
+    ]
+    assert elapsed_hours == pytest.approx([0.5, 1.0 / 6.0, 349.0 / 60.0, 1.0 / 6.0])
     assert return_components_input["open_session_sell_share_proxy"] == pytest.approx(0.5)
 
     boundary_observation = return_components_input["observed_close_open_boundary_observations"][0]

@@ -8,6 +8,7 @@ use super::hawkes_inputs::{
 };
 use super::jump_candidates::derive_intraday_jump_candidates;
 use super::known_news_samples::activity_lift;
+use super::return_components_inputs::infer_tick_size_from_open_prices;
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::OpenTickRecord;
 use janiform_market_time::calendar::{
@@ -423,6 +424,50 @@ fn activity_lift_uses_local_same_session_tick_geometry() {
     );
 
     assert_eq!(derived_activity_lift, 4.0);
+}
+
+#[test]
+fn tick_size_inference_uses_chronological_same_session_price_changes() {
+    let first_session_open = utc_nanos(2026, 3, 2, 9, 30, 0);
+    let first_session_close = utc_nanos(2026, 3, 2, 16, 0, 0);
+    let second_session_open = utc_nanos(2026, 3, 3, 9, 30, 0);
+    let second_session_close = utc_nanos(2026, 3, 3, 16, 0, 0);
+
+    let open_price_ticks = vec![
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 9, 30, 0),
+            price: 6817.00,
+            trade_sign: None,
+            session_open_utc_nanos: first_session_open,
+            session_close_utc_nanos: first_session_close,
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 9, 30, 1),
+            price: 6817.25,
+            trade_sign: None,
+            session_open_utc_nanos: first_session_open,
+            session_close_utc_nanos: first_session_close,
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 3, 9, 30, 0),
+            price: 6301.574718886245,
+            trade_sign: None,
+            session_open_utc_nanos: second_session_open,
+            session_close_utc_nanos: second_session_close,
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 3, 9, 30, 1),
+            price: 6301.824718886245,
+            trade_sign: None,
+            session_open_utc_nanos: second_session_open,
+            session_close_utc_nanos: second_session_close,
+        },
+    ];
+
+    let inferred_tick_size = infer_tick_size_from_open_prices(open_price_ticks.as_slice())
+        .expect("same-session price changes should identify a tick size");
+
+    assert_eq!(inferred_tick_size, 0.25);
 }
 
 fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {

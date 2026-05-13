@@ -146,12 +146,14 @@ mod tests {
             observed_open_session_returns: vec![
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 1,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
@@ -160,12 +162,14 @@ mod tests {
             continuous_fit_returns: vec![
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 1,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
@@ -238,24 +242,28 @@ mod tests {
             observed_open_session_returns: vec![
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 1,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.25,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -0.7e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.75,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 0.9e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.35,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -1.1e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.65,
@@ -264,24 +272,28 @@ mod tests {
             continuous_fit_returns: vec![
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 1,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.25,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -0.7e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.75,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
+                    elapsed_same_session_hours: 1.0,
                     log_return: 0.9e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.35,
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
+                    elapsed_same_session_hours: 1.0,
                     log_return: -1.1e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.65,

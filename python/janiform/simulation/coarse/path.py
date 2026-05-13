@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from math import isfinite
+from typing import Any, Optional
 
 from .news import (
     COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
@@ -61,6 +63,7 @@ COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION = "simulation.coarse_interval.path_
 COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION = "simulation.coarse_interval.path_output_schema_metadata.v1"
 COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION = "simulation.coarse_interval.path_provenance.v1"
 COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION = "simulation.coarse_interval.path_diagnostics.v1"
+_RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT = 168
 COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY = (
     "time_indexed_coarse_interval_simulation_path_for_validation_and_analytics.v1"
 )
@@ -130,8 +133,6 @@ COARSE_SIMULATION_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
     "terminal_deviation_from_anchor",
 )
 
-_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
-
 _SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
 )
@@ -156,10 +157,31 @@ _SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY = (
 class CoarseSimulationModelInputs(ContractModel):
     sufficient_statistics_model_inputs: Any
     news_process_configuration: NewsProcessConfiguration
+    return_mark_hour_of_week_factors: tuple[float, ...]
+    observed_price_tick_size: Optional[float]
     calendar_registry_artifact: dict[str, Any]
     exchange_code: str
 
     def __post_init__(self) -> None:
+        if len(self.return_mark_hour_of_week_factors) != _RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT:
+            raise _simulation_error(
+                "return_mark_hour_of_week_factors",
+                "must contain 168 local hour-of-week factors",
+            )
+        for factor_index, factor in enumerate(self.return_mark_hour_of_week_factors):
+            if not isinstance(factor, int | float) or not isfinite(factor) or factor <= 0.0:
+                raise _simulation_error(
+                    f"return_mark_hour_of_week_factors[{factor_index}]",
+                    "must be finite and strictly positive",
+                )
+        if self.observed_price_tick_size is not None and (
+            not isfinite(self.observed_price_tick_size)
+            or self.observed_price_tick_size <= 0.0
+        ):
+            raise _simulation_error(
+                "observed_price_tick_size",
+                "must be finite and strictly positive when provided",
+            )
         if not self.exchange_code.strip():
             raise _simulation_error("exchange_code", "must be a non-empty string")
 
@@ -207,6 +229,33 @@ class CoarseSimulationModelInputs(ContractModel):
                     f"{field_path}.news_process_configuration",
                     SIMULATION_ERROR_FACTORY,
                 )
+            ),
+            return_mark_hour_of_week_factors=tuple(
+                require_finite_number(
+                    {"value": raw_value},
+                    "value",
+                    f"{field_path}.return_mark_hour_of_week_factors[{factor_index}]",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                for factor_index, raw_value in enumerate(
+                    require_sequence(
+                        raw_payload,
+                        "return_mark_hour_of_week_factors",
+                        f"{field_path}.return_mark_hour_of_week_factors",
+                        SIMULATION_ERROR_FACTORY,
+                    )
+                )
+            ),
+            observed_price_tick_size=(
+                require_finite_number(
+                    raw_payload,
+                    "observed_price_tick_size",
+                    f"{field_path}.observed_price_tick_size",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                if "observed_price_tick_size" in raw_payload
+                and raw_payload["observed_price_tick_size"] is not None
+                else None
             ),
             calendar_registry_artifact=_validate_calendar_registry_artifact_payload(
                 require_mapping(
@@ -262,6 +311,7 @@ class CoarseSimulationRunRequest(ContractModel):
                     f"({self.hourly_factor_contract.interval_count})"
                 ),
             )
+
         if self.hourly_factor_contract.interval_duration_nanos != interval_delta_nanos:
             raise _simulation_error(
                 "hourly_factor_contract.interval_duration_nanos",
@@ -272,6 +322,7 @@ class CoarseSimulationRunRequest(ContractModel):
                     f"{self.hourly_factor_contract.interval_duration_nanos})"
                 ),
             )
+
         if self.hourly_factor_contract.first_interval_start_utc_nanos != self.start_time_utc_nanos:
             raise _simulation_error(
                 "hourly_factor_contract.first_interval_start_utc_nanos",
@@ -283,7 +334,9 @@ class CoarseSimulationRunRequest(ContractModel):
                 ),
             )
 
-        runtime_interval_anchors = self.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors
+        runtime_interval_anchors = (
+            self.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors
+        )
         if len(runtime_interval_anchors.end_anchor_values) != self.horizon_interval_count:
             raise _simulation_error(
                 "model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
@@ -293,10 +346,22 @@ class CoarseSimulationRunRequest(ContractModel):
         for interval_index, observed_interval_delta in enumerate(
             runtime_interval_anchors.interval_deltas[: self.horizon_interval_count]
         ):
-            if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
+            field_path = (
+                "model_inputs.sufficient_statistics_model_inputs"
+                ".mean_reversion_runtime_interval_anchors"
+                f".interval_deltas[{interval_index}]"
+            )
+            observed_interval_delta_nanos = _interval_delta_to_nanos(
+                observed_interval_delta,
+                field_path=field_path,
+            )
+            if observed_interval_delta_nanos != interval_delta_nanos:
                 raise _simulation_error(
-                    f"model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
-                    f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",
+                    field_path,
+                    (
+                        f"must equal interval_delta ({self.interval_delta}), "
+                        f"found {observed_interval_delta}"
+                    ),
                 )
 
     @staticmethod
@@ -309,6 +374,8 @@ class CoarseSimulationRunRequest(ContractModel):
         sufficient_statistics_model_inputs: Any,
         hourly_factor_contract: HourlyFactorContract,
         news_process_configuration: NewsProcessConfiguration,
+        return_mark_hour_of_week_factors: Sequence[float],
+        observed_price_tick_size: Optional[float],
         calendar_registry: CalendarRegistry,
         exchange_code: str,
     ) -> CoarseSimulationRunRequest:
@@ -327,6 +394,8 @@ class CoarseSimulationRunRequest(ContractModel):
             model_inputs=CoarseSimulationModelInputs(
                 sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
                 news_process_configuration=news_process_configuration,
+                return_mark_hour_of_week_factors=tuple(return_mark_hour_of_week_factors),
+                observed_price_tick_size=observed_price_tick_size,
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,
             ),

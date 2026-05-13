@@ -1,6 +1,8 @@
-use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Timelike, Utc};
 use chrono_tz::Tz;
 use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_foundations::time::{elapsed_utc_nanos_to_hours, utc_datetime_from_nanos};
+use janiform_market_time::seasonality::HOURS_PER_WEEK;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use crate::error::SeededTickSimulationRunError;
@@ -8,7 +10,6 @@ use janiform_market_time::calendar::{CalendarDate, SessionTime, TradingWeekday};
 
 use super::market_state::SeededSimulationMarketStateResolver;
 use super::results::validate_integrated_intensity;
-use super::time::{derive_elapsed_hours, timestamp_utc_from_nanos};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TradingTimeReturnComponents {
@@ -31,6 +32,7 @@ pub(crate) struct TransitionTradingTimeReturnInput<'a, R> {
     pub(crate) lambda_bar: f64,
     pub(crate) beta: f64,
     pub(crate) seasonality_factor: f64,
+    pub(crate) return_mark_scale_factor: f64,
     pub(crate) interval_open_market_segments: &'a [(i64, i64)],
     pub(crate) previous_timestamp_utc_nanos: i64,
     pub(crate) timestamp_utc_nanos: i64,
@@ -50,6 +52,7 @@ where
         lambda_bar,
         beta,
         seasonality_factor,
+        return_mark_scale_factor,
         interval_open_market_segments,
         previous_timestamp_utc_nanos,
         timestamp_utc_nanos,
@@ -95,9 +98,11 @@ where
         )?;
 
     Ok(TradingTimeReturnComponents {
-        buy_side_return: trading_time_contributions.buy_side_increment,
-        sell_side_return: -trading_time_contributions.sell_side_increment,
-        trading_time_return: trading_time_contributions.combined_increment,
+        buy_side_return: return_mark_scale_factor * trading_time_contributions.buy_side_increment,
+        sell_side_return: -return_mark_scale_factor
+            * trading_time_contributions.sell_side_increment,
+        trading_time_return: return_mark_scale_factor
+            * trading_time_contributions.combined_increment,
     })
 }
 
@@ -125,9 +130,9 @@ fn integrate_open_market_elapsed_time_weights(
         }
 
         let overlap_start_hours =
-            derive_elapsed_hours(previous_timestamp_utc_nanos, overlap_start_utc_nanos);
+            elapsed_utc_nanos_to_hours(previous_timestamp_utc_nanos, overlap_start_utc_nanos);
         let overlap_end_hours =
-            derive_elapsed_hours(previous_timestamp_utc_nanos, overlap_end_utc_nanos);
+            elapsed_utc_nanos_to_hours(previous_timestamp_utc_nanos, overlap_end_utc_nanos);
 
         let overlap_open_hours = overlap_end_hours - overlap_start_hours;
 
@@ -159,6 +164,45 @@ pub(crate) fn integrate_open_market_elapsed_hours(
     .open_elapsed_hours
 }
 
+pub(crate) fn return_mark_scale_factor_for_timestamp(
+    return_mark_hour_of_week_factors: &[f64],
+    exchange_timezone: Tz,
+    timestamp_utc_nanos: i64,
+) -> Result<f64, SeededTickSimulationRunError> {
+    if return_mark_hour_of_week_factors.len() != HOURS_PER_WEEK {
+        return Err(
+            SeededTickSimulationRunError::ReturnMarkHourOfWeekFactorCountMismatch {
+                expected_factor_count: HOURS_PER_WEEK,
+                observed_factor_count: return_mark_hour_of_week_factors.len(),
+            },
+        );
+    }
+
+    let timestamp_utc = utc_datetime_from_nanos(timestamp_utc_nanos).ok_or(
+        SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
+            value: timestamp_utc_nanos,
+        },
+    )?;
+
+    let timestamp_local = timestamp_utc.with_timezone(&exchange_timezone);
+
+    let weekday_offset = timestamp_local.weekday().num_days_from_monday() as usize * 24;
+
+    let hour_of_week = weekday_offset + timestamp_local.hour() as usize;
+
+    let return_mark_scale_factor = return_mark_hour_of_week_factors[hour_of_week];
+    if !return_mark_scale_factor.is_finite() || return_mark_scale_factor <= 0.0 {
+        return Err(
+            SeededTickSimulationRunError::InvalidReturnMarkHourOfWeekFactor {
+                factor_index: hour_of_week,
+                value: return_mark_scale_factor,
+            },
+        );
+    }
+
+    Ok(return_mark_scale_factor)
+}
+
 pub(crate) fn build_interval_open_market_segments(
     market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
     interval_start_utc_nanos: &[i64],
@@ -185,11 +229,13 @@ fn integrate_side_intensity(
     open_market_elapsed_time_weights: OpenMarketElapsedTimeWeights,
     plus_side: bool,
 ) -> f64 {
-    if open_market_elapsed_time_weights.open_elapsed_hours <= 0.0 || seasonality_factor <= 0.0 {
+    if open_market_elapsed_time_weights.open_elapsed_hours <= 0.0 {
         return 0.0;
     }
 
-    let deseasonalized_baseline = lambda_bar * open_market_elapsed_time_weights.open_elapsed_hours;
+    let baseline = lambda_bar
+        * seasonality_factor.max(0.0)
+        * open_market_elapsed_time_weights.open_elapsed_hours;
 
     let endogenous_component = if plus_side {
         (state.y_plus_plus + state.y_plus_minus)
@@ -199,7 +245,7 @@ fn integrate_side_intensity(
             * open_market_elapsed_time_weights.open_decay_weight
     };
 
-    seasonality_factor * (deseasonalized_baseline + endogenous_component)
+    (baseline + endogenous_component).max(0.0)
 }
 
 fn interval_open_market_segments_for_range(
@@ -211,13 +257,13 @@ fn interval_open_market_segments_for_range(
         return Ok(Vec::new());
     }
 
-    let start_timestamp_utc = timestamp_utc_from_nanos(interval_start_utc_nanos).ok_or(
+    let start_timestamp_utc = utc_datetime_from_nanos(interval_start_utc_nanos).ok_or(
         SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
             value: interval_start_utc_nanos,
         },
     )?;
 
-    let end_timestamp_utc = timestamp_utc_from_nanos(interval_end_utc_nanos - 1).ok_or(
+    let end_timestamp_utc = utc_datetime_from_nanos(interval_end_utc_nanos - 1).ok_or(
         SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
             value: interval_end_utc_nanos - 1,
         },

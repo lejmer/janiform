@@ -8,6 +8,7 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
 };
 use janiform_foundations::numeric::{validate_finite_number, validate_positive_number};
+use janiform_foundations::time::duration_hours_to_nanos;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelParameterError, HawkesKernelParameters,
 };
@@ -37,8 +38,6 @@ use super::constants::{
 use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::{PricingIntervalSchedule, PricingIntervalScheduleError};
-
-const PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -555,7 +554,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
             AnchoredVanillaOptionPricingBoundaryInputError::InvalidObservedBoundaryState { source }
         })?;
 
-        if !self.interval_delta.is_finite() || self.interval_delta <= 0.0 {
+        if duration_hours_to_nanos(self.interval_delta).is_err() {
             return Err(
                 AnchoredVanillaOptionPricingBoundaryInputError::InvalidIntervalDelta {
                     value: self.interval_delta,
@@ -639,7 +638,7 @@ impl Display for AnchoredVanillaOptionPricingBoundaryInputError {
             ),
             Self::InvalidIntervalDelta { value } => write!(
                 formatter,
-                "boundary_input.interval_delta must be finite and strictly positive, found {value}"
+                "boundary_input.interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration, found {value}"
             ),
         }
     }
@@ -1010,7 +1009,7 @@ impl VanillaOptionPricingRequest {
             .validate_single_node_shape()
             .map_err(|source| VanillaOptionPricingRequestError::InvalidMarketInputs { source })?;
 
-        validate_interval_delta(self.interval_delta)?;
+        let interval_delta_nanos = validate_interval_delta(self.interval_delta)?;
 
         self.boundary_input
             .validate()
@@ -1020,9 +1019,7 @@ impl VanillaOptionPricingRequest {
             .boundary_input
             .interval_delta()
             .map_err(|source| VanillaOptionPricingRequestError::InvalidBoundaryInput { source })?;
-        if (anchored_interval_delta - self.interval_delta).abs()
-            > PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        {
+        if duration_hours_to_nanos(anchored_interval_delta) != Ok(interval_delta_nanos) {
             return Err(
                 VanillaOptionPricingRequestError::BoundaryIntervalDeltaMismatch {
                     requested_interval_delta: self.interval_delta,
@@ -1075,7 +1072,7 @@ impl Display for VanillaOptionPricingRequestError {
             Self::InvalidIntervalDelta { value } => {
                 write!(
                     formatter,
-                    "interval_delta must be finite and strictly positive, found {value}"
+                    "interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration, found {value}"
                 )
             }
             Self::InvalidBoundaryInput { source } => {
@@ -2174,14 +2171,12 @@ fn validate_positive_field(
     })
 }
 
-fn validate_interval_delta(interval_delta: f64) -> Result<(), VanillaOptionPricingRequestError> {
-    if !interval_delta.is_finite() || interval_delta <= 0.0 {
-        return Err(VanillaOptionPricingRequestError::InvalidIntervalDelta {
+fn validate_interval_delta(interval_delta: f64) -> Result<i64, VanillaOptionPricingRequestError> {
+    duration_hours_to_nanos(interval_delta).map_err(|_| {
+        VanillaOptionPricingRequestError::InvalidIntervalDelta {
             value: interval_delta,
-        });
-    }
-
-    Ok(())
+        }
+    })
 }
 
 fn validate_hawkes_boundary_state(

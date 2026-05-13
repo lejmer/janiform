@@ -15,9 +15,11 @@ use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
-    ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageFittedParameters, ReturnMarkHourOfWeekScaleProfile,
+    TickGridObservationModel,
 };
 use janiform_market_time::calendar::MarketState;
+use janiform_market_time::seasonality::HOURS_PER_WEEK;
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
@@ -265,6 +267,7 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnComponentsObservedOpenSessionReturn {
     pub return_timestamp_utc_nanos: i64,
+    pub elapsed_same_session_hours: f64,
     pub log_return: f64,
     pub post_shock_activity_lift: f64,
     pub sell_share_proxy: f64,
@@ -292,6 +295,15 @@ impl ReturnComponentsObservedOpenSessionReturn {
                 ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
                     value: self.log_return,
+                },
+            );
+        }
+
+        if !self.elapsed_same_session_hours.is_finite() || self.elapsed_same_session_hours <= 0.0 {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionReturnElapsedTime {
+                    return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
+                    value: self.elapsed_same_session_hours,
                 },
             );
         }
@@ -630,6 +642,8 @@ pub struct ReturnComponentsStageCandidateGenerationInput {
     pub close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy,
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: SharedNewsMarkLawConfiguration,
+    pub return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile,
+    pub tick_grid_observation_model: TickGridObservationModel,
     pub objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights,
 }
 
@@ -678,10 +692,64 @@ impl ReturnComponentsStageCandidateGenerationInput {
             }
         })?;
 
+        validate_return_mark_hour_of_week_scale_profile(
+            &self.return_mark_hour_of_week_scale_profile,
+        )?;
+        validate_tick_grid_observation_model(&self.tick_grid_observation_model)?;
         self.objective_metric_weights.validate()?;
 
         Ok(())
     }
+}
+
+fn validate_return_mark_hour_of_week_scale_profile(
+    profile: &ReturnMarkHourOfWeekScaleProfile,
+) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+    if profile.hour_of_week_factors.len() != HOURS_PER_WEEK {
+        return Err(
+            ReturnComponentsStageCandidateGenerationInputError::ReturnMarkHourOfWeekFactorCountMismatch {
+                expected_factor_count: HOURS_PER_WEEK,
+                observed_factor_count: profile.hour_of_week_factors.len(),
+            },
+        );
+    }
+
+    for (factor_index, factor) in profile.hour_of_week_factors.iter().copied().enumerate() {
+        if !factor.is_finite() || factor <= 0.0 {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidReturnMarkHourOfWeekFactor {
+                    factor_index,
+                    value: factor,
+                },
+            );
+        }
+    }
+
+    if profile.profile_resolution_hours != 1 {
+        return Err(
+            ReturnComponentsStageCandidateGenerationInputError::InvalidReturnMarkProfileResolution {
+                value: profile.profile_resolution_hours,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_tick_grid_observation_model(
+    model: &TickGridObservationModel,
+) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+    if let Some(tick_size) = model.tick_size
+        && (!tick_size.is_finite() || tick_size <= 0.0)
+    {
+        return Err(
+            ReturnComponentsStageCandidateGenerationInputError::InvalidTickSize {
+                value: tick_size,
+            },
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -732,6 +800,10 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         window_end_utc_nanos: i64,
     },
     InvalidObservedOpenSessionReturn {
+        return_timestamp_utc_nanos: i64,
+        value: f64,
+    },
+    InvalidObservedOpenSessionReturnElapsedTime {
         return_timestamp_utc_nanos: i64,
         value: f64,
     },
@@ -824,6 +896,20 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     },
     InvalidSharedMarkLawTemplate {
         error_message: String,
+    },
+    ReturnMarkHourOfWeekFactorCountMismatch {
+        expected_factor_count: usize,
+        observed_factor_count: usize,
+    },
+    InvalidReturnMarkHourOfWeekFactor {
+        factor_index: usize,
+        value: f64,
+    },
+    InvalidReturnMarkProfileResolution {
+        value: usize,
+    },
+    InvalidTickSize {
+        value: f64,
     },
     InvalidContinuousDistributionFitWeight {
         value: f64,
@@ -931,6 +1017,13 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             } => write!(
                 formatter,
                 "observed open-session return at {return_timestamp_utc_nanos} must be finite, found {value}"
+            ),
+            Self::InvalidObservedOpenSessionReturnElapsedTime {
+                return_timestamp_utc_nanos,
+                value,
+            } => write!(
+                formatter,
+                "observed open-session return elapsed time at {return_timestamp_utc_nanos} must be finite and positive, found {value}"
             ),
             Self::InvalidObservedOpenSessionActivityLift {
                 return_timestamp_utc_nanos,
@@ -1075,6 +1168,28 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             Self::InvalidSharedMarkLawTemplate { error_message } => write!(
                 formatter,
                 "shared_mark_law_template is invalid for candidate generation: {error_message}"
+            ),
+            Self::ReturnMarkHourOfWeekFactorCountMismatch {
+                expected_factor_count,
+                observed_factor_count,
+            } => write!(
+                formatter,
+                "return_mark_hour_of_week_scale_profile.hour_of_week_factors must contain {expected_factor_count} factors, found {observed_factor_count}"
+            ),
+            Self::InvalidReturnMarkHourOfWeekFactor {
+                factor_index,
+                value,
+            } => write!(
+                formatter,
+                "return_mark_hour_of_week_scale_profile.hour_of_week_factors[{factor_index}] must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidReturnMarkProfileResolution { value } => write!(
+                formatter,
+                "return_mark_hour_of_week_scale_profile.profile_resolution_hours must be 1, found {value}"
+            ),
+            Self::InvalidTickSize { value } => write!(
+                formatter,
+                "tick_grid_observation_model.tick_size must be finite and strictly positive when provided, found {value}"
             ),
             Self::InvalidContinuousDistributionFitWeight { value } => write!(
                 formatter,
@@ -1904,6 +2019,8 @@ pub struct ReturnComponentsStageCandidateInput {
     pub objective_terms: Vec<ReturnComponentsStageObjectiveTermInput>,
     pub candidate_families: ReturnComponentsStageCandidateFamilies,
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
+    pub return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile,
+    pub tick_grid_observation_model: TickGridObservationModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]

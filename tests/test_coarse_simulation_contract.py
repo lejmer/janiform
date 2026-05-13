@@ -67,6 +67,29 @@ def test_coarse_simulation_run_request_rejects_interval_factor_delta_mismatch(
     assert "must match interval_delta exactly" in failure.message
 
 
+def test_coarse_simulation_run_request_rejects_fractional_runtime_anchor_interval_delta(
+    calendar_registry,
+) -> None:
+    request_payload = _build_coarse_run_request(calendar_registry).to_payload()
+    request_payload["model_inputs"]["sufficient_statistics_model_inputs"][
+        "mean_reversion_runtime_interval_anchors"
+    ]["interval_deltas"][0] = 1.0 / 7.0
+
+    with pytest.raises(SeededTickSimulationValidationError) as captured_error:
+        validate_coarse_simulation_run_request(request_payload)
+
+    failure = captured_error.value.failure
+    assert failure.error_id == "simulation.validation.contract"
+    assert (
+        failure.field_path
+        == (
+            "model_inputs.sufficient_statistics_model_inputs."
+            "mean_reversion_runtime_interval_anchors.interval_deltas[0]"
+        )
+    )
+    assert "must map to an exact fixed-width UTC nanosecond grid" in failure.message
+
+
 def test_coarse_simulation_path_roundtrip_serialization(
     calendar_registry,
 ) -> None:
@@ -192,6 +215,8 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                 return_jump_scale=1.0,
             ),
         ),
+        return_mark_hour_of_week_factors=(1.0,) * 168,
+        observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
     )

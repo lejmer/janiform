@@ -1,13 +1,11 @@
 use chrono::{DateTime, Utc};
+use janiform_foundations::time::utc_datetime_from_nanos;
 
 pub(crate) fn datetime_from_nanos<E>(
     timestamp_utc_nanos: i64,
     error: E,
 ) -> Result<DateTime<Utc>, E> {
-    let seconds = timestamp_utc_nanos.div_euclid(1_000_000_000);
-    let nanoseconds = timestamp_utc_nanos.rem_euclid(1_000_000_000) as u32;
-
-    DateTime::from_timestamp(seconds, nanoseconds).ok_or(error)
+    utc_datetime_from_nanos(timestamp_utc_nanos).ok_or(error)
 }
 
 #[cfg(test)]

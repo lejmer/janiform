@@ -472,6 +472,8 @@ fn run_fixture_case(
                 format!("invalid disabled mean-reversion boundary state: {source}")
             })?,
             hourly_factor_contract,
+            return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+            observed_price_tick_size: None,
             calendar_registry: calendar_registry.clone(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(),

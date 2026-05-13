@@ -56,8 +56,6 @@ pub const SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY: &str = SIMULATION_RANDOMNE
 pub const SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
     SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY;
 
-/// Exact one-second duration in nanoseconds used for interval arithmetic only.
-pub(crate) const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 pub(crate) const MAX_STOCHASTIC_UPDATES_PER_INTERVAL: u64 = 1_000_000;
 /// Debug-trace default that preserves every transition unless the caller requests downsampling.
 pub(crate) const DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION: u64 = 1;

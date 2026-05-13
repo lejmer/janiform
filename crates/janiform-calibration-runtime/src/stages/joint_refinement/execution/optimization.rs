@@ -1240,14 +1240,13 @@ fn fitted_parameters_runtime_branching_workload_is_infeasible(
         return true;
     };
 
-    let runtime_effective_branching_ratio = context.max_runtime_hourly_seasonality_factor
-        * spectral_radius_alpha_over_beta(
-            derived_alpha,
-            fitted_parameters
-                .hawkes_fitted_parameters
-                .kernel_parameters
-                .beta,
-        );
+    let runtime_effective_branching_ratio = spectral_radius_alpha_over_beta(
+        derived_alpha,
+        fitted_parameters
+            .hawkes_fitted_parameters
+            .kernel_parameters
+            .beta,
+    );
 
     runtime_branching_workload_is_infeasible(
         runtime_effective_branching_ratio,
@@ -1724,7 +1723,8 @@ mod tests {
     use janiform_calibration_artifacts::{
         CalibrationOptimizerSettings, HawkesStageFittedParameters,
         JointRefinementStageFittedParameters, ReturnComponentsStageFittedParameters,
-        SurpriseNewsDeterministicIntensityProfile,
+        ReturnMarkHourOfWeekScaleProfile, SurpriseNewsDeterministicIntensityProfile,
+        TickGridObservationModel,
     };
     use janiform_model_kernels::hawkes::{
         HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
@@ -1814,6 +1814,18 @@ mod tests {
                 profile_resolution_hours: 1,
                 fit_policy: "test".to_string(),
                 normalization_policy: "test".to_string(),
+            },
+            return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
+                hour_of_week_factors: vec![1.0; 24 * 7],
+                profile_resolution_hours: 1,
+                fit_policy: "test".to_string(),
+                normalization_policy: "test".to_string(),
+            },
+            tick_grid_observation_model: TickGridObservationModel {
+                tick_size: None,
+                tick_size_source: "test".to_string(),
+                inference_policy: "test".to_string(),
+                observation_policy: "test".to_string(),
             },
             mean_reversion_fitted_parameters:
                 MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),

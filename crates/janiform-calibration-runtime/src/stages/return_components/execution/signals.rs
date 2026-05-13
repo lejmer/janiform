@@ -4,7 +4,6 @@ use janiform_foundations::numeric::{
     arithmetic_mean_or_zero as arithmetic_mean, smallest_positive_value,
     strictly_positive_machine_value,
 };
-use janiform_foundations::time::duration_nanos_to_hours;
 
 use super::super::contracts::{
     ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
@@ -374,39 +373,21 @@ pub(super) fn derive_continuous_fit_business_time_scales(
         return vec![1.0; sorted_signals.continuous_fit_returns.len()];
     };
 
-    let representative_interarrival_hours = activity_calibration_context
-        .representative_interarrival_hours
-        .max(1.0e-8);
-    let maximum_elapsed_hours = representative_interarrival_hours * 8.0;
-    let fallback_business_time_scale = (activity_calibration_context
+    let representative_interarrival_hours =
+        activity_calibration_context.representative_interarrival_hours;
+
+    let fallback_business_time_scale = activity_calibration_context
         .modeled_open_event_rate_per_hour
-        * representative_interarrival_hours)
-        .max(1.0e-8);
+        * representative_interarrival_hours;
 
     let mut business_time_scale_by_timestamp = BTreeMap::new();
-    let mut previous_timestamp_utc_nanos: Option<i64> = None;
 
     for observation in &sorted_signals.observed_open_session_returns {
-        let elapsed_hours = previous_timestamp_utc_nanos
-            .map(|previous_timestamp_utc_nanos_value| {
-                duration_nanos_to_hours(
-                    observation.return_timestamp_utc_nanos - previous_timestamp_utc_nanos_value,
-                )
-            })
-            .filter(|elapsed_hours_value| {
-                elapsed_hours_value.is_finite()
-                    && *elapsed_hours_value > 0.0
-                    && *elapsed_hours_value <= maximum_elapsed_hours
-            })
-            .unwrap_or(representative_interarrival_hours);
-
-        let business_time_scale = (activity_calibration_context.modeled_open_event_rate_per_hour
-            * elapsed_hours)
-            .max(1.0e-8);
+        let business_time_scale = activity_calibration_context.modeled_open_event_rate_per_hour
+            * observation.elapsed_same_session_hours;
 
         business_time_scale_by_timestamp
             .insert(observation.return_timestamp_utc_nanos, business_time_scale);
-        previous_timestamp_utc_nanos = Some(observation.return_timestamp_utc_nanos);
     }
 
     sorted_signals

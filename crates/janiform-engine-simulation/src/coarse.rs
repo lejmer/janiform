@@ -3,8 +3,10 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use chrono::{DateTime, Utc};
-use janiform_foundations::time::NANOS_PER_HOUR;
+use janiform_foundations::time::{
+    DurationHoursToNanosError, duration_hours_to_nanos, utc_datetime_from_nanos,
+};
+use janiform_market_time::seasonality::HOURS_PER_WEEK;
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::sufficient_statistics::{
@@ -27,11 +29,9 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateValidationError;
 use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 
-use super::runtime::compute_max_effective_endogenous_branching_ratio;
-
-const ONE_SECOND_NANOS: i64 = 1_000_000_000;
-const INTERVAL_DELTA_NANOS_TOLERANCE: f64 = 0.5;
-const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
+use super::runtime::{
+    compute_max_effective_endogenous_branching_ratio, is_valid_observed_price_tick_size,
+};
 
 pub const COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION: &str =
     "simulation.coarse_interval.run_request.v1";
@@ -128,6 +128,8 @@ const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 19] = [
 pub struct CoarseSimulationModelInputs {
     pub sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     pub news_process_configuration: NewsProcessConfiguration,
+    pub return_mark_hour_of_week_factors: Vec<f64>,
+    pub observed_price_tick_size: Option<f64>,
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub exchange_code: String,
 }
@@ -136,16 +138,22 @@ impl CoarseSimulationModelInputs {
     pub fn try_new(
         sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
         news_process_configuration: NewsProcessConfiguration,
+        return_mark_hour_of_week_factors: Vec<f64>,
+        observed_price_tick_size: Option<f64>,
         calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
         exchange_code: impl Into<String>,
     ) -> Result<Self, CoarseSimulationModelInputsError> {
         let model_inputs = Self {
             sufficient_statistics_model_inputs,
             news_process_configuration,
+            return_mark_hour_of_week_factors,
+            observed_price_tick_size,
             calendar_registry_artifact,
             exchange_code: exchange_code.into(),
         };
+
         model_inputs.validate()?;
+
         Ok(model_inputs)
     }
 
@@ -155,11 +163,45 @@ impl CoarseSimulationModelInputs {
             .map_err(|source| {
                 CoarseSimulationModelInputsError::InvalidSufficientStatisticsModelInputs { source }
             })?;
+
         self.news_process_configuration
             .validate()
             .map_err(|source| {
                 CoarseSimulationModelInputsError::InvalidNewsProcessConfiguration { source }
             })?;
+
+        if self.return_mark_hour_of_week_factors.len() != HOURS_PER_WEEK {
+            return Err(
+                CoarseSimulationModelInputsError::ReturnMarkHourOfWeekFactorCountMismatch {
+                    expected_factor_count: HOURS_PER_WEEK,
+                    observed_factor_count: self.return_mark_hour_of_week_factors.len(),
+                },
+            );
+        }
+
+        for (factor_index, factor) in self
+            .return_mark_hour_of_week_factors
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            if !factor.is_finite() || factor <= 0.0 {
+                return Err(
+                    CoarseSimulationModelInputsError::InvalidReturnMarkHourOfWeekFactor {
+                        factor_index,
+                        value: factor,
+                    },
+                );
+            }
+        }
+
+        if let Some(tick_size) = self.observed_price_tick_size
+            && !is_valid_observed_price_tick_size(tick_size)
+        {
+            return Err(
+                CoarseSimulationModelInputsError::InvalidObservedPriceTickSize { value: tick_size },
+            );
+        }
 
         if self.exchange_code.trim().is_empty() {
             return Err(CoarseSimulationModelInputsError::InvalidExchangeCode {
@@ -170,6 +212,7 @@ impl CoarseSimulationModelInputs {
         let calendar_registry = self.load_calendar_registry().map_err(|source| {
             CoarseSimulationModelInputsError::InvalidCalendarRegistry { source }
         })?;
+
         calendar_registry
             .get_required(&self.exchange_code)
             .map_err(|source| {
@@ -197,6 +240,17 @@ pub enum CoarseSimulationModelInputsError {
     InvalidNewsProcessConfiguration {
         source: NewsProcessConfigurationError,
     },
+    ReturnMarkHourOfWeekFactorCountMismatch {
+        expected_factor_count: usize,
+        observed_factor_count: usize,
+    },
+    InvalidReturnMarkHourOfWeekFactor {
+        factor_index: usize,
+        value: f64,
+    },
+    InvalidObservedPriceTickSize {
+        value: f64,
+    },
     InvalidCalendarRegistry {
         source: ExchangeCalendarRegistryLoadError,
     },
@@ -221,6 +275,24 @@ impl Display for CoarseSimulationModelInputsError {
             Self::InvalidNewsProcessConfiguration { source } => {
                 write!(formatter, "news_process_configuration is invalid: {source}")
             }
+            Self::ReturnMarkHourOfWeekFactorCountMismatch {
+                expected_factor_count,
+                observed_factor_count,
+            } => write!(
+                formatter,
+                "return_mark_hour_of_week_factors length must be {expected_factor_count}, found {observed_factor_count}"
+            ),
+            Self::InvalidReturnMarkHourOfWeekFactor {
+                factor_index,
+                value,
+            } => write!(
+                formatter,
+                "return_mark_hour_of_week_factors[{factor_index}] must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidObservedPriceTickSize { value } => write!(
+                formatter,
+                "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
+            ),
             Self::InvalidCalendarRegistry { source } => {
                 write!(formatter, "calendar_registry_artifact is invalid: {source}")
             }
@@ -248,7 +320,10 @@ impl Error for CoarseSimulationModelInputsError {
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidCalendarRegistry { source } => Some(source),
             Self::ExchangeCodeMissingFromCalendarRegistry { source, .. } => Some(source),
-            Self::InvalidExchangeCode { .. } => None,
+            Self::ReturnMarkHourOfWeekFactorCountMismatch { .. }
+            | Self::InvalidReturnMarkHourOfWeekFactor { .. }
+            | Self::InvalidObservedPriceTickSize { .. }
+            | Self::InvalidExchangeCode { .. } => None,
         }
     }
 }
@@ -258,6 +333,8 @@ impl Error for CoarseSimulationModelInputsError {
 struct CoarseSimulationModelInputsPayload {
     sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     news_process_configuration: NewsProcessConfiguration,
+    return_mark_hour_of_week_factors: Vec<f64>,
+    observed_price_tick_size: Option<f64>,
     calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     exchange_code: String,
 }
@@ -271,6 +348,8 @@ impl<'de> Deserialize<'de> for CoarseSimulationModelInputs {
         Self::try_new(
             payload.sufficient_statistics_model_inputs,
             payload.news_process_configuration,
+            payload.return_mark_hour_of_week_factors,
+            payload.observed_price_tick_size,
             payload.calendar_registry_artifact,
             payload.exchange_code,
         )
@@ -327,7 +406,7 @@ impl CoarseSimulationRunRequest {
             },
         )?;
 
-        if utc_timestamp_from_nanos(self.start_time_utc_nanos).is_none() {
+        if utc_datetime_from_nanos(self.start_time_utc_nanos).is_none() {
             return Err(CoarseSimulationRunRequestError::InvalidStartTimeUtcNanos {
                 value: self.start_time_utc_nanos,
             });
@@ -394,9 +473,15 @@ impl CoarseSimulationRunRequest {
             .take(self.horizon_interval_count)
             .enumerate()
         {
-            if (observed_interval_delta - self.interval_delta).abs()
-                > MEAN_REVERSION_ALIGNMENT_TOLERANCE
-            {
+            let observed_interval_delta_nanos =
+                interval_delta_to_nanos(observed_interval_delta).map_err(|_| {
+                    CoarseSimulationRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                        interval_index,
+                        expected_interval_delta: self.interval_delta,
+                        observed_interval_delta,
+                    }
+                })?;
+            if observed_interval_delta_nanos != interval_delta_nanos {
                 return Err(
                     CoarseSimulationRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
                         interval_index,
@@ -407,21 +492,17 @@ impl CoarseSimulationRunRequest {
             }
         }
 
-        if let Some((
-            max_seasonality_factor,
-            spectral_radius_alpha_over_beta,
-            effective_branching_ratio,
-        )) = compute_max_effective_endogenous_branching_ratio(
-            self.model_inputs
-                .sufficient_statistics_model_inputs
-                .equation_specification
-                .hawkes_kernel_parameters,
-            &self.interval_factors.s_h[..self.horizon_interval_count],
-        ) && effective_branching_ratio >= 1.0
+        if let Some((spectral_radius_alpha_over_beta, effective_branching_ratio)) =
+            compute_max_effective_endogenous_branching_ratio(
+                self.model_inputs
+                    .sufficient_statistics_model_inputs
+                    .equation_specification
+                    .hawkes_kernel_parameters,
+            )
+            && effective_branching_ratio >= 1.0
         {
             return Err(
                 CoarseSimulationRunRequestError::SeasonalityScaledEndogenousInstability {
-                    max_seasonality_factor,
                     spectral_radius_alpha_over_beta,
                     effective_branching_ratio,
                 },
@@ -489,7 +570,6 @@ pub enum CoarseSimulationRunRequestError {
         observed_interval_delta: f64,
     },
     SeasonalityScaledEndogenousInstability {
-        max_seasonality_factor: f64,
         spectral_radius_alpha_over_beta: f64,
         effective_branching_ratio: f64,
     },
@@ -559,12 +639,11 @@ impl Display for CoarseSimulationRunRequestError {
                 "model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must equal interval_delta ({expected_interval_delta}), found {observed_interval_delta}"
             ),
             Self::SeasonalityScaledEndogenousInstability {
-                max_seasonality_factor,
                 spectral_radius_alpha_over_beta,
                 effective_branching_ratio,
             } => write!(
                 formatter,
-                "seasonality-scaled endogenous branching must remain below 1.0, found max_s_h={max_seasonality_factor}, spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
+                "endogenous Hawkes branching must remain below 1.0, found spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
             ),
         }
     }
@@ -893,12 +972,12 @@ impl CoarseSimulationPath {
         )
         .map_err(CoarseSimulationPathError::InvalidSchemaVersion)?;
 
-        if utc_timestamp_from_nanos(self.start_time_utc_nanos).is_none() {
+        if utc_datetime_from_nanos(self.start_time_utc_nanos).is_none() {
             return Err(CoarseSimulationPathError::InvalidStartTimeUtcNanos {
                 value: self.start_time_utc_nanos,
             });
         }
-        if utc_timestamp_from_nanos(self.end_time_utc_nanos).is_none() {
+        if utc_datetime_from_nanos(self.end_time_utc_nanos).is_none() {
             return Err(CoarseSimulationPathError::InvalidEndTimeUtcNanos {
                 value: self.end_time_utc_nanos,
             });
@@ -1312,26 +1391,18 @@ impl Display for ExactStringValidationError {
 impl Error for ExactStringValidationError {}
 
 fn interval_delta_to_nanos(interval_delta: f64) -> Result<i64, IntervalDeltaGridError> {
-    if !interval_delta.is_finite() || interval_delta <= 0.0 {
-        return Err(IntervalDeltaGridError::NonPositiveOrNonFinite {
-            value: interval_delta,
-        });
-    }
-
-    let implied_interval_duration_nanos = interval_delta * NANOS_PER_HOUR as f64;
-    let rounded_interval_duration_nanos = implied_interval_duration_nanos.round();
-    if !implied_interval_duration_nanos.is_finite()
-        || rounded_interval_duration_nanos <= 0.0
-        || (implied_interval_duration_nanos - rounded_interval_duration_nanos).abs()
-            > INTERVAL_DELTA_NANOS_TOLERANCE
-    {
-        return Err(IntervalDeltaGridError::NotRepresentableAsUtcNanoseconds {
-            interval_delta,
-            implied_interval_duration_nanos,
-        });
-    }
-
-    Ok(rounded_interval_duration_nanos as i64)
+    duration_hours_to_nanos(interval_delta).map_err(|source| match source {
+        DurationHoursToNanosError::NonPositiveOrNonFinite { value } => {
+            IntervalDeltaGridError::NonPositiveOrNonFinite { value }
+        }
+        DurationHoursToNanosError::NotRepresentableAsUtcNanoseconds {
+            duration_hours,
+            implied_duration_nanos,
+        } => IntervalDeltaGridError::NotRepresentableAsUtcNanoseconds {
+            interval_delta: duration_hours,
+            implied_interval_duration_nanos: implied_duration_nanos,
+        },
+    })
 }
 
 fn validate_horizon_end_timestamp(
@@ -1372,7 +1443,7 @@ fn compute_horizon_end_time_utc_nanos(
             horizon_interval_count,
         })?;
 
-    if utc_timestamp_from_nanos(end_time_utc_nanos).is_none() {
+    if utc_datetime_from_nanos(end_time_utc_nanos).is_none() {
         return Err(CoarseSimulationTimeIndexError::InvalidEndTimeUtcNanos {
             value: end_time_utc_nanos,
         });
@@ -1393,14 +1464,14 @@ fn validate_interval_bounds(
     interval_start_utc_nanos: i64,
     interval_end_utc_nanos: i64,
 ) -> Result<(), CoarseSimulationIntervalBoundsError> {
-    if utc_timestamp_from_nanos(interval_start_utc_nanos).is_none() {
+    if utc_datetime_from_nanos(interval_start_utc_nanos).is_none() {
         return Err(
             CoarseSimulationIntervalBoundsError::InvalidStartTimeUtcNanos {
                 value: interval_start_utc_nanos,
             },
         );
     }
-    if utc_timestamp_from_nanos(interval_end_utc_nanos).is_none() {
+    if utc_datetime_from_nanos(interval_end_utc_nanos).is_none() {
         return Err(
             CoarseSimulationIntervalBoundsError::InvalidEndTimeUtcNanos {
                 value: interval_end_utc_nanos,
@@ -1448,14 +1519,6 @@ fn validate_excitation_state(state: HawkesExcitationState) -> Result<(), (&'stat
     }
 
     Ok(())
-}
-
-fn utc_timestamp_from_nanos(timestamp_utc_nanos: i64) -> Option<DateTime<Utc>> {
-    let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
-    let subsecond_nanos = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
-
-    DateTime::from_timestamp(seconds, subsecond_nanos)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
 }
 
 fn build_string_list(values: &[&str]) -> Vec<String> {
@@ -1928,6 +1991,7 @@ mod tests {
         SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalStatistics,
         SufficientStatisticsModelInputs, SufficientStatisticsReturnComponents,
     };
+    use janiform_foundations::time::NANOS_PER_HOUR;
     use janiform_market_time::calendar::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
         RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
@@ -1953,6 +2017,7 @@ mod tests {
         COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION, CoarseSimulationModelInputs,
         CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord,
         CoarseSimulationRunRequest, CoarseSimulationRunRequestError, IntervalDeltaGridError,
+        interval_delta_to_nanos,
     };
 
     #[test]
@@ -2113,7 +2178,30 @@ mod tests {
     }
 
     #[test]
-    fn coarse_run_request_rejects_seasonality_scaled_supercritical_hawkes_inputs() {
+    fn interval_delta_to_nanos_accepts_integer_nanosecond_grid_round_trip() {
+        let interval_delta = 1_000_000_i64 as f64 / NANOS_PER_HOUR as f64;
+
+        assert_eq!(
+            interval_delta_to_nanos(interval_delta)
+                .expect("integer nanosecond interval should round-trip"),
+            1_000_000
+        );
+    }
+
+    #[test]
+    fn interval_delta_to_nanos_rejects_fractional_nanosecond_grid() {
+        let interval_delta = 1.0 / 7.0;
+        let error = interval_delta_to_nanos(interval_delta)
+            .expect_err("fractional nanosecond interval should fail");
+
+        assert!(matches!(
+            error,
+            IntervalDeltaGridError::NotRepresentableAsUtcNanoseconds { .. }
+        ));
+    }
+
+    #[test]
+    fn coarse_run_request_accepts_seasonality_scaled_subcritical_hawkes_inputs() {
         let mut model_inputs = build_model_inputs();
         model_inputs
             .sufficient_statistics_model_inputs
@@ -2144,7 +2232,7 @@ mod tests {
         )
         .expect("interval factors should construct");
 
-        let error = CoarseSimulationRunRequest::try_new(
+        CoarseSimulationRunRequest::try_new(
             17,
             1_704_067_200_000_000_000,
             2,
@@ -2152,12 +2240,9 @@ mod tests {
             model_inputs,
             interval_factors,
         )
-        .expect_err("seasonality-scaled supercritical Hawkes inputs must fail");
-
-        assert!(matches!(
-            error,
-            CoarseSimulationRunRequestError::SeasonalityScaledEndogenousInstability { .. }
-        ));
+        .expect(
+            "raw-subcritical Hawkes inputs should remain valid when seasonality scales baseline",
+        );
     }
 
     #[test]
@@ -2315,6 +2400,8 @@ mod tests {
         CoarseSimulationModelInputs::try_new(
             sufficient_statistics_model_inputs,
             build_news_process_configuration(),
+            vec![1.0; 24 * 7],
+            None,
             build_calendar_registry_artifact(),
             "XNYS",
         )

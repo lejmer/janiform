@@ -1080,7 +1080,7 @@ fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
 }
 
 #[test]
-fn seeded_simulation_run_rejects_seasonality_scaled_supercritical_hawkes_inputs() {
+fn seeded_simulation_run_accepts_seasonality_scaled_subcritical_hawkes_inputs() {
     let mut model_inputs = valid_model_inputs();
     model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
         0.8,
@@ -1101,19 +1101,14 @@ fn seeded_simulation_run_rejects_seasonality_scaled_supercritical_hawkes_inputs(
     .expect("supercritical guard fixture should be valid in kernel domain");
     model_inputs.hourly_factor_contract.s_h = vec![1.2, 1.2];
 
-    let error = SeededTickSimulationRunConfig::try_new(
+    SeededTickSimulationRunConfig::try_new(
         99,
         DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         model_inputs,
         None,
     )
-    .expect_err("seasonality-scaled supercritical Hawkes inputs must fail");
-
-    assert!(matches!(
-        error,
-        SeededTickSimulationRunError::SeasonalityScaledEndogenousInstability { .. }
-    ));
+    .expect("raw-subcritical Hawkes inputs should remain valid when seasonality scales baseline");
 }
 
 #[test]
@@ -1127,6 +1122,12 @@ fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
     one_hour_model_inputs.initial_excitation_state = two_hour_model_inputs.initial_excitation_state;
     one_hour_model_inputs.hourly_factor_contract.s_h = vec![0.0];
     one_hour_model_inputs.hourly_factor_contract.nu_h = vec![0.0];
+    one_hour_model_inputs
+        .hourly_factor_contract
+        .known_component_nu_h = vec![0.0];
+    one_hour_model_inputs
+        .hourly_factor_contract
+        .surprise_component_nu_h = vec![0.0];
 
     let one_hour_config = SeededTickSimulationRunConfig::try_new(
         10_052,
@@ -1403,8 +1404,16 @@ fn seeded_simulation_kappa_zero_with_flat_anchor_matches_nested_core_path_semant
 #[test]
 fn seeded_simulation_anchor_reset_applies_exactly_once_per_interval_boundary() {
     let mut model_inputs = valid_model_inputs();
+    model_inputs.initial_excitation_state = HawkesExcitationState {
+        y_plus_plus: 0.0,
+        y_plus_minus: 0.0,
+        y_minus_plus: 0.0,
+        y_minus_minus: 0.0,
+    };
     model_inputs.hourly_factor_contract.s_h = vec![0.0, 0.0];
     model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+    model_inputs.hourly_factor_contract.known_component_nu_h = vec![0.0, 0.0];
+    model_inputs.hourly_factor_contract.surprise_component_nu_h = vec![0.0, 0.0];
     configure_mean_reversion_runtime_inputs(&mut model_inputs, 0.0, 0.0, &[2.0, 2.0], 1.0);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -3250,6 +3259,8 @@ fn one_interval_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
+        return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+        observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -3307,14 +3318,16 @@ fn two_interval_zero_event_carryover_model_inputs() -> SeededTickSimulationModel
     .expect("zero-event carryover kernel parameter fixture should be valid");
 
     model_inputs.initial_excitation_state = HawkesExcitationState {
-        y_plus_plus: 1.6,
-        y_plus_minus: 0.8,
-        y_minus_plus: 1.2,
-        y_minus_minus: 0.4,
+        y_plus_plus: 0.1,
+        y_plus_minus: 0.05,
+        y_minus_plus: 0.08,
+        y_minus_minus: 0.02,
     };
 
     model_inputs.hourly_factor_contract.s_h = vec![0.0, 0.0];
     model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+    model_inputs.hourly_factor_contract.known_component_nu_h = vec![0.0, 0.0];
+    model_inputs.hourly_factor_contract.surprise_component_nu_h = vec![0.0, 0.0];
 
     model_inputs
 }
@@ -3534,6 +3547,8 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
+        return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+        observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),

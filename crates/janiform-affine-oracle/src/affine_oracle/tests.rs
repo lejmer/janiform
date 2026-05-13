@@ -679,25 +679,25 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
 
     assert_complex_close(
         rhs.d_derivative.plus_plus,
-        ComplexScalar::new(-0.6948847102457174, 0.0),
+        ComplexScalar::new(-0.6753497365870158, 0.0),
         1.0e-12,
         "D_++'",
     );
     assert_complex_close(
         rhs.d_derivative.plus_minus,
-        ComplexScalar::new(-0.45488471024571747, 0.0),
+        ComplexScalar::new(-0.4353497365870158, 0.0),
         1.0e-12,
         "D_+-'",
     );
     assert_complex_close(
         rhs.d_derivative.minus_plus,
-        ComplexScalar::new(-0.5306189632272101, 0.0),
+        ComplexScalar::new(-0.5151081483883728, 0.0),
         1.0e-12,
         "D_-+'",
     );
     assert_complex_close(
         rhs.d_derivative.minus_minus,
-        ComplexScalar::new(-0.29061896322721015, 0.0),
+        ComplexScalar::new(-0.27510814838837286, 0.0),
         1.0e-12,
         "D_--'",
     );
@@ -846,12 +846,12 @@ fn default_solver_executes_deterministic_closed_form_fixture() {
     let h_plus = -transform_input.u_plus.real;
     let h_minus = -transform_input.u_minus.real;
 
-    let expected_d_plus = transform_input.s_h * h_plus * (1.0 - decay)
+    let expected_d_plus = h_plus * (1.0 - decay)
         / transform_input
             .equation_specification
             .hawkes_kernel_parameters
             .beta;
-    let expected_d_minus = transform_input.s_h * h_minus * (1.0 - decay)
+    let expected_d_minus = h_minus * (1.0 - decay)
         / transform_input
             .equation_specification
             .hawkes_kernel_parameters

@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 use janiform_foundations::market_state::MarketState;
+use janiform_foundations::time::utc_datetime_from_nanos;
 
 use super::interface::{
     NewsArrivalComponent, NewsReturnJumpRoutingTarget, SHARED_NEWS_EVENT_BOUNDARY_POLICY,
@@ -10,7 +11,6 @@ use super::interface::{
     SHARED_NEWS_EVENT_DISPATCH_MT_GATING_POLICY, SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY,
     SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY, SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY,
 };
-use super::sampling::utc_timestamp_from_nanos;
 
 /// Shared contract for resolving one event timestamp into a market state.
 pub trait SharedNewsEventMarketStateResolver {
@@ -100,13 +100,13 @@ pub fn resolve_shared_news_event_market_states(
         Vec::with_capacity(event_inputs.len());
 
     for event_input in event_inputs {
-        let event_timestamp_utc = utc_timestamp_from_nanos(event_input.event_timestamp_utc_nanos)
+        let event_timestamp_utc = utc_datetime_from_nanos(event_input.event_timestamp_utc_nanos)
             .ok_or(
-            SharedNewsEventDispatchError::InvalidEventTimestampUtcNanos {
-                event_generation_order: event_input.event_generation_order,
-                value: event_input.event_timestamp_utc_nanos,
-            },
-        )?;
+                SharedNewsEventDispatchError::InvalidEventTimestampUtcNanos {
+                    event_generation_order: event_input.event_generation_order,
+                    value: event_input.event_timestamp_utc_nanos,
+                },
+            )?;
         let market_state = market_state_resolver
             .resolve_market_state_at_utc(exchange_code, event_timestamp_utc)
             .map_err(

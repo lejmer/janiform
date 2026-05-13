@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "d2957c8c3ff42fd64375b344c4fb0ef2a6bc921e8af12353c2c0bd5a77bf35eb",
+  "approved_snapshot_sha256": "2fabe8b0e6616d8812ca735919b121669df67c147f38a4afbf4892e1c98cc22f",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1401,6 +1401,23 @@
       "updated_surfaces": [
         "janiform.pricing.fitted",
         "janiform.pricing.fitted.market_snapshot"
+      ]
+    },
+    {
+      "approved_on": "2026-05-13",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/workflows/simulate-paths.md"
+      ],
+      "rationale": "Calibration accepts an optional user-provided tick size, seeded simulation exposes fitted return-mark and tick-grid observation inputs, and coarse interval simulation carries the same fitted observation contracts as seeded tick simulation instead of using a different interval policy.",
+      "snapshot_sha256": "2fabe8b0e6616d8812ca735919b121669df67c147f38a4afbf4892e1c98cc22f",
+      "summary": "Expose fitted tick-grid and return-mark runtime inputs.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
       ]
     }
   ],

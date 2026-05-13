@@ -74,6 +74,7 @@ def test_simulation_request_model_validates_construction() -> None:
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         hourly_factor_summary=_valid_hourly_factor_summary(),
+        return_mark_hour_of_week_factors=(1.0,) * 168,
         state_snapshot_capture=SeededTickEventStateSnapshotCapture.POST_EVENT_TRANSITION,
     )
 
@@ -100,6 +101,7 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=_valid_hourly_factor_summary(),
+            return_mark_hour_of_week_factors=(1.0,) * 168,
             sample_every_nth_transition=0,
         )
 
@@ -181,6 +183,7 @@ def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_han
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         hourly_factor_summary=_valid_hourly_factor_summary(),
+        return_mark_hour_of_week_factors=(1.0,) * 168,
     )
 
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:

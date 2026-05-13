@@ -197,6 +197,27 @@ where
     )
 }
 
+/// Sample one interval from exact expected sufficient statistics.
+pub fn sample_interval_statistics_from_expected_statistics_with_randomness_factory<F>(
+    seed: u64,
+    interval_index: usize,
+    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    let substream_index = derive_transform_slice_sampling_substream_index(interval_index as u64, 0);
+
+    sample_interval_statistics_from_expected_statistics(
+        seed,
+        interval_index,
+        expected_statistics,
+        substream_index,
+        randomness_factory,
+    )
+}
+
 /// Sample a batch of interval statistics from solved transform slices.
 pub fn sample_interval_statistics_batch_from_transform_slices(
     seed: u64,
@@ -605,11 +626,38 @@ where
         batch_position,
     );
 
+    sample_interval_statistics_from_expected_statistics(
+        seed,
+        slices.context.interval_index,
+        expected_statistics,
+        substream_index,
+        randomness_factory,
+    )
+}
+
+fn sample_interval_statistics_from_expected_statistics<F>(
+    seed: u64,
+    interval_index: usize,
+    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    substream_index: u64,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    expected_statistics.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
+            interval_index,
+            source,
+        }
+    })?;
+
     let mut n_plus_stream = randomness_factory.create_substream(
         seed,
         SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
         substream_index,
     );
+
     let mut n_minus_stream = randomness_factory.create_substream(
         seed,
         SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
@@ -618,6 +666,7 @@ where
 
     let sampled_n_plus =
         sample_count_from_expectation(expected_statistics.expected_n_plus, &mut n_plus_stream);
+
     let sampled_n_minus =
         sample_count_from_expectation(expected_statistics.expected_n_minus, &mut n_minus_stream);
 
@@ -632,7 +681,7 @@ where
     )
     .map_err(|source| {
         SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
-            interval_index: slices.context.interval_index,
+            interval_index,
             source,
         }
     })
@@ -649,12 +698,16 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
 
     let baseline_transform =
         extract_real_transform_value(context, "baseline_transform", slices.baseline_transform)?;
+
     let a_plus_transform =
         extract_real_transform_value(context, "a_plus_transform", slices.a_plus_transform)?;
+
     let a_minus_transform =
         extract_real_transform_value(context, "a_minus_transform", slices.a_minus_transform)?;
+
     let n_plus_transform =
         extract_real_transform_value(context, "n_plus_transform", slices.n_plus_transform)?;
+
     let n_minus_transform =
         extract_real_transform_value(context, "n_minus_transform", slices.n_minus_transform)?;
 
@@ -664,18 +717,21 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
         baseline_transform - a_plus_transform,
         settings.a_plus_u,
     )?;
+
     let expected_a_minus = derive_non_negative_expectation(
         context,
         "a_minus",
         baseline_transform - a_minus_transform,
         settings.a_minus_u,
     )?;
+
     let expected_n_plus = derive_non_negative_expectation(
         context,
         "n_plus",
         n_plus_transform - baseline_transform,
         settings.n_plus_z - 1.0,
     )?;
+
     let expected_n_minus = derive_non_negative_expectation(
         context,
         "n_minus",

@@ -237,6 +237,7 @@ pub fn prepare_market_data_loading_from_phases(
         exchange_code: request.session_configuration.exchange_code,
         trade_events_data_reference: request.trade_events_data_reference,
         tick_records: normalized_tick_output.tick_records.clone(),
+        reference_price: normalized_tick_output.reference_price,
         known_news_records,
         option_surface_quote_values,
         directional_label_diagnostics: normalized_tick_output

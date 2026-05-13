@@ -4,11 +4,10 @@ use janiform_affine_oracle::sufficient_statistics::{
     DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA, SufficientStatisticsIntervalFactors,
     SufficientStatisticsModelInputs,
 };
+use janiform_foundations::time::duration_hours_to_nanos;
 
 use super::constants::SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION;
 use super::errors::SufficientStatisticsRunRequestError;
-
-const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
 /// Public run request contract for sufficient-statistics simulation.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -46,11 +45,11 @@ impl SufficientStatisticsRunRequest {
             );
         }
 
-        if !self.interval_delta.is_finite() || self.interval_delta <= 0.0 {
-            return Err(SufficientStatisticsRunRequestError::InvalidIntervalDelta {
+        let interval_delta_nanos = duration_hours_to_nanos(self.interval_delta).map_err(|_| {
+            SufficientStatisticsRunRequestError::InvalidIntervalDelta {
                 value: self.interval_delta,
-            });
-        }
+            }
+        })?;
 
         self.model_inputs
             .validate()
@@ -61,7 +60,7 @@ impl SufficientStatisticsRunRequest {
         })?;
 
         let resolved_factor_interval_delta = self.interval_factors.resolved_interval_delta();
-        if self.interval_delta != resolved_factor_interval_delta {
+        if duration_hours_to_nanos(resolved_factor_interval_delta) != Ok(interval_delta_nanos) {
             return Err(
                 SufficientStatisticsRunRequestError::IntervalDeltaFactorMismatch {
                     requested_interval_delta: self.interval_delta,
@@ -96,9 +95,7 @@ impl SufficientStatisticsRunRequest {
             .copied()
             .enumerate()
         {
-            if (observed_interval_delta - self.interval_delta).abs()
-                > MEAN_REVERSION_ALIGNMENT_TOLERANCE
-            {
+            if duration_hours_to_nanos(observed_interval_delta) != Ok(interval_delta_nanos) {
                 return Err(
                     SufficientStatisticsRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
                         interval_index,
