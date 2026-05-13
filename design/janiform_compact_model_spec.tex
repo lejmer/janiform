@@ -80,12 +80,9 @@
 
     \section*{3. Trade Intensities and Hawkes State}
     \[
-        \lambda_t^\pm = s(t)\,\tilde{\lambda}_t^\pm,
-    \]
-    \[
-        \tilde{\lambda}_t^+ = \bar{\lambda} + Y_t^{++} + Y_t^{+-},
+        \lambda_t^+ = s(t)\bar{\lambda} + Y_t^{++} + Y_t^{+-},
         \qquad
-        \tilde{\lambda}_t^- = \bar{\lambda} + Y_t^{-+} + Y_t^{--}.
+        \lambda_t^- = s(t)\bar{\lambda} + Y_t^{-+} + Y_t^{--}.
     \]
     For \(i,j\in\{+,-\}\):
     \[
@@ -95,6 +92,8 @@
         Y_0^{ij}\ge 0,\qquad i,j\in\{+,-\}.
     \]
     \(N_t^\pm\) are counting processes with intensities \(\lambda_t^\pm\).
+    Seasonality modulates only the immigrant baseline \( \bar{\lambda} \), while
+    self- and cross-excitation remain in the common reaction state \(Y_t\).
 
     \section*{4. Deterministic Seasonality and News Intensity}
     \[
@@ -147,7 +146,7 @@
         \Big).
     \]
     Arrivals are allowed in both open and closed windows, while direct gap increments remain closed-only in \(G_t\).
-    Trade seasonality \(s(t)\) modulates \(\lambda_t^\pm\) only and does not modulate \(\nu_{\mathrm{news}}(t)\).
+    Trade seasonality \(s(t)\) modulates the baseline trade-arrival intensity only and does not modulate \(\nu_{\mathrm{news}}(t)\).
 
     \section*{5. News Marks, Activity Shock, and Gap Process}
     At news times \(\tau_m^{c}\), with \(c\in\{\mathrm{known},\mathrm{surprise}\}\):
@@ -220,22 +219,24 @@
         \qquad
         \beta_+=\beta_0,\quad \beta_-=\beta_0+\Delta_\beta.
     \]
-    Trading-time increments use the buy-minus-sell convention with side mean compensation:
+    Trading-time increments use the buy-minus-sell convention with side mean compensation.
+    Let \(q(t)>0\) be the deterministic return-mark scale for the local hour-of-week bucket.
+    For a transition on which \(q(t)=q\), the simulated trading-time increment is
     \[
-        X_{\mathrm{trading}}
+        X_{\mathrm{trading}}^{(q)}
         =
-        (L^+_{A^+}-A^+m_+) - (L^-_{A^-}-A^-m_-).
+        q\Big((L^+_{A^+}-A^+m_+) - (L^-_{A^-}-A^-m_-)\Big).
     \]
     Thus activity changes the trading-time variance and clustering, but the trading-time
     block has zero conditional drift:
     \[
-        \mathbb{E}\!\left[X_{\mathrm{trading}}\mid A^+,A^-\right]=0.
+        \mathbb{E}\!\left[X_{\mathrm{trading}}^{(q)}\mid A^+,A^-\right]=0.
     \]
     Conditional characteristic function of \(\Delta X_t=X_{t+\Delta}-X_t\):
     \[
         \mathbb{E}\!\left[e^{iu\Delta X_t}\mid A^+,A^-\right]
         =
-        \exp\!\Big(A^+(\psi_+(u)-ium_+)+A^-(\psi_-(-u)+ium_-)\Big)\,\varphi_{\Delta M+\Delta G}(u).
+        \exp\!\Big(A^+(\psi_+(qu)-iqum_+)+A^-(\psi_-(-qu)+iqum_-)\Big)\,\varphi_{\Delta M+\Delta G}(u).
     \]
 
     \section*{7. Structured Asymmetry and Constraints}
@@ -277,7 +278,7 @@
         \rho\!\left(\mathbf{A}_{\alpha}/\beta\right)<1,
     \]
     where \(\rho(\cdot)\) denotes spectral radius.
-    This is a local stationarity condition in business time (on intervals where \(s(t)\) is treated as locally constant), not a global calendar-time stationarity assumption.
+    This is the excitation branching condition.  It is independent of deterministic baseline seasonality because \(s(t)\) does not scale descendant excitation.
 
     \section*{8. Layer Independence Assumption}
     \[
@@ -318,10 +319,10 @@
 
     \[
         \begin{aligned}
-            D_{++}'(\tau) &= -\beta D_{++}(\tau) + s_h H_+(\mathbf{D}(\tau)),\\
-            D_{+-}'(\tau) &= -\beta D_{+-}(\tau) + s_h H_+(\mathbf{D}(\tau)),\\
-            D_{-+}'(\tau) &= -\beta D_{-+}(\tau) + s_h H_-(\mathbf{D}(\tau)),\\
-            D_{--}'(\tau) &= -\beta D_{--}(\tau) + s_h H_-(\mathbf{D}(\tau)),
+            D_{++}'(\tau) &= -\beta D_{++}(\tau) + H_+(\mathbf{D}(\tau)),\\
+            D_{+-}'(\tau) &= -\beta D_{+-}(\tau) + H_+(\mathbf{D}(\tau)),\\
+            D_{-+}'(\tau) &= -\beta D_{-+}(\tau) + H_-(\mathbf{D}(\tau)),\\
+            D_{--}'(\tau) &= -\beta D_{--}(\tau) + H_-(\mathbf{D}(\tau)),
         \end{aligned}
     \]
     \[
@@ -407,6 +408,23 @@
         \qquad
         S_t=S_0\,e^{X_t}.
     \]
+    When an observed price tick size \(\delta_S>0\) is supplied or inferred, the
+    simulation observation layer projects latent prices to the tick grid by
+    nearest-tick rounding from the previous observed price anchor:
+    \[
+        S_t^{\mathrm{obs}}
+        =
+        S_{t^-}^{\mathrm{obs}}
+        +
+        \delta_S
+        \operatorname{round}\!\left(
+            \frac{S_t^{\mathrm{latent}}-S_{t^-}^{\mathrm{obs}}}{\delta_S}
+        \right),
+        \qquad
+        X_t^{\mathrm{obs}}=\log(S_t^{\mathrm{obs}}/S_0).
+    \]
+    If no tick size is available, the observation layer uses the latent log-price
+    path directly.
     \[
         dS_t
         =
