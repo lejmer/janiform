@@ -352,6 +352,7 @@ Check the run id and model path. The default CLI model path is `.janiform/runs/<
 - [Model validation](model-validation.md)
 - [Inspect and report](inspect-and-report.md)
 - [Presets and market data](presets-and-market-data.md)
+- [Calibration diagnostics](calibration-diagnostics.md)
 - [Command line interface](../interfaces/cli.md)
 - [Python library](../interfaces/python.md)
 - [CLI reference](../reference/cli.md)

@@ -1975,7 +1975,7 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarsesimulationmodelinputs) | contract_model | 4 fields |
+| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarsesimulationmodelinputs) | contract_model | 6 fields |
 | [`CoarseSimulationPath`](#python-api-symbol-janiform-simulation-coarsesimulationpath) | contract_model | 13 fields |
 | [`CoarseSimulationRunRequest`](#python-api-symbol-janiform-simulation-coarsesimulationrunrequest) | contract_model | 7 fields |
 | [`HawkesExcitationState`](#python-api-symbol-janiform-simulation-hawkesexcitationstate) | contract_model | 4 fields |
@@ -1990,7 +1990,7 @@
 | [`SeededTickEventSide`](#python-api-symbol-janiform-simulation-seededtickeventside) | enum | 2 members |
 | [`SeededTickEventStateSnapshotCapture`](#python-api-symbol-janiform-simulation-seededtickeventstatesnapshotcapture) | enum | 2 members |
 | [`SeededTickSimulationHourlyFactorSummary`](#python-api-symbol-janiform-simulation-seededticksimulationhourlyfactorsummary) | contract_model | 8 fields |
-| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 15 fields |
+| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 17 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationfailure) | contract_model | 6 fields |
@@ -2003,8 +2003,8 @@
 ### `CoarseSimulationModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
-- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `calendar_registry_artifact`, `exchange_code`
+- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
+- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_mark_hour_of_week_factors`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
 <a id="python-api-symbol-janiform-simulation-coarsesimulationpath"></a>
 ### `CoarseSimulationPath`
@@ -2114,8 +2114,8 @@
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_mark_hour_of_week_factors`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 <a id="python-api-symbol-janiform-simulation-seededticksimulationresponse"></a>
 ### `SeededTickSimulationResponse`
@@ -2197,7 +2197,7 @@
 | [`COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-path-record-schema-version) | constant | constant value |
 | [`COARSE_SIMULATION_PATH_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-path-schema-version) | constant | constant value |
 | [`COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-run-request-schema-version) | constant | constant value |
-| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationmodelinputs) | contract_model | 4 fields |
+| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationmodelinputs) | contract_model | 6 fields |
 | [`CoarseSimulationPath`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpath) | contract_model | 13 fields |
 | [`CoarseSimulationPathDiagnostics`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathdiagnostics) | contract_model | 19 fields |
 | [`CoarseSimulationPathOutputSchemaMetadata`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathoutputschemametadata) | contract_model | 9 fields |
@@ -2297,8 +2297,8 @@
 ### `CoarseSimulationModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
-- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `calendar_registry_artifact`, `exchange_code`
+- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
+- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_mark_hour_of_week_factors`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
 <a id="python-api-symbol-janiform-simulation-coarse-coarsesimulationpath"></a>
 ### `CoarseSimulationPath`
@@ -2491,7 +2491,7 @@
 | [`SeededTickEventTapeView`](#python-api-symbol-janiform-simulation-seeded-seededtickeventtapeview) | class | janiform.simulation.seeded.response |
 | [`SeededTickSimulationDiagnostics`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationdiagnostics) | contract_model | 12 fields |
 | [`SeededTickSimulationHourlyFactorSummary`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationhourlyfactorsummary) | contract_model | 8 fields |
-| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 15 fields |
+| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 17 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationfailure) | contract_model | 6 fields |
@@ -2659,8 +2659,8 @@
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_mark_hour_of_week_factors`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse"></a>
 ### `SeededTickSimulationResponse`
@@ -4303,7 +4303,7 @@
 | [`CalibrationMarketDataNormalizationPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatanormalizationpolicy) | contract_model | 5 fields |
 | [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
-| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
+| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 3 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataworkflowscope) | enum | 3 members |
 | [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-calibrationmeanreversionconfiguration) | contract_model | 1 fields |
@@ -4423,8 +4423,8 @@
 ### `CalibrationMarketDataReturnComponentsPreprocessingSettings`
 
 - Kind: `contract_model`
-- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'`
-- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`
+- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'`
+- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`, `tick_size`
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings"></a>
 ### `CalibrationMarketDataSeasonalityPreprocessingSettings`
@@ -4627,7 +4627,7 @@
 | [`CalibrationMarketDataNormalizationPolicy`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatanormalizationpolicy) | contract_model | 5 fields |
 | [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
-| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
+| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 3 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataworkflowscope) | enum | 3 members |
 | [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmeanreversionconfiguration) | contract_model | 1 fields |
@@ -4744,8 +4744,8 @@
 ### `CalibrationMarketDataReturnComponentsPreprocessingSettings`
 
 - Kind: `contract_model`
-- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'`
-- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`
+- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'`
+- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`, `tick_size`
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings"></a>
 ### `CalibrationMarketDataSeasonalityPreprocessingSettings`

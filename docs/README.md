@@ -13,12 +13,13 @@ Start with a working installation, then build up from a plain-language overview 
 
 ## Workflows
 
+- [Presets and market data](workflows/presets-and-market-data.md)
 - [Fit models](workflows/fit-models.md)
+- [Inspect and report](workflows/inspect-and-report.md)
+- [Validate models](workflows/model-validation.md)
 - [Simulate paths](workflows/simulate-paths.md)
 - [Price derivatives](workflows/price-derivatives.md)
-- [Validate models](workflows/model-validation.md)
-- [Inspect and report](workflows/inspect-and-report.md)
-- [Presets and market data](workflows/presets-and-market-data.md)
+- [Calibration diagnostics](workflows/calibration-diagnostics.md)
 
 ## Interfaces
 

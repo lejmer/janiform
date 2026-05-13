@@ -108,5 +108,6 @@ When `--html` is used without `--output-path`, Janiform writes beside the fit re
 - [Simulate paths](simulate-paths.md)
 - [Price derivatives](price-derivatives.md)
 - [Model validation](model-validation.md)
+- [Calibration diagnostics](calibration-diagnostics.md)
 - [Command line interface](../interfaces/cli.md)
 - [CLI reference](../reference/cli.md)
