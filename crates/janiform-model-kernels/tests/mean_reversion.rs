@@ -167,7 +167,7 @@ fn endogenous_pressure_state_evolution_matches_canonical_recursion() {
         .expect("boundary state should construct");
     let fitted_parameters = MeanReversionFittedParameters::try_new(
         0.4,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(2.0, 0.5, 2.0),
+        MeanReversionAnchorModel::endogenous_core_pressure_level(2.0, 0.5, 1.0),
     )
     .expect("pressure-to-level mean reversion parameters should validate");
 
@@ -181,7 +181,7 @@ fn endogenous_pressure_state_evolution_matches_canonical_recursion() {
     .expect("pressure-to-level state update should succeed");
 
     let expected_pressure_state = 0.5_f64 * 0.1 + (1.0 - 0.5_f64) * 0.25;
-    let expected_anchor_value = 1.0 + 2.0 * (expected_pressure_state - 0.1);
+    let expected_anchor_value = 1.0 + (expected_pressure_state - 0.1);
     let expected_deviation = (-0.8_f64).exp() * 0.5 + 0.25 + 1.0 - expected_anchor_value;
 
     assert!((evolved_state.pressure_state - expected_pressure_state).abs() < 1.0e-12);
@@ -191,7 +191,7 @@ fn endogenous_pressure_state_evolution_matches_canonical_recursion() {
 
 #[test]
 fn endogenous_pressure_level_anchor_materialization_tracks_pressure_state_and_anchor_level() {
-    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(1.0, 0.5, 2.0);
+    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(1.0, 0.5, 1.0);
 
     let runtime_interval_anchors =
         materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
@@ -207,7 +207,7 @@ fn endogenous_pressure_level_anchor_materialization_tracks_pressure_state_and_an
     assert_eq!(runtime_interval_anchors.start_anchor_value, 0.0);
     assert_eq!(runtime_interval_anchors.start_pressure_state, 0.0);
     assert!((runtime_interval_anchors.end_pressure_states[0] - 0.5).abs() < 1.0e-12);
-    assert!((runtime_interval_anchors.end_anchor_values[0] - 1.0).abs() < 1.0e-12);
+    assert!((runtime_interval_anchors.end_anchor_values[0] - 0.5).abs() < 1.0e-12);
     assert!((runtime_interval_anchors.end_pressure_states[1] - 1.75).abs() < 1.0e-12);
-    assert!((runtime_interval_anchors.end_anchor_values[1] - 3.5).abs() < 1.0e-12);
+    assert!((runtime_interval_anchors.end_anchor_values[1] - 1.75).abs() < 1.0e-12);
 }

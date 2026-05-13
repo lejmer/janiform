@@ -193,6 +193,65 @@ fn seeded_tick_simulation_parity_mismatch_diagnostics_are_actionable() {
     assert!(mismatch_diagnostic.contains("side_sequence mismatch at event_index=0"));
 }
 
+#[test]
+#[ignore = "manual fixture update workflow helper"]
+fn print_seeded_tick_simulation_parity_outputs_for_fixture_update() {
+    let loaded_calendar_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar fixture should load from shared manifest");
+    let calendar_registry = ExchangeCalendarRegistry::from_artifact(
+        loaded_calendar_fixture.fixture_document.calendar_registry,
+    )
+    .expect("calendar registry fixture should load");
+    let fixture_document = load_seeded_tick_simulation_parity_fixture()
+        .expect("seeded tick simulation parity fixture should load");
+
+    for fixture_case in &fixture_document.cases {
+        let run_result = run_fixture_case(&calendar_registry, fixture_case)
+            .expect("fixture case run should complete");
+        let projected_event_path = run_result.projected_event_path();
+        let observed_timestamps: Vec<i64> = projected_event_path
+            .iter()
+            .map(|event_record| event_record.timestamp_utc_nanos)
+            .collect();
+        let observed_sides: Vec<String> = projected_event_path
+            .iter()
+            .map(|event_record| map_side_to_label(event_record.side).to_string())
+            .collect();
+        let (interval_event_counts, interval_buy_counts, interval_sell_counts) =
+            summarize_counts_by_interval(
+                &observed_timestamps,
+                &observed_sides,
+                &fixture_case.range_start_utc,
+                fixture_case.horizon_interval_count,
+            )
+            .expect("fixture output counts should summarize");
+
+        println!("fixture_id: {}", fixture_case.fixture_id);
+        println!("  expected_timestamps_utc_nanos: {observed_timestamps:?}");
+        println!("  expected_side_sequence: {observed_sides:?}");
+        println!(
+            "  expected_total_event_count: {}",
+            observed_timestamps.len()
+        );
+        println!("  expected_interval_event_counts: {interval_event_counts:?}");
+        println!("  expected_interval_buy_counts: {interval_buy_counts:?}");
+        println!("  expected_interval_sell_counts: {interval_sell_counts:?}");
+        println!(
+            "  expected_min_positive_timestamp_gap_nanos: {}",
+            minimum_positive_gap_nanos(&observed_timestamps)
+        );
+        println!(
+            "  expected_has_non_grid_arrival: {}",
+            has_non_grid_arrival(
+                &observed_timestamps,
+                &fixture_case.range_start_utc,
+                fixture_case.horizon_interval_count,
+            )
+            .expect("fixture output non-grid coverage should evaluate")
+        );
+    }
+}
+
 fn load_seeded_tick_simulation_parity_fixture()
 -> Result<SeededTickSimulationParityFixtureDocument, String> {
     let fixture_path = fixtures_root_path()

@@ -809,7 +809,7 @@ fn hawkes_stage_execution_reports_constraint_violations_for_invalid_candidates()
 }
 
 #[test]
-fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_outputs() {
+fn hawkes_stage_keeps_subcritical_candidates_stable_under_baseline_seasonality() {
     let calendar_registry = calibration_stage_test_registry();
 
     let mut seasonality_payload = build_seasonality_stage_success_payload();
@@ -851,17 +851,12 @@ fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_ou
         .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
         .expect("selected candidate should be present in diagnostics");
 
-    assert!(
-        fitted_stage_payload
-            .selected_candidate_id
-            .contains("_refined_")
-    );
-    assert!(original_candidate.constraint_violation_count > 0);
+    assert_eq!(original_candidate.constraint_violation_count, 0);
     assert!(
         original_candidate
-            .warnings
-            .iter()
-            .any(|warning: &String| warning.contains("effective branching ratio"))
+            .implied_metrics
+            .max_runtime_effective_branching_ratio
+            < 1.0
     );
     assert_eq!(selected_candidate.constraint_violation_count, 0);
     assert!(
@@ -873,7 +868,7 @@ fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_ou
 }
 
 #[test]
-fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelope() {
+fn hawkes_stage_tracks_unobserved_runtime_seasonality_without_branching_constraint() {
     let calendar_registry = calibration_stage_test_registry();
 
     let mut seasonality_payload = build_seasonality_stage_success_payload();
@@ -920,23 +915,20 @@ fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelo
         .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
         .expect("selected candidate should be present in diagnostics");
 
+    assert_eq!(original_candidate.constraint_violation_count, 0);
     assert!(
-        fitted_stage_payload
-            .selected_candidate_id
-            .contains("_refined_")
+        original_candidate
+            .implied_metrics
+            .max_runtime_hourly_seasonality_factor
+            > 3.0
     );
-    assert!(original_candidate.constraint_violation_count > 0);
     assert_eq!(
         original_candidate
             .implied_metrics
-            .max_runtime_hourly_seasonality_factor,
-        3.0
-    );
-    assert!(
+            .max_runtime_effective_branching_ratio,
         original_candidate
-            .warnings
-            .iter()
-            .any(|warning: &String| warning.contains("effective branching ratio"))
+            .implied_metrics
+            .endogenous_branching_ratio
     );
     assert_eq!(selected_candidate.constraint_violation_count, 0);
     assert!(
@@ -1018,10 +1010,7 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
         (high_loss
             .implied_metrics
             .max_runtime_effective_branching_ratio
-            - high_loss
-                .implied_metrics
-                .max_runtime_hourly_seasonality_factor
-                * high_loss.implied_metrics.endogenous_branching_ratio)
+            - high_loss.implied_metrics.endogenous_branching_ratio)
             .abs()
             < 1.0e-12
     );

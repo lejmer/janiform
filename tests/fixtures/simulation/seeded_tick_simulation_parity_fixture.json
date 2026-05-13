@@ -60,8 +60,8 @@
         0.03
       ],
       "expected_timestamps_utc_nanos": [
-        1705935607330235484,
-        1705939173281362390
+        1705935607209141285,
+        1705939096403120367
       ],
       "expected_side_sequence": [
         "buy",
@@ -80,7 +80,7 @@
         1,
         0
       ],
-      "expected_min_positive_timestamp_gap_nanos": 3565951126906,
+      "expected_min_positive_timestamp_gap_nanos": 3489193979082,
       "expected_has_non_grid_arrival": true,
       "tags": [
         "short_horizon",

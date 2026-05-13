@@ -123,9 +123,9 @@
             "expected_passed": true,
             "expected_failure_codes": [],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 2.6188096e-10,
-              "d_component_absolute_difference": 8.6661756e-10,
-              "transform_value_absolute_difference": 2.6329411e-10,
+              "c_at_delta_absolute_difference": 2.6667479e-10,
+              "d_component_absolute_difference": 8.4638205e-10,
+              "transform_value_absolute_difference": 2.6824393e-10,
               "absolute_tolerance": 1.0e-10
             }
           },
@@ -140,9 +140,9 @@
               "transform_value_tolerance_exceeded"
             ],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 0.00108771218030934,
-              "d_component_absolute_difference": 0.00222565418071058,
-              "transform_value_absolute_difference": 0.00062948124879203,
+              "c_at_delta_absolute_difference": 0.00096333368280099,
+              "d_component_absolute_difference": 0.00202892763618862,
+              "transform_value_absolute_difference": 0.00060832438423836,
               "absolute_tolerance": 1.0e-10
             }
           }
@@ -220,9 +220,9 @@
             "expected_passed": true,
             "expected_failure_codes": [],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 1.289591e-11,
-              "d_component_absolute_difference": 4.22086e-11,
-              "transform_value_absolute_difference": 1.829559e-11,
+              "c_at_delta_absolute_difference": 1.328082e-11,
+              "d_component_absolute_difference": 4.173245e-11,
+              "transform_value_absolute_difference": 1.865308e-11,
               "absolute_tolerance": 1.0e-10
             }
           },
@@ -237,9 +237,9 @@
               "transform_value_tolerance_exceeded"
             ],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 0.00042211394618397,
-              "d_component_absolute_difference": 0.0008723698208391,
-              "transform_value_absolute_difference": 0.00035969284725335,
+              "c_at_delta_absolute_difference": 0.00037882391573102,
+              "d_component_absolute_difference": 0.00080568644994802,
+              "transform_value_absolute_difference": 0.00034733097743456,
               "absolute_tolerance": 1.0e-10
             }
           }
