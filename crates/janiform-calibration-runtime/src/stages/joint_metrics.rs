@@ -173,25 +173,23 @@ pub(crate) fn build_continuous_calibration_sample_from_aggregated_intervals(
 ) -> ReturnComponentsStageContinuousReturnCalibrationSample {
     let observed_rate_floor = observed_open_event_rate_per_hour.max(1.0e-8);
     let scale_ratio = modeled_open_event_rate_per_hour.max(1.0e-8) / observed_rate_floor;
+    let return_intervals: Vec<&JointRefinementAggregatedIntervalObservation> = intervals
+        .iter()
+        .filter(|interval| interval.tick_count > 0)
+        .collect();
 
-    let observed_returns = intervals
+    let observed_returns = return_intervals
         .iter()
         .map(|interval| interval.log_return)
         .collect();
-    let business_time_scales = intervals
+    let business_time_scales = return_intervals
         .iter()
-        .map(|interval| ((interval.tick_count as f64).max(1.0e-8)) * scale_ratio)
+        .map(|interval| interval.tick_count as f64 * scale_ratio)
         .collect();
 
-    let sell_share_proxies = intervals
+    let sell_share_proxies = return_intervals
         .iter()
-        .map(|interval| {
-            if interval.tick_count == 0 {
-                fallback_sell_share_proxy
-            } else {
-                interval.sell_share_proxy
-            }
-        })
+        .map(|interval| interval.sell_share_proxy)
         .collect();
 
     build_continuous_return_calibration_sample_from_components(
@@ -768,12 +766,17 @@ mod tests {
         JointRefinementAggregatedIntervalObservation, JointRefinementIntervalObservationCursor,
         accumulate_return_into_intervals_with_cursor,
         aggregate_simulated_path_to_interval_template,
-        aggregate_simulated_path_to_interval_templates, business_time_bucket_thresholds,
-        interval_index_for_timestamp, log_ratio_distance, mean_absolute_return_by_utc_hour,
-        normalized_profile_distance, return_scale_summaries_by_business_time_bucket,
-        return_scale_summary, return_scale_summary_from_returns, rolling_variance_activity_metric,
-        sampled_return_values, sampled_trade_returns, scale_normalized_returns,
-        zeroed_interval_observation_template,
+        aggregate_simulated_path_to_interval_templates,
+        build_continuous_calibration_sample_from_aggregated_intervals,
+        business_time_bucket_thresholds, interval_index_for_timestamp, log_ratio_distance,
+        mean_absolute_return_by_utc_hour, normalized_profile_distance,
+        return_scale_summaries_by_business_time_bucket, return_scale_summary,
+        return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
+        sampled_trade_returns, scale_normalized_returns, zeroed_interval_observation_template,
+    };
+    use crate::stages::return_components::{
+        continuous_return_calibration_sample_business_time_scales,
+        continuous_return_calibration_sample_observed_returns,
     };
     use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnComponents;
     use janiform_engine_simulation::{
@@ -971,6 +974,49 @@ mod tests {
             sampled_return_values(&[0.0, f64::NAN, 1.0, f64::INFINITY, 2.0, 3.0], 3);
 
         assert_eq!(sampled_returns, vec![0.0, 1.0, 3.0]);
+    }
+
+    #[test]
+    fn aggregated_interval_continuous_sample_excludes_empty_activity_intervals() {
+        let intervals = vec![
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 300,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 300,
+                interval_end_utc_nanos: 600,
+                log_return: 0.015,
+                tick_count: 3,
+                sell_share_proxy: 0.25,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 600,
+                interval_end_utc_nanos: 900,
+                log_return: -0.010,
+                tick_count: 1,
+                sell_share_proxy: 0.75,
+            },
+        ];
+
+        let sample = build_continuous_calibration_sample_from_aggregated_intervals(
+            intervals.as_slice(),
+            12.0,
+            6.0,
+            0.5,
+        );
+
+        assert_eq!(
+            continuous_return_calibration_sample_observed_returns(&sample),
+            &[0.015, -0.010]
+        );
+        assert_eq!(
+            continuous_return_calibration_sample_business_time_scales(&sample),
+            &[6.0, 2.0]
+        );
     }
 
     #[test]

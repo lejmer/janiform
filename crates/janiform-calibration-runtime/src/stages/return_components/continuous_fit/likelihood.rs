@@ -573,6 +573,14 @@ fn exact_likelihood_block_contributions(
     };
 
     if member_indices.len() > 1 {
+        if let Some(failure) = member_indices
+            .par_iter()
+            .map(evaluate_member)
+            .find_first(|block_contribution| block_contribution.is_err())
+        {
+            return vec![failure];
+        }
+
         return member_indices.par_iter().map(evaluate_member).collect();
     }
 

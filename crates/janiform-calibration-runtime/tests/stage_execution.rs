@@ -1,4 +1,5 @@
 mod support;
+
 use std::sync::{LazyLock, Mutex};
 
 use support::shared::{
@@ -273,6 +274,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
     let _guard = JOINT_REFINEMENT_WORKER_ENV_LOCK
         .lock()
         .expect("joint-refinement worker environment lock should be available");
+
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
@@ -288,6 +290,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         None,
     )
     .run_spec;
+
     let return_components_report = run_return_components_calibration_stage(
         &memory_run_spec,
         &calendar_registry,
@@ -298,6 +301,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
     );
+
     let return_components_payload = return_components_report
         .fitted_stage_payload
         .expect("return-components stage fixture should produce fitted payload");
@@ -329,6 +333,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             option_pricing_input: None,
         },
     );
+
     let disk_report = run_joint_refinement_calibration_stage(
         &disk_run_spec,
         &calendar_registry,
@@ -487,71 +492,65 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
 
 #[test]
 fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_is_unavailable() {
-    with_joint_refinement_worker_executable_override(
-        std::env::temp_dir().join("missing-janiform-joint-refinement-worker"),
-        || {
-            let calendar_registry = calibration_stage_test_registry();
+    let calendar_registry = calibration_stage_test_registry();
 
-            let seasonality_payload = build_seasonality_stage_success_payload();
-            let hawkes_payload = build_hawkes_stage_success_payload();
-            let return_components_payload = run_return_components_calibration_stage(
-                &build_run_contract_with_mode_and_resume(
-                    "run-joint-stage-missing-worker",
-                    CalibrationExecutionMode::Memory,
-                    None,
-                )
-                .run_spec,
-                &calendar_registry,
-                ReturnComponentsStageExecutionInput {
-                    activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
-                        payload: hawkes_payload.clone(),
-                    },
-                    candidate_generation_input:
-                        return_components_stage_candidate_generation_fixture(),
-                },
-            )
-            .fitted_stage_payload
-            .expect("return-components fixture should produce fitted payload");
-
-            let report = run_joint_refinement_calibration_stage(
-                &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
-                &calendar_registry,
-                JointRefinementStageExecutionInput {
-                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-                        hour_of_week_factor: seasonality_payload.hour_of_week_factor,
-                        day_of_week_factor: seasonality_payload.day_of_week_factor,
-                        day_of_year_factor: seasonality_payload.day_of_year_factor,
-                    },
-                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
-                        payload: hawkes_payload,
-                    },
-                    return_components_input:
-                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
-                            payload: return_components_payload,
-                        },
-                    mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
-                        payload: build_mean_reversion_stage_success_payload(),
-                    },
-                    candidate_generation_input:
-                        return_components_stage_candidate_generation_fixture(),
-                    restart_candidate_budget_override: Some(1),
-                    option_refinement_candidate_count_override: Some(1),
-                    audit_option_pricing_enabled: false,
-                    option_pricing_input: None,
-                },
-            );
-
-            assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
-            assert!(matches!(
-                report.failure,
-                Some(JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
-                    ref error_message,
-                }) if error_message.contains("worker executable path does not exist")
-            ));
+    let seasonality_payload = build_seasonality_stage_success_payload();
+    let hawkes_payload = build_hawkes_stage_success_payload();
+    let return_components_payload = run_return_components_calibration_stage(
+        &build_run_contract_with_mode_and_resume(
+            "run-joint-stage-missing-worker",
+            CalibrationExecutionMode::Memory,
+            None,
+        )
+        .run_spec,
+        &calendar_registry,
+        ReturnComponentsStageExecutionInput {
+            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                payload: hawkes_payload.clone(),
+            },
+            candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
+    )
+    .fitted_stage_payload
+    .expect("return-components fixture should produce fitted payload");
+
+    let run_spec = joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1);
+    let stage_input = JointRefinementStageExecutionInput {
+        seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+            intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+            intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+            hour_of_week_factor: seasonality_payload.hour_of_week_factor,
+            day_of_week_factor: seasonality_payload.day_of_week_factor,
+            day_of_year_factor: seasonality_payload.day_of_year_factor,
+        },
+        hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+            payload: hawkes_payload,
+        },
+        return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+            payload: return_components_payload,
+        },
+        mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+            payload: build_mean_reversion_stage_success_payload(),
+        },
+        candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        restart_candidate_budget_override: Some(1),
+        option_refinement_candidate_count_override: Some(1),
+        audit_option_pricing_enabled: false,
+        option_pricing_input: None,
+    };
+
+    let report = with_joint_refinement_worker_executable_override(
+        std::env::temp_dir().join("missing-janiform-joint-refinement-worker"),
+        || run_joint_refinement_calibration_stage(&run_spec, &calendar_registry, stage_input),
     );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+    assert!(matches!(
+        report.failure,
+        Some(JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
+            ref error_message,
+        }) if error_message.contains("worker executable path does not exist")
+    ));
 }
 
 #[test]

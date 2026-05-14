@@ -506,8 +506,14 @@ fn spawn_initialized_worker(
 }
 
 fn resolve_summary_simulation_backend() -> Result<JointRefinementSummarySimulationBackend, String> {
-    let worker_executable = resolve_optional_worker_executable_path()?;
     let backend_preference = resolve_summary_simulation_backend_preference()?;
+    let worker_executable = match backend_preference {
+        JointRefinementSummarySimulationBackendPreference::ProcessWorker => {
+            resolve_optional_worker_executable_path()?
+        }
+        JointRefinementSummarySimulationBackendPreference::Auto
+        | JointRefinementSummarySimulationBackendPreference::InProcess => None,
+    };
 
     resolve_backend_from_preference(backend_preference, worker_executable)
 }

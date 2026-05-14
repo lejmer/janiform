@@ -18,6 +18,8 @@ mod surprise_intensity_fit;
 #[cfg(test)]
 mod test_support;
 
+#[cfg(test)]
+pub(crate) use continuous_fit::continuous_return_calibration_sample_business_time_scales;
 pub(crate) use continuous_fit::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,

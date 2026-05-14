@@ -1338,12 +1338,14 @@ fn raw_aggregated_likelihood_fit_for_contexts_with_counts(
             &likelihood_contexts.tick,
             fidelity_tier,
         );
+
     let (five_minute_objective, five_minute_counts) =
         evaluate_configuration_likelihood_objective_with_context_and_counts(
             configuration,
             &likelihood_contexts.five_minute,
             fidelity_tier,
         );
+
     let (fifteen_minute_objective, fifteen_minute_counts) =
         evaluate_configuration_likelihood_objective_with_context_and_counts(
             configuration,

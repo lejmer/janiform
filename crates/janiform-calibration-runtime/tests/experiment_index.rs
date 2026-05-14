@@ -1,30 +1,22 @@
 mod support;
+use support::artifact_fixtures::build_stage_parameter_artifact_fixture_set;
 use support::shared::{
-    CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
-    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION, CalibrationArtifactManifest,
+    CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CalibrationArtifactManifest,
     CalibrationArtifactManifestMetricStatus, CalibrationArtifactManifestMetricStatusCount,
     CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter, CalibrationExecutionMode,
     CalibrationExperimentIndexLookupRequest, CalibrationStageParameterArtifact,
-    CalibrationStagedRunStageReport, CalibrationValidationMetricArtifact,
-    CalibrationValidationMetricArtifactRole::Diagnostics,
-    CalibrationValidationMetricStageOutputLink, CalibrationValidationMetricStatus,
-    HawkesStageExecutionInput, ReturnComponentsStageExecutionInput, SeasonalityStageExecutionInput,
-    TimeZone, Utc, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
-    build_joint_refinement_stage_success_report, build_mean_reversion_stage_success_report,
+    CalibrationValidationMetricArtifact, CalibrationValidationMetricArtifactRole::Diagnostics,
+    CalibrationValidationMetricStageOutputLink, CalibrationValidationMetricStatus, TimeZone, Utc,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
     build_run_contract_with_mode_and_resume, build_validation_metric_artifact_fixture,
-    calibration_experiment_index_path_for_root, calibration_stage_test_registry,
-    calibration_stage_timestamp_fixture, fs, hawkes_stage_candidate_fixture,
-    load_calibration_experiment_index_from_disk, lookup_calibration_experiment_index_records,
-    persist_calibration_artifact_manifest_to_disk,
+    calibration_experiment_index_path_for_root, fs, load_calibration_experiment_index_from_disk,
+    lookup_calibration_experiment_index_records, persist_calibration_artifact_manifest_to_disk,
     persist_calibration_artifact_manifest_to_run_directory,
     persist_calibration_dataset_snapshot_artifact_to_run_directory,
     persist_calibration_stage_parameter_artifact_to_run_directory,
     persist_calibration_validation_metric_artifact_to_disk,
-    rebuild_calibration_experiment_index_from_disk,
-    return_components_stage_candidate_generation_fixture, run_hawkes_calibration_stage,
-    run_return_components_calibration_stage, run_seasonality_calibration_stage,
-    temporary_checkpoint_directory, update_calibration_experiment_index_for_run, utc_nanos,
+    rebuild_calibration_experiment_index_from_disk, temporary_checkpoint_directory,
+    update_calibration_experiment_index_for_run, utc_nanos,
 };
 
 #[test]
@@ -172,9 +164,12 @@ fn experiment_index_lookup_applies_filters_deterministically() {
         &CalibrationExperimentIndexLookupRequest {
             trade_events_data_reference: Some("dataset://synthetic/trades/v1".to_string()),
             run_contract_schema_version: Some(CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION.to_string()),
-            seasonality_estimator_version: Some(
-                CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string(),
-            ),
+            seasonality_estimator_version: run_b_fixture
+                .manifest
+                .index_metadata
+                .model_version
+                .seasonality_estimator_version
+                .clone(),
             diagnostics_overall_status: Some(CalibrationArtifactManifestMetricStatus::Fail),
             committed_at_or_after_unix_nanos: Some(utc_nanos(2026, 3, 5, 0, 0, 0)),
             offset: 0,
@@ -237,78 +232,9 @@ fn commit_indexed_run(
     diagnostics_overall_status: CalibrationArtifactManifestMetricStatus,
     failing_metric_id: &str,
 ) -> IndexedRunFixture {
-    let calendar_registry = calibration_stage_test_registry();
     let run_contract =
         build_run_contract_with_mode_and_resume(run_id, CalibrationExecutionMode::Disk, None);
-
-    let seasonality_report = run_seasonality_calibration_stage(
-        &run_contract.run_spec,
-        &calendar_registry,
-        SeasonalityStageExecutionInput::from_timestamp_event_records(
-            calibration_stage_timestamp_fixture(),
-        ),
-    );
-
-    let hawkes_report = run_hawkes_calibration_stage(
-        &run_contract.run_spec,
-        &calendar_registry,
-        HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
-            format!("artifact://seasonality/{run_id}"),
-            seasonality_report
-                .normalized_stage_payload
-                .clone()
-                .expect("seasonality report should expose payload"),
-            hawkes_stage_candidate_fixture(),
-        ),
-    );
-
-    let return_components_report = run_return_components_calibration_stage(
-        &run_contract.run_spec,
-        &calendar_registry,
-        ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
-            format!("artifact://hawkes/{run_id}"),
-            return_components_stage_candidate_generation_fixture(),
-        ),
-    );
-
-    let seasonality_artifact = build_calibration_stage_parameter_artifact(
-        &run_contract,
-        &CalibrationStagedRunStageReport::Seasonality(Box::new(seasonality_report)),
-    )
-    .expect("seasonality artifact should build");
-
-    let hawkes_artifact = build_calibration_stage_parameter_artifact(
-        &run_contract,
-        &CalibrationStagedRunStageReport::Hawkes(Box::new(hawkes_report)),
-    )
-    .expect("hawkes artifact should build");
-
-    let return_components_artifact = build_calibration_stage_parameter_artifact(
-        &run_contract,
-        &CalibrationStagedRunStageReport::ReturnComponents(Box::new(return_components_report)),
-    )
-    .expect("return-components artifact should build");
-
-    let joint_refinement_report = build_joint_refinement_stage_success_report();
-    let mean_reversion_report = build_mean_reversion_stage_success_report();
-    let mean_reversion_artifact = build_calibration_stage_parameter_artifact(
-        &run_contract,
-        &CalibrationStagedRunStageReport::MeanReversion(Box::new(mean_reversion_report)),
-    )
-    .expect("mean-reversion artifact should build");
-    let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
-        &run_contract,
-        &CalibrationStagedRunStageReport::JointRefinement(Box::new(joint_refinement_report)),
-    )
-    .expect("joint-refinement artifact should build");
-
-    let stage_parameter_artifacts = vec![
-        seasonality_artifact,
-        hawkes_artifact,
-        return_components_artifact,
-        mean_reversion_artifact,
-        joint_refinement_artifact,
-    ];
+    let stage_parameter_artifacts = build_stage_parameter_artifact_fixture_set(&run_contract);
 
     let dataset_snapshot = build_calibration_dataset_snapshot_artifact(&run_contract)
         .expect("dataset snapshot should build");

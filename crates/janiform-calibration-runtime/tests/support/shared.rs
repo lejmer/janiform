@@ -1940,16 +1940,16 @@ fn build_run_contract_for_caller_surface_with_stages(
 }
 
 fn configure_joint_refinement_test_backend() {
-    if std::env::var_os(JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV).is_none() {
-        // SAFETY: Test helpers in this module set a single deterministic backend policy for the
-        // current process before invoking the staged runner. All callers use the same value.
-        unsafe {
-            std::env::set_var(
-                JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV,
-                JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS,
-            );
-        }
+    // SAFETY: Test helpers in this module force a deterministic backend policy for the current
+    // process before invoking the staged runner. Tests that exercise the process-worker backend
+    // scope that override around the backend call itself.
+    unsafe {
+        std::env::set_var(
+            JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV,
+            JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS,
+        );
     }
+
     if std::env::var_os(JOINT_REFINEMENT_RESTART_POLICY_ENV).is_none() {
         // SAFETY: Test helpers in this module set a single deterministic restart policy for the
         // current process before invoking the staged runner. All callers use the same value.
