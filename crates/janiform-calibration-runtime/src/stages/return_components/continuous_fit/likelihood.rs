@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsTransformSliceSettings;
 use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
@@ -13,8 +16,8 @@ use super::super::contracts::{
 };
 use super::constants::RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_LIKELIHOOD_CHI_SQUARE_95;
 use super::exact_block::{
-    ExactBlockInputBuildInput, ExactLikelihoodFailureContext, build_exact_block_input,
-    evaluate_exact_block_likelihood,
+    ExactBlockInput, ExactBlockInputBuildInput, ExactLikelihoodFailureContext,
+    build_exact_block_input, evaluate_exact_block_likelihood,
 };
 use super::types::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
@@ -101,6 +104,18 @@ struct ExactLikelihoodBlockContribution {
     block_evaluation: ExactBlockLikelihoodEvaluation,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ExactBlockEvaluationCacheKey {
+    observed_return_bits: u64,
+    business_time_scale_bits: u64,
+    sell_share_proxy_bits: u64,
+    integrated_buy_intensity_bits: u64,
+    integrated_sell_intensity_bits: u64,
+}
+
+type ExactBlockEvaluationCache =
+    Mutex<BTreeMap<ExactBlockEvaluationCacheKey, ExactBlockLikelihoodEvaluation>>;
+
 #[derive(Debug, Clone)]
 pub(super) struct ExactBlockStructuralFailure {
     pub(super) block_member_index: usize,
@@ -186,6 +201,7 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
     let mut diagnostics_summary = ExactLikelihoodDiagnosticsSummary::default();
     let selected_member_indices =
         member_indices_for_fidelity_tier(optimizer_context, fidelity_tier);
+    let exact_block_cache = Mutex::new(BTreeMap::new());
 
     let global_scope_evaluation = average_negative_log_likelihood_with_failures(
         configuration,
@@ -193,6 +209,7 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
         selected_member_indices,
         ReturnComponentsStageExactLikelihoodFailureScope::Global,
         None,
+        &exact_block_cache,
     );
 
     let global_negative_log_likelihood = match global_scope_evaluation {
@@ -258,6 +275,7 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
                         bucket_member_indices.as_slice(),
                         ReturnComponentsStageExactLikelihoodFailureScope::ConditionalScaleBucket,
                         Some(scale_bucket_index),
+                        &exact_block_cache,
                     ) {
                         Ok(scope_evaluation) => {
                             diagnostics_summary.conditional_average_log_likelihood_error_upper_bound =
@@ -362,6 +380,7 @@ fn average_negative_log_likelihood_with_failures(
     member_indices: &[usize],
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
+    exact_block_cache: &ExactBlockEvaluationCache,
 ) -> Result<ExactLikelihoodScopeEvaluation, ExactLikelihoodScopeFailure> {
     let log_density_resolution = average_negative_log_likelihood_resolution(member_indices.len());
 
@@ -399,6 +418,7 @@ fn average_negative_log_likelihood_with_failures(
         scope,
         scale_bucket_index,
         log_density_resolution,
+        exact_block_cache,
     );
 
     let mut log_likelihood_sum = 0.0;
@@ -537,6 +557,7 @@ fn exact_likelihood_block_contributions(
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
     log_density_resolution: f64,
+    exact_block_cache: &ExactBlockEvaluationCache,
 ) -> Vec<Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure>> {
     let evaluate_member = |member_index: &usize| {
         exact_likelihood_block_contribution(
@@ -547,6 +568,7 @@ fn exact_likelihood_block_contributions(
             scope,
             scale_bucket_index,
             log_density_resolution,
+            exact_block_cache,
         )
     };
 
@@ -565,6 +587,7 @@ fn exact_likelihood_block_contribution(
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
     log_density_resolution: f64,
+    exact_block_cache: &ExactBlockEvaluationCache,
 ) -> Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure> {
     let observed_return = exact_likelihood_member_value(
         optimizer_context.observed_returns.as_slice(),
@@ -624,6 +647,16 @@ fn exact_likelihood_block_contribution(
         ))
     })?;
 
+    let cache_key = ExactBlockEvaluationCacheKey::from_block_input(&block_input);
+    if let Some(block_evaluation) =
+        cached_exact_block_evaluation(exact_block_cache, cache_key, log_density_resolution)
+    {
+        return Ok(ExactLikelihoodBlockContribution {
+            member_index,
+            block_evaluation,
+        });
+    }
+
     let block_evaluation = evaluate_exact_block_likelihood(
         configuration,
         driver_parameters,
@@ -643,10 +676,61 @@ fn exact_likelihood_block_contribution(
         ))
     })?;
 
+    record_exact_block_evaluation(exact_block_cache, cache_key, block_evaluation);
+
     Ok(ExactLikelihoodBlockContribution {
         member_index,
         block_evaluation,
     })
+}
+
+impl ExactBlockEvaluationCacheKey {
+    fn from_block_input(block_input: &ExactBlockInput) -> Self {
+        Self {
+            observed_return_bits: block_input.observed_return.to_bits(),
+            business_time_scale_bits: block_input.business_time_scale.to_bits(),
+            sell_share_proxy_bits: block_input.sell_share_proxy.to_bits(),
+            integrated_buy_intensity_bits: block_input.integrated_buy_intensity.to_bits(),
+            integrated_sell_intensity_bits: block_input.integrated_sell_intensity.to_bits(),
+        }
+    }
+}
+
+fn cached_exact_block_evaluation(
+    exact_block_cache: &ExactBlockEvaluationCache,
+    cache_key: ExactBlockEvaluationCacheKey,
+    log_density_resolution: f64,
+) -> Option<ExactBlockLikelihoodEvaluation> {
+    let Ok(cache_guard) = exact_block_cache.lock() else {
+        return None;
+    };
+
+    cache_guard
+        .get(&cache_key)
+        .copied()
+        .filter(|evaluation| evaluation.log_density_error_upper_bound <= log_density_resolution)
+}
+
+fn record_exact_block_evaluation(
+    exact_block_cache: &ExactBlockEvaluationCache,
+    cache_key: ExactBlockEvaluationCacheKey,
+    block_evaluation: ExactBlockLikelihoodEvaluation,
+) {
+    let Ok(mut cache_guard) = exact_block_cache.lock() else {
+        return;
+    };
+
+    let should_replace = cache_guard
+        .get(&cache_key)
+        .map(|cached_evaluation| {
+            block_evaluation.log_density_error_upper_bound
+                < cached_evaluation.log_density_error_upper_bound
+        })
+        .unwrap_or(true);
+
+    if should_replace {
+        cache_guard.insert(cache_key, block_evaluation);
+    }
 }
 
 fn exact_likelihood_member_value(
@@ -945,5 +1029,68 @@ pub(super) fn closed_form_single_side_log_density(
             .ok()
         }
         ReturnComponentsStageExactLikelihoodEvaluatorKind::TiltedMixedInversion => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ExactBlockEvaluationCacheKey, cached_exact_block_evaluation, record_exact_block_evaluation,
+    };
+    use crate::stages::return_components::contracts::ReturnComponentsStageExactLikelihoodEvaluatorKind;
+
+    fn cached_evaluation(error_upper_bound: f64) -> super::ExactBlockLikelihoodEvaluation {
+        super::ExactBlockLikelihoodEvaluation {
+            evaluator_kind: ReturnComponentsStageExactLikelihoodEvaluatorKind::TiltedMixedInversion,
+            log_density_estimate: -1.0,
+            log_density_error_upper_bound: error_upper_bound,
+            tilt_theta: Some(0.0),
+            tilt_domain_lower_theta_exclusive: Some(-1.0),
+            tilt_domain_upper_theta_exclusive: Some(1.0),
+            block_standard_deviation: 1.0,
+            standardized_return: 0.0,
+            standardized_decay_scale: Some(1.0),
+            integration_upper_bound: Some(1.0),
+        }
+    }
+
+    #[test]
+    fn exact_block_cache_respects_resolution_and_keeps_best_certification() {
+        let cache = super::ExactBlockEvaluationCache::default();
+        let cache_key = ExactBlockEvaluationCacheKey {
+            observed_return_bits: 0.0f64.to_bits(),
+            business_time_scale_bits: 1.0f64.to_bits(),
+            sell_share_proxy_bits: 0.5f64.to_bits(),
+            integrated_buy_intensity_bits: 0.5f64.to_bits(),
+            integrated_sell_intensity_bits: 0.5f64.to_bits(),
+        };
+
+        record_exact_block_evaluation(&cache, cache_key, cached_evaluation(0.25));
+
+        assert!(cached_exact_block_evaluation(&cache, cache_key, 0.20).is_none());
+        assert_eq!(
+            cached_exact_block_evaluation(&cache, cache_key, 0.30)
+                .expect("cached evaluation should satisfy looser resolution")
+                .log_density_error_upper_bound,
+            0.25
+        );
+
+        record_exact_block_evaluation(&cache, cache_key, cached_evaluation(0.15));
+
+        assert_eq!(
+            cached_exact_block_evaluation(&cache, cache_key, 0.20)
+                .expect("better cached evaluation should satisfy tighter resolution")
+                .log_density_error_upper_bound,
+            0.15
+        );
+
+        record_exact_block_evaluation(&cache, cache_key, cached_evaluation(0.40));
+
+        assert_eq!(
+            cached_exact_block_evaluation(&cache, cache_key, 0.20)
+                .expect("worse cached evaluation should not replace better certification")
+                .log_density_error_upper_bound,
+            0.15
+        );
     }
 }
