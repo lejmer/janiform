@@ -3,6 +3,7 @@ mod budget;
 mod closed_form;
 mod constants;
 mod exact_block;
+mod exact_block_cache;
 mod likelihood;
 mod optimization;
 mod profile;
