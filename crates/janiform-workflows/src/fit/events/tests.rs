@@ -11,10 +11,18 @@ fn proxy_em_progress_signal_uses_global_eval_best_and_short_conv_label() {
         Some(0.5),
     );
 
-    assert_eq!(
-        stage_progress_signal(&progress),
-        Some("evals 17, best 1.250000, conv. 0.500000".to_string())
-    );
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("proxy EM progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress { latest_signal, .. }) => assert_eq!(
+            latest_signal.as_deref(),
+            Some("evals 17, best 1.250000, conv. 0.500000")
+        ),
+        _ => panic!("expected stage progress event"),
+    }
 }
 
 #[test]
@@ -28,10 +36,50 @@ fn work_item_phase_start_keeps_latest_signal_when_parallel_metrics_are_absent() 
         None,
     );
 
-    assert_eq!(
-        stage_progress_signal(&progress),
-        Some("score proxy EM search points".to_string())
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("phase-start progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress { latest_signal, .. }) => assert_eq!(
+            latest_signal.as_deref(),
+            Some("score proxy EM search points")
+        ),
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
+fn work_item_phase_start_does_not_create_placeholder_table_row() {
+    let progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
+        Some("optimize basin seed candidates"),
+        None,
+        None,
+        None,
+        None,
     );
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("phase-start progress should remain displayable");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            work_item_label,
+            latest_signal,
+            ..
+        }) => {
+            assert_eq!(work_item_label, None);
+            assert_eq!(
+                latest_signal.as_deref(),
+                Some("optimize basin seed candidates")
+            );
+        }
+        _ => panic!("expected stage progress event"),
+    }
 }
 
 #[test]

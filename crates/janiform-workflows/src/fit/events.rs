@@ -187,18 +187,20 @@ pub fn progress_event_from_staged_event(
             stage_count: *stage_count,
         }),
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
+            let work_item_metrics = work_item_table_metrics(progress);
+
+            let latest_signal =
+                stage_progress_signal_with_metrics(progress, work_item_metrics.as_slice());
+
             Some(ProgressEvent::StageProgress {
                 phase: phase_label(&progress.progress_phase).to_string(),
                 measure: stage_progress_measure(progress)?,
-                work_item_label: progress_work_item_label(
-                    &progress.progress_phase,
-                    progress.current_item_label.as_deref(),
-                ),
+                work_item_label: progress_work_item_label(progress, work_item_metrics.as_slice()),
                 work_item_progress_percent: progress.evaluation_progress_percent,
                 planned_work_item_labels: progress.planned_work_item_labels.clone(),
                 work_item_columns: work_item_table_columns(progress),
-                work_item_metrics: work_item_table_metrics(progress),
-                latest_signal: stage_progress_signal(progress),
+                work_item_metrics,
+                latest_signal,
             })
         }
         CalibrationStagedRunObserverEvent::StageCompleted {
@@ -371,12 +373,11 @@ fn terminal_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
     }
 }
 
-fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> Option<String> {
-    if progress_work_item_label(
-        &progress.progress_phase,
-        progress.current_item_label.as_deref(),
-    )
-    .is_some()
+fn stage_progress_signal_with_metrics(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_metrics: &[ProgressWorkItemMetric],
+) -> Option<String> {
+    if progress_work_item_label(progress, work_item_metrics).is_some()
         && let Some(signal) = parallel_stage_progress_signal(
             progress.active_restart_count,
             progress.valid_completed_units,
@@ -684,12 +685,16 @@ fn pricing_progress_count_label(
 }
 
 fn progress_work_item_label(
-    progress_phase: &CalibrationStageProgressPhase,
-    current_item_label: Option<&str>,
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_metrics: &[ProgressWorkItemMetric],
 ) -> Option<String> {
-    let current_item_label = current_item_label?;
+    let current_item_label = progress.current_item_label.as_deref()?;
 
-    match progress_phase {
+    if progress.evaluation_progress_percent.is_none() && work_item_metrics.is_empty() {
+        return None;
+    }
+
+    match &progress.progress_phase {
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring
             | ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
