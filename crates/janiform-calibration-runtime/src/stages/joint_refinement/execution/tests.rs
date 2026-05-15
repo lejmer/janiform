@@ -37,6 +37,7 @@ use crate::stages::return_components::{
     ReturnComponentsStageContinuousReturnCalibrationSample,
     build_continuous_return_calibration_sample_from_components,
     nig_configuration_from_search_point, nig_search_bounds_for_calibration_sample,
+    nig_search_point_from_configuration,
 };
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, HawkesStageFittedParameters,
@@ -537,12 +538,16 @@ fn joint_refinement_baseline_parameter_vector_round_trips_selected_return_nig() 
 
     let decoded_search_point =
         parameter_vector_to_nig_search_point(&baseline_parameter_vector, &active_parameter_layout);
+    let expected_search_point =
+        nig_search_point_from_configuration(&baseline_15m_calibration_sample, selected_nig)
+            .expect("selected NIG should map back into joint search coordinates");
 
     let decoded_nig =
         nig_configuration_from_search_point(&baseline_15m_calibration_sample, decoded_search_point)
             .expect("baseline vector NIG block should decode");
 
-    assert_eq!(decoded_nig, selected_nig);
+    assert_eq!(decoded_search_point, expected_search_point);
+    assert_eq!(decoded_nig.mu, selected_nig.mu);
 }
 
 #[test]

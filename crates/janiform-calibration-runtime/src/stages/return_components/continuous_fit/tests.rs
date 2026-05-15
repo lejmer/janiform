@@ -736,7 +736,7 @@ fn moment_seed_candidates_surface_multiple_search_regimes() {
 }
 
 #[test]
-fn optimizer_candidates_report_proxy_em_frontier_without_local_iterations() {
+fn optimizer_candidates_report_local_basin_search_diagnostics() {
     let calibration_sample = test_optimizer_calibration_sample();
     let solver_settings = CalibrationOptimizerSettings::try_new(
         "adaptive_search",
@@ -750,21 +750,14 @@ fn optimizer_candidates_report_proxy_em_frontier_without_local_iterations() {
 
     let candidates = build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
 
-    assert_eq!(
-        candidates[0].optimizer_diagnostic.stop_reason,
-        "proxy_em_frontier"
-    );
-    assert_eq!(candidates[0].optimizer_diagnostic.local_evaluation_count, 0);
-    assert_eq!(
-        candidates[0]
-            .optimizer_diagnostic
-            .seed_objective_score
-            .to_bits(),
+    assert!(candidates[0].optimizer_diagnostic.local_evaluation_count > 0);
+    assert!(
         candidates[0]
             .optimizer_diagnostic
             .local_objective_score
-            .to_bits()
+            .is_finite()
     );
+    assert!(!candidates[0].optimizer_diagnostic.stop_reason.is_empty());
 }
 
 #[test]

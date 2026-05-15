@@ -18,8 +18,8 @@ use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
 
 use super::super::objective::{
     JointRefinementAggregatedLikelihoodContexts,
-    build_joint_refinement_nig_block_likelihood_contexts, compressed_final_objective,
-    evaluate_joint_candidate, evaluate_joint_candidate_nig_block_search_objective_with_contexts,
+    build_joint_refinement_nig_block_likelihood_contexts, evaluate_joint_candidate,
+    evaluate_joint_candidate_nig_block_search_objective_with_contexts,
     evaluate_joint_candidate_nig_block_search_objective_with_counts, invalid_candidate_evaluation,
 };
 use super::super::setup::parameter_vector_to_fitted_parameters;
@@ -191,7 +191,6 @@ fn optimize_restart_seeds_sequential(
             progress_state: &progress_state,
             restart_outcome: &restart_outcome,
             progress_counters: &progress_counters,
-            context,
             active_restart_count: progress_counters
                 .active_restart_count
                 .load(Ordering::Relaxed),
@@ -291,7 +290,6 @@ fn optimize_restart_seeds_parallel(
                     progress_state: &progress_state,
                     restart_outcome: &restart_outcome,
                     progress_counters: progress_counters.as_ref(),
-                    context,
                     active_restart_count: progress_counters
                         .active_restart_count
                         .load(Ordering::Relaxed),
@@ -1193,10 +1191,7 @@ fn evaluate_parameter_block_objective(
 
             candidate_evaluation.invalid_reason.is_none().then_some(
                 ParameterBlockObjectiveEvaluation {
-                    objective: compressed_final_objective(
-                        &candidate_evaluation.raw_admissibility_metrics,
-                        joint_refinement_admissibility_thresholds(context),
-                    ),
+                    objective: candidate_evaluation.breakdown.weighted_objective,
                     exact_likelihood_evaluator_counts: Some(
                         candidate_evaluation.exact_likelihood_evaluator_counts,
                     ),
@@ -1570,7 +1565,6 @@ struct RestartProgressEmissionInput<'a> {
     progress_state: &'a RestartProgressState,
     restart_outcome: &'a JointRefinementRestartOutcome,
     progress_counters: &'a RestartProgressCounters,
-    context: &'a JointRefinementContext,
     active_restart_count: usize,
     total_evaluation_budget: usize,
     aggregate_progress_percent: usize,
@@ -1583,7 +1577,6 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
         progress_state,
         restart_outcome,
         progress_counters,
-        context,
         active_restart_count,
         total_evaluation_budget,
         aggregate_progress_percent,
@@ -1593,10 +1586,10 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
 
     let (best_restart_id, best_weighted_objective) = progress_counters.completed_best_snapshot();
 
-    let final_display_objective = compressed_final_objective(
-        &restart_outcome.final_evaluation.raw_admissibility_metrics,
-        joint_refinement_admissibility_thresholds(context),
-    );
+    let final_display_objective = restart_outcome
+        .final_evaluation
+        .breakdown
+        .weighted_objective;
 
     emit_joint_refinement_progress(
         progress_sender,

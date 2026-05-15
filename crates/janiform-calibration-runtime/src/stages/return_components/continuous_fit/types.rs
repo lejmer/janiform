@@ -102,12 +102,44 @@ pub(super) struct ContinuousReturnScaleBucketProfile {
     pub(super) member_indices: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct NigShapeSearchPoint {
     pub(crate) log_alpha: f64,
     pub(crate) buy_skew_coordinate: f64,
     pub(crate) sell_relative_coordinate: f64,
     pub(crate) log_delta_offset: f64,
+}
+
+impl NigShapeSearchPoint {
+    pub(crate) fn from_slice(point: &[f64]) -> Option<Self> {
+        let [
+            log_alpha,
+            buy_skew_coordinate,
+            sell_relative_coordinate,
+            log_delta_offset,
+        ] = point
+        else {
+            return None;
+        };
+
+        Some(Self {
+            log_alpha: *log_alpha,
+            buy_skew_coordinate: *buy_skew_coordinate,
+            sell_relative_coordinate: *sell_relative_coordinate,
+            log_delta_offset: *log_delta_offset,
+        })
+    }
+
+    pub(crate) fn to_vector(self) -> [f64; Self::DIMENSION] {
+        [
+            self.log_alpha,
+            self.buy_skew_coordinate,
+            self.sell_relative_coordinate,
+            self.log_delta_offset,
+        ]
+    }
+
+    pub(crate) const DIMENSION: usize = 4;
 }
 
 #[derive(Debug, Clone, Copy)]

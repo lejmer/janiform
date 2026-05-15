@@ -194,7 +194,7 @@ Search restarts are built from the fit residuals Janiform can evaluate before th
 
 The restart frontier is selected from low-cost screening scores before expensive restart optimization. The screening step keeps candidates that improve different weak areas, but it ranks the worst screening bucket before the summary score so a restart with one clearly poor bucket does not look attractive just because its average score is low.
 
-During restart optimization, terminal progress reports merit scores rather than raw objective terms. `Trial merit` is the most recent block probe, `Accepted merit` is the best accepted score for the active block, and `Final merit` is the completed restart score computed from the final-family threshold-normalized fit buckets. The NIG block uses a cheap likelihood merit so it can search return-shape parameters without running full simulations for every probe. The Hawkes and coupling blocks use the same final-family compressed merit as completed restart reporting at local simulation fidelity.
+During restart optimization, terminal progress reports merit scores rather than raw objective terms. `Trial merit` is the most recent block probe, `Accepted merit` is the best accepted score for the active block, and `Final merit` is the completed restart score computed from the final weighted objective. The NIG block uses a cheap deterministic merit based on aggregated likelihood plus available tick return scale and asymmetry scores, so it can search return-shape parameters without running full simulations for every probe. The Hawkes and coupling blocks use the local-fidelity final weighted objective because those blocks already run full candidate evaluations.
 
 The report may mention these restarts because they explain how Janiform searched. You usually do not need to tune them when reading a normal fit report.
 
@@ -207,8 +207,6 @@ When reading a fit report, read it in this order:
 3. Use `objective_terms` to compare observed and simulated values for those areas.
 4. Inspect saved runtime settings only if simulation or pricing behavior looks surprising.
 5. Run model validation before relying on the model for a downstream workflow.
-
-The most important habit is to connect diagnostics to your use case. A simulation workflow may care most about activity, return scale, and path realism. An option-pricing workflow may also care deeply about tails, asymmetry, and activity-volatility coupling.
 
 ## See also
 

@@ -1,22 +1,14 @@
 use super::super::contracts::ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic;
 
-pub(crate) fn comparable_continuous_distribution_fit_score(
-    exact_objective_score: f64,
+pub(crate) fn continuous_distribution_metric_score(
     fit_breakdown: &ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
 ) -> f64 {
-    if exact_objective_score.is_finite()
-        && fit_breakdown.global_fit_score.is_finite()
-        && fit_breakdown.conditional_fit_score.is_finite()
-    {
-        return exact_objective_score;
-    }
-
     fit_breakdown.profile_fit_score + fit_breakdown.boundary_penalty
 }
 
 #[cfg(test)]
 mod tests {
-    use super::comparable_continuous_distribution_fit_score;
+    use super::continuous_distribution_metric_score;
     use crate::stages::return_components::contracts::ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic;
 
     fn test_fit_breakdown() -> ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
@@ -59,23 +51,17 @@ mod tests {
     }
 
     #[test]
-    fn comparable_fit_score_prefers_exact_likelihood_when_it_is_finite() {
+    fn continuous_distribution_metric_score_uses_nonnegative_distribution_distance() {
         let fit_breakdown = test_fit_breakdown();
 
-        assert_eq!(
-            comparable_continuous_distribution_fit_score(5.0, &fit_breakdown),
-            5.0
-        );
+        assert_eq!(continuous_distribution_metric_score(&fit_breakdown), 7.5);
     }
 
     #[test]
-    fn comparable_fit_score_falls_back_to_profile_fit_when_exact_likelihood_is_non_finite() {
+    fn continuous_distribution_metric_score_does_not_depend_on_likelihood_availability() {
         let mut fit_breakdown = test_fit_breakdown();
         fit_breakdown.global_fit_score = f64::NAN;
 
-        assert_eq!(
-            comparable_continuous_distribution_fit_score(11.0, &fit_breakdown),
-            7.5
-        );
+        assert_eq!(continuous_distribution_metric_score(&fit_breakdown), 7.5);
     }
 }

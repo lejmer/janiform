@@ -1,3 +1,4 @@
+mod basin_optimization;
 mod bounds;
 mod budget;
 mod closed_form;

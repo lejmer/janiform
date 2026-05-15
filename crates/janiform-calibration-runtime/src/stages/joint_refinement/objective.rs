@@ -171,17 +171,46 @@ pub(super) fn evaluate_joint_candidate_nig_block_search_objective_with_contexts(
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
 
-    let likelihood_search_score = threshold_relative_likelihood_search_score(
+    let search_score = nig_block_search_objective_score(
         likelihood_fit.fit,
-        thresholds.aggregated_likelihood_fit,
+        deterministic_tick_return_moment_fit(&fitted_parameters, context),
+        &context.local_baseline_buckets,
+        thresholds,
     );
 
-    likelihood_search_score
+    search_score
         .is_finite()
         .then_some(JointRefinementLikelihoodFitWithCounts {
-            fit: likelihood_search_score,
+            fit: search_score,
             exact_likelihood_evaluator_counts: likelihood_fit.exact_likelihood_evaluator_counts,
         })
+}
+
+fn nig_block_search_objective_score(
+    likelihood_fit: f64,
+    tick_moment_fit: Option<DeterministicTickReturnMomentFit>,
+    baseline_buckets: &JointRefinementBaselineBuckets,
+    thresholds: JointRefinementAdmissibilityThresholds,
+) -> f64 {
+    let mut threshold_relative_scores = vec![restart_admission_likelihood_search_score(
+        likelihood_fit,
+        baseline_buckets.aggregated_likelihood_fit,
+        thresholds.aggregated_likelihood_fit,
+    )];
+
+    if let Some(tick_moment_fit) = tick_moment_fit {
+        let (scale_score, asymmetry_score) =
+            tick_moment_restart_admission_scores(tick_moment_fit, baseline_buckets, thresholds);
+        if scale_score.is_finite() {
+            threshold_relative_scores.push(scale_score);
+        }
+
+        if asymmetry_score.is_finite() {
+            threshold_relative_scores.push(asymmetry_score);
+        }
+    }
+
+    root_mean_square(threshold_relative_scores.as_slice())
 }
 
 pub(super) fn evaluate_joint_fitted_candidate_restart_admission_screening(
@@ -214,17 +243,11 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_screening(
 
     if let Some(tick_moment_fit) = deterministic_tick_return_moment_fit(fitted_parameters, context)
     {
-        threshold_relative_scores.push(restart_admission_bucket_search_score(
-            tick_moment_fit.scale_fit,
-            baseline_buckets.tick_return_scale_fit,
-            thresholds.tick_return_scale_fit,
-        ));
+        let (scale_score, asymmetry_score) =
+            tick_moment_restart_admission_scores(tick_moment_fit, baseline_buckets, thresholds);
 
-        threshold_relative_scores.push(restart_admission_bucket_search_score(
-            tick_moment_fit.asymmetry_fit,
-            baseline_buckets.tick_return_asymmetry_fit,
-            thresholds.tick_return_asymmetry_fit,
-        ));
+        threshold_relative_scores.push(scale_score);
+        threshold_relative_scores.push(asymmetry_score);
     }
 
     if let Some(activity_level_fit) = deterministic_evaluation.raw_expected_activity_level_fit {
@@ -258,6 +281,25 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_screening(
     }
 }
 
+fn tick_moment_restart_admission_scores(
+    tick_moment_fit: DeterministicTickReturnMomentFit,
+    baseline_buckets: &JointRefinementBaselineBuckets,
+    thresholds: JointRefinementAdmissibilityThresholds,
+) -> (f64, f64) {
+    let scale_score = restart_admission_bucket_search_score(
+        tick_moment_fit.scale_fit,
+        baseline_buckets.tick_return_scale_fit,
+        thresholds.tick_return_scale_fit,
+    );
+    let asymmetry_score = restart_admission_bucket_search_score(
+        tick_moment_fit.asymmetry_fit,
+        baseline_buckets.tick_return_asymmetry_fit,
+        thresholds.tick_return_asymmetry_fit,
+    );
+
+    (scale_score, asymmetry_score)
+}
+
 fn build_restart_screening_deterministic_evaluation(
     fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
@@ -271,7 +313,8 @@ fn build_restart_screening_deterministic_evaluation(
     )
 }
 
-pub(super) fn compressed_final_objective(
+#[cfg(test)]
+fn compressed_final_objective(
     raw_metrics: &JointRefinementRawAdmissibilityMetrics,
     thresholds: JointRefinementAdmissibilityThresholds,
 ) -> f64 {
@@ -2032,13 +2075,15 @@ fn violates_runtime_seasonality_scaled_stationarity(
 #[cfg(test)]
 mod tests {
     use super::{
-        activity_level_fit_for_counts, activity_shape_fit_for_counts,
-        admissibility_constraint_penalty, compressed_final_objective, likelihood_ratio_fit_score,
+        DeterministicTickReturnMomentFit, activity_level_fit_for_counts,
+        activity_shape_fit_for_counts, admissibility_constraint_penalty,
+        compressed_final_objective, likelihood_ratio_fit_score, nig_block_search_objective_score,
         restart_admission_bucket_search_score, restart_admission_likelihood_search_score,
         threshold_relative_likelihood_search_score, threshold_relative_search_score,
     };
     use crate::stages::joint_refinement::execution::{
-        JointRefinementAdmissibilityThresholds, JointRefinementRawAdmissibilityMetrics,
+        JointRefinementAdmissibilityThresholds, JointRefinementBaselineBuckets,
+        JointRefinementRawAdmissibilityMetrics,
     };
 
     fn test_thresholds() -> JointRefinementAdmissibilityThresholds {
@@ -2073,11 +2118,45 @@ mod tests {
         }
     }
 
+    fn test_baseline_buckets(value: f64) -> JointRefinementBaselineBuckets {
+        JointRefinementBaselineBuckets {
+            aggregated_likelihood_fit: value,
+            aggregated_return_shape_fit: value,
+            return_asymmetry_fit: value,
+            tick_return_asymmetry_fit: value,
+            aggregated_return_scale_fit: value,
+            tick_return_scale_fit: value,
+            business_time_return_scale_fit: value,
+            intraday_return_level_fit: value,
+            activity_shape_fit: value,
+            activity_level_fit: value,
+            rv_activity_coupling_fit: value,
+        }
+    }
+
     #[test]
     fn admissibility_constraint_penalty_is_zero_within_thresholds() {
         let penalty = admissibility_constraint_penalty(&test_metrics(1.5), test_thresholds(), 10.0);
 
         assert_eq!(penalty, 0.0);
+    }
+
+    #[test]
+    fn nig_block_search_objective_penalizes_tick_moment_degradation() {
+        let baseline_buckets = test_baseline_buckets(1.0);
+        let likelihood_only_score =
+            nig_block_search_objective_score(1.0, None, &baseline_buckets, test_thresholds());
+        let degraded_tick_moment_score = nig_block_search_objective_score(
+            1.0,
+            Some(DeterministicTickReturnMomentFit {
+                scale_fit: 8.0,
+                asymmetry_fit: 4.0,
+            }),
+            &baseline_buckets,
+            test_thresholds(),
+        );
+
+        assert!(degraded_tick_moment_score > likelihood_only_score);
     }
 
     #[test]

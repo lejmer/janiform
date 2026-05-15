@@ -54,6 +54,7 @@ const RETURN_SCALE_TICK_REALIZED_VARIANCE_METRIC_ID: &str =
     "joint.return_scale.tick_realized_variance";
 const RETURN_SCALE_TICK_MEAN_ABSOLUTE_RETURN_METRIC_ID: &str =
     "joint.return_scale.tick_mean_absolute_return";
+const PROTECTED_RESTART_SEED_IDS: [&str; 2] = ["incumbent_local_search", "activity_aligned"];
 const RETURN_SCALE_ALIGNMENT_METRICS: [ReturnScaleAlignmentMetric; 4] = [
     ReturnScaleAlignmentMetric {
         metric_id: RETURN_SCALE_REALIZED_VARIANCE_15M_METRIC_ID,
@@ -649,6 +650,7 @@ pub(super) fn build_restart_seeds(input: RestartSeedsBuildInput<'_>) -> Vec<(Str
         upper_bounds,
         restart_candidate_budget,
         restart_seed_score: &restart_seed_score,
+        protected_restart_ids: &PROTECTED_RESTART_SEED_IDS,
         joint_context: Some(joint_context),
         progress_sender,
     })
@@ -723,6 +725,7 @@ pub(super) fn build_restart_seeds_with_halton_acceptance(
         upper_bounds,
         restart_candidate_budget,
         restart_seed_score: &restart_seed_score,
+        protected_restart_ids: &[],
         joint_context: None,
         progress_sender: None,
     })
@@ -959,6 +962,7 @@ fn finalize_restart_seed_candidates(
         upper_bounds,
         restart_candidate_budget,
         restart_seed_score,
+        protected_restart_ids,
         joint_context,
         progress_sender,
     } = input;
@@ -1025,6 +1029,7 @@ fn finalize_restart_seed_candidates(
         target_restart_count,
         lower_bounds,
         upper_bounds,
+        protected_restart_ids,
     );
 
     deduplicate_restart_seed_candidates(selected_restart_candidates)
@@ -1041,6 +1046,7 @@ struct RestartSeedCandidateFinalizationInput<'a> {
     restart_candidate_budget: usize,
     restart_seed_score:
         &'a (dyn Fn(&str, &[f64]) -> Option<JointRefinementRestartAdmissionScreening> + Sync),
+    protected_restart_ids: &'a [&'a str],
     joint_context: Option<&'a JointRefinementContext>,
     progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
 }
@@ -1086,6 +1092,7 @@ fn select_screened_restart_candidates(
     target_restart_count: usize,
     lower_bounds: &[f64],
     upper_bounds: &[f64],
+    protected_restart_ids: &[&str],
 ) -> Vec<(String, Vec<f64>)> {
     if target_restart_count == 0 || screened_candidates.is_empty() {
         return Vec::new();
@@ -1093,7 +1100,14 @@ fn select_screened_restart_candidates(
 
     let pareto_ranks = restart_screening_pareto_ranks(screened_candidates.as_slice());
     let mut remaining_candidate_indices = (0..screened_candidates.len()).collect::<Vec<_>>();
-    let mut selected_candidate_indices = Vec::new();
+    let mut selected_candidate_indices = select_protected_screened_restart_candidate_indices(
+        screened_candidates.as_slice(),
+        protected_restart_ids,
+        target_restart_count,
+    );
+
+    remaining_candidate_indices
+        .retain(|candidate_index| !selected_candidate_indices.contains(candidate_index));
 
     while selected_candidate_indices.len() < target_restart_count
         && !remaining_candidate_indices.is_empty()
@@ -1122,6 +1136,37 @@ fn select_screened_restart_candidates(
             )
         })
         .collect()
+}
+
+fn select_protected_screened_restart_candidate_indices(
+    screened_candidates: &[ScreenedRestartCandidate],
+    protected_restart_ids: &[&str],
+    target_restart_count: usize,
+) -> Vec<usize> {
+    if target_restart_count < protected_restart_ids.len() {
+        return Vec::new();
+    }
+
+    let mut selected_candidate_indices = Vec::new();
+
+    for protected_restart_id in protected_restart_ids {
+        if selected_candidate_indices.len() >= target_restart_count {
+            break;
+        }
+
+        let Some(candidate_index) = screened_candidates
+            .iter()
+            .position(|candidate| candidate.restart_id == *protected_restart_id)
+        else {
+            continue;
+        };
+
+        if !selected_candidate_indices.contains(&candidate_index) {
+            selected_candidate_indices.push(candidate_index);
+        }
+    }
+
+    selected_candidate_indices
 }
 
 fn restart_screening_pareto_ranks(screened_candidates: &[ScreenedRestartCandidate]) -> Vec<usize> {
@@ -2611,8 +2656,13 @@ mod tests {
             screened_restart_candidate("close", vec![0.1, 0.0], 0.6, vec![0.4, 0.7], 1),
             screened_restart_candidate("far", vec![1.0, 1.0], 0.6, vec![0.7, 0.4], 2),
         ];
-        let selected =
-            select_screened_restart_candidates(screened_candidates, 2, &[0.0, 0.0], &[1.0, 1.0]);
+        let selected = select_screened_restart_candidates(
+            screened_candidates,
+            2,
+            &[0.0, 0.0],
+            &[1.0, 1.0],
+            &[],
+        );
 
         let selected_ids = selected
             .iter()
@@ -2620,5 +2670,63 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(selected_ids, vec!["near", "far"]);
+    }
+
+    #[test]
+    fn screened_restart_selection_retains_protected_anchors_before_frontier_fill() {
+        let screened_candidates = vec![
+            screened_restart_candidate("dominant", vec![0.0, 0.0], 0.1, vec![0.1, 0.1], 0),
+            screened_restart_candidate(
+                "incumbent_local_search",
+                vec![1.0, 1.0],
+                5.0,
+                vec![5.0, 5.0],
+                1,
+            ),
+            screened_restart_candidate("next_best", vec![0.5, 0.5], 0.2, vec![0.2, 0.2], 2),
+        ];
+        let selected = select_screened_restart_candidates(
+            screened_candidates,
+            2,
+            &[0.0, 0.0],
+            &[1.0, 1.0],
+            &["incumbent_local_search"],
+        );
+
+        let selected_ids = selected
+            .iter()
+            .map(|(restart_id, _)| restart_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected_ids, vec!["incumbent_local_search", "dominant"]);
+    }
+
+    #[test]
+    fn screened_restart_selection_uses_frontier_when_budget_cannot_cover_protected_set() {
+        let screened_candidates = vec![
+            screened_restart_candidate("dominant", vec![0.0, 0.0], 0.1, vec![0.1, 0.1], 0),
+            screened_restart_candidate(
+                "incumbent_local_search",
+                vec![1.0, 1.0],
+                5.0,
+                vec![5.0, 5.0],
+                1,
+            ),
+            screened_restart_candidate("activity_aligned", vec![0.5, 0.5], 4.0, vec![4.0, 4.0], 2),
+        ];
+        let selected = select_screened_restart_candidates(
+            screened_candidates,
+            1,
+            &[0.0, 0.0],
+            &[1.0, 1.0],
+            &["incumbent_local_search", "activity_aligned"],
+        );
+
+        let selected_ids = selected
+            .iter()
+            .map(|(restart_id, _)| restart_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected_ids, vec!["dominant"]);
     }
 }

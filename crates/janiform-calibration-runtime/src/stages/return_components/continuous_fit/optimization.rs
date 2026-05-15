@@ -18,6 +18,7 @@ use super::super::execution::arithmetic_mean_signed;
 use super::super::progress::{
     send_return_components_evaluation_progress, send_return_components_progress,
 };
+use super::basin_optimization::optimize_seed_candidates;
 use super::bounds::{
     build_moment_seed_candidates, build_search_regimes_from_moment_seeds,
     configuration_from_shape_search_point, theoretical_search_bounds,
@@ -30,7 +31,7 @@ use super::likelihood::{
 use super::profile::{build_distribution_profile, distribution_profile_fit_breakdown};
 use super::proxy_em::build_effective_nig_em_search_points;
 use super::sample::build_continuous_return_optimizer_context;
-use super::scoring::comparable_continuous_distribution_fit_score;
+use super::scoring::continuous_distribution_metric_score;
 use super::types::{
     BasinSeedFamily, CachedSearchPointObjectiveEvaluation, ContinuousLikelihoodFidelityTier,
     ContinuousReturnCandidateEvaluation, ContinuousReturnOptimizerContext,
@@ -190,6 +191,8 @@ pub(crate) fn build_nig_search_candidates_with_progress(
         let optimized_seed_candidates = optimize_seed_candidates(
             &optimizer_context,
             seed_candidates.as_slice(),
+            search_bounds,
+            solver_settings,
             progress_sender,
         );
 
@@ -392,10 +395,7 @@ pub(crate) fn evaluate_continuous_nig_candidate(
         };
 
     ContinuousReturnCandidateEvaluation {
-        objective_score: comparable_continuous_distribution_fit_score(
-            likelihood_objective.shifted_objective_score,
-            &fit_breakdown,
-        ),
+        objective_score: continuous_distribution_metric_score(&fit_breakdown),
         diagnostic: ReturnComponentsStageReturnDistributionDiagnostic {
             sample_count: summary_statistics.continuous_fit_return_count,
             observed_mean_return: summary_statistics.continuous_return_mean,
@@ -780,7 +780,7 @@ fn search_point_bits_key(search_point: NigShapeSearchPoint) -> String {
     )
 }
 
-fn evaluate_cached_search_point(
+pub(super) fn evaluate_cached_search_point(
     optimizer_context: &ContinuousReturnOptimizerContext,
     shape_search_point: NigShapeSearchPoint,
     fidelity_tier: ContinuousLikelihoodFidelityTier,
@@ -859,7 +859,7 @@ fn nearest_search_regime_index(
     search_point: NigShapeSearchPoint,
     search_regimes: &[NigSearchRegime],
 ) -> usize {
-    let search_point_vector = search_point_to_vector(search_point);
+    let search_point_vector = search_point.to_vector();
 
     let mut nearest_regime_index = 0usize;
     let mut nearest_distance = f64::INFINITY;
@@ -885,59 +885,6 @@ fn nearest_search_regime_index(
     }
 
     nearest_regime_index
-}
-
-fn optimize_seed_candidates(
-    optimizer_context: &ContinuousReturnOptimizerContext,
-    seed_candidates: &[SeededNigCandidate],
-    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
-) -> Vec<OptimizedNigSearchCandidate> {
-    let completed_seed_candidate_count = std::sync::atomic::AtomicUsize::new(0);
-    let total_seed_candidate_count = seed_candidates.len();
-
-    seed_candidates
-        .par_iter()
-        .filter_map(|seed_candidate| {
-            let final_evaluation = evaluate_cached_search_point(
-                optimizer_context,
-                seed_candidate.scored_candidate.search_point,
-                ContinuousLikelihoodFidelityTier::Full,
-            )?;
-
-            let optimized_candidate = OptimizedNigSearchCandidate {
-                configuration: final_evaluation.configuration,
-                family: seed_candidate.family,
-                seed_search_point: seed_candidate.scored_candidate.search_point,
-                final_search_point: seed_candidate.scored_candidate.search_point,
-                optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic {
-                    seed_objective_score: seed_candidate.scored_candidate.objective_score,
-                    local_objective_score: seed_candidate.scored_candidate.objective_score,
-                    final_objective_score: final_evaluation.objective.shifted_objective_score,
-                    local_evaluation_count: 0,
-                    stop_reason: "proxy_em_frontier",
-                    basin_diagnostics: Vec::new(),
-                },
-            };
-
-            let completed_count = completed_seed_candidate_count
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                + 1;
-
-            let seed_label = format!("basin_seed_{completed_count:03}");
-
-            send_return_components_evaluation_progress(
-                progress_sender,
-                ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
-                completed_count,
-                total_seed_candidate_count,
-                Some(seed_label.as_str()),
-                completed_count,
-                total_seed_candidate_count,
-            );
-
-            Some(optimized_candidate)
-        })
-        .collect()
 }
 
 fn retain_distinct_basin_candidates(
@@ -1031,15 +978,6 @@ fn build_optimizer_basin_diagnostics(
             }
         })
         .collect()
-}
-
-fn search_point_to_vector(search_point: NigShapeSearchPoint) -> [f64; 4] {
-    [
-        search_point.log_alpha,
-        search_point.buy_skew_coordinate,
-        search_point.sell_relative_coordinate,
-        search_point.log_delta_offset,
-    ]
 }
 
 fn with_continuous_fit_thread_pool<T: Send>(

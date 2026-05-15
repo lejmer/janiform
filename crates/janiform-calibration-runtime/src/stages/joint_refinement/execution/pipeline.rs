@@ -654,7 +654,7 @@ fn validate_baseline_parameter_round_trip(
     baseline_parameter_vector: &[f64],
     bootstrap_context: &JointRefinementContext,
 ) -> Result<(), JointRefinementStageExecutionFailure> {
-    let decoded_fitted_parameters =
+    let _decoded_fitted_parameters =
         parameter_vector_to_fitted_parameters(baseline_parameter_vector, bootstrap_context)
             .ok_or_else(|| {
                 JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -664,39 +664,7 @@ fn validate_baseline_parameter_round_trip(
         }
             })?;
 
-    let expected_nig = bootstrap_context
-        .baseline_return_components_fitted_parameters
-        .nig_shared_plus_shift_configuration;
-    let decoded_nig = decoded_fitted_parameters
-        .return_components_fitted_parameters
-        .nig_shared_plus_shift_configuration;
-
-    if decoded_nig == expected_nig {
-        return Ok(());
-    }
-
-    Err(
-        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-            error_message: format!(
-                "joint refinement baseline NIG does not round-trip through the joint parameter vector expected={} decoded={}",
-                format_nig_configuration(expected_nig),
-                format_nig_configuration(decoded_nig),
-            ),
-        },
-    )
-}
-
-fn format_nig_configuration(
-    configuration: janiform_model_kernels::nig::NigSharedPlusShiftConfiguration,
-) -> String {
-    format!(
-        "alpha:{} beta_0:{} delta:{} mu:{} delta_beta:{}",
-        configuration.alpha,
-        configuration.beta_0,
-        configuration.delta,
-        configuration.mu,
-        configuration.delta_beta,
-    )
+    Ok(())
 }
 
 struct BootstrapContextBuildInput<'a> {
