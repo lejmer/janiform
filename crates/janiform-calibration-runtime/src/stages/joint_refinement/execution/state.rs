@@ -275,7 +275,6 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) observed_15m_intraday_mean_absolute_returns: Vec<f64>,
     pub(crate) observed_hourly_tick_counts: Vec<f64>,
     pub(crate) observed_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
-    pub(crate) observed_log_price_span: f64,
     pub(crate) hourly_simulation_start_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_end_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_interval_count: usize,
@@ -299,7 +298,6 @@ pub(crate) struct JointRefinementBaselineBuckets {
     pub(crate) activity_shape_fit: f64,
     pub(crate) activity_level_fit: f64,
     pub(crate) rv_activity_coupling_fit: f64,
-    pub(crate) price_span_sanity_fit: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -446,7 +444,6 @@ pub(crate) struct JointRefinementRawAdmissibilityMetrics {
     pub(crate) activity_shape_fit: f64,
     pub(crate) activity_level_fit: f64,
     pub(crate) rv_activity_coupling_fit: f64,
-    pub(crate) price_span_sanity_fit: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -472,8 +469,6 @@ pub(crate) struct JointRefinementRestartOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementCoarseConsistencySummary {
     pub(crate) raw_fit: f64,
-    pub(crate) normalized_fit: f64,
-    pub(crate) admissibility_threshold: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

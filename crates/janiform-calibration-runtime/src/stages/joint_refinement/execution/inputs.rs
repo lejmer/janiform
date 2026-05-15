@@ -20,9 +20,7 @@ use crate::stages::return_components::{
 use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
-use super::super::setup::{
-    build_surprise_multipliers_for_interval_grid, compute_cumulative_log_price_span,
-};
+use super::super::setup::build_surprise_multipliers_for_interval_grid;
 use super::super::summary_simulation::JointRefinementSummarySimulationSessionContext;
 use super::{JointRefinementObservedData, build_exchange_calendar_registry_artifact};
 
@@ -66,8 +64,6 @@ pub(crate) fn build_observed_data(
 
     let observed_15m_rv_activity_metric =
         rolling_variance_activity_metric(observed_15m_intervals.as_slice());
-    let observed_log_price_span =
-        compute_cumulative_log_price_span(observed_15m_intervals.as_slice());
 
     let observed_5m_log_returns = observed_5m_intervals
         .iter()
@@ -183,7 +179,6 @@ pub(crate) fn build_observed_data(
         observed_15m_intraday_mean_absolute_returns,
         observed_hourly_tick_counts,
         observed_15m_rv_activity_metric,
-        observed_log_price_span,
         hourly_simulation_start_utc,
         hourly_simulation_end_utc,
         hourly_simulation_interval_count,

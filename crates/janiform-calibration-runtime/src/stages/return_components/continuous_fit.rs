@@ -17,8 +17,8 @@ mod tilted_mixed;
 mod types;
 
 pub(crate) use bounds::{
-    nig_configuration_from_search_point, nig_search_bounds_for_calibration_sample,
-    nig_search_point_from_configuration,
+    nig_configuration_from_search_point, nig_configuration_search_point_mapping,
+    nig_search_bounds_for_calibration_sample, nig_search_point_from_configuration,
 };
 pub(crate) use likelihood::evaluate_configuration_likelihood_objective_with_context_and_counts;
 #[cfg(test)]
@@ -40,6 +40,7 @@ pub(crate) use sample::{
     continuous_return_calibration_sample_observed_returns,
     rescale_continuous_return_calibration_sample_business_time_scales,
 };
+pub(crate) use shape_mapping::NigSharedPlusShiftConfigurationSearchPointMapping;
 pub(crate) use types::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,

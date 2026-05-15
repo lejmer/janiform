@@ -165,7 +165,7 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
     );
 
     progress.current_parameter_block = Some("nig".to_string());
-    progress.current_restart_best_weighted_objective = Some(0.5);
+    progress.current_block_best_weighted_objective = Some(0.5);
 
     progress.exact_closed_form_buy_count = Some(3);
     progress.exact_closed_form_sell_count = Some(4);
@@ -179,9 +179,9 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
         vec![
             ("eval".to_string(), "Evals".to_string()),
             ("block".to_string(), "Block".to_string()),
-            ("current_objective".to_string(), "Cur. obj.".to_string()),
-            ("best_objective".to_string(), "Best obj.".to_string()),
-            ("final_objective".to_string(), "Final obj.".to_string()),
+            ("current_objective".to_string(), "Trial merit".to_string()),
+            ("best_objective".to_string(), "Accepted merit".to_string()),
+            ("final_objective".to_string(), "Final merit".to_string()),
             ("exact_buy".to_string(), "CF-Buy".to_string()),
             ("exact_sell".to_string(), "CF-Sell".to_string()),
             ("exact_mixed".to_string(), "Mix".to_string()),
@@ -305,7 +305,7 @@ fn return_components_progress_event(
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
         current_weighted_objective: None,
-        current_restart_best_weighted_objective: None,
+        current_block_best_weighted_objective: None,
         current_candidate_assessment: None,
         best_restart_id: None,
         best_weighted_objective,

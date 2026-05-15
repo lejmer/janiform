@@ -97,6 +97,9 @@ pub struct FitPreparationConfiguration {
     /// Optional joint option-refinement candidate count override.
     #[serde(default)]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    /// Optional joint option-refinement wall-clock budget in milliseconds.
+    #[serde(default)]
+    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
     /// Whether audit option pricing is enabled.
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
@@ -599,6 +602,10 @@ fn build_preparation_request(
             .request
             .configuration
             .joint_refinement_option_refinement_candidate_count_override,
+        joint_refinement_option_refinement_wall_clock_budget_millis: input
+            .request
+            .configuration
+            .joint_refinement_option_refinement_wall_clock_budget_millis,
         joint_refinement_audit_option_pricing_enabled: input
             .request
             .configuration

@@ -384,6 +384,7 @@ fn stage_progress_signal_with_metrics(
             progress.cumulative_local_evaluation_count,
             progress.best_weighted_objective,
             progress.best_coarse_consistency_fit,
+            work_item_table_uses_restart_optimization_columns(&progress.progress_phase),
         )
     {
         return Some(signal);
@@ -402,7 +403,14 @@ fn stage_progress_signal_with_metrics(
     );
 
     if let Some(current_weighted_objective) = progress.current_weighted_objective {
-        parts.push(format!("objective {current_weighted_objective:.6}"));
+        let score_label =
+            if work_item_table_uses_restart_optimization_columns(&progress.progress_phase) {
+                "merit"
+            } else {
+                "objective"
+            };
+
+        parts.push(format!("{score_label} {current_weighted_objective:.6}"));
     }
     if let Some(best_weighted_objective) = progress.best_weighted_objective {
         parts.push(format!("best {best_weighted_objective:.6}"));
@@ -426,6 +434,7 @@ fn parallel_stage_progress_signal(
     cumulative_local_evaluation_count: Option<usize>,
     best_weighted_objective: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
+    uses_restart_optimization_columns: bool,
 ) -> Option<String> {
     let mut parts = Vec::new();
 
@@ -441,7 +450,13 @@ fn parallel_stage_progress_signal(
         ));
     }
     if let Some(best_weighted_objective) = best_weighted_objective {
-        parts.push(format!("best objective {best_weighted_objective:.6}"));
+        let best_score_label = if uses_restart_optimization_columns {
+            "best merit"
+        } else {
+            "best objective"
+        };
+
+        parts.push(format!("{best_score_label} {best_weighted_objective:.6}"));
     }
     if let Some(best_coarse_consistency_fit) = best_coarse_consistency_fit {
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
@@ -486,18 +501,41 @@ fn work_item_table_columns(
         columns.push(ProgressWorkItemColumn::new("block", "Block"));
     }
     if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
+        let current_objective_label = if uses_restart_optimization_columns {
+            "Trial merit"
+        } else {
+            "Cur. obj."
+        };
+
         columns.push(ProgressWorkItemColumn::new(
             "current_objective",
-            "Cur. obj.",
+            current_objective_label,
         ));
     }
-    if uses_restart_optimization_columns
-        || progress.current_restart_best_weighted_objective.is_some()
+    if uses_restart_optimization_columns || progress.current_block_best_weighted_objective.is_some()
     {
-        columns.push(ProgressWorkItemColumn::new("best_objective", "Best obj."));
+        let best_objective_label = if uses_restart_optimization_columns {
+            "Accepted merit"
+        } else {
+            "Best obj."
+        };
+
+        columns.push(ProgressWorkItemColumn::new(
+            "best_objective",
+            best_objective_label,
+        ));
     }
     if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
-        columns.push(ProgressWorkItemColumn::new("final_objective", "Final obj."));
+        let final_objective_label = if uses_restart_optimization_columns {
+            "Final merit"
+        } else {
+            "Final obj."
+        };
+
+        columns.push(ProgressWorkItemColumn::new(
+            "final_objective",
+            final_objective_label,
+        ));
     }
     if progress.current_candidate_assessment.is_some() {
         columns.push(ProgressWorkItemColumn::new("assessment", "Assessment"));
@@ -577,12 +615,12 @@ fn work_item_table_metrics(
             format!("{current_weighted_objective:.6}"),
         ));
     }
-    if let Some(current_restart_best_weighted_objective) =
-        progress.current_restart_best_weighted_objective
+    if let Some(current_block_best_weighted_objective) =
+        progress.current_block_best_weighted_objective
     {
         metrics.push(ProgressWorkItemMetric::new(
             "best_objective",
-            format!("{current_restart_best_weighted_objective:.6}"),
+            format!("{current_block_best_weighted_objective:.6}"),
         ));
     }
     if let Some(current_candidate_assessment) = progress.current_candidate_assessment {

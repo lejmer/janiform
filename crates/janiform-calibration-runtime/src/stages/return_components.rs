@@ -23,12 +23,15 @@ pub(crate) use continuous_fit::continuous_return_calibration_sample_business_tim
 pub(crate) use continuous_fit::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,
+    NigSharedPlusShiftConfigurationSearchPointMapping,
     ReturnComponentsStageContinuousReturnCalibrationSample,
     build_continuous_return_calibration_sample_from_components,
     build_continuous_return_optimizer_context, build_nig_moment_seed_configurations,
+    continuous_return_calibration_sample_count,
     continuous_return_calibration_sample_observed_returns, distribution_profile_fit_score,
     evaluate_configuration_likelihood_objective_with_context_and_counts,
-    nig_configuration_from_search_point, nig_search_bounds_for_calibration_sample,
+    mean_continuous_return_calibration_business_time_scale, nig_configuration_from_search_point,
+    nig_configuration_search_point_mapping, nig_search_bounds_for_calibration_sample,
     nig_search_point_from_configuration,
     rescale_continuous_return_calibration_sample_business_time_scales,
 };
@@ -70,6 +73,7 @@ pub(crate) use execution::run_return_components_calibration_stage_with_progress_
 pub(crate) use execution::{
     ReturnComponentsStageJointRefinementObservedSignalPreparation,
     prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
+    theoretical_net_process_moments,
 };
 pub use execution::{
     evaluate_return_components_exact_candidate, run_return_components_calibration_stage,

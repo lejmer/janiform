@@ -59,6 +59,7 @@ class FitPreparationConfiguration:
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     dynamics_search_restart_candidate_budget: Optional[int]
     joint_refinement_option_refinement_candidate_count_override: Optional[int]
+    joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     joint_refinement_audit_option_pricing_enabled: bool
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration
     market_profile_reference: Optional[MarketProfileReference]

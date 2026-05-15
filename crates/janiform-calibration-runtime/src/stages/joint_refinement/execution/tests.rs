@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+
+use chrono::{DateTime, Utc};
 
 use super::super::objective::{
     JointCandidateBreakdownComparisonInput, business_time_bucket_return_scale_fit,
@@ -7,32 +8,35 @@ use super::super::objective::{
     joint_primary_metrics_from_breakdown, return_asymmetry_horizon_fit, root_mean_square,
 };
 use super::super::setup::{
-    RestartSeedsWithHaltonAcceptanceBuildInput, build_restart_seeds_with_halton_acceptance,
-    project_basin_diagnostic_into_joint_nig_coordinates,
+    RestartSeedsWithHaltonAcceptanceBuildInput, build_baseline_parameter_vector,
+    build_parameter_bounds, build_restart_seeds_with_halton_acceptance,
+    parameter_vector_to_nig_search_point, project_basin_diagnostic_into_joint_nig_coordinates,
     restart_candidate_screening_max_parallelism_for_test,
 };
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementAdmissibilityThresholds,
-    JointRefinementCandidateEvaluation, JointRefinementCoarseConsistencySummary,
+    JointRefinementCandidateEvaluation, JointRefinementObservedData,
     JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
     JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
     desired_joint_refinement_restart_candidate_budget, ensure_valid_selected_restart_outcome,
-    extend_joint_coarse_tick_consistency_metrics_for_seed, joint_raw_metrics_are_admissible,
-    joint_raw_metrics_are_dynamics_feasible, joint_refinement_budget_schedule,
-    joint_refinement_restart_block_powell_settings,
+    extend_joint_coarse_tick_consistency_metrics_for_seed, joint_raw_metrics_are_dynamics_feasible,
+    joint_refinement_budget_schedule, joint_refinement_restart_block_powell_settings,
     option_refinement_candidate_frontier_from_selected_outcomes, sampled_observed_tick_returns,
 };
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
-    JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
+    JointRefinementBusinessTimeBucketReturnScaleSummaries,
+    JointRefinementBusinessTimeBucketThresholds, JointRefinementReturnScaleSummary,
     JointRefinementRollingVarianceActivityMetric,
 };
 use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic;
 use crate::stages::return_components::{
-    ContinuousLikelihoodEvaluatorCounts, ReturnComponentsObservedOpenSessionReturn,
+    ContinuousLikelihoodEvaluatorCounts, NigShapeSearchPoint,
+    ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
     ReturnComponentsStageContinuousReturnCalibrationSample,
     build_continuous_return_calibration_sample_from_components,
+    nig_configuration_from_search_point, nig_search_bounds_for_calibration_sample,
 };
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, HawkesStageFittedParameters,
@@ -114,6 +118,94 @@ fn build_test_calibration_sample() -> ReturnComponentsStageContinuousReturnCalib
     )
 }
 
+fn build_test_observed_data() -> JointRefinementObservedData {
+    let observed_tick_return_scale_summary = JointRefinementReturnScaleSummary {
+        mean_absolute_return: 0.01,
+        realized_variance: 0.0006,
+        absolute_return_quantile_q90: 0.012,
+    };
+
+    let observed_5m_return_scale_summary = JointRefinementReturnScaleSummary {
+        mean_absolute_return: 0.02,
+        realized_variance: 0.0012,
+        absolute_return_quantile_q90: 0.024,
+    };
+
+    let observed_15m_return_scale_summary = JointRefinementReturnScaleSummary {
+        mean_absolute_return: 0.03,
+        realized_variance: 0.0018,
+        absolute_return_quantile_q90: 0.036,
+    };
+
+    JointRefinementObservedData {
+        observed_open_event_rate_per_hour: 1.0,
+        fallback_sell_share_proxy: 0.5,
+        observed_tick_continuous_return_calibration_sample: build_test_calibration_sample(),
+        observed_5m_intervals: vec![
+            build_test_interval_observation(0, 300, 0.012, 2, 0.5),
+            build_test_interval_observation(300, 600, -0.009, 2, 0.5),
+        ],
+        observed_15m_intervals: vec![
+            build_test_interval_observation(0, 900, 0.018, 6, 0.5),
+            build_test_interval_observation(900, 1800, -0.012, 5, 0.5),
+        ],
+        observed_tick_intraday_mean_absolute_returns: vec![0.01; 24],
+        observed_tick_shape_returns: vec![0.012, -0.009, 0.006, -0.004, 0.011, -0.007],
+        observed_5m_shape_returns: vec![0.012, -0.009],
+        observed_15m_shape_returns: vec![0.018, -0.012],
+        observed_tick_return_scale_summary,
+        observed_5m_return_scale_summary,
+        observed_15m_return_scale_summary,
+        observed_5m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds {
+            lower_quartile_cutoff: 0.8,
+            median_cutoff: 1.0,
+            upper_quartile_cutoff: 1.2,
+        },
+        observed_15m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds {
+            lower_quartile_cutoff: 0.8,
+            median_cutoff: 1.0,
+            upper_quartile_cutoff: 1.2,
+        },
+        observed_5m_business_time_return_scale_summaries:
+            JointRefinementBusinessTimeBucketReturnScaleSummaries {
+                bucket_summaries: [Some(observed_5m_return_scale_summary); 4],
+            },
+        observed_15m_business_time_return_scale_summaries:
+            JointRefinementBusinessTimeBucketReturnScaleSummaries {
+                bucket_summaries: [Some(observed_15m_return_scale_summary); 4],
+            },
+        observed_5m_intraday_mean_absolute_returns: vec![0.02; 24],
+        observed_15m_intraday_mean_absolute_returns: vec![0.03; 24],
+        observed_hourly_tick_counts: vec![1.0; 24],
+        observed_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric {
+            correlation: 0.0,
+            standardized_path_distance: 0.0,
+        },
+        hourly_simulation_start_utc: DateTime::<Utc>::from_timestamp_nanos(0),
+        hourly_simulation_end_utc: DateTime::<Utc>::from_timestamp_nanos(24 * 3_600_000_000_000),
+        hourly_simulation_interval_count: 24,
+        surprise_weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
+        simulated_5m_interval_template: vec![
+            build_test_interval_observation(0, 300, 0.0, 0, 0.5),
+            build_test_interval_observation(300, 600, 0.0, 0, 0.5),
+        ],
+        simulated_15m_interval_template: vec![
+            build_test_interval_observation(0, 900, 0.0, 0, 0.5),
+            build_test_interval_observation(900, 1800, 0.0, 0, 0.5),
+        ],
+        simulated_hourly_interval_template: vec![
+            build_test_interval_observation(
+                0,
+                3_600_000_000_000,
+                0.0,
+                0,
+                0.5
+            );
+            24
+        ],
+    }
+}
+
 fn build_test_objective_term(
     metric_id: &str,
     observed_value: f64,
@@ -147,7 +239,6 @@ fn build_test_joint_breakdown(
         activity_shape_fit: 1.0,
         activity_level_fit: 1.0,
         rv_activity_coupling_fit: 1.0,
-        price_span_sanity_fit: 0.5,
         weighted_objective,
         hard_constraint_penalty: 0.0,
     }
@@ -166,7 +257,6 @@ fn build_test_admissibility_thresholds() -> JointRefinementAdmissibilityThreshol
         activity_shape_fit: 2.0,
         activity_level_fit: 2.0,
         rv_activity_coupling_fit: 2.0,
-        price_span_sanity_fit: 2.0,
     }
 }
 
@@ -185,7 +275,6 @@ fn build_test_raw_admissibility_metrics(
         activity_shape_fit: breakdown.activity_shape_fit,
         activity_level_fit: breakdown.activity_level_fit,
         rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
-        price_span_sanity_fit: breakdown.price_span_sanity_fit,
     }
 }
 
@@ -415,6 +504,124 @@ fn joint_refinement_restart_block_budget_is_dimension_minimal() {
 }
 
 #[test]
+fn joint_refinement_baseline_parameter_vector_round_trips_selected_return_nig() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+
+    let selected_search_point = NigShapeSearchPoint {
+        log_alpha: 0.4,
+        buy_skew_coordinate: -0.2,
+        sell_relative_coordinate: 0.3,
+        log_delta_offset: -0.1,
+    };
+
+    let selected_nig = nig_configuration_from_search_point(
+        &baseline_15m_calibration_sample,
+        selected_search_point,
+    )
+    .expect("selected NIG should decode from joint search point");
+
+    let mut fitted_parameters =
+        build_test_joint_fitted_parameters().return_components_fitted_parameters;
+
+    fitted_parameters.nig_shared_plus_shift_configuration = selected_nig;
+
+    let baseline_parameter_vector = build_baseline_parameter_vector(
+        &active_parameter_layout,
+        &build_test_joint_fitted_parameters().hawkes_fitted_parameters,
+        &fitted_parameters,
+        &baseline_15m_calibration_sample,
+    )
+    .expect("representable selected NIG should build a baseline vector");
+
+    let decoded_search_point =
+        parameter_vector_to_nig_search_point(&baseline_parameter_vector, &active_parameter_layout);
+
+    let decoded_nig =
+        nig_configuration_from_search_point(&baseline_15m_calibration_sample, decoded_search_point)
+            .expect("baseline vector NIG block should decode");
+
+    assert_eq!(decoded_nig, selected_nig);
+}
+
+#[test]
+fn joint_refinement_nig_bounds_include_selected_return_nig_outside_theoretical_range() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+
+    let (theoretical_lower_bounds, theoretical_upper_bounds) =
+        nig_search_bounds_for_calibration_sample(&baseline_15m_calibration_sample, 128);
+
+    let selected_search_point = NigShapeSearchPoint {
+        log_alpha: theoretical_lower_bounds[0] - 0.25,
+        buy_skew_coordinate: 0.5 * (theoretical_lower_bounds[1] + theoretical_upper_bounds[1]),
+        sell_relative_coordinate: 0.5 * (theoretical_lower_bounds[2] + theoretical_upper_bounds[2]),
+        log_delta_offset: theoretical_upper_bounds[3] + 0.25,
+    };
+
+    let selected_nig = nig_configuration_from_search_point(
+        &baseline_15m_calibration_sample,
+        selected_search_point,
+    )
+    .expect("selected NIG should decode from widened-search test point");
+
+    let mut fitted_parameters =
+        build_test_joint_fitted_parameters().return_components_fitted_parameters;
+
+    fitted_parameters.nig_shared_plus_shift_configuration = selected_nig;
+
+    let baseline_parameter_vector = build_baseline_parameter_vector(
+        &active_parameter_layout,
+        &build_test_joint_fitted_parameters().hawkes_fitted_parameters,
+        &fitted_parameters,
+        &baseline_15m_calibration_sample,
+    )
+    .expect("representable selected NIG should build a baseline vector");
+
+    let (lower_bounds, upper_bounds) = build_parameter_bounds(
+        &active_parameter_layout,
+        baseline_parameter_vector.as_slice(),
+        &baseline_15m_calibration_sample,
+        selected_nig,
+        &[],
+        &build_test_observed_data(),
+        1.0,
+        &build_test_solver_settings(1),
+    )
+    .expect("bounds should include selected return-stage NIG");
+
+    for parameter_index in &active_parameter_layout.nig_block {
+        assert!(
+            baseline_parameter_vector[*parameter_index] >= lower_bounds[*parameter_index]
+                && baseline_parameter_vector[*parameter_index] <= upper_bounds[*parameter_index]
+        );
+    }
+
+    assert!(lower_bounds[active_parameter_layout.nig_block[0]] < theoretical_lower_bounds[0]);
+    assert!(upper_bounds[active_parameter_layout.nig_block[3]] > theoretical_upper_bounds[3]);
+}
+
+fn restart_seed_ids(restart_seeds: &[(String, Vec<f64>)]) -> Vec<&str> {
+    restart_seeds
+        .iter()
+        .map(|(restart_id, _)| restart_id.as_str())
+        .collect()
+}
+
+fn restart_seed_by_id<'a>(
+    restart_seeds: &'a [(String, Vec<f64>)],
+    expected_restart_id: &str,
+) -> &'a [f64] {
+    restart_seeds
+        .iter()
+        .find(|(restart_id, _)| restart_id == expected_restart_id)
+        .map(|(_, restart_seed)| restart_seed.as_slice())
+        .expect("expected restart seed should be present")
+}
+
+#[test]
 fn joint_refinement_restart_seed_generation_is_deterministic() {
     let active_parameter_layout = build_test_active_parameter_layout();
 
@@ -455,10 +662,16 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
 
     assert_eq!(first_restart_seeds, second_restart_seeds);
     assert_eq!(first_restart_seeds.len(), 8);
-    assert_eq!(first_restart_seeds[0].0, "baseline");
-    assert_eq!(first_restart_seeds[1].0, "activity_aligned");
-    assert_eq!(first_restart_seeds[2].0, "midpoint");
-    assert_eq!(first_restart_seeds[3].0, "halton_01");
+    assert_eq!(first_restart_seeds[0].0, "incumbent_local_search");
+
+    let restart_seed_ids = restart_seed_ids(first_restart_seeds.as_slice());
+    assert!(restart_seed_ids.contains(&"activity_aligned"));
+    assert!(restart_seed_ids.contains(&"midpoint"));
+    assert!(
+        restart_seed_ids
+            .iter()
+            .any(|restart_id| restart_id.starts_with("halton_"))
+    );
 }
 
 #[test]
@@ -496,23 +709,30 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
     let tick_realized_variance_delta_shift = 0.4f64.ln();
 
     assert_eq!(restart_seeds.len(), 8);
-    assert_eq!(restart_seeds[2].0, "return_scale_mean_absolute_return_15m");
+    let mean_absolute_return_seed = restart_seed_by_id(
+        restart_seeds.as_slice(),
+        "return_scale_mean_absolute_return_15m",
+    );
     assert_eq!(
-        restart_seeds[2].1[log_delta_offset_index],
+        mean_absolute_return_seed[log_delta_offset_index],
         mean_absolute_return_delta_shift
     );
-    assert_eq!(
-        restart_seeds[3].0,
-        "return_scale_mean_absolute_return_15m_activity_aligned"
+    let mean_absolute_return_activity_seed = restart_seed_by_id(
+        restart_seeds.as_slice(),
+        "return_scale_mean_absolute_return_15m_activity_aligned",
     );
     assert_eq!(
-        restart_seeds[3].1[log_delta_offset_index],
+        mean_absolute_return_activity_seed[log_delta_offset_index],
         mean_absolute_return_delta_shift
     );
-    assert_eq!(restart_seeds[3].1[log_lambda_index], 0.25);
-    assert_eq!(restart_seeds[4].0, "return_scale_tick_realized_variance");
+    assert_eq!(mean_absolute_return_activity_seed[log_lambda_index], 0.25);
+
+    let tick_realized_variance_seed = restart_seed_by_id(
+        restart_seeds.as_slice(),
+        "return_scale_tick_realized_variance",
+    );
     assert_eq!(
-        restart_seeds[4].1[log_delta_offset_index],
+        tick_realized_variance_seed[log_delta_offset_index],
         tick_realized_variance_delta_shift
     );
 }
@@ -548,8 +768,9 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
         });
 
     assert_eq!(restart_seeds.len(), 5);
-    assert_eq!(restart_seeds[3].0, "halton_03");
-    assert_eq!(restart_seeds[4].0, "halton_06");
+    let restart_seed_ids = restart_seed_ids(restart_seeds.as_slice());
+    assert!(restart_seed_ids.contains(&"halton_03"));
+    assert!(restart_seed_ids.contains(&"halton_06"));
     assert_eq!(score_call_count, 6);
 }
 
@@ -652,85 +873,90 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         ),
     ];
 
-    assert_eq!(restart_seeds[3].0, "nig_basin_skew_heavy");
-    assert_eq!(restart_seeds[4].0, "nig_basin_skew_heavy_activity_aligned");
+    let nig_basin_seed = restart_seed_by_id(restart_seeds.as_slice(), "nig_basin_skew_heavy");
+    let nig_basin_activity_seed = restart_seed_by_id(
+        restart_seeds.as_slice(),
+        "nig_basin_skew_heavy_activity_aligned",
+    );
     assert_eq!(
-        restart_seeds[3].1[active_parameter_layout.nig_block[0]],
+        nig_basin_seed[active_parameter_layout.nig_block[0]],
         clamped_projected_coordinates[0]
     );
     assert_eq!(
-        restart_seeds[3].1[active_parameter_layout.nig_block[1]],
+        nig_basin_seed[active_parameter_layout.nig_block[1]],
         clamped_projected_coordinates[1]
     );
     assert_eq!(
-        restart_seeds[3].1[active_parameter_layout.nig_block[2]],
+        nig_basin_seed[active_parameter_layout.nig_block[2]],
         clamped_projected_coordinates[2]
     );
     assert_eq!(
-        restart_seeds[3].1[active_parameter_layout.nig_block[3]],
+        nig_basin_seed[active_parameter_layout.nig_block[3]],
         clamped_projected_coordinates[3]
     );
     assert_eq!(
-        restart_seeds[4].1[active_parameter_layout.log_lambda_scale_index],
+        nig_basin_activity_seed[active_parameter_layout.log_lambda_scale_index],
         0.25
     );
     assert_eq!(
-        restart_seeds[4].1[active_parameter_layout
+        nig_basin_activity_seed[active_parameter_layout
             .known_activity_scale_index
             .expect("known activity scale should be present")],
         0.25
     );
     assert_eq!(
-        restart_seeds[4].1[active_parameter_layout
+        nig_basin_activity_seed[active_parameter_layout
             .surprise_activity_scale_index
             .expect("surprise activity scale should be present")],
         0.25
     );
     assert_eq!(
-        restart_seeds[4].1[active_parameter_layout
+        nig_basin_activity_seed[active_parameter_layout
             .surprise_baseline_scale_index
             .expect("surprise baseline scale should be present")],
         0.25
     );
-    assert_eq!(restart_seeds[5].0, "nig_alpha_delta_skew_heavy");
+
+    let nig_alpha_delta_seed =
+        restart_seed_by_id(restart_seeds.as_slice(), "nig_alpha_delta_skew_heavy");
+    let nig_alpha_delta_activity_seed = restart_seed_by_id(
+        restart_seeds.as_slice(),
+        "nig_alpha_delta_skew_heavy_activity_aligned",
+    );
     assert_eq!(
-        restart_seeds[5].1[active_parameter_layout.nig_block[0]],
+        nig_alpha_delta_seed[active_parameter_layout.nig_block[0]],
         clamped_projected_coordinates[0]
     );
     assert_eq!(
-        restart_seeds[5].1[active_parameter_layout.nig_block[1]],
+        nig_alpha_delta_seed[active_parameter_layout.nig_block[1]],
         baseline_parameter_vector[active_parameter_layout.nig_block[1]]
     );
     assert_eq!(
-        restart_seeds[5].1[active_parameter_layout.nig_block[2]],
+        nig_alpha_delta_seed[active_parameter_layout.nig_block[2]],
         baseline_parameter_vector[active_parameter_layout.nig_block[2]]
     );
     assert_eq!(
-        restart_seeds[5].1[active_parameter_layout.nig_block[3]],
+        nig_alpha_delta_seed[active_parameter_layout.nig_block[3]],
         clamped_projected_coordinates[3]
     );
     assert_eq!(
-        restart_seeds[6].0,
-        "nig_alpha_delta_skew_heavy_activity_aligned"
-    );
-    assert_eq!(
-        restart_seeds[6].1[active_parameter_layout.log_lambda_scale_index],
+        nig_alpha_delta_activity_seed[active_parameter_layout.log_lambda_scale_index],
         0.25
     );
     assert_eq!(
-        restart_seeds[6].1[active_parameter_layout
+        nig_alpha_delta_activity_seed[active_parameter_layout
             .known_activity_scale_index
             .expect("known activity scale should be present")],
         0.25
     );
     assert_eq!(
-        restart_seeds[6].1[active_parameter_layout
+        nig_alpha_delta_activity_seed[active_parameter_layout
             .surprise_activity_scale_index
             .expect("surprise activity scale should be present")],
         0.25
     );
     assert_eq!(
-        restart_seeds[6].1[active_parameter_layout
+        nig_alpha_delta_activity_seed[active_parameter_layout
             .surprise_baseline_scale_index
             .expect("surprise baseline scale should be present")],
         0.25
@@ -905,7 +1131,7 @@ fn joint_primary_metrics_include_direct_tick_distribution_terms() {
 
     let primary_metrics = joint_primary_metrics_from_breakdown(&breakdown);
 
-    assert_eq!(primary_metrics.len(), 12);
+    assert_eq!(primary_metrics.len(), 11);
     assert_eq!(primary_metrics[3], 1.7);
     assert_eq!(primary_metrics[5], 1.9);
 }
@@ -986,28 +1212,10 @@ fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
     );
 
     let selected_restart_outcomes = vec![&admissible_restart, &fallback_restart];
-    let mut coarse_consistency_by_restart_id = BTreeMap::new();
-    coarse_consistency_by_restart_id.insert(
-        "admissible_restart".to_string(),
-        JointRefinementCoarseConsistencySummary {
-            raw_fit: 1.0,
-            normalized_fit: 1.0,
-            admissibility_threshold: 2.0,
-        },
-    );
-    coarse_consistency_by_restart_id.insert(
-        "fallback_restart".to_string(),
-        JointRefinementCoarseConsistencySummary {
-            raw_fit: 1.0,
-            normalized_fit: 1.0,
-            admissibility_threshold: 2.0,
-        },
-    );
 
     let option_frontier = option_refinement_candidate_frontier_from_selected_outcomes(
         selected_restart_outcomes.as_slice(),
         build_test_admissibility_thresholds(),
-        &coarse_consistency_by_restart_id,
     );
 
     let frontier_ids = option_frontier
@@ -1016,46 +1224,6 @@ fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
         .collect::<Vec<_>>();
 
     assert_eq!(frontier_ids, vec!["admissible_restart"]);
-}
-
-#[test]
-fn coarse_consistency_admissibility_is_baseline_relative() {
-    let breakdown = build_test_joint_breakdown(1.0, 1.0, 1.0);
-
-    let metric_count = 24;
-
-    let admissibility_threshold = admissibility_threshold_from_sample_count(metric_count);
-
-    let admissible_summary = JointRefinementCoarseConsistencySummary {
-        raw_fit: 1.0,
-        normalized_fit: admissibility_threshold,
-        admissibility_threshold,
-    };
-
-    let inadmissible_summary = JointRefinementCoarseConsistencySummary {
-        raw_fit: 1.0,
-        normalized_fit: admissibility_threshold + 1.0e-6,
-        admissibility_threshold,
-    };
-
-    assert!(joint_raw_metrics_are_admissible(
-        &build_test_raw_admissibility_metrics(&breakdown),
-        build_test_admissibility_thresholds(),
-        Some(&admissible_summary),
-        true,
-    ));
-    assert!(!joint_raw_metrics_are_admissible(
-        &build_test_raw_admissibility_metrics(&breakdown),
-        build_test_admissibility_thresholds(),
-        Some(&inadmissible_summary),
-        true,
-    ));
-    assert!(!joint_raw_metrics_are_admissible(
-        &build_test_raw_admissibility_metrics(&breakdown),
-        build_test_admissibility_thresholds(),
-        None,
-        true,
-    ));
 }
 
 #[test]
@@ -1136,21 +1304,17 @@ fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
 fn selected_restart_validation_rejects_inadmissible_candidate() {
     let restart_outcome = build_test_restart_outcome(
         "joint_refinement_midpoint",
-        build_test_joint_breakdown(1.0, 1.0, 0.8),
+        JointRefinementStageObjectiveBreakdown {
+            activity_level_fit: 3.0,
+            ..build_test_joint_breakdown(1.0, 1.0, 0.8)
+        },
     );
-
-    let coarse_consistency_summary = JointRefinementCoarseConsistencySummary {
-        raw_fit: 1.0,
-        normalized_fit: 3.0,
-        admissibility_threshold: 2.0,
-    };
 
     let failure = ensure_valid_selected_restart_outcome(
         &restart_outcome,
         0,
         0,
         build_test_admissibility_thresholds(),
-        Some(&coarse_consistency_summary),
     )
     .expect_err("inadmissible selected restart should fail validation");
 

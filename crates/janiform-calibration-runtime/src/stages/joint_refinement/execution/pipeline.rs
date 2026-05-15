@@ -42,8 +42,9 @@ use super::super::objective::evaluate_joint_fitted_parameters;
 use super::super::setup::{
     RestartSeedsBuildInput, build_active_parameter_layout, build_baseline_parameter_vector,
     build_parameter_bounds, build_restart_seeds, joint_refinement_final_simulation_seed_count,
-    observed_activity_log_shift, selected_hawkes_observed_open_event_rate_per_hour,
-    selected_return_components_candidate, stage_input_to_activity_input,
+    observed_activity_log_shift, parameter_vector_to_fitted_parameters,
+    selected_hawkes_observed_open_event_rate_per_hour, selected_return_components_candidate,
+    stage_input_to_activity_input,
 };
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::{
@@ -58,15 +59,16 @@ use super::{
     build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
     build_option_pricing_context, build_summary_simulation_session_context,
     desired_joint_refinement_option_refinement_candidate_count,
-    desired_joint_refinement_restart_candidate_budget, joint_refinement_admissibility_thresholds,
-    joint_refinement_budget_schedule, joint_restart_outcome_is_admissible, optimize_restart_seeds,
+    desired_joint_refinement_restart_candidate_budget, elapsed_millis,
+    joint_refinement_admissibility_thresholds, joint_refinement_budget_schedule,
+    joint_restart_outcome_is_admissible, optimize_restart_seeds,
     option_pricing_context_fingerprint, ordered_parameter_bits,
     resolve_option_surface_tier_pricing_artifact, run_option_refinement,
     select_restart_outcomes_with_lazy_coarse_consistency,
     simulation_infrastructure_failure_message, with_joint_refinement_thread_pool,
 };
 
-const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_and_direct_interval_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1";
+const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_then_pareto_then_lexicographic_tie_break_with_direct_interval_coarse_consistency_diagnostics.v1";
 
 struct ResolvedStagePayloads<'a> {
     stage_solver_settings: CalibrationOptimizerSettings,
@@ -120,8 +122,6 @@ struct RestartSearchArtifacts {
         Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
-    selection_coarse_consistency_by_restart_id:
-        BTreeMap<String, super::JointRefinementCoarseConsistencySummary>,
     restart_optimization_wall_clock_millis: u64,
     coarse_consistency_wall_clock_millis: u64,
 }
@@ -136,8 +136,6 @@ struct RestartSelectionArtifacts {
     option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
-    selection_coarse_consistency_by_restart_id:
-        BTreeMap<String, super::JointRefinementCoarseConsistencySummary>,
     coarse_consistency_wall_clock_millis: u64,
 }
 
@@ -179,6 +177,17 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
                 error_message:
                     "joint refinement option_refinement_candidate_count_override must be greater than zero"
+                        .to_string(),
+            },
+        );
+    }
+
+    if stage_input.option_refinement_wall_clock_budget_millis == Some(0) {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint refinement option_refinement_wall_clock_budget_millis must be greater than zero"
                         .to_string(),
             },
         );
@@ -423,6 +432,7 @@ fn prepare_bootstrap_context(
         stage_input,
         resolved_stage_payloads,
         &baseline_15m_calibration_sample,
+        &observed_data,
     )?;
 
     let baseline_return_components_fitted_parameters =
@@ -452,6 +462,11 @@ fn prepare_bootstrap_context(
         runtime_materialization,
         baseline_return_components_fitted_parameters,
     })?;
+
+    validate_baseline_parameter_round_trip(
+        baseline_parameter_vector.as_slice(),
+        &bootstrap_context,
+    )?;
 
     Ok(PreparedBootstrapContext {
         bootstrap_context,
@@ -501,6 +516,7 @@ fn prepare_parameterization(
     stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     baseline_15m_calibration_sample: &crate::stages::return_components::ReturnComponentsStageContinuousReturnCalibrationSample,
+    observed_data: &super::JointRefinementObservedData,
 ) -> Result<PreparedParameterization, JointRefinementStageExecutionFailure> {
     let active_parameter_layout = build_active_parameter_layout(
         &resolved_stage_payloads
@@ -515,13 +531,34 @@ fn prepare_parameterization(
             .return_components_payload
             .fitted_parameters,
         baseline_15m_calibration_sample,
-    );
+    )
+    .map_err(|error_message| {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+    })?;
 
     let (mut lower_bounds, mut upper_bounds) = build_parameter_bounds(
         &active_parameter_layout,
         baseline_parameter_vector.as_slice(),
         baseline_15m_calibration_sample,
-    );
+        resolved_stage_payloads
+            .return_components_payload
+            .fitted_parameters
+            .nig_shared_plus_shift_configuration,
+        selected_return_components_candidate(resolved_stage_payloads.return_components_payload)
+            .map(|candidate| {
+                candidate
+                    .continuous_distribution_fit_breakdown
+                    .optimizer_basin_diagnostics
+                    .as_slice()
+            })
+            .unwrap_or(&[]),
+        observed_data,
+        resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
+        &resolved_stage_payloads.stage_solver_settings,
+    )
+    .map_err(|error_message| {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+    })?;
 
     let option_pricing_refinement_enabled = false;
 
@@ -613,6 +650,55 @@ fn build_bootstrap_context(
     })
 }
 
+fn validate_baseline_parameter_round_trip(
+    baseline_parameter_vector: &[f64],
+    bootstrap_context: &JointRefinementContext,
+) -> Result<(), JointRefinementStageExecutionFailure> {
+    let decoded_fitted_parameters =
+        parameter_vector_to_fitted_parameters(baseline_parameter_vector, bootstrap_context)
+            .ok_or_else(|| {
+                JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message:
+                "joint refinement baseline parameter vector failed to decode into fitted parameters"
+                    .to_string(),
+        }
+            })?;
+
+    let expected_nig = bootstrap_context
+        .baseline_return_components_fitted_parameters
+        .nig_shared_plus_shift_configuration;
+    let decoded_nig = decoded_fitted_parameters
+        .return_components_fitted_parameters
+        .nig_shared_plus_shift_configuration;
+
+    if decoded_nig == expected_nig {
+        return Ok(());
+    }
+
+    Err(
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message: format!(
+                "joint refinement baseline NIG does not round-trip through the joint parameter vector expected={} decoded={}",
+                format_nig_configuration(expected_nig),
+                format_nig_configuration(decoded_nig),
+            ),
+        },
+    )
+}
+
+fn format_nig_configuration(
+    configuration: janiform_model_kernels::nig::NigSharedPlusShiftConfiguration,
+) -> String {
+    format!(
+        "alpha:{} beta_0:{} delta:{} mu:{} delta_beta:{}",
+        configuration.alpha,
+        configuration.beta_0,
+        configuration.delta,
+        configuration.mu,
+        configuration.delta_beta,
+    )
+}
+
 struct BootstrapContextBuildInput<'a> {
     run_spec: &'a CalibrationRunSpec,
     calendar_registry: &'a ExchangeCalendarRegistry,
@@ -638,8 +724,7 @@ fn materialize_runtime_state(
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: &JointRefinementStageExecutionInput,
     observed_data: &super::JointRefinementObservedData,
-    return_components_fitted_parameters:
-        &janiform_calibration_artifacts::ReturnComponentsStageFittedParameters,
+    return_components_fitted_parameters: &ReturnComponentsStageFittedParameters,
 ) -> Result<RuntimeMaterialization, JointRefinementStageExecutionFailure> {
     let runtime_range = runtime_hourly_seasonality_range(observed_data)?;
 
@@ -734,7 +819,7 @@ fn runtime_hourly_seasonality_range(
 }
 
 fn freeze_hawkes_and_coupling_bounds_for_option_pricing(
-    active_parameter_layout: &super::JointRefinementActiveParameterLayout,
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
     baseline_parameter_vector: &[f64],
     lower_bounds: &mut [f64],
     upper_bounds: &mut [f64],
@@ -840,7 +925,6 @@ fn establish_baseline_evaluation(
                 bootstrap_context,
                 &normalized_baseline_final_evaluation.fitted_parameters,
                 Some(baseline_parameter_bits.as_slice()),
-                None,
                 Some(
                     super::coarse_consistency::JointRefinementCoarseConsistencyProgress {
                         sender: progress_sender,
@@ -926,7 +1010,6 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
     valid_restart_count: usize,
     admissible_restart_count: usize,
     thresholds: super::selection::JointRefinementAdmissibilityThresholds,
-    coarse_consistency_summary: Option<&super::JointRefinementCoarseConsistencySummary>,
 ) -> Result<(), JointRefinementStageExecutionFailure> {
     if best_restart.local_evaluation.invalid_reason.is_some()
         || best_restart.final_evaluation.invalid_reason.is_some()
@@ -953,24 +1036,9 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
         );
     }
 
-    if joint_restart_outcome_is_admissible(
-        best_restart,
-        thresholds,
-        coarse_consistency_summary,
-        true,
-    ) {
+    if joint_restart_outcome_is_admissible(best_restart, thresholds) {
         return Ok(());
     }
-
-    let coarse_consistency_description = coarse_consistency_summary.map_or_else(
-        || "missing".to_string(),
-        |summary| {
-            format!(
-                "normalized_fit={} admissibility_threshold={}",
-                summary.normalized_fit, summary.admissibility_threshold,
-            )
-        },
-    );
 
     let blocking_terms = blocking_admissibility_terms(
         &best_restart.final_evaluation.raw_admissibility_metrics,
@@ -980,11 +1048,10 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
     Err(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
             error_message: format!(
-                "joint refinement could not identify an admissible candidate after restart search: selected_restart={} valid_restart_count={} admissible_restart_count={} coarse_consistency={} weighted_objective={} blocking_terms={}",
+                "joint refinement could not identify an admissible candidate after restart search: selected_restart={} valid_restart_count={} admissible_restart_count={} weighted_objective={} blocking_terms={}",
                 best_restart.restart_id,
                 valid_restart_count,
                 admissible_restart_count,
-                coarse_consistency_description,
                 best_restart.final_evaluation.breakdown.weighted_objective,
                 blocking_terms,
             ),
@@ -1051,11 +1118,6 @@ fn blocking_admissibility_terms(
             "rv_activity_coupling_fit",
             raw_metrics.rv_activity_coupling_fit,
             thresholds.rv_activity_coupling_fit,
-        ),
-        (
-            "price_span_sanity_fit",
-            raw_metrics.price_span_sanity_fit,
-            thresholds.price_span_sanity_fit,
         ),
     ]
     .into_iter()
@@ -1175,8 +1237,6 @@ fn run_restart_search(
         selected_option_audit_tier_pricing_artifact: None,
         coarse_consistency_artifacts_by_restart_id: restart_selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
-        selection_coarse_consistency_by_restart_id: restart_selection_artifacts
-            .selection_coarse_consistency_by_restart_id,
         restart_optimization_wall_clock_millis,
         coarse_consistency_wall_clock_millis: restart_selection_artifacts
             .coarse_consistency_wall_clock_millis,
@@ -1250,44 +1310,22 @@ fn count_valid_restart_outcomes(restart_outcomes: &[JointRefinementRestartOutcom
 fn count_admissible_restart_outcomes(
     restart_outcomes: &[&JointRefinementRestartOutcome],
     thresholds: super::selection::JointRefinementAdmissibilityThresholds,
-    coarse_consistency_by_restart_id: &BTreeMap<
-        String,
-        super::JointRefinementCoarseConsistencySummary,
-    >,
 ) -> usize {
     restart_outcomes
         .iter()
         .copied()
-        .filter(|restart_outcome| {
-            joint_restart_outcome_is_admissible(
-                restart_outcome,
-                thresholds,
-                coarse_consistency_by_restart_id.get(restart_outcome.restart_id.as_str()),
-                true,
-            )
-        })
+        .filter(|restart_outcome| joint_restart_outcome_is_admissible(restart_outcome, thresholds))
         .count()
 }
 
 fn filter_admissible_restart_outcomes<'a>(
     restart_outcomes: &[&'a JointRefinementRestartOutcome],
     thresholds: super::selection::JointRefinementAdmissibilityThresholds,
-    coarse_consistency_by_restart_id: &BTreeMap<
-        String,
-        super::JointRefinementCoarseConsistencySummary,
-    >,
 ) -> Vec<&'a JointRefinementRestartOutcome> {
     restart_outcomes
         .iter()
         .copied()
-        .filter(|restart_outcome| {
-            joint_restart_outcome_is_admissible(
-                restart_outcome,
-                thresholds,
-                coarse_consistency_by_restart_id.get(restart_outcome.restart_id.as_str()),
-                true,
-            )
-        })
+        .filter(|restart_outcome| joint_restart_outcome_is_admissible(restart_outcome, thresholds))
         .collect()
 }
 
@@ -1328,6 +1366,7 @@ fn run_option_refinement_if_enabled(
         restart_search_artifacts
             .option_refinement_candidate_frontier
             .as_slice(),
+        stage_input.option_refinement_wall_clock_budget_millis,
         option_context_fingerprint.as_str(),
         progress_sender,
         Some(resume_store),
@@ -1553,12 +1592,6 @@ fn select_restart_outcome(
 
     emit_restart_candidate_screening_progress(progress_sender, 3, 4, "select best restart");
 
-    let selection_coarse_consistency_by_restart_id = selection_artifacts
-        .coarse_consistency_artifacts_by_restart_id
-        .iter()
-        .map(|(restart_id, artifacts)| (restart_id.clone(), artifacts.summary))
-        .collect::<BTreeMap<_, _>>();
-
     let admissibility_thresholds =
         joint_refinement_admissibility_thresholds(&prepared_bootstrap.bootstrap_context);
 
@@ -1577,7 +1610,6 @@ fn select_restart_outcome(
         option_refinement_candidate_frontier_from_selected_outcomes(
             selection_artifacts.selected_restart_outcomes.as_slice(),
             admissibility_thresholds,
-            &selection_coarse_consistency_by_restart_id,
         );
 
     let best_restart = option_refinement_candidate_frontier
@@ -1591,10 +1623,8 @@ fn select_restart_outcome(
         count_admissible_restart_outcomes(
             valid_selectable_restart_outcome_refs.as_slice(),
             admissibility_thresholds,
-            &selection_coarse_consistency_by_restart_id,
         ),
         admissibility_thresholds,
-        selection_coarse_consistency_by_restart_id.get(diagnostic_best_restart.restart_id.as_str()),
     )?;
 
     resume_store.record_restart_selection(PersistedRestartSelectionArtifacts {
@@ -1608,8 +1638,6 @@ fn select_restart_outcome(
         coarse_consistency_artifacts_by_restart_id: selection_artifacts
             .coarse_consistency_artifacts_by_restart_id
             .clone(),
-        selection_coarse_consistency_by_restart_id: selection_coarse_consistency_by_restart_id
-            .clone(),
         coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
     });
 
@@ -1620,7 +1648,6 @@ fn select_restart_outcome(
         option_refinement_candidate_frontier,
         coarse_consistency_artifacts_by_restart_id: selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
-        selection_coarse_consistency_by_restart_id,
         coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
     })
 }
@@ -1628,19 +1655,11 @@ fn select_restart_outcome(
 pub(crate) fn option_refinement_candidate_frontier_from_selected_outcomes(
     selected_restart_outcomes: &[&JointRefinementRestartOutcome],
     thresholds: super::selection::JointRefinementAdmissibilityThresholds,
-    coarse_consistency_by_restart_id: &BTreeMap<
-        String,
-        super::JointRefinementCoarseConsistencySummary,
-    >,
 ) -> Vec<JointRefinementRestartOutcome> {
-    filter_admissible_restart_outcomes(
-        selected_restart_outcomes,
-        thresholds,
-        coarse_consistency_by_restart_id,
-    )
-    .into_iter()
-    .cloned()
-    .collect()
+    filter_admissible_restart_outcomes(selected_restart_outcomes, thresholds)
+        .into_iter()
+        .cloned()
+        .collect()
 }
 
 fn ensure_simulation_infrastructure_available(
@@ -1687,10 +1706,6 @@ fn assemble_final_stage_outputs(
     let candidate_frontier = build_joint_candidate_frontier_diagnostics(
         selectable_restart_outcomes.as_slice(),
         bootstrap_context,
-        &restart_search_artifacts.selection_coarse_consistency_by_restart_id,
-        baseline_evaluation_artifacts
-            .baseline_coarse_consistency_artifacts
-            .is_some(),
     );
 
     let candidate_frontier_wall_clock_millis = elapsed_millis(candidate_frontier_started_at);
@@ -1996,10 +2011,6 @@ fn build_execution_metadata(
     }
 }
 
-fn elapsed_millis(started_at: Instant) -> u64 {
-    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
-}
-
 fn emit_final_assembly_progress(
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     completed_units: usize,
@@ -2073,6 +2084,5 @@ fn unit_baseline_buckets() -> JointRefinementBaselineBuckets {
         activity_shape_fit: 1.0,
         activity_level_fit: 1.0,
         rv_activity_coupling_fit: 1.0,
-        price_span_sanity_fit: 1.0,
     }
 }

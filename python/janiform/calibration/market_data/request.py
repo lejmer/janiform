@@ -67,6 +67,7 @@ class MarketDataCalibrationRequest(ContractModel):
     )
     dynamics_search_restart_candidate_budget: Optional[int] = None
     joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
+    joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None
     joint_refinement_audit_option_pricing_enabled: bool = False
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
@@ -154,6 +155,15 @@ class MarketDataCalibrationRequest(ContractModel):
         ):
             raise calibration_error(
                 "joint_refinement_option_refinement_candidate_count_override",
+                "must be greater than zero when provided",
+            )
+
+        if (
+            self.joint_refinement_option_refinement_wall_clock_budget_millis is not None
+            and self.joint_refinement_option_refinement_wall_clock_budget_millis <= 0
+        ):
+            raise calibration_error(
+                "joint_refinement_option_refinement_wall_clock_budget_millis",
                 "must be greater than zero when provided",
             )
 
@@ -326,6 +336,17 @@ class MarketDataCalibrationRequest(ContractModel):
                 )
                 if "joint_refinement_option_refinement_candidate_count_override" in raw_payload
                 and raw_payload["joint_refinement_option_refinement_candidate_count_override"] is not None
+                else None
+            ),
+            joint_refinement_option_refinement_wall_clock_budget_millis=(
+                require_positive_integer(
+                    raw_payload,
+                    "joint_refinement_option_refinement_wall_clock_budget_millis",
+                    "joint_refinement_option_refinement_wall_clock_budget_millis",
+                    calibration_error,
+                )
+                if "joint_refinement_option_refinement_wall_clock_budget_millis" in raw_payload
+                and raw_payload["joint_refinement_option_refinement_wall_clock_budget_millis"] is not None
                 else None
             ),
             joint_refinement_audit_option_pricing_enabled=(

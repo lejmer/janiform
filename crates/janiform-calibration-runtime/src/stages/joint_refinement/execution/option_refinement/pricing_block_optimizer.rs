@@ -1,0 +1,287 @@
+use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
+
+use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
+use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
+use crate::stages::return_components::{
+    NigSharedPlusShiftConfigurationSearchPointMapping, nig_configuration_search_point_mapping,
+};
+
+use super::super::super::setup::{
+    parameter_vector_to_fitted_parameters, parameter_vector_to_nig_search_point,
+};
+use super::super::{JointRefinementContext, JointRefinementRestartOutcome, elapsed_millis};
+use super::{
+    OptionRefinementProgressContext, SearchTierCandidate, option_pricing_block_evaluation_budget,
+    option_refinement_effective_search_sample_count, option_score_resolution,
+    pricing_block_search_coordinate_count, scored_pricing_vector,
+};
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct OptionRefinementCandidateWallClockBudget {
+    pub(super) started_at: std::time::Instant,
+    pub(super) budget_millis: u64,
+    pub(super) reference_oracle_call_millis: u64,
+}
+
+impl OptionRefinementCandidateWallClockBudget {
+    fn can_start_full_oracle_call(self) -> bool {
+        let elapsed_millis = elapsed_millis(self.started_at);
+
+        elapsed_millis.saturating_add(self.reference_oracle_call_millis) <= self.budget_millis
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PricingBlockGradientProposal {
+    parameter_vector: Vec<f64>,
+    predicted_score: f64,
+}
+
+pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
+    refinement_context: &JointRefinementContext,
+    dynamics_candidate: &JointRefinementRestartOutcome,
+    initial_candidate: SearchTierCandidate,
+    source_dynamics_parameter_bits: &[u64],
+    theta_warm_start_state: &mut SpectralThetaWarmStartState,
+    progress_context: Option<&OptionRefinementProgressContext<'_>>,
+    wall_clock_budget: OptionRefinementCandidateWallClockBudget,
+) -> Result<SearchTierCandidate, String> {
+    let score_resolution = option_score_resolution(
+        initial_candidate.search_tier_score,
+        option_refinement_effective_search_sample_count(&initial_candidate),
+    );
+    let proposals = pricing_block_gradient_proposals(refinement_context, &initial_candidate)?;
+
+    let mut best_candidate = initial_candidate;
+    let mut budget_limited = false;
+
+    for proposal in proposals {
+        if progress_context.is_some_and(|context| {
+            context.current_evaluation_count() >= context.total_evaluation_budget()
+        }) {
+            budget_limited = true;
+            break;
+        }
+
+        if !wall_clock_budget.can_start_full_oracle_call() {
+            budget_limited = true;
+            break;
+        }
+
+        if proposal.predicted_score >= best_candidate.search_tier_score {
+            break;
+        }
+
+        let evaluated_candidate = scored_pricing_vector(
+            refinement_context,
+            dynamics_candidate,
+            proposal.parameter_vector.as_slice(),
+            source_dynamics_parameter_bits,
+            JointRefinementOptionSurfaceTierKind::Search,
+            false,
+            "option_pricing_block_refined",
+            Some(theta_warm_start_state),
+            progress_context,
+        )?;
+
+        if evaluated_candidate.search_tier_score < best_candidate.search_tier_score {
+            let validated_improvement =
+                best_candidate.search_tier_score - evaluated_candidate.search_tier_score;
+            best_candidate = evaluated_candidate;
+
+            if validated_improvement <= score_resolution {
+                best_candidate.restart_outcome.stop_reason =
+                    "option_pricing_block_validated_improvement_below_resolution".to_string();
+                break;
+            }
+
+            continue;
+        }
+
+        best_candidate.restart_outcome.stop_reason =
+            "option_pricing_block_reduced_model_prediction_rejected".to_string();
+
+        break;
+    }
+
+    if budget_limited {
+        best_candidate.restart_outcome.stop_reason =
+            "option_pricing_block_budget_limited".to_string();
+    }
+
+    Ok(best_candidate)
+}
+
+fn pricing_block_gradient_proposals(
+    refinement_context: &JointRefinementContext,
+    initial_candidate: &SearchTierCandidate,
+) -> Result<Vec<PricingBlockGradientProposal>, String> {
+    let Some(score_gradient_artifact) = initial_candidate
+        .search_tier_pricing_artifact
+        .score_gradient_artifact
+        .as_ref()
+    else {
+        return Ok(Vec::new());
+    };
+
+    let Some(raw_gradient) = score_gradient_artifact.gradient.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    if raw_gradient.len() != pricing_block_search_coordinate_count() {
+        return Err(
+            "option pricing gradient dimension does not match NIG pricing block".to_string(),
+        );
+    }
+
+    let current_vector = initial_candidate
+        .restart_outcome
+        .parameter_vector
+        .as_slice();
+    let current_search_point = parameter_vector_to_nig_search_point(
+        current_vector,
+        &refinement_context.active_parameter_layout,
+    );
+    let calibration_sample = pricing_block_calibration_sample(current_vector, refinement_context)?;
+    let mapping = nig_configuration_search_point_mapping(&calibration_sample, current_search_point)
+        .ok_or_else(|| "option pricing NIG search-point gradient mapping failed".to_string())?;
+
+    let search_gradient =
+        search_coordinate_gradient_from_raw_nig_gradient(raw_gradient.as_slice(), &mapping);
+    let direction = search_gradient.map(|gradient| -gradient);
+
+    let maximum_step = maximum_bounded_line_step(current_vector, &direction, refinement_context);
+    if maximum_step <= 0.0 || !maximum_step.is_finite() {
+        return Ok(Vec::new());
+    }
+
+    let proposal_count = option_pricing_block_evaluation_budget().saturating_sub(1);
+
+    Ok((0..proposal_count)
+        .filter_map(|step_index| {
+            let step = maximum_step / (1usize << step_index) as f64;
+            pricing_block_gradient_proposal(
+                current_vector,
+                &search_gradient,
+                &direction,
+                step,
+                initial_candidate.search_tier_score,
+                refinement_context,
+            )
+        })
+        .collect())
+}
+
+fn pricing_block_gradient_proposal(
+    current_vector: &[f64],
+    search_gradient: &[f64; 4],
+    direction: &[f64; 4],
+    step: f64,
+    current_score: f64,
+    refinement_context: &JointRefinementContext,
+) -> Option<PricingBlockGradientProposal> {
+    let mut proposal_vector = current_vector.to_vec();
+    let mut predicted_score = current_score;
+
+    for (coordinate_position, parameter_index) in refinement_context
+        .active_parameter_layout
+        .nig_block
+        .iter()
+        .enumerate()
+    {
+        let coordinate_delta = step * direction[coordinate_position];
+        predicted_score += search_gradient[coordinate_position] * coordinate_delta;
+        proposal_vector[*parameter_index] = (current_vector[*parameter_index] + coordinate_delta)
+            .clamp(
+                refinement_context.lower_bounds[*parameter_index],
+                refinement_context.upper_bounds[*parameter_index],
+            );
+    }
+
+    predicted_score
+        .is_finite()
+        .then_some(PricingBlockGradientProposal {
+            parameter_vector: proposal_vector,
+            predicted_score: predicted_score.max(0.0),
+        })
+}
+
+fn pricing_block_calibration_sample(
+    parameter_vector: &[f64],
+    refinement_context: &JointRefinementContext,
+) -> Result<
+    crate::stages::return_components::ReturnComponentsStageContinuousReturnCalibrationSample,
+    String,
+> {
+    let fitted_parameters =
+        parameter_vector_to_fitted_parameters(parameter_vector, refinement_context)
+            .ok_or_else(|| "option pricing parameter vector failed to decode".to_string())?;
+
+    let modeled_open_event_rate_per_hour =
+        crate::stages::hawkes::stationary_open_event_rate_per_hour(
+            &fitted_parameters.hawkes_fitted_parameters,
+        )
+        .ok_or_else(|| "option pricing modeled open event rate is unavailable".to_string())?;
+
+    Ok(
+        build_continuous_calibration_sample_from_aggregated_intervals(
+            refinement_context
+                .observed_data
+                .observed_15m_intervals
+                .as_slice(),
+            modeled_open_event_rate_per_hour,
+            refinement_context
+                .observed_data
+                .observed_open_event_rate_per_hour,
+            refinement_context.observed_data.fallback_sell_share_proxy,
+        ),
+    )
+}
+
+fn search_coordinate_gradient_from_raw_nig_gradient(
+    raw_gradient: &[f64],
+    mapping: &NigSharedPlusShiftConfigurationSearchPointMapping,
+) -> [f64; 4] {
+    std::array::from_fn(|coordinate_index| {
+        raw_gradient[0] * mapping.gradient.alpha_gradient[coordinate_index]
+            + raw_gradient[1] * mapping.gradient.beta_0_gradient[coordinate_index]
+            + raw_gradient[2] * mapping.gradient.delta_gradient[coordinate_index]
+            + raw_gradient[3] * mapping.gradient.delta_beta_gradient[coordinate_index]
+    })
+}
+
+fn maximum_bounded_line_step(
+    current_vector: &[f64],
+    direction: &[f64; 4],
+    refinement_context: &JointRefinementContext,
+) -> f64 {
+    refinement_context
+        .active_parameter_layout
+        .nig_block
+        .iter()
+        .enumerate()
+        .filter_map(|(coordinate_position, parameter_index)| {
+            let direction_value = direction[coordinate_position];
+
+            if direction_value > 0.0 {
+                return Some(
+                    (refinement_context.upper_bounds[*parameter_index]
+                        - current_vector[*parameter_index])
+                        / direction_value,
+                );
+            }
+
+            if direction_value < 0.0 {
+                return Some(
+                    (refinement_context.lower_bounds[*parameter_index]
+                        - current_vector[*parameter_index])
+                        / direction_value,
+                );
+            }
+
+            None
+        })
+        .filter(|step| step.is_finite() && *step > 0.0)
+        .min_by(f64::total_cmp)
+        .unwrap_or(0.0)
+}

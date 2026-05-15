@@ -1105,7 +1105,6 @@ fn regression_joint_refinement_objective_breakdown() -> JointRefinementStageObje
         activity_shape_fit: 0.0,
         activity_level_fit: 0.0,
         rv_activity_coupling_fit: 0.0,
-        price_span_sanity_fit: 0.0,
         weighted_objective: 0.0,
         hard_constraint_penalty: 0.0,
     }

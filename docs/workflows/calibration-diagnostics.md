@@ -61,6 +61,7 @@ Janiform reports some terms that are useful but easy to misread.
 | Candidate        | One complete fitted model that Janiform considered during calibration.                                       |
 | Baseline         | The starting fit used as a comparison point before final improvement attempts.                               |
 | Objective        | A numeric score used during fitting. Lower is better. It helps Janiform choose between candidates.           |
+| Merit score      | A threshold-normalized optimizer score. Lower is better. A value near `1.0` means threshold-level fit.       |
 | Diagnostic       | A measurement that explains what happened. It may or may not be used directly for final model selection.     |
 | Bucket           | A named group of related fit checks, such as activity level or return scale.                                 |
 | Activity         | How often market events arrive. In tick data, high activity means ticks arrive frequently.                   |
@@ -79,7 +80,7 @@ A score near `0.0` means the simulated behavior is close to the training data fo
 
 Do not read `2.0` as "200 percent wrong" or "two standard deviations." It means that Janiform's normalized distance for that diagnostic is twice the comparison scale used for the objective.
 
-Also avoid reading one number by itself. A useful fit is usually balanced: activity, return size, return shape, and price-path sanity should all be plausible for the intended workflow.
+Also avoid reading one number by itself. A useful fit is usually balanced: activity, return size, return shape, and activity-volatility coupling should all be plausible for the intended workflow.
 
 ## Broad fit areas
 
@@ -98,11 +99,10 @@ Also avoid reading one number by itself. A useful fit is usually balanced: activ
 | `intraday_return_level_fit`      | Does return size vary across the day in a similar way?                                 |
 | `rv_activity_coupling_fit`       | Does higher activity tend to come with higher price variation in the same way?         |
 | `aggregated_likelihood_fit`      | Does the fitted return distribution explain the observed returns reasonably well?      |
-| `price_span_sanity_fit`          | Do simulated paths cover a plausible total price range?                                |
 
 `weighted_objective` is the single summary score Janiform can use to compare candidates. It is useful for ranking candidate fits, but it is not a standalone quality grade. A model with a slightly worse summary score may still be easier to trust if its weak areas are less important for your use case.
 
-`hard_constraint_penalty` means a candidate crossed a rule that Janiform treats as a serious fit problem. A constraint is a required condition for a usable fit, not just another soft preference. If this value is nonzero, inspect the weak buckets before trusting the model.
+`hard_constraint_penalty` means a candidate crossed a rule that Janiform treats as a serious fit problem. A constraint is a required condition for a usable fit. Non-likelihood fit buckets use sample-size-adjusted admissibility thresholds on their normalized error scales, so a candidate must keep every required statistical bucket inside its admissible range. If this value is nonzero, inspect the weak buckets before trusting the model.
 
 ## Detailed measurements
 
@@ -143,7 +143,6 @@ Common patterns:
 | Return shape                 | The fitted model may miss tails, concentration near zero, or other distribution features.                  |
 | Return asymmetry             | The model may miss directional imbalance between positive and negative moves.                              |
 | Activity-volatility coupling | Active periods may not produce the right amount of price variation. Volatility means how much prices vary. |
-| Price span sanity            | Simulated paths may travel too far or not far enough over the training-window horizon.                     |
 
 A high score is not automatically a bug. It is a pointer. The right response is to inspect the related terms, render the fit report, simulate paths, and run validation for the intended use case.
 
@@ -151,7 +150,7 @@ A high score is not automatically a bug. It is a pointer. The right response is 
 
 During fitting, Janiform tries more than one candidate model. A candidate is one complete set of fitted parameters. This is necessary because high-frequency market models can fit one behavior well while harming another.
 
-For example, one candidate might match activity very well but make returns too large. Another might match return size but lose the daily activity pattern. The selected model should be a balanced fit, not just the candidate with one excellent diagnostic.
+For example, one candidate might match activity very well but make returns too large. Another might match return size but lose the daily activity pattern. The selected model should be a balanced fit.
 
 Janiform therefore considers both the summary score and the shape of the scorecard. This helps avoid selecting a model that looks good only because one number hides an unacceptable weakness elsewhere.
 
@@ -187,11 +186,15 @@ Janiform's underlying simulated price can move by less than one displayed tick. 
 
 If you provide a tick size during fitting, Janiform uses it. Otherwise, Janiform may infer one from the smallest positive same-session price change in the training data. Small moves that do not yet reach a full tick are carried forward, so repeated small moves can eventually become a visible price change.
 
-### Return-scale search restarts
+### Search restarts
 
 A search restart is another starting point for calibration. Restarts are useful when the first starting point might lead to a fit that is locally reasonable but not well balanced.
 
-Return-scale search restarts are starting points that adjust the typical size of returns before trying the final fit again. They are not diagnostic scores. They only help Janiform search for a better balanced model.
+Search restarts are built from the fit residuals Janiform can evaluate before the full simulation pass. Some restarts adjust return scale, some preserve the current activity model while changing return shape, and some combine return-shape changes with activity-level alignment. If the hand-built restart pool is too narrow, Janiform fills the frontier with local quasi-random points around the staged model.
+
+The restart frontier is selected from low-cost screening scores before expensive restart optimization. The screening step keeps candidates that improve different weak areas, but it ranks the worst screening bucket before the summary score so a restart with one clearly poor bucket does not look attractive just because its average score is low.
+
+During restart optimization, terminal progress reports merit scores rather than raw objective terms. `Trial merit` is the most recent block probe, `Accepted merit` is the best accepted score for the active block, and `Final merit` is the completed restart score computed from the final-family threshold-normalized fit buckets. The NIG block uses a cheap likelihood merit so it can search return-shape parameters without running full simulations for every probe. The Hawkes and coupling blocks use the same final-family compressed merit as completed restart reporting at local simulation fidelity.
 
 The report may mention these restarts because they explain how Janiform searched. You usually do not need to tune them when reading a normal fit report.
 

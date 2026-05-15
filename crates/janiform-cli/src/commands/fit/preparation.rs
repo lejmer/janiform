@@ -163,6 +163,7 @@ pub(crate) fn prepare_fit_preview(
             .overrides
             .dynamics_search_restart_candidate_budget,
         joint_refinement_option_refinement_candidate_count_override: None,
+        joint_refinement_option_refinement_wall_clock_budget_millis: None,
         joint_refinement_audit_option_pricing_enabled: false,
         known_news_inputs: prepared_inputs.known_news_inputs,
         mean_reversion: preview_options

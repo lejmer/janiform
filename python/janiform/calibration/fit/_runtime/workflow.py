@@ -233,6 +233,9 @@ def _fit_preparation_configuration_payload(
         "joint_refinement_option_refinement_candidate_count_override": (
             preparation.joint_refinement_option_refinement_candidate_count_override
         ),
+        "joint_refinement_option_refinement_wall_clock_budget_millis": (
+            preparation.joint_refinement_option_refinement_wall_clock_budget_millis
+        ),
         "joint_refinement_audit_option_pricing_enabled": (
             preparation.joint_refinement_audit_option_pricing_enabled
         ),

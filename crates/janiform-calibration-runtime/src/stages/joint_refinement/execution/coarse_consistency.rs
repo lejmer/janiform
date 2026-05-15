@@ -21,8 +21,7 @@ use serde::{Deserialize, Serialize};
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation, JointRefinementReturnScaleSummary,
-    finalize_sell_share_proxies, return_scale_summary, zero_aware_normalized_bucket_value,
-    zeroed_interval_observation_template,
+    finalize_sell_share_proxies, return_scale_summary, zeroed_interval_observation_template,
 };
 use crate::stages::joint_refinement::contracts::JointRefinementStageCoarseTickConsistencyMetric;
 
@@ -39,9 +38,9 @@ use super::super::setup::{
     cached_seed_summaries_for_candidate_seeds,
 };
 use super::{
-    JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JointRefinementCoarseConsistencySummary,
-    JointRefinementContext, JointRefinementSeedSummary, build_exchange_calendar_registry_artifact,
-    joint_refinement_has_parallel_worker_capacity, with_joint_refinement_thread_pool,
+    JointRefinementCoarseConsistencySummary, JointRefinementContext, JointRefinementSeedSummary,
+    build_exchange_calendar_registry_artifact, joint_refinement_has_parallel_worker_capacity,
+    with_joint_refinement_thread_pool,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -381,14 +380,12 @@ pub(crate) fn build_joint_candidate_coarse_consistency_artifacts(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,
-    baseline_raw_fit: Option<f64>,
     progress: Option<JointRefinementCoarseConsistencyProgress<'_>>,
 ) -> Option<JointRefinementCoarseConsistencyArtifacts> {
     build_joint_candidate_coarse_consistency_artifacts_result(
         context,
         fitted_parameters,
         parameter_bits,
-        baseline_raw_fit,
         progress,
     )
     .ok()
@@ -398,7 +395,6 @@ pub(crate) fn build_joint_candidate_coarse_consistency_artifacts_result(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,
-    baseline_raw_fit: Option<f64>,
     progress: Option<JointRefinementCoarseConsistencyProgress<'_>>,
 ) -> Result<JointRefinementCoarseConsistencyArtifacts, String> {
     let finalist_seed_summaries =
@@ -429,17 +425,7 @@ pub(crate) fn build_joint_candidate_coarse_consistency_artifacts_result(
         .ok_or_else(|| "coarse consistency produced no comparable metrics".to_string())?;
 
     Ok(JointRefinementCoarseConsistencyArtifacts {
-        summary: JointRefinementCoarseConsistencySummary {
-            raw_fit,
-            normalized_fit: zero_aware_normalized_bucket_value(
-                raw_fit,
-                baseline_raw_fit.unwrap_or(raw_fit),
-                JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
-            ),
-            admissibility_threshold: super::selection::admissibility_threshold_from_sample_count(
-                coarse_tick_consistency.len(),
-            ),
-        },
+        summary: JointRefinementCoarseConsistencySummary { raw_fit },
         metrics: coarse_tick_consistency,
     })
 }

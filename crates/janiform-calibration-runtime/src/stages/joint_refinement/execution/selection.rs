@@ -17,9 +17,8 @@ use super::coarse_consistency::{
     build_joint_candidate_coarse_consistency_artifacts,
 };
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementCoarseConsistencySummary,
-    JointRefinementContext, JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
-    ordered_parameter_bits,
+    JointRefinementActiveParameterLayout, JointRefinementContext,
+    JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome, ordered_parameter_bits,
 };
 
 pub(crate) const JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE: f64 = 1.0;
@@ -37,7 +36,6 @@ pub(crate) struct JointRefinementAdmissibilityThresholds {
     pub(crate) activity_shape_fit: f64,
     pub(crate) activity_level_fit: f64,
     pub(crate) rv_activity_coupling_fit: f64,
-    pub(crate) price_span_sanity_fit: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -94,12 +92,12 @@ impl LazyCoarseConsistencyProgressState {
 
         let current_coarse_consistency_fit = current_artifacts
             .as_ref()
-            .map(|artifacts| artifacts.summary.normalized_fit);
+            .map(|artifacts| artifacts.summary.raw_fit);
 
         if let Some(artifacts) = current_artifacts {
             self.best_coarse_consistency_fit = Some(match self.best_coarse_consistency_fit {
-                Some(current_best) => current_best.min(artifacts.summary.normalized_fit),
-                None => artifacts.summary.normalized_fit,
+                Some(current_best) => current_best.min(artifacts.summary.raw_fit),
+                None => artifacts.summary.raw_fit,
             });
         }
 
@@ -111,22 +109,8 @@ pub(crate) fn admissibility_threshold_from_sample_count(sample_count: usize) -> 
     1.0 + (sample_count.max(1) as f64).recip().sqrt()
 }
 
-fn baseline_relative_admissibility_threshold(
-    local_baseline_bucket: f64,
-    final_baseline_bucket: f64,
-    sample_count: usize,
-) -> f64 {
-    let unit_fit_reference = 1.0;
-    let baseline_reference = [
-        local_baseline_bucket,
-        final_baseline_bucket,
-        unit_fit_reference,
-    ]
-    .into_iter()
-    .filter(|value| value.is_finite() && *value > 0.0)
-    .fold(unit_fit_reference, f64::max);
-
-    baseline_reference * admissibility_threshold_from_sample_count(sample_count)
+fn fit_metric_admissibility_threshold(sample_count: usize) -> f64 {
+    admissibility_threshold_from_sample_count(sample_count)
 }
 
 fn likelihood_admissibility_threshold(
@@ -151,8 +135,6 @@ fn likelihood_admissibility_threshold(
 pub(crate) fn joint_raw_metrics_are_admissible(
     raw_metrics: &JointRefinementRawAdmissibilityMetrics,
     thresholds: JointRefinementAdmissibilityThresholds,
-    coarse_consistency_summary: Option<&JointRefinementCoarseConsistencySummary>,
-    coarse_consistency_required: bool,
 ) -> bool {
     raw_metrics.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
         && raw_metrics.aggregated_return_shape_fit <= thresholds.aggregated_return_shape_fit
@@ -165,11 +147,6 @@ pub(crate) fn joint_raw_metrics_are_admissible(
         && raw_metrics.activity_shape_fit <= thresholds.activity_shape_fit
         && raw_metrics.activity_level_fit <= thresholds.activity_level_fit
         && raw_metrics.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
-        && raw_metrics.price_span_sanity_fit <= thresholds.price_span_sanity_fit
-        && joint_coarse_consistency_is_admissible(
-            coarse_consistency_summary,
-            coarse_consistency_required,
-        )
 }
 
 pub(crate) fn joint_raw_metrics_are_dynamics_feasible(
@@ -182,7 +159,6 @@ pub(crate) fn joint_raw_metrics_are_dynamics_feasible(
         && raw_metrics.activity_shape_fit <= thresholds.activity_shape_fit
         && raw_metrics.activity_level_fit <= thresholds.activity_level_fit
         && raw_metrics.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
-        && raw_metrics.price_span_sanity_fit <= thresholds.price_span_sanity_fit
 }
 
 pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
@@ -208,14 +184,9 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
 
     let optimistic_thresholds = joint_refinement_admissibility_thresholds(context);
 
-    let optimistic_coarse_consistency_by_restart_id =
-        BTreeMap::<String, JointRefinementCoarseConsistencySummary>::new();
-
     let optimistic_candidate_states = build_joint_candidate_ordering_states(
         representative_restart_outcomes.as_slice(),
         optimistic_thresholds,
-        &optimistic_coarse_consistency_by_restart_id,
-        false,
     );
 
     let has_optimistically_admissible_candidate = optimistic_candidate_states
@@ -289,7 +260,6 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
                 &mut coarse_consistency_cache,
                 context,
                 restart_group,
-                baseline_artifacts,
                 progress_sender,
             )
         } else {
@@ -314,9 +284,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
         });
 
-        if current_artifacts
-            .as_ref()
-            .is_some_and(|artifacts| coarse_consistency_summary_is_admissible(&artifacts.summary))
+        if candidate_state.admissible
             && let Some(selected_restart_outcome) = find_restart_outcome(
                 restart_outcomes,
                 restart_group.representative.restart_id.as_str(),
@@ -421,7 +389,6 @@ fn resolve_restart_group_coarse_consistency(
     coarse_consistency_cache: &mut LazyCoarseConsistencyCache,
     context: &JointRefinementContext,
     restart_group: &JointRefinementRestartOutcomeGroup<'_>,
-    baseline_artifacts: &JointRefinementCoarseConsistencyArtifacts,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Option<JointRefinementCoarseConsistencyArtifacts> {
     if let Some(artifacts) = coarse_consistency_cache
@@ -445,7 +412,6 @@ fn resolve_restart_group_coarse_consistency(
             .final_evaluation
             .fitted_parameters,
         Some(restart_group.parameter_bits.as_slice()),
-        Some(baseline_artifacts.summary.raw_fit),
         Some(JointRefinementCoarseConsistencyProgress {
             sender: progress_sender,
             phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
@@ -467,17 +433,9 @@ fn resolve_restart_group_coarse_consistency(
     Some(resolved_artifacts)
 }
 
-pub(crate) fn coarse_consistency_summary_is_admissible(
-    summary: &JointRefinementCoarseConsistencySummary,
-) -> bool {
-    summary.normalized_fit <= summary.admissibility_threshold
-}
-
 pub(crate) fn build_joint_candidate_frontier_diagnostics(
     restart_outcomes: &[JointRefinementRestartOutcome],
     context: &JointRefinementContext,
-    coarse_consistency_by_restart_id: &BTreeMap<String, JointRefinementCoarseConsistencySummary>,
-    coarse_consistency_required: bool,
 ) -> Vec<JointRefinementStageCandidateDiagnostic> {
     if restart_outcomes.is_empty() {
         return Vec::new();
@@ -487,12 +445,8 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
 
     let restart_outcome_refs = restart_outcomes.iter().collect::<Vec<_>>();
 
-    let candidate_states = build_joint_candidate_ordering_states(
-        restart_outcome_refs.as_slice(),
-        thresholds,
-        coarse_consistency_by_restart_id,
-        coarse_consistency_required,
-    );
+    let candidate_states =
+        build_joint_candidate_ordering_states(restart_outcome_refs.as_slice(), thresholds);
 
     let has_admissible_candidate = candidate_states
         .iter()
@@ -579,90 +533,33 @@ pub(crate) fn joint_refinement_admissibility_thresholds(
             context.final_baseline_buckets.aggregated_likelihood_fit,
             fifteen_minute_sample_count,
         ),
-        aggregated_return_shape_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.aggregated_return_shape_fit,
-            context.final_baseline_buckets.aggregated_return_shape_fit,
+        aggregated_return_shape_fit: fit_metric_admissibility_threshold(
             fifteen_minute_sample_count,
         ),
-        return_asymmetry_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.return_asymmetry_fit,
-            context.final_baseline_buckets.return_asymmetry_fit,
+        return_asymmetry_fit: fit_metric_admissibility_threshold(fifteen_minute_sample_count),
+        tick_return_asymmetry_fit: fit_metric_admissibility_threshold(observed_tick_sample_count),
+        aggregated_return_scale_fit: fit_metric_admissibility_threshold(
             fifteen_minute_sample_count,
         ),
-        tick_return_asymmetry_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.tick_return_asymmetry_fit,
-            context.final_baseline_buckets.tick_return_asymmetry_fit,
-            observed_tick_sample_count,
-        ),
-        aggregated_return_scale_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.aggregated_return_scale_fit,
-            context.final_baseline_buckets.aggregated_return_scale_fit,
-            fifteen_minute_sample_count,
-        ),
-        tick_return_scale_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.tick_return_scale_fit,
-            context.final_baseline_buckets.tick_return_scale_fit,
-            observed_tick_sample_count,
-        ),
-        business_time_return_scale_fit: baseline_relative_admissibility_threshold(
-            context
-                .local_baseline_buckets
-                .business_time_return_scale_fit,
-            context
-                .final_baseline_buckets
-                .business_time_return_scale_fit,
+        tick_return_scale_fit: fit_metric_admissibility_threshold(observed_tick_sample_count),
+        business_time_return_scale_fit: fit_metric_admissibility_threshold(
             fifteen_minute_sample_count / 4,
         ),
-        intraday_return_level_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.intraday_return_level_fit,
-            context.final_baseline_buckets.intraday_return_level_fit,
-            hourly_sample_count,
-        ),
-        activity_shape_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.activity_shape_fit,
-            context.final_baseline_buckets.activity_shape_fit,
-            hourly_sample_count,
-        ),
-        activity_level_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.activity_level_fit,
-            context.final_baseline_buckets.activity_level_fit,
-            hourly_sample_count,
-        ),
-        rv_activity_coupling_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.rv_activity_coupling_fit,
-            context.final_baseline_buckets.rv_activity_coupling_fit,
-            rv_sample_count,
-        ),
-        price_span_sanity_fit: baseline_relative_admissibility_threshold(
-            context.local_baseline_buckets.price_span_sanity_fit,
-            context.final_baseline_buckets.price_span_sanity_fit,
-            fifteen_minute_sample_count / 8,
-        ),
+        intraday_return_level_fit: fit_metric_admissibility_threshold(hourly_sample_count),
+        activity_shape_fit: fit_metric_admissibility_threshold(hourly_sample_count),
+        activity_level_fit: fit_metric_admissibility_threshold(hourly_sample_count),
+        rv_activity_coupling_fit: fit_metric_admissibility_threshold(rv_sample_count),
     }
 }
 
 pub(crate) fn joint_restart_outcome_is_admissible(
     restart_outcome: &JointRefinementRestartOutcome,
     thresholds: JointRefinementAdmissibilityThresholds,
-    coarse_consistency_summary: Option<&JointRefinementCoarseConsistencySummary>,
-    coarse_consistency_required: bool,
 ) -> bool {
     joint_raw_metrics_are_admissible(
         &restart_outcome.final_evaluation.raw_admissibility_metrics,
         thresholds,
-        coarse_consistency_summary,
-        coarse_consistency_required,
     )
-}
-
-fn joint_coarse_consistency_is_admissible(
-    coarse_consistency_summary: Option<&JointRefinementCoarseConsistencySummary>,
-    coarse_consistency_required: bool,
-) -> bool {
-    match coarse_consistency_summary {
-        Some(summary) => summary.normalized_fit <= summary.admissibility_threshold,
-        None => !coarse_consistency_required,
-    }
 }
 
 fn joint_restart_outcome_dominates(
@@ -734,8 +631,6 @@ fn assign_coarse_consistency_artifacts_to_restart_group(
 fn build_joint_candidate_ordering_states<'a>(
     restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
     thresholds: JointRefinementAdmissibilityThresholds,
-    coarse_consistency_by_restart_id: &BTreeMap<String, JointRefinementCoarseConsistencySummary>,
-    coarse_consistency_required: bool,
 ) -> Vec<JointRefinementCandidateOrderingState<'a>> {
     let pareto_ranks = pareto_ranks(restart_outcomes);
 
@@ -748,12 +643,7 @@ fn build_joint_candidate_ordering_states<'a>(
                 restart_outcome: outcome,
                 admissible: outcome.local_evaluation.invalid_reason.is_none()
                     && outcome.final_evaluation.invalid_reason.is_none()
-                    && joint_restart_outcome_is_admissible(
-                        outcome,
-                        thresholds,
-                        coarse_consistency_by_restart_id.get(outcome.restart_id.as_str()),
-                        coarse_consistency_required,
-                    ),
+                    && joint_restart_outcome_is_admissible(outcome, thresholds),
             },
         )
         .collect()

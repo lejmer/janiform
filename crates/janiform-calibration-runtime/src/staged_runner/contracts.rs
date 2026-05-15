@@ -25,6 +25,7 @@ pub struct CalibrationStagedRunInputs {
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
     pub joint_refinement_restart_candidate_budget_override: Option<usize>,
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
     pub joint_refinement_audit_option_pricing_enabled: bool,
     pub joint_refinement_option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
@@ -450,7 +451,7 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_weighted_objective: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_restart_best_weighted_objective: Option<f64>,
+    pub current_block_best_weighted_objective: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     #[serde(skip_serializing_if = "Option::is_none")]

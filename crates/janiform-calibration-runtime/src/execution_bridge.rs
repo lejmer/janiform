@@ -82,6 +82,8 @@ pub struct CalibrationStagedExecutionInput {
     pub joint_refinement_restart_candidate_budget_override: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -486,6 +488,7 @@ pub enum CalibrationStagedExecutionBridgeError {
     UnexpectedDiskCheckpointDirectoryForMemoryMode,
     InvalidJointRefinementRestartCandidateBudgetOverride,
     InvalidJointRefinementOptionRefinementCandidateCountOverride,
+    InvalidJointRefinementOptionRefinementWallClockBudget,
     AuditOptionPricingRequiresOptionInput,
     InvalidObservationTradeSide {
         trade_side: String,
@@ -533,6 +536,10 @@ impl Display for CalibrationStagedExecutionBridgeError {
                 formatter,
                 "joint_refinement_option_refinement_candidate_count_override must be greater than zero when provided"
             ),
+            Self::InvalidJointRefinementOptionRefinementWallClockBudget => write!(
+                formatter,
+                "joint_refinement_option_refinement_wall_clock_budget_millis must be greater than zero when provided"
+            ),
             Self::AuditOptionPricingRequiresOptionInput => write!(
                 formatter,
                 "joint_refinement_audit_option_pricing_enabled requires joint_refinement_option_pricing_input"
@@ -576,6 +583,11 @@ impl CalibrationStagedExecutionInput {
         }
         if self.joint_refinement_option_refinement_candidate_count_override == Some(0) {
             return Err(CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementCandidateCountOverride);
+        }
+        if self.joint_refinement_option_refinement_wall_clock_budget_millis == Some(0) {
+            return Err(
+                CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementWallClockBudget,
+            );
         }
         if self.joint_refinement_audit_option_pricing_enabled
             && self.joint_refinement_option_pricing_input.is_none()
@@ -686,6 +698,8 @@ impl CalibrationStagedExecutionInput {
                 .joint_refinement_restart_candidate_budget_override,
             joint_refinement_option_refinement_candidate_count_override: self
                 .joint_refinement_option_refinement_candidate_count_override,
+            joint_refinement_option_refinement_wall_clock_budget_millis: self
+                .joint_refinement_option_refinement_wall_clock_budget_millis,
             joint_refinement_audit_option_pricing_enabled: self
                 .joint_refinement_audit_option_pricing_enabled,
             joint_refinement_option_pricing_input: self
@@ -1457,6 +1471,7 @@ mod tests {
             }),
             joint_refinement_restart_candidate_budget_override: None,
             joint_refinement_option_refinement_candidate_count_override: None,
+            joint_refinement_option_refinement_wall_clock_budget_millis: None,
             joint_refinement_audit_option_pricing_enabled: false,
             joint_refinement_option_pricing_input: None,
             runtime_resources: match execution_mode {
@@ -1556,6 +1571,21 @@ mod tests {
         assert_eq!(
             error,
             CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementCandidateCountOverride
+        );
+    }
+
+    #[test]
+    fn execution_input_plan_rejects_zero_joint_refinement_option_refinement_wall_clock_budget() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_option_refinement_wall_clock_budget_millis = Some(0);
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("zero option refinement wall-clock budget should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementWallClockBudget
         );
     }
 

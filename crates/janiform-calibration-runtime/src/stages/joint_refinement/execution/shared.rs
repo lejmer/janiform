@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use chrono::{DateTime, Utc};
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_market_time::calendar::{
@@ -14,6 +16,10 @@ pub(crate) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
         .iter()
         .map(|value| value.to_bits())
         .collect::<Vec<_>>()
+}
+
+pub(crate) fn elapsed_millis(started_at: Instant) -> u64 {
+    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }
 
 pub(crate) fn deduplicate_restart_seed_candidates(

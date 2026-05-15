@@ -131,7 +131,6 @@ pub struct JointRefinementStageObjectiveBreakdown {
     pub activity_shape_fit: f64,
     pub activity_level_fit: f64,
     pub rv_activity_coupling_fit: f64,
-    pub price_span_sanity_fit: f64,
     pub weighted_objective: f64,
     pub hard_constraint_penalty: f64,
 }

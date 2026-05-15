@@ -206,7 +206,7 @@ pub(super) fn run_stage_for_staged_execution(
                                 cumulative_local_evaluation_count: None,
                                 current_weighted_objective: progress_update
                                     .current_weighted_objective,
-                                current_restart_best_weighted_objective: None,
+                                current_block_best_weighted_objective: None,
                                 current_candidate_assessment: None,
                                 best_restart_id: None,
                                 best_weighted_objective: progress_update.best_weighted_objective,
@@ -419,6 +419,8 @@ pub(super) fn run_stage_for_staged_execution(
                     .joint_refinement_restart_candidate_budget_override,
                 option_refinement_candidate_count_override: staged_run_inputs
                     .joint_refinement_option_refinement_candidate_count_override,
+                option_refinement_wall_clock_budget_millis: staged_run_inputs
+                    .joint_refinement_option_refinement_wall_clock_budget_millis,
                 audit_option_pricing_enabled: staged_run_inputs
                     .joint_refinement_audit_option_pricing_enabled,
                 option_pricing_input: staged_run_inputs
@@ -478,8 +480,8 @@ pub(super) fn run_stage_for_staged_execution(
                                     .cumulative_local_evaluation_count,
                                 current_weighted_objective: progress_update
                                     .current_weighted_objective,
-                                current_restart_best_weighted_objective: progress_update
-                                    .current_restart_best_weighted_objective,
+                                current_block_best_weighted_objective: progress_update
+                                    .current_block_best_weighted_objective,
                                 current_candidate_assessment: progress_update
                                     .current_candidate_assessment,
                                 best_restart_id: progress_update.best_restart_id,

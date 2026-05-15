@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
+use std::time::Instant;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
@@ -16,14 +17,19 @@ use crate::stages::joint_refinement::contracts::{
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
 
 use super::super::setup::parameter_vector_to_fitted_parameters;
-use super::selection::admissibility_threshold_from_sample_count;
 use super::{
     JointRefinementContext, JointRefinementOptionTierPricingArtifact,
     JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
     OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
-    OptionSurfaceTierPricingArtifactResolutionInput, joint_refinement_parallel_worker_count,
-    ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact,
-    with_joint_refinement_thread_pool,
+    OptionSurfaceTierPricingArtifactResolutionInput, elapsed_millis,
+    joint_refinement_parallel_worker_count, ordered_parameter_bits,
+    resolve_option_surface_tier_pricing_artifact, with_joint_refinement_thread_pool,
+};
+
+mod pricing_block_optimizer;
+
+use pricing_block_optimizer::{
+    OptionRefinementCandidateWallClockBudget, optimize_pricing_block_from_search_tier_sensitivities,
 };
 
 pub(crate) const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT: usize = 5;
@@ -333,6 +339,7 @@ pub(crate) fn run_option_refinement(
     context: &JointRefinementContext,
     _solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
+    wall_clock_budget_millis: Option<u64>,
     option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     mut resume_store: Option<&mut JointRefinementResumeStore>,
@@ -359,6 +366,7 @@ pub(crate) fn run_option_refinement(
     let search_candidates = refine_search_tier_candidates(
         context,
         dynamics_candidates,
+        wall_clock_budget_millis,
         option_context_fingerprint,
         progress_sender,
         resume_store.as_deref_mut(),
@@ -440,8 +448,7 @@ fn option_refinement_selection_score_ceiling(
     best_search_tier_score: f64,
     effective_sample_count: usize,
 ) -> f64 {
-    best_search_tier_score
-        * admissibility_threshold_from_sample_count(effective_sample_count.max(1))
+    best_search_tier_score + option_score_resolution(best_search_tier_score, effective_sample_count)
 }
 
 fn resolved_option_refinement_candidate_parallelism(
@@ -511,6 +518,7 @@ fn context_with_option_pricing_cpu_count(
 fn refine_search_tier_candidates(
     context: &JointRefinementContext,
     dynamics_candidates: &[JointRefinementRestartOutcome],
+    wall_clock_budget_millis: Option<u64>,
     option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     mut resume_store: Option<&mut JointRefinementResumeStore>,
@@ -574,6 +582,13 @@ fn refine_search_tier_candidates(
     let pricing_cpu_count =
         option_refinement_candidate_pricing_cpu_count(context, candidate_parallelism);
 
+    let unresolved_candidate_count = unresolved_candidates.len().max(1);
+    let wall_clock_budget =
+        wall_clock_budget_millis.map(|budget_millis| OptionRefinementWallClockBudget {
+            started_at: Instant::now(),
+            budget_millis,
+        });
+
     let unresolved_results = with_joint_refinement_thread_pool(context, || {
         if unresolved_candidates.len() > 1 && candidate_parallelism > 1 {
             unresolved_candidates
@@ -588,6 +603,8 @@ fn refine_search_tier_candidates(
                             total_units,
                             shared_progress_state: Arc::clone(&shared_progress_state),
                             pricing_cpu_count,
+                            wall_clock_budget,
+                            candidate_budget_share_count: unresolved_candidate_count,
                         },
                     )
                 })
@@ -605,6 +622,8 @@ fn refine_search_tier_candidates(
                             total_units,
                             shared_progress_state: Arc::clone(&shared_progress_state),
                             pricing_cpu_count,
+                            wall_clock_budget,
+                            candidate_budget_share_count: unresolved_candidate_count,
                         },
                     )
                 })
@@ -630,6 +649,8 @@ fn refine_single_search_tier_candidate(
     dynamics_candidate: &JointRefinementRestartOutcome,
     progress_context: Option<&OptionRefinementProgressContext<'_>>,
     pricing_cpu_count: usize,
+    wall_clock_budget: Option<OptionRefinementWallClockBudget>,
+    candidate_budget_share_count: usize,
 ) -> Result<SearchTierCandidate, String> {
     let refinement_context =
         pricing_block_refinement_context(context, dynamics_candidate, pricing_cpu_count);
@@ -639,15 +660,78 @@ fn refine_single_search_tier_candidate(
 
     let mut theta_warm_start_state = SpectralThetaWarmStartState::new();
 
-    scored_pricing_vector(
+    let option_refinement_started_at = Instant::now();
+
+    let initial_candidate = scored_pricing_vector(
         &refinement_context,
         dynamics_candidate,
         dynamics_candidate.parameter_vector.as_slice(),
         source_dynamics_parameter_bits.as_slice(),
         JointRefinementOptionSurfaceTierKind::Search,
+        true,
+        "option_pricing_block_sensitivity_baseline_evaluated",
         Some(&mut theta_warm_start_state),
         progress_context,
+    )?;
+
+    let first_oracle_call_wall_clock_millis = elapsed_millis(option_refinement_started_at).max(1);
+
+    let wall_clock_budget = option_refinement_candidate_wall_clock_budget(
+        option_refinement_started_at,
+        first_oracle_call_wall_clock_millis,
+        wall_clock_budget,
+        candidate_budget_share_count,
+    );
+
+    optimize_pricing_block_from_search_tier_sensitivities(
+        &refinement_context,
+        dynamics_candidate,
+        initial_candidate,
+        source_dynamics_parameter_bits.as_slice(),
+        &mut theta_warm_start_state,
+        progress_context,
+        wall_clock_budget,
     )
+}
+
+fn option_score_resolution(score: f64, effective_quote_count: usize) -> f64 {
+    let effective_quote_count = effective_quote_count.max(1) as f64;
+
+    score / (2.0 * effective_quote_count).sqrt()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OptionRefinementWallClockBudget {
+    started_at: Instant,
+    budget_millis: u64,
+}
+
+fn option_refinement_candidate_wall_clock_budget(
+    candidate_started_at: Instant,
+    first_oracle_call_wall_clock_millis: u64,
+    wall_clock_budget: Option<OptionRefinementWallClockBudget>,
+    candidate_budget_share_count: usize,
+) -> OptionRefinementCandidateWallClockBudget {
+    let budget_millis = match wall_clock_budget {
+        Some(wall_clock_budget) => {
+            let elapsed_millis = elapsed_millis(wall_clock_budget.started_at);
+            let remaining_millis = wall_clock_budget
+                .budget_millis
+                .saturating_sub(elapsed_millis);
+            let candidate_share_millis =
+                remaining_millis / candidate_budget_share_count.max(1) as u64;
+
+            first_oracle_call_wall_clock_millis.saturating_add(candidate_share_millis)
+        }
+        None => first_oracle_call_wall_clock_millis
+            .saturating_mul(option_pricing_block_evaluation_budget() as u64),
+    };
+
+    OptionRefinementCandidateWallClockBudget {
+        started_at: candidate_started_at,
+        budget_millis,
+        reference_oracle_call_millis: first_oracle_call_wall_clock_millis,
+    }
 }
 
 struct ParallelSearchTierCandidateRefinementInput<'a> {
@@ -658,6 +742,8 @@ struct ParallelSearchTierCandidateRefinementInput<'a> {
     total_units: usize,
     shared_progress_state: Arc<OptionRefinementSharedProgressState>,
     pricing_cpu_count: usize,
+    wall_clock_budget: Option<OptionRefinementWallClockBudget>,
+    candidate_budget_share_count: usize,
 }
 
 fn refine_parallel_search_tier_candidate(
@@ -671,6 +757,8 @@ fn refine_parallel_search_tier_candidate(
         total_units,
         shared_progress_state,
         pricing_cpu_count,
+        wall_clock_budget,
+        candidate_budget_share_count,
     } = input;
 
     let started_snapshot = shared_progress_state
@@ -705,6 +793,8 @@ fn refine_parallel_search_tier_candidate(
         dynamics_candidate,
         Some(&progress_context),
         pricing_cpu_count,
+        wall_clock_budget,
+        candidate_budget_share_count,
     )
     .ok()
     .map(|candidate| SearchTierCandidate {
@@ -864,6 +954,8 @@ fn scored_pricing_vector(
     pricing_vector: &[f64],
     source_dynamics_parameter_bits: &[u64],
     tier_kind: JointRefinementOptionSurfaceTierKind,
+    include_node_price_sensitivities: bool,
+    stop_reason: &str,
     theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
     progress_context: Option<&OptionRefinementProgressContext<'_>>,
 ) -> Result<SearchTierCandidate, String> {
@@ -884,7 +976,7 @@ fn scored_pricing_vector(
             tier_kind,
             source_dynamics_parameter_bits,
             pricing_parameter_bits: pricing_parameter_bits.as_slice(),
-            include_node_price_sensitivities: false,
+            include_node_price_sensitivities,
             theta_warm_start_state,
             progress: OptionPricingProgressInput {
                 progress_sender: progress_context.and_then(|context| context.progress_sender),
@@ -926,6 +1018,7 @@ fn scored_pricing_vector(
             dynamics_candidate,
             pricing_vector,
             fitted_parameters,
+            stop_reason,
         ),
     })
 }
@@ -1103,6 +1196,7 @@ fn restart_outcome_with_pricing_block(
     dynamics_candidate: &JointRefinementRestartOutcome,
     pricing_vector: &[f64],
     fitted_parameters: janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+    stop_reason: &str,
 ) -> JointRefinementRestartOutcome {
     let mut local_evaluation = dynamics_candidate.local_evaluation.clone();
     local_evaluation.fitted_parameters = fitted_parameters.clone();
@@ -1116,12 +1210,16 @@ fn restart_outcome_with_pricing_block(
         local_evaluation,
         final_evaluation,
         local_evaluation_count: dynamics_candidate.local_evaluation_count,
-        stop_reason: "option_pricing_block_refined".to_string(),
+        stop_reason: stop_reason.to_string(),
     }
 }
 
 pub(crate) fn option_pricing_block_evaluation_budget() -> usize {
-    1
+    1 + pricing_block_search_coordinate_count()
+}
+
+fn pricing_block_search_coordinate_count() -> usize {
+    4
 }
 
 fn option_refinement_candidate_total_evaluation_budget() -> usize {
@@ -1254,7 +1352,7 @@ mod tests {
 
     #[test]
     fn option_refinement_candidate_budget_counts_search_pricing_run() {
-        assert_eq!(option_refinement_candidate_total_evaluation_budget(), 1);
+        assert_eq!(option_refinement_candidate_total_evaluation_budget(), 5);
     }
 
     #[test]
@@ -1294,7 +1392,7 @@ mod tests {
     }
 
     #[test]
-    fn option_refinement_selection_score_ceiling_uses_sample_count_derived_admissibility_band() {
+    fn option_refinement_selection_score_ceiling_uses_spread_residual_uncertainty() {
         let best_search_tier_score = 2.0;
         let effective_sample_count = 16;
 
@@ -1303,7 +1401,7 @@ mod tests {
                 best_search_tier_score,
                 effective_sample_count,
             ),
-            2.5
+            best_search_tier_score + best_search_tier_score / 32.0f64.sqrt()
         );
     }
 
@@ -1317,7 +1415,7 @@ mod tests {
             shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
             current_evaluation_count: Cell::new(0),
             current_weighted_objective: Cell::new(None),
-            total_evaluation_budget: 1,
+            total_evaluation_budget: 5,
         };
 
         assert_eq!(progress_context.current_weighted_objective(), None);
@@ -1337,14 +1435,14 @@ mod tests {
             shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
             current_evaluation_count: Cell::new(0),
             current_weighted_objective: Cell::new(None),
-            total_evaluation_budget: 1,
+            total_evaluation_budget: 5,
         };
 
         progress_context.record_evaluation_started();
 
         let snapshot = progress_context.option_pricing_progress_snapshot(Some(25));
 
-        assert_eq!(snapshot.evaluation_progress_percent, Some(25));
+        assert_eq!(snapshot.evaluation_progress_percent, Some(5));
     }
 
     #[test]

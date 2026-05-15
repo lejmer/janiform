@@ -19,8 +19,7 @@ use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
 use super::super::objective::{
     JointRefinementAggregatedLikelihoodContexts,
     build_joint_refinement_nig_block_likelihood_contexts, compressed_final_objective,
-    dynamics_block_search_objective, evaluate_joint_candidate,
-    evaluate_joint_candidate_nig_block_search_objective_with_contexts,
+    evaluate_joint_candidate, evaluate_joint_candidate_nig_block_search_objective_with_contexts,
     evaluate_joint_candidate_nig_block_search_objective_with_counts, invalid_candidate_evaluation,
 };
 use super::super::setup::parameter_vector_to_fitted_parameters;
@@ -49,7 +48,7 @@ struct RestartProgressState {
 }
 
 #[derive(Debug, Default)]
-struct RestartDisplayBestState {
+struct RestartCompletedBestState {
     best_restart_id: Option<String>,
     best_weighted_objective: Option<f64>,
     best_weighted_objective_by_restart_id: BTreeMap<String, f64>,
@@ -62,7 +61,7 @@ struct RestartProgressCounters {
     aggregate_progress_percent_sum: AtomicUsize,
     cumulative_local_evaluation_count: AtomicUsize,
     valid_completed_units: AtomicUsize,
-    display_best_state: Mutex<RestartDisplayBestState>,
+    completed_best_state: Mutex<RestartCompletedBestState>,
 }
 
 struct RestartCandidateProgress<'a> {
@@ -74,7 +73,8 @@ struct RestartCandidateProgress<'a> {
     total_evaluation_budget: usize,
     current_evaluation_count: usize,
     last_evaluation_progress_percent: Option<usize>,
-    current_restart_best_weighted_objective: Option<f64>,
+    current_block_label: Option<&'static str>,
+    current_block_best_weighted_objective: Option<f64>,
     finished: bool,
 }
 
@@ -177,7 +177,7 @@ fn optimize_restart_seeds_sequential(
             .store(progress_state.completed_units, Ordering::Relaxed);
         progress_counters.record_completed_progress_state(&progress_state);
 
-        progress_counters.record_display_best(
+        progress_counters.record_completed_best(
             restart_outcome.restart_id.as_str(),
             restart_outcome
                 .final_evaluation
@@ -277,7 +277,7 @@ fn optimize_restart_seeds_parallel(
                     .store(progress_state.completed_units, Ordering::Relaxed);
                 progress_counters.record_completed_progress_state(&progress_state);
 
-                progress_counters.record_display_best(
+                progress_counters.record_completed_best(
                     restart_outcome.restart_id.as_str(),
                     restart_outcome
                         .final_evaluation
@@ -1193,7 +1193,7 @@ fn evaluate_parameter_block_objective(
 
             candidate_evaluation.invalid_reason.is_none().then_some(
                 ParameterBlockObjectiveEvaluation {
-                    objective: dynamics_block_search_objective(
+                    objective: compressed_final_objective(
                         &candidate_evaluation.raw_admissibility_metrics,
                         joint_refinement_admissibility_thresholds(context),
                     ),
@@ -1210,11 +1210,7 @@ fn restart_block_initial_objective_is_noncompetitive(
     initial_block_objective: f64,
     progress_counters: &RestartProgressCounters,
 ) -> bool {
-    let (_, Some(best_weighted_objective)) = progress_counters.display_best_snapshot() else {
-        return false;
-    };
-
-    best_weighted_objective <= JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE
+    progress_counters.threshold_admissible_completed_candidate_exists()
         && initial_block_objective > JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE
 }
 
@@ -1384,7 +1380,8 @@ impl<'a> RestartCandidateProgress<'a> {
             ),
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_restart_best_weighted_objective: None,
+            current_block_label: None,
+            current_block_best_weighted_objective: None,
             finished: false,
         }
     }
@@ -1407,16 +1404,17 @@ impl<'a> RestartCandidateProgress<'a> {
     ) {
         self.current_evaluation_count = self.current_evaluation_count.saturating_add(1);
 
-        let weighted_objective = evaluation.map(|evaluation| evaluation.objective);
-        if let Some(weighted_objective) = weighted_objective {
-            self.current_restart_best_weighted_objective = Some(
-                self.current_restart_best_weighted_objective
+        if self.current_block_label != Some(parameter_block_label) {
+            self.current_block_label = Some(parameter_block_label);
+            self.current_block_best_weighted_objective = None;
+        }
+
+        if let Some(weighted_objective) = evaluation.map(|evaluation| evaluation.objective) {
+            self.current_block_best_weighted_objective = Some(
+                self.current_block_best_weighted_objective
                     .map(|current_best| current_best.min(weighted_objective))
                     .unwrap_or(weighted_objective),
             );
-
-            self.counters
-                .record_display_best(self.restart_id, weighted_objective);
         }
 
         let progress_percent = self.running_evaluation_progress_percent();
@@ -1437,10 +1435,13 @@ impl<'a> RestartCandidateProgress<'a> {
     }
 
     fn emit_block_started(
-        &self,
+        &mut self,
         parameter_block_label: &'static str,
         completed_outer_cycles: usize,
     ) {
+        self.current_block_label = Some(parameter_block_label);
+        self.current_block_best_weighted_objective = None;
+
         self.emit_progress(
             Some(parameter_block_label),
             Some(completed_outer_cycles),
@@ -1505,7 +1506,7 @@ impl<'a> RestartCandidateProgress<'a> {
         let current_weighted_objective = evaluation.map(|evaluation| evaluation.objective);
         let exact_likelihood_evaluator_counts =
             evaluation.and_then(|evaluation| evaluation.exact_likelihood_evaluator_counts);
-        let (best_restart_id, best_weighted_objective) = self.counters.display_best_snapshot();
+        let (best_restart_id, best_weighted_objective) = self.counters.completed_best_snapshot();
         let completed_progress_state = self.counters.completed_progress_state();
         let completed_progress_totals = (completed_progress_state.completed_units > 0).then_some((
             completed_progress_state.valid_completed_units,
@@ -1531,8 +1532,7 @@ impl<'a> RestartCandidateProgress<'a> {
                     |(_, cumulative_local_evaluation_count)| cumulative_local_evaluation_count,
                 ),
                 current_weighted_objective,
-                current_restart_best_weighted_objective: self
-                    .current_restart_best_weighted_objective,
+                current_block_best_weighted_objective: self.current_block_best_weighted_objective,
                 best_restart_id,
                 best_weighted_objective,
                 exact_closed_form_buy_count: exact_likelihood_evaluator_counts
@@ -1591,7 +1591,7 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
 
     let completed_units = progress_state.completed_units;
 
-    let (best_restart_id, best_weighted_objective) = progress_counters.display_best_snapshot();
+    let (best_restart_id, best_weighted_objective) = progress_counters.completed_best_snapshot();
 
     let final_display_objective = compressed_final_objective(
         &restart_outcome.final_evaluation.raw_admissibility_metrics,
@@ -1605,7 +1605,9 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
             current_item_label: Some(restart_outcome.restart_id.clone()),
             current_restart_id: Some(restart_outcome.restart_id.clone()),
             active_restart_count: Some(active_restart_count),
-            current_evaluation_count: Some(restart_outcome.local_evaluation_count),
+            // Completion rows use the callback-counted progress budget. The local
+            // evaluation count remains available through cumulative diagnostics.
+            current_evaluation_count: Some(total_evaluation_budget),
             total_evaluation_budget: Some(total_evaluation_budget),
             evaluation_progress_percent: Some(100),
             valid_completed_units: Some(progress_state.valid_completed_units),
@@ -1613,8 +1615,7 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
                 progress_state.cumulative_local_evaluation_count,
             ),
             current_weighted_objective: Some(final_display_objective),
-            current_restart_best_weighted_objective: progress_counters
-                .restart_best_weighted_objective(restart_outcome.restart_id.as_str()),
+            current_block_best_weighted_objective: None,
             current_candidate_assessment: None,
             best_restart_id,
             best_weighted_objective,
@@ -1665,53 +1666,62 @@ impl RestartProgressCounters {
         }
     }
 
-    fn record_display_best(&self, restart_id: &str, weighted_objective: f64) {
-        let Ok(mut display_best_state) = self.display_best_state.lock() else {
+    fn record_completed_best(&self, restart_id: &str, weighted_objective: f64) {
+        let Ok(mut completed_best_state) = self.completed_best_state.lock() else {
             return;
         };
 
-        match display_best_state
+        match completed_best_state
             .best_weighted_objective_by_restart_id
             .get(restart_id)
             .copied()
         {
             Some(current_best) if weighted_objective >= current_best => {}
             _ => {
-                display_best_state
+                completed_best_state
                     .best_weighted_objective_by_restart_id
                     .insert(restart_id.to_string(), weighted_objective);
             }
         }
 
-        match display_best_state.best_weighted_objective {
+        match completed_best_state.best_weighted_objective {
             Some(current_best) if weighted_objective >= current_best => {}
             _ => {
-                display_best_state.best_weighted_objective = Some(weighted_objective);
-                display_best_state.best_restart_id = Some(restart_id.to_string());
+                completed_best_state.best_weighted_objective = Some(weighted_objective);
+                completed_best_state.best_restart_id = Some(restart_id.to_string());
             }
         }
     }
 
-    fn display_best_snapshot(&self) -> (Option<String>, Option<f64>) {
-        let Ok(display_best_state) = self.display_best_state.lock() else {
+    fn completed_best_snapshot(&self) -> (Option<String>, Option<f64>) {
+        let Ok(completed_best_state) = self.completed_best_state.lock() else {
             return (None, None);
         };
 
         (
-            display_best_state.best_restart_id.clone(),
-            display_best_state.best_weighted_objective,
+            completed_best_state.best_restart_id.clone(),
+            completed_best_state.best_weighted_objective,
         )
     }
 
-    fn restart_best_weighted_objective(&self, restart_id: &str) -> Option<f64> {
-        let Ok(display_best_state) = self.display_best_state.lock() else {
+    #[cfg(test)]
+    fn restart_completed_best_weighted_objective(&self, restart_id: &str) -> Option<f64> {
+        let Ok(completed_best_state) = self.completed_best_state.lock() else {
             return None;
         };
 
-        display_best_state
+        completed_best_state
             .best_weighted_objective_by_restart_id
             .get(restart_id)
             .copied()
+    }
+
+    fn threshold_admissible_completed_candidate_exists(&self) -> bool {
+        let (_, Some(best_weighted_objective)) = self.completed_best_snapshot() else {
+            return false;
+        };
+
+        best_weighted_objective <= JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE
     }
 }
 
@@ -1859,7 +1869,8 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 10,
             last_evaluation_progress_percent: None,
-            current_restart_best_weighted_objective: None,
+            current_block_label: None,
+            current_block_best_weighted_objective: None,
             finished: false,
         };
 
@@ -1871,22 +1882,9 @@ mod tests {
     }
 
     #[test]
-    fn running_restart_progress_emits_live_global_best_objective() {
+    fn running_restart_progress_emits_current_block_accepted_merit() {
         let (progress_sender, progress_receiver) = mpsc::channel();
         let progress_counters = RestartProgressCounters::default();
-
-        let mut baseline_progress = RestartCandidateProgress {
-            progress_sender: Some(&progress_sender),
-            restart_id: "baseline",
-            total_units: 2,
-            counters: &progress_counters,
-            total_outer_cycles: 1,
-            total_evaluation_budget: 10,
-            current_evaluation_count: 0,
-            last_evaluation_progress_percent: None,
-            current_restart_best_weighted_objective: None,
-            finished: false,
-        };
 
         let mut halton_progress = RestartCandidateProgress {
             progress_sender: Some(&progress_sender),
@@ -1897,26 +1895,24 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_restart_best_weighted_objective: None,
+            current_block_label: None,
+            current_block_best_weighted_objective: None,
             finished: false,
         };
 
-        baseline_progress.record_evaluation(
-            "nig",
-            1,
-            Some(parameter_block_objective_for_test(10.0)),
-        );
+        halton_progress.record_evaluation("nig", 1, Some(parameter_block_objective_for_test(10.0)));
         progress_receiver.recv().unwrap();
 
         halton_progress.record_evaluation("nig", 1, Some(parameter_block_objective_for_test(4.0)));
 
         let progress_update = progress_receiver.recv().unwrap();
 
+        assert_eq!(progress_update.best_restart_id, None);
+        assert_eq!(progress_update.best_weighted_objective, None);
         assert_eq!(
-            progress_update.best_restart_id.as_deref(),
-            Some("halton_01")
+            progress_update.current_block_best_weighted_objective,
+            Some(4.0)
         );
-        assert_eq!(progress_update.best_weighted_objective, Some(4.0));
         assert_eq!(progress_update.valid_completed_units, None);
     }
 
@@ -1942,7 +1938,8 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_restart_best_weighted_objective: None,
+            current_block_label: None,
+            current_block_best_weighted_objective: None,
             finished: false,
         };
 
@@ -1955,20 +1952,20 @@ mod tests {
     }
 
     #[test]
-    fn restart_progress_counters_track_best_objective_by_restart() {
+    fn restart_progress_counters_track_completed_best_merit_by_restart() {
         let progress_counters = RestartProgressCounters::default();
 
-        progress_counters.record_display_best("baseline", 10.0);
-        progress_counters.record_display_best("halton_01", 4.0);
-        progress_counters.record_display_best("baseline", 8.0);
-        progress_counters.record_display_best("baseline", 12.0);
+        progress_counters.record_completed_best("baseline", 10.0);
+        progress_counters.record_completed_best("halton_01", 4.0);
+        progress_counters.record_completed_best("baseline", 8.0);
+        progress_counters.record_completed_best("baseline", 12.0);
 
         assert_eq!(
-            progress_counters.restart_best_weighted_objective("baseline"),
+            progress_counters.restart_completed_best_weighted_objective("baseline"),
             Some(8.0)
         );
         assert_eq!(
-            progress_counters.restart_best_weighted_objective("halton_01"),
+            progress_counters.restart_completed_best_weighted_objective("halton_01"),
             Some(4.0)
         );
     }
@@ -2004,7 +2001,7 @@ mod tests {
     #[test]
     fn restart_block_initial_objective_is_noncompetitive_after_threshold_best_exists() {
         let progress_counters = RestartProgressCounters::default();
-        progress_counters.record_display_best("activity_aligned", 0.8);
+        progress_counters.record_completed_best("activity_aligned", 0.8);
 
         assert!(restart_block_initial_objective_is_noncompetitive(
             1.2,
@@ -2019,7 +2016,7 @@ mod tests {
     #[test]
     fn restart_block_initial_objective_keeps_search_before_threshold_best_exists() {
         let progress_counters = RestartProgressCounters::default();
-        progress_counters.record_display_best("baseline", 1.2);
+        progress_counters.record_completed_best("baseline", 1.2);
 
         assert!(!restart_block_initial_objective_is_noncompetitive(
             1.3,

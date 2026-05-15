@@ -409,11 +409,6 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
         &format!("{context} rv_activity_coupling_fit"),
     );
     assert_f64_within_one_ulp(
-        actual_breakdown.price_span_sanity_fit,
-        expected_breakdown.price_span_sanity_fit,
-        &format!("{context} price_span_sanity_fit"),
-    );
-    assert_f64_within_one_ulp(
         actual_breakdown.weighted_objective,
         expected_breakdown.weighted_objective,
         &format!("{context} weighted_objective"),
@@ -2100,6 +2095,7 @@ pub(crate) fn staged_run_inputs(
         },
         joint_refinement_restart_candidate_budget_override: Some(1),
         joint_refinement_option_refinement_candidate_count_override: Some(1),
+        joint_refinement_option_refinement_wall_clock_budget_millis: None,
         joint_refinement_audit_option_pricing_enabled: false,
         joint_refinement_option_pricing_input: None,
     }
@@ -2531,6 +2527,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                         return_components_stage_candidate_generation_fixture(),
                     restart_candidate_budget_override: Some(1),
                     option_refinement_candidate_count_override: Some(1),
+                    option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
                     option_pricing_input: None,
                 },

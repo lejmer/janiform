@@ -59,19 +59,17 @@ pub(crate) use resume_state::{
     JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
     option_pricing_context_fingerprint,
 };
+#[cfg(test)]
+pub(crate) use selection::admissibility_threshold_from_sample_count;
 pub(crate) use selection::{
     JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE,
     JointRefinementAdmissibilityThresholds, build_joint_candidate_frontier_diagnostics,
     joint_raw_metrics_are_dynamics_feasible, joint_refinement_admissibility_thresholds,
     joint_restart_outcome_is_admissible, select_restart_outcomes_with_lazy_coarse_consistency,
 };
-#[cfg(test)]
-pub(crate) use selection::{
-    admissibility_threshold_from_sample_count, joint_raw_metrics_are_admissible,
-};
 pub(crate) use shared::{
     build_exchange_calendar_registry_artifact, build_halton_restart_id, clamp_in_place,
-    deduplicate_restart_seed_candidates, halton_parameter_vector,
+    deduplicate_restart_seed_candidates, elapsed_millis, halton_parameter_vector,
     joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
     ordered_parameter_bits, with_joint_refinement_thread_pool,
 };

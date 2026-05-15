@@ -80,6 +80,7 @@ class JaniformEstimator:
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     _dynamics_search_restart_candidate_budget: Optional[int]
     _joint_refinement_option_refinement_candidate_count_override: Optional[int]
+    _joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     _joint_refinement_audit_option_pricing_enabled: bool
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
@@ -104,6 +105,7 @@ class JaniformEstimator:
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         dynamics_search_restart_candidate_budget: Optional[int] = None,
         joint_refinement_option_refinement_candidate_count: Optional[int] = None,
+        joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None,
         joint_refinement_audit_option_pricing: bool = False,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
@@ -158,6 +160,15 @@ class JaniformEstimator:
                 "must be strictly positive when provided",
             )
 
+        if (
+            joint_refinement_option_refinement_wall_clock_budget_millis is not None
+            and joint_refinement_option_refinement_wall_clock_budget_millis <= 0
+        ):
+            raise calibration_error(
+                "joint_refinement_option_refinement_wall_clock_budget_millis",
+                "must be strictly positive when provided",
+            )
+
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
         self._normalization_policy = normalization_policy
@@ -174,6 +185,9 @@ class JaniformEstimator:
         self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
         self._joint_refinement_option_refinement_candidate_count_override = (
             joint_refinement_option_refinement_candidate_count
+        )
+        self._joint_refinement_option_refinement_wall_clock_budget_millis = (
+            joint_refinement_option_refinement_wall_clock_budget_millis
         )
         self._joint_refinement_audit_option_pricing_enabled = (
             joint_refinement_audit_option_pricing
@@ -299,6 +313,9 @@ class JaniformEstimator:
             dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
             joint_refinement_option_refinement_candidate_count_override=(
                 self._joint_refinement_option_refinement_candidate_count_override
+            ),
+            joint_refinement_option_refinement_wall_clock_budget_millis=(
+                self._joint_refinement_option_refinement_wall_clock_budget_millis
             ),
             joint_refinement_audit_option_pricing_enabled=(
                 self._joint_refinement_audit_option_pricing_enabled

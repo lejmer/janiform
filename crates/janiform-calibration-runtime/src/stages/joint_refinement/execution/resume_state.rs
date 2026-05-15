@@ -10,10 +10,7 @@ use sha2::{Digest, Sha256};
 use super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts;
 use super::option_refinement::{OptionRefinedCandidate, SearchTierCandidate};
 use super::state::{JointRefinementOptionPricingContext, JointRefinementOptionTierPricingInputs};
-use super::{
-    JointRefinementCoarseConsistencySummary, JointRefinementOptionTierPricingArtifact,
-    JointRefinementRestartOutcome,
-};
+use super::{JointRefinementOptionTierPricingArtifact, JointRefinementRestartOutcome};
 
 const JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION: &str =
     "janiform.joint_refinement.resume_state.v1";
@@ -31,8 +28,6 @@ pub(crate) struct PersistedRestartSelectionArtifacts {
     pub(crate) option_pricing_context_fingerprint: Option<String>,
     pub(crate) coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
-    pub(crate) selection_coarse_consistency_by_restart_id:
-        BTreeMap<String, JointRefinementCoarseConsistencySummary>,
     pub(crate) coarse_consistency_wall_clock_millis: u64,
 }
 
@@ -600,7 +595,6 @@ mod tests {
             selected_restart_count: 2,
             option_pricing_context_fingerprint: Some("options-a".to_string()),
             coarse_consistency_artifacts_by_restart_id: Default::default(),
-            selection_coarse_consistency_by_restart_id: Default::default(),
             coarse_consistency_wall_clock_millis: 0,
         };
         let valid_restart_ids = ["baseline".to_string(), "halton_01".to_string()]

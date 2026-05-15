@@ -160,7 +160,6 @@ pub(crate) fn baseline_buckets_from_evaluation(
         activity_shape_fit: breakdown.activity_shape_fit,
         activity_level_fit: breakdown.activity_level_fit,
         rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
-        price_span_sanity_fit: breakdown.price_span_sanity_fit,
     }
 }
 

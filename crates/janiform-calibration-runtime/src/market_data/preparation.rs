@@ -163,6 +163,8 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     #[serde(default)]
+    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
+    #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
     #[serde(default)]
     pub known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
@@ -250,6 +252,19 @@ fn validate_joint_refinement_option_refinement_candidate_count_override(
     Ok(())
 }
 
+fn validate_joint_refinement_option_refinement_wall_clock_budget(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if request.joint_refinement_option_refinement_wall_clock_budget_millis == Some(0) {
+        return Err(CalibrationMarketDataPreparationError::from(
+            "joint_refinement_option_refinement_wall_clock_budget_millis must be greater than zero when provided"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn validate_dynamics_search_restart_candidate_budget(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Result<(), CalibrationMarketDataPreparationError> {
@@ -301,6 +316,7 @@ pub fn prepare_market_data_calibration_plan(
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     validate_dynamics_search_restart_candidate_budget(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
+    validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
@@ -327,6 +343,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     validate_dynamics_search_restart_candidate_budget(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
+    validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
@@ -1346,6 +1363,8 @@ fn prepared_market_data_plan_from_loading_output(
             .dynamics_search_restart_candidate_budget,
         joint_refinement_option_refinement_candidate_count_override: request
             .joint_refinement_option_refinement_candidate_count_override,
+        joint_refinement_option_refinement_wall_clock_budget_millis: request
+            .joint_refinement_option_refinement_wall_clock_budget_millis,
         joint_refinement_audit_option_pricing_enabled: request
             .joint_refinement_audit_option_pricing_enabled,
         joint_refinement_option_pricing_input: joint_refinement_option_pricing_input_from_request(

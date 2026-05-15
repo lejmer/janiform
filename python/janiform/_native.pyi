@@ -1107,6 +1107,9 @@ def export_coarse_simulation_artifact(
 ) -> int: ...
 
 
+def validate_coarse_simulation_path(path_payload: object) -> Any: ...
+
+
 def run_prepared_staged_calibration(
     prepared_handle: PreparedCalibrationExecutionHandle,
     calendar_registry: CalendarRegistry,
