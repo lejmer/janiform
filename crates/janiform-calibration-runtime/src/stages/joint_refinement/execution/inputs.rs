@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use janiform_foundations::time::{
-    NANOS_PER_FIFTEEN_MINUTES, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, ceil_to_hour_utc_nanos,
-    floor_to_hour_utc_nanos,
+    NANOS_PER_FIFTEEN_MINUTES, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR,
+    checked_ceil_to_hour_utc_nanos, checked_floor_to_hour_utc_nanos,
+    checked_interval_count_between_utc_nanos,
 };
 
 use crate::stages::joint_metrics::{
@@ -14,8 +15,10 @@ use crate::stages::joint_metrics::{
 };
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageContinuousReturnCalibrationSample,
     ReturnComponentsStageJointRefinementObservedSignalPreparation,
-    continuous_return_calibration_sample_observed_returns,
+    build_continuous_return_optimizer_context, build_weighted_continuous_return_optimizer_context,
+    rescale_continuous_return_calibration_sample_business_time_scales,
 };
 use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
@@ -24,6 +27,10 @@ use super::super::setup::build_surprise_multipliers_for_interval_grid;
 use super::super::summary_simulation::JointRefinementSummarySimulationSessionContext;
 use super::{JointRefinementObservedData, build_exchange_calendar_registry_artifact};
 
+// The joint return-shape objective checks q01/q99, so one extreme-tail rank
+// quantum is 1 / 0.01 observations per temporal block.
+const RETURN_SHAPE_EXTREME_TAIL_RANK_DENOMINATOR: usize = 100;
+
 pub(crate) fn build_observed_data(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
@@ -31,7 +38,7 @@ pub(crate) fn build_observed_data(
     observed_signal_preparation: &ReturnComponentsStageJointRefinementObservedSignalPreparation,
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
     observed_open_event_rate_per_hour: f64,
-) -> JointRefinementObservedData {
+) -> Result<JointRefinementObservedData, String> {
     let source_window = candidate_generation_input.known_news_calendar.source_window;
 
     let observed_5m_intervals = build_observed_open_session_interval_observations(
@@ -62,6 +69,30 @@ pub(crate) fn build_observed_data(
         NANOS_PER_HOUR,
     );
 
+    let hourly_simulation_start_utc_nanos =
+        checked_floor_to_hour_utc_nanos(source_window.window_start_utc_nanos).ok_or_else(|| {
+            "joint refinement source window start cannot be rounded down to an hourly boundary"
+                .to_string()
+        })?;
+    let hourly_simulation_end_utc_nanos =
+        checked_ceil_to_hour_utc_nanos(source_window.window_end_utc_nanos).ok_or_else(|| {
+            "joint refinement source window end cannot be rounded up to an hourly boundary"
+                .to_string()
+        })?;
+    let hourly_simulation_interval_count = checked_interval_count_between_utc_nanos(
+        hourly_simulation_start_utc_nanos,
+        hourly_simulation_end_utc_nanos,
+        NANOS_PER_HOUR,
+    )
+    .ok_or_else(|| {
+        "joint refinement source window does not define a valid hourly simulation grid".to_string()
+    })?;
+
+    let hourly_simulation_start_utc =
+        DateTime::<Utc>::from_timestamp_nanos(hourly_simulation_start_utc_nanos);
+    let hourly_simulation_end_utc =
+        DateTime::<Utc>::from_timestamp_nanos(hourly_simulation_end_utc_nanos);
+
     let observed_15m_rv_activity_metric =
         rolling_variance_activity_metric(observed_15m_intervals.as_slice());
 
@@ -74,10 +105,13 @@ pub(crate) fn build_observed_data(
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
 
-    let observed_tick_sample_count = continuous_return_calibration_sample_observed_returns(
-        &observed_signal_preparation.continuous_return_calibration_sample,
-    )
-    .len();
+    let observed_tick_available_sample_count = candidate_generation_input
+        .observed_open_session_returns
+        .len();
+    let observed_tick_sample_count = tick_shape_sample_target_count(
+        observed_tick_available_sample_count,
+        hourly_simulation_interval_count,
+    );
 
     let observed_tick_returns = sampled_observed_tick_returns(
         candidate_generation_input
@@ -135,33 +169,30 @@ pub(crate) fn build_observed_data(
 
     let observed_hourly_tick_counts = tick_count_series(observed_hourly_intervals.as_slice());
 
-    let hourly_simulation_start_utc = DateTime::<Utc>::from_timestamp_nanos(
-        floor_to_hour_utc_nanos(source_window.window_start_utc_nanos),
-    );
-    let hourly_simulation_end_utc = DateTime::<Utc>::from_timestamp_nanos(ceil_to_hour_utc_nanos(
-        source_window.window_end_utc_nanos,
-    ));
-
-    let hourly_simulation_interval_count = ((hourly_simulation_end_utc
-        .timestamp_nanos_opt()
-        .unwrap_or(source_window.window_end_utc_nanos)
-        - hourly_simulation_start_utc
-            .timestamp_nanos_opt()
-            .unwrap_or(source_window.window_start_utc_nanos))
-    .div_euclid(NANOS_PER_HOUR)) as usize;
-
     let surprise_multiplier_by_hour_index = build_surprise_multipliers_by_hour_index(
         hourly_simulation_start_utc,
         hourly_simulation_interval_count,
         return_components_fitted_parameters,
     );
 
-    JointRefinementObservedData {
+    let observed_tick_continuous_return_calibration_sample = observed_signal_preparation
+        .continuous_return_calibration_sample
+        .clone();
+    let observed_tick_continuous_return_optimizer_context =
+        build_continuous_return_optimizer_context(
+            &observed_tick_continuous_return_calibration_sample,
+        );
+    let weighted_tick_continuous_return_optimizer_context =
+        build_weighted_continuous_return_optimizer_context(
+            &observed_tick_continuous_return_calibration_sample,
+        );
+
+    Ok(JointRefinementObservedData {
         observed_open_event_rate_per_hour,
         fallback_sell_share_proxy: candidate_generation_input.open_session_sell_share_proxy,
-        observed_tick_continuous_return_calibration_sample: observed_signal_preparation
-            .continuous_return_calibration_sample
-            .clone(),
+        observed_tick_continuous_return_calibration_sample,
+        observed_tick_continuous_return_optimizer_context,
+        weighted_tick_continuous_return_optimizer_context,
         observed_5m_intervals: observed_5m_intervals.clone(),
         observed_15m_intervals: observed_15m_intervals.clone(),
         observed_tick_intraday_mean_absolute_returns,
@@ -195,7 +226,7 @@ pub(crate) fn build_observed_data(
         simulated_hourly_interval_template: zeroed_interval_observation_template(
             observed_hourly_intervals.as_slice(),
         ),
-    }
+    })
 }
 
 pub(crate) fn sampled_observed_tick_returns(
@@ -208,6 +239,28 @@ pub(crate) fn sampled_observed_tick_returns(
         .collect::<Vec<_>>();
 
     sampled_return_values(raw_observed_tick_returns.as_slice(), target_count)
+}
+
+pub(crate) fn tick_shape_sample_target_count(
+    available_tick_return_count: usize,
+    temporal_block_count: usize,
+) -> usize {
+    available_tick_return_count.min(
+        temporal_block_count
+            .max(1)
+            .saturating_mul(RETURN_SHAPE_EXTREME_TAIL_RANK_DENOMINATOR),
+    )
+}
+
+pub(crate) fn rescaled_observed_tick_calibration_sample_for_modeled_rate(
+    observed_data: &JointRefinementObservedData,
+    baseline_modeled_open_event_rate_per_hour: f64,
+    target_modeled_open_event_rate_per_hour: f64,
+) -> ReturnComponentsStageContinuousReturnCalibrationSample {
+    rescale_continuous_return_calibration_sample_business_time_scales(
+        &observed_data.observed_tick_continuous_return_calibration_sample,
+        target_modeled_open_event_rate_per_hour / baseline_modeled_open_event_rate_per_hour,
+    )
 }
 
 pub(crate) fn build_summary_simulation_session_context(

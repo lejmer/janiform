@@ -2,8 +2,11 @@
 //!
 //! Breadth is tied to search-coordinate coverage, basin-family coverage, observed
 //! support depth, and observed business-time scale regimes. Proxy EM depth is tied
-//! to the effective zero-drift NIG parameter count and the binary resolution gap
-//! between the sample likelihood resolution and the configured solver tolerance.
+//! to the effective zero-drift NIG parameter count, the binary resolution gap
+//! between the sample likelihood resolution and the configured solver tolerance,
+//! and the observed support information depth. Proxy EM breadth is tied to the
+//! same coordinate, family, support, and scale-regime dimensions so compressed
+//! fitting samples preserve the search geometry instead of using a fixed row cap.
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
@@ -101,12 +104,15 @@ pub(super) fn proxy_em_iteration_budget(
     sample_count: usize,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> usize {
+    let support_depth = support_information_depth(sample_count).max(1);
+
     effective_zero_drift_nig_em_parameter_count()
         .max(1)
         .saturating_mul(proxy_em_objective_resolution_depth(
             sample_count,
             solver_settings,
         ))
+        .saturating_mul(support_depth)
         .max(1)
 }
 
@@ -116,6 +122,28 @@ pub(super) fn continuous_nig_search_coordinate_count() -> usize {
 
 pub(super) fn effective_zero_drift_nig_em_parameter_count() -> usize {
     EffectiveZeroDriftNigEmParameter::ALL.len()
+}
+
+pub(super) fn proxy_em_fitting_sample_target_count(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+) -> usize {
+    let sample_count = calibration_sample.observed_profile.sample_count;
+    if sample_count <= 1 {
+        return sample_count;
+    }
+
+    let support_depth = support_information_depth(sample_count).max(1);
+    let family_count = BasinSeedFamily::ALL.len().max(1);
+    let scale_regime_count = calibration_sample.scale_bucket_profiles.len().max(1);
+    let search_coordinate_count = continuous_nig_search_coordinate_count().max(1);
+
+    effective_zero_drift_nig_em_parameter_count()
+        .max(1)
+        .saturating_mul(search_coordinate_count)
+        .saturating_mul(family_count)
+        .saturating_mul(scale_regime_count)
+        .saturating_mul(support_depth)
+        .clamp(1, sample_count)
 }
 
 fn proxy_em_objective_resolution_depth(

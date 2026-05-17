@@ -340,11 +340,29 @@ pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
     runtime_profile.deterministic_cache_miss_count = 0;
     runtime_profile.seed_summary_cache_hit_count = 0;
     runtime_profile.seed_summary_cache_miss_count = 0;
+    runtime_profile.aggregated_likelihood_context_cache_hit_count = 0;
+    runtime_profile.aggregated_likelihood_context_cache_miss_count = 0;
     runtime_profile.option_pricing_cache_hit_count = 0;
     runtime_profile.option_pricing_cache_miss_count = 0;
     runtime_profile.option_pricing_run_count = 0;
     runtime_profile.cumulative_deterministic_evaluation_millis = 0;
+    runtime_profile.cumulative_modeled_rate_millis = 0;
+    runtime_profile.cumulative_likelihood_context_resolution_millis = 0;
+    runtime_profile.cumulative_likelihood_context_5m_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_15m_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_tick_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_tick_optimizer_millis = 0;
+    runtime_profile.cumulative_likelihood_context_5m_optimizer_millis = 0;
+    runtime_profile.cumulative_likelihood_context_15m_optimizer_millis = 0;
+    runtime_profile.cumulative_tick_likelihood_millis = 0;
+    runtime_profile.cumulative_5m_likelihood_millis = 0;
+    runtime_profile.cumulative_15m_likelihood_millis = 0;
+    runtime_profile.cumulative_expected_activity_counts_millis = 0;
+    runtime_profile.cumulative_deterministic_activity_shape_millis = 0;
+    runtime_profile.cumulative_deterministic_activity_level_millis = 0;
     runtime_profile.cumulative_seed_summary_simulation_millis = 0;
+    runtime_profile.cumulative_raw_seed_metrics_millis = 0;
+    runtime_profile.cumulative_loss_build_millis = 0;
     runtime_profile.cumulative_option_pricing_millis = 0;
 }
 
@@ -353,70 +371,64 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
     expected_breakdown: &JointRefinementStageObjectiveBreakdown,
     context: &str,
 ) {
-    assert_f64_within_one_ulp(
-        actual_breakdown.aggregated_likelihood_fit,
-        expected_breakdown.aggregated_likelihood_fit,
-        &format!("{context} aggregated_likelihood_fit"),
+    assert_eq!(
+        actual_breakdown.policy, expected_breakdown.policy,
+        "{context} objective policy"
     );
     assert_f64_within_one_ulp(
-        actual_breakdown.aggregated_return_shape_fit,
-        expected_breakdown.aggregated_return_shape_fit,
-        &format!("{context} aggregated_return_shape_fit"),
+        actual_breakdown.global_loss,
+        expected_breakdown.global_loss,
+        &format!("{context} global_loss"),
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.return_asymmetry_fit,
-        expected_breakdown.return_asymmetry_fit,
-        &format!("{context} return_asymmetry_fit"),
+
+    assert_eq!(
+        actual_breakdown.family_losses.len(),
+        expected_breakdown.family_losses.len(),
+        "{context} family loss count"
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.tick_return_asymmetry_fit,
-        expected_breakdown.tick_return_asymmetry_fit,
-        &format!("{context} tick_return_asymmetry_fit"),
+
+    for (family_index, (actual_family, expected_family)) in actual_breakdown
+        .family_losses
+        .iter()
+        .zip(expected_breakdown.family_losses.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            actual_family.family_id, expected_family.family_id,
+            "{context} family id at {family_index}"
+        );
+        assert_eq!(
+            actual_family.term_count, expected_family.term_count,
+            "{context} family term count at {family_index}"
+        );
+        assert_f64_within_one_ulp(
+            actual_family.loss,
+            expected_family.loss,
+            &format!("{context} family loss at {family_index}"),
+        );
+        assert_f64_within_one_ulp(
+            actual_family.max_standardized_residual,
+            expected_family.max_standardized_residual,
+            &format!("{context} family max z at {family_index}"),
+        );
+        assert_eq!(
+            actual_family.worst_term_id, expected_family.worst_term_id,
+            "{context} family worst term at {family_index}"
+        );
+    }
+
+    assert_eq!(
+        actual_breakdown.term_diagnostics, expected_breakdown.term_diagnostics,
+        "{context} term diagnostics"
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.aggregated_return_scale_fit,
-        expected_breakdown.aggregated_return_scale_fit,
-        &format!("{context} aggregated_return_scale_fit"),
+    assert_eq!(
+        actual_breakdown.hard_constraint_diagnostics,
+        expected_breakdown.hard_constraint_diagnostics,
+        "{context} hard constraints"
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.tick_return_scale_fit,
-        expected_breakdown.tick_return_scale_fit,
-        &format!("{context} tick_return_scale_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.business_time_return_scale_fit,
-        expected_breakdown.business_time_return_scale_fit,
-        &format!("{context} business_time_return_scale_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.intraday_return_level_fit,
-        expected_breakdown.intraday_return_level_fit,
-        &format!("{context} intraday_return_level_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.activity_shape_fit,
-        expected_breakdown.activity_shape_fit,
-        &format!("{context} activity_shape_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.activity_level_fit,
-        expected_breakdown.activity_level_fit,
-        &format!("{context} activity_level_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.rv_activity_coupling_fit,
-        expected_breakdown.rv_activity_coupling_fit,
-        &format!("{context} rv_activity_coupling_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.weighted_objective,
-        expected_breakdown.weighted_objective,
-        &format!("{context} weighted_objective"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.hard_constraint_penalty,
-        expected_breakdown.hard_constraint_penalty,
-        &format!("{context} hard_constraint_penalty"),
+    assert_eq!(
+        actual_breakdown.admissibility, expected_breakdown.admissibility,
+        "{context} admissibility"
     );
 }
 
@@ -554,6 +566,16 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} seed_summary_cache_miss_count drifted"
     );
     assert_eq!(
+        actual_profile.aggregated_likelihood_context_cache_hit_count,
+        expected_profile.aggregated_likelihood_context_cache_hit_count,
+        "{context} aggregated_likelihood_context_cache_hit_count drifted"
+    );
+    assert_eq!(
+        actual_profile.aggregated_likelihood_context_cache_miss_count,
+        expected_profile.aggregated_likelihood_context_cache_miss_count,
+        "{context} aggregated_likelihood_context_cache_miss_count drifted"
+    );
+    assert_eq!(
         actual_profile.option_pricing_cache_hit_count,
         expected_profile.option_pricing_cache_hit_count,
         "{context} option_pricing_cache_hit_count drifted"
@@ -578,9 +600,88 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} cumulative_deterministic_evaluation_millis drifted"
     );
     assert_eq!(
+        actual_profile.cumulative_modeled_rate_millis,
+        expected_profile.cumulative_modeled_rate_millis,
+        "{context} cumulative_modeled_rate_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_resolution_millis,
+        expected_profile.cumulative_likelihood_context_resolution_millis,
+        "{context} cumulative_likelihood_context_resolution_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_5m_sample_millis,
+        expected_profile.cumulative_likelihood_context_5m_sample_millis,
+        "{context} cumulative_likelihood_context_5m_sample_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_15m_sample_millis,
+        expected_profile.cumulative_likelihood_context_15m_sample_millis,
+        "{context} cumulative_likelihood_context_15m_sample_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_tick_sample_millis,
+        expected_profile.cumulative_likelihood_context_tick_sample_millis,
+        "{context} cumulative_likelihood_context_tick_sample_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_tick_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_tick_optimizer_millis,
+        "{context} cumulative_likelihood_context_tick_optimizer_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_5m_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_5m_optimizer_millis,
+        "{context} cumulative_likelihood_context_5m_optimizer_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_15m_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_15m_optimizer_millis,
+        "{context} cumulative_likelihood_context_15m_optimizer_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_tick_likelihood_millis,
+        expected_profile.cumulative_tick_likelihood_millis,
+        "{context} cumulative_tick_likelihood_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_5m_likelihood_millis,
+        expected_profile.cumulative_5m_likelihood_millis,
+        "{context} cumulative_5m_likelihood_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_15m_likelihood_millis,
+        expected_profile.cumulative_15m_likelihood_millis,
+        "{context} cumulative_15m_likelihood_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_expected_activity_counts_millis,
+        expected_profile.cumulative_expected_activity_counts_millis,
+        "{context} cumulative_expected_activity_counts_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_deterministic_activity_shape_millis,
+        expected_profile.cumulative_deterministic_activity_shape_millis,
+        "{context} cumulative_deterministic_activity_shape_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_deterministic_activity_level_millis,
+        expected_profile.cumulative_deterministic_activity_level_millis,
+        "{context} cumulative_deterministic_activity_level_millis drifted"
+    );
+    assert_eq!(
         actual_profile.cumulative_seed_summary_simulation_millis,
         expected_profile.cumulative_seed_summary_simulation_millis,
         "{context} cumulative_seed_summary_simulation_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_raw_seed_metrics_millis,
+        expected_profile.cumulative_raw_seed_metrics_millis,
+        "{context} cumulative_raw_seed_metrics_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_loss_build_millis, expected_profile.cumulative_loss_build_millis,
+        "{context} cumulative_loss_build_millis drifted"
     );
     assert_eq!(
         actual_profile.cumulative_option_pricing_millis,

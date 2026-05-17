@@ -494,15 +494,6 @@ pub(crate) fn log_ratio_distance(candidate_value: f64, observed_value: f64, floo
     (candidate / observed).ln().abs()
 }
 
-pub(crate) fn zero_aware_normalized_bucket_value(
-    candidate_value: f64,
-    baseline_value: f64,
-    floor: f64,
-) -> f64 {
-    let denominator = baseline_value.abs().max(floor);
-    candidate_value / denominator
-}
-
 fn business_time_bucket_index(
     business_time_scale: f64,
     thresholds: JointRefinementBusinessTimeBucketThresholds,

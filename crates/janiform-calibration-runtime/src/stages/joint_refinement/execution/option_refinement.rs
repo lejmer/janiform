@@ -1308,9 +1308,9 @@ fn emit_option_refinement_progress(input: OptionRefinementProgressEmissionInput<
             current_evaluation_count,
             total_evaluation_budget,
             evaluation_progress_percent,
-            current_weighted_objective,
+            current_global_loss: current_weighted_objective,
             best_restart_id: best_restart_id.map(str::to_string),
-            best_weighted_objective,
+            best_global_loss: best_weighted_objective,
             ..JointRefinementStageProgressUpdate::new(phase, completed_units, total_units)
         });
     }

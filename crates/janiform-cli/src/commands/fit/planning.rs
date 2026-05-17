@@ -37,6 +37,9 @@ pub(crate) fn run_fit_plan(
                 mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
                 dynamics_search_restart_candidate_budget: command
                     .dynamics_search_restart_candidate_budget,
+                stylized_fact_huber_cutoff: command.stylized_fact_huber_cutoff,
+                stylized_fact_admissibility_z_threshold: command
+                    .stylized_fact_admissibility_z_threshold,
             },
             no_persist: false,
         },

@@ -449,15 +449,15 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cumulative_local_evaluation_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_weighted_objective: Option<f64>,
+    pub current_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_block_best_weighted_objective: Option<f64>,
+    pub current_block_best_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_restart_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub best_weighted_objective: Option<f64>,
+    pub best_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_coarse_consistency_fit: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]

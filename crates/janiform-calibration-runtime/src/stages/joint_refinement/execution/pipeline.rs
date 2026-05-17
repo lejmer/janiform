@@ -42,33 +42,34 @@ use super::super::objective::evaluate_joint_fitted_parameters;
 use super::super::setup::{
     RestartSeedsBuildInput, build_active_parameter_layout, build_baseline_parameter_vector,
     build_parameter_bounds, build_restart_seeds, joint_refinement_final_simulation_seed_count,
-    observed_activity_log_shift, parameter_vector_to_fitted_parameters,
-    selected_hawkes_observed_open_event_rate_per_hour, selected_return_components_candidate,
-    stage_input_to_activity_input,
+    observed_activity_log_shift, observed_activity_log_shift_for_joint_context,
+    parameter_vector_to_fitted_parameters, selected_hawkes_observed_open_event_rate_per_hour,
+    selected_return_components_candidate, stage_input_to_activity_input,
 };
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementBaselineBuckets,
-    JointRefinementCandidateEvaluation, JointRefinementContext, JointRefinementFidelityTier,
-    JointRefinementProfilingState, JointRefinementRestartOutcome, JointRefinementResumeStore,
-    OptionPricingProgressInput, OptionSurfaceTierPricingArtifactResolutionInput,
-    PersistedRestartSelectionArtifacts, baseline_buckets_from_evaluation,
+    JointRefinementActiveParameterLayout, JointRefinementCandidateEvaluation,
+    JointRefinementContext, JointRefinementFidelityTier, JointRefinementProfilingState,
+    JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
+    OptionSurfaceTierPricingArtifactResolutionInput, PersistedRestartSelectionArtifacts,
     build_joint_candidate_coarse_consistency_artifacts_result,
     build_joint_candidate_frontier_diagnostics, build_joint_finalist_seed_summaries,
-    build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
-    build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
-    build_option_pricing_context, build_summary_simulation_session_context,
+    build_joint_refinement_stage_failure_report,
+    build_joint_refinement_stage_failure_report_with_runtime_profile,
+    build_joint_restart_diagnostics, build_joint_simulation_summaries, build_observed_data,
+    build_option_calibration_diagnostics, build_option_pricing_context,
+    build_summary_simulation_session_context,
     desired_joint_refinement_option_refinement_candidate_count,
     desired_joint_refinement_restart_candidate_budget, elapsed_millis,
-    joint_refinement_admissibility_thresholds, joint_refinement_budget_schedule,
-    joint_restart_outcome_is_admissible, optimize_restart_seeds,
+    joint_refinement_budget_schedule, joint_restart_outcome_is_admissible, optimize_restart_seeds,
     option_pricing_context_fingerprint, ordered_parameter_bits,
     resolve_option_surface_tier_pricing_artifact, run_option_refinement,
     select_restart_outcomes_with_lazy_coarse_consistency,
     simulation_infrastructure_failure_message, with_joint_refinement_thread_pool,
 };
 
-const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_then_pareto_then_lexicographic_tie_break_with_direct_interval_coarse_consistency_diagnostics.v1";
+const JOINT_REFINEMENT_SELECTION_POLICY: &str =
+    "validity_then_admissibility_then_global_loss_with_diversity_and_coarse_consistency.v1";
 
 struct ResolvedStagePayloads<'a> {
     stage_solver_settings: CalibrationOptimizerSettings,
@@ -160,6 +161,8 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
 ) -> JointRefinementStageExecutionReport {
+    let stage_started_at = Instant::now();
+
     if stage_input.restart_candidate_budget_override == Some(0) {
         return build_joint_refinement_stage_failure_report(
             run_spec,
@@ -233,7 +236,14 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         progress_sender.as_ref(),
     ) {
         Ok(artifacts) => artifacts,
-        Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
+        Err(failure) => {
+            return build_failure_report_with_runtime_profile(
+                run_spec,
+                &prepared_bootstrap.bootstrap_context,
+                stage_started_at,
+                failure,
+            );
+        }
     };
 
     let mut restart_search_artifacts = match run_restart_search(
@@ -245,7 +255,14 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         &mut resume_store,
     ) {
         Ok(artifacts) => artifacts,
-        Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
+        Err(failure) => {
+            return build_failure_report_with_runtime_profile(
+                run_spec,
+                &prepared_bootstrap.bootstrap_context,
+                stage_started_at,
+                failure,
+            );
+        }
     };
 
     if let Err(failure) = run_option_refinement_if_enabled(
@@ -256,7 +273,12 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         progress_sender.as_ref(),
         &mut resume_store,
     ) {
-        return build_joint_refinement_stage_failure_report(run_spec, failure);
+        return build_failure_report_with_runtime_profile(
+            run_spec,
+            &prepared_bootstrap.bootstrap_context,
+            stage_started_at,
+            failure,
+        );
     }
 
     if let Err(failure) = run_audit_option_pricing_if_enabled(
@@ -266,7 +288,12 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         progress_sender.as_ref(),
         &mut resume_store,
     ) {
-        return build_joint_refinement_stage_failure_report(run_spec, failure);
+        return build_failure_report_with_runtime_profile(
+            run_spec,
+            &prepared_bootstrap.bootstrap_context,
+            stage_started_at,
+            failure,
+        );
     }
 
     let final_assembly_artifacts = match assemble_final_stage_outputs(
@@ -276,7 +303,14 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         progress_sender.as_ref(),
     ) {
         Ok(artifacts) => artifacts,
-        Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
+        Err(failure) => {
+            return build_failure_report_with_runtime_profile(
+                run_spec,
+                &prepared_bootstrap.bootstrap_context,
+                stage_started_at,
+                failure,
+            );
+        }
     };
 
     build_success_report(
@@ -285,6 +319,26 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         &prepared_bootstrap.bootstrap_context,
         &restart_search_artifacts,
         final_assembly_artifacts,
+    )
+}
+
+fn build_failure_report_with_runtime_profile(
+    run_spec: &CalibrationRunSpec,
+    bootstrap_context: &JointRefinementContext,
+    stage_started_at: Instant,
+    failure: JointRefinementStageExecutionFailure,
+) -> JointRefinementStageExecutionReport {
+    let runtime_profile = bootstrap_context.profiling_state.snapshot_runtime_profile(
+        elapsed_millis(stage_started_at),
+        0,
+        0,
+        0,
+    );
+
+    build_joint_refinement_stage_failure_report_with_runtime_profile(
+        run_spec,
+        failure,
+        Some(runtime_profile),
     )
 }
 
@@ -494,7 +548,10 @@ fn prepare_observed_inputs(
         &resolved_stage_payloads.observed_signal_preparation,
         &stage_input.candidate_generation_input,
         observed_open_event_rate_per_hour,
-    );
+    )
+    .map_err(|error_message| {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+    })?;
 
     let baseline_15m_calibration_sample =
         build_continuous_calibration_sample_from_aggregated_intervals(
@@ -619,6 +676,7 @@ fn build_bootstrap_context(
         option_pricing_execution_failure: Arc::new(Mutex::new(None)),
         calendar_registry: calendar_registry.clone(),
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
+        objective_policy: run_spec.objective_policy,
         runtime_hourly_seasonality_factors: runtime_materialization
             .runtime_hourly_seasonality_factors,
         observed_data,
@@ -639,10 +697,10 @@ fn build_bootstrap_context(
         option_pricing_refinement_enabled,
         local_simulation_seed: resolved_stage_payloads.resolved_stage_seed.stage_seed,
         final_simulation_seeds: resolved_stage_payloads.final_simulation_seeds.clone(),
-        local_baseline_buckets: unit_baseline_buckets(),
-        final_baseline_buckets: unit_baseline_buckets(),
         objective_cache: Arc::new(Mutex::new(BTreeMap::new())),
         deterministic_evaluation_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        aggregated_likelihood_context_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        observed_return_shape_statistic_cache: Arc::new(Mutex::new(BTreeMap::new())),
         seed_summary_cache: Arc::new(Mutex::new(BTreeMap::new())),
         option_pricing_cache: Arc::new(Mutex::new(BTreeMap::new())),
         option_pricing_context,
@@ -858,11 +916,6 @@ fn establish_baseline_evaluation(
 
     ensure_simulation_infrastructure_available(bootstrap_context)?;
 
-    bootstrap_context.local_baseline_buckets =
-        baseline_buckets_from_evaluation(&baseline_local_evaluation);
-    bootstrap_context.final_baseline_buckets =
-        baseline_buckets_from_evaluation(&baseline_final_evaluation);
-
     let baseline_candidate_is_valid = baseline_local_evaluation.invalid_reason.is_none()
         && baseline_final_evaluation.invalid_reason.is_none();
 
@@ -977,7 +1030,6 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
     best_restart: &JointRefinementRestartOutcome,
     valid_restart_count: usize,
     admissible_restart_count: usize,
-    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
 ) -> Result<(), JointRefinementStageExecutionFailure> {
     if best_restart.local_evaluation.invalid_reason.is_some()
         || best_restart.final_evaluation.invalid_reason.is_some()
@@ -1004,115 +1056,44 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
         );
     }
 
-    if joint_restart_outcome_is_admissible(best_restart, thresholds) {
+    if best_restart
+        .final_evaluation
+        .breakdown
+        .admissibility
+        .admissible
+    {
         return Ok(());
     }
 
-    let blocking_terms = blocking_admissibility_terms(
-        &best_restart.final_evaluation.raw_admissibility_metrics,
-        thresholds,
-    );
+    let blocking_terms = best_restart
+        .final_evaluation
+        .breakdown
+        .admissibility
+        .blockers
+        .iter()
+        .take(3)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let blocking_terms = if blocking_terms.is_empty() {
+        "none".to_string()
+    } else {
+        blocking_terms
+    };
 
     Err(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
             error_message: format!(
-                "joint refinement could not identify an admissible candidate after restart search: selected_restart={} valid_restart_count={} admissible_restart_count={} weighted_objective={} blocking_terms={}",
+                "joint refinement could not identify an admissible candidate after restart search: selected_restart={} valid_restart_count={} admissible_restart_count={} global_loss={} blocking_terms={}",
                 best_restart.restart_id,
                 valid_restart_count,
                 admissible_restart_count,
-                best_restart.final_evaluation.breakdown.weighted_objective,
+                best_restart.final_evaluation.breakdown.global_loss,
                 blocking_terms,
             ),
         },
     )
-}
-
-fn blocking_admissibility_terms(
-    raw_metrics: &super::JointRefinementRawAdmissibilityMetrics,
-    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
-) -> String {
-    let mut blocking_terms = [
-        (
-            "aggregated_likelihood_fit",
-            raw_metrics.aggregated_likelihood_fit,
-            thresholds.aggregated_likelihood_fit,
-        ),
-        (
-            "aggregated_return_shape_fit",
-            raw_metrics.aggregated_return_shape_fit,
-            thresholds.aggregated_return_shape_fit,
-        ),
-        (
-            "return_asymmetry_fit",
-            raw_metrics.return_asymmetry_fit,
-            thresholds.return_asymmetry_fit,
-        ),
-        (
-            "tick_return_asymmetry_fit",
-            raw_metrics.tick_return_asymmetry_fit,
-            thresholds.tick_return_asymmetry_fit,
-        ),
-        (
-            "aggregated_return_scale_fit",
-            raw_metrics.aggregated_return_scale_fit,
-            thresholds.aggregated_return_scale_fit,
-        ),
-        (
-            "tick_return_scale_fit",
-            raw_metrics.tick_return_scale_fit,
-            thresholds.tick_return_scale_fit,
-        ),
-        (
-            "business_time_return_scale_fit",
-            raw_metrics.business_time_return_scale_fit,
-            thresholds.business_time_return_scale_fit,
-        ),
-        (
-            "intraday_return_level_fit",
-            raw_metrics.intraday_return_level_fit,
-            thresholds.intraday_return_level_fit,
-        ),
-        (
-            "activity_shape_fit",
-            raw_metrics.activity_shape_fit,
-            thresholds.activity_shape_fit,
-        ),
-        (
-            "activity_level_fit",
-            raw_metrics.activity_level_fit,
-            thresholds.activity_level_fit,
-        ),
-        (
-            "rv_activity_coupling_fit",
-            raw_metrics.rv_activity_coupling_fit,
-            thresholds.rv_activity_coupling_fit,
-        ),
-    ]
-    .into_iter()
-    .filter(|(_, metric_value, threshold)| *metric_value > *threshold)
-    .collect::<Vec<_>>();
-
-    blocking_terms.sort_by(|left, right| {
-        let left_excess = left.1 - left.2;
-        let right_excess = right.1 - right.2;
-
-        right_excess
-            .total_cmp(&left_excess)
-            .then_with(|| left.0.cmp(right.0))
-    });
-
-    if blocking_terms.is_empty() {
-        return "none".to_string();
-    }
-
-    blocking_terms
-        .into_iter()
-        .take(3)
-        .map(|(metric_id, metric_value, threshold)| {
-            format!("{metric_id}:{metric_value}>{threshold}")
-        })
-        .collect::<Vec<_>>()
-        .join(",")
 }
 
 fn run_restart_search(
@@ -1185,14 +1166,26 @@ fn run_restart_search(
 
     let valid_restart_count = count_valid_restart_outcomes(&restart_outcomes);
 
-    let restart_selection_artifacts = select_restart_outcome(
+    let restart_selection_artifacts = match select_restart_outcome(
         stage_input,
         prepared_bootstrap,
         baseline_evaluation_artifacts,
         restart_outcomes.as_slice(),
         progress_sender,
         resume_store,
-    )?;
+    ) {
+        Ok(artifacts) => artifacts,
+        Err(failure) => {
+            let runtime_profile = prepared_bootstrap
+                .bootstrap_context
+                .profiling_state
+                .snapshot_runtime_profile(restart_optimization_wall_clock_millis, 0, 0, 0);
+
+            resume_store.record_runtime_profile(runtime_profile);
+
+            return Err(failure);
+        }
+    };
 
     Ok(RestartSearchArtifacts {
         restart_outcomes,
@@ -1218,6 +1211,18 @@ fn build_restart_search_plan(
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> RestartSearchPlan {
+    let activity_log_shift =
+        observed_activity_log_shift_for_joint_context(&prepared_bootstrap.bootstrap_context)
+            .unwrap_or_else(|| {
+                observed_activity_log_shift(
+                    prepared_bootstrap
+                        .bootstrap_context
+                        .observed_data
+                        .observed_open_event_rate_per_hour,
+                    resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
+                )
+            });
+
     let restart_seeds = build_restart_seeds(RestartSeedsBuildInput {
         baseline_parameter_vector: prepared_bootstrap.baseline_parameter_vector.as_slice(),
         active_parameter_layout: &prepared_bootstrap.bootstrap_context.active_parameter_layout,
@@ -1239,13 +1244,7 @@ fn build_restart_search_plan(
             .final_evaluation
             .objective_terms
             .as_slice(),
-        activity_log_shift: observed_activity_log_shift(
-            prepared_bootstrap
-                .bootstrap_context
-                .observed_data
-                .observed_open_event_rate_per_hour,
-            resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
-        ),
+        activity_log_shift,
         joint_context: &prepared_bootstrap.bootstrap_context,
         solver_settings: &resolved_stage_payloads.stage_solver_settings,
         restart_candidate_budget: desired_joint_refinement_restart_candidate_budget(
@@ -1275,25 +1274,21 @@ fn count_valid_restart_outcomes(restart_outcomes: &[JointRefinementRestartOutcom
         .count()
 }
 
-fn count_admissible_restart_outcomes(
-    restart_outcomes: &[&JointRefinementRestartOutcome],
-    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
-) -> usize {
+fn count_admissible_restart_outcomes(restart_outcomes: &[&JointRefinementRestartOutcome]) -> usize {
     restart_outcomes
         .iter()
         .copied()
-        .filter(|restart_outcome| joint_restart_outcome_is_admissible(restart_outcome, thresholds))
+        .filter(|restart_outcome| joint_restart_outcome_is_admissible(restart_outcome))
         .count()
 }
 
 fn filter_admissible_restart_outcomes<'a>(
     restart_outcomes: &[&'a JointRefinementRestartOutcome],
-    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
 ) -> Vec<&'a JointRefinementRestartOutcome> {
     restart_outcomes
         .iter()
         .copied()
-        .filter(|restart_outcome| joint_restart_outcome_is_admissible(restart_outcome, thresholds))
+        .filter(|restart_outcome| joint_restart_outcome_is_admissible(restart_outcome))
         .collect()
 }
 
@@ -1560,9 +1555,6 @@ fn select_restart_outcome(
 
     emit_restart_candidate_screening_progress(progress_sender, 3, 4, "select best restart");
 
-    let admissibility_thresholds =
-        joint_refinement_admissibility_thresholds(&prepared_bootstrap.bootstrap_context);
-
     let diagnostic_best_restart = selection_artifacts
         .selected_restart_outcomes
         .first()
@@ -1577,7 +1569,6 @@ fn select_restart_outcome(
     let option_refinement_candidate_frontier =
         option_refinement_candidate_frontier_from_selected_outcomes(
             selection_artifacts.selected_restart_outcomes.as_slice(),
-            admissibility_thresholds,
         );
 
     let best_restart = option_refinement_candidate_frontier
@@ -1588,11 +1579,7 @@ fn select_restart_outcome(
     ensure_valid_selected_restart_outcome(
         &diagnostic_best_restart,
         valid_selectable_restart_outcome_refs.len(),
-        count_admissible_restart_outcomes(
-            valid_selectable_restart_outcome_refs.as_slice(),
-            admissibility_thresholds,
-        ),
-        admissibility_thresholds,
+        count_admissible_restart_outcomes(valid_selectable_restart_outcome_refs.as_slice()),
     )?;
 
     resume_store.record_restart_selection(PersistedRestartSelectionArtifacts {
@@ -1622,9 +1609,8 @@ fn select_restart_outcome(
 
 pub(crate) fn option_refinement_candidate_frontier_from_selected_outcomes(
     selected_restart_outcomes: &[&JointRefinementRestartOutcome],
-    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
 ) -> Vec<JointRefinementRestartOutcome> {
-    filter_admissible_restart_outcomes(selected_restart_outcomes, thresholds)
+    filter_admissible_restart_outcomes(selected_restart_outcomes)
         .into_iter()
         .cloned()
         .collect()
@@ -1870,6 +1856,7 @@ fn build_success_report(
         handoff_policy: CALIBRATION_JOINT_REFINEMENT_STAGE_HANDOFF_POLICY,
         fitted_stage_payload: Some(fitted_stage_payload),
         metadata: Some(metadata),
+        runtime_profile: None,
         failure: None,
     }
 }
@@ -1920,12 +1907,12 @@ fn build_fitted_stage_payload(
                 .best_restart
                 .local_evaluation
                 .breakdown
-                .weighted_objective,
+                .global_loss,
             final_objective: restart_search_artifacts
                 .best_restart
                 .final_evaluation
                 .breakdown
-                .weighted_objective,
+                .global_loss,
             local_evaluation_count: restart_search_artifacts.best_restart.local_evaluation_count,
             final_simulation_seeds: bootstrap_context.final_simulation_seeds.clone(),
             stop_reason: restart_search_artifacts
@@ -1967,15 +1954,10 @@ fn build_execution_metadata(
         },
         input_candidate_count: restart_search_artifacts.restart_outcomes.len(),
         valid_candidate_count: restart_search_artifacts.valid_restart_count,
-        selected_candidate_raw_objective: fitted_stage_payload
-            .objective_breakdown
-            .weighted_objective,
+        selected_candidate_raw_objective: fitted_stage_payload.objective_breakdown.global_loss,
         selected_candidate_penalized_objective: fitted_stage_payload
             .objective_breakdown
-            .weighted_objective
-            + fitted_stage_payload
-                .objective_breakdown
-                .hard_constraint_penalty,
+            .global_loss,
     }
 }
 
@@ -2036,21 +2018,5 @@ fn emit_joint_refinement_progress(
             current_item_label: Some(current_item_label.to_string()),
             ..JointRefinementStageProgressUpdate::new(progress_phase, completed_units, total_units)
         });
-    }
-}
-
-fn unit_baseline_buckets() -> JointRefinementBaselineBuckets {
-    JointRefinementBaselineBuckets {
-        aggregated_likelihood_fit: 1.0,
-        aggregated_return_shape_fit: 1.0,
-        return_asymmetry_fit: 1.0,
-        tick_return_asymmetry_fit: 1.0,
-        aggregated_return_scale_fit: 1.0,
-        tick_return_scale_fit: 1.0,
-        business_time_return_scale_fit: 1.0,
-        intraday_return_level_fit: 1.0,
-        activity_shape_fit: 1.0,
-        activity_level_fit: 1.0,
-        rv_activity_coupling_fit: 1.0,
     }
 }

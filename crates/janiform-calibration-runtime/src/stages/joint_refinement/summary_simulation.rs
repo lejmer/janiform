@@ -33,6 +33,9 @@ use super::mean_reversion_runtime::{
     materialize_joint_refinement_mean_reversion_runtime_inputs,
 };
 use super::setup::build_surprise_multipliers_for_interval_grid;
+use sampling::BoundedTickShapeReturnSampler;
+
+mod sampling;
 
 pub const JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION: &str =
     "joint_refinement.summary_simulation.worker_protocol.v1";
@@ -246,7 +249,7 @@ pub(crate) struct JointRefinementSummaryCollector {
     simulated_5m_cursor: JointRefinementIntervalObservationCursor,
     simulated_15m_cursor: JointRefinementIntervalObservationCursor,
     simulated_hourly_cursor: JointRefinementIntervalObservationCursor,
-    retained_trade_returns: Vec<f64>,
+    tick_shape_return_sampler: BoundedTickShapeReturnSampler,
     trade_absolute_return_sum_by_hour: [f64; 24],
     trade_count_by_hour: [usize; 24],
 }
@@ -256,6 +259,7 @@ impl JointRefinementSummaryCollector {
         simulated_5m_interval_template: &[JointRefinementAggregatedIntervalObservation],
         simulated_15m_interval_template: &[JointRefinementAggregatedIntervalObservation],
         simulated_hourly_interval_template: &[JointRefinementAggregatedIntervalObservation],
+        retained_trade_return_target_count: usize,
     ) -> Self {
         Self {
             simulated_5m_intervals: simulated_5m_interval_template.to_vec(),
@@ -264,7 +268,9 @@ impl JointRefinementSummaryCollector {
             simulated_5m_cursor: JointRefinementIntervalObservationCursor::default(),
             simulated_15m_cursor: JointRefinementIntervalObservationCursor::default(),
             simulated_hourly_cursor: JointRefinementIntervalObservationCursor::default(),
-            retained_trade_returns: Vec::new(),
+            tick_shape_return_sampler: BoundedTickShapeReturnSampler::new(
+                retained_trade_return_target_count,
+            ),
             trade_absolute_return_sum_by_hour: [0.0; 24],
             trade_count_by_hour: [0; 24],
         }
@@ -293,7 +299,7 @@ impl JointRefinementSummaryCollector {
             .collect::<Vec<_>>();
 
         let simulated_tick_returns = sampled_return_values(
-            self.retained_trade_returns.as_slice(),
+            self.tick_shape_return_sampler.retained_returns(),
             observed_tick_shape_target_count,
         );
 
@@ -362,22 +368,8 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         _estimated_transition_capacity: usize,
         estimated_event_capacity: usize,
     ) -> Result<(), janiform_engine_simulation::SeededTickSimulationRunError> {
-        self.retained_trade_returns.clear();
-        let additional_capacity =
-            estimated_event_capacity.saturating_sub(self.retained_trade_returns.capacity());
-        if additional_capacity > 0 {
-            self.retained_trade_returns
-                .try_reserve(additional_capacity)
-                .map_err(|source| {
-                    janiform_engine_simulation::SeededTickSimulationRunError::BufferAllocationFailed {
-                        buffer_name: "joint_refinement.retained_trade_returns",
-                        requested_capacity: estimated_event_capacity,
-                        detail: source.to_string(),
-                    }
-                })?;
-        }
-
-        Ok(())
+        self.tick_shape_return_sampler
+            .reserve_retention_capacity(estimated_event_capacity)
     }
 
     fn consume_transition(
@@ -417,18 +409,8 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         );
 
         if tick_increment > 0 {
-            if self.retained_trade_returns.len() == self.retained_trade_returns.capacity() {
-                self.retained_trade_returns
-                    .try_reserve(1)
-                    .map_err(|source| janiform_engine_simulation::SeededTickSimulationRunError::BufferAllocationFailed {
-                        buffer_name: "joint_refinement.retained_trade_returns",
-                        requested_capacity: self.retained_trade_returns.len().saturating_add(1),
-                        detail: source.to_string(),
-                    })?;
-            }
-
-            self.retained_trade_returns
-                .push(record.return_components.total_return);
+            self.tick_shape_return_sampler
+                .retain_return(record.return_components.total_return);
 
             let hour_index = record
                 .timestamp_utc_nanos
@@ -558,6 +540,7 @@ pub fn simulate_joint_refinement_seed_summary_in_process(
         session_state.simulated_5m_interval_template.as_slice(),
         session_state.simulated_15m_interval_template.as_slice(),
         session_state.simulated_hourly_interval_template.as_slice(),
+        session_state.observed_tick_shape_target_count,
     );
 
     collector
@@ -755,7 +738,7 @@ fn build_seeded_summary_simulation_run_config(
 
 fn summary_simulation_memory_estimate_from_session(
     session_state: &JointRefinementSummarySimulationSessionState,
-    estimated_event_capacity: usize,
+    _estimated_event_capacity: usize,
 ) -> JointRefinementSummarySimulationMemoryEstimate {
     let estimated_interval_template_bytes = session_state
         .simulated_5m_interval_template
@@ -776,8 +759,11 @@ fn summary_simulation_memory_estimate_from_session(
 
     let estimated_hourly_statistics_bytes = size_of::<[f64; 24]>() + size_of::<[usize; 24]>();
 
+    // The streaming tick-shape sampler reserves the observed shape target, not
+    // the simulated event count.
+    let estimated_trade_return_capacity = session_state.observed_tick_shape_target_count;
     let estimated_trade_return_capacity_bytes =
-        estimated_event_capacity.saturating_mul(size_of::<f64>());
+        estimated_trade_return_capacity.saturating_mul(size_of::<f64>());
 
     JointRefinementSummarySimulationMemoryEstimate {
         estimated_interval_template_bytes,
@@ -907,7 +893,18 @@ pub(crate) mod tests {
         let (full_path_summary, full_path_native_diagnostics) =
             full_path_seed_summary_fixture(&fixture, &session_state);
 
-        assert_eq!(summary_only, full_path_summary);
+        let comparable_summary_only = summary_only.clone();
+        let mut comparable_full_path_summary = full_path_summary.clone();
+        comparable_full_path_summary.simulated_tick_shape_returns =
+            comparable_summary_only.simulated_tick_shape_returns.clone();
+        comparable_full_path_summary.simulated_tick_return_scale_summary =
+            comparable_summary_only.simulated_tick_return_scale_summary;
+
+        assert_eq!(comparable_summary_only, comparable_full_path_summary);
+        assert!(
+            summary_only.simulated_tick_shape_returns.len()
+                <= fixture.session_context.observed_tick_shape_target_count
+        );
         assert!(
             memory_estimate.estimated_total_retained_bytes
                 < full_path_native_diagnostics.estimated_total_retained_bytes,
@@ -1393,7 +1390,8 @@ pub(crate) mod tests {
                 &observed_signal_preparation,
                 &candidate_generation_input,
                 observed_open_event_rate_per_hour,
-            );
+            )
+            .expect("joint refinement observed data should build");
 
             let runtime_hourly_seasonality_factors =
                 build_runtime_hourly_seasonality_factors_from_components(

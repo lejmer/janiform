@@ -12,10 +12,11 @@ use crate::stages::return_components::{
 };
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStageSeedSource, JointRefinementStageCarryInput,
-    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
-    JointRefinementStageOptimizerDiagnostics,
+    CalibrationExecutionMode, CalibrationLossTermDiagnostic, CalibrationOptimizerSettings,
+    CalibrationStage, CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    JointRefinementStageCarryInput, JointRefinementStageFittedParameters,
+    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
+    JointRefinementStageRuntimeProfile,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -281,11 +282,11 @@ pub struct JointRefinementStageProgressUpdate {
     pub total_pricing_row_count: Option<usize>,
     pub valid_completed_units: Option<usize>,
     pub cumulative_local_evaluation_count: Option<usize>,
-    pub current_weighted_objective: Option<f64>,
-    pub current_block_best_weighted_objective: Option<f64>,
+    pub current_global_loss: Option<f64>,
+    pub current_block_best_global_loss: Option<f64>,
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     pub best_restart_id: Option<String>,
-    pub best_weighted_objective: Option<f64>,
+    pub best_global_loss: Option<f64>,
     pub current_coarse_consistency_fit: Option<f64>,
     pub best_coarse_consistency_fit: Option<f64>,
     pub exact_closed_form_buy_count: Option<usize>,
@@ -320,11 +321,11 @@ impl JointRefinementStageProgressUpdate {
             total_pricing_row_count: None,
             valid_completed_units: None,
             cumulative_local_evaluation_count: None,
-            current_weighted_objective: None,
-            current_block_best_weighted_objective: None,
+            current_global_loss: None,
+            current_block_best_global_loss: None,
             current_candidate_assessment: None,
             best_restart_id: None,
-            best_weighted_objective: None,
+            best_global_loss: None,
             current_coarse_consistency_fit: None,
             best_coarse_consistency_fit: None,
             exact_closed_form_buy_count: None,
@@ -494,16 +495,7 @@ pub struct JointRefinementStageCandidateDiagnostic {
     pub canonical_coordinates: Vec<(String, f64)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JointRefinementStageObjectiveTermDiagnostic {
-    pub metric_id: String,
-    pub target_id: String,
-    pub target_family: String,
-    pub observed_value: f64,
-    pub simulated_value: f64,
-    pub uncertainty_scale: f64,
-    pub normalized_error: f64,
-}
+pub type JointRefinementStageObjectiveTermDiagnostic = CalibrationLossTermDiagnostic;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageSimulationSummary {
@@ -566,6 +558,8 @@ pub struct JointRefinementStageExecutionReport {
     pub fitted_stage_payload: Option<JointRefinementStageFittedPayload>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<JointRefinementStageExecutionMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_profile: Option<JointRefinementStageRuntimeProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<JointRefinementStageExecutionFailure>,
 }

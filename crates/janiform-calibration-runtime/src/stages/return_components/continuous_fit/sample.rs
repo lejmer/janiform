@@ -14,6 +14,8 @@ use super::super::execution::{
     summarize_return_distribution,
 };
 use super::profile::{build_distribution_profile, build_scale_bucket_profiles};
+use super::proxy_em_sample::build_proxy_em_fitting_sample;
+use super::stratified_representatives::representative_member_indices_from_sorted_strata;
 use super::types::{
     ContinuousLikelihoodFidelityTier, ContinuousReturnOptimizerContext,
     ReturnComponentsStageContinuousReturnCalibrationSample,
@@ -153,6 +155,7 @@ pub(crate) fn build_continuous_return_optimizer_context(
         )
         .max(business_time_floor),
         sell_share_proxies: calibration_sample.sell_share_proxies.clone(),
+        member_weights: vec![1.0; calibration_sample.observed_returns.len()],
         integrated_buy_intensities,
         integrated_sell_intensities,
         scale_bucket_profiles: calibration_sample.scale_bucket_profiles.clone(),
@@ -179,6 +182,84 @@ pub(crate) fn build_continuous_return_optimizer_context(
             calibration_sample.scale_bucket_profiles.as_slice(),
             ContinuousLikelihoodFidelityTier::Full,
         ),
+        cache: Arc::new(Mutex::new(BTreeMap::new())),
+    }
+}
+
+pub(crate) fn build_weighted_continuous_return_optimizer_context(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+) -> ContinuousReturnOptimizerContext {
+    let representative_sample = build_proxy_em_fitting_sample(calibration_sample);
+    if representative_sample.sample_count() == calibration_sample.observed_returns.len() {
+        return build_continuous_return_optimizer_context(calibration_sample);
+    }
+
+    let sell_share_proxies = representative_sample
+        .member_indices()
+        .iter()
+        .map(|member_index| calibration_sample.sell_share_proxies[*member_index])
+        .collect();
+
+    let weighted_calibration_sample = build_continuous_return_calibration_sample_from_components(
+        representative_sample.observed_returns().to_vec(),
+        representative_sample.business_time_scales().to_vec(),
+        sell_share_proxies,
+        calibration_sample.open_session_sell_share_proxy,
+    );
+
+    let mut optimizer_context =
+        build_continuous_return_optimizer_context(&weighted_calibration_sample);
+    optimizer_context.member_weights = representative_sample.weights().to_vec();
+
+    optimizer_context
+}
+
+pub(crate) fn rescale_continuous_return_optimizer_context_business_time_scales(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    scale_multiplier: f64,
+) -> ContinuousReturnOptimizerContext {
+    let resolved_scale_multiplier = scale_multiplier.max(strictly_positive_machine_value());
+    let business_time_scales = optimizer_context
+        .business_time_scales
+        .iter()
+        .map(|business_time_scale| business_time_scale * resolved_scale_multiplier)
+        .collect::<Vec<_>>();
+    let business_time_floor = positive_business_time_floor(business_time_scales.as_slice());
+    let mean_business_time_scale =
+        arithmetic_mean(business_time_scales.as_slice()).max(business_time_floor);
+
+    let integrated_buy_intensities = business_time_scales
+        .iter()
+        .zip(optimizer_context.sell_share_proxies.iter())
+        .map(|(business_time_scale, sell_share_proxy)| {
+            business_time_scale * (1.0 - sell_share_proxy.clamp(0.0, 1.0))
+        })
+        .collect();
+    let integrated_sell_intensities = business_time_scales
+        .iter()
+        .zip(optimizer_context.sell_share_proxies.iter())
+        .map(|(business_time_scale, sell_share_proxy)| {
+            business_time_scale * sell_share_proxy.clamp(0.0, 1.0)
+        })
+        .collect();
+
+    // Cached optimizer contexts own their vectors so callers can share them
+    // without borrowing the source context across objective evaluations.
+    ContinuousReturnOptimizerContext {
+        observed_returns: optimizer_context.observed_returns.clone(),
+        business_time_scales,
+        mean_business_time_scale,
+        sell_share_proxies: optimizer_context.sell_share_proxies.clone(),
+        member_weights: optimizer_context.member_weights.clone(),
+        integrated_buy_intensities,
+        integrated_sell_intensities,
+        scale_bucket_profiles: optimizer_context.scale_bucket_profiles.clone(),
+        observed_return_volatility: optimizer_context.observed_return_volatility,
+        log_likelihood_shift: optimizer_context.log_likelihood_shift,
+        open_session_sell_share_proxy: optimizer_context.open_session_sell_share_proxy,
+        seed_member_indices: optimizer_context.seed_member_indices.clone(),
+        local_member_indices: optimizer_context.local_member_indices.clone(),
+        full_member_indices: optimizer_context.full_member_indices.clone(),
         cache: Arc::new(Mutex::new(BTreeMap::new())),
     }
 }
@@ -406,6 +487,7 @@ fn fidelity_member_indices(
 
     let sell_share_stratum_count = match fidelity_tier {
         ContinuousLikelihoodFidelityTier::Seed => 1,
+        ContinuousLikelihoodFidelityTier::Representative => return (0..total_count).collect(),
         ContinuousLikelihoodFidelityTier::Local => scale_bucket_profiles.len(),
         ContinuousLikelihoodFidelityTier::Full => unreachable!("full tier handled above"),
     };
@@ -434,27 +516,4 @@ fn fidelity_member_indices(
     }
 
     selected_member_indices
-}
-
-fn representative_member_indices_from_sorted_strata(
-    sorted_member_indices: &[usize],
-    target_stratum_count: usize,
-) -> Vec<usize> {
-    if sorted_member_indices.is_empty() || target_stratum_count == 0 {
-        return Vec::new();
-    }
-
-    let resolved_stratum_count = target_stratum_count.min(sorted_member_indices.len());
-
-    (0..resolved_stratum_count)
-        .filter_map(|stratum_index| {
-            let start_offset = stratum_index * sorted_member_indices.len() / resolved_stratum_count;
-            let end_offset = ((stratum_index + 1) * sorted_member_indices.len()
-                / resolved_stratum_count)
-                .max(start_offset + 1);
-            let median_offset = start_offset + (end_offset - start_offset - 1) / 2;
-
-            sorted_member_indices.get(median_offset).copied()
-        })
-        .collect()
 }

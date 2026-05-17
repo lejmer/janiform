@@ -83,6 +83,39 @@ fn work_item_phase_start_does_not_create_placeholder_table_row() {
 }
 
 #[test]
+fn basin_optimization_eval_progress_stays_on_phase_line_without_table_row() {
+    let progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
+        Some("basin_seed_003"),
+        Some(3),
+        Some(8),
+        None,
+        None,
+    );
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("basin optimization progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            work_item_label,
+            work_item_columns,
+            work_item_metrics,
+            latest_signal,
+            ..
+        }) => {
+            assert_eq!(work_item_label, None);
+            assert_eq!(work_item_columns, Vec::new());
+            assert_eq!(work_item_metrics, Vec::new());
+            assert_eq!(latest_signal.as_deref(), Some("basin_seed_003, evals 3/8"));
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
 fn zero_total_phase_progress_uses_unbounded_terminal_measure() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
@@ -165,7 +198,7 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
     );
 
     progress.current_parameter_block = Some("nig".to_string());
-    progress.current_block_best_weighted_objective = Some(0.5);
+    progress.current_block_best_global_loss = Some(0.5);
 
     progress.exact_closed_form_buy_count = Some(3);
     progress.exact_closed_form_sell_count = Some(4);
@@ -179,9 +212,9 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
         vec![
             ("eval".to_string(), "Evals".to_string()),
             ("block".to_string(), "Block".to_string()),
-            ("current_objective".to_string(), "Trial merit".to_string()),
-            ("best_objective".to_string(), "Accepted merit".to_string()),
-            ("final_objective".to_string(), "Final merit".to_string()),
+            ("current_objective".to_string(), "Trial loss".to_string()),
+            ("best_objective".to_string(), "Accepted loss".to_string()),
+            ("final_objective".to_string(), "Final loss".to_string()),
             ("exact_buy".to_string(), "CF-Buy".to_string()),
             ("exact_sell".to_string(), "CF-Sell".to_string()),
             ("exact_mixed".to_string(), "Mix".to_string()),
@@ -275,7 +308,7 @@ fn return_components_progress_event(
     current_item_label: Option<&str>,
     current_evaluation_count: Option<usize>,
     total_evaluation_budget: Option<usize>,
-    best_weighted_objective: Option<f64>,
+    best_global_loss: Option<f64>,
     current_convergence_ratio: Option<f64>,
 ) -> CalibrationStagedRunStageProgressEvent {
     CalibrationStagedRunStageProgressEvent {
@@ -304,11 +337,11 @@ fn return_components_progress_event(
         total_pricing_row_count: None,
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
-        current_weighted_objective: None,
-        current_block_best_weighted_objective: None,
+        current_global_loss: None,
+        current_block_best_global_loss: None,
         current_candidate_assessment: None,
         best_restart_id: None,
-        best_weighted_objective,
+        best_global_loss,
         current_coarse_consistency_fit: None,
         best_coarse_consistency_fit: None,
         exact_closed_form_buy_count: None,

@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 
+use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::root_mean_square_or_infinity;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
@@ -12,6 +13,7 @@ use super::super::contracts::{
 use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::super::execution::theoretical_net_process_moments;
 use super::super::progress::send_return_components_evaluation_progress;
+use super::budget::ContinuousNigFitBudgets;
 use super::constants::RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE;
 use super::likelihood::maximum_profiled_open_beta_ratio;
 use super::profile::scale_aware_absolute_error;
@@ -93,6 +95,28 @@ pub(crate) fn nig_search_bounds_for_calibration_sample(
     (search_bounds.lower_bounds, search_bounds.upper_bounds)
 }
 
+pub(crate) fn nig_search_bounds_for_calibration_sample_with_solver_settings(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> ([f64; 4], [f64; 4]) {
+    let fit_budgets =
+        ContinuousNigFitBudgets::from_calibration_sample(calibration_sample, solver_settings);
+
+    nig_search_bounds_for_calibration_sample(
+        calibration_sample,
+        fit_budgets.moment_candidate_generation_count,
+    )
+}
+
+pub(crate) fn nig_log_alpha_bounds_for_calibration_sample(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+) -> (f64, f64) {
+    let (alpha_lower_bound, alpha_upper_bound) =
+        theoretical_alpha_bounds(calibration_sample.observed_profile);
+
+    (alpha_lower_bound.ln(), alpha_upper_bound.ln())
+}
+
 pub(super) fn build_moment_seed_candidates(
     optimizer_context: &ContinuousReturnOptimizerContext,
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
@@ -102,6 +126,7 @@ pub(super) fn build_moment_seed_candidates(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<ScoredNigCandidate> {
     let moment_targets = ContinuousMomentTargets::from_profile(calibration_sample.observed_profile);
+
     let alpha_interval = theoretical_alpha_bounds(calibration_sample.observed_profile);
     let completed_candidate_count = AtomicUsize::new(0);
 

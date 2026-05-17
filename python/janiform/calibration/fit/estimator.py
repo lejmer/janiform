@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
 from datetime import datetime
 from io import StringIO
+from math import isfinite
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
@@ -82,6 +83,8 @@ class JaniformEstimator:
     _joint_refinement_option_refinement_candidate_count_override: Optional[int]
     _joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     _joint_refinement_audit_option_pricing_enabled: bool
+    _stylized_fact_huber_cutoff: Optional[float]
+    _stylized_fact_admissibility_z_threshold: Optional[float]
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
     _known_news_reference: Optional[KnownNewsPresetReference]
@@ -107,6 +110,8 @@ class JaniformEstimator:
         joint_refinement_option_refinement_candidate_count: Optional[int] = None,
         joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None,
         joint_refinement_audit_option_pricing: bool = False,
+        stylized_fact_huber_cutoff: Optional[float] = None,
+        stylized_fact_admissibility_z_threshold: Optional[float] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -169,6 +174,27 @@ class JaniformEstimator:
                 "must be strictly positive when provided",
             )
 
+        if (
+            stylized_fact_huber_cutoff is not None
+            and (not isfinite(stylized_fact_huber_cutoff) or stylized_fact_huber_cutoff <= 0.0)
+        ):
+            raise calibration_error(
+                "stylized_fact_huber_cutoff",
+                "must be finite and strictly positive when provided",
+            )
+
+        if (
+            stylized_fact_admissibility_z_threshold is not None
+            and (
+                not isfinite(stylized_fact_admissibility_z_threshold)
+                or stylized_fact_admissibility_z_threshold <= 0.0
+            )
+        ):
+            raise calibration_error(
+                "stylized_fact_admissibility_z_threshold",
+                "must be finite and strictly positive when provided",
+            )
+
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
         self._normalization_policy = normalization_policy
@@ -191,6 +217,10 @@ class JaniformEstimator:
         )
         self._joint_refinement_audit_option_pricing_enabled = (
             joint_refinement_audit_option_pricing
+        )
+        self._stylized_fact_huber_cutoff = stylized_fact_huber_cutoff
+        self._stylized_fact_admissibility_z_threshold = (
+            stylized_fact_admissibility_z_threshold
         )
         self._market_profile_reference = coerce_market_profile_reference(market_profile)
         self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
@@ -319,6 +349,10 @@ class JaniformEstimator:
             ),
             joint_refinement_audit_option_pricing_enabled=(
                 self._joint_refinement_audit_option_pricing_enabled
+            ),
+            stylized_fact_huber_cutoff=self._stylized_fact_huber_cutoff,
+            stylized_fact_admissibility_z_threshold=(
+                self._stylized_fact_admissibility_z_threshold
             ),
             default_endogenous_mean_reversion_configuration=(
                 self._default_endogenous_mean_reversion_configuration()

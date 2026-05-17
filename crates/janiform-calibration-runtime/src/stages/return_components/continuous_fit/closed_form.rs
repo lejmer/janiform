@@ -1,12 +1,12 @@
 use std::f64::consts::PI;
 
 use janiform_model_kernels::nig::NigParameters;
-use puruspe::Inu_Knu;
 
 use super::super::contracts::{
     ReturnComponentsStageExactLikelihoodEvaluatorKind,
     ReturnComponentsStageExactLikelihoodFailureReason,
 };
+use super::bessel::log_modified_bessel_k1;
 use super::exact_block::{ExactBlockInput, ExactLikelihoodFailureContext};
 use super::likelihood::{ExactBlockLikelihoodEvaluation, ExactBlockStructuralFailure};
 
@@ -101,18 +101,40 @@ pub(super) fn closed_form_nig_log_density(
         return Err(ReturnComponentsStageExactLikelihoodFailureReason::InvalidDensity);
     }
 
-    let (_, k1) = Inu_Knu(1.0, bessel_argument);
-    if !k1.is_finite() || k1 <= 0.0 {
-        return Err(ReturnComponentsStageExactLikelihoodFailureReason::InvalidDensity);
-    }
+    let log_bessel_k1 = log_modified_bessel_k1(bessel_argument)
+        .ok_or(ReturnComponentsStageExactLikelihoodFailureReason::InvalidDensity)?;
 
     let log_density = parameters.alpha.ln() + scaled_delta.ln() - PI.ln() - conditional_scale.ln()
         + scaled_delta * gamma
         + parameters.beta * observed_return
-        + k1.ln();
+        + log_bessel_k1;
     if !log_density.is_finite() {
         return Err(ReturnComponentsStageExactLikelihoodFailureReason::InvalidDensity);
     }
 
     Ok(log_density)
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform_model_kernels::nig::NigParameters;
+
+    use super::closed_form_nig_log_density;
+
+    #[test]
+    fn density_remains_finite_when_bessel_k1_underflows() {
+        let buy_parameters = NigParameters::try_new(
+            113_937.28642135783,
+            13_916.779004903387,
+            0.000029959179,
+            0.0,
+        )
+        .expect("buy parameters should validate");
+
+        let log_density =
+            closed_form_nig_log_density(buy_parameters, 0.000009286603146238112, 402.4404796359019)
+                .expect("large-argument closed-form density should evaluate");
+
+        assert!(log_density.is_finite());
+    }
 }

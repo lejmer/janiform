@@ -14,14 +14,14 @@ use super::super::setup::{
     restart_candidate_screening_max_parallelism_for_test,
 };
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementAdmissibilityThresholds,
-    JointRefinementCandidateEvaluation, JointRefinementObservedData,
-    JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
-    JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
-    desired_joint_refinement_restart_candidate_budget, ensure_valid_selected_restart_outcome,
-    extend_joint_coarse_tick_consistency_metrics_for_seed, joint_raw_metrics_are_dynamics_feasible,
+    JointRefinementActiveParameterLayout, JointRefinementCandidateEvaluation,
+    JointRefinementObservedData, JointRefinementRawAdmissibilityMetrics,
+    JointRefinementRestartOutcome, JointRefinementSeedSummary,
+    admissibility_threshold_from_sample_count, desired_joint_refinement_restart_candidate_budget,
+    ensure_valid_selected_restart_outcome, extend_joint_coarse_tick_consistency_metrics_for_seed,
     joint_refinement_budget_schedule, joint_refinement_restart_block_powell_settings,
     option_refinement_candidate_frontier_from_selected_outcomes, sampled_observed_tick_returns,
+    tick_shape_sample_target_count,
 };
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
@@ -29,18 +29,23 @@ use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketThresholds, JointRefinementReturnScaleSummary,
     JointRefinementRollingVarianceActivityMetric,
 };
-use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic;
+use crate::stages::joint_refinement::contracts::{
+    JointRefinementStageExecutionFailure, JointRefinementStageObjectiveTermDiagnostic,
+};
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, NigShapeSearchPoint,
     ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
     ReturnComponentsStageContinuousReturnCalibrationSample,
     build_continuous_return_calibration_sample_from_components,
-    nig_configuration_from_search_point, nig_search_bounds_for_calibration_sample,
+    build_continuous_return_optimizer_context, build_weighted_continuous_return_optimizer_context,
+    nig_configuration_from_search_point,
+    nig_search_bounds_for_calibration_sample_with_solver_settings,
     nig_search_point_from_configuration,
 };
 use janiform_calibration_artifacts::{
-    CalibrationOptimizerSettings, HawkesStageFittedParameters,
+    CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermKind,
+    CalibrationObjectivePolicy, CalibrationOptimizerSettings, HawkesStageFittedParameters,
     JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
     ReturnComponentsStageFittedParameters, ReturnMarkHourOfWeekScaleProfile,
     SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
@@ -138,10 +143,22 @@ fn build_test_observed_data() -> JointRefinementObservedData {
         absolute_return_quantile_q90: 0.036,
     };
 
+    let observed_tick_continuous_return_calibration_sample = build_test_calibration_sample();
+    let observed_tick_continuous_return_optimizer_context =
+        build_continuous_return_optimizer_context(
+            &observed_tick_continuous_return_calibration_sample,
+        );
+    let weighted_tick_continuous_return_optimizer_context =
+        build_weighted_continuous_return_optimizer_context(
+            &observed_tick_continuous_return_calibration_sample,
+        );
+
     JointRefinementObservedData {
         observed_open_event_rate_per_hour: 1.0,
         fallback_sell_share_proxy: 0.5,
-        observed_tick_continuous_return_calibration_sample: build_test_calibration_sample(),
+        observed_tick_continuous_return_calibration_sample,
+        observed_tick_continuous_return_optimizer_context,
+        weighted_tick_continuous_return_optimizer_context,
         observed_5m_intervals: vec![
             build_test_interval_observation(0, 300, 0.012, 2, 0.5),
             build_test_interval_observation(300, 600, -0.009, 2, 0.5),
@@ -213,69 +230,107 @@ fn build_test_objective_term(
     simulated_value: f64,
 ) -> JointRefinementStageObjectiveTermDiagnostic {
     JointRefinementStageObjectiveTermDiagnostic {
-        metric_id: metric_id.to_string(),
-        target_id: metric_id.to_string(),
-        target_family: "return_scale".to_string(),
-        observed_value,
-        simulated_value,
-        uncertainty_scale: observed_value.abs(),
-        normalized_error: 0.0,
+        term_id: metric_id.to_string(),
+        family_id: "return_scale".to_string(),
+        term_kind: CalibrationLossTermKind::StylizedFact,
+        observed_value: Some(observed_value),
+        model_value: Some(simulated_value),
+        observed_standard_error: Some(observed_value.abs()),
+        model_standard_error: Some(0.0),
+        uncertainty_scale: Some(observed_value.abs()),
+        standardized_residual: Some(0.0),
+        loss: 0.0,
+        admissibility_blocker: false,
     }
 }
 
 fn build_test_joint_breakdown(
     tick_return_asymmetry_fit: f64,
     tick_return_scale_fit: f64,
-    weighted_objective: f64,
+    global_loss: f64,
 ) -> JointRefinementStageObjectiveBreakdown {
+    let family_losses = [
+        ("aggregated_likelihood_fit", 1.0),
+        ("aggregated_return_shape_fit", 1.0),
+        ("return_asymmetry_fit", 1.0),
+        ("tick_return_asymmetry_fit", tick_return_asymmetry_fit),
+        ("aggregated_return_scale_fit", 1.0),
+        ("tick_return_scale_fit", tick_return_scale_fit),
+        ("business_time_return_scale_fit", 1.0),
+        ("intraday_return_level_fit", 1.0),
+        ("activity_shape_fit", 1.0),
+        ("activity_level_fit", 1.0),
+        ("rv_activity_coupling_fit", 1.0),
+    ]
+    .into_iter()
+    .map(|(family_id, loss)| CalibrationLossFamilyDiagnostic {
+        family_id: family_id.to_string(),
+        term_count: 1,
+        loss,
+        max_standardized_residual: loss,
+        worst_term_id: Some(family_id.to_string()),
+    })
+    .collect::<Vec<_>>();
+
     JointRefinementStageObjectiveBreakdown {
-        aggregated_likelihood_fit: 1.0,
-        aggregated_return_shape_fit: 1.0,
-        return_asymmetry_fit: 1.0,
-        tick_return_asymmetry_fit,
-        aggregated_return_scale_fit: 1.0,
-        tick_return_scale_fit,
-        business_time_return_scale_fit: 1.0,
-        intraday_return_level_fit: 1.0,
-        activity_shape_fit: 1.0,
-        activity_level_fit: 1.0,
-        rv_activity_coupling_fit: 1.0,
-        weighted_objective,
-        hard_constraint_penalty: 0.0,
+        policy: CalibrationObjectivePolicy::default(),
+        global_loss,
+        family_losses,
+        term_diagnostics: Vec::new(),
+        hard_constraint_diagnostics: Vec::new(),
+        admissibility: CalibrationLossAdmissibility {
+            admissible: true,
+            max_standardized_residual: 1.0,
+            excess_loss: 0.0,
+            blockers: Vec::new(),
+        },
     }
 }
 
-fn build_test_admissibility_thresholds() -> JointRefinementAdmissibilityThresholds {
-    JointRefinementAdmissibilityThresholds {
-        aggregated_likelihood_fit: 2.0,
-        aggregated_return_shape_fit: 2.0,
-        return_asymmetry_fit: 2.0,
-        tick_return_asymmetry_fit: 2.0,
-        aggregated_return_scale_fit: 2.0,
-        tick_return_scale_fit: 2.0,
-        business_time_return_scale_fit: 2.0,
-        intraday_return_level_fit: 2.0,
-        activity_shape_fit: 2.0,
-        activity_level_fit: 2.0,
-        rv_activity_coupling_fit: 2.0,
-    }
+fn build_test_inadmissible_joint_breakdown(
+    tick_return_asymmetry_fit: f64,
+    tick_return_scale_fit: f64,
+    global_loss: f64,
+    blocker: &str,
+) -> JointRefinementStageObjectiveBreakdown {
+    let mut breakdown = build_test_joint_breakdown(
+        tick_return_asymmetry_fit,
+        tick_return_scale_fit,
+        global_loss,
+    );
+    breakdown.admissibility = CalibrationLossAdmissibility {
+        admissible: false,
+        max_standardized_residual: 4.0,
+        excess_loss: 0.5,
+        blockers: vec![blocker.to_string()],
+    };
+    breakdown
 }
 
 fn build_test_raw_admissibility_metrics(
     breakdown: &JointRefinementStageObjectiveBreakdown,
 ) -> JointRefinementRawAdmissibilityMetrics {
+    let family_loss = |family_id: &str| {
+        breakdown
+            .family_losses
+            .iter()
+            .find(|family| family.family_id == family_id)
+            .map(|family| family.loss)
+            .unwrap_or(1.0)
+    };
+
     JointRefinementRawAdmissibilityMetrics {
-        aggregated_likelihood_fit: breakdown.aggregated_likelihood_fit,
-        aggregated_return_shape_fit: breakdown.aggregated_return_shape_fit,
-        return_asymmetry_fit: breakdown.return_asymmetry_fit,
-        tick_return_asymmetry_fit: breakdown.tick_return_asymmetry_fit,
-        aggregated_return_scale_fit: breakdown.aggregated_return_scale_fit,
-        tick_return_scale_fit: breakdown.tick_return_scale_fit,
-        business_time_return_scale_fit: breakdown.business_time_return_scale_fit,
-        intraday_return_level_fit: breakdown.intraday_return_level_fit,
-        activity_shape_fit: breakdown.activity_shape_fit,
-        activity_level_fit: breakdown.activity_level_fit,
-        rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
+        aggregated_likelihood_fit: family_loss("aggregated_likelihood_fit"),
+        aggregated_return_shape_fit: family_loss("aggregated_return_shape_fit"),
+        return_asymmetry_fit: family_loss("return_asymmetry_fit"),
+        tick_return_asymmetry_fit: family_loss("tick_return_asymmetry_fit"),
+        aggregated_return_scale_fit: family_loss("aggregated_return_scale_fit"),
+        tick_return_scale_fit: family_loss("tick_return_scale_fit"),
+        business_time_return_scale_fit: family_loss("business_time_return_scale_fit"),
+        intraday_return_level_fit: family_loss("intraday_return_level_fit"),
+        activity_shape_fit: family_loss("activity_shape_fit"),
+        activity_level_fit: family_loss("activity_level_fit"),
+        rv_activity_coupling_fit: family_loss("rv_activity_coupling_fit"),
     }
 }
 
@@ -556,8 +611,12 @@ fn joint_refinement_nig_bounds_include_selected_return_nig_outside_theoretical_r
 
     let baseline_15m_calibration_sample = build_test_calibration_sample();
 
+    let solver_settings = build_test_solver_settings(1);
     let (theoretical_lower_bounds, theoretical_upper_bounds) =
-        nig_search_bounds_for_calibration_sample(&baseline_15m_calibration_sample, 128);
+        nig_search_bounds_for_calibration_sample_with_solver_settings(
+            &baseline_15m_calibration_sample,
+            &solver_settings,
+        );
 
     let selected_search_point = NigShapeSearchPoint {
         log_alpha: theoretical_lower_bounds[0] - 0.25,
@@ -593,7 +652,7 @@ fn joint_refinement_nig_bounds_include_selected_return_nig_outside_theoretical_r
         &[],
         &build_test_observed_data(),
         1.0,
-        &build_test_solver_settings(1),
+        &solver_settings,
     )
     .expect("bounds should include selected return-stage NIG");
 
@@ -690,8 +749,8 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
     let baseline_final_objective_terms = vec![
-        build_test_objective_term("joint.return_scale.mean_absolute_return_15m", 1.0, 2.0),
-        build_test_objective_term("joint.return_scale.tick_realized_variance", 4.0, 25.0),
+        build_test_objective_term("return_scale.15m.mean_absolute_return", 1.0, 2.0),
+        build_test_objective_term("return_scale.tick.realized_variance", 4.0, 25.0),
     ];
 
     let restart_seeds =
@@ -705,7 +764,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
             baseline_final_objective_terms: baseline_final_objective_terms.as_slice(),
             activity_log_shift: 0.25,
             restart_candidate_budget: 8,
-            halton_seed_is_accepted: Box::new(|_| true),
+            halton_seed_is_accepted: Box::new(|_| false),
         });
 
     let log_lambda_index = active_parameter_layout.log_lambda_scale_index;
@@ -713,7 +772,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
     let mean_absolute_return_delta_shift = 0.5f64.ln();
     let tick_realized_variance_delta_shift = 0.4f64.ln();
 
-    assert_eq!(restart_seeds.len(), 8);
+    assert_eq!(restart_seeds.len(), 7);
     let mean_absolute_return_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
         "return_scale_mean_absolute_return_15m",
@@ -1131,6 +1190,14 @@ fn sampled_observed_tick_returns_use_raw_open_session_returns() {
 }
 
 #[test]
+fn tick_shape_sample_target_count_uses_q01_rank_quantum_per_temporal_block() {
+    assert_eq!(tick_shape_sample_target_count(1_000_000, 24), 2_400);
+    assert_eq!(tick_shape_sample_target_count(664_465, 168), 16_800);
+    assert_eq!(tick_shape_sample_target_count(500, 24), 500);
+    assert_eq!(tick_shape_sample_target_count(1_000_000, 0), 100);
+}
+
+#[test]
 fn joint_primary_metrics_include_direct_tick_distribution_terms() {
     let breakdown = build_test_joint_breakdown(1.7, 1.9, 1.2);
 
@@ -1162,7 +1229,7 @@ fn admissible_candidate_ordering_uses_direct_tick_terms_before_weighted_tie_brea
 }
 
 #[test]
-fn admissible_candidate_ordering_uses_weighted_objective_after_primary_metrics_tie() {
+fn admissible_candidate_ordering_uses_global_loss_after_primary_metrics_tie() {
     let lower_objective = build_test_joint_breakdown(1.0, 1.0, 0.9);
     let higher_objective = build_test_joint_breakdown(1.0, 1.0, 1.1);
 
@@ -1210,17 +1277,13 @@ fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
 
     let fallback_restart = build_test_restart_outcome(
         "fallback_restart",
-        JointRefinementStageObjectiveBreakdown {
-            activity_level_fit: 3.0,
-            ..build_test_joint_breakdown(0.8, 0.8, 0.7)
-        },
+        build_test_inadmissible_joint_breakdown(0.8, 0.8, 0.7, "activity_level_fit"),
     );
 
     let selected_restart_outcomes = vec![&admissible_restart, &fallback_restart];
 
     let option_frontier = option_refinement_candidate_frontier_from_selected_outcomes(
         selected_restart_outcomes.as_slice(),
-        build_test_admissibility_thresholds(),
     );
 
     let frontier_ids = option_frontier
@@ -1229,32 +1292,6 @@ fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
         .collect::<Vec<_>>();
 
     assert_eq!(frontier_ids, vec!["admissible_restart"]);
-}
-
-#[test]
-fn dynamics_feasibility_targets_activity_and_runtime_families_only() {
-    let thresholds = build_test_admissibility_thresholds();
-
-    let dynamics_feasible_breakdown = JointRefinementStageObjectiveBreakdown {
-        aggregated_return_shape_fit: thresholds.aggregated_return_shape_fit + 0.5,
-        return_asymmetry_fit: thresholds.return_asymmetry_fit + 0.5,
-        aggregated_return_scale_fit: thresholds.aggregated_return_scale_fit + 0.5,
-        ..build_test_joint_breakdown(1.0, 1.0, 1.0)
-    };
-
-    let dynamics_infeasible_breakdown = JointRefinementStageObjectiveBreakdown {
-        activity_level_fit: thresholds.activity_level_fit + 0.5,
-        ..build_test_joint_breakdown(1.0, 1.0, 1.0)
-    };
-
-    assert!(joint_raw_metrics_are_dynamics_feasible(
-        &build_test_raw_admissibility_metrics(&dynamics_feasible_breakdown),
-        thresholds,
-    ));
-    assert!(!joint_raw_metrics_are_dynamics_feasible(
-        &build_test_raw_admissibility_metrics(&dynamics_infeasible_breakdown),
-        thresholds,
-    ));
 }
 
 #[test]
@@ -1309,24 +1346,14 @@ fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
 fn selected_restart_validation_rejects_inadmissible_candidate() {
     let restart_outcome = build_test_restart_outcome(
         "joint_refinement_midpoint",
-        JointRefinementStageObjectiveBreakdown {
-            activity_level_fit: 3.0,
-            ..build_test_joint_breakdown(1.0, 1.0, 0.8)
-        },
+        build_test_inadmissible_joint_breakdown(1.0, 1.0, 0.8, "activity_level_fit"),
     );
 
-    let failure = ensure_valid_selected_restart_outcome(
-        &restart_outcome,
-        0,
-        0,
-        build_test_admissibility_thresholds(),
-    )
-    .expect_err("inadmissible selected restart should fail validation");
+    let failure = ensure_valid_selected_restart_outcome(&restart_outcome, 0, 0)
+        .expect_err("inadmissible selected restart should fail validation");
 
     match failure {
-        crate::stages::joint_refinement::contracts::JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-            error_message,
-        } => {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message } => {
             assert!(
                 error_message.contains("could not identify an admissible candidate"),
                 "unexpected failure message: {error_message}"

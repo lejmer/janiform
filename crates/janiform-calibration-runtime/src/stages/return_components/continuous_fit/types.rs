@@ -16,6 +16,7 @@ use super::super::contracts::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ContinuousLikelihoodFidelityTier {
     Seed,
+    Representative,
     Local,
     Full,
 }
@@ -53,7 +54,27 @@ pub(crate) struct ContinuousReturnOptimizerDiagnostic {
     pub final_objective_score: f64,
     pub local_evaluation_count: usize,
     pub stop_reason: &'static str,
+    pub proxy_em_diagnostic: ContinuousReturnProxyEmDiagnostic,
     pub basin_diagnostics: Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct ContinuousReturnProxyEmDiagnostic {
+    pub(crate) best_objective: Option<f64>,
+    pub(crate) final_convergence_ratio: Option<f64>,
+    pub(crate) evaluation_count: usize,
+    pub(crate) completed_seed_count: usize,
+    pub(crate) refined_seed_count: usize,
+    pub(crate) requested_seed_count: usize,
+    pub(crate) iteration_budget_per_seed: usize,
+    pub(crate) fitting_sample_count: usize,
+    pub(crate) fitting_sample_weight_sum: f64,
+    pub(crate) converged_seed_count: usize,
+    pub(crate) non_improving_seed_count: usize,
+    pub(crate) numerical_failure_seed_count: usize,
+    pub(crate) iteration_budget_exhausted_seed_count: usize,
+    pub(crate) projection_failure_seed_count: usize,
+    pub(crate) invalid_initial_seed_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -305,6 +326,7 @@ pub(crate) struct ContinuousReturnOptimizerContext {
     pub(super) business_time_scales: Vec<f64>,
     pub(super) mean_business_time_scale: f64,
     pub(super) sell_share_proxies: Vec<f64>,
+    pub(super) member_weights: Vec<f64>,
     pub(super) integrated_buy_intensities: Vec<f64>,
     pub(super) integrated_sell_intensities: Vec<f64>,
     pub(super) scale_bucket_profiles: Vec<ContinuousReturnScaleBucketProfile>,

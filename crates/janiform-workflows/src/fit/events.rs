@@ -188,6 +188,10 @@ pub fn progress_event_from_staged_event(
         }),
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
             let work_item_metrics = work_item_table_metrics(progress);
+            let work_item_label = progress_work_item_label(progress, work_item_metrics.as_slice());
+            let planned_work_item_labels = work_item_planned_labels(progress, &work_item_label);
+            let work_item_columns = work_item_columns(progress, &work_item_label);
+            let work_item_metrics = display_work_item_metrics(work_item_metrics, &work_item_label);
 
             let latest_signal =
                 stage_progress_signal_with_metrics(progress, work_item_metrics.as_slice());
@@ -195,10 +199,10 @@ pub fn progress_event_from_staged_event(
             Some(ProgressEvent::StageProgress {
                 phase: phase_label(&progress.progress_phase).to_string(),
                 measure: stage_progress_measure(progress)?,
-                work_item_label: progress_work_item_label(progress, work_item_metrics.as_slice()),
+                work_item_label,
                 work_item_progress_percent: progress.evaluation_progress_percent,
-                planned_work_item_labels: progress.planned_work_item_labels.clone(),
-                work_item_columns: work_item_table_columns(progress),
+                planned_work_item_labels,
+                work_item_columns,
                 work_item_metrics,
                 latest_signal,
             })
@@ -382,7 +386,7 @@ fn stage_progress_signal_with_metrics(
             progress.active_restart_count,
             progress.valid_completed_units,
             progress.cumulative_local_evaluation_count,
-            progress.best_weighted_objective,
+            progress.best_global_loss,
             progress.best_coarse_consistency_fit,
             work_item_table_uses_restart_optimization_columns(&progress.progress_phase),
         )
@@ -402,25 +406,29 @@ fn stage_progress_signal_with_metrics(
         progress.total_evaluation_budget,
     );
 
-    if let Some(current_weighted_objective) = progress.current_weighted_objective {
+    if let Some(current_global_loss) = progress.current_global_loss {
         let score_label =
             if work_item_table_uses_restart_optimization_columns(&progress.progress_phase) {
-                "merit"
+                "loss"
             } else {
-                "objective"
+                "global loss"
             };
 
-        parts.push(format!("{score_label} {current_weighted_objective:.6}"));
+        parts.push(format!("{score_label} {current_global_loss:.6}"));
     }
-    if let Some(best_weighted_objective) = progress.best_weighted_objective {
-        parts.push(format!("best {best_weighted_objective:.6}"));
+
+    if let Some(best_global_loss) = progress.best_global_loss {
+        parts.push(format!("best {best_global_loss:.6}"));
     }
+
     if let Some(current_coarse_consistency_fit) = progress.current_coarse_consistency_fit {
         parts.push(format!("coarse fit {current_coarse_consistency_fit:.6}"));
     }
+
     if let Some(best_coarse_consistency_fit) = progress.best_coarse_consistency_fit {
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
     }
+
     if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
         parts.push(format!("conv. {current_convergence_ratio:.6}"));
     }
@@ -432,7 +440,7 @@ fn parallel_stage_progress_signal(
     active_restart_count: Option<usize>,
     valid_completed_units: Option<usize>,
     cumulative_local_evaluation_count: Option<usize>,
-    best_weighted_objective: Option<f64>,
+    best_global_loss: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
     uses_restart_optimization_columns: bool,
 ) -> Option<String> {
@@ -441,23 +449,27 @@ fn parallel_stage_progress_signal(
     if let Some(active_restart_count) = active_restart_count {
         parts.push(format!("active restarts {active_restart_count}"));
     }
+
     if let Some(valid_completed_units) = valid_completed_units {
         parts.push(format!("valid {valid_completed_units}"));
     }
+
     if let Some(cumulative_local_evaluation_count) = cumulative_local_evaluation_count {
         parts.push(format!(
             "cumulative evals {cumulative_local_evaluation_count}"
         ));
     }
-    if let Some(best_weighted_objective) = best_weighted_objective {
+
+    if let Some(best_global_loss) = best_global_loss {
         let best_score_label = if uses_restart_optimization_columns {
-            "best merit"
+            "best loss"
         } else {
-            "best objective"
+            "best global loss"
         };
 
-        parts.push(format!("{best_score_label} {best_weighted_objective:.6}"));
+        parts.push(format!("{best_score_label} {best_global_loss:.6}"));
     }
+
     if let Some(best_coarse_consistency_fit) = best_coarse_consistency_fit {
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
     }
@@ -479,6 +491,7 @@ fn work_item_table_columns(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Vec<ProgressWorkItemColumn> {
     let mut columns = Vec::new();
+
     let uses_restart_optimization_columns =
         work_item_table_uses_restart_optimization_columns(&progress.progress_phase);
 
@@ -488,23 +501,27 @@ fn work_item_table_columns(
     {
         columns.push(ProgressWorkItemColumn::new("eval", "Evals"));
     }
+
     if progress.current_pricing_interval_index.is_some()
         || progress.total_pricing_interval_count.is_some()
     {
         columns.push(ProgressWorkItemColumn::new("pricing_interval", "Interval"));
     }
+
     if progress.completed_pricing_row_count.is_some() || progress.total_pricing_row_count.is_some()
     {
         columns.push(ProgressWorkItemColumn::new("pricing_rows", "Rows"));
     }
+
     if uses_restart_optimization_columns || progress.current_parameter_block.is_some() {
         columns.push(ProgressWorkItemColumn::new("block", "Block"));
     }
-    if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
+
+    if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
         let current_objective_label = if uses_restart_optimization_columns {
-            "Trial merit"
+            "Trial loss"
         } else {
-            "Cur. obj."
+            "Cur. loss"
         };
 
         columns.push(ProgressWorkItemColumn::new(
@@ -512,12 +529,12 @@ fn work_item_table_columns(
             current_objective_label,
         ));
     }
-    if uses_restart_optimization_columns || progress.current_block_best_weighted_objective.is_some()
-    {
+
+    if uses_restart_optimization_columns || progress.current_block_best_global_loss.is_some() {
         let best_objective_label = if uses_restart_optimization_columns {
-            "Accepted merit"
+            "Accepted loss"
         } else {
-            "Best obj."
+            "Best loss"
         };
 
         columns.push(ProgressWorkItemColumn::new(
@@ -525,11 +542,12 @@ fn work_item_table_columns(
             best_objective_label,
         ));
     }
-    if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
+
+    if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
         let final_objective_label = if uses_restart_optimization_columns {
-            "Final merit"
+            "Final loss"
         } else {
-            "Final obj."
+            "Final loss"
         };
 
         columns.push(ProgressWorkItemColumn::new(
@@ -537,26 +555,65 @@ fn work_item_table_columns(
             final_objective_label,
         ));
     }
+
     if progress.current_candidate_assessment.is_some() {
         columns.push(ProgressWorkItemColumn::new("assessment", "Assessment"));
     }
+
     if progress.current_coarse_consistency_fit.is_some() {
         columns.push(ProgressWorkItemColumn::new("coarse_fit", "Coarse fit"));
     }
+
     if progress.current_convergence_ratio.is_some() {
         columns.push(ProgressWorkItemColumn::new("convergence", "Conv."));
     }
+
     if progress.exact_closed_form_buy_count.is_some() {
         columns.push(ProgressWorkItemColumn::new("exact_buy", "CF-Buy"));
     }
+
     if progress.exact_closed_form_sell_count.is_some() {
         columns.push(ProgressWorkItemColumn::new("exact_sell", "CF-Sell"));
     }
+
     if progress.exact_tilted_mixed_count.is_some() {
         columns.push(ProgressWorkItemColumn::new("exact_mixed", "Mix"));
     }
 
     columns
+}
+
+fn work_item_columns(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_label: &Option<String>,
+) -> Vec<ProgressWorkItemColumn> {
+    if work_item_label.is_none() {
+        return Vec::new();
+    }
+
+    work_item_table_columns(progress)
+}
+
+fn work_item_planned_labels(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_label: &Option<String>,
+) -> Vec<String> {
+    if work_item_label.is_none() {
+        return Vec::new();
+    }
+
+    progress.planned_work_item_labels.clone()
+}
+
+fn display_work_item_metrics(
+    work_item_metrics: Vec<ProgressWorkItemMetric>,
+    work_item_label: &Option<String>,
+) -> Vec<ProgressWorkItemMetric> {
+    if work_item_label.is_none() {
+        return Vec::new();
+    }
+
+    work_item_metrics
 }
 
 fn work_item_table_uses_restart_optimization_columns(
@@ -581,6 +638,7 @@ fn work_item_table_metrics(
     ) {
         metrics.push(ProgressWorkItemMetric::new("eval", evaluation_label));
     }
+
     if let Some(interval_label) = pricing_progress_position_label(
         progress.current_pricing_interval_index,
         progress.total_pricing_interval_count,
@@ -590,12 +648,14 @@ fn work_item_table_metrics(
             interval_label,
         ));
     }
+
     if let Some(row_label) = pricing_progress_count_label(
         progress.completed_pricing_row_count,
         progress.total_pricing_row_count,
     ) {
         metrics.push(ProgressWorkItemMetric::new("pricing_rows", row_label));
     }
+
     if let Some(current_parameter_block) = progress.current_parameter_block.as_deref() {
         metrics.push(ProgressWorkItemMetric::new(
             "block",
@@ -603,7 +663,7 @@ fn work_item_table_metrics(
         ));
     }
 
-    if let Some(current_weighted_objective) = progress.current_weighted_objective {
+    if let Some(current_global_loss) = progress.current_global_loss {
         let metric_key = if progress.evaluation_progress_percent == Some(100) {
             "final_objective"
         } else {
@@ -612,47 +672,52 @@ fn work_item_table_metrics(
 
         metrics.push(ProgressWorkItemMetric::new(
             metric_key,
-            format!("{current_weighted_objective:.6}"),
+            format!("{current_global_loss:.6}"),
         ));
     }
-    if let Some(current_block_best_weighted_objective) =
-        progress.current_block_best_weighted_objective
-    {
+
+    if let Some(current_block_best_global_loss) = progress.current_block_best_global_loss {
         metrics.push(ProgressWorkItemMetric::new(
             "best_objective",
-            format!("{current_block_best_weighted_objective:.6}"),
+            format!("{current_block_best_global_loss:.6}"),
         ));
     }
+
     if let Some(current_candidate_assessment) = progress.current_candidate_assessment {
         metrics.push(ProgressWorkItemMetric::new(
             "assessment",
             candidate_assessment_label(&current_candidate_assessment),
         ));
     }
+
     if let Some(current_coarse_consistency_fit) = progress.current_coarse_consistency_fit {
         metrics.push(ProgressWorkItemMetric::new(
             "coarse_fit",
             format!("{current_coarse_consistency_fit:.6}"),
         ));
     }
+
     if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
         metrics.push(ProgressWorkItemMetric::new(
             "convergence",
             format!("{current_convergence_ratio:.6}"),
         ));
     }
+
     if let Some(exact_closed_form_buy_count) = progress.exact_closed_form_buy_count {
         metrics.push(ProgressWorkItemMetric::new(
             "exact_buy",
             exact_closed_form_buy_count.to_string(),
         ));
     }
+
     if let Some(exact_closed_form_sell_count) = progress.exact_closed_form_sell_count {
         metrics.push(ProgressWorkItemMetric::new(
             "exact_sell",
             exact_closed_form_sell_count.to_string(),
         ));
     }
+
     if let Some(exact_tilted_mixed_count) = progress.exact_tilted_mixed_count {
         metrics.push(ProgressWorkItemMetric::new(
             "exact_mixed",
@@ -734,8 +799,7 @@ fn progress_work_item_label(
 
     match &progress.progress_phase {
         CalibrationStageProgressPhase::ReturnComponents(
-            ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring
-            | ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
+            ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         )
         | CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::RestartOptimization

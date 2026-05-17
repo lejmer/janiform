@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::contracts::CalibrationLossEvaluation;
 use janiform_engine_pricing::PricingIntervalSchedule;
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
@@ -118,22 +119,7 @@ pub struct MeanReversionStageCandidateDiagnostics {
     pub stage_decision_reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JointRefinementStageObjectiveBreakdown {
-    pub aggregated_likelihood_fit: f64,
-    pub aggregated_return_shape_fit: f64,
-    pub return_asymmetry_fit: f64,
-    pub tick_return_asymmetry_fit: f64,
-    pub aggregated_return_scale_fit: f64,
-    pub tick_return_scale_fit: f64,
-    pub business_time_return_scale_fit: f64,
-    pub intraday_return_level_fit: f64,
-    pub activity_shape_fit: f64,
-    pub activity_level_fit: f64,
-    pub rv_activity_coupling_fit: f64,
-    pub weighted_objective: f64,
-    pub hard_constraint_penalty: f64,
-}
+pub type JointRefinementStageObjectiveBreakdown = CalibrationLossEvaluation;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageLabeledCount {
@@ -165,12 +151,30 @@ pub struct JointRefinementStageRuntimeProfile {
     pub deterministic_cache_miss_count: usize,
     pub seed_summary_cache_hit_count: usize,
     pub seed_summary_cache_miss_count: usize,
+    pub aggregated_likelihood_context_cache_hit_count: usize,
+    pub aggregated_likelihood_context_cache_miss_count: usize,
     pub option_pricing_cache_hit_count: usize,
     pub option_pricing_cache_miss_count: usize,
     pub option_pricing_run_count: usize,
     pub invalid_candidate_evaluation_count: usize,
     pub cumulative_deterministic_evaluation_millis: u64,
+    pub cumulative_modeled_rate_millis: u64,
+    pub cumulative_likelihood_context_resolution_millis: u64,
+    pub cumulative_likelihood_context_5m_sample_millis: u64,
+    pub cumulative_likelihood_context_15m_sample_millis: u64,
+    pub cumulative_likelihood_context_tick_sample_millis: u64,
+    pub cumulative_likelihood_context_tick_optimizer_millis: u64,
+    pub cumulative_likelihood_context_5m_optimizer_millis: u64,
+    pub cumulative_likelihood_context_15m_optimizer_millis: u64,
+    pub cumulative_tick_likelihood_millis: u64,
+    pub cumulative_5m_likelihood_millis: u64,
+    pub cumulative_15m_likelihood_millis: u64,
+    pub cumulative_expected_activity_counts_millis: u64,
+    pub cumulative_deterministic_activity_shape_millis: u64,
+    pub cumulative_deterministic_activity_level_millis: u64,
     pub cumulative_seed_summary_simulation_millis: u64,
+    pub cumulative_raw_seed_metrics_millis: u64,
+    pub cumulative_loss_build_millis: u64,
     pub cumulative_option_pricing_millis: u64,
 }
 

@@ -204,12 +204,11 @@ pub(super) fn run_stage_for_staged_execution(
                                 total_pricing_row_count: None,
                                 valid_completed_units: None,
                                 cumulative_local_evaluation_count: None,
-                                current_weighted_objective: progress_update
-                                    .current_weighted_objective,
-                                current_block_best_weighted_objective: None,
+                                current_global_loss: progress_update.current_weighted_objective,
+                                current_block_best_global_loss: None,
                                 current_candidate_assessment: None,
                                 best_restart_id: None,
-                                best_weighted_objective: progress_update.best_weighted_objective,
+                                best_global_loss: progress_update.best_weighted_objective,
                                 current_coarse_consistency_fit: None,
                                 best_coarse_consistency_fit: None,
                                 exact_closed_form_buy_count: None,
@@ -478,14 +477,13 @@ pub(super) fn run_stage_for_staged_execution(
                                 valid_completed_units: progress_update.valid_completed_units,
                                 cumulative_local_evaluation_count: progress_update
                                     .cumulative_local_evaluation_count,
-                                current_weighted_objective: progress_update
-                                    .current_weighted_objective,
-                                current_block_best_weighted_objective: progress_update
-                                    .current_block_best_weighted_objective,
+                                current_global_loss: progress_update.current_global_loss,
+                                current_block_best_global_loss: progress_update
+                                    .current_block_best_global_loss,
                                 current_candidate_assessment: progress_update
                                     .current_candidate_assessment,
                                 best_restart_id: progress_update.best_restart_id,
-                                best_weighted_objective: progress_update.best_weighted_objective,
+                                best_global_loss: progress_update.best_global_loss,
                                 current_coarse_consistency_fit: progress_update
                                     .current_coarse_consistency_fit,
                                 best_coarse_consistency_fit: progress_update

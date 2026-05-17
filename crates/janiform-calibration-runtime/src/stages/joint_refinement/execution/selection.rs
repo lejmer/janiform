@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 
-use crate::stages::return_components::continuous_return_calibration_sample_observed_returns;
-
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageCandidateDiagnostic, JointRefinementStageProgressPhase,
     JointRefinementStageProgressUpdate,
@@ -17,26 +15,9 @@ use super::coarse_consistency::{
     build_joint_candidate_coarse_consistency_artifacts,
 };
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementContext,
-    JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome, ordered_parameter_bits,
+    JointRefinementActiveParameterLayout, JointRefinementContext, JointRefinementRestartOutcome,
+    ordered_parameter_bits,
 };
-
-pub(crate) const JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE: f64 = 1.0;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct JointRefinementAdmissibilityThresholds {
-    pub(crate) aggregated_likelihood_fit: f64,
-    pub(crate) aggregated_return_shape_fit: f64,
-    pub(crate) return_asymmetry_fit: f64,
-    pub(crate) tick_return_asymmetry_fit: f64,
-    pub(crate) aggregated_return_scale_fit: f64,
-    pub(crate) tick_return_scale_fit: f64,
-    pub(crate) business_time_return_scale_fit: f64,
-    pub(crate) intraday_return_level_fit: f64,
-    pub(crate) activity_shape_fit: f64,
-    pub(crate) activity_level_fit: f64,
-    pub(crate) rv_activity_coupling_fit: f64,
-}
 
 #[derive(Debug, Clone)]
 struct JointRefinementRestartOutcomeGroup<'a> {
@@ -69,7 +50,7 @@ struct LazyCoarseConsistencyCache {
 struct LazyCoarseConsistencyProgressState {
     completed_units: usize,
     best_restart_id: Option<String>,
-    best_weighted_objective: Option<f64>,
+    best_global_loss: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
 }
 
@@ -77,15 +58,15 @@ impl LazyCoarseConsistencyProgressState {
     fn record(
         &mut self,
         restart_id: &str,
-        current_weighted_objective: f64,
+        current_global_loss: f64,
         current_artifacts: Option<&JointRefinementCoarseConsistencyArtifacts>,
     ) -> Option<f64> {
         self.completed_units += 1;
 
-        match self.best_weighted_objective {
-            Some(current_best) if current_weighted_objective >= current_best => {}
+        match self.best_global_loss {
+            Some(current_best) if current_global_loss >= current_best => {}
             _ => {
-                self.best_weighted_objective = Some(current_weighted_objective);
+                self.best_global_loss = Some(current_global_loss);
                 self.best_restart_id = Some(restart_id.to_string());
             }
         }
@@ -109,58 +90,6 @@ pub(crate) fn admissibility_threshold_from_sample_count(sample_count: usize) -> 
     1.0 + (sample_count.max(1) as f64).recip().sqrt()
 }
 
-fn fit_metric_admissibility_threshold(sample_count: usize) -> f64 {
-    admissibility_threshold_from_sample_count(sample_count)
-}
-
-fn likelihood_admissibility_threshold(
-    local_baseline_score: f64,
-    final_baseline_score: f64,
-    sample_count: usize,
-) -> f64 {
-    let baseline_reference = [local_baseline_score, final_baseline_score]
-        .into_iter()
-        .filter(|value| value.is_finite())
-        .fold(f64::NEG_INFINITY, f64::max);
-
-    if !baseline_reference.is_finite() {
-        return f64::INFINITY;
-    }
-
-    // Average NLL differences are log likelihood ratios, so the sample-count
-    // admissibility band is additive in the raw likelihood score.
-    baseline_reference + admissibility_threshold_from_sample_count(sample_count).ln()
-}
-
-pub(crate) fn joint_raw_metrics_are_admissible(
-    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
-    thresholds: JointRefinementAdmissibilityThresholds,
-) -> bool {
-    raw_metrics.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
-        && raw_metrics.aggregated_return_shape_fit <= thresholds.aggregated_return_shape_fit
-        && raw_metrics.return_asymmetry_fit <= thresholds.return_asymmetry_fit
-        && raw_metrics.tick_return_asymmetry_fit <= thresholds.tick_return_asymmetry_fit
-        && raw_metrics.aggregated_return_scale_fit <= thresholds.aggregated_return_scale_fit
-        && raw_metrics.tick_return_scale_fit <= thresholds.tick_return_scale_fit
-        && raw_metrics.business_time_return_scale_fit <= thresholds.business_time_return_scale_fit
-        && raw_metrics.intraday_return_level_fit <= thresholds.intraday_return_level_fit
-        && raw_metrics.activity_shape_fit <= thresholds.activity_shape_fit
-        && raw_metrics.activity_level_fit <= thresholds.activity_level_fit
-        && raw_metrics.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
-}
-
-pub(crate) fn joint_raw_metrics_are_dynamics_feasible(
-    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
-    thresholds: JointRefinementAdmissibilityThresholds,
-) -> bool {
-    raw_metrics.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
-        && raw_metrics.business_time_return_scale_fit <= thresholds.business_time_return_scale_fit
-        && raw_metrics.intraday_return_level_fit <= thresholds.intraday_return_level_fit
-        && raw_metrics.activity_shape_fit <= thresholds.activity_shape_fit
-        && raw_metrics.activity_level_fit <= thresholds.activity_level_fit
-        && raw_metrics.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
-}
-
 pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
     restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
     context: &JointRefinementContext,
@@ -182,12 +111,8 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
     let representative_restart_outcomes =
         representative_restart_outcomes(restart_groups.as_slice());
 
-    let optimistic_thresholds = joint_refinement_admissibility_thresholds(context);
-
-    let optimistic_candidate_states = build_joint_candidate_ordering_states(
-        representative_restart_outcomes.as_slice(),
-        optimistic_thresholds,
-    );
+    let optimistic_candidate_states =
+        build_joint_candidate_ordering_states(representative_restart_outcomes.as_slice());
 
     let has_optimistically_admissible_candidate = optimistic_candidate_states
         .iter()
@@ -218,9 +143,9 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         completed_units: 0,
         total_units: total_ranked_restart_groups,
         current_item_label: None,
-        current_weighted_objective: None,
+        current_global_loss: None,
         best_restart_id: None,
-        best_weighted_objective: None,
+        best_global_loss: None,
         current_coarse_consistency_fit: None,
         best_coarse_consistency_fit: None,
     });
@@ -237,20 +162,20 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             continue;
         };
 
-        let current_weighted_objective = candidate_state
+        let current_global_loss = candidate_state
             .restart_outcome
             .final_evaluation
             .breakdown
-            .weighted_objective;
+            .global_loss;
 
         emit_coarse_consistency_progress(CoarseConsistencyProgressEmissionInput {
             progress_sender,
             completed_units: progress_state.completed_units,
             total_units: total_ranked_restart_groups,
             current_item_label: Some(candidate_state.restart_outcome.restart_id.as_str()),
-            current_weighted_objective: Some(current_weighted_objective),
+            current_global_loss: Some(current_global_loss),
             best_restart_id: progress_state.best_restart_id.as_deref(),
-            best_weighted_objective: progress_state.best_weighted_objective,
+            best_global_loss: progress_state.best_global_loss,
             current_coarse_consistency_fit: None,
             best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
         });
@@ -268,7 +193,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
 
         let current_coarse_consistency_fit = progress_state.record(
             candidate_state.restart_outcome.restart_id.as_str(),
-            current_weighted_objective,
+            current_global_loss,
             current_artifacts.as_ref(),
         );
 
@@ -277,9 +202,9 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             completed_units: progress_state.completed_units,
             total_units: total_ranked_restart_groups,
             current_item_label: Some(candidate_state.restart_outcome.restart_id.as_str()),
-            current_weighted_objective: Some(current_weighted_objective),
+            current_global_loss: Some(current_global_loss),
             best_restart_id: progress_state.best_restart_id.as_deref(),
-            best_weighted_objective: progress_state.best_weighted_objective,
+            best_global_loss: progress_state.best_global_loss,
             current_coarse_consistency_fit,
             best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
         });
@@ -308,6 +233,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
     }
 
     let mut selected_restart_outcomes = admissible_restart_outcomes;
+
     for fallback_restart_outcome in fallback_restart_outcomes {
         if selected_restart_outcomes.len() >= selected_restart_count {
             break;
@@ -441,12 +367,9 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
         return Vec::new();
     }
 
-    let thresholds = joint_refinement_admissibility_thresholds(context);
-
     let restart_outcome_refs = restart_outcomes.iter().collect::<Vec<_>>();
 
-    let candidate_states =
-        build_joint_candidate_ordering_states(restart_outcome_refs.as_slice(), thresholds);
+    let candidate_states = build_joint_candidate_ordering_states(restart_outcome_refs.as_slice());
 
     let has_admissible_candidate = candidate_states
         .iter()
@@ -499,7 +422,7 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
                 lexicographic_rank: *lexicographic_rank_by_restart_id
                     .get(outcome.restart_id.as_str())
                     .unwrap_or(&(restart_outcomes.len() + 1)),
-                scalar_tie_break: outcome.final_evaluation.breakdown.weighted_objective,
+                scalar_tie_break: outcome.final_evaluation.breakdown.global_loss,
                 local_evaluation_count: outcome.local_evaluation_count,
                 stop_reason: outcome.stop_reason.clone(),
                 invalid_reason,
@@ -514,52 +437,14 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
         .collect()
 }
 
-pub(crate) fn joint_refinement_admissibility_thresholds(
-    context: &JointRefinementContext,
-) -> JointRefinementAdmissibilityThresholds {
-    let fifteen_minute_sample_count = context.observed_data.observed_15m_intervals.len();
-    let hourly_sample_count = context.observed_data.observed_hourly_tick_counts.len();
-    let rv_sample_count = context.observed_data.observed_15m_intervals.len();
-    let observed_tick_sample_count = continuous_return_calibration_sample_observed_returns(
-        &context
-            .observed_data
-            .observed_tick_continuous_return_calibration_sample,
-    )
-    .len();
-
-    JointRefinementAdmissibilityThresholds {
-        aggregated_likelihood_fit: likelihood_admissibility_threshold(
-            context.local_baseline_buckets.aggregated_likelihood_fit,
-            context.final_baseline_buckets.aggregated_likelihood_fit,
-            fifteen_minute_sample_count,
-        ),
-        aggregated_return_shape_fit: fit_metric_admissibility_threshold(
-            fifteen_minute_sample_count,
-        ),
-        return_asymmetry_fit: fit_metric_admissibility_threshold(fifteen_minute_sample_count),
-        tick_return_asymmetry_fit: fit_metric_admissibility_threshold(observed_tick_sample_count),
-        aggregated_return_scale_fit: fit_metric_admissibility_threshold(
-            fifteen_minute_sample_count,
-        ),
-        tick_return_scale_fit: fit_metric_admissibility_threshold(observed_tick_sample_count),
-        business_time_return_scale_fit: fit_metric_admissibility_threshold(
-            fifteen_minute_sample_count / 4,
-        ),
-        intraday_return_level_fit: fit_metric_admissibility_threshold(hourly_sample_count),
-        activity_shape_fit: fit_metric_admissibility_threshold(hourly_sample_count),
-        activity_level_fit: fit_metric_admissibility_threshold(hourly_sample_count),
-        rv_activity_coupling_fit: fit_metric_admissibility_threshold(rv_sample_count),
-    }
-}
-
 pub(crate) fn joint_restart_outcome_is_admissible(
     restart_outcome: &JointRefinementRestartOutcome,
-    thresholds: JointRefinementAdmissibilityThresholds,
 ) -> bool {
-    joint_raw_metrics_are_admissible(
-        &restart_outcome.final_evaluation.raw_admissibility_metrics,
-        thresholds,
-    )
+    restart_outcome
+        .final_evaluation
+        .breakdown
+        .admissibility
+        .admissible
 }
 
 fn joint_restart_outcome_dominates(
@@ -630,7 +515,6 @@ fn assign_coarse_consistency_artifacts_to_restart_group(
 
 fn build_joint_candidate_ordering_states<'a>(
     restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
-    thresholds: JointRefinementAdmissibilityThresholds,
 ) -> Vec<JointRefinementCandidateOrderingState<'a>> {
     let pareto_ranks = pareto_ranks(restart_outcomes);
 
@@ -643,7 +527,7 @@ fn build_joint_candidate_ordering_states<'a>(
                 restart_outcome: outcome,
                 admissible: outcome.local_evaluation.invalid_reason.is_none()
                     && outcome.final_evaluation.invalid_reason.is_none()
-                    && joint_restart_outcome_is_admissible(outcome, thresholds),
+                    && joint_restart_outcome_is_admissible(outcome),
             },
         )
         .collect()
@@ -748,9 +632,9 @@ struct CoarseConsistencyProgressEmissionInput<'a> {
     completed_units: usize,
     total_units: usize,
     current_item_label: Option<&'a str>,
-    current_weighted_objective: Option<f64>,
+    current_global_loss: Option<f64>,
     best_restart_id: Option<&'a str>,
-    best_weighted_objective: Option<f64>,
+    best_global_loss: Option<f64>,
     current_coarse_consistency_fit: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
 }
@@ -761,9 +645,9 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
         completed_units,
         total_units,
         current_item_label,
-        current_weighted_objective,
+        current_global_loss,
         best_restart_id,
-        best_weighted_objective,
+        best_global_loss,
         current_coarse_consistency_fit,
         best_coarse_consistency_fit,
     } = input;
@@ -771,9 +655,9 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
             current_item_label: current_item_label.map(str::to_string),
-            current_weighted_objective,
+            current_global_loss,
             best_restart_id: best_restart_id.map(str::to_string),
-            best_weighted_objective,
+            best_global_loss,
             current_coarse_consistency_fit,
             best_coarse_consistency_fit,
             ..JointRefinementStageProgressUpdate::new(
@@ -782,24 +666,5 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
                 total_units,
             )
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{admissibility_threshold_from_sample_count, likelihood_admissibility_threshold};
-
-    #[test]
-    fn likelihood_admissibility_threshold_uses_log_margin_above_baseline_score() {
-        let sample_count = 400;
-        let baseline_score = -0.5;
-
-        let threshold =
-            likelihood_admissibility_threshold(baseline_score, baseline_score - 0.25, sample_count);
-
-        assert_eq!(
-            threshold,
-            baseline_score + admissibility_threshold_from_sample_count(sample_count).ln()
-        );
     }
 }

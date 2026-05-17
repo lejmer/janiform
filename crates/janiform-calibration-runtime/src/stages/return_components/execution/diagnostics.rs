@@ -330,8 +330,16 @@ pub(crate) fn round_negative_candidate_value(value: f64) -> f64 {
         return -return_components_stage_positive_domain_floor();
     }
 
-    ((value.min(-return_components_stage_positive_domain_floor())) * 1_000_000_000_000.0).round()
-        / 1_000_000_000_000.0
+    let rounded = ((value.min(-return_components_stage_positive_domain_floor()))
+        * 1_000_000_000_000.0)
+        .round()
+        / 1_000_000_000_000.0;
+
+    if rounded < 0.0 {
+        rounded
+    } else {
+        -return_components_stage_positive_domain_floor()
+    }
 }
 
 pub(super) fn round_candidate_value(value: f64) -> f64 {

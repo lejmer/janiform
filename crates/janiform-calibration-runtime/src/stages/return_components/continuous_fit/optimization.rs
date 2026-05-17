@@ -99,13 +99,16 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             Some("build proxy EM search points"),
         );
 
-        let em_search_points = build_effective_nig_em_search_points(
+        let proxy_em_output = build_effective_nig_em_search_points(
             calibration_sample,
             moment_seed_candidates.as_slice(),
             solver_settings,
             fit_budgets.proxy_em_iteration_count,
             progress_sender,
         );
+
+        let proxy_em_diagnostic = proxy_em_output.diagnostic;
+        let em_search_points = proxy_em_output.search_points;
 
         send_return_components_progress(
             progress_sender,
@@ -237,6 +240,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             .map(|candidate| OptimizedNigCandidate {
                 configuration: candidate.configuration,
                 optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic {
+                    proxy_em_diagnostic,
                     basin_diagnostics: basin_diagnostics.clone(),
                     ..candidate.optimizer_diagnostic
                 },
@@ -374,6 +378,21 @@ pub(crate) fn evaluate_continuous_nig_candidate(
             optimizer_final_objective: likelihood_objective.shifted_objective_score,
             optimizer_local_evaluation_count: 0,
             optimizer_stop_reason: "not_optimized".to_string(),
+            proxy_em_best_objective: None,
+            proxy_em_final_convergence_ratio: None,
+            proxy_em_evaluation_count: 0,
+            proxy_em_completed_seed_count: 0,
+            proxy_em_refined_seed_count: 0,
+            proxy_em_requested_seed_count: 0,
+            proxy_em_iteration_budget_per_seed: 0,
+            proxy_em_fitting_sample_count: 0,
+            proxy_em_fitting_sample_weight_sum: 0.0,
+            proxy_em_converged_seed_count: 0,
+            proxy_em_non_improving_seed_count: 0,
+            proxy_em_numerical_failure_seed_count: 0,
+            proxy_em_iteration_budget_exhausted_seed_count: 0,
+            proxy_em_projection_failure_seed_count: 0,
+            proxy_em_invalid_initial_seed_count: 0,
             exact_likelihood_failures: exact_likelihood_diagnostics.failures,
             exact_closed_form_single_side_buy_block_count: exact_likelihood_diagnostics
                 .evaluator_block_counts
@@ -415,6 +434,7 @@ pub(crate) fn evaluate_continuous_nig_candidate(
             final_objective_score: likelihood_objective.shifted_objective_score,
             local_evaluation_count: 0,
             stop_reason: "not_optimized",
+            proxy_em_diagnostic: Default::default(),
             basin_diagnostics: Vec::new(),
         },
     }

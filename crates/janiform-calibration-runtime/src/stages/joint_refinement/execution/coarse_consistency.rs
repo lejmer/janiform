@@ -489,7 +489,7 @@ fn joint_coarse_tick_metrics_for_horizon(
     .collect()
 }
 
-fn build_joint_coarse_interval_observations(
+pub(crate) fn build_joint_coarse_interval_observations(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     simulation_seed: u64,

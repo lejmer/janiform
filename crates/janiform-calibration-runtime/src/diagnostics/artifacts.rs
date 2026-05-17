@@ -619,15 +619,18 @@ fn build_joint_candidate_frontier_entry(
             .objective_terms
             .iter()
             .map(|term| CalibrationDiagnosticFamilyMetric {
-                metric_id: term.metric_id.clone(),
-                target_id: term.target_id.clone(),
-                target_family: term.target_family.clone(),
+                metric_id: term.term_id.clone(),
+                target_id: term.term_id.clone(),
+                target_family: term.family_id.clone(),
                 evaluation_tier: CalibrationDiagnosticEvaluationTier::TickJoint,
-                normalized_distance: term.normalized_error,
+                normalized_distance: term
+                    .standardized_residual
+                    .map(f64::abs)
+                    .unwrap_or(term.loss),
                 admissible: candidate.admissible,
-                simulated_value: term.simulated_value,
-                observed_value: term.observed_value,
-                uncertainty_scale: term.uncertainty_scale,
+                simulated_value: term.model_value.unwrap_or(term.loss),
+                observed_value: term.observed_value.unwrap_or(0.0),
+                uncertainty_scale: term.uncertainty_scale.unwrap_or(1.0),
             })
             .collect(),
         canonical_coordinates: candidate.canonical_coordinates.clone(),
@@ -754,12 +757,12 @@ fn build_search_surface_manifest_artifact(
 
     surfaces.extend(joint_payload.candidate_frontier.iter().map(|candidate| {
         CalibrationDiagnosticSearchSurfacePoint {
-            surface_id: "joint_refinement.frontier.weighted_objective".to_string(),
+            surface_id: "joint_refinement.frontier.global_loss".to_string(),
             x_label: "lexicographic_rank".to_string(),
             x_value: candidate.lexicographic_rank as f64,
             y_label: None,
             y_value: None,
-            objective_value: candidate.objective_breakdown.weighted_objective,
+            objective_value: candidate.objective_breakdown.global_loss,
             admissible: candidate.admissible,
         }
     }));

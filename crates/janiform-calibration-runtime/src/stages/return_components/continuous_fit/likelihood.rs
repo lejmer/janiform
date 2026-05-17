@@ -3,7 +3,7 @@ use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::super::contracts::{
     ReturnComponentsStageExactLikelihoodEvaluatorKind,
@@ -102,6 +102,7 @@ enum ExactLikelihoodScopeFailure {
 #[derive(Debug, Clone, Copy)]
 struct ExactLikelihoodBlockContribution {
     member_index: usize,
+    member_weight: f64,
     block_evaluation: ExactBlockLikelihoodEvaluation,
 }
 
@@ -371,8 +372,6 @@ fn average_negative_log_likelihood_with_failures(
     scale_bucket_index: Option<usize>,
     exact_block_cache: &ExactBlockEvaluationCache,
 ) -> Result<ExactLikelihoodScopeEvaluation, ExactLikelihoodScopeFailure> {
-    let log_density_resolution = average_negative_log_likelihood_resolution(member_indices.len());
-
     let driver_parameters = configuration.derive_driver_parameters().map_err(|_| {
         ExactLikelihoodScopeFailure::Structural(Box::new(
             build_exact_likelihood_failure_diagnostic(
@@ -399,6 +398,22 @@ fn average_negative_log_likelihood_with_failures(
         )));
     }
 
+    let Some(member_weight_sum) = likelihood_member_weight_sum(optimizer_context, member_indices)
+    else {
+        return Err(ExactLikelihoodScopeFailure::Structural(Box::new(
+            build_exact_likelihood_failure_diagnostic(
+                scope,
+                scale_bucket_index,
+                None,
+                ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
+                None,
+                None,
+            ),
+        )));
+    };
+    let log_density_resolution =
+        average_negative_log_likelihood_resolution_for_weight_sum(member_weight_sum);
+
     let block_contributions = exact_likelihood_block_contributions(
         configuration,
         driver_parameters,
@@ -410,8 +425,8 @@ fn average_negative_log_likelihood_with_failures(
         exact_block_cache,
     );
 
-    let mut log_likelihood_sum = 0.0;
-    let mut log_likelihood_error_upper_bound_sum = 0.0;
+    let mut weighted_log_likelihood_sum = 0.0;
+    let mut weighted_log_likelihood_error_upper_bound_sum = 0.0;
     let mut evaluator_block_counts = ExactEvaluatorBlockCounts::default();
     let mut worst_block_member_index = None;
     let mut worst_block_evaluation: Option<ExactBlockLikelihoodEvaluation> = None;
@@ -419,6 +434,7 @@ fn average_negative_log_likelihood_with_failures(
     for block_contribution in block_contributions {
         let block_contribution = block_contribution?;
         let member_index = block_contribution.member_index;
+        let member_weight = block_contribution.member_weight;
         let block_evaluation = block_contribution.block_evaluation;
 
         match block_evaluation.evaluator_kind {
@@ -433,8 +449,9 @@ fn average_negative_log_likelihood_with_failures(
             }
         }
 
-        log_likelihood_sum += block_evaluation.log_density_estimate;
-        log_likelihood_error_upper_bound_sum += block_evaluation.log_density_error_upper_bound;
+        weighted_log_likelihood_sum += member_weight * block_evaluation.log_density_estimate;
+        weighted_log_likelihood_error_upper_bound_sum +=
+            member_weight * block_evaluation.log_density_error_upper_bound;
 
         let should_replace_worst_block = match worst_block_evaluation {
             Some(current_worst) => {
@@ -449,13 +466,10 @@ fn average_negative_log_likelihood_with_failures(
         }
     }
 
-    let evaluated_block_count = member_indices.len();
-
-    let average_negative_log_likelihood_estimate =
-        -log_likelihood_sum / evaluated_block_count as f64;
+    let average_negative_log_likelihood_estimate = -weighted_log_likelihood_sum / member_weight_sum;
 
     let average_log_likelihood_error_upper_bound =
-        log_likelihood_error_upper_bound_sum / evaluated_block_count as f64;
+        weighted_log_likelihood_error_upper_bound_sum / member_weight_sum;
 
     let scope_evaluation = ExactLikelihoodScopeEvaluation {
         average_negative_log_likelihood_estimate,
@@ -562,15 +576,16 @@ fn exact_likelihood_block_contributions(
     };
 
     if member_indices.len() > 1 {
-        if let Some(failure) = member_indices
-            .par_iter()
-            .map(evaluate_member)
-            .find_first(|block_contribution| block_contribution.is_err())
-        {
-            return vec![failure];
-        }
+        let parallel_chunk_len = member_indices
+            .len()
+            .div_ceil(rayon::current_num_threads().max(1))
+            .max(1);
 
-        return member_indices.par_iter().map(evaluate_member).collect();
+        return member_indices
+            .par_iter()
+            .with_min_len(parallel_chunk_len)
+            .map(evaluate_member)
+            .collect();
     }
 
     member_indices.iter().map(evaluate_member).collect()
@@ -650,6 +665,7 @@ fn exact_likelihood_block_contribution(
     {
         return Ok(ExactLikelihoodBlockContribution {
             member_index,
+            member_weight: exact_likelihood_member_weight(optimizer_context, member_index),
             block_evaluation,
         });
     }
@@ -677,8 +693,33 @@ fn exact_likelihood_block_contribution(
 
     Ok(ExactLikelihoodBlockContribution {
         member_index,
+        member_weight: exact_likelihood_member_weight(optimizer_context, member_index),
         block_evaluation,
     })
+}
+
+fn likelihood_member_weight_sum(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    member_indices: &[usize],
+) -> Option<f64> {
+    let member_weight_sum = member_indices
+        .iter()
+        .map(|member_index| exact_likelihood_member_weight(optimizer_context, *member_index))
+        .sum::<f64>();
+
+    (member_weight_sum.is_finite() && member_weight_sum > 0.0).then_some(member_weight_sum)
+}
+
+fn exact_likelihood_member_weight(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    member_index: usize,
+) -> f64 {
+    optimizer_context
+        .member_weights
+        .get(member_index)
+        .copied()
+        .filter(|weight| weight.is_finite() && *weight > 0.0)
+        .unwrap_or(1.0)
 }
 
 fn exact_likelihood_member_value(
@@ -702,8 +743,12 @@ fn exact_likelihood_member_value(
 }
 
 pub(super) fn average_negative_log_likelihood_resolution(sample_count: usize) -> f64 {
+    average_negative_log_likelihood_resolution_for_weight_sum(sample_count.max(1) as f64)
+}
+
+fn average_negative_log_likelihood_resolution_for_weight_sum(sample_weight_sum: f64) -> f64 {
     RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_LIKELIHOOD_CHI_SQUARE_95
-        / (2.0 * sample_count.max(1) as f64)
+        / (2.0 * sample_weight_sum.max(1.0))
 }
 
 #[cfg(test)]
@@ -873,6 +918,9 @@ fn member_indices_for_fidelity_tier(
 ) -> &[usize] {
     match fidelity_tier {
         ContinuousLikelihoodFidelityTier::Seed => optimizer_context.seed_member_indices.as_slice(),
+        ContinuousLikelihoodFidelityTier::Representative => {
+            optimizer_context.full_member_indices.as_slice()
+        }
         ContinuousLikelihoodFidelityTier::Local => {
             optimizer_context.local_member_indices.as_slice()
         }

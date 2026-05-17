@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_JOINT_REFINEMENT_STAGE_HANDOFF_POLICY, CalibrationRunSpec, CalibrationStage,
-    JointRefinementStageLabeledCount,
+    JointRefinementStageLabeledCount, JointRefinementStageRuntimeProfile,
 };
 
 use crate::stages::joint_refinement::contracts::{
@@ -18,8 +18,8 @@ use super::super::setup::{
     CandidateSeedSummariesCacheInput, cached_seed_summaries_for_candidate_seeds,
 };
 use super::{
-    JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
-    JointRefinementRestartOutcome, JointRefinementSeedSummary, ordered_parameter_bits,
+    JointRefinementContext, JointRefinementRestartOutcome, JointRefinementSeedSummary,
+    ordered_parameter_bits,
 };
 
 pub(crate) fn build_joint_restart_diagnostics(
@@ -143,26 +143,6 @@ pub(crate) fn build_joint_simulation_summaries(
     summaries
 }
 
-pub(crate) fn baseline_buckets_from_evaluation(
-    evaluation: &JointRefinementCandidateEvaluation,
-) -> JointRefinementBaselineBuckets {
-    let breakdown = &evaluation.breakdown;
-
-    JointRefinementBaselineBuckets {
-        aggregated_likelihood_fit: breakdown.aggregated_likelihood_fit,
-        aggregated_return_shape_fit: breakdown.aggregated_return_shape_fit,
-        return_asymmetry_fit: breakdown.return_asymmetry_fit,
-        tick_return_asymmetry_fit: breakdown.tick_return_asymmetry_fit,
-        aggregated_return_scale_fit: breakdown.aggregated_return_scale_fit,
-        tick_return_scale_fit: breakdown.tick_return_scale_fit,
-        business_time_return_scale_fit: breakdown.business_time_return_scale_fit,
-        intraday_return_level_fit: breakdown.intraday_return_level_fit,
-        activity_shape_fit: breakdown.activity_shape_fit,
-        activity_level_fit: breakdown.activity_level_fit,
-        rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
-    }
-}
-
 pub(crate) fn simulation_infrastructure_failure_message(
     context: &JointRefinementContext,
 ) -> Option<String> {
@@ -187,6 +167,14 @@ pub(crate) fn build_joint_refinement_stage_failure_report(
     run_spec: &CalibrationRunSpec,
     failure: JointRefinementStageExecutionFailure,
 ) -> JointRefinementStageExecutionReport {
+    build_joint_refinement_stage_failure_report_with_runtime_profile(run_spec, failure, None)
+}
+
+pub(crate) fn build_joint_refinement_stage_failure_report_with_runtime_profile(
+    run_spec: &CalibrationRunSpec,
+    failure: JointRefinementStageExecutionFailure,
+    runtime_profile: Option<JointRefinementStageRuntimeProfile>,
+) -> JointRefinementStageExecutionReport {
     JointRefinementStageExecutionReport {
         schema_version: CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         stage: CalibrationStage::JointRefinement,
@@ -196,6 +184,7 @@ pub(crate) fn build_joint_refinement_stage_failure_report(
         handoff_policy: CALIBRATION_JOINT_REFINEMENT_STAGE_HANDOFF_POLICY,
         fitted_stage_payload: None,
         metadata: None,
+        runtime_profile,
         failure: Some(failure),
     }
 }

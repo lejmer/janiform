@@ -84,6 +84,20 @@ By default, janiform fit writes a durable run directory for downstream CLI comma
 
     #[arg(
         long,
+        value_name = "Z",
+        help = "Stylized-fact Huber cutoff for the calibration objective."
+    )]
+    pub(crate) stylized_fact_huber_cutoff: Option<f64>,
+
+    #[arg(
+        long,
+        value_name = "Z",
+        help = "Stylized-fact admissibility z-threshold for the calibration objective."
+    )]
+    pub(crate) stylized_fact_admissibility_z_threshold: Option<f64>,
+
+    #[arg(
+        long,
         value_name = "REFERENCE",
         help = "Resume disk execution from a checkpoint reference.",
         long_help = "Resume disk execution from a checkpoint reference.
@@ -208,6 +222,20 @@ pub(crate) struct FitPlanCommand {
         help = "Joint-refinement restart candidate budget."
     )]
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+
+    #[arg(
+        long,
+        value_name = "Z",
+        help = "Stylized-fact Huber cutoff for the calibration objective."
+    )]
+    pub(crate) stylized_fact_huber_cutoff: Option<f64>,
+
+    #[arg(
+        long,
+        value_name = "Z",
+        help = "Stylized-fact admissibility z-threshold for the calibration objective."
+    )]
+    pub(crate) stylized_fact_admissibility_z_threshold: Option<f64>,
 
     #[arg(long, value_enum, help = "Select which calibration workflow to plan.")]
     pub(crate) workflow_scope: Option<WorkflowScope>,

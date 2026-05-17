@@ -129,6 +129,7 @@ fn optimize_single_seed_candidate(
             final_objective_score: final_evaluation.objective.shifted_objective_score,
             local_evaluation_count,
             stop_reason,
+            proxy_em_diagnostic: Default::default(),
             basin_diagnostics: Vec::new(),
         },
     })

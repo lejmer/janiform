@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from math import isfinite
 from typing import Any, Optional
 
 from .contracts import (
@@ -30,6 +31,7 @@ from ...contracts.base import (
     require_datetime_utc,
     require_mapping,
     require_non_empty_string,
+    require_positive_finite_number,
     require_positive_integer,
     require_sequence,
     require_string,
@@ -69,6 +71,8 @@ class MarketDataCalibrationRequest(ContractModel):
     joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
     joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None
     joint_refinement_audit_option_pricing_enabled: bool = False
+    stylized_fact_huber_cutoff: Optional[float] = None
+    stylized_fact_admissibility_z_threshold: Optional[float] = None
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
 
@@ -82,12 +86,19 @@ class MarketDataCalibrationRequest(ContractModel):
         if not self.run_id.strip():
             raise calibration_error("run_id", "must be a non-empty string")
 
-        if self.tick_data_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET):
+        if self.tick_data_source.file_format not in (
+            CalibrationInputFileFormat.CSV,
+            CalibrationInputFileFormat.PARQUET,
+        ):
             raise calibration_error("tick_data_source.file_format", "must be one of: csv, parquet")
 
         if (
             self.option_surface_source is not None
-            and self.option_surface_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET)
+            and self.option_surface_source.file_format
+            not in (
+                CalibrationInputFileFormat.CSV,
+                CalibrationInputFileFormat.PARQUET,
+            )
         ):
             raise calibration_error("option_surface_source.file_format", "must be one of: csv, parquet")
 
@@ -167,6 +178,30 @@ class MarketDataCalibrationRequest(ContractModel):
                 "must be greater than zero when provided",
             )
 
+        if (
+            self.stylized_fact_huber_cutoff is not None
+            and (
+                not isfinite(self.stylized_fact_huber_cutoff)
+                or self.stylized_fact_huber_cutoff <= 0.0
+            )
+        ):
+            raise calibration_error(
+                "stylized_fact_huber_cutoff",
+                "must be finite and greater than zero when provided",
+            )
+
+        if (
+            self.stylized_fact_admissibility_z_threshold is not None
+            and (
+                not isfinite(self.stylized_fact_admissibility_z_threshold)
+                or self.stylized_fact_admissibility_z_threshold <= 0.0
+            )
+        ):
+            raise calibration_error(
+                "stylized_fact_admissibility_z_threshold",
+                "must be finite and greater than zero when provided",
+            )
+
         selected_stages = (
             (CalibrationStage.SEASONALITY,)
             if self.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
@@ -191,7 +226,10 @@ class MarketDataCalibrationRequest(ContractModel):
             if stage_settings.stage not in selected_stage_set:
                 raise calibration_error(
                     "optimizer_settings_by_stage",
-                    f"contains stage '{stage_settings.stage.value}' outside workflow_scope '{self.workflow_scope.value}'",
+                    (
+                        f"contains stage '{stage_settings.stage.value}' outside workflow_scope "
+                        f"'{self.workflow_scope.value}'"
+                    ),
                 )
 
             configured_stage_set.add(stage_settings.stage)
@@ -358,6 +396,28 @@ class MarketDataCalibrationRequest(ContractModel):
                 )
                 if "joint_refinement_audit_option_pricing_enabled" in raw_payload
                 else False
+            ),
+            stylized_fact_huber_cutoff=(
+                require_positive_finite_number(
+                    raw_payload,
+                    "stylized_fact_huber_cutoff",
+                    "stylized_fact_huber_cutoff",
+                    calibration_error,
+                )
+                if "stylized_fact_huber_cutoff" in raw_payload
+                and raw_payload["stylized_fact_huber_cutoff"] is not None
+                else None
+            ),
+            stylized_fact_admissibility_z_threshold=(
+                require_positive_finite_number(
+                    raw_payload,
+                    "stylized_fact_admissibility_z_threshold",
+                    "stylized_fact_admissibility_z_threshold",
+                    calibration_error,
+                )
+                if "stylized_fact_admissibility_z_threshold" in raw_payload
+                and raw_payload["stylized_fact_admissibility_z_threshold"] is not None
+                else None
             ),
             known_news_inputs=(
                 CalibrationKnownNewsInput.from_mapping(

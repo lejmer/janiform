@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+use janiform_calibration_artifacts::JointRefinementStageRuntimeProfile;
+
 use super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts;
 use super::option_refinement::{OptionRefinedCandidate, SearchTierCandidate};
 use super::state::{JointRefinementOptionPricingContext, JointRefinementOptionTierPricingInputs};
@@ -139,6 +141,8 @@ struct JointRefinementResumeState {
     #[serde(default)]
     audit_tier_pricing_artifact_by_context:
         BTreeMap<String, JointRefinementOptionTierPricingArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_profile: Option<JointRefinementStageRuntimeProfile>,
 }
 
 impl JointRefinementResumeState {
@@ -153,6 +157,7 @@ impl JointRefinementResumeState {
             selection_tier_candidates_by_option_context: BTreeMap::new(),
             selected_option_refinement_by_context: BTreeMap::new(),
             audit_tier_pricing_artifact_by_context: BTreeMap::new(),
+            runtime_profile: None,
         }
     }
 }
@@ -267,6 +272,14 @@ impl JointRefinementResumeStore {
         selection: PersistedRestartSelectionArtifacts,
     ) {
         self.state.restart_selection = Some(selection);
+        self.persist();
+    }
+
+    pub(crate) fn record_runtime_profile(
+        &mut self,
+        runtime_profile: JointRefinementStageRuntimeProfile,
+    ) {
+        self.state.runtime_profile = Some(runtime_profile);
         self.persist();
     }
 
@@ -536,6 +549,8 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use janiform_calibration_artifacts::JointRefinementStageRuntimeProfile;
+
     use super::{
         JOINT_REFINEMENT_RESUME_STATE_FILENAME, JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION,
         JointRefinementResumeState, JointRefinementResumeStore, persist_resume_state_to_disk,
@@ -616,5 +631,63 @@ mod tests {
             5,
             Some("options-a")
         ));
+    }
+
+    #[test]
+    fn joint_refinement_resume_store_persists_runtime_profile() {
+        let directory = temp_directory();
+        let persisted_path = directory.join(JOINT_REFINEMENT_RESUME_STATE_FILENAME);
+
+        let mut store = JointRefinementResumeStore::load(Some(directory.as_path()), "run-001", 17);
+        let runtime_profile = JointRefinementStageRuntimeProfile {
+            restart_optimization_wall_clock_millis: 123,
+            coarse_consistency_wall_clock_millis: 0,
+            final_seed_evaluation_wall_clock_millis: 0,
+            final_assembly_wall_clock_millis: 0,
+            objective_cache_hit_count: 1,
+            objective_cache_miss_count: 2,
+            deterministic_cache_hit_count: 3,
+            deterministic_cache_miss_count: 4,
+            seed_summary_cache_hit_count: 5,
+            seed_summary_cache_miss_count: 6,
+            aggregated_likelihood_context_cache_hit_count: 8,
+            aggregated_likelihood_context_cache_miss_count: 9,
+            option_pricing_cache_hit_count: 0,
+            option_pricing_cache_miss_count: 0,
+            option_pricing_run_count: 0,
+            invalid_candidate_evaluation_count: 7,
+            cumulative_deterministic_evaluation_millis: 89,
+            cumulative_modeled_rate_millis: 10,
+            cumulative_likelihood_context_resolution_millis: 11,
+            cumulative_likelihood_context_5m_sample_millis: 12,
+            cumulative_likelihood_context_15m_sample_millis: 13,
+            cumulative_likelihood_context_tick_sample_millis: 14,
+            cumulative_likelihood_context_tick_optimizer_millis: 15,
+            cumulative_likelihood_context_5m_optimizer_millis: 16,
+            cumulative_likelihood_context_15m_optimizer_millis: 17,
+            cumulative_tick_likelihood_millis: 18,
+            cumulative_5m_likelihood_millis: 19,
+            cumulative_15m_likelihood_millis: 20,
+            cumulative_expected_activity_counts_millis: 21,
+            cumulative_deterministic_activity_shape_millis: 22,
+            cumulative_deterministic_activity_level_millis: 23,
+            cumulative_seed_summary_simulation_millis: 55,
+            cumulative_raw_seed_metrics_millis: 24,
+            cumulative_loss_build_millis: 25,
+            cumulative_option_pricing_millis: 0,
+        };
+
+        store.record_runtime_profile(runtime_profile.clone());
+
+        let persisted_bytes =
+            fs::read(persisted_path.as_path()).expect("runtime resume state should persist");
+        let persisted_state: JointRefinementResumeState =
+            serde_json::from_slice(persisted_bytes.as_slice())
+                .expect("runtime resume state should deserialize");
+
+        assert_eq!(persisted_state.runtime_profile, Some(runtime_profile));
+
+        let _ = fs::remove_file(persisted_path);
+        let _ = fs::remove_dir_all(directory);
     }
 }

@@ -18,8 +18,6 @@ mod surprise_intensity_fit;
 #[cfg(test)]
 mod test_support;
 
-#[cfg(test)]
-pub(crate) use continuous_fit::continuous_return_calibration_sample_business_time_scales;
 pub(crate) use continuous_fit::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,
@@ -27,13 +25,19 @@ pub(crate) use continuous_fit::{
     ReturnComponentsStageContinuousReturnCalibrationSample,
     build_continuous_return_calibration_sample_from_components,
     build_continuous_return_optimizer_context, build_nig_moment_seed_configurations,
-    continuous_return_calibration_sample_count,
-    continuous_return_calibration_sample_observed_returns, distribution_profile_fit_score,
+    build_weighted_continuous_return_optimizer_context, distribution_profile_fit_score,
     evaluate_configuration_likelihood_objective_with_context_and_counts,
-    mean_continuous_return_calibration_business_time_scale, nig_configuration_from_search_point,
-    nig_configuration_search_point_mapping, nig_search_bounds_for_calibration_sample,
+    nig_configuration_from_search_point, nig_configuration_search_point_mapping,
+    nig_log_alpha_bounds_for_calibration_sample,
+    nig_search_bounds_for_calibration_sample_with_solver_settings,
     nig_search_point_from_configuration,
     rescale_continuous_return_calibration_sample_business_time_scales,
+    rescale_continuous_return_optimizer_context_business_time_scales,
+};
+#[cfg(test)]
+pub(crate) use continuous_fit::{
+    continuous_return_calibration_sample_business_time_scales,
+    continuous_return_calibration_sample_observed_returns,
 };
 pub use contracts::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
@@ -73,7 +77,6 @@ pub(crate) use execution::run_return_components_calibration_stage_with_progress_
 pub(crate) use execution::{
     ReturnComponentsStageJointRefinementObservedSignalPreparation,
     prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
-    theoretical_net_process_moments,
 };
 pub use execution::{
     evaluate_return_components_exact_candidate, run_return_components_calibration_stage,

@@ -6,7 +6,7 @@ Use this page when you have a `JaniformFitReport`, a `JaniformFitResult`, or a s
 
 - Did Janiform reproduce the main behavior in the training data?
 - Which parts of the fit look weak?
-- Does a high score point to activity, return size, return shape, or something else?
+- Does a high loss point to activity, return size, return shape, or something else?
 - Which diagnostics are about model fit, and which ones are saved settings used later by simulation or pricing?
 
 This page explains how to read the diagnostics. It does not decide whether the model is acceptable for production use. That decision belongs to [model validation](model-validation.md), ideally on data that was not used for fitting.
@@ -47,104 +47,117 @@ In the report, two sections matter most:
 
 | Report section        | What it answers                                               |
 |-----------------------|---------------------------------------------------------------|
-| `objective_breakdown` | Which broad parts of the fit were strong or weak?             |
-| `objective_terms`     | What observed and simulated measurements caused those scores? |
+| `objective_breakdown.global_loss`    | What single loss did Janiform use to rank complete candidates?      |
+| `objective_breakdown.family_losses`  | Which broad parts of the fit were strong or weak?                   |
+| `objective_breakdown.term_diagnostics` | What observed and modeled measurements caused those losses?       |
+| `objective_breakdown.admissibility`  | Which terms, if any, blocked final acceptance?                      |
 
-Start with `objective_breakdown`. If one area looks bad, use `objective_terms` to see the underlying observed and simulated numbers.
+Start with `objective_breakdown.family_losses`. If one area looks bad, use `objective_breakdown.term_diagnostics` to see the underlying observed and modeled numbers.
 
 ## Terms used on this page
 
 Janiform reports some terms that are useful but easy to misread.
 
-| Term             | Meaning                                                                                                      |
-|------------------|--------------------------------------------------------------------------------------------------------------|
-| Candidate        | One complete fitted model that Janiform considered during calibration.                                       |
-| Baseline         | The starting fit used as a comparison point before final improvement attempts.                               |
-| Objective        | A numeric score used during fitting. Lower is better. It helps Janiform choose between candidates.           |
-| Merit score      | A threshold-normalized optimizer score. Lower is better. A value near `1.0` means threshold-level fit.       |
-| Diagnostic       | A measurement that explains what happened. It may or may not be used directly for final model selection.     |
-| Bucket           | A named group of related fit checks, such as activity level or return scale.                                 |
-| Activity         | How often market events arrive. In tick data, high activity means ticks arrive frequently.                   |
-| Return scale     | The typical size of price changes. It is related to volatility, but reported here as fitted return behavior. |
-| Return shape     | The distributional shape of returns, including tails and how returns are spread out.                         |
-| Asymmetry        | Whether positive and negative returns behave differently.                                                    |
-| Normalized score | A score divided by a comparison scale so that different measurements can be compared.                        |
+| Term                  | Meaning                                                                                                      |
+|-----------------------|--------------------------------------------------------------------------------------------------------------|
+| Candidate             | One complete fitted model that Janiform considered during calibration.                                       |
+| Baseline              | The starting fit used as a comparison point before final improvement attempts.                               |
+| Global loss           | The single pseudo-likelihood loss used to rank complete joint-refinement candidates. Lower is better.        |
+| Family loss           | The mean loss for one named group of related checks, such as activity shape or return scale.                 |
+| Term diagnostic       | One observed-versus-modeled comparison inside a family.                                                      |
+| Standardized residual | The observed-versus-modeled difference divided by its uncertainty scale.                                     |
+| Huber loss            | The per-term loss used for stylized facts. It is quadratic near zero and linear for large residuals.          |
+| Excess loss           | The extra loss for standardized residuals or constraints beyond the admissibility threshold.                  |
+| Admissibility blocker | A term or hard constraint that crossed the final acceptance threshold.                                       |
+| Activity              | How often market events arrive. In tick data, high activity means ticks arrive frequently.                   |
+| Return scale          | The typical size of price changes. It is related to volatility, but reported here as fitted return behavior. |
+| Return shape          | The distributional shape of returns, including tails and how returns are spread out.                         |
 
-The objective is not a probability, percentile, p-value, or percentage score. It is a calibration score.
+The global loss is not a probability, percentile, p-value, or percentage score. It is a calibration loss.
 
-## How to read scores
+## How to read losses
 
-For most objective fields, lower is better.
+Lower loss is better.
 
-A score near `0.0` means the simulated behavior is close to the training data for that part of the fit. A score near `1.0` means the mismatch is about one normal comparison scale for that diagnostic. Scores above `1.0` are allowed. They mean the mismatch is larger than that scale.
+Exact likelihood terms use shifted average negative log likelihood, so only relative comparisons inside the same calibration context are meaningful. Stylized-fact terms use standardized residuals. For a stylized fact, a standardized residual near `0.0` means the model is close to the training data for that measurement. A residual near `1.0` means the mismatch is about one combined uncertainty scale. Residuals above `1.0` are allowed.
 
-Do not read `2.0` as "200 percent wrong" or "two standard deviations." It means that Janiform's normalized distance for that diagnostic is twice the comparison scale used for the objective.
+The reported stylized-fact `loss` is Huberized from the absolute standardized residual. That means a large residual still makes the candidate worse, but one extreme term cannot dominate the entire global loss as aggressively as a purely quadratic penalty would.
 
-Also avoid reading one number by itself. A useful fit is usually balanced: activity, return size, return shape, and activity-volatility coupling should all be plausible for the intended workflow.
+Do not read `2.0` as "200 percent wrong." For standardized residuals, it means the modeled value is about two uncertainty scales away from the observed value. For Huberized loss, the number is the objective contribution after the Huber transform.
+
+Also avoid reading one number by itself. A useful fit is usually balanced: activity, return scale, return shape, and activity-volatility coupling should all be plausible for the intended workflow.
 
 ## Broad fit areas
 
-`objective_breakdown` groups the fit into broad areas. The field names are technical because they are saved in the report, but each one maps to a plain question.
+`objective_breakdown.family_losses` groups the fit into broad areas. The field names are technical because they are saved in the report, but each one maps to a plain question.
 
-| Bucket                           | Plain meaning                                                                          |
-|----------------------------------|----------------------------------------------------------------------------------------|
-| `activity_level_fit`             | Does the simulated market produce about the right amount of activity?                  |
-| `activity_shape_fit`             | Does activity rise and fall over time in a similar pattern to the training data?       |
-| `aggregated_return_scale_fit`    | Are interval-level price changes about the right size?                                 |
-| `tick_return_scale_fit`          | Are tick-level price changes about the right size?                                     |
-| `business_time_return_scale_fit` | Does return size change reasonably between quiet and active periods?                   |
-| `aggregated_return_shape_fit`    | Do simulated interval returns have a similar distributional shape?                     |
-| `return_asymmetry_fit`           | Do positive and negative interval returns have similar imbalance to the training data? |
-| `tick_return_asymmetry_fit`      | Do positive and negative tick returns have similar imbalance to the training data?     |
-| `intraday_return_level_fit`      | Does return size vary across the day in a similar way?                                 |
-| `rv_activity_coupling_fit`       | Does higher activity tend to come with higher price variation in the same way?         |
-| `aggregated_likelihood_fit`      | Does the fitted return distribution explain the observed returns reasonably well?      |
+| Family                         | Plain meaning                                                                 |
+|--------------------------------|-------------------------------------------------------------------------------|
+| `returns`                      | Does the fitted return distribution explain observed tick, 5m, and 15m returns? |
+| `return_shape`                 | Do returns have similar center, spread, skew, and tail shape?                 |
+| `return_scale`                 | Are tick-level and interval-level price changes about the right size?         |
+| `business_time_return_scale`   | Does return size change reasonably between quiet and active periods?          |
+| `intraday_return_level`        | Does return size vary across the day in a similar way?                        |
+| `activity_level_timing`        | Does the model produce the right amount and coarse timing of activity?        |
+| `activity_shape`               | Does the intraday activity profile have similar shape to the training data?   |
+| `rv_activity_coupling`         | Does higher activity tend to come with higher price variation in the same way? |
+| `options`                      | When options are present, do model prices match market quotes on quote scale? |
 
-`weighted_objective` is the single summary score Janiform can use to compare candidates. It is useful for ranking candidate fits, but it is not a standalone quality grade. A model with a slightly worse summary score may still be easier to trust if its weak areas are less important for your use case.
+`global_loss` is the mean of available family losses plus domain-margin prior loss plus admissibility excess loss. The excess loss is zero when every standardized residual and hard constraint is inside the admissibility region. Once a term crosses the admissibility threshold, the excess beyond that threshold is Huberized and added to the global loss, so optimization and final acceptance point in the same direction.
 
-`hard_constraint_penalty` means a candidate crossed a rule that Janiform treats as a serious fit problem. A constraint is a required condition for a usable fit. Non-likelihood fit buckets use sample-size-adjusted admissibility thresholds on their normalized error scales, so a candidate must keep every required statistical bucket inside its admissible range. If this value is nonzero, inspect the weak buckets before trusting the model.
+The global loss is useful for ranking candidate fits, but it is not a standalone quality grade. A model with a slightly worse global loss may still be easier to trust if its weak areas are less important for your use case.
+
+`hard_constraint_diagnostics` reports domain-margin constraints that Janiform treats as required for a usable model. Examples include Hawkes stationarity margin, NIG alpha-beta domain margin, and option/risk-neutral domain margin when options are present. A hard constraint can block admissibility even if the global loss looks low.
+
+`objective_breakdown.admissibility.excess_loss` reports the feasibility penalty that was added to the global loss. It is `0.0` for candidates that are inside all admissibility thresholds.
 
 ## Detailed measurements
 
-`objective_terms` shows the observed-versus-simulated measurements behind the broad scorecard.
+`objective_breakdown.term_diagnostics` shows the observed-versus-modeled measurements behind the family losses.
 
 Each term has:
 
-| Field               | Meaning                                                               |
-|---------------------|-----------------------------------------------------------------------|
-| `metric_id`         | The report name for this measurement.                                 |
-| `target_family`     | The broader behavior it belongs to, such as activity or return scale. |
-| `observed_value`    | The value measured in the training data.                              |
-| `simulated_value`   | The value measured in simulations from the fitted model.              |
-| `uncertainty_scale` | The scale Janiform used to compare observed and simulated values.     |
-| `normalized_error`  | The reported mismatch after scaling. Lower is better.                 |
+| Field                     | Meaning                                                                 |
+|---------------------------|-------------------------------------------------------------------------|
+| `term_id`                 | The report name for this measurement.                                   |
+| `family_id`               | The broader behavior it belongs to, such as activity or return scale.   |
+| `term_kind`               | The kind of term: exact likelihood, stylized fact, domain margin, or option quote. |
+| `observed_value`          | The value measured in the training data when applicable.                |
+| `model_value`             | The value from the fitted model or simulation when applicable.          |
+| `observed_standard_error` | The estimated uncertainty of the observed value when applicable.        |
+| `model_standard_error`    | The estimated uncertainty of the modeled value when applicable.         |
+| `uncertainty_scale`       | The pooled scale used to standardize observed-versus-modeled mismatch.  |
+| `standardized_residual`   | The signed mismatch after scaling.                                      |
+| `loss`                    | The contribution this term makes before family averaging.               |
+| `admissibility_blocker`   | Whether this term blocks final acceptance.                              |
 
 Use these terms when a broad area looks weak.
 
 For example:
 
-- If `activity_level_fit` is high, compare observed and simulated activity terms.
-- If `tick_return_scale_fit` is high, check whether simulated tick returns are too large or too small.
-- If `rv_activity_coupling_fit` is high, check whether activity and price variation move together differently in simulation than in the training data.
+- If `activity_level_timing` is high, compare observed and modeled activity count terms.
+- If `return_scale` is high, check whether modeled tick or interval returns are too large or too small.
+- If `return_shape` is high, inspect center, volatility, quantile, tail, skew, and L-moment terms.
+- If `rv_activity_coupling` is high, check whether activity and price variation move together differently in simulation than in the training data.
 
-`objective_terms` explain the score, but they are not the whole model-selection rule. Use them for interpretation, not for manually recomputing the final objective.
+Term diagnostics explain the loss, but they are not the whole model-selection rule. Use them for interpretation, not for manually recomputing the final objective.
 
-## What a high score usually means
+## What a high loss usually means
 
-A high score means the fitted model is not reproducing that behavior well enough under the calibration comparison.
+A high family loss means the fitted model is not reproducing that behavior well enough under the calibration comparison.
 
 Common patterns:
 
 | High area                    | What to inspect                                                                                            |
 |------------------------------|------------------------------------------------------------------------------------------------------------|
-| Activity level               | The market may be simulated too frequently or too rarely.                                                  |
-| Activity shape               | The total activity may be acceptable, but the timing pattern may be wrong.                                 |
+| Activity level and timing    | The market may be simulated too frequently, too rarely, or with the wrong coarse time profile.              |
+| Activity shape               | The total activity may be acceptable, but the hourly/session profile may be wrong.                         |
 | Return scale                 | Price changes may be too large or too small.                                                               |
-| Return shape                 | The fitted model may miss tails, concentration near zero, or other distribution features.                  |
-| Return asymmetry             | The model may miss directional imbalance between positive and negative moves.                              |
+| Return shape                 | The fitted model may miss tails, concentration near zero, skew, or other distribution features.             |
 | Activity-volatility coupling | Active periods may not produce the right amount of price variation. Volatility means how much prices vary. |
+| Options                      | Model prices may be outside market quote scale or imply an incompatible risk-neutral tilt.                 |
 
-A high score is not automatically a bug. It is a pointer. The right response is to inspect the related terms, render the fit report, simulate paths, and run validation for the intended use case.
+A high loss is not automatically a bug. It is a pointer. The right response is to inspect the related terms, render the fit report, simulate paths, and run validation for the intended use case.
 
 ## Why Janiform tries multiple candidates
 
@@ -152,11 +165,11 @@ During fitting, Janiform tries more than one candidate model. A candidate is one
 
 For example, one candidate might match activity very well but make returns too large. Another might match return size but lose the daily activity pattern. The selected model should be a balanced fit.
 
-Janiform therefore considers both the summary score and the shape of the scorecard. This helps avoid selecting a model that looks good only because one number hides an unacceptable weakness elsewhere.
+Janiform therefore considers both the global loss and the shape of the family losses. Admissibility also checks individual standardized residuals and hard constraints, so a model cannot pass only because one number hides an unacceptable weakness elsewhere.
 
 ## Saved runtime settings
 
-Some fields near the diagnostics are not scores. They are fitted settings that Janiform saves because simulation and pricing need them later.
+Some fields near the diagnostics are not losses. They are fitted settings that Janiform saves because simulation and pricing need them later.
 
 ### Activity seasonality
 
@@ -192,19 +205,31 @@ A search restart is another starting point for calibration. Restarts are useful 
 
 Search restarts are built from the fit residuals Janiform can evaluate before the full simulation pass. Some restarts adjust return scale, some preserve the current activity model while changing return shape, and some combine return-shape changes with activity-level alignment. If the hand-built restart pool is too narrow, Janiform fills the frontier with local quasi-random points around the staged model.
 
-The restart frontier is selected from low-cost screening scores before expensive restart optimization. The screening step keeps candidates that improve different weak areas, but it ranks the worst screening bucket before the summary score so a restart with one clearly poor bucket does not look attractive just because its average score is low.
+The restart frontier is selected from low-cost screening losses before expensive restart optimization. The screening step keeps candidates that improve different weak areas, but admissibility is still decided from refreshed selection or audit-fidelity loss diagnostics.
 
-During restart optimization, terminal progress reports merit scores rather than raw objective terms. `Trial merit` is the most recent block probe, `Accepted merit` is the best accepted score for the active block, and `Final merit` is the completed restart score computed from the final weighted objective. The NIG block uses a cheap deterministic merit based on aggregated likelihood plus available tick return scale and asymmetry scores, so it can search return-shape parameters without running full simulations for every probe. The Hawkes and coupling blocks use the local-fidelity final weighted objective because those blocks already run full candidate evaluations.
+During restart search, exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
+
+During restart optimization, terminal progress reports the shared pseudo-likelihood loss used by the search. `Trial loss` is the most recent block probe, `Accepted loss` is the best accepted loss for the active block, and `Final loss` is the completed restart loss when the restart has reached a final evaluation. Smaller loss is better.
+
+The restart table may also show exact return-likelihood evaluator counters. `CF-Buy` is the number of return blocks evaluated by the closed-form single-side buy density, `CF-Sell` is the number evaluated by the closed-form single-side sell density, and `Mix` is the number evaluated by the tilted mixed buy/sell inversion path. High `CF-Buy` or `CF-Sell` means the return likelihood mostly used the cheaper closed-form kernels. High `Mix` means more blocks required the more expensive mixed-side tilted inversion path.
 
 The report may mention these restarts because they explain how Janiform searched. You usually do not need to tune them when reading a normal fit report.
+
+### Runtime profile
+
+Joint refinement reports `runtime_profile` in successful and failed stage reports. The wall-clock fields separate restart optimization, coarse consistency checks, final seed evaluation, and final assembly.
+
+The cumulative fields split objective evaluation cost into deterministic work, likelihood-context construction, tick/5m/15m likelihood evaluation, expected activity counts, deterministic activity shape/level checks, seed-summary simulation, raw seed metric extraction, loss assembly, and option pricing. The cache counters show whether repeated evaluations reused objective, deterministic, seed-summary, aggregated-likelihood-context, or option-pricing artifacts.
+
+Use `cumulative_deterministic_evaluation_millis` as the broad total for deterministic objective work, then use the narrower cumulative fields to identify which deterministic substep dominates. Millisecond counters can remain zero for very small samples or very cheap substeps.
 
 ## A practical reading order
 
 When reading a fit report, read it in this order:
 
 1. Check whether the fit completed successfully.
-2. Look at `objective_breakdown` for the largest weak areas.
-3. Use `objective_terms` to compare observed and simulated values for those areas.
+2. Look at `objective_breakdown.family_losses` for the largest weak areas.
+3. Use `objective_breakdown.term_diagnostics` to compare observed and modeled values for those areas.
 4. Inspect saved runtime settings only if simulation or pricing behavior looks surprising.
 5. Run model validation before relying on the model for a downstream workflow.
 

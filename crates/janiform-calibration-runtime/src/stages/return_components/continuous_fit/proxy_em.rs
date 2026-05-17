@@ -4,7 +4,6 @@ use std::sync::mpsc::Sender;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_model_kernels::nig::{NigParameters, NigSharedPlusShiftConfiguration};
-use puruspe::Inu_Knu;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::super::contracts::{
@@ -14,13 +13,14 @@ use super::super::progress::{
     ReturnComponentsConvergenceProgress, send_return_components_convergence_progress,
     send_return_components_progress,
 };
-use super::bounds::{
-    nig_search_point_from_configuration, relative_share_from_beta_ratios,
-    sell_beta_ratio_from_relative_share,
-};
+use super::bessel::{log_modified_bessel_k1, modified_bessel_k0_to_k1_ratio};
+use super::bounds::nig_search_point_from_configuration;
 use super::likelihood::{maximum_open_beta_ratio, minimum_open_beta_ratio};
+use super::proxy_em_diagnostics::{ProxyEmFitOutcome, ProxyEmFitStopReason, ProxyEmSeedCounters};
+use super::proxy_em_sample::{ProxyEmFittingSample, build_proxy_em_fitting_sample};
 use super::types::{
-    NigShapeSearchPoint, ReturnComponentsStageContinuousReturnCalibrationSample, ScoredNigCandidate,
+    ContinuousReturnProxyEmDiagnostic, NigShapeSearchPoint,
+    ReturnComponentsStageContinuousReturnCalibrationSample, ScoredNigCandidate,
 };
 use crate::stages::return_components::execution::{
     round_negative_candidate_value, round_positive_candidate_value, round_signed_candidate_value,
@@ -31,8 +31,25 @@ struct ProxyEmProgressContext<'a> {
     completed_seed_count: &'a AtomicUsize,
     completed_evaluation_count: &'a AtomicUsize,
     best_objective: &'a Mutex<Option<f64>>,
+    final_convergence_ratio: &'a Mutex<Option<f64>>,
     total_seed_count: usize,
     seed_label: String,
+}
+
+struct ProxyEmSearchPointBuildContext<'a> {
+    solver_settings: &'a CalibrationOptimizerSettings,
+    maximum_iteration_count: usize,
+    progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
+    seed_counters: &'a ProxyEmSeedCounters,
+    completed_evaluation_count: &'a AtomicUsize,
+    best_objective: &'a Mutex<Option<f64>>,
+    final_convergence_ratio: &'a Mutex<Option<f64>>,
+    total_seed_count: usize,
+}
+
+pub(super) struct EffectiveNigProxyEmSearchPointBuildOutput {
+    pub(super) search_points: Vec<NigShapeSearchPoint>,
+    pub(super) diagnostic: ContinuousReturnProxyEmDiagnostic,
 }
 
 pub(super) fn build_effective_nig_em_search_points(
@@ -41,11 +58,13 @@ pub(super) fn build_effective_nig_em_search_points(
     solver_settings: &CalibrationOptimizerSettings,
     maximum_iteration_count: usize,
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
-) -> Vec<NigShapeSearchPoint> {
-    let completed_seed_count = AtomicUsize::new(0);
+) -> EffectiveNigProxyEmSearchPointBuildOutput {
+    let seed_counters = ProxyEmSeedCounters::new();
     let completed_evaluation_count = AtomicUsize::new(0);
     let best_objective = Mutex::new(None);
+    let final_convergence_ratio = Mutex::new(None);
     let total_seed_count = moment_seed_candidates.len();
+    let fitting_sample = build_proxy_em_fitting_sample(calibration_sample);
 
     let mut refined_search_points: Vec<NigShapeSearchPoint> = moment_seed_candidates
         .par_iter()
@@ -53,45 +72,39 @@ pub(super) fn build_effective_nig_em_search_points(
         .filter_map(|moment_seed_candidate| {
             let (moment_seed_index, moment_seed_candidate) = moment_seed_candidate;
 
-            let initial_parameters = proxy_initial_parameters(moment_seed_candidate.configuration)?;
-
             let seed_label = format!("proxy_em_seed_{:03}", moment_seed_index + 1);
 
-            let progress_context = ProxyEmProgressContext {
-                progress_sender,
-                completed_seed_count: &completed_seed_count,
-                completed_evaluation_count: &completed_evaluation_count,
-                best_objective: &best_objective,
-                total_seed_count,
-                seed_label,
-            };
-
-            let refined_parameters = fit_effective_zero_drift_nig_via_em(
-                calibration_sample.observed_returns.as_slice(),
-                calibration_sample.business_time_scales.as_slice(),
-                initial_parameters,
-                solver_settings,
-                maximum_iteration_count,
-                Some(&progress_context),
-            )?;
-
-            let search_point = shared_search_point_from_effective_parameters(
+            let search_point = build_single_effective_nig_em_search_point(
                 calibration_sample,
-                moment_seed_candidate.configuration,
-                refined_parameters,
-            )?;
+                &fitting_sample,
+                moment_seed_candidate,
+                &ProxyEmSearchPointBuildContext {
+                    solver_settings,
+                    maximum_iteration_count,
+                    progress_sender,
+                    seed_counters: &seed_counters,
+                    completed_evaluation_count: &completed_evaluation_count,
+                    best_objective: &best_objective,
+                    final_convergence_ratio: &final_convergence_ratio,
+                    total_seed_count,
+                },
+                seed_label.as_str(),
+            );
 
-            let completed_count = completed_seed_count.fetch_add(1, Ordering::Relaxed) + 1;
+            let completed_count = seed_counters
+                .completed_seed_count
+                .fetch_add(1, Ordering::Relaxed)
+                + 1;
 
             send_return_components_progress(
                 progress_sender,
                 ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
                 completed_count,
                 total_seed_count,
-                Some(progress_context.seed_label.as_str()),
+                Some(seed_label.as_str()),
             );
 
-            Some(search_point)
+            search_point
         })
         .collect();
 
@@ -116,7 +129,84 @@ pub(super) fn build_effective_nig_em_search_points(
             && left.log_delta_offset.to_bits() == right.log_delta_offset.to_bits()
     });
 
-    refined_search_points
+    EffectiveNigProxyEmSearchPointBuildOutput {
+        search_points: refined_search_points,
+        diagnostic: seed_counters.diagnostic(
+            &best_objective,
+            &final_convergence_ratio,
+            &completed_evaluation_count,
+            total_seed_count,
+            maximum_iteration_count.max(1),
+            fitting_sample.sample_count(),
+            fitting_sample.weight_sum(),
+        ),
+    }
+}
+
+fn build_single_effective_nig_em_search_point(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    fitting_sample: &ProxyEmFittingSample,
+    moment_seed_candidate: &ScoredNigCandidate,
+    build_context: &ProxyEmSearchPointBuildContext,
+    seed_label: &str,
+) -> Option<NigShapeSearchPoint> {
+    let Some(initial_parameters) = proxy_initial_parameters(moment_seed_candidate.configuration)
+    else {
+        build_context
+            .seed_counters
+            .invalid_initial_seed_count
+            .fetch_add(1, Ordering::Relaxed);
+        return None;
+    };
+
+    let progress_context = ProxyEmProgressContext {
+        progress_sender: build_context.progress_sender,
+        completed_seed_count: &build_context.seed_counters.completed_seed_count,
+        completed_evaluation_count: build_context.completed_evaluation_count,
+        best_objective: build_context.best_objective,
+        final_convergence_ratio: build_context.final_convergence_ratio,
+        total_seed_count: build_context.total_seed_count,
+        seed_label: seed_label.to_string(),
+    };
+
+    let Some(fit_outcome) = fit_effective_zero_drift_nig_via_em(
+        fitting_sample.observed_returns(),
+        fitting_sample.business_time_scales(),
+        fitting_sample.weights(),
+        initial_parameters,
+        build_context.solver_settings,
+        build_context.maximum_iteration_count,
+        Some(&progress_context),
+    ) else {
+        build_context
+            .seed_counters
+            .record_initial_numerical_failure();
+        return None;
+    };
+
+    build_context
+        .seed_counters
+        .record_fit_stop_reason(fit_outcome.stop_reason);
+
+    let search_point = shared_search_point_from_effective_parameters(
+        calibration_sample,
+        moment_seed_candidate.configuration,
+        fit_outcome.parameters,
+    );
+
+    if search_point.is_some() {
+        build_context
+            .seed_counters
+            .refined_seed_count
+            .fetch_add(1, Ordering::Relaxed);
+    } else {
+        build_context
+            .seed_counters
+            .projection_failure_seed_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    search_point
 }
 
 fn proxy_initial_parameters(
@@ -136,22 +226,27 @@ fn proxy_initial_parameters(
 fn fit_effective_zero_drift_nig_via_em(
     observed_returns: &[f64],
     business_time_scales: &[f64],
+    weights: &[f64],
     initial_parameters: NigParameters,
     solver_settings: &CalibrationOptimizerSettings,
     maximum_iteration_count: usize,
     progress_context: Option<&ProxyEmProgressContext>,
-) -> Option<NigParameters> {
-    if observed_returns.is_empty() || business_time_scales.is_empty() {
+) -> Option<ProxyEmFitOutcome> {
+    if observed_returns.is_empty() || business_time_scales.is_empty() || weights.is_empty() {
         return None;
     }
 
-    let aligned_count = observed_returns.len().min(business_time_scales.len());
+    let aligned_count = observed_returns
+        .len()
+        .min(business_time_scales.len())
+        .min(weights.len());
     if aligned_count == 0 {
         return None;
     }
 
     let aligned_observed_returns = &observed_returns[..aligned_count];
     let aligned_business_time_scales = &business_time_scales[..aligned_count];
+    let aligned_weights = &weights[..aligned_count];
 
     let mut current_parameters = initial_parameters;
 
@@ -159,26 +254,49 @@ fn fit_effective_zero_drift_nig_via_em(
         current_parameters,
         aligned_observed_returns,
         aligned_business_time_scales,
+        aligned_weights,
     )?;
 
+    if let Some(progress_context) = progress_context {
+        record_proxy_em_best_objective(progress_context.best_objective, current_objective);
+    }
+
     for _ in 0..maximum_iteration_count.max(1) {
-        let e_step_statistics = build_e_step_statistics(
+        let Some(e_step_statistics) = build_e_step_statistics(
             current_parameters,
             aligned_observed_returns,
             aligned_business_time_scales,
-        )?;
+            aligned_weights,
+        ) else {
+            return Some(ProxyEmFitOutcome {
+                parameters: current_parameters,
+                stop_reason: ProxyEmFitStopReason::NumericalFailure,
+            });
+        };
 
-        let next_parameters = maximize_effective_zero_drift_parameters(
+        let Some(next_parameters) = maximize_effective_zero_drift_parameters(
             aligned_observed_returns,
             aligned_business_time_scales,
+            aligned_weights,
             e_step_statistics,
-        )?;
+        ) else {
+            return Some(ProxyEmFitOutcome {
+                parameters: current_parameters,
+                stop_reason: ProxyEmFitStopReason::NumericalFailure,
+            });
+        };
 
-        let next_objective = effective_zero_drift_negative_log_likelihood(
+        let Some(next_objective) = effective_zero_drift_negative_log_likelihood(
             next_parameters,
             aligned_observed_returns,
             aligned_business_time_scales,
-        )?;
+            aligned_weights,
+        ) else {
+            return Some(ProxyEmFitOutcome {
+                parameters: current_parameters,
+                stop_reason: ProxyEmFitStopReason::NumericalFailure,
+            });
+        };
 
         let objective_tolerance = solver_settings
             .absolute_tolerance
@@ -191,8 +309,17 @@ fn fit_effective_zero_drift_nig_via_em(
                 .completed_evaluation_count
                 .fetch_add(1, Ordering::Relaxed)
                 + 1;
+
             let best_objective =
                 record_proxy_em_best_objective(progress_context.best_objective, next_objective);
+
+            let current_convergence_ratio =
+                convergence_ratio(objective_improvement, objective_tolerance);
+
+            record_proxy_em_final_convergence_ratio(
+                progress_context.final_convergence_ratio,
+                current_convergence_ratio,
+            );
 
             send_return_components_convergence_progress(
                 progress_context.progress_sender,
@@ -202,27 +329,37 @@ fn fit_effective_zero_drift_nig_via_em(
                         .completed_seed_count
                         .load(Ordering::Relaxed),
                     total_units: progress_context.total_seed_count,
-                    current_item_label: None,
+                    current_item_label: Some(progress_context.seed_label.as_str()),
                     current_evaluation_count: completed_evaluation_count,
                     current_weighted_objective: None,
                     best_weighted_objective: best_objective,
-                    current_convergence_ratio: convergence_ratio(
-                        objective_improvement,
-                        objective_tolerance,
-                    ),
+                    current_convergence_ratio,
                 },
             );
         }
 
+        if objective_improvement <= 0.0 {
+            return Some(ProxyEmFitOutcome {
+                parameters: current_parameters,
+                stop_reason: ProxyEmFitStopReason::NonImproving,
+            });
+        }
+
         if objective_improvement <= objective_tolerance {
-            return Some(next_parameters);
+            return Some(ProxyEmFitOutcome {
+                parameters: next_parameters,
+                stop_reason: ProxyEmFitStopReason::Converged,
+            });
         }
 
         current_parameters = next_parameters;
         current_objective = next_objective;
     }
 
-    Some(current_parameters)
+    Some(ProxyEmFitOutcome {
+        parameters: current_parameters,
+        stop_reason: ProxyEmFitStopReason::IterationBudgetExhausted,
+    })
 }
 
 fn record_proxy_em_best_objective(
@@ -243,6 +380,23 @@ fn record_proxy_em_best_objective(
     }
 
     *best_objective_guard
+}
+
+fn record_proxy_em_final_convergence_ratio(
+    final_convergence_ratio: &Mutex<Option<f64>>,
+    convergence_ratio: Option<f64>,
+) {
+    let Some(convergence_ratio) = convergence_ratio else {
+        return;
+    };
+
+    if !convergence_ratio.is_finite() {
+        return;
+    }
+
+    if let Ok(mut final_convergence_ratio_guard) = final_convergence_ratio.lock() {
+        *final_convergence_ratio_guard = Some(convergence_ratio);
+    }
 }
 
 fn convergence_ratio(objective_improvement: f64, objective_tolerance: f64) -> Option<f64> {
@@ -266,14 +420,21 @@ fn build_e_step_statistics(
     parameters: NigParameters,
     observed_returns: &[f64],
     business_time_scales: &[f64],
+    weights: &[f64],
 ) -> Option<EffectiveZeroDriftEstepStatistics> {
     let mut expected_latent_increment_sum = 0.0;
     let mut expected_inverse_latent_increment_weighted_scale_square_sum = 0.0;
 
-    for (observed_return, business_time_scale) in
-        observed_returns.iter().zip(business_time_scales.iter())
+    for ((observed_return, business_time_scale), weight) in observed_returns
+        .iter()
+        .zip(business_time_scales.iter())
+        .zip(weights.iter())
     {
         if !business_time_scale.is_finite() || *business_time_scale <= 0.0 {
+            return None;
+        }
+
+        if !weight.is_finite() || *weight <= 0.0 {
             return None;
         }
 
@@ -289,16 +450,7 @@ fn build_e_step_statistics(
             return None;
         }
 
-        let (_, k0) = Inu_Knu(0.0, bessel_argument);
-        let (_, k1) = Inu_Knu(1.0, bessel_argument);
-        if !k0.is_finite() || !k1.is_finite() || k1 <= 0.0 {
-            return None;
-        }
-
-        let bessel_ratio = k0 / k1;
-        if !bessel_ratio.is_finite() {
-            return None;
-        }
+        let bessel_ratio = modified_bessel_k0_to_k1_ratio(bessel_argument)?;
 
         let expected_latent_increment = conditional_scale * bessel_ratio / parameters.alpha;
         let expected_inverse_latent_increment =
@@ -308,9 +460,9 @@ fn build_e_step_statistics(
             return None;
         }
 
-        expected_latent_increment_sum += expected_latent_increment;
+        expected_latent_increment_sum += weight * expected_latent_increment;
         expected_inverse_latent_increment_weighted_scale_square_sum +=
-            business_time_scale.powi(2) * expected_inverse_latent_increment;
+            weight * business_time_scale.powi(2) * expected_inverse_latent_increment;
     }
 
     Some(EffectiveZeroDriftEstepStatistics {
@@ -322,15 +474,24 @@ fn build_e_step_statistics(
 fn maximize_effective_zero_drift_parameters(
     observed_returns: &[f64],
     business_time_scales: &[f64],
+    weights: &[f64],
     e_step_statistics: EffectiveZeroDriftEstepStatistics,
 ) -> Option<NigParameters> {
-    let sample_count = observed_returns.len();
-    if sample_count == 0 {
+    let total_weight = total_weight(weights)?;
+    if total_weight <= 0.0 {
         return None;
     }
 
-    let total_business_time_scale: f64 = business_time_scales.iter().copied().sum();
-    let observed_return_sum: f64 = observed_returns.iter().copied().sum();
+    let total_business_time_scale: f64 = business_time_scales
+        .iter()
+        .zip(weights.iter())
+        .map(|(business_time_scale, weight)| business_time_scale * weight)
+        .sum();
+    let observed_return_sum: f64 = observed_returns
+        .iter()
+        .zip(weights.iter())
+        .map(|(observed_return, weight)| observed_return * weight)
+        .sum();
     if !total_business_time_scale.is_finite() || !observed_return_sum.is_finite() {
         return None;
     }
@@ -348,7 +509,7 @@ fn maximize_effective_zero_drift_parameters(
         return None;
     }
 
-    let delta = (sample_count as f64 / inverse_scale_denominator).sqrt();
+    let delta = (total_weight / inverse_scale_denominator).sqrt();
     if !delta.is_finite() || delta <= 0.0 {
         return None;
     }
@@ -367,6 +528,7 @@ fn effective_zero_drift_negative_log_likelihood(
     parameters: NigParameters,
     observed_returns: &[f64],
     business_time_scales: &[f64],
+    weights: &[f64],
 ) -> Option<f64> {
     let gamma_squared =
         (parameters.alpha - parameters.beta.abs()) * (parameters.alpha + parameters.beta.abs());
@@ -377,11 +539,18 @@ fn effective_zero_drift_negative_log_likelihood(
     let gamma = gamma_squared.sqrt();
 
     let mut negative_log_likelihood = 0.0;
+    let mut weight_sum = 0.0;
 
-    for (observed_return, business_time_scale) in
-        observed_returns.iter().zip(business_time_scales.iter())
+    for ((observed_return, business_time_scale), weight) in observed_returns
+        .iter()
+        .zip(business_time_scales.iter())
+        .zip(weights.iter())
     {
         if !business_time_scale.is_finite() || *business_time_scale <= 0.0 {
+            return None;
+        }
+
+        if !weight.is_finite() || *weight <= 0.0 {
             return None;
         }
 
@@ -399,25 +568,36 @@ fn effective_zero_drift_negative_log_likelihood(
             return None;
         }
 
-        let (_, k1) = Inu_Knu(1.0, bessel_argument);
-        if !k1.is_finite() || k1 <= 0.0 {
-            return None;
-        }
+        let log_bessel_k1 = log_modified_bessel_k1(bessel_argument)?;
 
         let log_density = parameters.alpha.ln() + scaled_delta.ln()
             - std::f64::consts::PI.ln()
             - conditional_scale.ln()
             + scaled_delta * gamma
             + parameters.beta * observed_return
-            + k1.ln();
+            + log_bessel_k1;
         if !log_density.is_finite() {
             return None;
         }
 
-        negative_log_likelihood -= log_density;
+        negative_log_likelihood -= weight * log_density;
+        weight_sum += weight;
     }
 
-    Some(negative_log_likelihood / observed_returns.len() as f64)
+    if !weight_sum.is_finite() || weight_sum <= 0.0 {
+        return None;
+    }
+
+    Some(negative_log_likelihood / weight_sum)
+}
+
+fn total_weight(weights: &[f64]) -> Option<f64> {
+    let total_weight: f64 = weights.iter().copied().sum();
+    if !total_weight.is_finite() || total_weight <= 0.0 {
+        return None;
+    }
+
+    Some(total_weight)
 }
 
 fn shared_search_point_from_effective_parameters(
@@ -428,17 +608,18 @@ fn shared_search_point_from_effective_parameters(
     let seed_buy_beta_ratio = seed_configuration.beta_0 / seed_configuration.alpha;
     let seed_sell_beta_ratio = seed_configuration.derived_sell_beta() / seed_configuration.alpha;
 
-    let relative_share =
-        relative_share_from_beta_ratios(seed_buy_beta_ratio, seed_sell_beta_ratio)?;
+    let seed_beta_ratio_spread = seed_buy_beta_ratio - seed_sell_beta_ratio;
+    if !seed_beta_ratio_spread.is_finite() || seed_beta_ratio_spread <= 0.0 {
+        return None;
+    }
 
-    let effective_midpoint_ratio = effective_parameters.beta / effective_parameters.alpha;
+    let effective_beta_ratio = effective_parameters.beta / effective_parameters.alpha;
 
-    let bounded_midpoint_ratio =
-        clamp_midpoint_ratio_to_relative_share(relative_share, effective_midpoint_ratio)?;
-
-    let buy_beta_ratio =
-        buy_beta_ratio_from_midpoint_and_relative_share(bounded_midpoint_ratio, relative_share)?;
-    let sell_beta_ratio = sell_beta_ratio_from_relative_share(buy_beta_ratio, relative_share);
+    let (buy_beta_ratio, sell_beta_ratio) = project_effective_beta_ratio_to_shared_shift_ratios(
+        calibration_sample.open_session_sell_share_proxy,
+        seed_beta_ratio_spread,
+        effective_beta_ratio,
+    )?;
 
     if !sell_beta_ratio.is_finite() || sell_beta_ratio >= buy_beta_ratio {
         return None;
@@ -458,11 +639,18 @@ fn shared_search_point_from_effective_parameters(
     nig_search_point_from_configuration(calibration_sample, configuration)
 }
 
-fn clamp_midpoint_ratio_to_relative_share(relative_share: f64, midpoint_ratio: f64) -> Option<f64> {
-    if !relative_share.is_finite()
-        || relative_share <= 0.0
-        || relative_share >= 1.0
-        || !midpoint_ratio.is_finite()
+fn project_effective_beta_ratio_to_shared_shift_ratios(
+    open_session_sell_share_proxy: f64,
+    seed_beta_ratio_spread: f64,
+    effective_beta_ratio: f64,
+) -> Option<(f64, f64)> {
+    let buy_weight = 1.0 - open_session_sell_share_proxy.clamp(0.0, 1.0);
+    let sell_weight = open_session_sell_share_proxy.clamp(0.0, 1.0);
+    if !buy_weight.is_finite()
+        || !sell_weight.is_finite()
+        || !seed_beta_ratio_spread.is_finite()
+        || seed_beta_ratio_spread <= 0.0
+        || !effective_beta_ratio.is_finite()
     {
         return None;
     }
@@ -470,33 +658,31 @@ fn clamp_midpoint_ratio_to_relative_share(relative_share: f64, midpoint_ratio: f
     let lower_bound = minimum_open_beta_ratio();
     let upper_bound = maximum_open_beta_ratio();
 
-    let maximum_midpoint_ratio =
-        0.5 * (upper_bound + sell_beta_ratio_from_relative_share(upper_bound, relative_share));
+    let bounded_effective_beta_ratio = effective_beta_ratio.clamp(lower_bound, upper_bound);
 
-    Some(midpoint_ratio.clamp(lower_bound, maximum_midpoint_ratio))
-}
+    let upper_limited_spread = if sell_weight > 0.0 {
+        (upper_bound - bounded_effective_beta_ratio) / sell_weight
+    } else {
+        upper_bound - lower_bound
+    };
 
-fn buy_beta_ratio_from_midpoint_and_relative_share(
-    midpoint_ratio: f64,
-    relative_share: f64,
-) -> Option<f64> {
-    if !midpoint_ratio.is_finite()
-        || !relative_share.is_finite()
-        || relative_share <= 0.0
-        || relative_share >= 1.0
-    {
+    let lower_limited_spread = if buy_weight > 0.0 {
+        (bounded_effective_beta_ratio - lower_bound) / buy_weight
+    } else {
+        upper_bound - lower_bound
+    };
+
+    let beta_ratio_spread = seed_beta_ratio_spread
+        .min(upper_limited_spread)
+        .min(lower_limited_spread);
+    if !beta_ratio_spread.is_finite() || beta_ratio_spread <= 0.0 {
         return None;
     }
 
-    let lower_bound = minimum_open_beta_ratio();
-
-    let buy_beta_ratio =
-        (2.0 * midpoint_ratio - lower_bound * (1.0 - relative_share)) / (1.0 + relative_share);
-    if !buy_beta_ratio.is_finite() {
-        return None;
-    }
-
-    Some(buy_beta_ratio.clamp(lower_bound, maximum_open_beta_ratio()))
+    Some((
+        bounded_effective_beta_ratio + sell_weight * beta_ratio_spread,
+        bounded_effective_beta_ratio - buy_weight * beta_ratio_spread,
+    ))
 }
 
 #[cfg(test)]
@@ -526,6 +712,7 @@ mod tests {
 
         let observed_returns =
             sample_effective_nig_returns(target_parameters, business_time_scales.as_slice(), 19);
+        let weights = vec![1.0; observed_returns.len()];
 
         let initial_parameters = NigParameters::try_new(36.0, -1.0, 1.0e-4, 0.0)
             .expect("initial parameters should validate");
@@ -538,12 +725,14 @@ mod tests {
             initial_parameters,
             observed_returns.as_slice(),
             business_time_scales.as_slice(),
+            weights.as_slice(),
         )
         .expect("initial objective should evaluate");
 
-        let refined_parameters = fit_effective_zero_drift_nig_via_em(
+        let fit_outcome = fit_effective_zero_drift_nig_via_em(
             observed_returns.as_slice(),
             business_time_scales.as_slice(),
+            weights.as_slice(),
             initial_parameters,
             &solver_settings,
             24,
@@ -552,13 +741,67 @@ mod tests {
         .expect("em fit should converge");
 
         let refined_objective = effective_zero_drift_negative_log_likelihood(
-            refined_parameters,
+            fit_outcome.parameters,
             observed_returns.as_slice(),
             business_time_scales.as_slice(),
+            weights.as_slice(),
         )
         .expect("refined objective should evaluate");
 
         assert!(refined_objective < initial_objective);
+    }
+
+    #[test]
+    fn weighted_proxy_em_matches_repeated_observations() {
+        let observed_returns = vec![-0.015, -0.002, 0.004, 0.017];
+        let business_time_scales = vec![2.0, 4.0, 3.0, 5.0];
+        let compressed_weights = vec![3.0, 2.0, 4.0, 1.0];
+
+        let mut repeated_returns = Vec::new();
+        let mut repeated_business_time_scales = Vec::new();
+        for ((observed_return, business_time_scale), weight) in observed_returns
+            .iter()
+            .zip(business_time_scales.iter())
+            .zip(compressed_weights.iter())
+        {
+            for _ in 0..*weight as usize {
+                repeated_returns.push(*observed_return);
+                repeated_business_time_scales.push(*business_time_scale);
+            }
+        }
+        let repeated_weights = vec![1.0; repeated_returns.len()];
+
+        let initial_parameters = NigParameters::try_new(20.0, -2.0, 0.005, 0.0)
+            .expect("initial parameters should validate");
+
+        let solver_settings =
+            CalibrationOptimizerSettings::try_new("proxy_em", 48, 1, 1.0e-10, 1.0e-8, 0.0)
+                .expect("solver settings should validate");
+
+        let compressed_fit = fit_effective_zero_drift_nig_via_em(
+            observed_returns.as_slice(),
+            business_time_scales.as_slice(),
+            compressed_weights.as_slice(),
+            initial_parameters,
+            &solver_settings,
+            48,
+            None,
+        )
+        .expect("compressed weighted fit should evaluate");
+        let repeated_fit = fit_effective_zero_drift_nig_via_em(
+            repeated_returns.as_slice(),
+            repeated_business_time_scales.as_slice(),
+            repeated_weights.as_slice(),
+            initial_parameters,
+            &solver_settings,
+            48,
+            None,
+        )
+        .expect("repeated unweighted fit should evaluate");
+
+        assert!((compressed_fit.parameters.alpha - repeated_fit.parameters.alpha).abs() <= 1.0e-10);
+        assert!((compressed_fit.parameters.beta - repeated_fit.parameters.beta).abs() <= 1.0e-10);
+        assert!((compressed_fit.parameters.delta - repeated_fit.parameters.delta).abs() <= 1.0e-10);
     }
 
     #[test]
@@ -589,7 +832,7 @@ mod tests {
             CalibrationOptimizerSettings::try_new("proxy_em", 24, 1, 1.0e-9, 1.0e-7, 0.0)
                 .expect("solver settings should validate");
 
-        let search_points = build_effective_nig_em_search_points(
+        let proxy_em_output = build_effective_nig_em_search_points(
             &calibration_sample,
             moment_seed_candidates.as_slice(),
             &solver_settings,
@@ -597,7 +840,24 @@ mod tests {
             None,
         );
 
-        assert!(!search_points.is_empty());
+        assert!(!proxy_em_output.search_points.is_empty());
+        assert!(proxy_em_output.diagnostic.best_objective.is_some());
+        assert!(proxy_em_output.diagnostic.final_convergence_ratio.is_some());
+        assert_eq!(
+            proxy_em_output.diagnostic.requested_seed_count,
+            moment_seed_candidates.len()
+        );
+        assert_eq!(
+            proxy_em_output.diagnostic.completed_seed_count,
+            moment_seed_candidates.len()
+        );
+        assert_eq!(proxy_em_output.diagnostic.iteration_budget_per_seed, 24);
+        assert!(proxy_em_output.diagnostic.fitting_sample_count > 0);
+        assert!(proxy_em_output.diagnostic.fitting_sample_weight_sum > 0.0);
+        assert!(proxy_em_output.diagnostic.evaluation_count > 0);
+        assert!(proxy_em_output.diagnostic.refined_seed_count > 0);
+        assert_eq!(proxy_em_output.diagnostic.invalid_initial_seed_count, 0);
+        assert_eq!(proxy_em_output.diagnostic.projection_failure_seed_count, 0);
     }
 
     fn sample_effective_nig_returns(

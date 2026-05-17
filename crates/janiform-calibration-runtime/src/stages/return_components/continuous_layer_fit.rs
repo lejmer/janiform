@@ -88,6 +88,54 @@ pub(crate) fn fit_continuous_return_layer(
                     optimizer_diagnostic.local_evaluation_count;
                 evaluation.fit_breakdown.optimizer_stop_reason =
                     optimizer_diagnostic.stop_reason.to_string();
+                evaluation.fit_breakdown.proxy_em_best_objective =
+                    optimizer_diagnostic.proxy_em_diagnostic.best_objective;
+                evaluation.fit_breakdown.proxy_em_final_convergence_ratio = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .final_convergence_ratio;
+                evaluation.fit_breakdown.proxy_em_evaluation_count =
+                    optimizer_diagnostic.proxy_em_diagnostic.evaluation_count;
+                evaluation.fit_breakdown.proxy_em_completed_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .completed_seed_count;
+                evaluation.fit_breakdown.proxy_em_refined_seed_count =
+                    optimizer_diagnostic.proxy_em_diagnostic.refined_seed_count;
+                evaluation.fit_breakdown.proxy_em_requested_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .requested_seed_count;
+                evaluation.fit_breakdown.proxy_em_iteration_budget_per_seed = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .iteration_budget_per_seed;
+                evaluation.fit_breakdown.proxy_em_fitting_sample_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .fitting_sample_count;
+                evaluation.fit_breakdown.proxy_em_fitting_sample_weight_sum = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .fitting_sample_weight_sum;
+                evaluation.fit_breakdown.proxy_em_converged_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .converged_seed_count;
+                evaluation.fit_breakdown.proxy_em_non_improving_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .non_improving_seed_count;
+                evaluation
+                    .fit_breakdown
+                    .proxy_em_numerical_failure_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .numerical_failure_seed_count;
+                evaluation
+                    .fit_breakdown
+                    .proxy_em_iteration_budget_exhausted_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .iteration_budget_exhausted_seed_count;
+                evaluation
+                    .fit_breakdown
+                    .proxy_em_projection_failure_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .projection_failure_seed_count;
+                evaluation.fit_breakdown.proxy_em_invalid_initial_seed_count = optimizer_diagnostic
+                    .proxy_em_diagnostic
+                    .invalid_initial_seed_count;
                 evaluation.fit_breakdown.optimizer_basin_diagnostics =
                     optimizer_diagnostic.basin_diagnostics.clone();
                 evaluation.optimizer_diagnostic = optimizer_diagnostic;
@@ -358,6 +406,56 @@ mod tests {
                     .optimizer_diagnostic
                     .final_objective_score
                     .to_bits()
+            );
+            assert!(
+                fitted_candidate
+                    .evaluation
+                    .fit_breakdown
+                    .proxy_em_best_objective
+                    .is_some()
+            );
+            assert!(
+                fitted_candidate
+                    .evaluation
+                    .fit_breakdown
+                    .proxy_em_evaluation_count
+                    > 0
+            );
+            assert_eq!(
+                fitted_candidate
+                    .evaluation
+                    .fit_breakdown
+                    .proxy_em_completed_seed_count,
+                fitted_candidate
+                    .evaluation
+                    .fit_breakdown
+                    .proxy_em_requested_seed_count,
+            );
+            assert_eq!(
+                fitted_candidate
+                    .evaluation
+                    .fit_breakdown
+                    .proxy_em_converged_seed_count
+                    + fitted_candidate
+                        .evaluation
+                        .fit_breakdown
+                        .proxy_em_non_improving_seed_count
+                    + fitted_candidate
+                        .evaluation
+                        .fit_breakdown
+                        .proxy_em_numerical_failure_seed_count
+                    + fitted_candidate
+                        .evaluation
+                        .fit_breakdown
+                        .proxy_em_iteration_budget_exhausted_seed_count
+                    + fitted_candidate
+                        .evaluation
+                        .fit_breakdown
+                        .proxy_em_invalid_initial_seed_count,
+                fitted_candidate
+                    .evaluation
+                    .fit_breakdown
+                    .proxy_em_requested_seed_count,
             );
         }
     }

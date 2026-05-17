@@ -17,7 +17,10 @@ use janiform_engine_pricing::{
     derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
     materialize_schedule_interval_factors_with_cpu_count,
 };
-use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
+use janiform_foundations::time::{
+    NANOS_PER_HOUR, ceil_to_hour_utc_nanos, checked_interval_count_between_utc_nanos,
+    floor_to_hour_utc_nanos,
+};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
 };
@@ -39,7 +42,7 @@ use crate::stages::seasonality::{
     build_runtime_hourly_seasonality_factors_from_components,
 };
 use janiform_calibration_artifacts::{
-    JointRefinementStageOptionAggregateDiagnostic,
+    CalibrationObjectivePolicy, JointRefinementStageOptionAggregateDiagnostic,
     JointRefinementStageOptionCalibrationDiagnostics,
     JointRefinementStageOptionMaturityScoreDiagnostic, JointRefinementStageOptionNodeDiagnostic,
     JointRefinementStageOptionQuoteUniverseDiagnostics, JointRefinementStageOptionSnapshotMetadata,
@@ -67,6 +70,7 @@ use super::state::{
     JointRefinementOptionTierPricingInputSet, JointRefinementOptionTierPricingInputs,
     JointRefinementOptionTierScore,
 };
+use crate::objective::CalibrationLossBuilder;
 
 #[cfg(test)]
 type OptionGridBatchPricingRequestBuildOutput = (
@@ -405,9 +409,17 @@ fn resolve_option_pricing_horizon(
         floor_to_hour_utc_nanos(option_pricing_input.valuation_time_utc_nanos);
     let hourly_coverage_end_utc_nanos = ceil_to_hour_utc_nanos(max_expiry_timestamp_utc_nanos);
 
-    let hourly_coverage_interval_count = ((hourly_coverage_end_utc_nanos
-        - hourly_coverage_start_utc_nanos)
-        / NANOS_PER_HOUR) as usize;
+    let hourly_coverage_interval_count = checked_interval_count_between_utc_nanos(
+        hourly_coverage_start_utc_nanos,
+        hourly_coverage_end_utc_nanos,
+        NANOS_PER_HOUR,
+    )
+    .ok_or_else(
+        || JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message: "joint option calibration requires a valid hourly option coverage grid"
+                .to_string(),
+        },
+    )?;
 
     Ok(OptionPricingHorizon {
         hourly_coverage_start_utc_nanos,
@@ -859,13 +871,13 @@ fn run_option_grid_batch_pricing(
                 current_evaluation_count: snapshot.current_evaluation_count,
                 total_evaluation_budget: snapshot.total_evaluation_budget,
                 evaluation_progress_percent: snapshot.evaluation_progress_percent,
-                current_weighted_objective: snapshot.current_weighted_objective,
+                current_global_loss: snapshot.current_weighted_objective,
                 current_pricing_interval_index: event.current_interval_index,
                 total_pricing_interval_count: event.total_intervals,
                 completed_pricing_row_count: pricing_progress_completed_row_count(&event),
                 total_pricing_row_count: pricing_progress_total_row_count(&event),
                 best_restart_id: snapshot.best_restart_id,
-                best_weighted_objective: snapshot.best_weighted_objective,
+                best_global_loss: snapshot.best_weighted_objective,
                 ..JointRefinementStageProgressUpdate::new(
                     progress_phase,
                     snapshot.completed_units,
@@ -992,6 +1004,7 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
         build_option_surface_tier_pricing_artifact(
             cache_key.clone(),
             &pricing_result,
+            context.objective_policy,
             valuation_time_utc_nanos,
             tier_inputs,
         )
@@ -1175,10 +1188,15 @@ fn build_observed_tier_option_nodes(
 fn build_option_surface_tier_pricing_artifact(
     cache_key: super::JointRefinementOptionPricingCacheKey,
     pricing_result: &VanillaOptionGridBatchPricingRunResult,
+    objective_policy: CalibrationObjectivePolicy,
     valuation_time_utc_nanos: i64,
     tier_inputs: &JointRefinementOptionTierPricingInputs,
 ) -> Result<JointRefinementOptionTierPricingArtifact, String> {
     let mut node_diagnostics = Vec::with_capacity(tier_inputs.observed_nodes.len());
+    let mut loss_builder = CalibrationLossBuilder::new(objective_policy);
+
+    let quote_scale_floor =
+        minimum_positive_option_quote_spread(tier_inputs.observed_nodes.as_slice())?;
 
     let mut maturity_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
     let mut strike_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
@@ -1198,8 +1216,25 @@ fn build_option_surface_tier_pricing_artifact(
             "joint option pricing artifact returned a grid inconsistent with the selected option tier",
         )?;
 
-        let spread_normalized_residual = (model_price - observed_node.observed_mid_price)
-            / (observed_node.ask_price - observed_node.bid_price);
+        let quote_residual_scale = option_quote_residual_scale(observed_node, quote_scale_floor)?;
+
+        let spread_normalized_residual =
+            (model_price - observed_node.observed_mid_price) / quote_residual_scale;
+
+        loss_builder.add_option_quote_term(
+            format!(
+                "options.quote.{}.{}.{}",
+                observed_node.expiry_timestamp_utc_nanos,
+                observed_node.strike,
+                match observed_node.payoff_type {
+                    VanillaOptionPayoffType::Call => "call",
+                    VanillaOptionPayoffType::Put => "put",
+                }
+            ),
+            observed_node.observed_mid_price,
+            model_price,
+            quote_residual_scale,
+        );
 
         if node_sensitivities.is_some() {
             match resolve_model_option_price_sensitivity(pricing_result, observed_node)? {
@@ -1213,6 +1248,7 @@ fn build_option_surface_tier_pricing_artifact(
                                 spread_normalized_residual_gradient(
                                     model_price_sensitivity,
                                     observed_node,
+                                    quote_scale_floor,
                                 ),
                         });
                     }
@@ -1301,6 +1337,8 @@ fn build_option_surface_tier_pricing_artifact(
             .sqrt(),
     };
 
+    let loss_evaluation = loss_builder.build();
+
     let aggregate_diagnostics =
         build_option_aggregate_diagnostics(maturity_bucket_residuals, strike_bucket_residuals);
 
@@ -1328,6 +1366,7 @@ fn build_option_surface_tier_pricing_artifact(
             pricing_result,
         ),
         score,
+        loss_evaluation,
         maturity_scores,
         node_diagnostics,
         aggregate_diagnostics,
@@ -1812,11 +1851,45 @@ fn resolve_model_option_price_sensitivity(
         .flatten())
 }
 
+fn minimum_positive_option_quote_spread(
+    observed_nodes: &[JointRefinementOptionNodeDefinition],
+) -> Result<f64, String> {
+    observed_nodes
+        .iter()
+        .map(|observed_node| observed_node.ask_price - observed_node.bid_price)
+        .filter(|spread| spread.is_finite() && *spread > 0.0)
+        .min_by(f64::total_cmp)
+        .ok_or_else(|| {
+            "joint option pricing tier contains no positive finite quote spread".to_string()
+        })
+}
+
+fn option_quote_residual_scale(
+    observed_node: &JointRefinementOptionNodeDefinition,
+    minimum_positive_spread: f64,
+) -> Result<f64, String> {
+    let quote_spread = observed_node.ask_price - observed_node.bid_price;
+    if !quote_spread.is_finite() || quote_spread <= 0.0 {
+        return Err("joint option pricing node contains an invalid quote spread".to_string());
+    }
+
+    if !minimum_positive_spread.is_finite() || minimum_positive_spread <= 0.0 {
+        return Err(
+            "joint option pricing tier contains an invalid minimum quote spread".to_string(),
+        );
+    }
+
+    Ok((0.5 * quote_spread).max(minimum_positive_spread))
+}
+
 fn spread_normalized_residual_gradient(
     model_price_sensitivity: VanillaOptionNodePriceSensitivity,
     observed_node: &JointRefinementOptionNodeDefinition,
+    quote_scale_floor: f64,
 ) -> Vec<f64> {
-    let spread_inverse = 1.0 / (observed_node.ask_price - observed_node.bid_price);
+    let spread_inverse = 1.0
+        / option_quote_residual_scale(observed_node, quote_scale_floor)
+            .unwrap_or(quote_scale_floor);
 
     vec![
         model_price_sensitivity.alpha_derivative * spread_inverse,
@@ -1833,8 +1906,8 @@ mod tests {
 
     use janiform_calibration_artifacts::JointRefinementStageCarryInput;
     use janiform_calibration_artifacts::{
-        CalibrationRunSpec, HawkesStageFittedParameters, MeanReversionStageDiagnostics,
-        ReturnComponentsStageFittedParameters,
+        CalibrationObjectivePolicy, CalibrationRunSpec, HawkesStageFittedParameters,
+        MeanReversionStageDiagnostics, ReturnComponentsStageFittedParameters,
     };
     use janiform_engine_pricing::{
         AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -1857,8 +1930,9 @@ mod tests {
         build_option_boundary_input, build_option_grid_batch_pricing_request,
         build_option_surface_tier_pricing_artifact, build_surprise_multipliers_for_interval_grid,
         derive_pricing_interval_schedule, estimate_option_pricing_current_state,
-        format_option_pricing_progress_item, pricing_event_progress_percent,
-        pricing_nig_configuration, resolve_option_runtime_interval_schedule, validate_option_spot,
+        format_option_pricing_progress_item, minimum_positive_option_quote_spread,
+        option_quote_residual_scale, pricing_event_progress_percent, pricing_nig_configuration,
+        resolve_option_runtime_interval_schedule, validate_option_spot,
     };
     use crate::adapters::load_hourly_factor_contract_for_calibration;
     use crate::stages::hawkes::HawkesStageFittedPayload;
@@ -2264,6 +2338,7 @@ mod tests {
         let artifact = build_option_surface_tier_pricing_artifact(
             cache_key.clone(),
             &pricing_result,
+            CalibrationObjectivePolicy::default(),
             0,
             &tier_inputs,
         )
@@ -2275,13 +2350,31 @@ mod tests {
         );
         assert_eq!(artifact.node_diagnostics.len(), 3);
         assert_eq!(artifact.node_diagnostics[0].model_price, 1.4);
-        assert_eq!(artifact.node_diagnostics[1].spread_normalized_residual, 1.0);
+
+        let quote_scale_floor =
+            minimum_positive_option_quote_spread(tier_inputs.observed_nodes.as_slice())
+                .expect("fixture quote spreads should include a positive floor");
+        let second_observed_node = &tier_inputs.observed_nodes[1];
+        let second_quote_scale =
+            option_quote_residual_scale(second_observed_node, quote_scale_floor)
+                .expect("fixture quote spread should be valid");
+        assert_eq!(
+            artifact.node_diagnostics[1].spread_normalized_residual,
+            (artifact.node_diagnostics[1].model_price - second_observed_node.observed_mid_price)
+                / second_quote_scale
+        );
 
         let third_observed_node = &tier_inputs.observed_nodes[2];
+        let third_quote_scale = option_quote_residual_scale(third_observed_node, quote_scale_floor)
+            .expect("fixture quote spread should be valid");
         assert_eq!(
             artifact.node_diagnostics[2].spread_normalized_residual,
-            (0.9 - third_observed_node.observed_mid_price)
-                / (third_observed_node.ask_price - third_observed_node.bid_price)
+            (0.9 - third_observed_node.observed_mid_price) / third_quote_scale
+        );
+        assert_eq!(artifact.loss_evaluation.family_losses.len(), 1);
+        assert_eq!(
+            artifact.loss_evaluation.family_losses[0].family_id,
+            "options"
         );
         assert_eq!(artifact.maturity_scores.len(), 2);
         assert_eq!(
@@ -2778,9 +2871,13 @@ mod tests {
             )
             .expect("runtime seasonality materialization should succeed");
 
-        let hourly_coverage_interval_count = ((hourly_coverage_end_utc_nanos
-            - hourly_coverage_start_utc_nanos)
-            / NANOS_PER_HOUR) as usize;
+        let hourly_coverage_interval_count =
+            janiform_foundations::time::checked_interval_count_between_utc_nanos(
+                hourly_coverage_start_utc_nanos,
+                hourly_coverage_end_utc_nanos,
+                NANOS_PER_HOUR,
+            )
+            .expect("test hourly coverage grid should be valid");
 
         let surprise_deterministic_time_multiplier_by_interval_index =
             build_surprise_multipliers_for_interval_grid(

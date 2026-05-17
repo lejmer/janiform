@@ -4,8 +4,9 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationRunDataInputs, CalibrationRunSeedSettings,
-    CalibrationRunSpec, CalibrationStage, CalibrationStageSolverSettings,
+    CalibrationExecutionMode, CalibrationObjectivePolicy, CalibrationRunDataInputs,
+    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageSolverSettings,
 };
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
@@ -166,6 +167,10 @@ pub struct CalibrationMarketDataPreparationRequest {
     pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
+    #[serde(default)]
+    pub stylized_fact_huber_cutoff: Option<f64>,
+    #[serde(default)]
+    pub stylized_fact_admissibility_z_threshold: Option<f64>,
     #[serde(default)]
     pub known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
     #[serde(default)]
@@ -398,6 +403,26 @@ fn build_dataset_reference(run_id: &str, dataset_role: &str, provenance_label: &
         sanitize_ascii_identifier_component(provenance_label)
             .unwrap_or_else(|| "unknown".to_string())
     )
+}
+
+fn calibration_objective_policy_from_request(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<CalibrationObjectivePolicy, CalibrationMarketDataPreparationError> {
+    let default_policy = CalibrationObjectivePolicy::default();
+
+    CalibrationObjectivePolicy::try_new(
+        request
+            .stylized_fact_huber_cutoff
+            .unwrap_or(default_policy.stylized_fact_huber_cutoff),
+        request
+            .stylized_fact_admissibility_z_threshold
+            .unwrap_or(default_policy.admissibility_z_threshold),
+    )
+    .map_err(|source| {
+        CalibrationMarketDataPreparationError::from(format!(
+            "invalid calibration objective policy: {source}"
+        ))
+    })
 }
 
 fn stable_seed_from_run_id(run_id: &str) -> u64 {
@@ -1310,7 +1335,9 @@ fn prepared_market_data_plan_from_loading_output(
     normalized_tick_output: MarketDataNormalizedTickOutput,
     loading_output: MarketDataLoadingOutput,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    let run_request = CalibrationRunSpec::try_new(
+    let objective_policy = calibration_objective_policy_from_request(&request)?;
+
+    let run_request = CalibrationRunSpec::builder(
         request.run_id.clone(),
         CalibrationRunDataInputs {
             exchange_code: request.session_configuration.exchange_code.clone(),
@@ -1331,6 +1358,8 @@ fn prepared_market_data_plan_from_loading_output(
         )
         .map_err(CalibrationMarketDataPreparationError::from)?,
     )
+    .with_objective_policy(objective_policy)
+    .build()
     .map_err(|source| {
         CalibrationMarketDataPreparationError::from(format!(
             "failed to build calibration run spec: {source}"
