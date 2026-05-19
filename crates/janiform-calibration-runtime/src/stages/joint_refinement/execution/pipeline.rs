@@ -112,6 +112,8 @@ struct BaselineEvaluationArtifacts {
 
 struct RestartSearchArtifacts {
     restart_outcomes: Vec<JointRefinementRestartOutcome>,
+    restart_evaluation_timing_diagnostics:
+        Vec<janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic>,
     valid_restart_count: usize,
     best_restart: JointRefinementRestartOutcome,
     option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
@@ -123,6 +125,7 @@ struct RestartSearchArtifacts {
         Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
+    warning: Option<String>,
     restart_optimization_wall_clock_millis: u64,
     coarse_consistency_wall_clock_millis: u64,
 }
@@ -137,6 +140,7 @@ struct RestartSelectionArtifacts {
     option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
+    warning: Option<String>,
     coarse_consistency_wall_clock_millis: u64,
 }
 
@@ -170,6 +174,17 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
                 error_message:
                     "joint refinement restart_candidate_budget_override must be greater than zero"
                         .to_string(),
+            },
+        );
+    }
+
+    if let Some(calibration_effort) = stage_input.calibration_effort
+        && let Err(source) = calibration_effort.validate()
+    {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: format!("joint refinement calibration_effort {source}"),
             },
         );
     }
@@ -1030,7 +1045,8 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
     best_restart: &JointRefinementRestartOutcome,
     valid_restart_count: usize,
     admissible_restart_count: usize,
-) -> Result<(), JointRefinementStageExecutionFailure> {
+    treat_warning_as_error: bool,
+) -> Result<Option<String>, JointRefinementStageExecutionFailure> {
     if best_restart.local_evaluation.invalid_reason.is_some()
         || best_restart.final_evaluation.invalid_reason.is_some()
     {
@@ -1062,7 +1078,7 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
         .admissibility
         .admissible
     {
-        return Ok(());
+        return Ok(None);
     }
 
     let blocking_terms = best_restart
@@ -1082,18 +1098,24 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
         blocking_terms
     };
 
-    Err(
-        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-            error_message: format!(
-                "joint refinement could not identify an admissible candidate after restart search: selected_restart={} valid_restart_count={} admissible_restart_count={} global_loss={} blocking_terms={}",
-                best_restart.restart_id,
-                valid_restart_count,
-                admissible_restart_count,
-                best_restart.final_evaluation.breakdown.global_loss,
-                blocking_terms,
-            ),
-        },
-    )
+    let warning = format!(
+        "joint refinement selected the best valid candidate, but it is not admissible: selected_restart={} valid_restart_count={} admissible_restart_count={} global_loss={} blocking_terms={}",
+        best_restart.restart_id,
+        valid_restart_count,
+        admissible_restart_count,
+        best_restart.final_evaluation.breakdown.global_loss,
+        blocking_terms,
+    );
+
+    if treat_warning_as_error {
+        return Err(
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: warning,
+            },
+        );
+    }
+
+    Ok(Some(warning))
 }
 
 fn run_restart_search(
@@ -1131,8 +1153,11 @@ fn run_restart_search(
 
     let restart_optimization_started_at = Instant::now();
 
-    let remaining_restart_outcomes = if remaining_restart_seeds.is_empty() {
-        Vec::new()
+    let remaining_restart_optimization_output = if remaining_restart_seeds.is_empty() {
+        super::optimization::JointRefinementRestartOptimizationOutput {
+            restart_outcomes: Vec::new(),
+            evaluation_timing_diagnostics: Vec::new(),
+        }
     } else {
         optimize_restart_seeds(
             remaining_restart_seeds.as_slice(),
@@ -1143,6 +1168,9 @@ fn run_restart_search(
             Some(resume_store),
         )
     };
+    let remaining_restart_outcomes = remaining_restart_optimization_output
+        .restart_outcomes
+        .as_slice();
 
     let restart_outcomes = restart_search_plan
         .restart_seeds
@@ -1189,6 +1217,8 @@ fn run_restart_search(
 
     Ok(RestartSearchArtifacts {
         restart_outcomes,
+        restart_evaluation_timing_diagnostics: remaining_restart_optimization_output
+            .evaluation_timing_diagnostics,
         valid_restart_count,
         best_restart: restart_selection_artifacts.best_restart,
         option_refinement_candidate_frontier: restart_selection_artifacts
@@ -1198,6 +1228,7 @@ fn run_restart_search(
         selected_option_audit_tier_pricing_artifact: None,
         coarse_consistency_artifacts_by_restart_id: restart_selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
+        warning: restart_selection_artifacts.warning,
         restart_optimization_wall_clock_millis,
         coarse_consistency_wall_clock_millis: restart_selection_artifacts
             .coarse_consistency_wall_clock_millis,
@@ -1249,6 +1280,7 @@ fn build_restart_search_plan(
         solver_settings: &resolved_stage_payloads.stage_solver_settings,
         restart_candidate_budget: desired_joint_refinement_restart_candidate_budget(
             stage_input.restart_candidate_budget_override,
+            stage_input.calibration_effort,
         ),
         progress_sender,
     });
@@ -1256,6 +1288,7 @@ fn build_restart_search_plan(
     let budget_schedule = joint_refinement_budget_schedule(
         &resolved_stage_payloads.stage_solver_settings,
         restart_seeds.len(),
+        stage_input.calibration_effort,
     );
 
     RestartSearchPlan {
@@ -1576,10 +1609,11 @@ fn select_restart_outcome(
         .cloned()
         .unwrap_or_else(|| diagnostic_best_restart.clone());
 
-    ensure_valid_selected_restart_outcome(
+    let warning = ensure_valid_selected_restart_outcome(
         &diagnostic_best_restart,
         valid_selectable_restart_outcome_refs.len(),
         count_admissible_restart_outcomes(valid_selectable_restart_outcome_refs.as_slice()),
+        stage_input.treat_inadmissible_calibration_warning_as_error,
     )?;
 
     resume_store.record_restart_selection(PersistedRestartSelectionArtifacts {
@@ -1603,6 +1637,7 @@ fn select_restart_outcome(
         option_refinement_candidate_frontier,
         coarse_consistency_artifacts_by_restart_id: selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
+        warning,
         coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
     })
 }
@@ -1610,10 +1645,15 @@ fn select_restart_outcome(
 pub(crate) fn option_refinement_candidate_frontier_from_selected_outcomes(
     selected_restart_outcomes: &[&JointRefinementRestartOutcome],
 ) -> Vec<JointRefinementRestartOutcome> {
-    filter_admissible_restart_outcomes(selected_restart_outcomes)
-        .into_iter()
-        .cloned()
-        .collect()
+    let admissible_outcomes = filter_admissible_restart_outcomes(selected_restart_outcomes);
+    if admissible_outcomes.is_empty() {
+        return selected_restart_outcomes
+            .iter()
+            .map(|outcome| (*outcome).clone())
+            .collect();
+    }
+
+    admissible_outcomes.into_iter().cloned().collect()
 }
 
 fn ensure_simulation_infrastructure_available(
@@ -1847,16 +1887,29 @@ fn build_success_report(
         &fitted_stage_payload,
     );
 
+    let warnings = restart_search_artifacts
+        .warning
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let status = if warnings.is_empty() {
+        CalibrationStageExecutionStatus::Success
+    } else {
+        CalibrationStageExecutionStatus::SuccessWithWarnings
+    };
+
     JointRefinementStageExecutionReport {
         schema_version: CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         stage: CalibrationStage::JointRefinement,
-        status: CalibrationStageExecutionStatus::Success,
+        status,
         run_id: run_spec.run_id.clone(),
         execution_mode: run_spec.execution_mode,
         handoff_policy: CALIBRATION_JOINT_REFINEMENT_STAGE_HANDOFF_POLICY,
         fitted_stage_payload: Some(fitted_stage_payload),
         metadata: Some(metadata),
         runtime_profile: None,
+        warnings,
         failure: None,
     }
 }
@@ -1921,6 +1974,11 @@ fn build_fitted_stage_payload(
                 .to_string(),
             restart_diagnostics,
             runtime_profile,
+            // The success report builds metadata from the same restart artifacts after
+            // payload assembly, so the timing diagnostics stay borrowed here.
+            restart_evaluation_timing_diagnostics: restart_search_artifacts
+                .restart_evaluation_timing_diagnostics
+                .clone(),
         },
         candidate_frontier: final_assembly_artifacts.candidate_frontier,
         simulation_summaries: final_assembly_artifacts.simulation_summaries,

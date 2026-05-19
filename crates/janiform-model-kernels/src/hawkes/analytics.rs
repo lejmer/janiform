@@ -23,6 +23,33 @@ impl HawkesStationaryIntensityMultipliers {
     }
 }
 
+/// Compute the shared baseline intensity that matches a stationary total event rate.
+///
+/// The Hawkes kernel stores the de-seasonalized buy and sell baseline as the
+/// shared `lambda_bar`. The total stationary event rate is `lambda_bar` times
+/// the sum of the stationary buy and sell intensity multipliers, so this is the
+/// inverse map used when optimizing event-rate level separately from excitation
+/// shape.
+pub fn baseline_intensity_for_stationary_total_intensity(
+    stationary_total_intensity: f64,
+    alpha: HawkesKernelLoadings,
+    beta: f64,
+) -> Option<f64> {
+    if !stationary_total_intensity.is_finite() || stationary_total_intensity <= 0.0 {
+        return None;
+    }
+
+    let stationary_multipliers = stationary_intensity_multipliers(alpha, beta)?;
+
+    let total_intensity_multiplier = stationary_multipliers.total_intensity_multiplier();
+    if !total_intensity_multiplier.is_finite() || total_intensity_multiplier <= 0.0 {
+        return None;
+    }
+
+    let baseline_intensity = stationary_total_intensity / total_intensity_multiplier;
+    (baseline_intensity.is_finite() && baseline_intensity > 0.0).then_some(baseline_intensity)
+}
+
 /// Compute the spectral radius of the scaled Hawkes excitation matrix `Alpha / beta`.
 ///
 /// Callers are expected to pass a finite, strictly positive `beta`.

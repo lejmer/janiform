@@ -417,7 +417,10 @@ pub(crate) fn sampled_return_values(returns: &[f64], target_count: usize) -> Vec
         .filter(|value| value.is_finite())
         .collect();
 
-    sample_values_by_equal_stride(finite_returns.as_slice(), target_count)
+    equal_stride_sample_indices(finite_returns.len(), target_count)
+        .into_iter()
+        .filter_map(|sample_index| finite_returns.get(sample_index).copied())
+        .collect()
 }
 
 pub(crate) fn scale_normalized_returns(returns: &[f64]) -> Vec<f64> {
@@ -442,22 +445,19 @@ pub(crate) fn scale_normalized_returns(returns: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-fn sample_values_by_equal_stride(values: &[f64], target_count: usize) -> Vec<f64> {
-    if values.is_empty() || target_count == 0 {
+pub(crate) fn equal_stride_sample_indices(value_count: usize, target_count: usize) -> Vec<usize> {
+    if value_count == 0 || target_count == 0 {
         return Vec::new();
     }
-    if values.len() <= target_count {
-        return values.to_vec();
+    if value_count <= target_count {
+        return (0..value_count).collect();
     }
     if target_count == 1 {
-        return vec![values[values.len() / 2]];
+        return vec![value_count / 2];
     }
 
     (0..target_count)
-        .filter_map(|sample_index| {
-            let source_index = sample_index.saturating_mul(values.len() - 1) / (target_count - 1);
-            values.get(source_index).copied()
-        })
+        .map(|sample_index| sample_index.saturating_mul(value_count - 1) / (target_count - 1))
         .collect()
 }
 
@@ -471,6 +471,7 @@ pub(crate) fn normalized_profile_distance(left: &[f64], right: &[f64]) -> f64 {
         .sum::<f64>()
         .abs()
         .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
     let right_sum = right
         .iter()
         .sum::<f64>()
@@ -759,8 +760,8 @@ mod tests {
         aggregate_simulated_path_to_interval_template,
         aggregate_simulated_path_to_interval_templates,
         build_continuous_calibration_sample_from_aggregated_intervals,
-        business_time_bucket_thresholds, interval_index_for_timestamp, log_ratio_distance,
-        mean_absolute_return_by_utc_hour, normalized_profile_distance,
+        business_time_bucket_thresholds, equal_stride_sample_indices, interval_index_for_timestamp,
+        log_ratio_distance, mean_absolute_return_by_utc_hour, normalized_profile_distance,
         return_scale_summaries_by_business_time_bucket, return_scale_summary,
         return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
         sampled_trade_returns, scale_normalized_returns, zeroed_interval_observation_template,
@@ -965,6 +966,13 @@ mod tests {
             sampled_return_values(&[0.0, f64::NAN, 1.0, f64::INFINITY, 2.0, 3.0], 3);
 
         assert_eq!(sampled_returns, vec![0.0, 1.0, 3.0]);
+    }
+
+    #[test]
+    fn equal_stride_sample_indices_preserve_endpoints_and_count() {
+        let sample_indices = equal_stride_sample_indices(6, 3);
+
+        assert_eq!(sample_indices, vec![0, 2, 5]);
     }
 
     #[test]

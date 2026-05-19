@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use janiform_calibration_artifacts::JointRefinementStageOptionCalibrationDiagnostics;
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_model_kernels::hawkes::HawkesEventSide;
 
@@ -12,11 +11,12 @@ use crate::stages::return_components::{
 };
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationLossTermDiagnostic, CalibrationOptimizerSettings,
-    CalibrationStage, CalibrationStageHandoffTransport, CalibrationStageSeedSource,
-    JointRefinementStageCarryInput, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    JointRefinementStageRuntimeProfile,
+    CalibrationEffortOptions, CalibrationExecutionMode, CalibrationLossTermDiagnostic,
+    CalibrationOptimizerSettings, CalibrationStage, CalibrationStageHandoffTransport,
+    CalibrationStageSeedSource, JointRefinementStageCarryInput,
+    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageOptimizerDiagnostics, JointRefinementStageOptionCalibrationDiagnostics,
+    JointRefinementStageRestartEvaluationTimingDiagnostic, JointRefinementStageRuntimeProfile,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -179,7 +179,9 @@ pub struct JointRefinementStageExecutionInput {
     pub return_components_input: JointRefinementStageReturnComponentsInput,
     pub mean_reversion_input: JointRefinementStageMeanReversionInput,
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+    pub calibration_effort: Option<CalibrationEffortOptions>,
     pub restart_candidate_budget_override: Option<usize>,
+    pub treat_inadmissible_calibration_warning_as_error: bool,
     pub option_refinement_candidate_count_override: Option<usize>,
     pub option_refinement_wall_clock_budget_millis: Option<u64>,
     pub audit_option_pricing_enabled: bool,
@@ -268,6 +270,7 @@ pub struct JointRefinementStageProgressUpdate {
     pub aggregate_progress_percent: Option<usize>,
     pub current_item_label: Option<String>,
     pub current_restart_id: Option<String>,
+    pub current_work_item_status: Option<String>,
     pub planned_work_item_labels: Vec<String>,
     pub active_restart_count: Option<usize>,
     pub current_parameter_block: Option<String>,
@@ -292,6 +295,8 @@ pub struct JointRefinementStageProgressUpdate {
     pub exact_closed_form_buy_count: Option<usize>,
     pub exact_closed_form_sell_count: Option<usize>,
     pub exact_tilted_mixed_count: Option<usize>,
+    pub restart_evaluation_timing_diagnostic:
+        Option<JointRefinementStageRestartEvaluationTimingDiagnostic>,
 }
 
 impl JointRefinementStageProgressUpdate {
@@ -307,6 +312,7 @@ impl JointRefinementStageProgressUpdate {
             aggregate_progress_percent: None,
             current_item_label: None,
             current_restart_id: None,
+            current_work_item_status: None,
             planned_work_item_labels: Vec::new(),
             active_restart_count: None,
             current_parameter_block: None,
@@ -331,6 +337,7 @@ impl JointRefinementStageProgressUpdate {
             exact_closed_form_buy_count: None,
             exact_closed_form_sell_count: None,
             exact_tilted_mixed_count: None,
+            restart_evaluation_timing_diagnostic: None,
         }
     }
 
@@ -560,6 +567,8 @@ pub struct JointRefinementStageExecutionReport {
     pub metadata: Option<JointRefinementStageExecutionMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_profile: Option<JointRefinementStageRuntimeProfile>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<JointRefinementStageExecutionFailure>,
 }

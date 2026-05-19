@@ -125,6 +125,7 @@ pub(super) fn complete_observed_pricing_stage(
 
     progress_adapter.observe(ProgressEvent::StageCompleted {
         stage: stage.to_string(),
+        status: "completed".to_string(),
         runtime_seconds: started_at.elapsed().as_secs_f64(),
     });
 
@@ -149,6 +150,7 @@ pub(super) fn emit_observed_stage_progress(
         measure,
         work_item_label: work_item_update.work_item_label,
         work_item_progress_percent: work_item_update.work_item_progress_percent,
+        work_item_status: None,
         planned_work_item_labels: work_item_update.planned_work_item_labels,
         work_item_columns: work_item_update.work_item_columns,
         work_item_metrics: work_item_update.work_item_metrics,

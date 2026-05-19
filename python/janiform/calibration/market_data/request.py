@@ -23,6 +23,7 @@ from .contracts import (
     validate_tick_price_input_policy,
 )
 from ..errors import calibration_error
+from ..effort import CalibrationEffortOptions, STANDARD_CALIBRATION_EFFORT
 from ..staged import CalibrationStage, CalibrationStageSolverSettings
 from ...contracts.base import (
     ContractModel,
@@ -68,6 +69,8 @@ class MarketDataCalibrationRequest(ContractModel):
         default_factory=default_pricing_interval_schedule_policy
     )
     dynamics_search_restart_candidate_budget: Optional[int] = None
+    calibration_effort: CalibrationEffortOptions = STANDARD_CALIBRATION_EFFORT
+    treat_calibration_warnings_as_errors: bool = False
     joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
     joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None
     joint_refinement_audit_option_pricing_enabled: bool = False
@@ -158,6 +161,12 @@ class MarketDataCalibrationRequest(ContractModel):
             raise calibration_error(
                 "dynamics_search_restart_candidate_budget",
                 "must be greater than zero when provided",
+            )
+
+        if not isinstance(self.calibration_effort, CalibrationEffortOptions):
+            raise calibration_error(
+                "calibration_effort",
+                "must be a CalibrationEffortOptions instance",
             )
 
         if (
@@ -364,6 +373,30 @@ class MarketDataCalibrationRequest(ContractModel):
                 if "dynamics_search_restart_candidate_budget" in raw_payload
                 and raw_payload["dynamics_search_restart_candidate_budget"] is not None
                 else None
+            ),
+            calibration_effort=(
+                CalibrationEffortOptions.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "calibration_effort",
+                        "calibration_effort",
+                        calibration_error,
+                    ),
+                    field_path="calibration_effort",
+                )
+                if "calibration_effort" in raw_payload
+                and raw_payload["calibration_effort"] is not None
+                else STANDARD_CALIBRATION_EFFORT
+            ),
+            treat_calibration_warnings_as_errors=(
+                require_boolean(
+                    raw_payload,
+                    "treat_calibration_warnings_as_errors",
+                    "treat_calibration_warnings_as_errors",
+                    calibration_error,
+                )
+                if "treat_calibration_warnings_as_errors" in raw_payload
+                else False
             ),
             joint_refinement_option_refinement_candidate_count_override=(
                 require_positive_integer(

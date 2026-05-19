@@ -12,6 +12,8 @@ mod resume_state;
 mod selection;
 mod shared;
 mod state;
+#[cfg(test)]
+mod test_support;
 
 #[cfg(test)]
 mod tests;
@@ -34,7 +36,7 @@ pub(crate) use inputs::{
 #[cfg(test)]
 pub(crate) use inputs::{sampled_observed_tick_returns, tick_shape_sample_target_count};
 #[cfg(test)]
-pub(crate) use optimization::joint_refinement_restart_block_powell_settings;
+pub(crate) use optimization::joint_refinement_restart_full_vector_direct_search_settings;
 pub(crate) use optimization::{
     desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
     optimize_restart_seeds, precheck_seed_summary_workload,
@@ -69,7 +71,7 @@ pub(crate) use selection::{
     select_restart_outcomes_with_lazy_coarse_consistency,
 };
 pub(crate) use shared::{
-    build_exchange_calendar_registry_artifact, build_halton_restart_id, clamp_in_place,
+    build_exchange_calendar_registry_artifact, build_halton_restart_id,
     deduplicate_restart_seed_candidates, elapsed_millis, halton_parameter_vector,
     joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
     ordered_parameter_bits, with_joint_refinement_thread_pool,
@@ -88,3 +90,5 @@ pub(crate) use state::{
     JointRefinementReturnShapeHorizon, JointRefinementReturnShapeStatisticEstimate,
     JointRefinementSeedSummaryCacheKey,
 };
+#[cfg(test)]
+pub(crate) use test_support::test_joint_fitted_parameters;

@@ -33,6 +33,8 @@ pub(crate) use continuous_fit::{
     nig_search_point_from_configuration,
     rescale_continuous_return_calibration_sample_business_time_scales,
     rescale_continuous_return_optimizer_context_business_time_scales,
+    sample_continuous_return_calibration_sample_by_equal_stride,
+    simulate_matched_scale_returns_with_seed,
 };
 #[cfg(test)]
 pub(crate) use continuous_fit::{

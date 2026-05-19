@@ -458,5 +458,6 @@ fn regression_joint_refinement_optimizer_diagnostics() -> JointRefinementStageOp
             cumulative_loss_build_millis: 0,
             cumulative_option_pricing_millis: 0,
         },
+        restart_evaluation_timing_diagnostics: Vec::new(),
     }
 }

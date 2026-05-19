@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use janiform_calibration_artifacts::CalibrationStageSolverSettings;
+use janiform_calibration_artifacts::{CalibrationEffortOptions, CalibrationStageSolverSettings};
 use janiform_calibration_runtime::{
     CalibrationMarketDataCarryInput, CalibrationMarketDataColumnMapping,
     CalibrationMarketDataKnownNewsInput, CalibrationMarketDataMeanReversionConfiguration,
@@ -94,6 +94,12 @@ pub struct FitPreparationConfiguration {
     /// Optional dynamics restart budget override.
     #[serde(default)]
     pub dynamics_search_restart_candidate_budget: Option<usize>,
+    /// Calibration search effort policy.
+    #[serde(default)]
+    pub calibration_effort: Option<CalibrationEffortOptions>,
+    /// Treat admissibility warnings as hard fit errors.
+    #[serde(default)]
+    pub treat_calibration_warnings_as_errors: bool,
     /// Optional joint option-refinement candidate count override.
     #[serde(default)]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
@@ -604,6 +610,11 @@ fn build_preparation_request(
             .request
             .configuration
             .dynamics_search_restart_candidate_budget,
+        calibration_effort: input.request.configuration.calibration_effort,
+        treat_calibration_warnings_as_errors: input
+            .request
+            .configuration
+            .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: input
             .request
             .configuration

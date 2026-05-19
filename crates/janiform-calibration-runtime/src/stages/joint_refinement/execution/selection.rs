@@ -567,64 +567,65 @@ fn named_joint_parameter_coordinates(
     parameter_vector: &[f64],
     active_parameter_layout: &JointRefinementActiveParameterLayout,
 ) -> Vec<(String, f64)> {
-    let mut coordinates = vec![
-        (
-            active_parameter_layout.log_lambda_scale_index,
-            "log_lambda_scale".to_string(),
-        ),
-        (
-            active_parameter_layout.log_beta_scale_index,
-            "log_beta_scale".to_string(),
-        ),
-        (
-            active_parameter_layout.log_self_excitation_scale_index,
-            "log_self_excitation_scale".to_string(),
-        ),
-        (
-            active_parameter_layout.log_cross_excitation_scale_index,
-            "log_cross_excitation_scale".to_string(),
-        ),
-        (
-            active_parameter_layout.nig_block[0],
-            "nig.log_alpha".to_string(),
-        ),
-        (
-            active_parameter_layout.nig_block[1],
-            "nig.buy_skew_coordinate".to_string(),
-        ),
-        (
-            active_parameter_layout.nig_block[2],
-            "nig.sell_relative_coordinate".to_string(),
-        ),
-        (
-            active_parameter_layout.nig_block[3],
-            "nig.log_delta_offset".to_string(),
-        ),
-    ];
-
-    if let Some(index) = active_parameter_layout.known_activity_scale_index {
-        coordinates.push((index, "known_activity_scale".to_string()));
-    }
-
-    if let Some(index) = active_parameter_layout.surprise_activity_scale_index {
-        coordinates.push((index, "surprise_activity_scale".to_string()));
-    }
-
-    if let Some(index) = active_parameter_layout.surprise_baseline_scale_index {
-        coordinates.push((index, "surprise_baseline_scale".to_string()));
-    }
-
-    coordinates.sort_by_key(|(index, _)| *index);
-
-    coordinates
-        .into_iter()
-        .filter_map(|(index, label)| {
+    (0..active_parameter_layout.vector_length())
+        .filter_map(|index| {
+            let label = joint_parameter_name_by_index(index, active_parameter_layout)?;
             parameter_vector
                 .get(index)
                 .copied()
                 .map(|value| (label, value))
         })
         .collect()
+}
+
+pub(crate) fn joint_parameter_name_by_index(
+    parameter_index: usize,
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+) -> Option<String> {
+    let mut parameter_names = vec![
+        (
+            active_parameter_layout.log_stationary_event_rate_scale_index,
+            "log_stationary_event_rate_scale",
+        ),
+        (
+            active_parameter_layout.log_beta_scale_index,
+            "log_beta_scale",
+        ),
+        (
+            active_parameter_layout.log_self_excitation_scale_index,
+            "log_self_excitation_scale",
+        ),
+        (
+            active_parameter_layout.log_cross_excitation_scale_index,
+            "log_cross_excitation_scale",
+        ),
+        (active_parameter_layout.nig_block[0], "nig.log_alpha"),
+        (
+            active_parameter_layout.nig_block[1],
+            "nig.buy_skew_coordinate",
+        ),
+        (
+            active_parameter_layout.nig_block[2],
+            "nig.sell_relative_coordinate",
+        ),
+        (active_parameter_layout.nig_block[3], "nig.log_delta_offset"),
+    ];
+
+    if let Some(index) = active_parameter_layout.known_activity_scale_index {
+        parameter_names.push((index, "known_activity_scale"));
+    }
+
+    if let Some(index) = active_parameter_layout.surprise_activity_scale_index {
+        parameter_names.push((index, "surprise_activity_scale"));
+    }
+
+    if let Some(index) = active_parameter_layout.surprise_baseline_scale_index {
+        parameter_names.push((index, "surprise_baseline_scale"));
+    }
+
+    parameter_names
+        .into_iter()
+        .find_map(|(index, label)| (index == parameter_index).then(|| label.to_string()))
 }
 
 struct CoarseConsistencyProgressEmissionInput<'a> {

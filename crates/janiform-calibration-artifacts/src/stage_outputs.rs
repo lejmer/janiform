@@ -179,6 +179,22 @@ pub struct JointRefinementStageRuntimeProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageRestartEvaluationTimingDiagnostic {
+    pub restart_id: String,
+    pub schedule_category: String,
+    pub candidate_evaluation_count: usize,
+    pub poll_direction_position: Option<usize>,
+    pub poll_direction_label: String,
+    pub elapsed_millis: u64,
+    pub objective: Option<f64>,
+    pub admissibility_blocker_count: Option<usize>,
+    pub max_standardized_residual: Option<f64>,
+    pub exact_closed_form_buy_count: Option<usize>,
+    pub exact_closed_form_sell_count: Option<usize>,
+    pub exact_tilted_mixed_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageOptimizerDiagnostics {
     pub local_objective: f64,
     pub final_objective: f64,
@@ -187,6 +203,8 @@ pub struct JointRefinementStageOptimizerDiagnostics {
     pub stop_reason: String,
     pub restart_diagnostics: JointRefinementStageRestartDiagnostics,
     pub runtime_profile: JointRefinementStageRuntimeProfile,
+    pub restart_evaluation_timing_diagnostics:
+        Vec<JointRefinementStageRestartEvaluationTimingDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

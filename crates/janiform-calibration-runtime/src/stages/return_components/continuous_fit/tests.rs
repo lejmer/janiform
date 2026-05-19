@@ -29,6 +29,7 @@ use super::profile::{
 use super::sample::{
     build_continuous_return_calibration_sample_from_components,
     build_continuous_return_optimizer_context, build_equal_business_time_blocks,
+    sample_continuous_return_calibration_sample_by_equal_stride,
 };
 use super::shape_mapping::exact_configuration_and_gradient_from_shape_search_point;
 use super::types::{
@@ -45,6 +46,23 @@ use crate::stages::return_components::contracts::{
 const TEST_OPTIMIZER_SAMPLE_COUNT: usize = 96;
 const TEST_OPTIMIZER_MAX_ITERATIONS: usize = 12;
 const TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT: usize = 24;
+
+#[test]
+fn equal_stride_calibration_sample_preserves_member_alignment() {
+    let calibration_sample = build_continuous_return_calibration_sample_from_components(
+        vec![0.0, 1.0, 2.0, 3.0, 4.0],
+        vec![10.0, 11.0, 12.0, 13.0, 14.0],
+        vec![0.0, 0.1, 0.2, 0.3, 0.4],
+        0.5,
+    );
+
+    let sampled_sample =
+        sample_continuous_return_calibration_sample_by_equal_stride(&calibration_sample, 3);
+
+    assert_eq!(sampled_sample.observed_returns, vec![0.0, 2.0, 4.0]);
+    assert_eq!(sampled_sample.business_time_scales, vec![10.0, 12.0, 14.0]);
+    assert_eq!(sampled_sample.sell_share_proxies, vec![0.0, 0.2, 0.4]);
+}
 
 #[test]
 fn continuous_nig_fit_budgets_split_generation_breadth_from_user_iteration_cap() {

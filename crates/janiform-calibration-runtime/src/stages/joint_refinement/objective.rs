@@ -7,7 +7,7 @@ use janiform_foundations::numeric::{
     arithmetic_mean_or_zero, bowley_skewness_from_sorted, central_skewness_or_zero,
     compute_sorted_quantile_or_zero, l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted,
     relative_rmse, sample_standard_deviation, sample_variance, sorted_finite_values,
-    standardized_path_distance,
+    standardized_path_distance, winsorized_sample_standard_deviation_from_sorted,
 };
 use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, duration_nanos_to_hours};
 
@@ -25,6 +25,7 @@ use super::setup::{
     CandidateSeedSummariesCacheInput, cached_seed_summaries_for_candidate_seeds,
     parameter_vector_to_fitted_parameters,
 };
+use super::tick_shape_proxy::coarse_search_tick_shape_proxy_returns;
 use crate::objective::CalibrationLossBuilder;
 use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
@@ -48,11 +49,16 @@ use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameters, spectral_radius_alpha_over_beta,
 };
 
-use super::contracts::{JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate};
+use super::contracts::{
+    JointRefinementStageObjectiveTermDiagnostic, JointRefinementStageProgressPhase,
+    JointRefinementStageProgressUpdate,
+};
 
 pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
 
 const ACTIVITY_PROFILE_SESSION_HOURS: usize = 24;
+const RETURN_SHAPE_WINSORIZED_VOLATILITY_LOWER_QUANTILE: f64 = 0.05;
+const RETURN_SHAPE_WINSORIZED_VOLATILITY_UPPER_QUANTILE: f64 = 0.95;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct JointRefinementLikelihoodFitWithCounts {
@@ -65,6 +71,12 @@ pub(super) struct JointRefinementLikelihoodFitWithCounts {
 pub(super) struct JointRefinementRestartAdmissionScreening {
     pub(super) aggregate_score: f64,
     pub(super) component_scores: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct JointRefinementRestartAdmissionDiagnostics {
+    pub(super) screening: JointRefinementRestartAdmissionScreening,
+    pub(super) term_diagnostics: Vec<JointRefinementStageObjectiveTermDiagnostic>,
 }
 
 impl JointRefinementRestartAdmissionScreening {
@@ -114,10 +126,10 @@ pub(super) fn evaluate_joint_candidate(
     candidate_evaluation
 }
 
-pub(super) fn evaluate_joint_fitted_candidate_restart_admission_screening(
+pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
     fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
-) -> Result<JointRefinementRestartAdmissionScreening, &'static str> {
+) -> Result<JointRefinementRestartAdmissionDiagnostics, &'static str> {
     if violates_runtime_seasonality_scaled_stationarity(fitted_parameters, context) {
         context
             .profiling_state
@@ -152,9 +164,12 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_screening(
             .iter()
             .all(|component_score| component_score.is_finite())
     {
-        Ok(JointRefinementRestartAdmissionScreening {
-            aggregate_score: loss_evaluation.global_loss,
-            component_scores,
+        Ok(JointRefinementRestartAdmissionDiagnostics {
+            screening: JointRefinementRestartAdmissionScreening {
+                aggregate_score: loss_evaluation.global_loss,
+                component_scores,
+            },
+            term_diagnostics: loss_evaluation.term_diagnostics,
         })
     } else {
         Err("deterministic_restart_global_loss_not_finite")
@@ -241,7 +256,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     progress_phase: Option<JointRefinementStageProgressPhase>,
 ) -> JointRefinementCandidateEvaluation {
     let simulation_seed_count = match fidelity_tier {
-        JointRefinementFidelityTier::NigBlockSearch | JointRefinementFidelityTier::CoarseLocal => 1,
+        JointRefinementFidelityTier::CoarseLocal => 1,
         JointRefinementFidelityTier::Local => 1,
         JointRefinementFidelityTier::Final => context.final_simulation_seeds.len(),
     };
@@ -413,14 +428,12 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
 
     let loss_build_started_at = std::time::Instant::now();
     let loss_evaluation = match fidelity_tier {
-        JointRefinementFidelityTier::NigBlockSearch | JointRefinementFidelityTier::CoarseLocal => {
-            build_joint_coarse_search_loss_evaluation(
-                &fitted_parameters,
-                &deterministic_evaluation,
-                resolved_seed_summaries.as_slice(),
-                context,
-            )
-        }
+        JointRefinementFidelityTier::CoarseLocal => build_joint_coarse_search_loss_evaluation(
+            &fitted_parameters,
+            &deterministic_evaluation,
+            resolved_seed_summaries.as_slice(),
+            context,
+        ),
         JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
             build_joint_loss_evaluation(
                 &fitted_parameters,
@@ -485,7 +498,7 @@ fn build_seed_summaries_for_fidelity(
     total_progress_units: usize,
 ) -> Result<Vec<JointRefinementSeedSummary>, String> {
     match fidelity_tier {
-        JointRefinementFidelityTier::NigBlockSearch | JointRefinementFidelityTier::CoarseLocal => {
+        JointRefinementFidelityTier::CoarseLocal => {
             emit_joint_refinement_candidate_evaluation_progress(
                 progress_sender,
                 progress_phase,
@@ -503,8 +516,7 @@ fn build_seed_summaries_for_fidelity(
         }
         JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
             let simulation_seeds = match fidelity_tier {
-                JointRefinementFidelityTier::NigBlockSearch
-                | JointRefinementFidelityTier::CoarseLocal => unreachable!(),
+                JointRefinementFidelityTier::CoarseLocal => unreachable!(),
                 JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
                 JointRefinementFidelityTier::Final => context.final_simulation_seeds.clone(),
             };
@@ -570,14 +582,18 @@ fn build_coarse_search_seed_summary(
 
     let simulated_5m_log_returns = interval_log_returns(simulated_5m_intervals.as_slice());
     let simulated_15m_log_returns = interval_log_returns(simulated_15m_intervals.as_slice());
+    let simulated_tick_returns =
+        coarse_search_tick_shape_proxy_returns(context, fitted_parameters, simulation_seed);
 
     Ok(JointRefinementSeedSummary {
         simulated_5m_intervals: simulated_5m_intervals.clone(),
         simulated_15m_intervals: simulated_15m_intervals.clone(),
-        simulated_tick_shape_returns: Vec::new(),
+        simulated_tick_shape_returns: scale_normalized_returns(simulated_tick_returns.as_slice()),
         simulated_5m_shape_returns: scale_normalized_returns(simulated_5m_log_returns.as_slice()),
         simulated_15m_shape_returns: scale_normalized_returns(simulated_15m_log_returns.as_slice()),
-        simulated_tick_return_scale_summary: return_scale_summary_from_returns(&[]),
+        simulated_tick_return_scale_summary: return_scale_summary_from_returns(
+            simulated_tick_returns.as_slice(),
+        ),
         simulated_5m_return_scale_summary: return_scale_summary(simulated_5m_intervals.as_slice()),
         simulated_15m_return_scale_summary: return_scale_summary(
             simulated_15m_intervals.as_slice(),
@@ -892,7 +908,7 @@ fn likelihood_fidelity_tier_for_joint_fidelity(
     fidelity_tier: JointRefinementFidelityTier,
 ) -> ContinuousLikelihoodFidelityTier {
     match fidelity_tier {
-        JointRefinementFidelityTier::NigBlockSearch | JointRefinementFidelityTier::CoarseLocal => {
+        JointRefinementFidelityTier::CoarseLocal => {
             ContinuousLikelihoodFidelityTier::Representative
         }
         JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
@@ -911,7 +927,7 @@ fn likelihood_context_cache_policy_for_joint_fidelity(
     fidelity_tier: JointRefinementFidelityTier,
 ) -> LikelihoodContextCachePolicy {
     match fidelity_tier {
-        JointRefinementFidelityTier::NigBlockSearch | JointRefinementFidelityTier::CoarseLocal => {
+        JointRefinementFidelityTier::CoarseLocal => {
             LikelihoodContextCachePolicy::CachedByModeledRate
         }
         JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
@@ -1696,6 +1712,19 @@ fn add_coarse_return_shape_terms(
 
     add_return_shape_horizon_terms(
         builder,
+        JointRefinementReturnShapeHorizon::Tick,
+        temporal_block_count,
+        observed_data.observed_tick_shape_returns.as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_tick_shape_returns.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+        context,
+    );
+
+    add_return_shape_horizon_terms(
+        builder,
         JointRefinementReturnShapeHorizon::FiveMinute,
         temporal_block_count,
         observed_data.observed_5m_shape_returns.as_slice(),
@@ -1751,12 +1780,15 @@ fn add_return_shape_horizon_terms(
         );
 
         if let Some(model_estimate) = model_estimate {
-            builder.add_stylized_fact_term(
-                format!(
-                    "return_shape.{}.{}",
-                    return_shape_horizon_label(horizon),
-                    observed_estimate.metric_name
-                ),
+            let term_id = format!(
+                "return_shape.{}.{}",
+                return_shape_horizon_label(horizon),
+                observed_estimate.metric_name
+            );
+
+            add_direct_term(
+                builder,
+                term_id.as_str(),
                 "return_shape",
                 observed_estimate.value,
                 model_estimate.value,
@@ -2204,6 +2236,11 @@ fn base_return_shape_statistic_estimates(
     effective_sample_count: usize,
 ) -> Vec<JointRefinementReturnShapeStatisticEstimate> {
     let sample_standard_deviation_value = sample_standard_deviation(finite_values);
+    let winsorized_volatility = winsorized_sample_standard_deviation_from_sorted(
+        finite_values,
+        RETURN_SHAPE_WINSORIZED_VOLATILITY_LOWER_QUANTILE,
+        RETURN_SHAPE_WINSORIZED_VOLATILITY_UPPER_QUANTILE,
+    );
 
     let mut estimates = Vec::new();
 
@@ -2217,10 +2254,10 @@ fn base_return_shape_statistic_estimates(
     });
 
     estimates.push(JointRefinementReturnShapeStatisticEstimate {
-        metric_name: "volatility",
-        value: sample_standard_deviation_value,
-        standard_error: volatility_standard_error(
-            sample_standard_deviation_value,
+        metric_name: "winsorized_volatility_q05_q95",
+        value: winsorized_volatility,
+        standard_error: standard_deviation_standard_error(
+            winsorized_volatility,
             effective_sample_count,
         ),
     });
@@ -2660,8 +2697,11 @@ fn add_activity_shape_terms(
             concentration,
         );
 
-        builder.add_stylized_fact_term(
-            format!("activity_shape.hourly_profile_share_{hour_index:03}"),
+        let term_id = format!("activity_shape.hourly_profile_share_{hour_index:03}");
+
+        add_direct_term(
+            builder,
+            term_id.as_str(),
             "activity_shape",
             observed_share,
             model_share,
@@ -2680,7 +2720,9 @@ fn add_direct_term(
     observed_standard_error: f64,
     model_standard_error: f64,
 ) {
-    if observed_standard_error.is_finite()
+    if observed_value.is_finite()
+        && model_value.is_finite()
+        && observed_standard_error.is_finite()
         && observed_standard_error > 0.0
         && model_standard_error.is_finite()
         && model_standard_error >= 0.0
@@ -2720,12 +2762,12 @@ fn standard_error_from_positive_value(value: f64, sample_count: usize) -> f64 {
     standard_error_from_scale(value.abs(), sample_count)
 }
 
-fn volatility_standard_error(volatility: f64, sample_count: usize) -> f64 {
+fn standard_deviation_standard_error(standard_deviation: f64, sample_count: usize) -> f64 {
     if sample_count <= 1 {
         return f64::INFINITY;
     }
 
-    volatility / (2.0 * (sample_count - 1) as f64).sqrt()
+    standard_deviation / (2.0 * (sample_count - 1) as f64).sqrt()
 }
 
 fn quantile_standard_error(
@@ -3003,13 +3045,18 @@ fn violates_runtime_seasonality_scaled_stationarity(
 mod tests {
     use super::{
         LikelihoodContextCachePolicy, activity_level_fit_for_counts,
-        activity_level_standard_errors, activity_shape_fit_for_counts,
+        activity_level_standard_errors, activity_shape_fit_for_counts, add_direct_term,
         bowley_skewness_standard_error, likelihood_context_cache_policy_for_joint_fidelity,
         likelihood_fidelity_tier_for_joint_fidelity, return_shape_effective_sample_count,
         return_shape_statistic_estimates, statistic_estimate_by_name,
     };
+    use crate::objective::CalibrationLossBuilder;
     use crate::stages::joint_refinement::execution::JointRefinementFidelityTier;
     use crate::stages::return_components::ContinuousLikelihoodFidelityTier;
+    use janiform_calibration_artifacts::CalibrationObjectivePolicy;
+    use janiform_foundations::numeric::{
+        sample_standard_deviation, winsorized_sample_standard_deviation_from_sorted,
+    };
 
     #[test]
     fn expected_activity_fit_helpers_match_hourly_count_identity() {
@@ -3031,20 +3078,76 @@ mod tests {
             .map(|value| f64::from(value) / 100.0)
             .collect::<Vec<_>>();
 
-        let full_sample_volatility = statistic_estimate_by_name(
+        let full_sample_winsorized_volatility = statistic_estimate_by_name(
             return_shape_statistic_estimates(returns.as_slice(), returns.len()),
-            "volatility",
+            "winsorized_volatility_q05_q95",
         )
-        .expect("volatility estimate should be present");
-        let temporal_blocked_volatility = statistic_estimate_by_name(
+        .expect("winsorized volatility estimate should be present");
+        let temporal_blocked_winsorized_volatility = statistic_estimate_by_name(
             return_shape_statistic_estimates(returns.as_slice(), 10),
-            "volatility",
+            "winsorized_volatility_q05_q95",
         )
-        .expect("volatility estimate should be present");
+        .expect("winsorized volatility estimate should be present");
 
         assert_eq!(return_shape_effective_sample_count(5, 10), 5);
         assert_eq!(return_shape_effective_sample_count(1_000, 10), 10);
-        assert!(temporal_blocked_volatility.standard_error > full_sample_volatility.standard_error);
+        assert!(
+            temporal_blocked_winsorized_volatility.standard_error
+                > full_sample_winsorized_volatility.standard_error
+        );
+    }
+
+    #[test]
+    fn return_shape_winsorized_volatility_limits_tail_leverage() {
+        let base_returns = [-1.0, -0.5, 0.0, 0.5, 1.0];
+        let tail_contaminated_returns = [-1.0, -0.5, 0.0, 0.5, 100.0];
+
+        let base_winsorized_volatility =
+            winsorized_sample_standard_deviation_from_sorted(&base_returns, 0.20, 0.80);
+        let contaminated_winsorized_volatility = winsorized_sample_standard_deviation_from_sorted(
+            &tail_contaminated_returns,
+            0.20,
+            0.80,
+        );
+        let contaminated_sample_volatility =
+            sample_standard_deviation(tail_contaminated_returns.as_slice());
+
+        assert!(contaminated_winsorized_volatility > base_winsorized_volatility);
+        assert!(contaminated_winsorized_volatility < contaminated_sample_volatility);
+    }
+
+    #[test]
+    fn direct_terms_skip_unidentified_model_uncertainty() {
+        let mut builder = CalibrationLossBuilder::new(CalibrationObjectivePolicy::default());
+
+        add_direct_term(
+            &mut builder,
+            "return_shape.tick.q05",
+            "return_shape",
+            -1.0,
+            -0.5,
+            0.2,
+            f64::INFINITY,
+        );
+
+        assert!(builder.build().term_diagnostics.is_empty());
+    }
+
+    #[test]
+    fn direct_terms_skip_non_finite_values() {
+        let mut builder = CalibrationLossBuilder::new(CalibrationObjectivePolicy::default());
+
+        add_direct_term(
+            &mut builder,
+            "activity_shape.hourly_profile_share_000",
+            "activity_shape",
+            0.1,
+            f64::INFINITY,
+            0.2,
+            0.2,
+        );
+
+        assert!(builder.build().term_diagnostics.is_empty());
     }
 
     #[test]
@@ -3080,13 +3183,7 @@ mod tests {
     }
 
     #[test]
-    fn joint_search_uses_block_specific_likelihood_fidelity_for_return_terms() {
-        assert_eq!(
-            likelihood_fidelity_tier_for_joint_fidelity(
-                JointRefinementFidelityTier::NigBlockSearch
-            ),
-            ContinuousLikelihoodFidelityTier::Representative
-        );
+    fn joint_search_uses_tiered_likelihood_fidelity_for_return_terms() {
         assert_eq!(
             likelihood_fidelity_tier_for_joint_fidelity(JointRefinementFidelityTier::CoarseLocal),
             ContinuousLikelihoodFidelityTier::Representative
@@ -3098,12 +3195,6 @@ mod tests {
         assert_eq!(
             likelihood_fidelity_tier_for_joint_fidelity(JointRefinementFidelityTier::Final),
             ContinuousLikelihoodFidelityTier::Full
-        );
-        assert_eq!(
-            likelihood_context_cache_policy_for_joint_fidelity(
-                JointRefinementFidelityTier::NigBlockSearch
-            ),
-            LikelihoodContextCachePolicy::CachedByModeledRate
         );
         assert_eq!(
             likelihood_context_cache_policy_for_joint_fidelity(

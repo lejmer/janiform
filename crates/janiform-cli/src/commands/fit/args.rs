@@ -84,6 +84,12 @@ By default, janiform fit writes a durable run directory for downstream CLI comma
 
     #[arg(
         long,
+        help = "Treat calibration warning outcomes as fit failures for automation."
+    )]
+    pub(crate) treat_calibration_warnings_as_errors: bool,
+
+    #[arg(
+        long,
         value_name = "Z",
         help = "Stylized-fact Huber cutoff for the calibration objective."
     )]
@@ -222,6 +228,12 @@ pub(crate) struct FitPlanCommand {
         help = "Joint-refinement restart candidate budget."
     )]
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+
+    #[arg(
+        long,
+        help = "Treat calibration warning outcomes as fit failures for automation."
+    )]
+    pub(crate) treat_calibration_warnings_as_errors: bool,
 
     #[arg(
         long,

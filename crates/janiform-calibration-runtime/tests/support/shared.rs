@@ -2194,7 +2194,9 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
+        joint_refinement_calibration_effort: None,
         joint_refinement_restart_candidate_budget_override: Some(1),
+        treat_inadmissible_calibration_warning_as_error: false,
         joint_refinement_option_refinement_candidate_count_override: Some(1),
         joint_refinement_option_refinement_wall_clock_budget_millis: None,
         joint_refinement_audit_option_pricing_enabled: false,
@@ -2626,7 +2628,9 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
+                    treat_inadmissible_calibration_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,

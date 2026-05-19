@@ -181,7 +181,7 @@ fn resumed_run_started_event_marks_preceding_terminal_stages_completed() {
 }
 
 #[test]
-fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
+fn restart_progress_table_includes_losses_and_exact_evaluator_counts() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         Some("halton_01"),
@@ -197,7 +197,6 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
         JointRefinementStageProgressPhase::RestartOptimization,
     );
 
-    progress.current_parameter_block = Some("nig".to_string());
     progress.current_block_best_global_loss = Some(0.5);
 
     progress.exact_closed_form_buy_count = Some(3);
@@ -211,7 +210,6 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
             .collect::<Vec<_>>(),
         vec![
             ("eval".to_string(), "Evals".to_string()),
-            ("block".to_string(), "Block".to_string()),
             ("current_objective".to_string(), "Trial loss".to_string()),
             ("best_objective".to_string(), "Accepted loss".to_string()),
             ("final_objective".to_string(), "Final loss".to_string()),
@@ -228,12 +226,98 @@ fn restart_progress_table_includes_block_and_exact_evaluator_counts() {
             .collect::<Vec<_>>(),
         vec![
             ("eval".to_string(), "12/59".to_string()),
-            ("block".to_string(), "nig".to_string()),
             ("best_objective".to_string(), "0.500000".to_string()),
             ("exact_buy".to_string(), "3".to_string()),
             ("exact_sell".to_string(), "4".to_string()),
             ("exact_mixed".to_string(), "5".to_string()),
         ]
+    );
+}
+
+#[test]
+fn restart_evaluation_timing_progress_writes_metric_update_event() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("tick_moment_21"),
+        Some(12),
+        Some(59),
+        Some(0.5),
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::RestartOptimization,
+    );
+    progress.restart_evaluation_timing_diagnostic =
+        Some(JointRefinementStageRestartEvaluationTimingDiagnostic {
+            restart_id: "tick_moment_21".to_string(),
+            schedule_category: "competitive".to_string(),
+            candidate_evaluation_count: 12,
+            poll_direction_position: Some(3),
+            poll_direction_label: "positive.nig.log_alpha".to_string(),
+            elapsed_millis: 1234,
+            objective: Some(0.5),
+            admissibility_blocker_count: Some(1),
+            max_standardized_residual: Some(2.0),
+            exact_closed_form_buy_count: Some(3),
+            exact_closed_form_sell_count: Some(4),
+            exact_tilted_mixed_count: Some(5),
+        });
+
+    let events = run_events_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+        WorkflowRef::labeled("fit", "Fit"),
+        "test-scope",
+        "test scope",
+        &[],
+        "/tmp/janiform-test-output",
+    )
+    .expect("progress event should serialize");
+
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        events[1].payload,
+        RunEventPayload::MetricUpdate(RunMetricUpdateEvent { .. })
+    ));
+
+    let RunEventPayload::MetricUpdate(metric_update) = &events[1].payload else {
+        panic!("expected metric update event");
+    };
+    assert_eq!(
+        metric_update
+            .measures
+            .iter()
+            .map(|measure| match measure {
+                EventProgressMeasure::Text { metric_id, .. }
+                | EventProgressMeasure::EvaluationCount { metric_id, .. }
+                | EventProgressMeasure::ObjectiveValue { metric_id, .. }
+                | EventProgressMeasure::Scalar { metric_id, .. } => metric_id.as_str(),
+                EventProgressMeasure::BoundedCount { metric_id, .. }
+                | EventProgressMeasure::Convergence { metric_id, .. }
+                | EventProgressMeasure::CandidateId { metric_id, .. }
+                | EventProgressMeasure::PricingGeometry { metric_id, .. }
+                | EventProgressMeasure::SimulationIntervalCount { metric_id, .. }
+                | EventProgressMeasure::OutputChunkCount { metric_id, .. }
+                | EventProgressMeasure::AnalyticsCheckCount { metric_id, .. } => {
+                    metric_id.as_str()
+                }
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            "joint_refinement.restart_eval.restart_id",
+            "joint_refinement.restart_eval.schedule_category",
+            "joint_refinement.restart_eval.candidate_evaluation_count",
+            "joint_refinement.restart_eval.poll_direction_label",
+            "joint_refinement.restart_eval.elapsed_millis",
+            "joint_refinement.restart_eval.poll_direction_position",
+            "joint_refinement.restart_eval.objective",
+            "joint_refinement.restart_eval.admissibility_blocker_count",
+            "joint_refinement.restart_eval.max_standardized_residual",
+            "joint_refinement.restart_eval.exact_closed_form_buy_count",
+            "joint_refinement.restart_eval.exact_closed_form_sell_count",
+            "joint_refinement.restart_eval.exact_tilted_mixed_count",
+        ],
     );
 }
 
@@ -323,6 +407,7 @@ fn return_components_progress_event(
         aggregate_progress_percent: None,
         current_item_label: current_item_label.map(str::to_string),
         current_restart_id: None,
+        current_work_item_status: None,
         planned_work_item_labels: Vec::new(),
         active_restart_count: None,
         current_parameter_block: None,
@@ -347,6 +432,7 @@ fn return_components_progress_event(
         exact_closed_form_buy_count: None,
         exact_closed_form_sell_count: None,
         exact_tilted_mixed_count: None,
+        restart_evaluation_timing_diagnostic: None,
         current_convergence_ratio,
     }
 }

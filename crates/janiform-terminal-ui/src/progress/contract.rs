@@ -103,6 +103,8 @@ pub enum ProgressEvent {
         work_item_label: Option<String>,
         /// Active work item completion percent when known.
         work_item_progress_percent: Option<usize>,
+        /// Explicit work item status when runtime scheduler state is known.
+        work_item_status: Option<String>,
         /// Work items expected to appear in the active phase.
         planned_work_item_labels: Vec<String>,
         /// Context-defined work item table columns.
@@ -125,6 +127,8 @@ pub enum ProgressEvent {
     StageCompleted {
         /// Completed stage name.
         stage: String,
+        /// Completed stage status label.
+        status: String,
         /// Stage runtime.
         runtime_seconds: f64,
     },
@@ -188,6 +192,8 @@ pub enum ProgressStageStatus {
     Running,
     /// Stage completed successfully.
     Completed,
+    /// Stage completed with warnings.
+    CompletedWithWarnings,
     /// Stage failed.
     Failed,
 }

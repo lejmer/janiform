@@ -131,6 +131,7 @@ impl TerminalCommandProgress {
             measure,
             work_item_label: update.work_item_label,
             work_item_progress_percent: update.work_item_progress_percent,
+            work_item_status: None,
             planned_work_item_labels: update.planned_work_item_labels,
             work_item_columns: update.work_item_columns,
             work_item_metrics: update.work_item_metrics,
@@ -210,6 +211,7 @@ impl TerminalCommandProgress {
 
         adapter.observe(ProgressEvent::StageCompleted {
             stage: active_stage.name,
+            status: "completed".to_string(),
             runtime_seconds: active_stage.started_at.elapsed().as_secs_f64(),
         });
 

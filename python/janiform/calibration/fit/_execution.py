@@ -209,7 +209,10 @@ def _build_fit_outputs_from_native(
         staged_response=staged_response,
     )
 
-    if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
+    if staged_response.status not in (
+        CalibrationStageExecutionStatus.SUCCESS,
+        CalibrationStageExecutionStatus.SUCCESS_WITH_WARNINGS,
+    ):
         return fit_report, None
 
     model_parameters, model_metadata, model_payload = _validated_native_model_payload(

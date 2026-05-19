@@ -57,7 +57,9 @@ pub use objective::{
     DEFAULT_STYLIZED_FACT_ADMISSIBILITY_Z, DEFAULT_STYLIZED_FACT_HUBER_CUTOFF,
 };
 pub use optimizer::{
-    CalibrationOptimizerSettings, CalibrationOptimizerSettingsError, CalibrationStageSolverSettings,
+    CalibrationEffortOptions, CalibrationEffortOptionsError, CalibrationOptimizerSettings,
+    CalibrationOptimizerSettingsError, CalibrationStageSolverSettings, FAST_CALIBRATION_EFFORT,
+    STANDARD_CALIBRATION_EFFORT, THOROUGH_CALIBRATION_EFFORT,
 };
 pub use run_contract::{
     CalibrationRunContract, CalibrationRunContractError, resolve_calibration_stage_execution_order,

@@ -185,6 +185,7 @@ pub(crate) fn build_joint_refinement_stage_failure_report_with_runtime_profile(
         fitted_stage_payload: None,
         metadata: None,
         runtime_profile,
+        warnings: Vec::new(),
         failure: Some(failure),
     }
 }

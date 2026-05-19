@@ -3,8 +3,10 @@ mod execution;
 mod mean_reversion_runtime;
 mod objective;
 mod option_surface_tiering;
+mod restart_sensitivity;
 mod setup;
 mod summary_simulation;
+mod tick_shape_proxy;
 mod worker_runtime;
 
 pub use contracts::{

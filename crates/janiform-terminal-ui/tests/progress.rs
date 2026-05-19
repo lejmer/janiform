@@ -26,6 +26,7 @@ fn percent_progress_caps_display_percent_without_units() {
 #[test]
 fn adapter_coalesces_structured_events_until_draw() {
     let mut adapter = ProgressAdapter::hidden();
+
     adapter.observe(ProgressEvent::RunStarted {
         run_id: "fit-20260426".to_string(),
         scope: "staged calibration".to_string(),
@@ -34,36 +35,43 @@ fn adapter_coalesces_structured_events_until_draw() {
         stage_sequence: vec!["seasonality".to_string(), "return components".to_string()],
         completed_stage_count: 0,
     });
+
     adapter.observe(ProgressEvent::StageStarted {
         stage: "return components".to_string(),
         stage_number: 2,
         stage_count: 5,
     });
+
     adapter.observe(ProgressEvent::StageProgress {
         phase: "candidate enumeration".to_string(),
         measure: ProgressMeasure::bounded(1, 4).expect("test progress should be valid"),
         work_item_label: Some("seed baseline".to_string()),
         work_item_progress_percent: Some(25),
+        work_item_status: None,
         planned_work_item_labels: Vec::new(),
         work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Eval")],
         work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "1/4")],
         latest_signal: Some("seed baseline".to_string()),
     });
+
     adapter.observe(ProgressEvent::StageProgress {
         phase: "candidate enumeration".to_string(),
         measure: ProgressMeasure::bounded(3, 4).expect("test progress should be valid"),
         work_item_label: Some("seed basin".to_string()),
         work_item_progress_percent: Some(75),
+        work_item_status: None,
         planned_work_item_labels: Vec::new(),
         work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Eval")],
         work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "3/4")],
         latest_signal: Some("seed basin".to_string()),
     });
+
     adapter.observe(ProgressEvent::StageProgress {
         phase: "candidate enumeration".to_string(),
         measure: ProgressMeasure::bounded(4, 4).expect("test progress should be valid"),
         work_item_label: Some("seed baseline".to_string()),
         work_item_progress_percent: Some(100),
+        work_item_status: None,
         planned_work_item_labels: Vec::new(),
         work_item_columns: vec![
             ProgressWorkItemColumn::new("eval", "Eval"),
@@ -117,6 +125,7 @@ fn adapter_coalesces_structured_events_until_draw() {
 #[test]
 fn adapter_marks_leading_stages_completed_when_run_starts_from_resume() {
     let mut adapter = ProgressAdapter::hidden();
+
     adapter.observe(ProgressEvent::RunStarted {
         run_id: "fit-20260426".to_string(),
         scope: "staged calibration".to_string(),
@@ -153,6 +162,7 @@ fn adapter_marks_leading_stages_completed_when_run_starts_from_resume() {
 #[test]
 fn adapter_seeds_planned_work_items_as_waiting() {
     let mut adapter = ProgressAdapter::hidden();
+
     adapter.observe(ProgressEvent::RunStarted {
         run_id: "fit-20260426".to_string(),
         scope: "staged calibration".to_string(),
@@ -161,16 +171,19 @@ fn adapter_seeds_planned_work_items_as_waiting() {
         stage_sequence: vec!["joint refinement".to_string()],
         completed_stage_count: 0,
     });
+
     adapter.observe(ProgressEvent::StageStarted {
         stage: "joint refinement".to_string(),
         stage_number: 1,
         stage_count: 1,
     });
+
     adapter.observe(ProgressEvent::StageProgress {
         phase: "restart optimization".to_string(),
         measure: ProgressMeasure::bounded(0, 3).expect("test progress should be valid"),
         work_item_label: None,
         work_item_progress_percent: None,
+        work_item_status: None,
         planned_work_item_labels: vec![
             "baseline".to_string(),
             "activity_aligned".to_string(),
@@ -206,8 +219,52 @@ fn adapter_seeds_planned_work_items_as_waiting() {
 }
 
 #[test]
+fn adapter_uses_explicit_work_item_status_when_provided() {
+    let mut adapter = ProgressAdapter::hidden();
+
+    adapter.observe(ProgressEvent::RunStarted {
+        run_id: "fit-20260426".to_string(),
+        scope: "staged calibration".to_string(),
+        input_count: 1,
+        output_path: None,
+        stage_sequence: vec!["joint refinement".to_string()],
+        completed_stage_count: 0,
+    });
+
+    adapter.observe(ProgressEvent::StageStarted {
+        stage: "joint refinement".to_string(),
+        stage_number: 1,
+        stage_count: 1,
+    });
+
+    adapter.observe(ProgressEvent::StageProgress {
+        phase: "restart optimization".to_string(),
+        measure: ProgressMeasure::bounded(1, 4).expect("test progress should be valid"),
+        work_item_label: Some("tick_moment_21".to_string()),
+        work_item_progress_percent: Some(25),
+        work_item_status: Some("queued".to_string()),
+        planned_work_item_labels: Vec::new(),
+        work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Eval")],
+        work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "1/4")],
+        latest_signal: Some("queued restart".to_string()),
+    });
+
+    let snapshot = adapter.snapshot();
+
+    assert_eq!(
+        snapshot
+            .work_items
+            .iter()
+            .map(|work_item| (work_item.label.as_str(), work_item.status.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("tick_moment_21", "queued")]
+    );
+}
+
+#[test]
 fn adapter_clears_work_items_when_phase_changes() {
     let mut adapter = ProgressAdapter::hidden();
+
     adapter.observe(ProgressEvent::RunStarted {
         run_id: "fit-20260426".to_string(),
         scope: "staged calibration".to_string(),
@@ -216,26 +273,31 @@ fn adapter_clears_work_items_when_phase_changes() {
         stage_sequence: vec!["return components".to_string()],
         completed_stage_count: 0,
     });
+
     adapter.observe(ProgressEvent::StageStarted {
         stage: "return components".to_string(),
         stage_number: 1,
         stage_count: 1,
     });
+
     adapter.observe(ProgressEvent::StageProgress {
         phase: "continuous NIG proxy EM".to_string(),
         measure: ProgressMeasure::bounded(1, 1).expect("test progress should be valid"),
         work_item_label: Some("proxy EM search points ready".to_string()),
         work_item_progress_percent: Some(100),
+        work_item_status: None,
         planned_work_item_labels: Vec::new(),
         work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Evals")],
         work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "17")],
         latest_signal: Some("proxy EM search points ready".to_string()),
     });
+
     adapter.observe(ProgressEvent::StageProgress {
         phase: "continuous NIG seed scoring".to_string(),
         measure: ProgressMeasure::bounded(0, 12).expect("test progress should be valid"),
         work_item_label: None,
         work_item_progress_percent: None,
+        work_item_status: None,
         planned_work_item_labels: Vec::new(),
         work_item_columns: Vec::new(),
         work_item_metrics: Vec::new(),

@@ -189,6 +189,7 @@ pub(super) fn run_stage_for_staged_execution(
                                     .aggregate_progress_percent,
                                 current_item_label: progress_update.current_item_label,
                                 current_restart_id: None,
+                                current_work_item_status: None,
                                 planned_work_item_labels: Vec::new(),
                                 active_restart_count: None,
                                 current_parameter_block: None,
@@ -214,6 +215,7 @@ pub(super) fn run_stage_for_staged_execution(
                                 exact_closed_form_buy_count: None,
                                 exact_closed_form_sell_count: None,
                                 exact_tilted_mixed_count: None,
+                                restart_evaluation_timing_diagnostic: None,
                                 current_convergence_ratio: progress_update
                                     .current_convergence_ratio,
                             },
@@ -414,8 +416,11 @@ pub(super) fn run_stage_for_staged_execution(
                 return_components_input,
                 mean_reversion_input,
                 candidate_generation_input,
+                calibration_effort: staged_run_inputs.joint_refinement_calibration_effort,
                 restart_candidate_budget_override: staged_run_inputs
                     .joint_refinement_restart_candidate_budget_override,
+                treat_inadmissible_calibration_warning_as_error: staged_run_inputs
+                    .treat_inadmissible_calibration_warning_as_error,
                 option_refinement_candidate_count_override: staged_run_inputs
                     .joint_refinement_option_refinement_candidate_count_override,
                 option_refinement_wall_clock_budget_millis: staged_run_inputs
@@ -458,6 +463,7 @@ pub(super) fn run_stage_for_staged_execution(
                                     .aggregate_progress_percent,
                                 current_item_label: progress_update.current_item_label,
                                 current_restart_id: progress_update.current_restart_id,
+                                current_work_item_status: progress_update.current_work_item_status,
                                 planned_work_item_labels: progress_update.planned_work_item_labels,
                                 active_restart_count: progress_update.active_restart_count,
                                 current_parameter_block: progress_update.current_parameter_block,
@@ -493,6 +499,8 @@ pub(super) fn run_stage_for_staged_execution(
                                 exact_closed_form_sell_count: progress_update
                                     .exact_closed_form_sell_count,
                                 exact_tilted_mixed_count: progress_update.exact_tilted_mixed_count,
+                                restart_evaluation_timing_diagnostic: progress_update
+                                    .restart_evaluation_timing_diagnostic,
                                 current_convergence_ratio: None,
                             },
                         )));

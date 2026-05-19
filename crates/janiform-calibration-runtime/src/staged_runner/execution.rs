@@ -431,12 +431,20 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     );
 
     if start_position >= execution_stage_order.len() {
+        let completed_status = if stage_reports.iter().any(|stage_report| {
+            stage_report.status() == CalibrationStageExecutionStatus::SuccessWithWarnings
+        }) {
+            CalibrationStageExecutionStatus::SuccessWithWarnings
+        } else {
+            CalibrationStageExecutionStatus::Success
+        };
+
         let report = CalibrationStagedRunReport {
             schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
             failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
             run_id: run_spec.run_id.clone(),
             execution_mode: run_spec.execution_mode,
-            status: CalibrationStageExecutionStatus::Success,
+            status: completed_status,
             stage_reports,
             emitted_checkpoints,
             diagnostic_artifact_references: Vec::new(),
@@ -887,12 +895,20 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         }
     }
 
+    let completed_status = if stage_reports.iter().any(|stage_report| {
+        stage_report.status() == CalibrationStageExecutionStatus::SuccessWithWarnings
+    }) {
+        CalibrationStageExecutionStatus::SuccessWithWarnings
+    } else {
+        CalibrationStageExecutionStatus::Success
+    };
+
     let report = CalibrationStagedRunReport {
         schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
         failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
         run_id: run_spec.run_id.clone(),
         execution_mode: run_spec.execution_mode,
-        status: CalibrationStageExecutionStatus::Success,
+        status: completed_status,
         stage_reports,
         emitted_checkpoints,
         diagnostic_artifact_references,

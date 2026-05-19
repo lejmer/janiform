@@ -7,8 +7,11 @@ use std::sync::mpsc::Sender;
 use std::time::Instant;
 
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use janiform_foundations::numeric::clamp_point_in_place as clamp_in_place;
 use janiform_foundations::time::duration_nanos_to_hours;
-use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+use janiform_model_kernels::hawkes::{
+    HawkesKernelLoadings, HawkesKernelParameters, baseline_intensity_for_stationary_total_intensity,
+};
 use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use rayon::iter::{
@@ -33,16 +36,20 @@ use super::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
 use super::execution::{
-    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
-    JointRefinementContext, JointRefinementSeedSummary, JointRefinementSeedSummaryCacheKey,
-    build_halton_restart_id, clamp_in_place, deduplicate_restart_seed_candidates,
-    halton_parameter_vector, joint_refinement_has_parallel_worker_capacity,
-    precheck_seed_summary_workload, rescaled_observed_tick_calibration_sample_for_modeled_rate,
-    with_joint_refinement_thread_pool,
+    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT,
+    JointRefinementActiveParameterLayout, JointRefinementContext, JointRefinementSeedSummary,
+    JointRefinementSeedSummaryCacheKey, build_halton_restart_id,
+    deduplicate_restart_seed_candidates, halton_parameter_vector,
+    joint_refinement_has_parallel_worker_capacity, precheck_seed_summary_workload,
+    rescaled_observed_tick_calibration_sample_for_modeled_rate, with_joint_refinement_thread_pool,
 };
 use super::objective::{
-    JointRefinementRestartAdmissionScreening,
-    evaluate_joint_fitted_candidate_restart_admission_screening,
+    JointRefinementRestartAdmissionDiagnostics, JointRefinementRestartAdmissionScreening,
+    evaluate_joint_fitted_candidate_restart_admission_diagnostics,
+};
+use super::restart_sensitivity::{
+    SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
+    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
 };
 use super::worker_runtime::JointRefinementSeedSummaryAcquisitionError;
 use janiform_calibration_artifacts::{
@@ -57,6 +64,7 @@ const RETURN_SCALE_TICK_REALIZED_VARIANCE_METRIC_ID: &str = "return_scale.tick.r
 const RETURN_SCALE_TICK_MEAN_ABSOLUTE_RETURN_METRIC_ID: &str =
     "return_scale.tick.mean_absolute_return";
 const PROTECTED_RESTART_SEED_IDS: [&str; 2] = ["incumbent_local_search", "activity_aligned"];
+const SENSITIVITY_REPAIR_TRUST_REGION_SCALE_COUNT: usize = JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT;
 
 const RETURN_SCALE_ALIGNMENT_METRICS: [ReturnScaleAlignmentMetric; 4] = [
     ReturnScaleAlignmentMetric {
@@ -116,8 +124,10 @@ pub(super) fn parameter_vector_to_fitted_parameters(
     let hawkes_fitted_parameters = if option_pricing_only {
         context.baseline_hawkes_fitted_parameters.clone()
     } else {
-        let lambda_scale =
-            parameter_vector[context.active_parameter_layout.log_lambda_scale_index].exp();
+        let stationary_event_rate_scale = parameter_vector[context
+            .active_parameter_layout
+            .log_stationary_event_rate_scale_index]
+            .exp();
 
         let beta_scale =
             parameter_vector[context.active_parameter_layout.log_beta_scale_index].exp();
@@ -148,17 +158,19 @@ pub(super) fn parameter_vector_to_fitted_parameters(
         )
         .ok()?;
 
-        let lambda_bar = context
-            .baseline_hawkes_fitted_parameters
-            .kernel_parameters
-            .lambda_bar
-            * lambda_scale;
-
         let beta = context
             .baseline_hawkes_fitted_parameters
             .kernel_parameters
             .beta
             * beta_scale;
+
+        let stationary_open_event_rate_per_hour =
+            context.baseline_modeled_open_event_rate_per_hour * stationary_event_rate_scale;
+        let lambda_bar = baseline_intensity_for_stationary_total_intensity(
+            stationary_open_event_rate_per_hour,
+            alpha_loadings,
+            beta,
+        )?;
 
         let kernel_parameters =
             HawkesKernelParameters::try_new(lambda_bar, beta, alpha_loadings, rho_loadings).ok()?;
@@ -283,7 +295,7 @@ pub(super) fn build_baseline_parameter_vector(
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> Result<Vec<f64>, String> {
     let mut parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
-    parameter_vector[active_parameter_layout.log_lambda_scale_index] = 0.0;
+    parameter_vector[active_parameter_layout.log_stationary_event_rate_scale_index] = 0.0;
     parameter_vector[active_parameter_layout.log_beta_scale_index] = 0.0;
     parameter_vector[active_parameter_layout.log_self_excitation_scale_index] = 0.0;
     parameter_vector[active_parameter_layout.log_cross_excitation_scale_index] = 0.0;
@@ -323,7 +335,7 @@ pub(super) fn build_active_parameter_layout(
 ) -> JointRefinementActiveParameterLayout {
     let mut next_index = 0usize;
 
-    let log_lambda_scale_index = next_index;
+    let log_stationary_event_rate_scale_index = next_index;
     next_index += 1;
 
     let log_beta_scale_index = next_index;
@@ -336,7 +348,7 @@ pub(super) fn build_active_parameter_layout(
     next_index += 1;
 
     let hawkes_block = vec![
-        log_lambda_scale_index,
+        log_stationary_event_rate_scale_index,
         log_beta_scale_index,
         log_self_excitation_scale_index,
         log_cross_excitation_scale_index,
@@ -390,7 +402,7 @@ pub(super) fn build_active_parameter_layout(
         hawkes_block,
         nig_block,
         coupling_block,
-        log_lambda_scale_index,
+        log_stationary_event_rate_scale_index,
         log_beta_scale_index,
         log_self_excitation_scale_index,
         log_cross_excitation_scale_index,
@@ -1013,8 +1025,18 @@ fn finalize_restart_seed_candidates(
 
     let deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates);
 
+    let sensitivity_repair_policy = sensitivity_repair_seed_policy(target_restart_count);
+    let sensitivity_repair_budget = joint_context
+        .map(|_| {
+            sensitivity_repair_screening_evaluation_budget(
+                baseline_parameter_vector.len(),
+                sensitivity_repair_policy,
+            )
+        })
+        .unwrap_or(0);
     let total_screening_units = deduplicated_candidates
         .len()
+        .saturating_add(sensitivity_repair_budget)
         .saturating_add(target_restart_count);
 
     emit_restart_candidate_screening_progress(
@@ -1026,7 +1048,7 @@ fn finalize_restart_seed_candidates(
 
     let completed_screening_units = Mutex::new(0usize);
 
-    let screened_restart_candidates = screen_restart_candidates(
+    let mut screened_restart_candidates = screen_restart_candidates(
         deduplicated_candidates.as_slice(),
         &restart_seed_score,
         joint_context,
@@ -1034,6 +1056,31 @@ fn finalize_restart_seed_candidates(
         &completed_screening_units,
         total_screening_units,
     );
+
+    if let Some(joint_context) = joint_context {
+        let sensitivity_repair_candidates =
+            build_sensitivity_repair_restart_candidates(SensitivityRepairRestartCandidatesInput {
+                screened_restart_candidates: screened_restart_candidates.as_slice(),
+                lower_bounds,
+                upper_bounds,
+                joint_context,
+                policy: sensitivity_repair_policy,
+                progress_sender,
+                completed_screening_units: &completed_screening_units,
+                total_screening_units,
+            });
+
+        let screened_sensitivity_repair_candidates = screen_restart_candidates(
+            sensitivity_repair_candidates.as_slice(),
+            &restart_seed_score,
+            Some(joint_context),
+            progress_sender,
+            &completed_screening_units,
+            total_screening_units,
+        );
+
+        screened_restart_candidates.extend(screened_sensitivity_repair_candidates);
+    }
 
     let mut screened_halton_candidates = Vec::new();
 
@@ -1108,6 +1155,98 @@ struct RestartSeedCandidateFinalizationInput<'a> {
     protected_restart_ids: &'a [&'a str],
     joint_context: Option<&'a JointRefinementContext>,
     progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+}
+
+struct SensitivityRepairRestartCandidatesInput<'a> {
+    screened_restart_candidates: &'a [ScreenedRestartCandidate],
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
+    joint_context: &'a JointRefinementContext,
+    policy: SensitivityRepairSeedPolicy,
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+    completed_screening_units: &'a Mutex<usize>,
+    total_screening_units: usize,
+}
+
+fn build_sensitivity_repair_restart_candidates(
+    input: SensitivityRepairRestartCandidatesInput<'_>,
+) -> Vec<(String, Vec<f64>)> {
+    let SensitivityRepairRestartCandidatesInput {
+        screened_restart_candidates,
+        lower_bounds,
+        upper_bounds,
+        joint_context,
+        policy,
+        progress_sender,
+        completed_screening_units,
+        total_screening_units,
+    } = input;
+
+    if screened_restart_candidates.is_empty() {
+        return Vec::new();
+    }
+
+    let mut anchor_candidates = screened_restart_candidates.iter().collect::<Vec<_>>();
+
+    anchor_candidates
+        .sort_by(|left, right| compare_screened_restart_candidates_by_score(*left, *right));
+    anchor_candidates.truncate(policy.active_anchor_count);
+
+    let sensitivity_evaluator = |parameter_vector: &[f64]| {
+        let evaluation =
+            sensitivity_repair_evaluation_for_parameter_vector(parameter_vector, joint_context);
+
+        emit_completed_restart_candidate_screening_unit(
+            progress_sender,
+            completed_screening_units,
+            total_screening_units,
+            "sensitivity_repair_probe",
+        );
+
+        evaluation
+    };
+
+    let repair_candidate_batches = with_joint_refinement_thread_pool(joint_context, || {
+        anchor_candidates
+            .par_iter()
+            .map(|candidate| {
+                sensitivity_repair_seed_candidates(
+                    candidate.restart_id.as_str(),
+                    candidate.parameter_vector.as_slice(),
+                    lower_bounds,
+                    upper_bounds,
+                    joint_context.objective_policy.admissibility_z_threshold,
+                    policy,
+                    &sensitivity_evaluator,
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+
+    repair_candidate_batches
+        .into_iter()
+        .flatten()
+        .map(|seed| (seed.restart_id, seed.parameter_vector))
+        .collect()
+}
+
+fn sensitivity_repair_seed_policy(target_restart_count: usize) -> SensitivityRepairSeedPolicy {
+    SensitivityRepairSeedPolicy {
+        active_anchor_count: JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT.min(target_restart_count),
+        trust_region_scale_count: SENSITIVITY_REPAIR_TRUST_REGION_SCALE_COUNT,
+    }
+}
+
+fn sensitivity_repair_evaluation_for_parameter_vector(
+    parameter_vector: &[f64],
+    joint_context: &JointRefinementContext,
+) -> Option<SensitivityRepairEvaluation> {
+    let diagnostics = exploratory_restart_seed_diagnostics(parameter_vector, joint_context).ok()?;
+
+    Some(SensitivityRepairEvaluation {
+        aggregate_score: diagnostics.screening.aggregate_score,
+        term_diagnostics: diagnostics.term_diagnostics,
+    })
 }
 
 #[derive(Debug)]
@@ -1756,12 +1895,25 @@ fn screened_exploratory_restart_seed_score(
     halton_seed: &[f64],
     joint_context: &JointRefinementContext,
 ) -> Option<JointRefinementRestartAdmissionScreening> {
-    let fitted_parameters = parameter_vector_to_fitted_parameters(halton_seed, joint_context)?;
-
-    precheck_seed_summary_workload(&fitted_parameters, joint_context).ok()?;
-
-    evaluate_joint_fitted_candidate_restart_admission_screening(&fitted_parameters, joint_context)
+    exploratory_restart_seed_diagnostics(halton_seed, joint_context)
         .ok()
+        .map(|diagnostics| diagnostics.screening)
+}
+
+fn exploratory_restart_seed_diagnostics(
+    restart_seed: &[f64],
+    joint_context: &JointRefinementContext,
+) -> Result<JointRefinementRestartAdmissionDiagnostics, &'static str> {
+    let Some(fitted_parameters) =
+        parameter_vector_to_fitted_parameters(restart_seed, joint_context)
+    else {
+        return Err("restart_seed_parameter_decoding_failed");
+    };
+
+    precheck_seed_summary_workload(&fitted_parameters, joint_context)
+        .map_err(|_| "restart_seed_summary_workload_infeasible")?;
+
+    evaluate_joint_fitted_candidate_restart_admission_diagnostics(&fitted_parameters, joint_context)
 }
 
 fn joint_tick_moment_restart_seeds(
@@ -2227,7 +2379,8 @@ fn apply_activity_alignment(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     activity_log_shift: f64,
 ) {
-    parameter_vector[active_parameter_layout.log_lambda_scale_index] = activity_log_shift;
+    parameter_vector[active_parameter_layout.log_stationary_event_rate_scale_index] =
+        activity_log_shift;
 
     if let Some(index) = active_parameter_layout.known_activity_scale_index {
         parameter_vector[index] = activity_log_shift;

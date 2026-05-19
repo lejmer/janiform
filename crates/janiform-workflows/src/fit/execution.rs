@@ -334,15 +334,22 @@ fn should_observe_staged_event(
     if progress.evaluation_progress_percent == Some(100) {
         return true;
     }
+
+    if progress.restart_evaluation_timing_diagnostic.is_some() {
+        return true;
+    }
+
     if !progress.planned_work_item_labels.is_empty() {
         return true;
     }
+
     if progress.current_item_label.is_some()
         && progress.current_evaluation_count.is_none()
         && progress.evaluation_progress_percent.is_none()
     {
         return true;
     }
+
     if progress.current_item_label.is_some()
         && progress.current_parameter_block.is_some()
         && progress.evaluation_progress_percent.is_none()
@@ -371,6 +378,7 @@ fn observe_progress(
     };
 
     progress_adapter.observe(progress_event);
+
     progress_adapter
         .draw_latest()
         .map_err(|source| WorkflowError::OutputProgress { source })
@@ -427,6 +435,7 @@ fn complete_progress(
 const fn terminal_progress_status(status: CalibrationStageExecutionStatus) -> &'static str {
     match status {
         CalibrationStageExecutionStatus::Success => "completed",
+        CalibrationStageExecutionStatus::SuccessWithWarnings => "completed with warnings",
         CalibrationStageExecutionStatus::Failure => "failed",
     }
 }
@@ -450,6 +459,15 @@ fn observe_run_events(input: RunEventObservationInput<'_, '_>) -> Result<(), Wor
         if let Some(machine_event_sink) = input.machine_event_sink.as_deref_mut() {
             machine_event_sink(&run_event)?;
         }
+    }
+
+    if let CalibrationStagedRunObserverEvent::StageProgress(progress) = input.event
+        && progress.restart_evaluation_timing_diagnostic.is_some()
+    {
+        input
+            .event_writer
+            .flush()
+            .map_err(|source| WorkflowError::FitEventLog { source })?;
     }
 
     Ok(())
@@ -485,7 +503,7 @@ fn write_execution_artifacts(
         None,
     )?;
 
-    if input.report.status != CalibrationStageExecutionStatus::Success {
+    if !input.report.status.is_successful() {
         return Ok((report_payload, None));
     }
 
@@ -586,6 +604,7 @@ mod tests {
                 aggregate_progress_percent: None,
                 current_item_label: current_item_label.map(str::to_string),
                 current_restart_id: None,
+                current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: None,
                 current_parameter_block: None,
@@ -610,6 +629,7 @@ mod tests {
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
+                restart_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))
@@ -636,6 +656,7 @@ mod tests {
                 aggregate_progress_percent: None,
                 current_item_label: Some(restart_id.to_string()),
                 current_restart_id: Some(restart_id.to_string()),
+                current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: Some(5),
                 current_parameter_block: current_parameter_block.map(str::to_string),
@@ -660,6 +681,7 @@ mod tests {
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
+                restart_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))

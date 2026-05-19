@@ -26,6 +26,7 @@ from ._preparation.contracts import (
     PreparedFitWorkflow,
 )
 from ._runtime.workflow import prepare_fit_workflow as prepare_native_fit_workflow
+from ..effort import CalibrationEffortOptions, STANDARD_CALIBRATION_EFFORT
 from .result import JaniformFitResult
 from ...model import JaniformModel
 from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
@@ -80,6 +81,8 @@ class JaniformEstimator:
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     _dynamics_search_restart_candidate_budget: Optional[int]
+    _calibration_effort: CalibrationEffortOptions
+    _treat_calibration_warnings_as_errors: bool
     _joint_refinement_option_refinement_candidate_count_override: Optional[int]
     _joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     _joint_refinement_audit_option_pricing_enabled: bool
@@ -107,6 +110,8 @@ class JaniformEstimator:
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         dynamics_search_restart_candidate_budget: Optional[int] = None,
+        calibration_effort: CalibrationEffortOptions = STANDARD_CALIBRATION_EFFORT,
+        treat_calibration_warnings_as_errors: bool = False,
         joint_refinement_option_refinement_candidate_count: Optional[int] = None,
         joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None,
         joint_refinement_audit_option_pricing: bool = False,
@@ -154,6 +159,12 @@ class JaniformEstimator:
             raise calibration_error(
                 "dynamics_search_restart_candidate_budget",
                 "must be strictly positive when provided",
+            )
+
+        if not isinstance(calibration_effort, CalibrationEffortOptions):
+            raise calibration_error(
+                "calibration_effort",
+                "must be a CalibrationEffortOptions instance",
             )
 
         if (
@@ -209,6 +220,8 @@ class JaniformEstimator:
             else pricing_interval_schedule_policy
         )
         self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
+        self._calibration_effort = calibration_effort
+        self._treat_calibration_warnings_as_errors = treat_calibration_warnings_as_errors
         self._joint_refinement_option_refinement_candidate_count_override = (
             joint_refinement_option_refinement_candidate_count
         )
@@ -341,6 +354,10 @@ class JaniformEstimator:
                 else pricing_interval_schedule_policy
             ),
             dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
+            calibration_effort=self._calibration_effort,
+            treat_calibration_warnings_as_errors=(
+                self._treat_calibration_warnings_as_errors
+            ),
             joint_refinement_option_refinement_candidate_count_override=(
                 self._joint_refinement_option_refinement_candidate_count_override
             ),

@@ -1,16 +1,26 @@
 use std::path::Path;
 
-use janiform_calibration_artifacts::CalibrationStage;
-use janiform_calibration_runtime::{
-    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent,
-    JointRefinementProgressCandidateAssessment, JointRefinementStageProgressPhase,
-    ReturnComponentsStageProgressPhase,
+use janiform_calibration_artifacts::{
+    CalibrationStage, JointRefinementStageRestartEvaluationTimingDiagnostic,
 };
+use janiform_calibration_runtime::{
+    CalibrationStageExecutionStatus, CalibrationStageProgressPhase, CalibrationStagedRunFailure,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
+    CalibrationStagedRunStageProgressEvent, JointRefinementProgressCandidateAssessment,
+    JointRefinementStageProgressPhase, ReturnComponentsStageProgressPhase,
+};
+
+const fn terminal_progress_status(status: CalibrationStageExecutionStatus) -> &'static str {
+    match status {
+        CalibrationStageExecutionStatus::Success => "completed",
+        CalibrationStageExecutionStatus::SuccessWithWarnings => "completed with warnings",
+        CalibrationStageExecutionStatus::Failure => "failed",
+    }
+}
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
-    RunErrorEvent, RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent, RunPhaseRef,
-    RunProgressEvent, RunStageRef, WorkflowRef,
+    RunErrorEvent, RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent,
+    RunMetricUpdateEvent, RunPhaseRef, RunProgressEvent, RunStageRef, WorkflowRef,
 };
 use janiform_terminal_ui::{
     ProgressEvent, ProgressMeasure as UiProgressMeasure, ProgressWorkItemColumn,
@@ -80,25 +90,46 @@ pub fn run_events_from_staged_event(
                 runtime_seconds: *runtime_seconds,
             }),
         )],
-        CalibrationStagedRunObserverEvent::StageProgress(progress) => vec![RunEvent::new(
-            progress.run_id.clone(),
-            workflow,
-            EventDeliveryPriority::DroppableVolatile,
-            RunEventPayload::Progress(RunProgressEvent {
-                stage: Some(stage_ref(progress.stage)),
-                phase: Some(phase_ref(
-                    phase_token(&progress.progress_phase),
-                    phase_label(&progress.progress_phase),
-                )),
-                subphase: None,
-                measures: vec![EventProgressMeasure::BoundedCount {
-                    metric_id: "stage_units".to_string(),
-                    label: Some("stage units".to_string()),
-                    completed_units: progress.completed_units,
-                    total_units: progress.total_units,
-                }],
-            }),
-        )],
+        CalibrationStagedRunObserverEvent::StageProgress(progress) => {
+            let stage = stage_ref(progress.stage);
+
+            let phase = phase_ref(
+                phase_token(&progress.progress_phase),
+                phase_label(&progress.progress_phase),
+            );
+
+            let mut events = vec![RunEvent::new(
+                progress.run_id.clone(),
+                workflow.clone(),
+                EventDeliveryPriority::DroppableVolatile,
+                RunEventPayload::Progress(RunProgressEvent {
+                    stage: Some(stage.clone()),
+                    phase: Some(phase.clone()),
+                    subphase: None,
+                    measures: vec![EventProgressMeasure::BoundedCount {
+                        metric_id: "stage_units".to_string(),
+                        label: Some("stage units".to_string()),
+                        completed_units: progress.completed_units,
+                        total_units: progress.total_units,
+                    }],
+                }),
+            )];
+
+            if let Some(timing_diagnostic) = &progress.restart_evaluation_timing_diagnostic {
+                events.push(RunEvent::new(
+                    progress.run_id.clone(),
+                    workflow,
+                    EventDeliveryPriority::Required,
+                    RunEventPayload::MetricUpdate(RunMetricUpdateEvent {
+                        stage: Some(stage),
+                        phase: Some(phase),
+                        measures: restart_evaluation_timing_measures(timing_diagnostic),
+                    }),
+                ));
+            }
+
+            events
+        }
         CalibrationStagedRunObserverEvent::RunCompleted {
             run_id,
             total_runtime_seconds,
@@ -201,6 +232,7 @@ pub fn progress_event_from_staged_event(
                 measure: stage_progress_measure(progress)?,
                 work_item_label,
                 work_item_progress_percent: progress.evaluation_progress_percent,
+                work_item_status: progress.current_work_item_status.clone(),
                 planned_work_item_labels,
                 work_item_columns,
                 work_item_metrics,
@@ -209,10 +241,12 @@ pub fn progress_event_from_staged_event(
         }
         CalibrationStagedRunObserverEvent::StageCompleted {
             stage,
+            stage_report,
             runtime_seconds,
             ..
         } => Some(ProgressEvent::StageCompleted {
             stage: stage_label(*stage).to_string(),
+            status: terminal_progress_status(stage_report.status()).to_string(),
             runtime_seconds: *runtime_seconds,
         }),
         CalibrationStagedRunObserverEvent::RunCompleted { .. } => None,
@@ -263,6 +297,97 @@ pub(crate) fn append_artifact_event(
             }),
         ))
         .map_err(|source| WorkflowError::FitEventLog { source })
+}
+
+fn restart_evaluation_timing_measures(
+    diagnostic: &JointRefinementStageRestartEvaluationTimingDiagnostic,
+) -> Vec<EventProgressMeasure> {
+    let mut measures = vec![
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.restart_id".to_string(),
+            label: Some("restart id".to_string()),
+            value: diagnostic.restart_id.clone(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.schedule_category".to_string(),
+            label: Some("schedule category".to_string()),
+            value: diagnostic.schedule_category.clone(),
+        },
+        EventProgressMeasure::EvaluationCount {
+            metric_id: "joint_refinement.restart_eval.candidate_evaluation_count".to_string(),
+            label: Some("candidate evals".to_string()),
+            completed_evaluations: diagnostic.candidate_evaluation_count,
+            evaluation_budget: None,
+        },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.poll_direction_label".to_string(),
+            label: Some("poll direction".to_string()),
+            value: diagnostic.poll_direction_label.clone(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.elapsed_millis".to_string(),
+            label: Some("elapsed millis".to_string()),
+            value: diagnostic.elapsed_millis.to_string(),
+        },
+    ];
+
+    if let Some(poll_direction_position) = diagnostic.poll_direction_position {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.poll_direction_position".to_string(),
+            label: Some("poll direction position".to_string()),
+            value: poll_direction_position.to_string(),
+        });
+    }
+
+    if let Some(objective) = diagnostic.objective {
+        measures.push(EventProgressMeasure::ObjectiveValue {
+            metric_id: "joint_refinement.restart_eval.objective".to_string(),
+            label: Some("objective".to_string()),
+            value: objective,
+        });
+    }
+
+    if let Some(admissibility_blocker_count) = diagnostic.admissibility_blocker_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.admissibility_blocker_count".to_string(),
+            label: Some("admissibility blockers".to_string()),
+            value: admissibility_blocker_count.to_string(),
+        });
+    }
+
+    if let Some(max_standardized_residual) = diagnostic.max_standardized_residual {
+        measures.push(EventProgressMeasure::Scalar {
+            metric_id: "joint_refinement.restart_eval.max_standardized_residual".to_string(),
+            label: Some("max standardized residual".to_string()),
+            value: max_standardized_residual,
+        });
+    }
+
+    if let Some(exact_closed_form_buy_count) = diagnostic.exact_closed_form_buy_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.exact_closed_form_buy_count".to_string(),
+            label: Some("CF buy count".to_string()),
+            value: exact_closed_form_buy_count.to_string(),
+        });
+    }
+
+    if let Some(exact_closed_form_sell_count) = diagnostic.exact_closed_form_sell_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.exact_closed_form_sell_count".to_string(),
+            label: Some("CF sell count".to_string()),
+            value: exact_closed_form_sell_count.to_string(),
+        });
+    }
+
+    if let Some(exact_tilted_mixed_count) = diagnostic.exact_tilted_mixed_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.exact_tilted_mixed_count".to_string(),
+            label: Some("mixed count".to_string()),
+            value: exact_tilted_mixed_count.to_string(),
+        });
+    }
+
+    measures
 }
 
 /// Resolve a user-facing failure reason from a staged run report.
@@ -513,10 +638,6 @@ fn work_item_table_columns(
         columns.push(ProgressWorkItemColumn::new("pricing_rows", "Rows"));
     }
 
-    if uses_restart_optimization_columns || progress.current_parameter_block.is_some() {
-        columns.push(ProgressWorkItemColumn::new("block", "Block"));
-    }
-
     if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
         let current_objective_label = if uses_restart_optimization_columns {
             "Trial loss"
@@ -654,13 +775,6 @@ fn work_item_table_metrics(
         progress.total_pricing_row_count,
     ) {
         metrics.push(ProgressWorkItemMetric::new("pricing_rows", row_label));
-    }
-
-    if let Some(current_parameter_block) = progress.current_parameter_block.as_deref() {
-        metrics.push(ProgressWorkItemMetric::new(
-            "block",
-            current_parameter_block.to_string(),
-        ));
     }
 
     if let Some(current_global_loss) = progress.current_global_loss {

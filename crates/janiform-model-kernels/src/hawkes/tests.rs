@@ -7,8 +7,8 @@ use crate::hawkes::{
     HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesStructuredAlphaParameterError,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterError,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
-    HawkesTransitionError, HawkesTransitionStep, spectral_radius_alpha_over_beta,
-    stationary_intensity_multipliers,
+    HawkesTransitionError, HawkesTransitionStep, baseline_intensity_for_stationary_total_intensity,
+    spectral_radius_alpha_over_beta, stationary_intensity_multipliers,
 };
 use serde_json::json;
 
@@ -948,6 +948,31 @@ fn stationary_intensity_multipliers_match_closed_form_bivariate_inverse() {
         2.666_666_666_666_666_5,
         1.0e-12,
         "total_intensity_multiplier",
+    );
+}
+
+#[test]
+fn baseline_intensity_for_stationary_total_intensity_inverts_total_multiplier() {
+    let alpha = HawkesKernelLoadings {
+        plus_plus: 0.35,
+        plus_minus: 0.05,
+        minus_plus: 0.07,
+        minus_minus: 0.35,
+    };
+    let beta = 1.4;
+    let target_total_intensity = 12.5;
+
+    let lambda_bar =
+        baseline_intensity_for_stationary_total_intensity(target_total_intensity, alpha, beta)
+            .expect("stable Hawkes parameters should imply a baseline intensity");
+    let stationary_multipliers = stationary_intensity_multipliers(alpha, beta)
+        .expect("stable positive beta kernel should admit stationary multipliers");
+
+    assert_within_tolerance(
+        lambda_bar * stationary_multipliers.total_intensity_multiplier(),
+        target_total_intensity,
+        DECAY_TOLERANCE,
+        "stationary_total_intensity",
     );
 }
 

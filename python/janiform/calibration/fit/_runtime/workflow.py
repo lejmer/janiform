@@ -230,6 +230,10 @@ def _fit_preparation_configuration_payload(
         "dynamics_search_restart_candidate_budget": (
             preparation.dynamics_search_restart_candidate_budget
         ),
+        "calibration_effort": preparation.calibration_effort.to_payload(),
+        "treat_calibration_warnings_as_errors": (
+            preparation.treat_calibration_warnings_as_errors
+        ),
         "joint_refinement_option_refinement_candidate_count_override": (
             preparation.joint_refinement_option_refinement_candidate_count_override
         ),

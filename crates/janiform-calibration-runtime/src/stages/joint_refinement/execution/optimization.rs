@@ -1,19 +1,23 @@
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
 
-use janiform_calibration_artifacts::CalibrationOptimizerSettings;
-use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
+use janiform_calibration_artifacts::{
+    CalibrationEffortOptions, CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
+    JointRefinementStageRestartEvaluationTimingDiagnostic, STANDARD_CALIBRATION_EFFORT,
+};
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameters, spectral_radius_alpha_over_beta,
 };
 
+use crate::stages::adaptive_direct_search::{
+    AdaptiveDirectSearchSettings, optimize_bounded_adaptive_direct_search,
+};
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
-use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
 use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
 
 use super::super::objective::{evaluate_joint_candidate, invalid_candidate_evaluation};
@@ -23,14 +27,19 @@ use super::{
     JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementContext, JointRefinementFidelityTier,
     JointRefinementRestartOutcome, joint_refinement_has_parallel_worker_capacity,
     option_pricing_execution_failure_message, simulation_infrastructure_failure_message,
-    with_joint_refinement_thread_pool,
 };
-pub(crate) const JOINT_REFINEMENT_DEFAULT_RESTART_CANDIDATE_BUDGET: usize = 15;
 
+mod restart_probe_pool;
+// Joint restart direct search uses binary mesh refinement after a failed complete
+// poll, then budgets one incumbent evaluation plus two complete poll rounds.
+const JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR: usize = 2;
+const JOINT_REFINEMENT_DIRECT_SEARCH_COMPLETE_POLL_ROUND_COUNT: usize =
+    JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JointRefinementBudgetSchedule {
     pub(crate) restart_count: usize,
     pub(crate) outer_cycle_count: usize,
+    pub(crate) calibration_effort: CalibrationEffortOptions,
 }
 
 #[derive(Debug, Default)]
@@ -66,7 +75,6 @@ struct RestartCandidateProgress<'a> {
     total_evaluation_budget: usize,
     current_evaluation_count: usize,
     last_evaluation_progress_percent: Option<usize>,
-    current_block_label: Option<&'static str>,
     current_block_best_global_loss: Option<f64>,
     finished: bool,
 }
@@ -74,7 +82,15 @@ struct RestartCandidateProgress<'a> {
 #[derive(Debug, Clone, Copy)]
 struct ParameterBlockObjectiveEvaluation {
     objective: f64,
+    admissibility_blocker_count: usize,
+    max_standardized_residual: Option<f64>,
     exact_likelihood_evaluator_counts: Option<ContinuousLikelihoodEvaluatorCounts>,
+}
+
+pub(crate) struct JointRefinementRestartOptimizationOutput {
+    pub(crate) restart_outcomes: Vec<JointRefinementRestartOutcome>,
+    pub(crate) evaluation_timing_diagnostics:
+        Vec<JointRefinementStageRestartEvaluationTimingDiagnostic>,
 }
 
 pub(crate) fn optimize_restart_seeds(
@@ -83,8 +99,8 @@ pub(crate) fn optimize_restart_seeds(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
-) -> Vec<JointRefinementRestartOutcome> {
+    mut completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
+) -> JointRefinementRestartOptimizationOutput {
     debug_assert!(budget_schedule.restart_count > 0);
 
     // Resume passes only pending restart seeds while retaining the original search depth.
@@ -116,24 +132,24 @@ pub(crate) fn optimize_restart_seeds(
     );
 
     if !joint_refinement_has_parallel_worker_capacity(context) || total_units <= 1 {
-        return optimize_restart_seeds_sequential(
+        optimize_restart_seeds_sequential(
             restart_seeds,
             context,
             solver_settings,
             budget_schedule,
             progress_sender,
-            completed_restart_store,
-        );
+            completed_restart_store.as_deref_mut(),
+        )
+    } else {
+        optimize_restart_seeds_parallel(
+            restart_seeds,
+            context,
+            solver_settings,
+            budget_schedule,
+            progress_sender,
+            completed_restart_store.as_deref_mut(),
+        )
     }
-
-    optimize_restart_seeds_parallel(
-        restart_seeds,
-        context,
-        solver_settings,
-        budget_schedule,
-        progress_sender,
-        completed_restart_store,
-    )
 }
 
 fn optimize_restart_seeds_sequential(
@@ -143,7 +159,7 @@ fn optimize_restart_seeds_sequential(
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     mut completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
-) -> Vec<JointRefinementRestartOutcome> {
+) -> JointRefinementRestartOptimizationOutput {
     let total_units = restart_seeds.len();
 
     let mut progress_state = RestartProgressState::default();
@@ -208,7 +224,10 @@ fn optimize_restart_seeds_sequential(
         ordered_outcomes.push(restart_outcome);
     }
 
-    ordered_outcomes
+    JointRefinementRestartOptimizationOutput {
+        restart_outcomes: ordered_outcomes,
+        evaluation_timing_diagnostics: Vec::new(),
+    }
 }
 
 fn optimize_restart_seeds_parallel(
@@ -218,106 +237,38 @@ fn optimize_restart_seeds_parallel(
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     mut completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
-) -> Vec<JointRefinementRestartOutcome> {
-    let total_units = restart_seeds.len();
+) -> JointRefinementRestartOptimizationOutput {
+    let mut output = restart_probe_pool::optimize_restart_seeds_batched_poll_pool(
+        restart_seeds,
+        context,
+        solver_settings,
+        budget_schedule,
+        progress_sender,
+    );
 
-    with_joint_refinement_thread_pool(context, || {
-        let (result_sender, result_receiver) =
-            mpsc::channel::<(usize, JointRefinementRestartOutcome)>();
+    if let Some(resume_store) = completed_restart_store.as_deref_mut() {
+        for outcome in &output.restart_outcomes {
+            resume_store.record_restart_outcome(outcome);
+        }
+    }
 
-        let result_receiver = Arc::new(Mutex::new(result_receiver));
-        let progress_counters = Arc::new(RestartProgressCounters::default());
+    output.restart_outcomes.sort_by_key(|outcome| {
+        restart_seeds
+            .iter()
+            .position(|(restart_id, _)| *restart_id == outcome.restart_id)
+            .unwrap_or(usize::MAX)
+    });
 
-        rayon::scope(|scope| {
-            for (restart_position, (restart_id, seed_vector)) in restart_seeds.iter().enumerate() {
-                let result_sender_for_restart = result_sender.clone();
-                let progress_counters_for_restart = Arc::clone(&progress_counters);
-
-                scope.spawn(move |_| {
-                    let outcome = optimize_single_restart(OptimizeSingleRestartInput {
-                        restart_id: restart_id.as_str(),
-                        seed_vector: seed_vector.as_slice(),
-                        context,
-                        solver_settings,
-                        budget_schedule,
-                        total_units,
-                        progress_counters: progress_counters_for_restart.as_ref(),
-                        progress_sender,
-                    });
-
-                    let _ = result_sender_for_restart.send((restart_position, outcome));
-                });
-            }
-
-            drop(result_sender);
-
-            let mut progress_state = RestartProgressState::default();
-            let mut ordered_outcomes = vec![None; total_units];
-
-            while progress_state.completed_units < total_units {
-                let Ok(receiver_guard) = result_receiver.lock() else {
-                    break;
-                };
-                let Ok((restart_position, restart_outcome)) = receiver_guard.recv() else {
-                    break;
-                };
-
-                drop(receiver_guard);
-
-                progress_state.record(&restart_outcome);
-
-                progress_counters
-                    .completed_units
-                    .store(progress_state.completed_units, Ordering::Relaxed);
-                progress_counters.record_completed_progress_state(&progress_state);
-
-                progress_counters.record_completed_best(
-                    restart_outcome.restart_id.as_str(),
-                    restart_outcome.final_evaluation.breakdown.global_loss,
-                );
-
-                emit_restart_progress(RestartProgressEmissionInput {
-                    progress_sender,
-                    total_units,
-                    progress_state: &progress_state,
-                    restart_outcome: &restart_outcome,
-                    progress_counters: progress_counters.as_ref(),
-                    active_restart_count: progress_counters
-                        .active_restart_count
-                        .load(Ordering::Relaxed),
-                    total_evaluation_budget: restart_candidate_total_evaluation_budget(
-                        context,
-                        solver_settings,
-                        budget_schedule,
-                    ),
-                    aggregate_progress_percent: progress_counters
-                        .aggregate_progress_percent_sum
-                        .load(Ordering::Relaxed)
-                        .checked_div(total_units.max(1))
-                        .unwrap_or(0)
-                        .min(100),
-                });
-
-                if let Some(resume_store) = completed_restart_store.as_deref_mut() {
-                    resume_store.record_restart_outcome(&restart_outcome);
-                }
-
-                ordered_outcomes[restart_position] = Some(restart_outcome);
-            }
-
-            ordered_outcomes
-                .into_iter()
-                .flatten()
-                .collect::<Vec<JointRefinementRestartOutcome>>()
-        })
-    })
+    output
 }
 
 pub(crate) fn joint_refinement_budget_schedule(
     solver_settings: &CalibrationOptimizerSettings,
     restart_count: usize,
+    calibration_effort: Option<CalibrationEffortOptions>,
 ) -> JointRefinementBudgetSchedule {
     let base_outer_cycle_count = joint_refinement_base_outer_cycle_count(solver_settings);
+    let calibration_effort = calibration_effort.unwrap_or(STANDARD_CALIBRATION_EFFORT);
 
     let restart_count = restart_count.max(1);
     let outer_cycle_count = base_outer_cycle_count
@@ -329,32 +280,41 @@ pub(crate) fn joint_refinement_budget_schedule(
     JointRefinementBudgetSchedule {
         restart_count,
         outer_cycle_count,
+        calibration_effort,
     }
 }
 
 pub(crate) fn desired_joint_refinement_restart_candidate_budget(
     restart_candidate_budget_override: Option<usize>,
+    calibration_effort: Option<CalibrationEffortOptions>,
 ) -> usize {
     restart_candidate_budget_override
         .filter(|restart_candidate_budget| *restart_candidate_budget > 0)
-        .unwrap_or(JOINT_REFINEMENT_DEFAULT_RESTART_CANDIDATE_BUDGET)
+        .unwrap_or_else(|| {
+            calibration_effort
+                .unwrap_or(STANDARD_CALIBRATION_EFFORT)
+                .restart_candidate_budget
+                .max(1)
+        })
 }
 
-pub(crate) fn joint_refinement_restart_block_powell_settings(
+pub(crate) fn joint_refinement_restart_full_vector_direct_search_settings(
     solver_settings: &CalibrationOptimizerSettings,
-    active_block_dimension: usize,
-) -> PowellOptimizerSettings {
-    let line_search_evaluation_cap = active_block_dimension.saturating_add(1).max(1);
+    active_parameter_dimension: usize,
+) -> AdaptiveDirectSearchSettings {
+    let poll_direction_count = active_parameter_dimension.saturating_mul(2).max(1);
 
-    PowellOptimizerSettings {
+    AdaptiveDirectSearchSettings {
         absolute_tolerance: solver_settings.absolute_tolerance,
         relative_tolerance: solver_settings.relative_tolerance,
-        min_step_norm: solver_settings.absolute_tolerance,
-        max_cycle_count: 1,
-        line_search_evaluation_cap,
-        evaluation_budget: active_block_dimension
-            .max(1)
-            .saturating_mul(line_search_evaluation_cap),
+        initial_mesh_divisor: active_parameter_dimension.saturating_add(1).max(1),
+        failed_poll_mesh_refinement_divisor:
+            JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR,
+        evaluation_budget: 1usize.saturating_add(
+            poll_direction_count
+                .max(1)
+                .saturating_mul(JOINT_REFINEMENT_DIRECT_SEARCH_COMPLETE_POLL_ROUND_COUNT),
+        ),
     }
 }
 
@@ -460,13 +420,9 @@ fn optimize_single_restart(input: OptimizeSingleRestartInput<'_>) -> JointRefine
             );
         }
 
-        stop_reason = select_restart_stop_reason(
-            cycle_result.hawkes_stop_reason,
-            cycle_result.nig_stop_reason,
-            cycle_result.coupling_stop_reason,
-        );
+        stop_reason = select_restart_stop_reason(cycle_result.global_stop_reason);
 
-        if stop_reason != "tolerance" && stop_reason != "dynamics_infeasible" {
+        if !restart_stop_reason_allows_next_outer_cycle(stop_reason) {
             break;
         }
     }
@@ -841,9 +797,7 @@ fn build_precheck_rejected_restart_outcome(
 
 struct RestartCycleResult {
     updated_vector: Vec<f64>,
-    hawkes_stop_reason: &'static str,
-    nig_stop_reason: &'static str,
-    coupling_stop_reason: &'static str,
+    global_stop_reason: &'static str,
     invalid_step_stop_reason: Option<&'static str>,
     evaluation_count: usize,
 }
@@ -855,169 +809,132 @@ fn optimize_restart_cycle(
     outer_cycle: usize,
     restart_progress: &mut RestartCandidateProgress<'_>,
 ) -> RestartCycleResult {
-    let mut updated_vector = current_vector.to_vec();
-    let mut evaluation_count = 0usize;
+    if restart_seed_summary_workload_is_infeasible(current_vector, context) {
+        return RestartCycleResult {
+            updated_vector: current_vector.to_vec(),
+            global_stop_reason: "seed_summary_workload_infeasible",
+            invalid_step_stop_reason: Some("seed_summary_workload_infeasible"),
+            evaluation_count: 0,
+        };
+    }
 
-    let (candidate_nig_vector, nig_stop_reason, nig_evaluations) = optimize_parameter_block(
-        updated_vector.as_slice(),
-        context.active_parameter_layout.nig_block.as_slice(),
+    let Some(initial_objective) = evaluate_prechecked_full_parameter_vector_objective(
+        current_vector,
         context,
         solver_settings,
-        "nig",
-        outer_cycle,
-        restart_progress,
+    ) else {
+        restart_progress.record_evaluation(outer_cycle, None);
+
+        return RestartCycleResult {
+            updated_vector: current_vector.to_vec(),
+            global_stop_reason: "invalid_step",
+            invalid_step_stop_reason: Some("invalid_step"),
+            evaluation_count: 1,
+        };
+    };
+
+    restart_progress.record_evaluation(outer_cycle, Some(initial_objective));
+
+    let mut pending_initial_objective = Some(initial_objective);
+    let mut evaluate_full_vector = |parameter_vector: &[f64]| -> Option<f64> {
+        if joint_refinement_has_fatal_execution_failure(context) {
+            return None;
+        }
+
+        if let Some(initial_objective) = pending_initial_objective.take() {
+            return Some(initial_objective.objective);
+        }
+
+        if restart_seed_summary_workload_is_infeasible(parameter_vector, context) {
+            restart_progress.record_evaluation(outer_cycle, None);
+            return None;
+        }
+
+        let objective = evaluate_prechecked_full_parameter_vector_objective(
+            parameter_vector,
+            context,
+            solver_settings,
+        );
+
+        restart_progress.record_evaluation(outer_cycle, objective);
+
+        objective.map(|evaluation| evaluation.objective)
+    };
+
+    let optimizer_result = optimize_bounded_adaptive_direct_search(
+        current_vector,
+        context.lower_bounds.as_slice(),
+        context.upper_bounds.as_slice(),
+        joint_refinement_restart_full_vector_direct_search_settings(
+            solver_settings,
+            current_vector.len(),
+        ),
+        &mut evaluate_full_vector,
     );
 
-    evaluation_count += nig_evaluations;
-
-    if nig_stop_reason == "invalid_step" {
+    let Some(optimizer_result) = optimizer_result else {
         return RestartCycleResult {
-            updated_vector: candidate_nig_vector,
-            hawkes_stop_reason: "tolerance",
-            nig_stop_reason,
-            coupling_stop_reason: "tolerance",
-            invalid_step_stop_reason: (nig_stop_reason == "invalid_step")
-                .then_some(nig_stop_reason),
-            evaluation_count,
-        };
-    }
-    let Some(refreshed_nig_vector) = refreshed_parameter_block_candidate(
-        updated_vector.as_slice(),
-        candidate_nig_vector.as_slice(),
-        context,
-        solver_settings,
-    ) else {
-        return RestartCycleResult {
-            updated_vector: candidate_nig_vector,
-            hawkes_stop_reason: "tolerance",
-            nig_stop_reason,
-            coupling_stop_reason: "tolerance",
+            updated_vector: current_vector.to_vec(),
+            global_stop_reason: "invalid_step",
             invalid_step_stop_reason: Some("invalid_step"),
-            evaluation_count,
+            evaluation_count: 0,
         };
     };
-    updated_vector = refreshed_nig_vector;
 
-    let (candidate_hawkes_vector, hawkes_stop_reason, hawkes_evaluations) =
-        optimize_parameter_block(
-            updated_vector.as_slice(),
-            context.active_parameter_layout.hawkes_block.as_slice(),
-            context,
-            solver_settings,
-            "hawkes",
-            outer_cycle,
-            restart_progress,
-        );
-
-    evaluation_count += hawkes_evaluations;
-
-    if hawkes_stop_reason == "invalid_step" {
-        return RestartCycleResult {
-            updated_vector: candidate_hawkes_vector,
-            hawkes_stop_reason,
-            nig_stop_reason: "tolerance",
-            coupling_stop_reason: "tolerance",
-            invalid_step_stop_reason: Some(hawkes_stop_reason),
-            evaluation_count,
-        };
-    }
-    let Some(refreshed_hawkes_vector) = refreshed_parameter_block_candidate(
-        updated_vector.as_slice(),
-        candidate_hawkes_vector.as_slice(),
+    let refreshed_vector = refreshed_full_vector_candidate(
+        current_vector,
+        optimizer_result.best_point.as_slice(),
         context,
         solver_settings,
-    ) else {
-        return RestartCycleResult {
-            updated_vector: candidate_hawkes_vector,
-            hawkes_stop_reason,
-            nig_stop_reason,
-            coupling_stop_reason: "tolerance",
-            invalid_step_stop_reason: Some("invalid_step"),
-            evaluation_count,
-        };
-    };
-    updated_vector = refreshed_hawkes_vector;
-
-    let (candidate_coupling_vector, coupling_stop_reason, coupling_evaluations) =
-        optimize_parameter_block(
-            updated_vector.as_slice(),
-            context.active_parameter_layout.coupling_block.as_slice(),
-            context,
-            solver_settings,
-            "coupling",
-            outer_cycle,
-            restart_progress,
-        );
-
-    evaluation_count += coupling_evaluations;
-
-    let Some(refreshed_coupling_vector) = refreshed_parameter_block_candidate(
-        updated_vector.as_slice(),
-        candidate_coupling_vector.as_slice(),
-        context,
-        solver_settings,
-    ) else {
-        return RestartCycleResult {
-            updated_vector: candidate_coupling_vector,
-            hawkes_stop_reason,
-            nig_stop_reason: "tolerance",
-            coupling_stop_reason,
-            invalid_step_stop_reason: Some("invalid_step"),
-            evaluation_count,
-        };
-    };
-    updated_vector = refreshed_coupling_vector;
+    );
 
     RestartCycleResult {
-        updated_vector,
-        hawkes_stop_reason,
-        nig_stop_reason,
-        coupling_stop_reason,
-        invalid_step_stop_reason: (coupling_stop_reason == "invalid_step")
-            .then_some(coupling_stop_reason)
-            .or((nig_stop_reason == "invalid_step").then_some(nig_stop_reason)),
-        evaluation_count,
+        updated_vector: refreshed_vector,
+        global_stop_reason: optimizer_result.stop_reason,
+        invalid_step_stop_reason: None,
+        evaluation_count: optimizer_result.evaluation_count,
     }
 }
 
-fn refreshed_parameter_block_candidate(
+fn refreshed_full_vector_candidate(
     previous_vector: &[f64],
     candidate_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Option<Vec<f64>> {
+) -> Vec<f64> {
     let previous_evaluation = evaluate_joint_candidate(
         previous_vector,
         context,
-        parameter_block_refresh_fidelity_tier(),
+        full_vector_refresh_fidelity_tier(),
         solver_settings,
     );
+
     let candidate_evaluation = evaluate_joint_candidate(
         candidate_vector,
         context,
-        parameter_block_refresh_fidelity_tier(),
+        full_vector_refresh_fidelity_tier(),
         solver_settings,
     );
 
     if candidate_evaluation.invalid_reason.is_some() {
-        return None;
+        return previous_vector.to_vec();
     }
 
     if previous_evaluation.invalid_reason.is_some() {
-        return Some(candidate_vector.to_vec());
+        return candidate_vector.to_vec();
     }
 
     let candidate_global_loss = candidate_evaluation.breakdown.global_loss;
     if !candidate_global_loss.is_finite() {
-        return None;
+        return previous_vector.to_vec();
     }
 
     let previous_global_loss = previous_evaluation.breakdown.global_loss;
     if previous_global_loss.is_finite() && candidate_global_loss > previous_global_loss {
-        return Some(previous_vector.to_vec());
+        return previous_vector.to_vec();
     }
 
-    Some(candidate_vector.to_vec())
+    candidate_vector.to_vec()
 }
 
 fn build_short_circuited_restart_outcome(
@@ -1045,136 +962,35 @@ fn build_short_circuited_restart_outcome(
     }
 }
 
-fn select_restart_stop_reason(
-    hawkes_stop_reason: &'static str,
-    nig_stop_reason: &'static str,
-    coupling_stop_reason: &'static str,
-) -> &'static str {
-    [coupling_stop_reason, nig_stop_reason, hawkes_stop_reason]
-        .into_iter()
-        .find(|stop_reason| *stop_reason != "tolerance" && *stop_reason != "dynamics_infeasible")
-        .unwrap_or("tolerance")
+fn select_restart_stop_reason(global_stop_reason: &'static str) -> &'static str {
+    global_stop_reason
 }
 
-fn optimize_parameter_block(
-    current_vector: &[f64],
-    block_indices: &[usize],
-    context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
-    parameter_block_label: &'static str,
-    outer_cycle: usize,
-    restart_progress: &mut RestartCandidateProgress<'_>,
-) -> (Vec<f64>, &'static str, usize) {
-    if block_indices.is_empty() {
-        return (current_vector.to_vec(), "fixed_block", 0);
-    }
-
-    restart_progress.emit_block_started(parameter_block_label, outer_cycle);
-
-    let initial_point: Vec<f64> = block_indices
-        .iter()
-        .map(|index| current_vector[*index])
-        .collect();
-
-    let lower_bounds: Vec<f64> = block_indices
-        .iter()
-        .map(|index| context.lower_bounds[*index])
-        .collect();
-
-    let upper_bounds: Vec<f64> = block_indices
-        .iter()
-        .map(|index| context.upper_bounds[*index])
-        .collect();
-
-    if restart_seed_summary_workload_is_infeasible(current_vector, context) {
-        return (
-            current_vector.to_vec(),
-            "seed_summary_workload_infeasible",
-            0,
-        );
-    }
-
-    let Some(initial_block_objective) = evaluate_parameter_block_objective(
-        parameter_block_label,
-        current_vector,
-        block_indices,
-        initial_point.as_slice(),
-        context,
-        solver_settings,
-    ) else {
-        restart_progress.record_evaluation(parameter_block_label, outer_cycle, None);
-        return (current_vector.to_vec(), "invalid_step", 1);
-    };
-
-    restart_progress.record_evaluation(
-        parameter_block_label,
-        outer_cycle,
-        Some(initial_block_objective),
-    );
-
-    let mut pending_initial_block_objective = Some(initial_block_objective);
-    let mut evaluate_block = |block_vector: &[f64]| -> Option<f64> {
-        if joint_refinement_has_fatal_execution_failure(context) {
-            return None;
-        }
-
-        if let Some(initial_block_objective) = pending_initial_block_objective.take() {
-            return Some(initial_block_objective.objective);
-        }
-
-        let full_vector = substitute_block(current_vector, block_indices, block_vector);
-        if restart_seed_summary_workload_is_infeasible(full_vector.as_slice(), context) {
-            restart_progress.record_evaluation(parameter_block_label, outer_cycle, None);
-            return None;
-        }
-
-        let block_objective = evaluate_parameter_block_objective(
-            parameter_block_label,
-            current_vector,
-            block_indices,
-            block_vector,
-            context,
-            solver_settings,
-        );
-        restart_progress.record_evaluation(parameter_block_label, outer_cycle, block_objective);
-
-        block_objective.map(|evaluation| evaluation.objective)
-    };
-
-    let optimizer_result = optimize_bounded_powell(
-        initial_point.as_slice(),
-        lower_bounds.as_slice(),
-        upper_bounds.as_slice(),
-        joint_refinement_restart_block_powell_settings(solver_settings, block_indices.len()),
-        &mut evaluate_block,
-    );
-
-    match optimizer_result {
-        Some(result) => (
-            substitute_block(current_vector, block_indices, result.best_point.as_slice()),
-            result.stop_reason,
-            result.evaluation_count,
-        ),
-        None => (current_vector.to_vec(), "invalid_step", 0),
-    }
+fn restart_stop_reason_allows_next_outer_cycle(stop_reason: &str) -> bool {
+    matches!(stop_reason, "tolerance" | "budget" | "dynamics_infeasible")
 }
 
-fn evaluate_parameter_block_objective(
-    parameter_block_label: &str,
-    current_vector: &[f64],
-    block_indices: &[usize],
-    block_vector: &[f64],
+fn evaluate_prechecked_full_parameter_vector_objective(
+    parameter_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> Option<ParameterBlockObjectiveEvaluation> {
-    let full_vector = substitute_block(current_vector, block_indices, block_vector);
+    if precheck_restart_seed(parameter_vector, context).is_err() {
+        return None;
+    }
 
-    let fidelity_tier = parameter_block_fidelity_tier(parameter_block_label);
+    evaluate_full_parameter_vector_objective(parameter_vector, context, solver_settings)
+}
 
+fn evaluate_full_parameter_vector_objective(
+    parameter_vector: &[f64],
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> Option<ParameterBlockObjectiveEvaluation> {
     let candidate_evaluation = evaluate_joint_candidate(
-        full_vector.as_slice(),
+        parameter_vector,
         context,
-        fidelity_tier,
+        full_vector_search_fidelity_tier(),
         solver_settings,
     );
 
@@ -1183,20 +999,28 @@ fn evaluate_parameter_block_objective(
         .is_none()
         .then_some(ParameterBlockObjectiveEvaluation {
             objective: candidate_evaluation.breakdown.global_loss,
+            admissibility_blocker_count: candidate_evaluation
+                .breakdown
+                .admissibility
+                .blockers
+                .len(),
+            max_standardized_residual: Some(
+                candidate_evaluation
+                    .breakdown
+                    .admissibility
+                    .max_standardized_residual,
+            ),
             exact_likelihood_evaluator_counts: Some(
                 candidate_evaluation.exact_likelihood_evaluator_counts,
             ),
         })
 }
 
-fn parameter_block_fidelity_tier(parameter_block_label: &str) -> JointRefinementFidelityTier {
-    match parameter_block_label {
-        "nig" => JointRefinementFidelityTier::NigBlockSearch,
-        _ => JointRefinementFidelityTier::CoarseLocal,
-    }
+fn full_vector_search_fidelity_tier() -> JointRefinementFidelityTier {
+    JointRefinementFidelityTier::CoarseLocal
 }
 
-fn parameter_block_refresh_fidelity_tier() -> JointRefinementFidelityTier {
+fn full_vector_refresh_fidelity_tier() -> JointRefinementFidelityTier {
     JointRefinementFidelityTier::Local
 }
 
@@ -1263,19 +1087,6 @@ fn summary_simulation_event_capacity_is_infeasible(
     estimated_event_capacity as f64 > admissible_event_capacity
 }
 
-fn substitute_block(
-    current_vector: &[f64],
-    block_indices: &[usize],
-    block_vector: &[f64],
-) -> Vec<f64> {
-    let mut updated = current_vector.to_vec();
-    for (block_position, parameter_index) in block_indices.iter().enumerate() {
-        updated[*parameter_index] = block_vector[block_position];
-    }
-
-    updated
-}
-
 fn joint_refinement_has_fatal_execution_failure(context: &JointRefinementContext) -> bool {
     simulation_infrastructure_failure_message(context).is_some()
         || option_pricing_execution_failure_message(context).is_some()
@@ -1296,42 +1107,11 @@ fn restart_cycle_evaluation_budget(
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> usize {
-    [
-        context.active_parameter_layout.nig_block.as_slice(),
-        context.active_parameter_layout.hawkes_block.as_slice(),
-        context.active_parameter_layout.coupling_block.as_slice(),
-    ]
-    .into_iter()
-    .filter(|block_indices| !block_indices.is_empty())
-    .map(|block_indices| {
-        restart_block_progress_evaluation_budget(solver_settings, block_indices.len())
-    })
-    .sum::<usize>()
-}
-
-fn restart_block_progress_evaluation_budget(
-    solver_settings: &CalibrationOptimizerSettings,
-    active_block_dimension: usize,
-) -> usize {
-    if active_block_dimension == 0 {
-        return 0;
-    }
-
-    let block_settings =
-        joint_refinement_restart_block_powell_settings(solver_settings, active_block_dimension);
-
-    debug_assert_eq!(block_settings.max_cycle_count, 1);
-
-    // The restart progress counter increments on every objective callback. Under the
-    // current one-cycle Powell configuration, the solver can consume the full block
-    // budget across the coordinate directions before it checks the budget guard. Each
-    // directional line search also probes the incumbent point once outside the
-    // optimizer's internal `evaluation_count`, so the display budget must include
-    // those bookkeeping callbacks to keep the terminal progress panel consistent.
-    1usize.saturating_add(
-        active_block_dimension
-            .saturating_mul(block_settings.line_search_evaluation_cap.saturating_add(1)),
+    joint_refinement_restart_full_vector_direct_search_settings(
+        solver_settings,
+        context.active_parameter_layout.vector_length(),
     )
+    .evaluation_budget
 }
 
 fn emit_joint_refinement_progress(
@@ -1366,7 +1146,6 @@ impl<'a> RestartCandidateProgress<'a> {
             ),
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_block_label: None,
             current_block_best_global_loss: None,
             finished: false,
         }
@@ -1379,21 +1158,15 @@ impl<'a> RestartCandidateProgress<'a> {
             .fetch_add(1, Ordering::Relaxed)
             + 1;
 
-        self.emit_progress(None, None, None, Some(active_restart_count), None);
+        self.emit_progress(None, None, Some(active_restart_count), None);
     }
 
     fn record_evaluation(
         &mut self,
-        parameter_block_label: &'static str,
         completed_outer_cycles: usize,
         evaluation: Option<ParameterBlockObjectiveEvaluation>,
     ) {
         self.current_evaluation_count = self.current_evaluation_count.saturating_add(1);
-
-        if self.current_block_label != Some(parameter_block_label) {
-            self.current_block_label = Some(parameter_block_label);
-            self.current_block_best_global_loss = None;
-        }
 
         if let Some(global_loss) = evaluation.map(|evaluation| evaluation.objective) {
             self.current_block_best_global_loss = Some(
@@ -1413,28 +1186,10 @@ impl<'a> RestartCandidateProgress<'a> {
         self.last_evaluation_progress_percent = Some(progress_percent);
 
         self.emit_progress(
-            Some(parameter_block_label),
             Some(completed_outer_cycles),
             Some(progress_percent),
             Some(self.counters.active_restart_count.load(Ordering::Relaxed)),
             evaluation,
-        );
-    }
-
-    fn emit_block_started(
-        &mut self,
-        parameter_block_label: &'static str,
-        completed_outer_cycles: usize,
-    ) {
-        self.current_block_label = Some(parameter_block_label);
-        self.current_block_best_global_loss = None;
-
-        self.emit_progress(
-            Some(parameter_block_label),
-            Some(completed_outer_cycles),
-            None,
-            Some(self.counters.active_restart_count.load(Ordering::Relaxed)),
-            None,
         );
     }
 
@@ -1484,7 +1239,6 @@ impl<'a> RestartCandidateProgress<'a> {
 
     fn emit_progress(
         &self,
-        parameter_block_label: Option<&str>,
         completed_outer_cycles: Option<usize>,
         evaluation_progress_percent: Option<usize>,
         active_restart_count: Option<usize>,
@@ -1511,7 +1265,7 @@ impl<'a> RestartCandidateProgress<'a> {
                 current_item_label: Some(self.restart_id.to_string()),
                 current_restart_id: Some(self.restart_id.to_string()),
                 active_restart_count,
-                current_parameter_block: parameter_block_label.map(str::to_string),
+                current_parameter_block: None,
                 completed_outer_cycles,
                 total_outer_cycles: Some(self.total_outer_cycles),
                 current_evaluation_count: Some(self.current_evaluation_count),
@@ -1708,128 +1462,26 @@ mod tests {
     use std::sync::atomic::Ordering;
     use std::sync::mpsc;
 
-    use janiform_calibration_artifacts::{
-        CalibrationOptimizerSettings, HawkesStageFittedParameters,
-        JointRefinementStageFittedParameters, ReturnComponentsStageFittedParameters,
-        ReturnMarkHourOfWeekScaleProfile, SurpriseNewsDeterministicIntensityProfile,
-        TickGridObservationModel,
-    };
-    use janiform_model_kernels::hawkes::{
-        HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
-        HawkesStructuredRhoParameterization,
-    };
-    use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
-    use janiform_model_kernels::news::{
-        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-        GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
-        SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
-    };
-    use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
     use super::{
         ParameterBlockObjectiveEvaluation, RestartCandidateProgress, RestartProgressCounters,
-        RestartProgressState, parameter_block_fidelity_tier, parameter_block_refresh_fidelity_tier,
+        RestartProgressState, full_vector_refresh_fidelity_tier, full_vector_search_fidelity_tier,
+        joint_refinement_restart_full_vector_direct_search_settings,
         precheck_hawkes_structural_domain, precheck_nig_return_composition_domain,
-        precheck_restart_seed_vector_contract, restart_block_progress_evaluation_budget,
+        precheck_restart_seed_vector_contract, restart_stop_reason_allows_next_outer_cycle,
         runtime_branching_workload_is_infeasible, select_restart_stop_reason,
         summary_simulation_event_capacity_is_infeasible,
     };
-    use crate::stages::joint_refinement::execution::JointRefinementFidelityTier;
-
-    fn test_joint_fitted_parameters() -> JointRefinementStageFittedParameters {
-        let hawkes_fitted_parameters = HawkesStageFittedParameters {
-            kernel_parameters: HawkesKernelParameters::try_new(
-                1.0,
-                2.0,
-                HawkesKernelLoadings {
-                    plus_plus: 0.2,
-                    plus_minus: 0.1,
-                    minus_plus: 0.1,
-                    minus_minus: 0.2,
-                },
-                HawkesKernelLoadings {
-                    plus_plus: 0.05,
-                    plus_minus: 0.02,
-                    minus_plus: 0.02,
-                    minus_minus: 0.05,
-                },
-            )
-            .expect("test Hawkes parameters should validate"),
-            structured_alpha: HawkesStructuredAlphaParameterization::new(0.2, 0.1, 0.0, 0.0),
-            structured_rho: HawkesStructuredRhoParameterization::new(0.05, 0.02, 0.0, 0.0),
-            self_dominance_policy: None,
-            stability_numeric_tolerance: 0.0,
-        };
-
-        let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
-            nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
-                2.0, -0.2, 0.5, 0.0, -0.1,
-            )
-            .expect("test NIG configuration should validate"),
-            news_process_configuration: NewsProcessConfiguration::try_new(
-                NewsArrivalConfiguration {
-                    known: KnownNewsArrivalConfiguration {
-                        scheduled_event_timestamps_utc_nanos: Vec::new(),
-                    },
-                    surprise: SurpriseNewsArrivalConfiguration {
-                        baseline_intensity: 0.0,
-                    },
-                },
-                SharedNewsMarkLawConfiguration {
-                    gamma_severity_marks: GammaSeverityMarkConfiguration {
-                        shape_k: 1.5,
-                        scale_theta: 0.8,
-                    },
-                    double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                        probability_positive: 0.5,
-                        eta_plus: 1.2,
-                        eta_minus: 1.2,
-                    },
-                    coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.2 },
-                },
-                NewsComponentMarkScaleConfiguration {
-                    activity_coupling_scale: 0.0,
-                    return_jump_scale: 0.0,
-                },
-                NewsComponentMarkScaleConfiguration {
-                    activity_coupling_scale: 0.0,
-                    return_jump_scale: 0.0,
-                },
-            )
-            .expect("test news process configuration should validate"),
-            surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-                weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
-                profile_resolution_hours: 1,
-                fit_policy: "test".to_string(),
-                normalization_policy: "test".to_string(),
-            },
-            return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
-                hour_of_week_factors: vec![1.0; 24 * 7],
-                profile_resolution_hours: 1,
-                fit_policy: "test".to_string(),
-                normalization_policy: "test".to_string(),
-            },
-            tick_grid_observation_model: TickGridObservationModel {
-                tick_size: None,
-                tick_size_source: "test".to_string(),
-                inference_policy: "test".to_string(),
-                observation_policy: "test".to_string(),
-            },
-            mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
-        };
-
-        JointRefinementStageFittedParameters {
-            hawkes_fitted_parameters,
-            return_components_fitted_parameters,
-            pricing_block_fitted_parameters: None,
-        }
-    }
+    use crate::stages::joint_refinement::execution::{
+        JointRefinementFidelityTier, test_joint_fitted_parameters,
+    };
 
     fn parameter_block_objective_for_test(objective: f64) -> ParameterBlockObjectiveEvaluation {
         ParameterBlockObjectiveEvaluation {
             objective,
+            admissibility_blocker_count: 0,
+            max_standardized_residual: None,
             exact_likelihood_evaluator_counts: None,
         }
     }
@@ -1848,7 +1500,6 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 10,
             last_evaluation_progress_percent: None,
-            current_block_label: None,
             current_block_best_global_loss: None,
             finished: false,
         };
@@ -1874,15 +1525,14 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_block_label: None,
             current_block_best_global_loss: None,
             finished: false,
         };
 
-        halton_progress.record_evaluation("nig", 1, Some(parameter_block_objective_for_test(10.0)));
+        halton_progress.record_evaluation(1, Some(parameter_block_objective_for_test(10.0)));
         progress_receiver.recv().unwrap();
 
-        halton_progress.record_evaluation("nig", 1, Some(parameter_block_objective_for_test(4.0)));
+        halton_progress.record_evaluation(1, Some(parameter_block_objective_for_test(4.0)));
 
         let progress_update = progress_receiver.recv().unwrap();
 
@@ -1914,12 +1564,11 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_block_label: None,
             current_block_best_global_loss: None,
             finished: false,
         };
 
-        restart_progress.record_evaluation("nig", 1, Some(parameter_block_objective_for_test(3.0)));
+        restart_progress.record_evaluation(1, Some(parameter_block_objective_for_test(3.0)));
 
         let progress_update = progress_receiver.recv().unwrap();
 
@@ -1947,31 +1596,38 @@ mod tests {
     }
 
     #[test]
-    fn restart_block_progress_budget_accounts_for_powell_callback_count() {
+    fn restart_full_vector_progress_budget_matches_optimizer_budget() {
         let solver_settings =
             CalibrationOptimizerSettings::try_new("joint-test", 256, 4, 1.0e-6, 1.0e-6, 10.0)
                 .expect("solver settings should validate");
 
-        assert_eq!(
-            restart_block_progress_evaluation_budget(&solver_settings, 4),
-            25
-        );
-        assert_eq!(
-            restart_block_progress_evaluation_budget(&solver_settings, 1),
-            4
-        );
-        assert_eq!(
-            restart_block_progress_evaluation_budget(&solver_settings, 0),
-            0
-        );
+        let four_dimensional_settings =
+            joint_refinement_restart_full_vector_direct_search_settings(&solver_settings, 4);
+        let one_dimensional_settings =
+            joint_refinement_restart_full_vector_direct_search_settings(&solver_settings, 1);
+
+        assert_eq!(four_dimensional_settings.initial_mesh_divisor, 5);
+        assert_eq!(four_dimensional_settings.evaluation_budget, 17);
+        assert_eq!(one_dimensional_settings.evaluation_budget, 5);
     }
 
     #[test]
-    fn restart_stop_reason_ignores_deferred_dynamics_feasibility() {
-        assert_eq!(
-            select_restart_stop_reason("tolerance", "dynamics_infeasible", "tolerance"),
-            "tolerance"
-        );
+    fn restart_stop_reason_preserves_full_vector_optimizer_reason() {
+        assert_eq!(select_restart_stop_reason("budget"), "budget");
+        assert_eq!(select_restart_stop_reason("tolerance"), "tolerance");
+    }
+
+    #[test]
+    fn restart_outer_cycle_continues_after_block_budget() {
+        assert!(restart_stop_reason_allows_next_outer_cycle("budget"));
+        assert!(restart_stop_reason_allows_next_outer_cycle("tolerance"));
+        assert!(restart_stop_reason_allows_next_outer_cycle(
+            "dynamics_infeasible"
+        ));
+        assert!(!restart_stop_reason_allows_next_outer_cycle("invalid_step"));
+        assert!(!restart_stop_reason_allows_next_outer_cycle(
+            "seed_summary_workload_infeasible"
+        ));
     }
 
     #[test]
@@ -1996,25 +1652,17 @@ mod tests {
     }
 
     #[test]
-    fn restart_block_objectives_use_coarse_search_fidelity() {
+    fn restart_full_vector_objectives_use_coarse_search_fidelity() {
         assert_eq!(
-            parameter_block_fidelity_tier("nig"),
-            JointRefinementFidelityTier::NigBlockSearch
-        );
-        assert_eq!(
-            parameter_block_fidelity_tier("hawkes"),
-            JointRefinementFidelityTier::CoarseLocal
-        );
-        assert_eq!(
-            parameter_block_fidelity_tier("coupling"),
+            full_vector_search_fidelity_tier(),
             JointRefinementFidelityTier::CoarseLocal
         );
     }
 
     #[test]
-    fn restart_block_refresh_uses_seeded_local_fidelity() {
+    fn restart_full_vector_refresh_uses_seeded_local_fidelity() {
         assert_eq!(
-            parameter_block_refresh_fidelity_tier(),
+            full_vector_refresh_fidelity_tier(),
             JointRefinementFidelityTier::Local
         );
     }

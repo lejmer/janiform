@@ -45,12 +45,12 @@ The same ideas apply whether the report is a Python object or saved as JSON. The
 
 In the report, two sections matter most:
 
-| Report section        | What it answers                                               |
-|-----------------------|---------------------------------------------------------------|
-| `objective_breakdown.global_loss`    | What single loss did Janiform use to rank complete candidates?      |
-| `objective_breakdown.family_losses`  | Which broad parts of the fit were strong or weak?                   |
-| `objective_breakdown.term_diagnostics` | What observed and modeled measurements caused those losses?       |
-| `objective_breakdown.admissibility`  | Which terms, if any, blocked final acceptance?                      |
+| Report section                         | What it answers                                                |
+|----------------------------------------|----------------------------------------------------------------|
+| `objective_breakdown.global_loss`      | What single loss did Janiform use to rank complete candidates? |
+| `objective_breakdown.family_losses`    | Which broad parts of the fit were strong or weak?              |
+| `objective_breakdown.term_diagnostics` | What observed and modeled measurements caused those losses?    |
+| `objective_breakdown.admissibility`    | Which terms, if any, blocked final acceptance?                 |
 
 Start with `objective_breakdown.family_losses`. If one area looks bad, use `objective_breakdown.term_diagnostics` to see the underlying observed and modeled numbers.
 
@@ -66,8 +66,8 @@ Janiform reports some terms that are useful but easy to misread.
 | Family loss           | The mean loss for one named group of related checks, such as activity shape or return scale.                 |
 | Term diagnostic       | One observed-versus-modeled comparison inside a family.                                                      |
 | Standardized residual | The observed-versus-modeled difference divided by its uncertainty scale.                                     |
-| Huber loss            | The per-term loss used for stylized facts. It is quadratic near zero and linear for large residuals.          |
-| Excess loss           | The extra loss for standardized residuals or constraints beyond the admissibility threshold.                  |
+| Huber loss            | The per-term loss used for stylized facts. It is quadratic near zero and linear for large residuals.         |
+| Excess loss           | The extra loss for standardized residuals or constraints beyond the admissibility threshold.                 |
 | Admissibility blocker | A term or hard constraint that crossed the final acceptance threshold.                                       |
 | Activity              | How often market events arrive. In tick data, high activity means ticks arrive frequently.                   |
 | Return scale          | The typical size of price changes. It is related to volatility, but reported here as fitted return behavior. |
@@ -91,19 +91,19 @@ Also avoid reading one number by itself. A useful fit is usually balanced: activ
 
 `objective_breakdown.family_losses` groups the fit into broad areas. The field names are technical because they are saved in the report, but each one maps to a plain question.
 
-| Family                         | Plain meaning                                                                 |
-|--------------------------------|-------------------------------------------------------------------------------|
-| `returns`                      | Does the fitted return distribution explain observed tick, 5m, and 15m returns? |
-| `return_shape`                 | Do returns have similar center, spread, skew, and tail shape?                 |
-| `return_scale`                 | Are tick-level and interval-level price changes about the right size?         |
-| `business_time_return_scale`   | Does return size change reasonably between quiet and active periods?          |
-| `intraday_return_level`        | Does return size vary across the day in a similar way?                        |
-| `activity_level_timing`        | Does the model produce the right amount and coarse timing of activity?        |
-| `activity_shape`               | Does the intraday activity profile have similar shape to the training data?   |
-| `rv_activity_coupling`         | Does higher activity tend to come with higher price variation in the same way? |
-| `options`                      | When options are present, do model prices match market quotes on quote scale? |
+| Family                       | Plain meaning                                                                   |
+|------------------------------|---------------------------------------------------------------------------------|
+| `returns`                    | Does the fitted return distribution explain observed tick, 5m, and 15m returns? |
+| `return_shape`               | Do returns have similar center, spread, skew, and tail shape?                   |
+| `return_scale`               | Are tick-level and interval-level price changes about the right size?           |
+| `business_time_return_scale` | Does return size change reasonably between quiet and active periods?            |
+| `intraday_return_level`      | Does return size vary across the day in a similar way?                          |
+| `activity_level_timing`      | Does the model produce the right amount and coarse timing of activity?          |
+| `activity_shape`             | Does the intraday activity profile have similar shape to the training data?     |
+| `rv_activity_coupling`       | Does higher activity tend to come with higher price variation in the same way?  |
+| `options`                    | When options are present, do model prices match market quotes on quote scale?   |
 
-`global_loss` is the mean of available family losses plus domain-margin prior loss plus admissibility excess loss. The excess loss is zero when every standardized residual and hard constraint is inside the admissibility region. Once a term crosses the admissibility threshold, the excess beyond that threshold is Huberized and added to the global loss, so optimization and final acceptance point in the same direction.
+`global_loss` is the mean of available family losses plus domain-margin prior loss plus admissibility excess loss. The excess loss is zero when every standardized residual and hard constraint is inside the admissibility region. Once terms cross the admissibility threshold, each excess beyond that threshold is Huberized and summed into the global loss, so optimization and final acceptance point in the same direction.
 
 The global loss is useful for ranking candidate fits, but it is not a standalone quality grade. A model with a slightly worse global loss may still be easier to trust if its weak areas are less important for your use case.
 
@@ -117,19 +117,19 @@ The global loss is useful for ranking candidate fits, but it is not a standalone
 
 Each term has:
 
-| Field                     | Meaning                                                                 |
-|---------------------------|-------------------------------------------------------------------------|
-| `term_id`                 | The report name for this measurement.                                   |
-| `family_id`               | The broader behavior it belongs to, such as activity or return scale.   |
+| Field                     | Meaning                                                                            |
+|---------------------------|------------------------------------------------------------------------------------|
+| `term_id`                 | The report name for this measurement.                                              |
+| `family_id`               | The broader behavior it belongs to, such as activity or return scale.              |
 | `term_kind`               | The kind of term: exact likelihood, stylized fact, domain margin, or option quote. |
-| `observed_value`          | The value measured in the training data when applicable.                |
-| `model_value`             | The value from the fitted model or simulation when applicable.          |
-| `observed_standard_error` | The estimated uncertainty of the observed value when applicable.        |
-| `model_standard_error`    | The estimated uncertainty of the modeled value when applicable.         |
-| `uncertainty_scale`       | The pooled scale used to standardize observed-versus-modeled mismatch.  |
-| `standardized_residual`   | The signed mismatch after scaling.                                      |
-| `loss`                    | The contribution this term makes before family averaging.               |
-| `admissibility_blocker`   | Whether this term blocks final acceptance.                              |
+| `observed_value`          | The value measured in the training data when applicable.                           |
+| `model_value`             | The value from the fitted model or simulation when applicable.                     |
+| `observed_standard_error` | The estimated uncertainty of the observed value when applicable.                   |
+| `model_standard_error`    | The estimated uncertainty of the modeled value when applicable.                    |
+| `uncertainty_scale`       | The pooled scale used to standardize observed-versus-modeled mismatch.             |
+| `standardized_residual`   | The signed mismatch after scaling.                                                 |
+| `loss`                    | The contribution this term makes before family averaging.                          |
+| `admissibility_blocker`   | Whether this term blocks final acceptance.                                         |
 
 Use these terms when a broad area looks weak.
 
@@ -137,7 +137,7 @@ For example:
 
 - If `activity_level_timing` is high, compare observed and modeled activity count terms.
 - If `return_scale` is high, check whether modeled tick or interval returns are too large or too small.
-- If `return_shape` is high, inspect center, volatility, quantile, tail, skew, and L-moment terms.
+- If `return_shape` is high, inspect center, winsorized dispersion, quantile, tail, skew, and L-moment terms. The dispersion term is reported as `winsorized_volatility_q05_q95`, which means standard deviation after clamping the normalized return sample to its 5th and 95th percentiles.
 - If `rv_activity_coupling` is high, check whether activity and price variation move together differently in simulation than in the training data.
 
 Term diagnostics explain the loss, but they are not the whole model-selection rule. Use them for interpretation, not for manually recomputing the final objective.
@@ -150,10 +150,10 @@ Common patterns:
 
 | High area                    | What to inspect                                                                                            |
 |------------------------------|------------------------------------------------------------------------------------------------------------|
-| Activity level and timing    | The market may be simulated too frequently, too rarely, or with the wrong coarse time profile.              |
+| Activity level and timing    | The market may be simulated too frequently, too rarely, or with the wrong coarse time profile.             |
 | Activity shape               | The total activity may be acceptable, but the hourly/session profile may be wrong.                         |
 | Return scale                 | Price changes may be too large or too small.                                                               |
-| Return shape                 | The fitted model may miss tails, concentration near zero, skew, or other distribution features.             |
+| Return shape                 | The fitted model may miss tails, concentration near zero, skew, or other distribution features.            |
 | Activity-volatility coupling | Active periods may not produce the right amount of price variation. Volatility means how much prices vary. |
 | Options                      | Model prices may be outside market quote scale or imply an incompatible risk-neutral tilt.                 |
 
@@ -207,9 +207,13 @@ Search restarts are built from the fit residuals Janiform can evaluate before th
 
 The restart frontier is selected from low-cost screening losses before expensive restart optimization. The screening step keeps candidates that improve different weak areas, but admissibility is still decided from refreshed selection or audit-fidelity loss diagnostics.
 
-During restart search, exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
+Before filling the frontier with quasi-random seeds, Janiform builds sensitivity repair seeds from the best screened candidates. For each anchor candidate, it perturbs each active parameter inside the validated bounds, measures how active standardized residuals respond, solves a small damped least-squares repair step in normalized parameter space, and adds bounded trust-region versions of that step back into the same screening and diversity selection path. This is term-driven rather than asset-specific: whichever residuals are currently outside admissibility define the repair direction.
 
-During restart optimization, terminal progress reports the shared pseudo-likelihood loss used by the search. `Trial loss` is the most recent block probe, `Accepted loss` is the best accepted loss for the active block, and `Final loss` is the completed restart loss when the restart has reached a final evaluation. Smaller loss is better.
+During restart search, Janiform optimizes the full active parameter vector with one bounded adaptive direct search per restart. The search state owns return-shape, activity, and coupling parameters together, so accepted updates are not forced through a fixed NIG, Hawkes, and coupling block order. Poll probes use coordinate positive and negative directions, which form a positive spanning set for direct search. Coupled repair directions are produced by restart sensitivity seeds before restart optimization. Exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Coarse interval probes also include a reduced deterministic tick-shape proxy from the NIG return-composition sampler, so the optimizer still sees tick-level shape pressure before the refreshed seeded-tick evaluations. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
+
+The Hawkes search coordinate is a stationary event-rate coordinate rather than a raw `lambda_bar` coordinate. Janiform solves `lambda_bar` from the current excitation matrix and the requested stationary open-event rate, which lets the search change clustering and decay without accidentally changing total activity on every single-coordinate probe.
+
+During restart optimization, terminal progress reports the shared pseudo-likelihood loss used by the search. `Trial loss` is the most recent full-vector probe, `Accepted loss` is the best accepted loss for the active restart, and `Final loss` is the completed restart loss when the restart has reached a final evaluation. Smaller loss is better.
 
 The restart table may also show exact return-likelihood evaluator counters. `CF-Buy` is the number of return blocks evaluated by the closed-form single-side buy density, `CF-Sell` is the number evaluated by the closed-form single-side sell density, and `Mix` is the number evaluated by the tilted mixed buy/sell inversion path. High `CF-Buy` or `CF-Sell` means the return likelihood mostly used the cheaper closed-form kernels. High `Mix` means more blocks required the more expensive mixed-side tilted inversion path.
 
@@ -222,6 +226,8 @@ Joint refinement reports `runtime_profile` in successful and failed stage report
 The cumulative fields split objective evaluation cost into deterministic work, likelihood-context construction, tick/5m/15m likelihood evaluation, expected activity counts, deterministic activity shape/level checks, seed-summary simulation, raw seed metric extraction, loss assembly, and option pricing. The cache counters show whether repeated evaluations reused objective, deterministic, seed-summary, aggregated-likelihood-context, or option-pricing artifacts.
 
 Use `cumulative_deterministic_evaluation_millis` as the broad total for deterministic objective work, then use the narrower cumulative fields to identify which deterministic substep dominates. Millisecond counters can remain zero for very small samples or very cheap substeps.
+
+Restart optimization also records `restart_evaluation_timing_diagnostics` for completed probes. These diagnostics include restart id, scheduling category, poll direction, elapsed milliseconds, objective value, admissibility blocker count, standardized residual summary, and exact likelihood evaluator counters. The same completed-probe diagnostics are streamed into `events.jsonl` as `metric_update` events during the run, so long restart searches leave a durable timing trail before the final report is assembled.
 
 ## A practical reading order
 

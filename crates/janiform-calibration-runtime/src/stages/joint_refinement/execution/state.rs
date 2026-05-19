@@ -64,7 +64,6 @@ type JointRefinementObservedReturnShapeStatisticCache = Arc<
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum JointRefinementFidelityTier {
-    NigBlockSearch,
     CoarseLocal,
     Local,
     Final,
@@ -446,7 +445,7 @@ pub(crate) struct JointRefinementActiveParameterLayout {
     pub(crate) hawkes_block: Vec<usize>,
     pub(crate) nig_block: Vec<usize>,
     pub(crate) coupling_block: Vec<usize>,
-    pub(crate) log_lambda_scale_index: usize,
+    pub(crate) log_stationary_event_rate_scale_index: usize,
     pub(crate) log_beta_scale_index: usize,
     pub(crate) log_self_excitation_scale_index: usize,
     pub(crate) log_cross_excitation_scale_index: usize,

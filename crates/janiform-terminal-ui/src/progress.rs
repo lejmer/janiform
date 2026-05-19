@@ -147,6 +147,7 @@ impl ProgressAdapter {
                 measure,
                 work_item_label,
                 work_item_progress_percent,
+                work_item_status,
                 planned_work_item_labels,
                 work_item_columns,
                 work_item_metrics,
@@ -168,6 +169,7 @@ impl ProgressAdapter {
                         work_item_label,
                         measure,
                         work_item_progress_percent,
+                        work_item_status,
                         work_item_metrics,
                     );
                 }
@@ -188,6 +190,7 @@ impl ProgressAdapter {
             }
             ProgressEvent::StageCompleted {
                 stage,
+                status,
                 runtime_seconds,
             } => {
                 self.snapshot.completed_stage = Some(stage);
@@ -199,7 +202,7 @@ impl ProgressAdapter {
                 if let Some(stage_number) = self.snapshot.stage_number {
                     self.update_stage_status(
                         stage_number,
-                        ProgressStageStatus::Completed,
+                        completed_progress_stage_status(status.as_str()),
                         Some(elapsed),
                     );
                 }
@@ -444,9 +447,10 @@ impl ProgressAdapter {
         label: String,
         measure: ProgressMeasure,
         progress_percent: Option<usize>,
+        status: Option<String>,
         metrics: Vec<ProgressWorkItemMetric>,
     ) {
-        let status = work_item_status_text(progress_percent).to_string();
+        let status = status.unwrap_or_else(|| work_item_status_text(progress_percent).to_string());
 
         let started_at = self
             .active_work_started_at_by_label
@@ -500,5 +504,13 @@ impl ProgressAdapter {
 
             self.snapshot.work_item_columns.push(column);
         }
+    }
+}
+
+fn completed_progress_stage_status(status: &str) -> ProgressStageStatus {
+    if status == "completed with warnings" {
+        ProgressStageStatus::CompletedWithWarnings
+    } else {
+        ProgressStageStatus::Completed
     }
 }

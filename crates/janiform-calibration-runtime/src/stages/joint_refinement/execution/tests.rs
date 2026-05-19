@@ -19,9 +19,9 @@ use super::{
     JointRefinementRestartOutcome, JointRefinementSeedSummary,
     admissibility_threshold_from_sample_count, desired_joint_refinement_restart_candidate_budget,
     ensure_valid_selected_restart_outcome, extend_joint_coarse_tick_consistency_metrics_for_seed,
-    joint_refinement_budget_schedule, joint_refinement_restart_block_powell_settings,
+    joint_refinement_budget_schedule, joint_refinement_restart_full_vector_direct_search_settings,
     option_refinement_candidate_frontier_from_selected_outcomes, sampled_observed_tick_returns,
-    tick_shape_sample_target_count,
+    test_joint_fitted_parameters, tick_shape_sample_target_count,
 };
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
@@ -45,23 +45,9 @@ use crate::stages::return_components::{
 };
 use janiform_calibration_artifacts::{
     CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermKind,
-    CalibrationObjectivePolicy, CalibrationOptimizerSettings, HawkesStageFittedParameters,
-    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
-    ReturnComponentsStageFittedParameters, ReturnMarkHourOfWeekScaleProfile,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
+    CalibrationObjectivePolicy, CalibrationOptimizerSettings,
+    JointRefinementStageObjectiveBreakdown,
 };
-use janiform_model_kernels::hawkes::{
-    HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
-    HawkesStructuredRhoParameterization,
-};
-use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
-use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
-    SurpriseNewsArrivalConfiguration,
-};
-use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
     CalibrationOptimizerSettings::try_new("joint-test", 256, cpu_count, 1.0e-6, 1.0e-6, 10.0)
@@ -73,7 +59,7 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
         hawkes_block: vec![0, 1, 2, 3],
         nig_block: vec![4, 5, 6, 7],
         coupling_block: vec![8, 9, 10],
-        log_lambda_scale_index: 0,
+        log_stationary_event_rate_scale_index: 0,
         log_beta_scale_index: 1,
         log_self_excitation_scale_index: 2,
         log_cross_excitation_scale_index: 3,
@@ -350,101 +336,12 @@ fn build_test_interval_observation(
     }
 }
 
-fn build_test_joint_fitted_parameters() -> JointRefinementStageFittedParameters {
-    let hawkes_fitted_parameters = HawkesStageFittedParameters {
-        kernel_parameters: HawkesKernelParameters {
-            lambda_bar: 1.0,
-            beta: 2.0,
-            alpha: HawkesKernelLoadings {
-                plus_plus: 0.2,
-                plus_minus: 0.1,
-                minus_plus: 0.1,
-                minus_minus: 0.2,
-            },
-            rho: HawkesKernelLoadings {
-                plus_plus: 0.05,
-                plus_minus: 0.02,
-                minus_plus: 0.02,
-                minus_minus: 0.05,
-            },
-        },
-        structured_alpha: HawkesStructuredAlphaParameterization::new(0.2, 0.1, 0.0, 0.0),
-        structured_rho: HawkesStructuredRhoParameterization::new(0.05, 0.02, 0.0, 0.0),
-        self_dominance_policy: None,
-        stability_numeric_tolerance: 0.0,
-    };
-
-    let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
-        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
-            2.0, -0.2, 0.5, 0.0, -0.1,
-        )
-        .expect("test NIG configuration should be valid"),
-        news_process_configuration: NewsProcessConfiguration::try_new(
-            NewsArrivalConfiguration {
-                known: KnownNewsArrivalConfiguration {
-                    scheduled_event_timestamps_utc_nanos: Vec::new(),
-                },
-                surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
-                },
-            },
-            SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration {
-                    shape_k: 1.5,
-                    scale_theta: 0.8,
-                },
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                    probability_positive: 0.5,
-                    eta_plus: 1.2,
-                    eta_minus: 1.2,
-                },
-                coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.2 },
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 0.0,
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 0.0,
-            },
-        )
-        .expect("test news process configuration should be valid"),
-        surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-            weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
-            profile_resolution_hours: 1,
-            fit_policy: "test".to_string(),
-            normalization_policy: "test".to_string(),
-        },
-        return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
-            hour_of_week_factors: vec![1.0; 24 * 7],
-            profile_resolution_hours: 1,
-            fit_policy: "test".to_string(),
-            normalization_policy: "test".to_string(),
-        },
-        tick_grid_observation_model: TickGridObservationModel {
-            tick_size: None,
-            tick_size_source: "test".to_string(),
-            inference_policy: "test".to_string(),
-            observation_policy: "test".to_string(),
-        },
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
-    };
-
-    JointRefinementStageFittedParameters {
-        hawkes_fitted_parameters,
-        return_components_fitted_parameters,
-        pricing_block_fitted_parameters: None,
-    }
-}
-
 fn build_test_restart_outcome(
     restart_id: &str,
     breakdown: JointRefinementStageObjectiveBreakdown,
 ) -> JointRefinementRestartOutcome {
     let evaluation = JointRefinementCandidateEvaluation {
-        fitted_parameters: build_test_joint_fitted_parameters(),
+        fitted_parameters: test_joint_fitted_parameters(),
         raw_admissibility_metrics: build_test_raw_admissibility_metrics(&breakdown),
         breakdown,
         exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts::default(),
@@ -502,13 +399,16 @@ fn build_test_seed_summary(
 
 #[test]
 fn joint_refinement_desired_restart_candidate_budget_defaults_to_fifteen() {
-    assert_eq!(desired_joint_refinement_restart_candidate_budget(None), 15);
+    assert_eq!(
+        desired_joint_refinement_restart_candidate_budget(None, None),
+        15
+    );
 }
 
 #[test]
 fn joint_refinement_desired_restart_candidate_budget_honors_override() {
     assert_eq!(
-        desired_joint_refinement_restart_candidate_budget(Some(9)),
+        desired_joint_refinement_restart_candidate_budget(Some(9), None),
         9
     );
 }
@@ -517,7 +417,7 @@ fn joint_refinement_desired_restart_candidate_budget_honors_override() {
 fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_depth() {
     let solver_settings = build_test_solver_settings(64);
 
-    let single_restart_schedule = joint_refinement_budget_schedule(&solver_settings, 1);
+    let single_restart_schedule = joint_refinement_budget_schedule(&solver_settings, 1, None);
 
     assert_eq!(single_restart_schedule.restart_count, 1);
     assert_eq!(
@@ -525,36 +425,36 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
         super::JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT
     );
 
-    let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15);
+    let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15, None);
 
     assert_eq!(default_frontier_schedule.restart_count, 15);
     assert_eq!(default_frontier_schedule.outer_cycle_count, 1);
 
-    let broad_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 50);
+    let broad_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 50, None);
 
     assert_eq!(broad_frontier_schedule.restart_count, 50);
     assert_eq!(broad_frontier_schedule.outer_cycle_count, 1);
 }
 
 #[test]
-fn joint_refinement_restart_block_budget_is_dimension_minimal() {
+fn joint_refinement_restart_full_vector_budget_is_dimension_minimal() {
     let solver_settings = build_test_solver_settings(64);
 
-    let four_dimensional_block_settings =
-        joint_refinement_restart_block_powell_settings(&solver_settings, 4);
+    let four_dimensional_settings =
+        joint_refinement_restart_full_vector_direct_search_settings(&solver_settings, 4);
 
-    assert_eq!(four_dimensional_block_settings.max_cycle_count, 1);
+    assert_eq!(four_dimensional_settings.initial_mesh_divisor, 5);
     assert_eq!(
-        four_dimensional_block_settings.line_search_evaluation_cap,
-        5
+        four_dimensional_settings.failed_poll_mesh_refinement_divisor,
+        2
     );
-    assert_eq!(four_dimensional_block_settings.evaluation_budget, 20);
+    assert_eq!(four_dimensional_settings.evaluation_budget, 17);
     assert_eq!(
-        four_dimensional_block_settings.absolute_tolerance,
+        four_dimensional_settings.absolute_tolerance,
         solver_settings.absolute_tolerance
     );
     assert_eq!(
-        four_dimensional_block_settings.relative_tolerance,
+        four_dimensional_settings.relative_tolerance,
         solver_settings.relative_tolerance
     );
 }
@@ -578,14 +478,13 @@ fn joint_refinement_baseline_parameter_vector_round_trips_selected_return_nig() 
     )
     .expect("selected NIG should decode from joint search point");
 
-    let mut fitted_parameters =
-        build_test_joint_fitted_parameters().return_components_fitted_parameters;
+    let mut fitted_parameters = test_joint_fitted_parameters().return_components_fitted_parameters;
 
     fitted_parameters.nig_shared_plus_shift_configuration = selected_nig;
 
     let baseline_parameter_vector = build_baseline_parameter_vector(
         &active_parameter_layout,
-        &build_test_joint_fitted_parameters().hawkes_fitted_parameters,
+        &test_joint_fitted_parameters().hawkes_fitted_parameters,
         &fitted_parameters,
         &baseline_15m_calibration_sample,
     )
@@ -631,14 +530,13 @@ fn joint_refinement_nig_bounds_include_selected_return_nig_outside_theoretical_r
     )
     .expect("selected NIG should decode from widened-search test point");
 
-    let mut fitted_parameters =
-        build_test_joint_fitted_parameters().return_components_fitted_parameters;
+    let mut fitted_parameters = test_joint_fitted_parameters().return_components_fitted_parameters;
 
     fitted_parameters.nig_shared_plus_shift_configuration = selected_nig;
 
     let baseline_parameter_vector = build_baseline_parameter_vector(
         &active_parameter_layout,
-        &build_test_joint_fitted_parameters().hawkes_fitted_parameters,
+        &test_joint_fitted_parameters().hawkes_fitted_parameters,
         &fitted_parameters,
         &baseline_15m_calibration_sample,
     )
@@ -767,7 +665,8 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
             halton_seed_is_accepted: Box::new(|_| false),
         });
 
-    let log_lambda_index = active_parameter_layout.log_lambda_scale_index;
+    let log_stationary_event_rate_index =
+        active_parameter_layout.log_stationary_event_rate_scale_index;
     let log_delta_offset_index = active_parameter_layout.nig_block[3];
     let mean_absolute_return_delta_shift = 0.5f64.ln();
     let tick_realized_variance_delta_shift = 0.4f64.ln();
@@ -789,7 +688,10 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
         mean_absolute_return_activity_seed[log_delta_offset_index],
         mean_absolute_return_delta_shift
     );
-    assert_eq!(mean_absolute_return_activity_seed[log_lambda_index], 0.25);
+    assert_eq!(
+        mean_absolute_return_activity_seed[log_stationary_event_rate_index],
+        0.25
+    );
 
     let tick_realized_variance_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
@@ -959,7 +861,7 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         clamped_projected_coordinates[3]
     );
     assert_eq!(
-        nig_basin_activity_seed[active_parameter_layout.log_lambda_scale_index],
+        nig_basin_activity_seed[active_parameter_layout.log_stationary_event_rate_scale_index],
         0.25
     );
     assert_eq!(
@@ -1004,7 +906,8 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         clamped_projected_coordinates[3]
     );
     assert_eq!(
-        nig_alpha_delta_activity_seed[active_parameter_layout.log_lambda_scale_index],
+        nig_alpha_delta_activity_seed
+            [active_parameter_layout.log_stationary_event_rate_scale_index],
         0.25
     );
     assert_eq!(
@@ -1349,13 +1252,13 @@ fn selected_restart_validation_rejects_inadmissible_candidate() {
         build_test_inadmissible_joint_breakdown(1.0, 1.0, 0.8, "activity_level_fit"),
     );
 
-    let failure = ensure_valid_selected_restart_outcome(&restart_outcome, 0, 0)
+    let failure = ensure_valid_selected_restart_outcome(&restart_outcome, 0, 0, true)
         .expect_err("inadmissible selected restart should fail validation");
 
     match failure {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message } => {
             assert!(
-                error_message.contains("could not identify an admissible candidate"),
+                error_message.contains("selected the best valid candidate"),
                 "unexpected failure message: {error_message}"
             );
             assert!(

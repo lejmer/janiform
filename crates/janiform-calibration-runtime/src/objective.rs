@@ -351,11 +351,11 @@ impl CalibrationLossBuilder {
             if let Some(standardized_residual) = term.standardized_residual {
                 max_standardized_residual =
                     max_standardized_residual.max(standardized_residual.abs());
-                excess_loss = excess_loss.max(admissibility_excess_loss(
+                excess_loss += admissibility_excess_loss(
                     standardized_residual.abs(),
                     self.policy.admissibility_z_threshold,
                     self.policy.stylized_fact_huber_cutoff,
-                ));
+                );
             } else if term.admissibility_blocker {
                 excess_loss = f64::INFINITY;
             }
@@ -368,11 +368,11 @@ impl CalibrationLossBuilder {
         for constraint in &self.hard_constraints {
             max_standardized_residual =
                 max_standardized_residual.max(constraint.standardized_violation.abs());
-            excess_loss = excess_loss.max(admissibility_excess_loss(
+            excess_loss += admissibility_excess_loss(
                 constraint.standardized_violation.abs(),
                 self.policy.admissibility_z_threshold,
                 self.policy.stylized_fact_huber_cutoff,
-            ));
+            );
             if constraint.admissibility_blocker {
                 blockers.push(constraint.constraint_id.clone());
             }
@@ -593,6 +593,27 @@ mod loss_tests {
         assert_eq!(evaluation.admissibility.excess_loss, 0.5);
         assert_eq!(evaluation.global_loss, 5.0);
         assert_eq!(evaluation.admissibility.blockers, vec!["shape.q99"]);
+    }
+
+    #[test]
+    fn loss_builder_accumulates_all_admissibility_excess_losses() {
+        let policy =
+            CalibrationObjectivePolicy::try_new(3.0, 2.0).expect("test policy should validate");
+
+        let mut builder = CalibrationLossBuilder::new(policy);
+
+        builder.add_stylized_fact_term("shape.q05", "return_shape", 1.0, 4.0, 1.0, 0.0);
+        builder.add_stylized_fact_term("shape.q95", "return_shape", 1.0, 4.0, 1.0, 0.0);
+
+        let evaluation = builder.build();
+
+        assert!(!evaluation.admissibility.admissible);
+        assert_eq!(evaluation.admissibility.excess_loss, 1.0);
+        assert_eq!(evaluation.global_loss, 5.5);
+        assert_eq!(
+            evaluation.admissibility.blockers,
+            vec!["shape.q05", "shape.q95"]
+        );
     }
 
     #[test]

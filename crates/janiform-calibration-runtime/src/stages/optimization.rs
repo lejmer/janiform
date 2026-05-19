@@ -1,3 +1,5 @@
+use janiform_foundations::numeric::clamp_point;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct PowellOptimizerSettings {
     pub absolute_tolerance: f64,
@@ -387,16 +389,6 @@ fn bounded_step_interval(
 
     (lower_step.is_finite() && upper_step.is_finite() && lower_step <= upper_step)
         .then_some((lower_step, upper_step))
-}
-
-fn clamp_point(point: &[f64], lower_bounds: &[f64], upper_bounds: &[f64]) -> Vec<f64> {
-    point
-        .iter()
-        .zip(lower_bounds.iter().zip(upper_bounds.iter()))
-        .map(|(coordinate, (lower_bound, upper_bound))| {
-            coordinate.clamp(*lower_bound, *upper_bound)
-        })
-        .collect()
 }
 
 fn add_points(left: &[f64], right: &[f64]) -> Vec<f64> {

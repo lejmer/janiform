@@ -12,8 +12,7 @@ use janiform_calibration_artifacts::{
     calibration_stage_parameter_artifact_path, load_calibration_stage_parameter_artifact_from_disk,
 };
 use janiform_calibration_runtime::{
-    CalibrationStageExecutionStatus, CalibrationStagedExecutionInput, CalibrationStagedRunReport,
-    CalibrationStagedRunStageReport,
+    CalibrationStagedExecutionInput, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
 };
 use serde::Serialize;
 use serde_json::Map;
@@ -62,11 +61,11 @@ pub fn build_fit_report_payload(
         "schema_version": FIT_REPORT_SCHEMA_VERSION,
         "run_id": execution_input.request.run_id,
         "workflow_scope": workflow_scope_id.as_str(),
-        "success": report.status == CalibrationStageExecutionStatus::Success,
+        "success": report.status.is_successful(),
         "summary": {
             "run_id": execution_input.request.run_id,
             "workflow_scope": workflow_scope_id.as_str(),
-            "success": report.status == CalibrationStageExecutionStatus::Success,
+            "success": report.status.is_successful(),
             "selected_stages": execution_input.request.selected_stages,
             "stage_statuses": stage_statuses(report),
             "diagnostic_count": report.diagnostic_artifact_references.len(),

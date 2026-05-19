@@ -389,6 +389,9 @@ impl ProgressRenderState {
             ProgressStageStatus::Pending => self.styled(SemanticStyle::Metadata, text),
             ProgressStageStatus::Running => self.styled(SemanticStyle::ActiveStage, text),
             ProgressStageStatus::Completed => self.styled(SemanticStyle::CompletedMarker, text),
+            ProgressStageStatus::CompletedWithWarnings => {
+                self.styled(SemanticStyle::WarningMarker, text)
+            }
             ProgressStageStatus::Failed => self.styled(SemanticStyle::FailureMarker, text),
         }
     }

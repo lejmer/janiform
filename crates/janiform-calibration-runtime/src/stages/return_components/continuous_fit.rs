@@ -28,6 +28,7 @@ pub(crate) use bounds::{
     nig_search_point_from_configuration,
 };
 pub(crate) use likelihood::evaluate_configuration_likelihood_objective_with_context_and_counts;
+pub(crate) use likelihood::simulate_matched_scale_returns_with_seed;
 #[cfg(test)]
 pub(crate) use optimization::build_nig_search_candidates;
 pub(crate) use optimization::{
@@ -47,6 +48,7 @@ pub(crate) use sample::{
     continuous_return_calibration_sample_observed_returns,
     rescale_continuous_return_calibration_sample_business_time_scales,
     rescale_continuous_return_optimizer_context_business_time_scales,
+    sample_continuous_return_calibration_sample_by_equal_stride,
 };
 pub(crate) use shape_mapping::NigSharedPlusShiftConfigurationSearchPointMapping;
 pub(crate) use types::{

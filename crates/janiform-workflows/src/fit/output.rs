@@ -93,7 +93,7 @@ pub fn fit_completion_json_payload(
         "command_id": FIT_RUN_COMMAND_ID,
         "run_id": execution_input.request.run_id,
         "status": report.status,
-        "model_path": (report.status == CalibrationStageExecutionStatus::Success).then_some(&paths.model_path),
+        "model_path": report.status.is_successful().then_some(&paths.model_path),
         "report_path": paths.report_path,
         "event_log_path": event_log_path,
         "checkpoint_count": report.emitted_checkpoints.len(),
@@ -113,7 +113,7 @@ pub(super) fn fit_completion_view(
     event_log_path: &Path,
     execution_duration: Duration,
 ) -> Result<FitCompletionView, WorkflowError> {
-    if report.status == CalibrationStageExecutionStatus::Success {
+    if report.status.is_successful() {
         return Ok(FitCompletionView::Success(success_summary(
             report,
             paths,
@@ -136,7 +136,11 @@ fn success_summary(
     execution_duration: Duration,
 ) -> CompletionSummary {
     CompletionSummary {
-        status: CompletionSummaryStatus::Succeeded,
+        status: if report.status == CalibrationStageExecutionStatus::SuccessWithWarnings {
+            CompletionSummaryStatus::SucceededWithWarnings
+        } else {
+            CompletionSummaryStatus::Succeeded
+        },
         title: format!(
             "Fit completed in {}",
             format_elapsed_label(execution_duration)

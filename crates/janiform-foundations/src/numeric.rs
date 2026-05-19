@@ -1,7 +1,11 @@
 //! Shared numeric helpers for deterministic floating-point domain handling.
 
+mod bounds;
+
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+
+pub use bounds::{clamp_point, clamp_point_in_place};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FiniteNumberValidationError {
@@ -339,6 +343,31 @@ pub fn sample_standard_deviation(values: &[f64]) -> f64 {
     (sum_squared_deviation / (finite_values.len() - 1) as f64)
         .max(0.0)
         .sqrt()
+}
+
+/// Compute sample standard deviation after clamping sorted observations to quantile bounds.
+pub fn winsorized_sample_standard_deviation_from_sorted(
+    sorted_values: &[f64],
+    lower_quantile: f64,
+    upper_quantile: f64,
+) -> f64 {
+    if sorted_values.is_empty() {
+        return f64::NAN;
+    }
+
+    let lower_bound = compute_sorted_quantile_or_zero(sorted_values, lower_quantile);
+    let upper_bound = compute_sorted_quantile_or_zero(sorted_values, upper_quantile);
+    if lower_bound > upper_bound {
+        return f64::NAN;
+    }
+
+    let winsorized_values = sorted_values
+        .iter()
+        .copied()
+        .map(|value| value.clamp(lower_bound, upper_bound))
+        .collect::<Vec<_>>();
+
+    sample_standard_deviation(winsorized_values.as_slice())
 }
 
 /// Compute the sample variance after discarding non-finite observations.
@@ -815,7 +844,8 @@ mod tests {
         sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
         sample_variance, smallest_positive_value, sorted_finite_values, standardized_path_distance,
         strictly_positive_machine_value, unique_sorted_values, validate_finite_number,
-        validate_negative_number, validate_non_negative_number, validate_positive_number, z_score,
+        validate_negative_number, validate_non_negative_number, validate_positive_number,
+        winsorized_sample_standard_deviation_from_sorted, z_score,
     };
 
     #[test]
@@ -926,6 +956,10 @@ mod tests {
         );
         assert!((relative_rmse(&[2.0, 4.0], &[1.0, 3.0], 1.0e-8) - 0.5).abs() <= 1.0e-12);
         assert!((sample_standard_deviation(&[1.0, 2.0, 3.0]) - 1.0).abs() <= 1.0e-12);
+        assert!(
+            winsorized_sample_standard_deviation_from_sorted(&[1.0, 2.0, 3.0, 100.0], 0.25, 0.75)
+                < sample_standard_deviation(&[1.0, 2.0, 3.0, 100.0])
+        );
         assert_eq!(sample_variance(&[1.0, 2.0, 3.0]), Some(1.0));
         assert_eq!(
             bowley_skewness_from_sorted(&[1.0, 2.0, 3.0, 4.0, 5.0], 1.0e-12),

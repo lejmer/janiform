@@ -70,15 +70,6 @@ pub(crate) fn build_halton_restart_id(position: usize) -> String {
     format!("halton_{position:02}")
 }
 
-pub(crate) fn clamp_in_place(values: &mut [f64], lower_bounds: &[f64], upper_bounds: &[f64]) {
-    for (value, (lower_bound, upper_bound)) in values
-        .iter_mut()
-        .zip(lower_bounds.iter().zip(upper_bounds.iter()))
-    {
-        *value = value.clamp(*lower_bound, *upper_bound);
-    }
-}
-
 pub(crate) fn with_joint_refinement_thread_pool<T, F>(
     context: &JointRefinementContext,
     operation: F,

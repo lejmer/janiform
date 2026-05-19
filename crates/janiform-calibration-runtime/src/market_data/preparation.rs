@@ -4,8 +4,8 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationObjectivePolicy, CalibrationRunDataInputs,
-    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationEffortOptions, CalibrationExecutionMode, CalibrationObjectivePolicy,
+    CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageSolverSettings,
 };
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
@@ -162,6 +162,10 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub dynamics_search_restart_candidate_budget: Option<usize>,
     #[serde(default)]
+    pub calibration_effort: Option<CalibrationEffortOptions>,
+    #[serde(default)]
+    pub treat_calibration_warnings_as_errors: bool,
+    #[serde(default)]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     #[serde(default)]
     pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
@@ -283,6 +287,18 @@ fn validate_dynamics_search_restart_candidate_budget(
     Ok(())
 }
 
+fn validate_calibration_effort(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if let Some(calibration_effort) = request.calibration_effort {
+        calibration_effort.validate().map_err(|source| {
+            CalibrationMarketDataPreparationError::from(format!("calibration_effort {source}"))
+        })?;
+    }
+
+    Ok(())
+}
+
 fn validate_joint_refinement_audit_option_pricing(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Result<(), CalibrationMarketDataPreparationError> {
@@ -320,6 +336,7 @@ pub fn prepare_market_data_calibration_plan(
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
@@ -347,6 +364,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
@@ -1390,6 +1408,9 @@ fn prepared_market_data_plan_from_loading_output(
         )?,
         joint_refinement_restart_candidate_budget_override: request
             .dynamics_search_restart_candidate_budget,
+        joint_refinement_calibration_effort: request.calibration_effort,
+        treat_inadmissible_calibration_warning_as_error: request
+            .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: request
             .joint_refinement_option_refinement_candidate_count_override,
         joint_refinement_option_refinement_wall_clock_budget_millis: request

@@ -82,7 +82,14 @@ impl SeasonalityStageExecutionInput {
 #[serde(rename_all = "snake_case")]
 pub enum CalibrationStageExecutionStatus {
     Success,
+    SuccessWithWarnings,
     Failure,
+}
+
+impl CalibrationStageExecutionStatus {
+    pub const fn is_successful(self) -> bool {
+        matches!(self, Self::Success | Self::SuccessWithWarnings)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

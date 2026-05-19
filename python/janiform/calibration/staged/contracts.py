@@ -42,6 +42,7 @@ class CalibrationStage(StrEnum):
 
 class CalibrationStageExecutionStatus(StrEnum):
     SUCCESS = "success"
+    SUCCESS_WITH_WARNINGS = "success_with_warnings"
     FAILURE = "failure"
 
 

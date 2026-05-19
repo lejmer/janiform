@@ -6,9 +6,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationRunContract, CalibrationRunContractError,
-    CalibrationRunSpec, CalibrationStage, CalibrationStageDependency, CalibrationStageGraph,
-    JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
+    CalibrationEffortOptions, CalibrationExecutionMode, CalibrationRunContract,
+    CalibrationRunContractError, CalibrationRunSpec, CalibrationStage, CalibrationStageDependency,
+    CalibrationStageGraph, JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
     ReturnMarkHourOfWeekScaleProfile, TickGridObservationModel,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
@@ -80,6 +80,10 @@ pub struct CalibrationStagedExecutionInput {
     pub mean_reversion_stage_input: Option<CalibrationMeanReversionStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_restart_candidate_budget_override: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
+    #[serde(default)]
+    pub treat_inadmissible_calibration_warning_as_error: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -696,6 +700,9 @@ impl CalibrationStagedExecutionInput {
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
             joint_refinement_restart_candidate_budget_override: self
                 .joint_refinement_restart_candidate_budget_override,
+            joint_refinement_calibration_effort: self.joint_refinement_calibration_effort,
+            treat_inadmissible_calibration_warning_as_error: self
+                .treat_inadmissible_calibration_warning_as_error,
             joint_refinement_option_refinement_candidate_count_override: self
                 .joint_refinement_option_refinement_candidate_count_override,
             joint_refinement_option_refinement_wall_clock_budget_millis: self
@@ -1470,6 +1477,8 @@ mod tests {
                 ],
             }),
             joint_refinement_restart_candidate_budget_override: None,
+            joint_refinement_calibration_effort: None,
+            treat_inadmissible_calibration_warning_as_error: false,
             joint_refinement_option_refinement_candidate_count_override: None,
             joint_refinement_option_refinement_wall_clock_budget_millis: None,
             joint_refinement_audit_option_pricing_enabled: false,

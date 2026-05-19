@@ -20,6 +20,7 @@ use super::types::{
     ContinuousLikelihoodFidelityTier, ContinuousReturnOptimizerContext,
     ReturnComponentsStageContinuousReturnCalibrationSample,
 };
+use crate::stages::joint_metrics::equal_stride_sample_indices;
 
 pub(crate) fn build_continuous_return_calibration_sample(
     sorted_signals: &ReturnComponentsStageSortedSignalInputs,
@@ -87,6 +88,38 @@ pub(crate) fn continuous_return_calibration_sample_business_time_scales(
     calibration_sample.business_time_scales.as_slice()
 }
 
+pub(crate) fn sample_continuous_return_calibration_sample_by_equal_stride(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    target_count: usize,
+) -> ReturnComponentsStageContinuousReturnCalibrationSample {
+    let aligned_count = calibration_sample
+        .observed_returns
+        .len()
+        .min(calibration_sample.business_time_scales.len())
+        .min(calibration_sample.sell_share_proxies.len());
+
+    let sample_indices = equal_stride_sample_indices(aligned_count, target_count);
+
+    build_continuous_return_calibration_sample_from_components(
+        sample_indices
+            .iter()
+            .filter_map(|sample_index| calibration_sample.observed_returns.get(*sample_index))
+            .copied()
+            .collect(),
+        sample_indices
+            .iter()
+            .filter_map(|sample_index| calibration_sample.business_time_scales.get(*sample_index))
+            .copied()
+            .collect(),
+        sample_indices
+            .iter()
+            .filter_map(|sample_index| calibration_sample.sell_share_proxies.get(*sample_index))
+            .copied()
+            .collect(),
+        calibration_sample.open_session_sell_share_proxy,
+    )
+}
+
 pub(crate) fn build_continuous_return_calibration_sample_from_components(
     observed_returns: Vec<f64>,
     business_time_scales: Vec<f64>,
@@ -94,6 +127,7 @@ pub(crate) fn build_continuous_return_calibration_sample_from_components(
     open_session_sell_share_proxy: f64,
 ) -> ReturnComponentsStageContinuousReturnCalibrationSample {
     let observed_profile = build_distribution_profile(observed_returns.as_slice());
+
     let scale_bucket_profiles =
         build_scale_bucket_profiles(observed_returns.as_slice(), business_time_scales.as_slice());
 
@@ -130,6 +164,7 @@ pub(crate) fn build_continuous_return_optimizer_context(
 ) -> ContinuousReturnOptimizerContext {
     let business_time_floor =
         positive_business_time_floor(calibration_sample.business_time_scales.as_slice());
+
     let integrated_buy_intensities: Vec<f64> = calibration_sample
         .business_time_scales
         .iter()
@@ -138,6 +173,7 @@ pub(crate) fn build_continuous_return_optimizer_context(
             business_time_scale * (1.0 - sell_share_proxy.clamp(0.0, 1.0))
         })
         .collect();
+
     let integrated_sell_intensities: Vec<f64> = calibration_sample
         .business_time_scales
         .iter()
@@ -209,6 +245,7 @@ pub(crate) fn build_weighted_continuous_return_optimizer_context(
 
     let mut optimizer_context =
         build_continuous_return_optimizer_context(&weighted_calibration_sample);
+
     optimizer_context.member_weights = representative_sample.weights().to_vec();
 
     optimizer_context
@@ -219,12 +256,15 @@ pub(crate) fn rescale_continuous_return_optimizer_context_business_time_scales(
     scale_multiplier: f64,
 ) -> ContinuousReturnOptimizerContext {
     let resolved_scale_multiplier = scale_multiplier.max(strictly_positive_machine_value());
+
     let business_time_scales = optimizer_context
         .business_time_scales
         .iter()
         .map(|business_time_scale| business_time_scale * resolved_scale_multiplier)
         .collect::<Vec<_>>();
+
     let business_time_floor = positive_business_time_floor(business_time_scales.as_slice());
+
     let mean_business_time_scale =
         arithmetic_mean(business_time_scales.as_slice()).max(business_time_floor);
 
@@ -235,6 +275,7 @@ pub(crate) fn rescale_continuous_return_optimizer_context_business_time_scales(
             business_time_scale * (1.0 - sell_share_proxy.clamp(0.0, 1.0))
         })
         .collect();
+
     let integrated_sell_intensities = business_time_scales
         .iter()
         .zip(optimizer_context.sell_share_proxies.iter())
