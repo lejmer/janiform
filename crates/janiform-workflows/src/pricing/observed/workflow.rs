@@ -229,12 +229,12 @@ pub fn run_observed_options_pricing_with_observer(
         execution_duration_seconds: execution_duration.as_secs_f64(),
     };
 
+    complete_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+
     emit_pricing_completion_summary(
         &observer.terminal_output,
         observed_options_completion_summary(&output, execution_duration),
     )?;
-
-    complete_pricing_progress(observer.progress_adapter.as_deref_mut())?;
 
     Ok(output)
 }
