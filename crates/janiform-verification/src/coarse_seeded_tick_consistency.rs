@@ -1713,9 +1713,9 @@ fn integrate_side_intensity(
     let deseasonalized_baseline = lambda_bar * elapsed_hours;
 
     let endogenous_component = if plus_side {
-        (state.y_plus_plus + state.y_plus_minus) * integrated_decay_weight
+        state.target_plus_sum() * integrated_decay_weight
     } else {
-        (state.y_minus_plus + state.y_minus_minus) * integrated_decay_weight
+        state.target_minus_sum() * integrated_decay_weight
     };
 
     seasonality_factor * (deseasonalized_baseline + endogenous_component)

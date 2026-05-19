@@ -631,11 +631,8 @@ fn integrate_expected_target_sums(
     let alpha = kernel_parameters.alpha;
     let rho = kernel_parameters.rho;
 
-    let target_plus_before =
-        structural_state_before.y_plus_plus + structural_state_before.y_plus_minus;
-
-    let target_minus_before =
-        structural_state_before.y_minus_plus + structural_state_before.y_minus_minus;
+    let target_plus_before = structural_state_before.target_plus_sum();
+    let target_minus_before = structural_state_before.target_minus_sum();
 
     let matrix_a = -kernel_parameters.beta + alpha.plus_plus;
     let matrix_b = alpha.plus_minus;
@@ -684,12 +681,10 @@ fn expected_hawkes_state_after_first_moment_interval(
 
     // The first-moment dynamics are closed in side-level target sums, so the
     // aggregate target is carried in a canonical component for the next step.
-    Ok(HawkesExcitationState {
-        y_plus_plus: target_plus_after,
-        y_plus_minus: 0.0,
-        y_minus_plus: target_minus_after,
-        y_minus_minus: 0.0,
-    })
+    Ok(HawkesExcitationState::from_target_sums(
+        target_plus_after,
+        target_minus_after,
+    ))
 }
 
 fn expected_scaled_news_loading_rate(

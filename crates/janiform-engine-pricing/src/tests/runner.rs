@@ -12,11 +12,10 @@ use crate::{
     VanillaOptionPricingRequest,
 };
 use janiform_affine_oracle::endogenous_anchor::{
-    EndogenousAnchorIntervalFactors, derive_expected_interval_statistics_from_first_moment_dynamics,
+    EndogenousAnchorIntervalFactors, derive_expected_interval_projection_from_first_moment_dynamics,
 };
-use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
 use janiform_foundations::complex_math::ComplexScalar;
-use janiform_model_kernels::hawkes::{HawkesEventSide, HawkesExcitationState};
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -26,10 +25,9 @@ use crate::runner::{
     IntervalTiltCurve, LocalTransitionRequestContext,
     build_pricing_sufficient_statistics_neutral_anchor_materialization,
     evaluate_core_pure_imaginary_log_moment_exponent_for_tilt,
-    evaluate_pricing_log_return_characteristic_function,
-    infer_expected_news_loading_under_local_measure_for_row,
-    prepare_transition_row_kernel_with_curve, recover_pure_imaginary_log_moment_exponent,
-    resolve_local_transition_theta, resolve_local_transition_theta_for_row_with_curve,
+    evaluate_pricing_log_return_characteristic_function, prepare_transition_row_kernel_with_curve,
+    recover_pure_imaginary_log_moment_exponent, resolve_local_transition_theta,
+    resolve_local_transition_theta_for_row_with_curve,
     resolve_local_transition_theta_for_row_with_parallelism,
 };
 use janiform_affine_oracle::affine_oracle::{
@@ -327,70 +325,6 @@ fn single_node_price(model_parameters: crate::VanillaOptionPricingModelParameter
     .expect("finite-difference pricing run should succeed");
 
     pricing_result.grids[0].price_grid[0][0].expect("single-node price should exist")
-}
-
-#[test]
-fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero() {
-    let mut model_parameters = valid_model_parameters();
-
-    model_parameters
-        .news_process_configuration
-        .known_component_mark_scales
-        .activity_coupling_scale = 0.0;
-    model_parameters
-        .news_process_configuration
-        .surprise_component_mark_scales
-        .activity_coupling_scale = 0.0;
-
-    let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.0, 0.0)
-            .expect("market inputs should construct"),
-        VanillaOptionPayoffConfiguration {
-            payoff_type: VanillaOptionPayoffType::Call,
-        },
-        AnchoredVanillaOptionPricingBoundaryInput::try_new(
-            0,
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion should construct"),
-            1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
-                .expect("observed boundary state should construct"),
-        )
-        .expect("boundary input should construct"),
-        model_parameters,
-        1.0,
-    )
-    .expect("pricing request should construct");
-
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-        .expect("interval factors should construct");
-
-    let expected_statistics =
-        SufficientStatisticsExpectedIntervalStatistics::try_new(1.0, 1.0, 0.0, 0.0)
-            .expect("expected statistics should construct");
-
-    let transition_context =
-        LocalTransitionRequestContext::from_pricing_request(&request, interval_factors)
-            .expect("transition context should construct");
-
-    let transition_row = transition_context
-        .build_row_state(request.boundary_input.observed_boundary_state.deviation)
-        .expect("transition row should construct");
-
-    let expected_news_loading = infer_expected_news_loading_under_local_measure_for_row(
-        &transition_context,
-        &transition_row,
-        expected_statistics,
-    )
-    .expect("zero activity coupling should not require inferred loading");
-
-    assert_eq!(expected_news_loading, 0.0);
 }
 
 #[test]
@@ -763,7 +697,8 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
         .expected_severity_mark()
         .expect("expected severity mark should evaluate");
 
-    let expected_statistics = derive_expected_interval_statistics_from_first_moment_dynamics(
+    let expected_projection = derive_expected_interval_projection_from_first_moment_dynamics(
+        request.boundary_input.interval_index,
         build_pricing_equation_specification(&request),
         expected_severity_mark,
         EndogenousAnchorIntervalFactors::try_new(
@@ -775,127 +710,12 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
         .expect("endogenous interval factors should construct"),
         request.boundary_input.hawkes_boundary_state,
     )
-    .expect("first-moment expected statistics should evaluate");
-
-    let expected_hawkes_state = request
-        .boundary_input
-        .hawkes_boundary_state
-        .apply_shared_decay_drift(
-            request.model_parameters.hawkes_kernel_parameters.beta,
-            request.interval_delta,
-        )
-        .apply_expected_endogenous_event_jump(
-            HawkesEventSide::Buy,
-            request.model_parameters.hawkes_kernel_parameters.alpha,
-            expected_statistics.expected_n_plus,
-        )
-        .apply_expected_endogenous_event_jump(
-            HawkesEventSide::Sell,
-            request.model_parameters.hawkes_kernel_parameters.alpha,
-            expected_statistics.expected_n_minus,
-        );
+    .expect("first-moment expected projection should evaluate");
 
     assert_eq!(
         materialization.expected_hawkes_state_path[1],
-        expected_hawkes_state
+        expected_projection.structural_state_after
     );
-}
-
-#[test]
-fn nested_news_loading_inference_uses_exact_closed_form_with_activity_coupling() {
-    let mut model_parameters = valid_model_parameters();
-
-    model_parameters
-        .news_process_configuration
-        .known_component_mark_scales
-        .activity_coupling_scale = 0.8;
-    model_parameters
-        .news_process_configuration
-        .surprise_component_mark_scales
-        .activity_coupling_scale = 0.35;
-
-    let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
-            .expect("market inputs should construct"),
-        VanillaOptionPayoffConfiguration {
-            payoff_type: VanillaOptionPayoffType::Call,
-        },
-        disabled_boundary_input(
-            1.0,
-            HawkesExcitationState {
-                y_plus_plus: 0.35,
-                y_plus_minus: 0.15,
-                y_minus_plus: 0.25,
-                y_minus_minus: 0.4,
-            },
-        ),
-        model_parameters,
-        1.0,
-    )
-    .expect("pricing request should construct");
-
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
-        .expect("interval factors should construct");
-
-    let expected_statistics = derive_expected_interval_statistics_from_first_moment_dynamics(
-        build_pricing_equation_specification(&request),
-        request
-            .model_parameters
-            .news_process_configuration
-            .shared_mark_law
-            .gamma_severity_marks
-            .expected_severity_mark()
-            .expect("expected severity mark should evaluate"),
-        EndogenousAnchorIntervalFactors::try_new(
-            interval_factors.s_h,
-            interval_factors.nu_h_known,
-            interval_factors.nu_h_surprise,
-            request.interval_delta,
-        )
-        .expect("endogenous interval factors should construct"),
-        request.boundary_input.hawkes_boundary_state,
-    )
-    .expect("first-moment expected statistics should evaluate");
-
-    let transition_context =
-        LocalTransitionRequestContext::from_pricing_request(&request, interval_factors)
-            .expect("transition context should construct");
-    let transition_row = transition_context
-        .build_row_state(request.boundary_input.observed_boundary_state.deviation)
-        .expect("transition row should construct");
-
-    let expected_news_loading = infer_expected_news_loading_under_local_measure_for_row(
-        &transition_context,
-        &transition_row,
-        expected_statistics,
-    )
-    .expect("nested closed-form news loading should evaluate");
-
-    let expected_severity_mark = request
-        .model_parameters
-        .news_process_configuration
-        .shared_mark_law
-        .gamma_severity_marks
-        .expected_severity_mark()
-        .expect("expected severity mark should evaluate");
-
-    let expected_loading = (interval_factors.nu_h_known
-        * request.interval_delta
-        * request
-            .model_parameters
-            .news_process_configuration
-            .known_component_mark_scales
-            .activity_coupling_scale
-        + interval_factors.nu_h_surprise
-            * request.interval_delta
-            * request
-                .model_parameters
-                .news_process_configuration
-                .surprise_component_mark_scales
-                .activity_coupling_scale)
-        * expected_severity_mark;
-
-    assert_eq!(expected_news_loading, expected_loading);
 }
 
 #[test]

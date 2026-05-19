@@ -74,7 +74,26 @@ fn excitation_state_from_target_components_preserves_component_mapping() {
     assert_eq!(state.y_minus_minus, 4.0);
     assert_eq!(state.target_plus_components(), target_plus);
     assert_eq!(state.target_minus_components(), target_minus);
+    assert_eq!(state.target_plus_sum(), 3.0);
+    assert_eq!(state.target_minus_sum(), 7.0);
     assert_eq!(state.as_model_ordered_array(), [1.0, 2.0, 3.0, 4.0]);
+}
+
+#[test]
+fn excitation_state_from_target_sums_uses_canonical_first_moment_components() {
+    let state = HawkesExcitationState::from_target_sums(3.0, 7.0);
+
+    assert_eq!(
+        state,
+        HawkesExcitationState {
+            y_plus_plus: 3.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 7.0,
+            y_minus_minus: 0.0,
+        }
+    );
+    assert_eq!(state.target_plus_sum(), 3.0);
+    assert_eq!(state.target_minus_sum(), 7.0);
 }
 
 #[test]

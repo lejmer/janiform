@@ -13,7 +13,8 @@ pub const SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY: &str = "terminal_deviation_d
 pub const SPECTRAL_PRICING_COLLOCATION_POLICY: &str = "uniform_cosine_collocation_with_default_node_count_derived_from_distinct_domain_envelope_points.v1";
 pub const SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY: &str = "compatibility_integration_diagnostics_are_reported_from_spectral_collocation_residual_metadata.v1";
 pub const SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY: &str = "backward_interval_operator_application_over_cosine_coefficients_with_state_dependent_local_tilt_and_batched_frequency_characteristic_function_sampling.v1";
-pub const SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY: &str = "deterministic_interval_expected_state_path_from_projected_intensity_counts_and_mean_news_severity_first_moment_updates.v1";
+pub const SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY: &str =
+    "deterministic_interval_expected_state_path_from_integrated_target_first_moments.v1";
 /// Constant cosine mode plus one positive frequency mode.
 pub(crate) const MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT: usize = 2;
 pub const FOURIER_INVERSION_ENGINE_POLICY: &str =

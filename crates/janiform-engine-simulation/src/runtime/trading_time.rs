@@ -238,11 +238,9 @@ fn integrate_side_intensity(
         * open_market_elapsed_time_weights.open_elapsed_hours;
 
     let endogenous_component = if plus_side {
-        (state.y_plus_plus + state.y_plus_minus)
-            * open_market_elapsed_time_weights.open_decay_weight
+        state.target_plus_sum() * open_market_elapsed_time_weights.open_decay_weight
     } else {
-        (state.y_minus_plus + state.y_minus_minus)
-            * open_market_elapsed_time_weights.open_decay_weight
+        state.target_minus_sum() * open_market_elapsed_time_weights.open_decay_weight
     };
 
     (baseline + endogenous_component).max(0.0)

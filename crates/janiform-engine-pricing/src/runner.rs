@@ -15,7 +15,7 @@ use janiform_affine_oracle::affine_oracle::{
     solve_exponential_affine_transform_input_sensitivities_with_settings,
 };
 use janiform_affine_oracle::endogenous_anchor::{
-    EndogenousAnchorIntervalFactors, derive_expected_interval_statistics_from_first_moment_dynamics,
+    EndogenousAnchorIntervalFactors, derive_expected_interval_projection_from_first_moment_dynamics,
 };
 use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsTransformSliceContext,
@@ -24,7 +24,6 @@ use janiform_affine_oracle::sufficient_statistics::{
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::complex_multiply;
-use janiform_foundations::matrix2::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
@@ -59,13 +58,13 @@ use super::contracts::{
     VanillaOptionPricingRunResultBuildError, VanillaOptionPricingRunResultBuildInput,
     VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
 };
+use super::expected_hawkes_state::evolve_expected_hawkes_state_from_integrated_statistics;
 use super::fourier::{
     FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
     FourierInversionNumericQualityGate, FourierInversionPricingError,
     FourierInversionQuadratureRule,
 };
 use super::interval_schedule::PricingIntervalSchedule;
-use super::news_loading_projection::project_nonnegative_exogenous_news_loading;
 use super::progress::{PricingNodeProgress, PricingNodeProgressPhase, emit_node_progress};
 use super::thread_pool::{install_pricing_parallelism, resolved_pricing_cpu_count};
 use super::time_scaling::intraday_year_fraction;
@@ -382,7 +381,7 @@ pub(crate) struct RiskNeutralAnchorMaterialization {
 pub(crate) struct LocalTiltedIntervalExpectations {
     pub(crate) expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
     pub(crate) core_expected_increment: f64,
-    pub(crate) expected_news_loading: f64,
+    pub(crate) expected_hawkes_state_after: Option<HawkesExcitationState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1466,14 +1465,27 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
 ) -> Result<LocalTiltedIntervalExpectations, VanillaOptionPricingRunError> {
-    let tilted_statistics = derive_local_tilted_expected_interval_statistics_for_row(
-        transition_context,
-        transition_row,
-        driver_parameters,
-        theta,
-        pricing_thread_pool,
-        cpu_count,
-    )?;
+    let nested_projection = if transition_row.uses_nested_transition_measure() {
+        Some(derive_nested_local_expected_interval_projection_from_context(transition_context)?)
+    } else {
+        None
+    };
+
+    let (tilted_statistics, expected_hawkes_state_after) = match nested_projection {
+        Some(projection) => (
+            projection.expected_statistics,
+            Some(projection.structural_state_after),
+        ),
+        None => derive_local_tilted_expected_interval_statistics_for_row(
+            transition_context,
+            transition_row,
+            driver_parameters,
+            theta,
+            pricing_thread_pool,
+            cpu_count,
+        )
+        .map(|expected_statistics| (expected_statistics, None))?,
+    };
 
     let core_expected_increment = tilted_core_expected_increment_from_statistics(
         driver_parameters,
@@ -1481,16 +1493,10 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
         theta,
     )?;
 
-    let expected_news_loading = infer_expected_news_loading_under_local_measure_for_row(
-        transition_context,
-        transition_row,
-        tilted_statistics,
-    )?;
-
     Ok(LocalTiltedIntervalExpectations {
         expected_statistics: tilted_statistics,
         core_expected_increment,
-        expected_news_loading,
+        expected_hawkes_state_after,
     })
 }
 
@@ -1692,6 +1698,16 @@ fn derive_local_tilted_expected_interval_statistics_for_row(
 fn derive_nested_local_expected_interval_statistics_from_context(
     transition_context: &LocalTransitionRequestContext,
 ) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
+    derive_nested_local_expected_interval_projection_from_context(transition_context)
+        .map(|projection| projection.expected_statistics)
+}
+
+fn derive_nested_local_expected_interval_projection_from_context(
+    transition_context: &LocalTransitionRequestContext,
+) -> Result<
+    janiform_affine_oracle::endogenous_anchor::EndogenousAnchorFirstMomentIntervalProjection,
+    VanillaOptionPricingRunError,
+> {
     let endogenous_factors = EndogenousAnchorIntervalFactors::try_new(
         transition_context.interval_factors.s_h,
         transition_context.interval_factors.nu_h_known,
@@ -1716,7 +1732,8 @@ fn derive_nested_local_expected_interval_statistics_from_context(
             },
         )?;
 
-    derive_expected_interval_statistics_from_first_moment_dynamics(
+    derive_expected_interval_projection_from_first_moment_dynamics(
+        transition_context.interval_index,
         transition_context.equation_specification,
         expected_severity_mark,
         endogenous_factors,
@@ -1835,215 +1852,39 @@ fn tilted_nig_expected_increment(
     Ok(tilted_expected_increment - physical_expected_increment)
 }
 
-pub(crate) fn infer_expected_news_loading_under_local_measure_for_row(
-    transition_context: &LocalTransitionRequestContext,
-    transition_row: &LocalTransitionRowState,
-    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
-) -> Result<f64, VanillaOptionPricingRunError> {
-    let endogenous_factors = EndogenousAnchorIntervalFactors::try_new(
-        transition_context.interval_factors.s_h,
-        transition_context.interval_factors.nu_h_known,
-        transition_context.interval_factors.nu_h_surprise,
-        transition_context.interval_delta,
-    )
-    .map_err(|source| {
-        VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-            message: source.to_string(),
-        }
-    })?;
-
-    if transition_row.uses_nested_transition_measure() {
-        let expected_severity_mark = transition_context
-            .model_parameters
-            .news_process_configuration
-            .shared_mark_law
-            .gamma_severity_marks
-            .expected_severity_mark()
-            .map_err(|source| {
-                VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-                    message: source.to_string(),
-                }
-            })?;
-
-        return Ok(expected_scaled_news_loading(
-            &transition_context.model_parameters,
-            endogenous_factors,
-            expected_severity_mark,
-        ));
-    }
-
-    if transition_context
-        .model_parameters
-        .news_process_configuration
-        .known_component_mark_scales
-        .activity_coupling_scale
-        == 0.0
-        && transition_context
-            .model_parameters
-            .news_process_configuration
-            .surprise_component_mark_scales
-            .activity_coupling_scale
-            == 0.0
-    {
-        return Ok(0.0);
-    }
-
-    let kernel_parameters = transition_context.model_parameters.hawkes_kernel_parameters;
-
-    let target_plus_before = transition_context.hawkes_boundary_state.y_plus_plus
-        + transition_context.hawkes_boundary_state.y_plus_minus;
-    let target_minus_before = transition_context.hawkes_boundary_state.y_minus_plus
-        + transition_context.hawkes_boundary_state.y_minus_minus;
-
-    let baseline_expected_business_time =
-        kernel_parameters.lambda_bar * endogenous_factors.s_h * endogenous_factors.delta;
-
-    let observed_integrated_target_plus =
-        expected_statistics.expected_a_plus - baseline_expected_business_time;
-    let observed_integrated_target_minus =
-        expected_statistics.expected_a_minus - baseline_expected_business_time;
-
-    let matrix_a = -kernel_parameters.beta + kernel_parameters.alpha.plus_plus;
-    let matrix_b = kernel_parameters.alpha.plus_minus;
-    let matrix_c = kernel_parameters.alpha.minus_plus;
-    let matrix_d = -kernel_parameters.beta + kernel_parameters.alpha.minus_minus;
-
-    let base_source_plus = endogenous_factors.s_h
-        * kernel_parameters.lambda_bar
-        * (kernel_parameters.alpha.plus_plus + kernel_parameters.alpha.plus_minus);
-
-    let base_source_minus = endogenous_factors.s_h
-        * kernel_parameters.lambda_bar
-        * (kernel_parameters.alpha.minus_plus + kernel_parameters.alpha.minus_minus);
-
-    let base_solution = solve_two_by_two_linear_source_system(
-        matrix_a,
-        matrix_b,
-        matrix_c,
-        matrix_d,
-        target_plus_before,
-        target_minus_before,
-        base_source_plus,
-        base_source_minus,
-        endogenous_factors.delta,
-    );
-
-    let unit_loading_solution = solve_two_by_two_linear_source_system(
-        matrix_a,
-        matrix_b,
-        matrix_c,
-        matrix_d,
-        0.0,
-        0.0,
-        kernel_parameters.rho.plus_plus + kernel_parameters.rho.plus_minus,
-        kernel_parameters.rho.minus_plus + kernel_parameters.rho.minus_minus,
-        endogenous_factors.delta,
-    );
-
-    project_nonnegative_exogenous_news_loading(
-        observed_integrated_target_plus,
-        observed_integrated_target_minus,
-        base_solution.integrated_first_component,
-        base_solution.integrated_second_component,
-        unit_loading_solution.integrated_first_component,
-        unit_loading_solution.integrated_second_component,
-    )
-    .map_err(
-        |source| VanillaOptionPricingRunError::ExpectedHawkesStateUpdateFailure {
-            message: source.to_string(),
-        },
-    )
-}
-
-fn expected_scaled_news_loading(
-    model_parameters: &VanillaOptionPricingModelParameters,
-    interval_factors: EndogenousAnchorIntervalFactors,
-    expected_severity_mark: f64,
-) -> f64 {
-    let known_loading = interval_factors.expected_known_arrival_count()
-        * model_parameters
-            .news_process_configuration
-            .known_component_mark_scales
-            .activity_coupling_scale
-        * expected_severity_mark;
-
-    let surprise_loading = interval_factors.expected_surprise_arrival_count()
-        * model_parameters
-            .news_process_configuration
-            .surprise_component_mark_scales
-            .activity_coupling_scale
-        * expected_severity_mark;
-
-    known_loading + surprise_loading
-}
-
 fn evolve_expected_hawkes_state_under_local_measure(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: VanillaOptionPricingIntervalFactors,
     state_before_update: HawkesExcitationState,
     local_expectations: LocalTiltedIntervalExpectations,
 ) -> Result<HawkesExcitationState, VanillaOptionPricingRunError> {
-    let kernel_parameters = pricing_request.model_parameters.hawkes_kernel_parameters;
-
-    let drifted_state = state_before_update
-        .apply_shared_decay_drift(kernel_parameters.beta, pricing_request.interval_delta);
-
-    let post_buy_state = drifted_state.apply_expected_endogenous_event_jump(
-        janiform_model_kernels::hawkes::HawkesEventSide::Buy,
-        kernel_parameters.alpha,
-        local_expectations.expected_statistics.expected_n_plus,
-    );
-
-    let post_sell_state = post_buy_state.apply_expected_endogenous_event_jump(
-        janiform_model_kernels::hawkes::HawkesEventSide::Sell,
-        kernel_parameters.alpha,
-        local_expectations.expected_statistics.expected_n_minus,
-    );
-
-    if !local_expectations.expected_news_loading.is_finite()
-        || local_expectations.expected_news_loading < 0.0
-    {
-        return Err(
-            VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-                message: format!(
-                    "local-measure expected news loading must be finite and non-negative at interval_index={} interval_delta={} s_h={} nu_h_known={} nu_h_surprise={} expected_a_plus={} expected_a_minus={} expected_n_plus={} expected_n_minus={} expected_news_loading={}",
-                    pricing_request.boundary_input.interval_index,
-                    pricing_request.interval_delta,
-                    interval_factors.s_h,
-                    interval_factors.nu_h_known,
-                    interval_factors.nu_h_surprise,
-                    local_expectations.expected_statistics.expected_a_plus,
-                    local_expectations.expected_statistics.expected_a_minus,
-                    local_expectations.expected_statistics.expected_n_plus,
-                    local_expectations.expected_statistics.expected_n_minus,
-                    local_expectations.expected_news_loading,
-                ),
-            },
-        );
+    if let Some(expected_hawkes_state_after) = local_expectations.expected_hawkes_state_after {
+        return Ok(expected_hawkes_state_after);
     }
 
-    post_sell_state
-        .apply_exogenous_news_loading_jump(
-            kernel_parameters.rho,
-            local_expectations.expected_news_loading,
-        )
-        .map_err(|source| {
-            VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-                message: format!(
-                    "{source}; interval_index={} interval_delta={} s_h={} nu_h_known={} nu_h_surprise={} expected_a_plus={} expected_a_minus={} expected_n_plus={} expected_n_minus={} expected_news_loading={}",
-                    pricing_request.boundary_input.interval_index,
-                    pricing_request.interval_delta,
-                    interval_factors.s_h,
-                    interval_factors.nu_h_known,
-                    interval_factors.nu_h_surprise,
-                    local_expectations.expected_statistics.expected_a_plus,
-                    local_expectations.expected_statistics.expected_a_minus,
-                    local_expectations.expected_statistics.expected_n_plus,
-                    local_expectations.expected_statistics.expected_n_minus,
-                    local_expectations.expected_news_loading,
-                ),
-            }
-        })
+    let kernel_parameters = pricing_request.model_parameters.hawkes_kernel_parameters;
+
+    evolve_expected_hawkes_state_from_integrated_statistics(
+        kernel_parameters,
+        interval_factors.s_h,
+        pricing_request.interval_delta,
+        state_before_update,
+        local_expectations.expected_statistics,
+    )
+    .map_err(|source| VanillaOptionPricingRunError::ExpectedHawkesStateUpdateFailure {
+        message: format!(
+            "{source}; interval_index={} interval_delta={} s_h={} nu_h_known={} nu_h_surprise={} expected_a_plus={} expected_a_minus={} expected_n_plus={} expected_n_minus={}",
+            pricing_request.boundary_input.interval_index,
+            pricing_request.interval_delta,
+            interval_factors.s_h,
+            interval_factors.nu_h_known,
+            interval_factors.nu_h_surprise,
+            local_expectations.expected_statistics.expected_a_plus,
+            local_expectations.expected_statistics.expected_a_minus,
+            local_expectations.expected_statistics.expected_n_plus,
+            local_expectations.expected_statistics.expected_n_minus,
+        ),
+    })
 }
 
 pub(crate) fn build_local_boundary_input(
