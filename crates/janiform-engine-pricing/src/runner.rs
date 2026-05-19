@@ -29,6 +29,7 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
     evolve_mean_reversion_boundary_state_with_endogenous_pressure,
+    evolve_mean_reversion_deviation_with_decay_on_interval_grid,
 };
 use janiform_model_kernels::nig::{
     NigBuySellDriverParameters, NigSharedPlusShiftConfigurationError,
@@ -551,6 +552,25 @@ impl LocalTransitionRequestContext {
                 * intraday_year_fraction(self.interval_delta)
                 - local_martingale_deviation_adjustment,
         })
+    }
+
+    pub(crate) fn next_deviation_center_before_core_increment(
+        &self,
+        deviation: f64,
+        next_anchor_value: f64,
+    ) -> Result<f64, VanillaOptionPricingRunError> {
+        evolve_mean_reversion_deviation_with_decay_on_interval_grid(
+            deviation,
+            self.deviation_decay_factor,
+            0.0,
+            self.current_anchor_value,
+            next_anchor_value,
+        )
+        .map_err(
+            |source| VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: format!("spectral interval deviation center is invalid: {source}"),
+            },
+        )
     }
 }
 

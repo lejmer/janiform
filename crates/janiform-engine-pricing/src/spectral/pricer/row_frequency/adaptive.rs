@@ -19,6 +19,7 @@ pub(in crate::spectral::pricer) struct IntervalRowFrequencyBatchAdaptiveSolveInp
     pub(in crate::spectral::pricer) collocation_nodes: &'a [f64],
     pub(in crate::spectral::pricer) row_states: &'a [LocalTransitionRowState],
     pub(in crate::spectral::pricer) theta_hints: &'a [Option<f64>],
+    pub(in crate::spectral::pricer) next_anchor_value: f64,
     pub(in crate::spectral::pricer) spectral_domain: SpectralDomain,
     pub(in crate::spectral::pricer) driver_parameters:
         janiform_model_kernels::nig::NigBuySellDriverParameters,
@@ -42,6 +43,7 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
         collocation_nodes,
         row_states,
         theta_hints,
+        next_anchor_value,
         spectral_domain,
         driver_parameters,
         collect_theta_warm_start_sensitivities,
@@ -64,6 +66,7 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
                 base_context,
                 row_states,
                 theta_hints,
+                next_anchor_value,
                 spectral_domain,
                 driver_parameters,
                 collect_theta_warm_start_sensitivities,
@@ -99,6 +102,7 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
                             base_context,
                             transition_row: &row_states[row_index],
                             initial_theta_hint: theta_hints[row_index],
+                            next_anchor_value,
                             spectral_domain,
                             driver_parameters,
                             collect_theta_warm_start_sensitivities,
@@ -119,6 +123,7 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
                         base_context,
                         transition_row: &row_states[row_index],
                         initial_theta_hint: theta_hints[row_index],
+                        next_anchor_value,
                         spectral_domain,
                         driver_parameters,
                         collect_theta_warm_start_sensitivities,
@@ -201,6 +206,7 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
                                 initial_theta_hint: theta_hints[task.midpoint_row_index]
                                     .or(Some(task.predicted_theta)),
                                 predicted_theta: task.predicted_theta,
+                                next_anchor_value,
                                 spectral_domain,
                                 driver_parameters,
                                 collect_theta_warm_start_sensitivities,
@@ -225,6 +231,7 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
                             initial_theta_hint: theta_hints[task.midpoint_row_index]
                                 .or(Some(task.predicted_theta)),
                             predicted_theta: task.predicted_theta,
+                            next_anchor_value,
                             spectral_domain,
                             driver_parameters,
                             collect_theta_warm_start_sensitivities,
@@ -318,6 +325,7 @@ pub(super) struct NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'a> {
     pub(in crate::spectral::pricer) base_context: &'a LocalTransitionRequestContext,
     pub(in crate::spectral::pricer) row_states: &'a [LocalTransitionRowState],
     pub(in crate::spectral::pricer) theta_hints: &'a [Option<f64>],
+    pub(in crate::spectral::pricer) next_anchor_value: f64,
     pub(in crate::spectral::pricer) spectral_domain: SpectralDomain,
     pub(in crate::spectral::pricer) driver_parameters:
         janiform_model_kernels::nig::NigBuySellDriverParameters,
@@ -340,6 +348,7 @@ pub(super) fn solve_nested_interval_row_frequency_batches_with_shared_theta(
         base_context,
         row_states,
         theta_hints,
+        next_anchor_value,
         spectral_domain,
         driver_parameters,
         collect_theta_warm_start_sensitivities: _collect_theta_warm_start_sensitivities,
@@ -389,6 +398,7 @@ pub(super) fn solve_nested_interval_row_frequency_batches_with_shared_theta(
                     build_row_frequency_batch_from_shared_kernel(
                         base_context,
                         row_state,
+                        next_anchor_value,
                         spectral_domain,
                         &shared_kernel,
                     )
@@ -402,6 +412,7 @@ pub(super) fn solve_nested_interval_row_frequency_batches_with_shared_theta(
             row_operators.push(build_row_frequency_batch_from_shared_kernel(
                 base_context,
                 row_state,
+                next_anchor_value,
                 spectral_domain,
                 &shared_kernel,
             )?);

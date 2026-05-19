@@ -3,6 +3,7 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     evolve_mean_reversion_boundary_state_on_interval_grid,
     evolve_mean_reversion_boundary_state_with_endogenous_pressure,
+    evolve_mean_reversion_deviation_with_decay_on_interval_grid,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 
@@ -124,6 +125,14 @@ fn mean_reversion_interval_grid_evolution_matches_anchor_deviation_formula() {
     let boundary_state = MeanReversionBoundaryState::try_new(1.5, 1.0, 0.2, 0.5)
         .expect("boundary state should construct");
 
+    let precomputed_deviation = evolve_mean_reversion_deviation_with_decay_on_interval_grid(
+        0.5,
+        (-0.8_f64).exp(),
+        0.25,
+        1.0,
+        1.25,
+    )
+    .expect("precomputed deviation update should succeed");
     let evolved_state = evolve_mean_reversion_boundary_state_on_interval_grid(
         boundary_state,
         0.4,
@@ -134,7 +143,8 @@ fn mean_reversion_interval_grid_evolution_matches_anchor_deviation_formula() {
     )
     .expect("interval-grid state update should succeed");
 
-    let expected_deviation = (-0.8_f64).exp() * 0.5 + 0.25 + 1.0 - 1.25;
+    let expected_deviation = (-0.8_f64).exp().mul_add(0.5, 0.25 + 1.0 - 1.25);
+    assert_eq!(precomputed_deviation, expected_deviation);
     assert!((evolved_state.deviation - expected_deviation).abs() < 1.0e-12);
     assert!((evolved_state.observed_log_price - (1.25 + expected_deviation)).abs() < 1.0e-12);
     assert_eq!(evolved_state.pressure_state, 0.35);

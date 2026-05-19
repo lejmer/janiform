@@ -6,7 +6,7 @@ use super::super::{
     NodePriceSharedPlusShiftSensitivity, PricingCharacteristicFunctionSharedPlusShiftSensitivity,
     SpectralThetaWarmStartDriverConfiguration, SpectralThetaWarmStartRowState,
     SpectralThetaWarmStartSensitivity, VanillaOptionPricingRunError,
-    certify_local_transition_theta_for_row_with_parallelism, complex_exponential, complex_multiply,
+    certify_local_transition_theta_for_row_with_parallelism, complex_exponential,
     differentiate_core_local_tilt_theta_for_tilt,
     differentiate_core_pure_imaginary_log_moment_exponent_for_tilt,
     evaluate_pricing_log_return_characteristic_function_batch_for_context,
@@ -29,8 +29,6 @@ pub(in crate::spectral::pricer) struct RowFrequencyBatchSolution {
 pub(in crate::spectral::pricer) struct SharedRowFrequencyBatchKernelSensitivity {
     pub(in crate::spectral::pricer) positive_frequency_value_sensitivities:
         Vec<NodePriceSharedPlusShiftComplexSensitivity>,
-    pub(in crate::spectral::pricer) local_expectation_sensitivity:
-        NodePriceSharedPlusShiftSensitivity,
 }
 
 #[derive(Debug, Clone)]
@@ -49,7 +47,6 @@ pub(in crate::spectral::pricer) struct SharedRowFrequencyBatchKernel {
     pub(in crate::spectral::pricer) positive_frequency_values: Vec<ComplexScalar>,
     pub(in crate::spectral::pricer) representative_transform:
         Option<janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult>,
-    pub(in crate::spectral::pricer) local_expectations: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +100,7 @@ pub(in crate::spectral::pricer) fn try_resolve_theta_warm_start_sensitivity(
 pub(in crate::spectral::pricer) fn solve_row_frequency_batch(
     base_context: &LocalTransitionRequestContext,
     transition_row: &LocalTransitionRowState,
+    next_anchor_value: f64,
     spectral_domain: SpectralDomain,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     theta: f64,
@@ -117,6 +115,7 @@ pub(in crate::spectral::pricer) fn solve_row_frequency_batch(
     build_row_frequency_batch_from_shared_kernel(
         base_context,
         transition_row,
+        next_anchor_value,
         spectral_domain,
         &shared_kernel,
     )
@@ -161,29 +160,26 @@ pub(in crate::spectral::pricer) fn solve_shared_row_frequency_batch_kernel(
         positive_frequency_values.push(value);
     }
 
-    let local_expectations = derive_expected_increment_from_frequency_values(
-        positive_frequency_values.as_slice(),
-        spectral_domain,
-    )?;
-
     Ok(SharedRowFrequencyBatchKernel {
         theta,
         positive_frequency_values,
         representative_transform,
-        local_expectations,
     })
 }
 
 pub(in crate::spectral::pricer) fn build_row_frequency_batch_from_shared_kernel(
     base_context: &LocalTransitionRequestContext,
     transition_row: &LocalTransitionRowState,
+    next_anchor_value: f64,
     spectral_domain: SpectralDomain,
     shared_kernel: &SharedRowFrequencyBatchKernel,
 ) -> Result<RowFrequencyBatchSolution, VanillaOptionPricingRunError> {
     let frequency_count = spectral_domain.node_count;
     let deviation = transition_row.boundary_state.deviation;
+
     let shift_center =
-        base_context.deviation_decay_factor * deviation - shared_kernel.local_expectations;
+        base_context.next_deviation_center_before_core_increment(deviation, next_anchor_value)?;
+
     let shift_phase_offset = shift_center - spectral_domain.deviation_lower_bound;
 
     let mut basis_forward_phases = Vec::with_capacity(spectral_domain.node_count);
@@ -436,66 +432,21 @@ pub(in crate::spectral::pricer) fn build_shared_row_frequency_batch_kernel_sensi
         })
         .collect::<Result<Vec<_>, VanillaOptionPricingRunError>>()?;
 
-    let local_expectation_sensitivity =
-        derive_expected_increment_sensitivity_from_frequency_values(
-            positive_frequency_value_sensitivities.as_slice(),
-            spectral_domain,
-        )?;
-
     Ok(SharedRowFrequencyBatchKernelSensitivity {
         positive_frequency_value_sensitivities,
-        local_expectation_sensitivity,
-    })
-}
-
-pub(in crate::spectral::pricer) fn derive_expected_increment_sensitivity_from_frequency_values(
-    positive_frequency_value_sensitivities: &[NodePriceSharedPlusShiftComplexSensitivity],
-    spectral_domain: SpectralDomain,
-) -> Result<NodePriceSharedPlusShiftSensitivity, VanillaOptionPricingRunError> {
-    let first_frequency = spectral_domain.basis_frequency(1);
-
-    let first_sensitivity = positive_frequency_value_sensitivities
-        .get(1)
-        .copied()
-        .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message:
-                "spectral expected-increment sensitivity recovery requires at least two frequencies"
-                    .to_string(),
-        })?;
-
-    Ok(NodePriceSharedPlusShiftSensitivity {
-        alpha_derivative: first_sensitivity.alpha_derivative.imaginary / first_frequency,
-        beta_0_derivative: first_sensitivity.beta_0_derivative.imaginary / first_frequency,
-        delta_derivative: first_sensitivity.delta_derivative.imaginary / first_frequency,
-        delta_beta_derivative: first_sensitivity.delta_beta_derivative.imaginary / first_frequency,
     })
 }
 
 pub(in crate::spectral::pricer) fn build_row_frequency_batch_sensitivity_from_shared_kernel(
     _transition_row: &LocalTransitionRowState,
-    row_operator: &RowFrequencyBatchSolution,
+    _row_operator: &RowFrequencyBatchSolution,
     spectral_domain: SpectralDomain,
     shared_kernel_sensitivity: &SharedRowFrequencyBatchKernelSensitivity,
 ) -> Result<RowFrequencyBatchSolutionSharedPlusShiftSensitivity, VanillaOptionPricingRunError> {
-    let basis_forward_phase_sensitivities = row_operator
-        .basis_forward_phases
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(basis_index, phase)| {
-            basis_phase_sensitivity(
-                phase,
-                spectral_domain.basis_frequency(basis_index),
-                shared_kernel_sensitivity.local_expectation_sensitivity,
-            )
-        })
-        .collect::<Vec<_>>();
-
-    let basis_backward_phase_sensitivities = basis_forward_phase_sensitivities
-        .iter()
-        .copied()
-        .map(NodePriceSharedPlusShiftComplexSensitivity::conjugate)
-        .collect::<Vec<_>>();
+    let basis_forward_phase_sensitivities =
+        vec![NodePriceSharedPlusShiftComplexSensitivity::zero(); spectral_domain.node_count];
+    let basis_backward_phase_sensitivities =
+        vec![NodePriceSharedPlusShiftComplexSensitivity::zero(); spectral_domain.node_count];
 
     Ok(RowFrequencyBatchSolutionSharedPlusShiftSensitivity {
         positive_frequency_value_sensitivities: shared_kernel_sensitivity
@@ -506,38 +457,12 @@ pub(in crate::spectral::pricer) fn build_row_frequency_batch_sensitivity_from_sh
     })
 }
 
-pub(in crate::spectral::pricer) fn basis_phase_sensitivity(
-    phase: ComplexScalar,
-    basis_frequency: f64,
-    local_expectation_sensitivity: NodePriceSharedPlusShiftSensitivity,
-) -> NodePriceSharedPlusShiftComplexSensitivity {
-    let scaling_factor = ComplexScalar::new(0.0, -basis_frequency);
-
-    NodePriceSharedPlusShiftComplexSensitivity {
-        alpha_derivative: complex_multiply(
-            phase,
-            scaling_factor.scale(local_expectation_sensitivity.alpha_derivative),
-        ),
-        beta_0_derivative: complex_multiply(
-            phase,
-            scaling_factor.scale(local_expectation_sensitivity.beta_0_derivative),
-        ),
-        delta_derivative: complex_multiply(
-            phase,
-            scaling_factor.scale(local_expectation_sensitivity.delta_derivative),
-        ),
-        delta_beta_derivative: complex_multiply(
-            phase,
-            scaling_factor.scale(local_expectation_sensitivity.delta_beta_derivative),
-        ),
-    }
-}
-
 #[derive(Clone, Copy)]
 pub(in crate::spectral::pricer) struct ExactRowFrequencyBatchSolveInput<'a> {
     pub(in crate::spectral::pricer) base_context: &'a LocalTransitionRequestContext,
     pub(in crate::spectral::pricer) transition_row: &'a LocalTransitionRowState,
     pub(in crate::spectral::pricer) initial_theta_hint: Option<f64>,
+    pub(in crate::spectral::pricer) next_anchor_value: f64,
     pub(in crate::spectral::pricer) spectral_domain: SpectralDomain,
     pub(in crate::spectral::pricer) driver_parameters:
         janiform_model_kernels::nig::NigBuySellDriverParameters,
@@ -553,6 +478,7 @@ pub(in crate::spectral::pricer) fn solve_exact_row_frequency_batch(
         base_context,
         transition_row,
         initial_theta_hint,
+        next_anchor_value,
         spectral_domain,
         driver_parameters,
         collect_theta_warm_start_sensitivities,
@@ -572,6 +498,7 @@ pub(in crate::spectral::pricer) fn solve_exact_row_frequency_batch(
     let solution = solve_row_frequency_batch(
         base_context,
         transition_row,
+        next_anchor_value,
         spectral_domain,
         driver_parameters,
         theta,
@@ -615,6 +542,7 @@ pub(in crate::spectral::pricer) struct AdaptiveMidpointRowFrequencyBatchSolveInp
     pub(in crate::spectral::pricer) transition_row: &'a LocalTransitionRowState,
     pub(in crate::spectral::pricer) initial_theta_hint: Option<f64>,
     pub(in crate::spectral::pricer) predicted_theta: f64,
+    pub(in crate::spectral::pricer) next_anchor_value: f64,
     pub(in crate::spectral::pricer) spectral_domain: SpectralDomain,
     pub(in crate::spectral::pricer) driver_parameters:
         janiform_model_kernels::nig::NigBuySellDriverParameters,
@@ -631,6 +559,7 @@ pub(in crate::spectral::pricer) fn solve_adaptive_midpoint_row_frequency_batch(
         transition_row,
         initial_theta_hint,
         predicted_theta,
+        next_anchor_value,
         spectral_domain,
         driver_parameters,
         collect_theta_warm_start_sensitivities,
@@ -649,6 +578,7 @@ pub(in crate::spectral::pricer) fn solve_adaptive_midpoint_row_frequency_batch(
         let solution = solve_row_frequency_batch(
             base_context,
             transition_row,
+            next_anchor_value,
             spectral_domain,
             driver_parameters,
             predicted_theta,
@@ -666,6 +596,7 @@ pub(in crate::spectral::pricer) fn solve_adaptive_midpoint_row_frequency_batch(
         base_context,
         transition_row,
         initial_theta_hint,
+        next_anchor_value,
         spectral_domain,
         driver_parameters,
         collect_theta_warm_start_sensitivities,
@@ -696,17 +627,118 @@ pub(in crate::spectral::pricer) fn interpolate_theta_across_deviation_rows(
     left_theta + interpolation_weight * (right_theta - left_theta)
 }
 
-pub(in crate::spectral::pricer) fn derive_expected_increment_from_frequency_values(
-    positive_frequency_values: &[ComplexScalar],
-    spectral_domain: SpectralDomain,
-) -> Result<f64, VanillaOptionPricingRunError> {
-    let first_frequency = spectral_domain.basis_frequency(1);
-    let first_value = positive_frequency_values.get(1).copied().ok_or_else(|| {
-        VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: "spectral expected-increment recovery requires at least two frequencies"
-                .to_string(),
-        }
-    })?;
+#[cfg(test)]
+mod tests {
+    use super::{SharedRowFrequencyBatchKernel, build_row_frequency_batch_from_shared_kernel};
+    use crate::contracts::{
+        AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
+        VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
+    };
+    use crate::runner::{LocalTransitionRequestContext, VanillaOptionPricingIntervalFactors};
+    use crate::spectral::pricer::domain::SpectralDomain;
+    use crate::tests::support::valid_model_parameters;
+    use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
+    use janiform_model_kernels::hawkes::HawkesExcitationState;
+    use janiform_model_kernels::mean_reversion::{
+        MeanReversionBoundaryState, MeanReversionFittedParameters,
+    };
 
-    Ok(first_value.imaginary / first_frequency)
+    #[test]
+    fn row_basis_phase_uses_anchor_rebase_without_recentering_log_increment() {
+        let current_anchor_value = 0.4;
+        let next_anchor_value = 0.1;
+        let deviation = 0.25;
+        let core_increment = 0.3;
+
+        let pricing_request = VanillaOptionPricingRequest::try_new(
+            VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.0, 0.0)
+                .expect("market inputs should construct"),
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            AnchoredVanillaOptionPricingBoundaryInput::try_new(
+                0,
+                HawkesExcitationState {
+                    y_plus_plus: 0.0,
+                    y_plus_minus: 0.0,
+                    y_minus_plus: 0.0,
+                    y_minus_minus: 0.0,
+                },
+                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.5)
+                    .expect("mean reversion parameters should construct"),
+                1.0,
+                MeanReversionBoundaryState::try_new(
+                    current_anchor_value,
+                    current_anchor_value,
+                    0.0,
+                    0.0,
+                )
+                .expect("boundary state should construct"),
+            )
+            .expect("boundary input should construct"),
+            valid_model_parameters(),
+            1.0,
+        )
+        .expect("pricing request should construct");
+
+        let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+            .expect("interval factors should construct");
+
+        let base_context = LocalTransitionRequestContext::from_interval_state(
+            &pricing_request,
+            interval_factors,
+            0,
+            pricing_request.boundary_input.hawkes_boundary_state,
+            current_anchor_value,
+            0.0,
+            1.0,
+        )
+        .expect("transition context should construct");
+
+        let transition_row = base_context
+            .build_row_state(deviation)
+            .expect("transition row should construct");
+
+        let spectral_domain = SpectralDomain {
+            deviation_lower_bound: -1.0,
+            deviation_upper_bound: 1.0,
+            node_count: 4,
+        };
+
+        let positive_frequency_values = (0..(2 * spectral_domain.node_count - 1))
+            .map(|frequency_index| {
+                complex_exponential(ComplexScalar::new(
+                    0.0,
+                    spectral_domain.basis_frequency(frequency_index) * core_increment,
+                ))
+            })
+            .collect::<Vec<_>>();
+
+        let shared_kernel = SharedRowFrequencyBatchKernel {
+            theta: 0.0,
+            positive_frequency_values,
+            representative_transform: None,
+        };
+
+        let row_solution = build_row_frequency_batch_from_shared_kernel(
+            &base_context,
+            &transition_row,
+            next_anchor_value,
+            spectral_domain,
+            &shared_kernel,
+        )
+        .expect("row frequency batch should build");
+
+        let expected_shift_center = base_context
+            .deviation_decay_factor
+            .mul_add(deviation, current_anchor_value - next_anchor_value);
+
+        let expected_phase = complex_exponential(ComplexScalar::new(
+            0.0,
+            spectral_domain.basis_frequency(1)
+                * (expected_shift_center - spectral_domain.deviation_lower_bound),
+        ));
+
+        assert_eq!(row_solution.basis_forward_phases[1], expected_phase);
+    }
 }

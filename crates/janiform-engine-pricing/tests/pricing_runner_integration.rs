@@ -354,6 +354,84 @@ fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids(
 }
 
 #[test]
+fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
+    let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
+        0,
+        HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        },
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+            .expect("zero-gain mean reversion fit should construct"),
+        24.0,
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+            .expect("zero observed boundary state should construct"),
+    )
+    .expect("boundary input should construct");
+
+    let spot = 101.0;
+    let strike = 100.0;
+    let maturity_interval = 24.0;
+    let optional_output_selection =
+        VanillaOptionPricingOptionalOutputSelection::new(false, false, false);
+
+    let grid_batch_result =
+        run_vanilla_option_grid_batch_pricing(VanillaOptionGridBatchPricingExecutionInput {
+            request: VanillaOptionGridBatchPricingRequest {
+                spot,
+                grids: vec![
+                    VanillaOptionGridRequest {
+                        payoff_type: VanillaOptionPayoffType::Call,
+                        risk_free_rate: 0.0,
+                        dividend_yield: 0.0,
+                        strikes: vec![strike],
+                        maturity_intervals: vec![maturity_interval],
+                    },
+                    VanillaOptionGridRequest {
+                        payoff_type: VanillaOptionPayoffType::Put,
+                        risk_free_rate: 0.0,
+                        dividend_yield: 0.0,
+                        strikes: vec![strike],
+                        maturity_intervals: vec![maturity_interval],
+                    },
+                ],
+            },
+            boundary_input,
+            model_parameters: valid_model_parameters(),
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(
+                1,
+                maturity_interval,
+            ),
+            interval_delta: maturity_interval,
+            interval_factors: vec![
+                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                    .expect("interval factors should construct"),
+            ],
+            optional_output_selection,
+            spectral_collocation_node_count_override: Some(257),
+            cpu_count: Some(1),
+        })
+        .expect("grid batch pricing should succeed");
+
+    let call_price =
+        grid_batch_result.grids[0].price_grid[0][0].expect("call price should be present");
+    let put_price =
+        grid_batch_result.grids[1].price_grid[0][0].expect("put price should be present");
+    let expected_forward_spread = spot - strike;
+
+    let parity_error = (call_price - put_price - expected_forward_spread).abs();
+    let single_price_resolution = spot / (257.0 * 257.0);
+    let call_and_put_resolution = 2.0 * single_price_resolution;
+
+    assert!(
+        parity_error <= call_and_put_resolution,
+        "zero-rate put-call parity error {parity_error} should be within spectral resolution {call_and_put_resolution}",
+    );
+}
+
+#[test]
 fn vanilla_option_surface_pricing_populates_shared_grid() {
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,

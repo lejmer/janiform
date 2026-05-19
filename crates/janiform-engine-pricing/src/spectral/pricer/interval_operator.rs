@@ -307,10 +307,13 @@ pub(super) fn solve_cached_interval_operator(
     };
 
     let interval_delta = runtime_anchors.interval_deltas[job.interval_offset];
+
     let expected_hawkes_state_before =
         materialization.expected_hawkes_state_path[job.interval_offset];
     let expected_hawkes_state_after =
         materialization.expected_hawkes_state_path[job.interval_offset + 1];
+
+    let next_anchor_value = runtime_anchors.end_anchor_values[job.interval_offset];
 
     let base_context = LocalTransitionRequestContext::from_interval_state(
         pricing_request,
@@ -323,6 +326,7 @@ pub(super) fn solve_cached_interval_operator(
     )?;
 
     let collocation_nodes = spectral_domain.collocation_nodes();
+
     let row_states = collocation_nodes
         .iter()
         .copied()
@@ -335,6 +339,7 @@ pub(super) fn solve_cached_interval_operator(
             collocation_nodes: collocation_nodes.as_slice(),
             row_states: row_states.as_slice(),
             theta_hints: job.theta_hints.as_slice(),
+            next_anchor_value,
             spectral_domain,
             driver_parameters,
             collect_theta_warm_start_sensitivities,
@@ -362,7 +367,7 @@ pub(super) fn solve_cached_interval_operator(
             interval_summary: SpectralPricingIntervalDiagnostics {
                 interval_index: pricing_request.boundary_input.interval_index + job.interval_offset,
                 current_anchor_value,
-                next_anchor_value: runtime_anchors.end_anchor_values[job.interval_offset],
+                next_anchor_value,
                 interval_delta,
                 expected_hawkes_boundary_state_before: expected_hawkes_state_before,
                 expected_hawkes_boundary_state_after: expected_hawkes_state_after,

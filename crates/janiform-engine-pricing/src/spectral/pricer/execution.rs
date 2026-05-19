@@ -877,6 +877,7 @@ mod tests {
                     collocation_nodes: collocation_nodes.as_slice(),
                     row_states: row_states.as_slice(),
                     theta_hints: theta_hints.as_slice(),
+                    next_anchor_value: materialization.runtime_interval_anchors.end_anchor_values[0],
                     spectral_domain,
                     driver_parameters,
                     collect_theta_warm_start_sensitivities: false,
