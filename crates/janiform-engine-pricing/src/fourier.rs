@@ -21,6 +21,7 @@ use super::contracts::{
     VanillaOptionPricingMarketInputsError,
 };
 use super::time_scaling::intraday_year_fraction;
+use super::vanilla_payoff::vanilla_payoff_price_from_discounted_call;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FourierInversionProgress {
@@ -1138,26 +1139,33 @@ fn map_discounted_call_to_vanilla_payoff(
     discount_factor: f64,
     dividend_discount_factor: f64,
 ) -> Result<f64, FourierInversionPricingError> {
-    match payoff_type {
-        VanillaOptionPayoffType::Call => clamp_small_negative_price(discounted_call_price),
-        VanillaOptionPayoffType::Put => {
-            let strike = market_inputs.single_strike().map_err(|source| {
-                FourierInversionPricingError::InvalidMarketInputs {
-                    source: Box::new(source),
-                }
-            })?;
-
-            let discounted_spot = market_inputs.spot * dividend_discount_factor;
-            let discounted_strike = strike * discount_factor;
-
-            let put_price = discounted_call_price - discounted_spot + discounted_strike;
-            if !put_price.is_finite() {
-                return Err(FourierInversionPricingError::NonFiniteFinalPrice { value: put_price });
-            }
-
-            clamp_small_negative_price(put_price)
+    let strike = market_inputs.single_strike().map_err(|source| {
+        FourierInversionPricingError::InvalidMarketInputs {
+            source: Box::new(source),
         }
-    }
+    })?;
+
+    let discounted_spot = market_inputs.spot * dividend_discount_factor;
+    let discounted_strike = strike * discount_factor;
+
+    let price = vanilla_payoff_price_from_discounted_call(
+        payoff_type,
+        discounted_call_price,
+        discounted_spot,
+        discounted_strike,
+    )
+    .ok_or_else(|| {
+        let value = match payoff_type {
+            VanillaOptionPayoffType::Call => discounted_call_price,
+            VanillaOptionPayoffType::Put => {
+                discounted_call_price - discounted_spot + discounted_strike
+            }
+        };
+
+        FourierInversionPricingError::NonFiniteFinalPrice { value }
+    })?;
+
+    clamp_small_negative_price(price)
 }
 
 fn clamp_small_negative_price(price: f64) -> Result<f64, FourierInversionPricingError> {

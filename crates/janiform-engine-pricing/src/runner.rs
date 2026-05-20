@@ -402,12 +402,10 @@ pub(crate) struct CorePureImaginaryLogMomentSharedPlusShiftSensitivity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 pub(crate) struct CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
     pub(crate) alpha_derivative: f64,
     pub(crate) beta_0_derivative: f64,
     pub(crate) delta_derivative: f64,
-    pub(crate) mu_derivative: f64,
     pub(crate) delta_beta_derivative: f64,
 }
 
@@ -989,7 +987,6 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
     })
 }
 
-#[allow(dead_code)]
 pub(crate) fn differentiate_core_local_tilt_theta_for_tilt(
     transition_context: &LocalTransitionRequestContext,
     driver_parameters: NigBuySellDriverParameters,
@@ -1015,7 +1012,6 @@ pub(crate) fn differentiate_core_local_tilt_theta_for_tilt(
         alpha_derivative: sensitivity.alpha_derivative * inverse_theta_derivative,
         beta_0_derivative: sensitivity.beta_0_derivative * inverse_theta_derivative,
         delta_derivative: sensitivity.delta_derivative * inverse_theta_derivative,
-        mu_derivative: sensitivity.mu_derivative * inverse_theta_derivative,
         delta_beta_derivative: sensitivity.delta_beta_derivative * inverse_theta_derivative,
     })
 }
@@ -1798,7 +1794,7 @@ fn solve_local_tilted_transform_slice_value(
     Ok(transform_output.transform_value)
 }
 
-fn tilted_core_expected_increment_from_statistics(
+pub(crate) fn tilted_core_expected_increment_from_statistics(
     driver_parameters: NigBuySellDriverParameters,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
     theta: f64,
@@ -1812,7 +1808,7 @@ fn tilted_core_expected_increment_from_statistics(
     let tilted_sell_expected_increment = tilted_nig_expected_increment(
         driver_parameters.sell_side_parameters,
         expected_statistics.expected_a_minus,
-        theta,
+        -theta,
     )?;
 
     Ok(tilted_buy_expected_increment - tilted_sell_expected_increment)
@@ -1821,11 +1817,11 @@ fn tilted_core_expected_increment_from_statistics(
 fn tilted_nig_expected_increment(
     physical_parameters: janiform_model_kernels::nig::NigParameters,
     business_time_increment_scale: f64,
-    theta: f64,
+    beta_shift: f64,
 ) -> Result<f64, VanillaOptionPricingRunError> {
     let tilted_expected_increment = janiform_model_kernels::nig::NigParameters::try_new(
         physical_parameters.alpha,
-        physical_parameters.beta - theta,
+        physical_parameters.beta + beta_shift,
         physical_parameters.delta,
         physical_parameters.mu,
     )

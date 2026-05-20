@@ -1,9 +1,10 @@
 use crate::characteristic::build_pricing_equation_specification;
 use crate::grids::{
-    SpectralThetaWarmStartDriverConfiguration, SpectralThetaWarmStartRowState,
-    SpectralThetaWarmStartSensitivity, SpectralThetaWarmStartState,
+    SpectralThetaWarmStartDriverConfiguration, SpectralThetaWarmStartKey,
+    SpectralThetaWarmStartRowState, SpectralThetaWarmStartSensitivity, SpectralThetaWarmStartState,
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridRequest, run_vanilla_option_grid_batch_pricing,
+    spectral_theta_warm_start_payoff_type_mask,
 };
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -29,10 +30,12 @@ use crate::runner::{
     recover_pure_imaginary_log_moment_exponent, resolve_local_transition_theta,
     resolve_local_transition_theta_for_row_with_curve,
     resolve_local_transition_theta_for_row_with_parallelism,
+    tilted_core_expected_increment_from_statistics,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformIntegrationStatus,
 };
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
 
 use super::support::{
     build_uniform_runtime_interval_schedule, disabled_boundary_input, valid_model_parameters,
@@ -51,7 +54,10 @@ fn transition_context_for_request(
 
 #[test]
 fn theta_warm_start_state_predicts_interval_hint_from_parameter_delta() {
-    let carry_group_key = (0_u64, 0_u64);
+    let call_payoff_type_mask =
+        spectral_theta_warm_start_payoff_type_mask(&[VanillaOptionPayoffType::Call]);
+    let warm_start_key =
+        SpectralThetaWarmStartKey::new(call_payoff_type_mask, 0.0_f64.to_bits(), 0.0_f64.to_bits());
 
     let previous_driver_configuration = SpectralThetaWarmStartDriverConfiguration {
         alpha: 2.0,
@@ -71,7 +77,7 @@ fn theta_warm_start_state_predicts_interval_hint_from_parameter_delta() {
     let mut warm_start_state = SpectralThetaWarmStartState::new();
 
     warm_start_state.record_interval_theta_states(
-        carry_group_key,
+        warm_start_key,
         0,
         previous_driver_configuration,
         vec![
@@ -89,7 +95,7 @@ fn theta_warm_start_state_predicts_interval_hint_from_parameter_delta() {
     );
 
     let predicted_hints =
-        warm_start_state.interval_theta_hints(carry_group_key, 0, 2, current_driver_configuration);
+        warm_start_state.interval_theta_hints(warm_start_key, 0, 2, current_driver_configuration);
 
     let expected_first_hint = 2.0_f64.mul_add(
         current_driver_configuration.alpha - previous_driver_configuration.alpha,
@@ -402,6 +408,42 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
 }
 
 #[test]
+fn tilted_core_expected_increment_matches_return_composition_log_moment_derivative() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(3.1, -1.2, 0.45, 0.08, -0.35)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let expected_statistics =
+        SufficientStatisticsExpectedIntervalStatistics::try_new(17.5, 43.25, 0.0, 0.0)
+            .expect("expected statistics should construct");
+
+    let theta = -0.35;
+
+    let observed = tilted_core_expected_increment_from_statistics(
+        driver_parameters,
+        expected_statistics,
+        theta,
+    )
+    .expect("tilted core expected increment should evaluate");
+
+    let expected = driver_parameters
+        .differentiate_return_composition_log_moment(
+            expected_statistics.expected_a_plus,
+            expected_statistics.expected_a_minus,
+            theta,
+        )
+        .expect("return-composition log-moment derivative should evaluate");
+
+    let tolerance = f64::EPSILON.sqrt() * observed.abs().max(expected.abs()).max(1.0);
+
+    assert!(
+        (observed - expected).abs() <= tolerance,
+        "observed={observed} expected={expected} tolerance={tolerance}",
+    );
+}
+
+#[test]
 fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
     let pricing_request = build_non_nested_transition_request();
 
@@ -436,6 +478,7 @@ fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
     let nested_cached =
         resolve_local_transition_theta_for_row_with_curve(&mut interval_tilt_curve, &nested_row)
             .expect("nested curve-backed row solve should succeed");
+
     assert_eq!(nested_cached, nested_direct);
 
     for (transition_row, direct) in resolved_rows {

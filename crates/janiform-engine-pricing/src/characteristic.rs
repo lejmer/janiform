@@ -18,16 +18,12 @@ use janiform_model_kernels::hawkes::{
     HawkesSeasonalityIntervalError,
 };
 use janiform_model_kernels::nig::{
-    NigBuySellDriverParameters, NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
-    NigTradingTimeCharacteristicExponentContributions,
+    NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
 };
 use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
 };
-use janiform_model_kernels::risk_neutral::{
-    EsscherTransformError, NigEsscherTiltDomain,
-    derive_nig_esscher_tilt_domain_for_pure_imaginary_argument,
-};
+use janiform_model_kernels::risk_neutral::{EsscherTransformError, NigEsscherTiltDomain};
 
 use super::constants::{
     INTERNAL_AFFINE_TRANSFORM_STEP_SELECTION_POLICY, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY,
@@ -292,7 +288,7 @@ pub(crate) struct LocalTiltResidualEvaluation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) struct LocalTiltResidualSharedPlusShiftSensitivity {
     pub(crate) observed_log_moment_exponent: f64,
     pub(crate) residual: f64,
@@ -305,7 +301,7 @@ pub(crate) struct LocalTiltResidualSharedPlusShiftSensitivity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) struct LocalTiltImplicitThetaSharedPlusShiftSensitivity {
     pub(crate) theta: f64,
     pub(crate) alpha_derivative: f64,
@@ -321,9 +317,6 @@ pub(crate) struct LocalTiltSearchDomain {
     pub(crate) upper_theta: f64,
     pub(crate) reference_theta: f64,
 }
-
-const BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
-const SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = 1.0;
 
 /// Resolve interval-aligned hourly factors for the pricing path.
 pub use janiform_market_time::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
@@ -409,40 +402,13 @@ fn evaluate_local_tilt_residual(
     target_log_moment_exponent: f64,
     theta: f64,
 ) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError> {
-    let buy_side_log_moment_exponent = driver_parameters
-        .differentiate_buy_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
-            BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
+    let observed_log_moment_exponent = driver_parameters
+        .evaluate_return_composition_log_moment(
+            return_decomposition.a_plus,
+            return_decomposition.a_minus,
             theta,
         )
-        .map_err(|source| {
-            map_local_tilt_axis_evaluation_error(
-                theta,
-                BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-                source,
-                true,
-            )
-        })?
-        .observed_log_moment_exponent;
-
-    let sell_side_log_moment_exponent = driver_parameters
-        .differentiate_sell_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
-            SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-            theta,
-        )
-        .map_err(|source| {
-            map_local_tilt_axis_evaluation_error(
-                theta,
-                SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-                source,
-                false,
-            )
-        })?
-        .observed_log_moment_exponent;
-
-    let observed_log_moment_exponent = return_decomposition.a_plus.mul_add(
-        buy_side_log_moment_exponent,
-        return_decomposition.a_minus * sell_side_log_moment_exponent,
-    );
+        .map_err(|source| map_local_tilt_evaluation_error(theta, source))?;
     if !observed_log_moment_exponent.is_finite() {
         return Err(AnchoredLocalTiltSolveError::NonFiniteTransformInput {
             theta,
@@ -456,82 +422,70 @@ fn evaluate_local_tilt_residual(
     })
 }
 
-#[allow(dead_code)]
-fn combine_shared_plus_shift_log_moment_sensitivities(
-    return_decomposition: ReturnDecomposition,
-    buy_side_sensitivity: NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
-    sell_side_sensitivity: NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
-    target_log_moment_exponent: f64,
-) -> LocalTiltResidualSharedPlusShiftSensitivity {
-    let observed_log_moment_exponent = return_decomposition.a_plus.mul_add(
-        buy_side_sensitivity.observed_log_moment_exponent,
-        return_decomposition.a_minus * sell_side_sensitivity.observed_log_moment_exponent,
-    );
-
-    LocalTiltResidualSharedPlusShiftSensitivity {
-        observed_log_moment_exponent,
-        residual: observed_log_moment_exponent - target_log_moment_exponent,
-        alpha_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.alpha_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.alpha_derivative,
-        ),
-        beta_0_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.beta_0_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.beta_0_derivative,
-        ),
-        delta_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.delta_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.delta_derivative,
-        ),
-        mu_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.mu_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.mu_derivative,
-        ),
-        delta_beta_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.delta_beta_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.delta_beta_derivative,
-        ),
-        theta_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.theta_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.theta_derivative,
-        ),
-    }
-}
-
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn differentiate_local_tilt_residual_for_shared_plus_shift_configuration(
     driver_parameters: NigBuySellDriverParameters,
     return_decomposition: ReturnDecomposition,
     target_log_moment_exponent: f64,
     theta: f64,
 ) -> Result<LocalTiltResidualSharedPlusShiftSensitivity, AnchoredLocalTiltSolveError> {
+    let log_moment_argument = ComplexScalar::new(0.0, -theta);
+
     let buy_side_sensitivity = driver_parameters
-        .differentiate_buy_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
-            BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-            theta,
+        .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
+            log_moment_argument,
         )
-        .map_err(
-            |source| AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure { theta, source },
-        )?;
-
+        .map_err(|source| map_local_tilt_side_evaluation_error(theta, source, true))?;
     let sell_side_sensitivity = driver_parameters
-        .differentiate_sell_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
-            SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
+        .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
+            log_moment_argument,
+        )
+        .map_err(|source| map_local_tilt_side_evaluation_error(theta, source, false))?;
+
+    let observed_log_moment_exponent = driver_parameters
+        .evaluate_return_composition_log_moment(
+            return_decomposition.a_plus,
+            return_decomposition.a_minus,
             theta,
         )
-        .map_err(
-            |source| AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure { theta, source },
-        )?;
+        .map_err(|source| map_local_tilt_evaluation_error(theta, source))?;
 
-    Ok(combine_shared_plus_shift_log_moment_sensitivities(
-        return_decomposition,
-        buy_side_sensitivity,
-        sell_side_sensitivity,
-        target_log_moment_exponent,
-    ))
+    let theta_derivative = driver_parameters
+        .differentiate_return_composition_log_moment(
+            return_decomposition.a_plus,
+            return_decomposition.a_minus,
+            theta,
+        )
+        .map_err(|source| map_local_tilt_evaluation_error(theta, source))?;
+
+    Ok(LocalTiltResidualSharedPlusShiftSensitivity {
+        observed_log_moment_exponent,
+        residual: observed_log_moment_exponent - target_log_moment_exponent,
+        alpha_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.alpha_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.alpha_derivative.real,
+        ),
+        beta_0_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.beta_0_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.beta_0_derivative.real,
+        ),
+        delta_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.delta_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.delta_derivative.real,
+        ),
+        mu_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.mu_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.mu_derivative.real,
+        ),
+        delta_beta_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.delta_beta_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.delta_beta_derivative.real,
+        ),
+        theta_derivative,
+    })
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn differentiate_local_tilt_root_for_shared_plus_shift_configuration(
     driver_parameters: NigBuySellDriverParameters,
     return_decomposition: ReturnDecomposition,
@@ -574,29 +528,18 @@ pub(crate) fn differentiate_local_tilt_root_for_shared_plus_shift_configuration(
 fn anchored_local_tilt_domain(
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<NigEsscherTiltDomain, AnchoredLocalTiltSolveError> {
-    let buy_side_domain = derive_nig_esscher_tilt_domain_for_pure_imaginary_argument(
-        driver_parameters.buy_side_parameters,
-        BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-    )
-    .map_err(
-        |source| AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure {
-            theta: f64::NAN,
-            source,
-        },
-    )?;
+    let domain = driver_parameters.derive_return_composition_log_moment_domain();
+    if domain.is_empty() {
+        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+            target_log_moment_exponent: f64::NAN,
+            lower_theta: domain.lower_theta_exclusive,
+            upper_theta: domain.upper_theta_exclusive,
+            lower_residual: f64::NAN,
+            upper_residual: f64::NAN,
+        });
+    }
 
-    let sell_side_domain = derive_nig_esscher_tilt_domain_for_pure_imaginary_argument(
-        driver_parameters.sell_side_parameters,
-        SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-    )
-    .map_err(
-        |source| AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure {
-            theta: f64::NAN,
-            source,
-        },
-    )?;
-
-    Ok(buy_side_domain.intersect(sell_side_domain))
+    Ok(domain)
 }
 
 pub(crate) fn resolve_local_tilt_search_domain(
@@ -641,9 +584,36 @@ pub(crate) fn resolve_local_tilt_search_domain(
     })
 }
 
-fn map_local_tilt_axis_evaluation_error(
+fn map_local_tilt_evaluation_error(
     theta: f64,
-    argument_imaginary: f64,
+    source: EsscherTransformError,
+) -> AnchoredLocalTiltSolveError {
+    match source {
+        EsscherTransformError::PureImaginaryArgumentOutOfDomain {
+            lower_theta_exclusive,
+            upper_theta_exclusive,
+            ..
+        } => AnchoredLocalTiltSolveError::OutOfDomainStateRequest {
+            theta,
+            argument_imaginary: 0.0,
+            lower_theta_exclusive,
+            upper_theta_exclusive,
+        },
+        EsscherTransformError::NonFinitePhysicalExponentAtShiftedArgument { value }
+        | EsscherTransformError::NonFinitePhysicalExponentAtAnchorArgument { value }
+        | EsscherTransformError::NonFiniteTransformedExponent { value } => {
+            AnchoredLocalTiltSolveError::NonFiniteTransformInput { theta, value }
+        }
+        other => AnchoredLocalTiltSolveError::TransformEvaluationFailure {
+            theta,
+            message: other.to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+fn map_local_tilt_side_evaluation_error(
+    theta: f64,
     source: EsscherTransformError,
     is_buy_side: bool,
 ) -> AnchoredLocalTiltSolveError {
@@ -654,7 +624,7 @@ fn map_local_tilt_axis_evaluation_error(
             ..
         } => AnchoredLocalTiltSolveError::OutOfDomainStateRequest {
             theta,
-            argument_imaginary,
+            argument_imaginary: 0.0,
             lower_theta_exclusive,
             upper_theta_exclusive,
         },

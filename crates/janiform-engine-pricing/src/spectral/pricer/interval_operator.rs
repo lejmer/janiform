@@ -11,15 +11,15 @@ use super::row_frequency::{
     solve_interval_row_frequency_batches_adaptively, theta_warm_start_driver_configuration,
 };
 use super::{
-    CarryGroupKey, ComplexScalar, LocalTransitionRequestContext,
-    NodePriceSharedPlusShiftComplexSensitivity, PricingProgressEvent,
-    RiskNeutralAnchorMaterialization, SpectralPricingIntervalDiagnostics,
+    ComplexScalar, LocalTransitionRequestContext, NodePriceSharedPlusShiftComplexSensitivity,
+    PricingProgressEvent, RiskNeutralAnchorMaterialization, SpectralPricingIntervalDiagnostics,
     SpectralThetaWarmStartRowState, SpectralThetaWarmStartState,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingRequest, VanillaOptionPricingRunError,
     complex_multiply, emit_pricing_progress, install_pricing_parallelism,
     resolved_pricing_cpu_count, values_to_cosine_coefficients,
     values_to_cosine_coefficients_sensitivities,
 };
+use crate::grids::SpectralThetaWarmStartKey;
 
 #[derive(Debug)]
 pub(super) struct CachedIntervalOperator {
@@ -46,7 +46,7 @@ pub(super) struct SolvedMaturityLaw {
 }
 
 pub(super) struct CachedIntervalOperatorBuildInput<'a, 'observer, 'callback> {
-    pub(super) carry_group_key: CarryGroupKey,
+    pub(super) theta_warm_start_key: SpectralThetaWarmStartKey,
     pub(super) pricing_request: &'a VanillaOptionPricingRequest,
     pub(super) include_node_price_sensitivities: bool,
     pub(super) interval_factors: &'a [VanillaOptionPricingIntervalFactors],
@@ -91,7 +91,7 @@ pub(super) fn build_cached_interval_operators(
     input: CachedIntervalOperatorBuildInput<'_, '_, '_>,
 ) -> Result<Vec<CachedIntervalOperator>, VanillaOptionPricingRunError> {
     let CachedIntervalOperatorBuildInput {
-        carry_group_key,
+        theta_warm_start_key,
         pricing_request,
         include_node_price_sensitivities,
         interval_factors,
@@ -120,10 +120,7 @@ pub(super) fn build_cached_interval_operators(
                 .as_deref_mut()
                 .map(|state| {
                     state.interval_theta_hints(
-                        (
-                            carry_group_key.risk_free_rate_bits,
-                            carry_group_key.dividend_yield_bits,
-                        ),
+                        theta_warm_start_key,
                         interval_offset,
                         collocation_nodes.len(),
                         current_driver_configuration,
@@ -173,13 +170,11 @@ pub(super) fn build_cached_interval_operators(
     solved_interval_outputs.sort_by_key(|output| output.interval_offset);
 
     let mut cached_interval_operators = Vec::with_capacity(solved_interval_outputs.len());
+
     for solved_interval_output in solved_interval_outputs {
         if let Some(state) = theta_warm_start_state.as_deref_mut() {
             state.record_interval_theta_states(
-                (
-                    carry_group_key.risk_free_rate_bits,
-                    carry_group_key.dividend_yield_bits,
-                ),
+                theta_warm_start_key,
                 solved_interval_output.interval_offset,
                 current_driver_configuration,
                 solved_interval_output.row_theta_states,

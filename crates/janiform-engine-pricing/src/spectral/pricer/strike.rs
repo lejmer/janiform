@@ -4,7 +4,7 @@ use super::domain::resolve_bounded_node_price_sensitivity;
 use super::interval_operator::SolvedMaturityLaw;
 use super::payoff::{
     cos_price_from_terminal_characteristic_function,
-    cos_price_sensitivity_from_terminal_characteristic_function,
+    cos_price_sensitivity_from_terminal_characteristic_function, spectral_projection_payoff_type,
 };
 use super::{
     PricingProgressEvent, VanillaOptionGridRequest, VanillaOptionImpliedVolatilityInversionOutcome,
@@ -14,6 +14,7 @@ use super::{
     intraday_black_scholes_no_arbitrage_price_bounds, intraday_year_fraction,
     invert_vanilla_option_implied_volatility, resolved_pricing_cpu_count,
 };
+use crate::vanilla_payoff::vanilla_payoff_price_from_discounted_call;
 
 pub(super) struct PricedStrikeRow {
     pub(super) price_row: Vec<Option<f64>>,
@@ -63,6 +64,8 @@ pub(super) fn price_strike_row(input: StrikeRowPricingInput<'_, '_, '_>) -> Pric
 
     let discount_factor = (-grid.risk_free_rate * maturity_year_fraction).exp();
 
+    let discounted_spot = discount_factor * forward_price;
+
     let boundary_state_norm_row_value = Some(
         (boundary_state.y_plus_plus * boundary_state.y_plus_plus
             + boundary_state.y_plus_minus * boundary_state.y_plus_minus
@@ -86,13 +89,26 @@ pub(super) fn price_strike_row(input: StrikeRowPricingInput<'_, '_, '_>) -> Pric
     }
 
     let price_strike = |strike: f64| {
-        let model_price = cos_price_from_terminal_characteristic_function(
+        let projection_payoff_type = spectral_projection_payoff_type(grid.payoff_type);
+
+        let discounted_call_price = cos_price_from_terminal_characteristic_function(
             spot,
             strike,
-            grid.payoff_type,
+            projection_payoff_type,
             grid.risk_free_rate,
             solved_maturity,
         );
+
+        let discounted_strike = discount_factor * strike;
+
+        let model_price = discounted_call_price.and_then(|price| {
+            vanilla_payoff_price_from_discounted_call(
+                grid.payoff_type,
+                price,
+                discounted_spot,
+                discounted_strike,
+            )
+        });
 
         let market_inputs = VanillaOptionPricingMarketInputs::new_single_node(
             spot,
@@ -117,7 +133,7 @@ pub(super) fn price_strike_row(input: StrikeRowPricingInput<'_, '_, '_>) -> Pric
                     Some(_) => match cos_price_sensitivity_from_terminal_characteristic_function(
                         spot,
                         strike,
-                        grid.payoff_type,
+                        projection_payoff_type,
                         grid.risk_free_rate,
                         solved_maturity,
                     ) {

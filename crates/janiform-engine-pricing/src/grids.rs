@@ -546,11 +546,47 @@ impl Error for VanillaOptionSurfacePricingRunError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SpectralThetaWarmStartKey {
+    pub(crate) payoff_type_mask: u8,
+    pub(crate) risk_free_rate_bits: u64,
+    pub(crate) dividend_yield_bits: u64,
+}
+
+impl SpectralThetaWarmStartKey {
+    pub(crate) const fn new(
+        payoff_type_mask: u8,
+        risk_free_rate_bits: u64,
+        dividend_yield_bits: u64,
+    ) -> Self {
+        Self {
+            payoff_type_mask,
+            risk_free_rate_bits,
+            dividend_yield_bits,
+        }
+    }
+}
+
+const SPECTRAL_THETA_WARM_START_CALL_PAYOFF_TYPE_MASK: u8 = 1;
+const SPECTRAL_THETA_WARM_START_PUT_PAYOFF_TYPE_MASK: u8 = 2;
+
+pub(crate) fn spectral_theta_warm_start_payoff_type_mask(
+    payoff_types: &[VanillaOptionPayoffType],
+) -> u8 {
+    payoff_types.iter().fold(0_u8, |mask, payoff_type| {
+        mask | match payoff_type {
+            VanillaOptionPayoffType::Call => SPECTRAL_THETA_WARM_START_CALL_PAYOFF_TYPE_MASK,
+            VanillaOptionPayoffType::Put => SPECTRAL_THETA_WARM_START_PUT_PAYOFF_TYPE_MASK,
+        }
+    })
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SpectralThetaWarmStartState {
-    row_theta_states_by_carry_group: BTreeMap<(u64, u64), Vec<Vec<SpectralThetaWarmStartRowState>>>,
-    last_driver_configuration_by_carry_group:
-        BTreeMap<(u64, u64), SpectralThetaWarmStartDriverConfiguration>,
+    row_theta_states_by_pricing_group:
+        BTreeMap<SpectralThetaWarmStartKey, Vec<Vec<SpectralThetaWarmStartRowState>>>,
+    last_driver_configuration_by_pricing_group:
+        BTreeMap<SpectralThetaWarmStartKey, SpectralThetaWarmStartDriverConfiguration>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -655,22 +691,22 @@ impl SpectralThetaWarmStartState {
 
     pub(crate) fn interval_theta_hints(
         &mut self,
-        carry_group_key: (u64, u64),
+        warm_start_key: SpectralThetaWarmStartKey,
         interval_index: usize,
         row_count: usize,
         current_driver_configuration: SpectralThetaWarmStartDriverConfiguration,
     ) -> Vec<Option<f64>> {
-        self.ensure_interval_shape(carry_group_key, interval_index, row_count);
+        self.ensure_interval_shape(warm_start_key, interval_index, row_count);
 
         let parameter_delta = self
-            .last_driver_configuration_by_carry_group
-            .get(&carry_group_key)
+            .last_driver_configuration_by_pricing_group
+            .get(&warm_start_key)
             .copied()
             .map(|previous_driver_configuration| {
                 current_driver_configuration.parameter_delta_from(previous_driver_configuration)
             });
 
-        self.row_theta_states_by_carry_group[&carry_group_key][interval_index]
+        self.row_theta_states_by_pricing_group[&warm_start_key][interval_index]
             .iter()
             .map(|row_state| row_state.predicted_theta(parameter_delta))
             .collect()
@@ -678,33 +714,33 @@ impl SpectralThetaWarmStartState {
 
     pub(crate) fn record_interval_theta_states(
         &mut self,
-        carry_group_key: (u64, u64),
+        warm_start_key: SpectralThetaWarmStartKey,
         interval_index: usize,
         current_driver_configuration: SpectralThetaWarmStartDriverConfiguration,
         solved_row_states: impl IntoIterator<Item = SpectralThetaWarmStartRowState>,
     ) {
         let solved_row_states = solved_row_states.into_iter().collect::<Vec<_>>();
 
-        self.ensure_interval_shape(carry_group_key, interval_index, solved_row_states.len());
+        self.ensure_interval_shape(warm_start_key, interval_index, solved_row_states.len());
 
-        self.row_theta_states_by_carry_group
-            .get_mut(&carry_group_key)
-            .expect("carry-group theta warm-start storage should exist")[interval_index] =
+        self.row_theta_states_by_pricing_group
+            .get_mut(&warm_start_key)
+            .expect("pricing-group theta warm-start storage should exist")[interval_index] =
             solved_row_states;
 
-        self.last_driver_configuration_by_carry_group
-            .insert(carry_group_key, current_driver_configuration);
+        self.last_driver_configuration_by_pricing_group
+            .insert(warm_start_key, current_driver_configuration);
     }
 
     fn ensure_interval_shape(
         &mut self,
-        carry_group_key: (u64, u64),
+        warm_start_key: SpectralThetaWarmStartKey,
         interval_index: usize,
         row_count: usize,
     ) {
         let row_theta_states_by_interval = self
-            .row_theta_states_by_carry_group
-            .entry(carry_group_key)
+            .row_theta_states_by_pricing_group
+            .entry(warm_start_key)
             .or_default();
 
         if row_theta_states_by_interval.len() <= interval_index {

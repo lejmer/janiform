@@ -44,6 +44,7 @@ pub(super) fn build_spectral_domain(
     maturity_count: usize,
     _maturity_interval: f64,
     strikes: &[f64],
+    payoff_types: &[VanillaOptionPayoffType],
     collocation_node_count_override: Option<usize>,
 ) -> Result<SpectralDomain, VanillaOptionPricingRunError> {
     let terminal_anchor =
@@ -123,7 +124,7 @@ pub(super) fn build_spectral_domain(
         observed_log_domain_bounds_with_payoff_side_tail(
             observed_log_center,
             observed_log_half_width,
-            pricing_request.payoff.payoff_type,
+            payoff_types,
             strike_boundaries.as_slice(),
         )
         .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
@@ -159,12 +160,13 @@ fn observed_log_domain_half_width(observed_log_center: f64, domain_points: &[f64
 fn observed_log_domain_bounds_with_payoff_side_tail(
     observed_log_center: f64,
     envelope_half_width: f64,
-    payoff_type: VanillaOptionPayoffType,
+    payoff_types: &[VanillaOptionPayoffType],
     strike_boundaries: &[f64],
 ) -> Option<(f64, f64)> {
     if !observed_log_center.is_finite()
         || envelope_half_width <= 0.0
         || !envelope_half_width.is_finite()
+        || payoff_types.is_empty()
     {
         return None;
     }
@@ -172,40 +174,40 @@ fn observed_log_domain_bounds_with_payoff_side_tail(
     let mut lower_bound = observed_log_center - envelope_half_width;
     let mut upper_bound = observed_log_center + envelope_half_width;
 
-    // The domain policy mirrors the farthest quoted strike on
-    // the payoff-active side around the observed log price.
-    match payoff_type {
-        VanillaOptionPayoffType::Call => {
-            let right_wing_strike_boundary = strike_boundaries
-                .iter()
-                .copied()
-                .filter(|strike_boundary| {
-                    strike_boundary.is_finite() && *strike_boundary > observed_log_center
-                })
-                .max_by(f64::total_cmp);
+    for payoff_type in payoff_types {
+        // The domain policy mirrors the farthest quoted strike on
+        // the payoff-active side around the observed log price.
+        match payoff_type {
+            VanillaOptionPayoffType::Call => {
+                let payoff_side_boundary = strike_boundaries
+                    .iter()
+                    .copied()
+                    .filter(|strike_boundary| {
+                        strike_boundary.is_finite() && *strike_boundary > observed_log_center
+                    })
+                    .max_by(f64::total_cmp)
+                    .unwrap_or(observed_log_center + envelope_half_width);
 
-            if let Some(strike_boundary) = right_wing_strike_boundary {
                 let required_upper_bound =
-                    strike_boundary + (strike_boundary - observed_log_center);
+                    payoff_side_boundary + (payoff_side_boundary - observed_log_center);
                 if !required_upper_bound.is_finite() {
                     return None;
                 }
 
                 upper_bound = upper_bound.max(required_upper_bound);
             }
-        }
-        VanillaOptionPayoffType::Put => {
-            let left_wing_strike_boundary = strike_boundaries
-                .iter()
-                .copied()
-                .filter(|strike_boundary| {
-                    strike_boundary.is_finite() && *strike_boundary < observed_log_center
-                })
-                .min_by(f64::total_cmp);
+            VanillaOptionPayoffType::Put => {
+                let payoff_side_boundary = strike_boundaries
+                    .iter()
+                    .copied()
+                    .filter(|strike_boundary| {
+                        strike_boundary.is_finite() && *strike_boundary < observed_log_center
+                    })
+                    .min_by(f64::total_cmp)
+                    .unwrap_or(observed_log_center - envelope_half_width);
 
-            if let Some(strike_boundary) = left_wing_strike_boundary {
                 let required_lower_bound =
-                    strike_boundary - (observed_log_center - strike_boundary);
+                    payoff_side_boundary - (observed_log_center - payoff_side_boundary);
                 if !required_lower_bound.is_finite() {
                     return None;
                 }
@@ -263,7 +265,7 @@ mod tests {
         let call_bounds = observed_log_domain_bounds_with_payoff_side_tail(
             0.0,
             0.25,
-            VanillaOptionPayoffType::Call,
+            &[VanillaOptionPayoffType::Call],
             &[0.25],
         )
         .expect("call payoff-side bounds should resolve");
@@ -271,7 +273,7 @@ mod tests {
         let put_bounds = observed_log_domain_bounds_with_payoff_side_tail(
             0.0,
             0.25,
-            VanillaOptionPayoffType::Put,
+            &[VanillaOptionPayoffType::Put],
             &[-0.25],
         )
         .expect("put payoff-side bounds should resolve");
@@ -307,6 +309,41 @@ mod tests {
 
         assert!(call_wing_coefficient > 0.0);
         assert!(put_wing_coefficient > 0.0);
+    }
+
+    #[test]
+    fn spectral_domain_bounds_extend_payoff_side_from_envelope_when_no_wing_strike_exists() {
+        let call_bounds = observed_log_domain_bounds_with_payoff_side_tail(
+            0.0,
+            0.25,
+            &[VanillaOptionPayoffType::Call],
+            &[-0.25],
+        )
+        .expect("call payoff-side bounds should resolve from envelope");
+
+        let put_bounds = observed_log_domain_bounds_with_payoff_side_tail(
+            0.0,
+            0.25,
+            &[VanillaOptionPayoffType::Put],
+            &[0.25],
+        )
+        .expect("put payoff-side bounds should resolve from envelope");
+
+        assert_eq!(call_bounds, (-0.25, 0.5));
+        assert_eq!(put_bounds, (-0.5, 0.25));
+    }
+
+    #[test]
+    fn spectral_domain_bounds_union_both_payoff_sides_for_mixed_grids() {
+        let bounds = observed_log_domain_bounds_with_payoff_side_tail(
+            0.0,
+            0.25,
+            &[VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put],
+            &[-0.25, 0.25],
+        )
+        .expect("mixed payoff-side bounds should resolve");
+
+        assert_eq!(bounds, (-0.5, 0.5));
     }
 
     #[test]

@@ -5,6 +5,16 @@ use super::{
     complex_exponential, complex_multiply, intraday_year_fraction,
 };
 
+pub(super) fn spectral_projection_payoff_type(
+    payoff_type: VanillaOptionPayoffType,
+) -> VanillaOptionPayoffType {
+    match payoff_type {
+        VanillaOptionPayoffType::Call | VanillaOptionPayoffType::Put => {
+            VanillaOptionPayoffType::Call
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CosPayoffProjection {
     asset_reference_price: f64,

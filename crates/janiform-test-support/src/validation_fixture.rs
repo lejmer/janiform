@@ -580,7 +580,6 @@ pub fn validate_validation_fixture_manifest_document(
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn sorted_manifest_entries(
     manifest: &ValidationFixtureManifestDocument,
 ) -> Vec<ValidationFixtureManifestEntry> {

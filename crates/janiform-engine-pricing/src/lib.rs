@@ -15,6 +15,7 @@ mod runner;
 mod spectral;
 mod thread_pool;
 mod time_scaling;
+mod vanilla_payoff;
 
 pub use black_scholes::{
     black_scholes_log_return_characteristic_function, black_scholes_no_arbitrage_price_bounds,

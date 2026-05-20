@@ -5,9 +5,10 @@ use crate::contracts::{
     VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
 };
 use crate::grids::{
-    SpectralThetaWarmStartState, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
-    VanillaOptionGridPricingResult, VanillaOptionGridRequest,
+    SpectralThetaWarmStartKey, SpectralThetaWarmStartState,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRunError,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
+    VanillaOptionGridRequest, spectral_theta_warm_start_payoff_type_mask,
 };
 use crate::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use crate::progress::PricingProgressEvent;
@@ -26,6 +27,7 @@ use super::interval_operator::{
     CachedIntervalOperatorBuildInput, SolvedMaturityLaw, build_cached_interval_operators,
     solve_maturity_law,
 };
+use super::payoff::spectral_projection_payoff_type;
 #[cfg(test)]
 use super::payoff::{
     cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
@@ -38,22 +40,39 @@ use super::row_frequency::{
 use super::strike::{StrikeRowPricingInput, price_strike_row};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(in crate::spectral::pricer) struct CarryGroupKey {
+pub(in crate::spectral::pricer) struct PricingGroupKey {
     pub(in crate::spectral::pricer) risk_free_rate_bits: u64,
     pub(in crate::spectral::pricer) dividend_yield_bits: u64,
 }
 
-impl CarryGroupKey {
+impl PricingGroupKey {
     fn from_grid(grid: &VanillaOptionGridRequest) -> Self {
         Self {
             risk_free_rate_bits: grid.risk_free_rate.to_bits(),
             dividend_yield_bits: grid.dividend_yield.to_bits(),
         }
     }
+
+    pub(in crate::spectral::pricer) const fn theta_warm_start_key(
+        self,
+        payoff_type_mask: u8,
+    ) -> SpectralThetaWarmStartKey {
+        SpectralThetaWarmStartKey::new(
+            payoff_type_mask,
+            self.risk_free_rate_bits,
+            self.dividend_yield_bits,
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct PricingGroupMembers {
+    strike_bits: BTreeSet<u64>,
+    payoff_types: BTreeSet<VanillaOptionPayoffType>,
 }
 
 #[derive(Debug, Clone)]
-struct CarryGroupSolveContext {
+struct PricingGroupSolveContext {
     maturity_laws: BTreeMap<usize, SolvedMaturityLaw>,
 }
 
@@ -80,7 +99,7 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_
 
     let pricing_thread_pool = build_pricing_thread_pool(execution_input.cpu_count);
 
-    let mut carry_groups = prepare_carry_group_contexts(
+    let mut pricing_groups = prepare_pricing_group_contexts(
         &execution_input,
         pricing_thread_pool.as_ref(),
         execution_input.cpu_count,
@@ -99,18 +118,18 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_
     let mut grid_results = Vec::with_capacity(total_grids);
 
     for (grid_index, grid) in execution_input.request.grids.iter().enumerate() {
-        let carry_group_key = CarryGroupKey::from_grid(grid);
+        let pricing_group_key = PricingGroupKey::from_grid(grid);
 
-        let carry_context = carry_groups.get_mut(&carry_group_key).ok_or_else(|| {
+        let pricing_context = pricing_groups.get_mut(&pricing_group_key).ok_or_else(|| {
             VanillaOptionGridBatchPricingRunError::NodePricingFailure {
-                message: "missing carry-group spectral pricing context".to_string(),
+                message: "missing spectral pricing group context".to_string(),
             }
         })?;
 
         grid_results.push(build_grid_result(
             &execution_input,
             grid,
-            carry_context,
+            pricing_context,
             pricing_thread_pool.as_ref(),
             execution_input.cpu_count,
             &mut observer,
@@ -269,52 +288,60 @@ pub(crate) fn run_single_option_pricing(
     })
 }
 
-fn prepare_carry_group_contexts(
+fn prepare_pricing_group_contexts(
     execution_input: &VanillaOptionGridBatchPricingExecutionInput,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
     mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
-) -> Result<BTreeMap<CarryGroupKey, CarryGroupSolveContext>, String> {
-    let mut grouped_strikes = BTreeMap::<CarryGroupKey, BTreeSet<u64>>::new();
+) -> Result<BTreeMap<PricingGroupKey, PricingGroupSolveContext>, String> {
+    let mut grouped_members = BTreeMap::<PricingGroupKey, PricingGroupMembers>::new();
 
     for grid in &execution_input.request.grids {
-        let carry_group_key = CarryGroupKey::from_grid(grid);
-        let strike_bits = grouped_strikes.entry(carry_group_key).or_default();
+        let pricing_group_key = PricingGroupKey::from_grid(grid);
+        let members = grouped_members.entry(pricing_group_key).or_default();
+
+        members
+            .payoff_types
+            .insert(spectral_projection_payoff_type(grid.payoff_type));
 
         for strike in &grid.strikes {
-            strike_bits.insert(strike.to_bits());
+            members.strike_bits.insert(strike.to_bits());
         }
     }
 
-    let mut carry_groups = BTreeMap::new();
+    let mut pricing_groups = BTreeMap::new();
 
-    for (carry_group_key, strike_bits) in grouped_strikes {
-        let union_strikes = strike_bits
+    for (pricing_group_key, members) in grouped_members {
+        let union_strikes = members
+            .strike_bits
             .into_iter()
             .map(f64::from_bits)
             .collect::<Vec<_>>();
+
+        let payoff_types = members.payoff_types.into_iter().collect::<Vec<_>>();
+        let payoff_type_mask = spectral_theta_warm_start_payoff_type_mask(payoff_types.as_slice());
 
         let first_grid = execution_input
             .request
             .grids
             .iter()
-            .find(|grid| CarryGroupKey::from_grid(grid) == carry_group_key)
-            .ok_or_else(|| "missing representative grid for carry group".to_string())?;
+            .find(|grid| PricingGroupKey::from_grid(grid) == pricing_group_key)
+            .ok_or_else(|| "missing representative grid for pricing group".to_string())?;
 
         let max_maturity_interval = execution_input
             .request
             .grids
             .iter()
-            .filter(|grid| CarryGroupKey::from_grid(grid) == carry_group_key)
+            .filter(|grid| PricingGroupKey::from_grid(grid) == pricing_group_key)
             .flat_map(|grid| grid.maturity_intervals.iter().copied())
             .max_by(|left, right| left.total_cmp(right))
-            .ok_or_else(|| "carry group requires at least one maturity".to_string())?;
+            .ok_or_else(|| "pricing group requires at least one maturity".to_string())?;
 
         let dummy_strike = union_strikes
             .first()
             .copied()
-            .ok_or_else(|| "carry group requires at least one strike".to_string())?;
+            .ok_or_else(|| "pricing group requires at least one strike".to_string())?;
 
         let base_request = VanillaOptionPricingRequest::try_new(
             VanillaOptionPricingMarketInputs::new_single_node(
@@ -325,13 +352,15 @@ fn prepare_carry_group_contexts(
                 first_grid.dividend_yield,
             ),
             VanillaOptionPayoffConfiguration {
-                payoff_type: VanillaOptionPayoffType::Call,
+                payoff_type: first_grid.payoff_type,
             },
             execution_input.boundary_input.clone(),
             execution_input.model_parameters.clone(),
             execution_input.interval_delta,
         )
-        .map_err(|source| format!("failed to construct spectral carry-group request: {source}"))?;
+        .map_err(|source| {
+            format!("failed to construct spectral pricing-group request: {source}")
+        })?;
 
         let driver_parameters = execution_input
             .model_parameters
@@ -354,7 +383,7 @@ fn prepare_carry_group_contexts(
             .request
             .grids
             .iter()
-            .filter(|grid| CarryGroupKey::from_grid(grid) == carry_group_key)
+            .filter(|grid| PricingGroupKey::from_grid(grid) == pricing_group_key)
             .flat_map(|grid| {
                 grid.maturity_intervals.iter().map(|maturity_interval| {
                     execution_input
@@ -370,7 +399,7 @@ fn prepare_carry_group_contexts(
             .iter()
             .next_back()
             .copied()
-            .ok_or_else(|| "carry group requires at least one resolved maturity".to_string())?;
+            .ok_or_else(|| "pricing group requires at least one resolved maturity".to_string())?;
 
         let spectral_domain = build_spectral_domain(
             &base_request,
@@ -378,13 +407,13 @@ fn prepare_carry_group_contexts(
             maximum_maturity_count,
             max_maturity_interval,
             union_strikes.as_slice(),
+            payoff_types.as_slice(),
             execution_input.spectral_collocation_node_count_override,
         )
         .map_err(|source| format!("failed to construct spectral domain: {source}"))?;
 
         let cached_interval_operators =
             build_cached_interval_operators(CachedIntervalOperatorBuildInput {
-                carry_group_key,
                 pricing_request: &base_request,
                 include_node_price_sensitivities: execution_input
                     .optional_output_selection
@@ -394,6 +423,7 @@ fn prepare_carry_group_contexts(
                 maximum_maturity_count,
                 spectral_domain,
                 driver_parameters,
+                theta_warm_start_key: pricing_group_key.theta_warm_start_key(payoff_type_mask),
                 pricing_thread_pool,
                 cpu_count,
                 observer,
@@ -445,16 +475,19 @@ fn prepare_carry_group_contexts(
             );
         }
 
-        carry_groups.insert(carry_group_key, CarryGroupSolveContext { maturity_laws });
+        pricing_groups.insert(
+            pricing_group_key,
+            PricingGroupSolveContext { maturity_laws },
+        );
     }
 
-    Ok(carry_groups)
+    Ok(pricing_groups)
 }
 
 fn build_grid_result(
     execution_input: &VanillaOptionGridBatchPricingExecutionInput,
     grid: &VanillaOptionGridRequest,
-    carry_context: &CarryGroupSolveContext,
+    pricing_context: &PricingGroupSolveContext,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
@@ -500,7 +533,7 @@ fn build_grid_result(
 
         maturity_terminal_interval_indices.push(maturity_count - 1);
 
-        let solved_maturity = carry_context
+        let solved_maturity = pricing_context
             .maturity_laws
             .get(&maturity_count)
             .ok_or_else(
@@ -598,10 +631,11 @@ pub(in crate::spectral::pricer) fn emit_pricing_progress(
 #[cfg(test)]
 mod tests {
     use super::{
-        IntervalRowFrequencyBatchAdaptiveSolveInput, SolvedMaturityLaw, SpectralDomain,
-        asset_reference_log_price_from_observed_spot, build_spectral_domain,
+        IntervalRowFrequencyBatchAdaptiveSolveInput, PricingGroupKey, SolvedMaturityLaw,
+        SpectralDomain, asset_reference_log_price_from_observed_spot, build_spectral_domain,
         cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
-        solve_interval_row_frequency_batches_adaptively, strike_log_boundary_from_reference_log,
+        solve_interval_row_frequency_batches_adaptively, spectral_projection_payoff_type,
+        spectral_theta_warm_start_payoff_type_mask, strike_log_boundary_from_reference_log,
     };
     use crate::contracts::{
         AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
@@ -743,6 +777,35 @@ mod tests {
     }
 
     #[test]
+    fn spectral_pricing_group_key_reuses_operator_cache_across_payoff_types() {
+        let call_grid = crate::grids::VanillaOptionGridRequest {
+            payoff_type: VanillaOptionPayoffType::Call,
+            risk_free_rate: 0.02,
+            dividend_yield: 0.01,
+            strikes: vec![100.0],
+            maturity_intervals: vec![1.0],
+        };
+
+        let put_grid = crate::grids::VanillaOptionGridRequest {
+            payoff_type: VanillaOptionPayoffType::Put,
+            ..call_grid.clone()
+        };
+
+        let call_key = PricingGroupKey::from_grid(&call_grid);
+        let put_key = PricingGroupKey::from_grid(&put_grid);
+
+        assert_eq!(call_key, put_key);
+        assert_eq!(
+            call_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(&[
+                VanillaOptionPayoffType::Call,
+            ])),
+            put_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(&[
+                spectral_projection_payoff_type(VanillaOptionPayoffType::Put),
+            ])),
+        );
+    }
+
+    #[test]
     fn adaptive_interval_row_solver_returns_certified_thetas_for_nonzero_kappa_interval() {
         let pricing_request = VanillaOptionPricingRequest::try_new(
             VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 0.02, 0.01)
@@ -797,9 +860,16 @@ mod tests {
         )
         .expect("risk-neutral anchor materialization should succeed");
 
-        let spectral_domain =
-            build_spectral_domain(&pricing_request, &materialization, 1, 1.0, &[100.0], None)
-                .expect("spectral domain should construct");
+        let spectral_domain = build_spectral_domain(
+            &pricing_request,
+            &materialization,
+            1,
+            1.0,
+            &[100.0],
+            &[pricing_request.payoff.payoff_type],
+            None,
+        )
+        .expect("spectral domain should construct");
 
         let collocation_nodes = spectral_domain.collocation_nodes();
 
