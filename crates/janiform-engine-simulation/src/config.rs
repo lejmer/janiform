@@ -2,10 +2,10 @@
 
 use chrono::{DateTime, Utc};
 use janiform_foundations::time::{duration_hours_to_nanos, duration_nanos_to_hours};
-use janiform_market_time::seasonality::HOURS_PER_WEEK;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
+use janiform_model_kernels::return_marks::validate_return_mark_hour_of_week_factors;
 use serde::{Deserialize, Serialize};
 
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
@@ -18,7 +18,7 @@ use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
 };
-use super::error::SeededTickSimulationRunError;
+use super::error::{SeededTickSimulationRunError, seeded_tick_return_mark_validation_error};
 use super::runtime::{
     compute_max_effective_endogenous_branching_ratio, validate_hourly_factor_field_length,
     validate_hourly_factor_interval_coverage, validate_known_scheduled_news_timestamps,
@@ -238,31 +238,12 @@ impl SeededTickSimulationRunConfig {
             hourly_factor_contract.nu_h.len(),
         )?;
 
-        if self.model_inputs.return_mark_hour_of_week_factors.len() != HOURS_PER_WEEK {
-            return Err(
-                SeededTickSimulationRunError::ReturnMarkHourOfWeekFactorCountMismatch {
-                    expected_factor_count: HOURS_PER_WEEK,
-                    observed_factor_count: self.model_inputs.return_mark_hour_of_week_factors.len(),
-                },
-            );
-        }
-
-        for (factor_index, factor) in self
-            .model_inputs
-            .return_mark_hour_of_week_factors
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            if !factor.is_finite() || factor <= 0.0 {
-                return Err(
-                    SeededTickSimulationRunError::InvalidReturnMarkHourOfWeekFactor {
-                        factor_index,
-                        value: factor,
-                    },
-                );
-            }
-        }
+        validate_return_mark_hour_of_week_factors(
+            self.model_inputs
+                .return_mark_hour_of_week_factors
+                .as_slice(),
+        )
+        .map_err(seeded_tick_return_mark_validation_error)?;
 
         if let Some(tick_size) = self.model_inputs.observed_price_tick_size
             && !super::runtime::is_valid_observed_price_tick_size(tick_size)

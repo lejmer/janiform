@@ -211,6 +211,11 @@ fn build_grid_batch_execution_input(
     let interval_factors = materialize_schedule_interval_factors(
         &maturity_resolution.pricing_interval_schedule,
         &pricing_hourly_factor_contract,
+        context
+            .return_components_fitted_parameters
+            .return_mark_hour_of_week_scale_profile
+            .hour_of_week_factors
+            .as_slice(),
     )
     .map_err(|source| pricing_validation_error("runtime_interval_schedule", source.to_string()))?;
 

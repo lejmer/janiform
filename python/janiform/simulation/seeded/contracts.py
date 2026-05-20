@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from math import isfinite
-from typing import Any, Final, Optional, cast
+from typing import Any, Optional, cast
 
+from ..._return_marks import validate_return_mark_hour_of_week_factors
 from ..coarse.news import NewsProcessConfiguration
 from ..shared import (
     HawkesExcitationState,
@@ -39,9 +40,6 @@ from ...calendar import MarketState
 from ...hourly_factors import HourlyFactorContract
 from ...pricing import NigSharedPlusShiftConfiguration
 from ...sufficient_statistics import SufficientStatisticsReturnComponents
-
-
-_RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT: Final[int] = 24 * 7
 
 
 def _parse_nig_shared_plus_shift_configuration(
@@ -294,18 +292,11 @@ class SeededTickSimulationRequest(ContractModel):
                 "must match horizon_interval_count",
             )
 
-        if len(self.return_mark_hour_of_week_factors) != _RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT:
-            raise _simulation_error(
-                "return_mark_hour_of_week_factors",
-                "must contain 168 local hour-of-week factors",
-            )
-
-        for factor_index, factor in enumerate(self.return_mark_hour_of_week_factors):
-            if not isinstance(factor, int | float) or not isfinite(factor) or factor <= 0.0:
-                raise _simulation_error(
-                    f"return_mark_hour_of_week_factors[{factor_index}]",
-                    "must be finite and strictly positive",
-                )
+        validate_return_mark_hour_of_week_factors(
+            self.return_mark_hour_of_week_factors,
+            field_path="return_mark_hour_of_week_factors",
+            error_factory=_simulation_error,
+        )
 
         if self.observed_price_tick_size is not None and (
             not isfinite(self.observed_price_tick_size)

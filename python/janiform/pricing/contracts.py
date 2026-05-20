@@ -33,6 +33,7 @@ from .._pricing_field_names import (
     MATURITY_INTERVAL_FIELD_NAME,
     PRICING_STATUS_FIELD_NAME,
 )
+from .._return_marks import validate_return_mark_hour_of_week_factors
 from ._moneyness import calculate_log_forward_moneyness
 from .errors import PRICING_ERROR_FACTORY, _pricing_error
 from ..contracts.base import (
@@ -78,6 +79,8 @@ DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION = "pricing.vanilla_option.run_result.v1"
 VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION = "pricing.vanilla_option.run_diagnostics.v1"
 VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION = "pricing.vanilla_option.calibration_hooks.v1"
+
+
 VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION = (
     "pricing.vanilla_option.run_output_schema_metadata.v1"
 )
@@ -1668,6 +1671,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
     request: VanillaOptionPricingRequest
     runtime_interval_schedule: PricingIntervalSchedule
     hourly_factor_contract: HourlyFactorContract
+    return_mark_hour_of_week_factors: tuple[float, ...]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = (
         VanillaOptionPricingOptionalOutputSelection()
     )
@@ -1713,6 +1717,12 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 ),
             )
 
+        validate_return_mark_hour_of_week_factors(
+            self.return_mark_hour_of_week_factors,
+            field_path="return_mark_hour_of_week_factors",
+            error_factory=_pricing_error,
+        )
+
         if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
             raise _pricing_error(
                 "request.interval_delta",
@@ -1740,6 +1750,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
             "request": self.request.to_payload(),
             "runtime_interval_schedule": self.runtime_interval_schedule.to_payload(),
             "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
+            "return_mark_hour_of_week_factors": list(self.return_mark_hour_of_week_factors),
             "optional_output_selection": self.optional_output_selection.to_payload(),
         }
 

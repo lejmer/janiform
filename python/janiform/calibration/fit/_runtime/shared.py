@@ -34,6 +34,7 @@ class PreparedModelRuntimeFactors:
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
+    return_mark_hour_of_week_factors: tuple[float, ...]
 
 
 @dataclass(frozen=True, slots=True)

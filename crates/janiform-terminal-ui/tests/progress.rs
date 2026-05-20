@@ -262,6 +262,64 @@ fn adapter_uses_explicit_work_item_status_when_provided() {
 }
 
 #[test]
+fn adapter_keeps_completed_work_item_when_late_progress_arrives() {
+    let mut adapter = ProgressAdapter::hidden();
+
+    adapter.observe(ProgressEvent::RunStarted {
+        run_id: "fit-20260426".to_string(),
+        scope: "staged calibration".to_string(),
+        input_count: 1,
+        output_path: None,
+        stage_sequence: vec!["joint refinement".to_string()],
+        completed_stage_count: 0,
+    });
+
+    adapter.observe(ProgressEvent::StageStarted {
+        stage: "joint refinement".to_string(),
+        stage_number: 1,
+        stage_count: 1,
+    });
+
+    adapter.observe(ProgressEvent::StageProgress {
+        phase: "option search tier".to_string(),
+        measure: ProgressMeasure::percent(20),
+        work_item_label: Some("halton_02".to_string()),
+        work_item_progress_percent: Some(100),
+        work_item_status: None,
+        planned_work_item_labels: Vec::new(),
+        work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Evals")],
+        work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "5/5")],
+        latest_signal: Some("halton_02 completed".to_string()),
+    });
+
+    adapter.observe(ProgressEvent::StageProgress {
+        phase: "option search tier".to_string(),
+        measure: ProgressMeasure::percent(20),
+        work_item_label: Some("halton_02".to_string()),
+        work_item_progress_percent: Some(40),
+        work_item_status: None,
+        planned_work_item_labels: Vec::new(),
+        work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Evals")],
+        work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "2/5")],
+        latest_signal: Some("late halton_02 pricing callback".to_string()),
+    });
+
+    let snapshot = adapter.snapshot();
+    let work_item = snapshot
+        .work_items
+        .iter()
+        .find(|work_item| work_item.label == "halton_02")
+        .expect("completed work item should remain present");
+
+    assert_eq!(work_item.status, "completed");
+    assert!(work_item.progress.starts_with("100%"));
+    assert_eq!(
+        work_item.metrics.get("eval").map(String::as_str),
+        Some("5/5")
+    );
+}
+
+#[test]
 fn adapter_clears_work_items_when_phase_changes() {
     let mut adapter = ProgressAdapter::hidden();
 

@@ -2,10 +2,10 @@ use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Timelike, Utc
 use chrono_tz::Tz;
 use janiform_foundations::randomness::SimulationRandomnessStream;
 use janiform_foundations::time::{elapsed_utc_nanos_to_hours, utc_datetime_from_nanos};
-use janiform_market_time::seasonality::HOURS_PER_WEEK;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::return_marks::validate_return_mark_hour_of_week_factors;
 
-use crate::error::SeededTickSimulationRunError;
+use crate::error::{SeededTickSimulationRunError, seeded_tick_return_mark_validation_error};
 use janiform_market_time::calendar::{CalendarDate, SessionTime, TradingWeekday};
 
 use super::market_state::SeededSimulationMarketStateResolver;
@@ -169,14 +169,8 @@ pub(crate) fn return_mark_scale_factor_for_timestamp(
     exchange_timezone: Tz,
     timestamp_utc_nanos: i64,
 ) -> Result<f64, SeededTickSimulationRunError> {
-    if return_mark_hour_of_week_factors.len() != HOURS_PER_WEEK {
-        return Err(
-            SeededTickSimulationRunError::ReturnMarkHourOfWeekFactorCountMismatch {
-                expected_factor_count: HOURS_PER_WEEK,
-                observed_factor_count: return_mark_hour_of_week_factors.len(),
-            },
-        );
-    }
+    validate_return_mark_hour_of_week_factors(return_mark_hour_of_week_factors)
+        .map_err(seeded_tick_return_mark_validation_error)?;
 
     let timestamp_utc = utc_datetime_from_nanos(timestamp_utc_nanos).ok_or(
         SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
@@ -190,17 +184,7 @@ pub(crate) fn return_mark_scale_factor_for_timestamp(
 
     let hour_of_week = weekday_offset + timestamp_local.hour() as usize;
 
-    let return_mark_scale_factor = return_mark_hour_of_week_factors[hour_of_week];
-    if !return_mark_scale_factor.is_finite() || return_mark_scale_factor <= 0.0 {
-        return Err(
-            SeededTickSimulationRunError::InvalidReturnMarkHourOfWeekFactor {
-                factor_index: hour_of_week,
-                value: return_mark_scale_factor,
-            },
-        );
-    }
-
-    Ok(return_mark_scale_factor)
+    Ok(return_mark_hour_of_week_factors[hour_of_week])
 }
 
 pub(crate) fn build_interval_open_market_segments(

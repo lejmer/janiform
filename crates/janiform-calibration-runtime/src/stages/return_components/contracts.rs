@@ -19,13 +19,15 @@ use janiform_calibration_artifacts::{
     TickGridObservationModel,
 };
 use janiform_market_time::calendar::MarketState;
-use janiform_market_time::seasonality::HOURS_PER_WEEK;
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_marks::{
+    ReturnMarkHourOfWeekFactorsError, validate_return_mark_hour_of_week_factors,
+};
 
 use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT,
@@ -705,25 +707,8 @@ impl ReturnComponentsStageCandidateGenerationInput {
 fn validate_return_mark_hour_of_week_scale_profile(
     profile: &ReturnMarkHourOfWeekScaleProfile,
 ) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
-    if profile.hour_of_week_factors.len() != HOURS_PER_WEEK {
-        return Err(
-            ReturnComponentsStageCandidateGenerationInputError::ReturnMarkHourOfWeekFactorCountMismatch {
-                expected_factor_count: HOURS_PER_WEEK,
-                observed_factor_count: profile.hour_of_week_factors.len(),
-            },
-        );
-    }
-
-    for (factor_index, factor) in profile.hour_of_week_factors.iter().copied().enumerate() {
-        if !factor.is_finite() || factor <= 0.0 {
-            return Err(
-                ReturnComponentsStageCandidateGenerationInputError::InvalidReturnMarkHourOfWeekFactor {
-                    factor_index,
-                    value: factor,
-                },
-            );
-        }
-    }
+    validate_return_mark_hour_of_week_factors(profile.hour_of_week_factors.as_slice())
+        .map_err(return_components_return_mark_validation_error)?;
 
     if profile.profile_resolution_hours != 1 {
         return Err(
@@ -734,6 +719,27 @@ fn validate_return_mark_hour_of_week_scale_profile(
     }
 
     Ok(())
+}
+
+fn return_components_return_mark_validation_error(
+    source: ReturnMarkHourOfWeekFactorsError,
+) -> ReturnComponentsStageCandidateGenerationInputError {
+    match source {
+        ReturnMarkHourOfWeekFactorsError::FactorCountMismatch {
+            expected_factor_count,
+            observed_factor_count,
+        } => ReturnComponentsStageCandidateGenerationInputError::ReturnMarkHourOfWeekFactorCountMismatch {
+            expected_factor_count,
+            observed_factor_count,
+        },
+        ReturnMarkHourOfWeekFactorsError::InvalidFactor {
+            factor_index,
+            value,
+        } => ReturnComponentsStageCandidateGenerationInputError::InvalidReturnMarkHourOfWeekFactor {
+            factor_index,
+            value,
+        },
+    }
 }
 
 fn validate_tick_grid_observation_model(

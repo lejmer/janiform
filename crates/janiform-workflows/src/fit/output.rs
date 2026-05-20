@@ -150,14 +150,7 @@ fn success_summary(
             KeyValueRow::new("Report", format_artifact_path(paths.report_path.as_path())),
             KeyValueRow::new("Events", format_artifact_path(event_log_path)),
             KeyValueRow::new("Checkpoints", report.emitted_checkpoints.len().to_string()),
-            KeyValueRow::new(
-                "Resume",
-                report
-                    .resumed_from_checkpoint_reference
-                    .as_deref()
-                    .unwrap_or("not used")
-                    .to_string(),
-            ),
+            KeyValueRow::new("Resume", resume_availability(report)),
         ],
     }
 }
@@ -294,3 +287,6 @@ fn input_paths_summary(input_paths: &[String]) -> String {
 fn input_path_parts(input_path: &str) -> (&str, &str) {
     input_path.split_once(": ").unwrap_or(("input", input_path))
 }
+
+#[cfg(test)]
+mod tests;

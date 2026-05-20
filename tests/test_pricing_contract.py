@@ -52,6 +52,7 @@ from janiform.simulation.coarse import (
 )
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
 from tests.support.pricing import (
+    UNIT_RETURN_MARK_HOUR_OF_WEEK_FACTORS,
     build_anchored_request_model,
     build_anchored_surface_execution_input_model,
     build_anchored_surface_request_model,
@@ -387,6 +388,7 @@ def test_vanilla_option_surface_execution_input_rejects_runtime_schedule_termina
                 known_component_nu_h=(0.0,),
                 surprise_component_nu_h=(0.0,),
             ),
+            return_mark_hour_of_week_factors=UNIT_RETURN_MARK_HOUR_OF_WEEK_FACTORS,
         )
 
     assert captured_error.value.failure.field_path == "request.market_inputs.maturity_intervals[1]"
@@ -413,6 +415,7 @@ def test_vanilla_option_pricing_execution_input_rejects_empty_hourly_factor_cont
                 known_component_nu_h=(),
                 surprise_component_nu_h=(),
             ),
+            return_mark_hour_of_week_factors=UNIT_RETURN_MARK_HOUR_OF_WEEK_FACTORS,
         )
 
     assert captured_error.value.failure.field_path == "hourly_factor_contract.interval_count"
@@ -800,6 +803,7 @@ def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
             known_component_nu_h=(0.03,),
             surprise_component_nu_h=(0.05,),
         ),
+        return_mark_hour_of_week_factors=UNIT_RETURN_MARK_HOUR_OF_WEEK_FACTORS,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,
@@ -838,6 +842,7 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
             known_component_nu_h=(0.0,),
             surprise_component_nu_h=(0.0,),
         ),
+        return_mark_hour_of_week_factors=UNIT_RETURN_MARK_HOUR_OF_WEEK_FACTORS,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,

@@ -39,7 +39,7 @@ use super::characteristic::{
     build_local_tilt_bracket_with_search_domain_and_residual_evaluator,
     build_pricing_equation_specification,
     compose_total_return_characteristic_function_from_oracle_output,
-    resolve_local_tilt_search_domain, should_retry_local_tilt_side_evaluation,
+    resolve_scaled_local_tilt_search_domain, should_retry_local_tilt_side_evaluation,
     solve_exponential_affine_transform_with_internal_selection,
 };
 use super::constants::{
@@ -77,14 +77,21 @@ pub struct VanillaOptionPricingIntervalFactors {
     pub s_h: f64,
     pub nu_h_known: f64,
     pub nu_h_surprise: f64,
+    pub return_mark_scale: f64,
 }
 
 impl VanillaOptionPricingIntervalFactors {
-    pub const fn new(s_h: f64, nu_h_known: f64, nu_h_surprise: f64) -> Self {
+    pub const fn new(
+        s_h: f64,
+        nu_h_known: f64,
+        nu_h_surprise: f64,
+        return_mark_scale: f64,
+    ) -> Self {
         Self {
             s_h,
             nu_h_known,
             nu_h_surprise,
+            return_mark_scale,
         }
     }
 
@@ -92,8 +99,9 @@ impl VanillaOptionPricingIntervalFactors {
         s_h: f64,
         nu_h_known: f64,
         nu_h_surprise: f64,
+        return_mark_scale: f64,
     ) -> Result<Self, VanillaOptionPricingIntervalFactorsError> {
-        let factors = Self::new(s_h, nu_h_known, nu_h_surprise);
+        let factors = Self::new(s_h, nu_h_known, nu_h_surprise, return_mark_scale);
         factors.validate()?;
 
         Ok(factors)
@@ -112,6 +120,14 @@ impl VanillaOptionPricingIntervalFactors {
             .map_err(
                 |source| VanillaOptionPricingIntervalFactorsError::InvalidNewsIntensity { source },
             )?;
+
+        if !self.return_mark_scale.is_finite() || self.return_mark_scale <= 0.0 {
+            return Err(
+                VanillaOptionPricingIntervalFactorsError::InvalidReturnMarkScaleFactor {
+                    value: self.return_mark_scale,
+                },
+            );
+        }
 
         Ok(())
     }
@@ -141,6 +157,9 @@ pub enum VanillaOptionPricingIntervalFactorsError {
     InvalidNewsIntensity {
         source: ExponentialAffineTransformNewsIntensityInputError,
     },
+    InvalidReturnMarkScaleFactor {
+        value: f64,
+    },
 }
 
 impl Display for VanillaOptionPricingIntervalFactorsError {
@@ -156,6 +175,10 @@ impl Display for VanillaOptionPricingIntervalFactorsError {
                     "interval_factors news intensity is invalid: {source}"
                 )
             }
+            Self::InvalidReturnMarkScaleFactor { value } => write!(
+                formatter,
+                "interval_factors.return_mark_scale must be finite and strictly positive, found {value}"
+            ),
         }
     }
 }
@@ -617,14 +640,17 @@ impl<'a> IntervalTiltCurve<'a> {
         pricing_thread_pool: Option<&'a rayon::ThreadPool>,
         cpu_count: Option<usize>,
     ) -> Result<Self, VanillaOptionPricingRunError> {
-        let search_domain =
-            resolve_local_tilt_search_domain(driver_parameters).map_err(|source| {
-                VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-                    interval_index: transition_context.interval_index,
-                    deviation: 0.0,
-                    source: Box::new(source),
-                }
-            })?;
+        let search_domain = resolve_scaled_local_tilt_search_domain(
+            driver_parameters,
+            transition_context.interval_factors.return_mark_scale,
+        )
+        .map_err(
+            |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
+                interval_index: transition_context.interval_index,
+                deviation: 0.0,
+                source: Box::new(source),
+            },
+        )?;
 
         Ok(Self {
             transition_context,
@@ -1487,6 +1513,7 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
         driver_parameters,
         tilted_statistics,
         theta,
+        transition_context.interval_factors.return_mark_scale,
     )?;
 
     Ok(LocalTiltedIntervalExpectations {
@@ -1753,14 +1780,16 @@ fn solve_local_tilted_transform_slice_value(
     z_minus: ComplexScalar,
 ) -> Result<ComplexScalar, VanillaOptionPricingRunError> {
     let shifted_argument = ComplexScalar::new(0.0, -theta);
+    let trading_time_shifted_argument =
+        scale_trading_time_return_argument(transition_context, shifted_argument);
 
     let buy_side_shift = driver_parameters
-        .buy_side_characteristic_exponent(shifted_argument)
+        .buy_side_characteristic_exponent(trading_time_shifted_argument)
         .scale(-1.0)
         .plus(extra_u_plus);
 
     let sell_side_shift = driver_parameters
-        .sell_side_characteristic_exponent_for_return_composition(shifted_argument)
+        .sell_side_characteristic_exponent_for_return_composition(trading_time_shifted_argument)
         .scale(-1.0)
         .plus(extra_u_minus);
 
@@ -1798,20 +1827,21 @@ pub(crate) fn tilted_core_expected_increment_from_statistics(
     driver_parameters: NigBuySellDriverParameters,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
     theta: f64,
+    return_mark_scale: f64,
 ) -> Result<f64, VanillaOptionPricingRunError> {
     let tilted_buy_expected_increment = tilted_nig_expected_increment(
         driver_parameters.buy_side_parameters,
         expected_statistics.expected_a_plus,
-        theta,
+        return_mark_scale * theta,
     )?;
 
     let tilted_sell_expected_increment = tilted_nig_expected_increment(
         driver_parameters.sell_side_parameters,
         expected_statistics.expected_a_minus,
-        -theta,
+        -return_mark_scale * theta,
     )?;
 
-    Ok(tilted_buy_expected_increment - tilted_sell_expected_increment)
+    Ok(return_mark_scale * (tilted_buy_expected_increment - tilted_sell_expected_increment))
 }
 
 fn tilted_nig_expected_increment(
@@ -2125,11 +2155,13 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
 ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
-    let buy_side_characteristic_exponent =
-        driver_parameters.buy_side_characteristic_exponent(argument);
+    let trading_time_argument = scale_trading_time_return_argument(transition_context, argument);
 
-    let sell_side_characteristic_exponent =
-        driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
+    let buy_side_characteristic_exponent =
+        driver_parameters.buy_side_characteristic_exponent(trading_time_argument);
+
+    let sell_side_characteristic_exponent = driver_parameters
+        .sell_side_characteristic_exponent_for_return_composition(trading_time_argument);
 
     let transform_input = transition_context.build_transform_input(
         buy_side_characteristic_exponent.scale(-1.0),
@@ -2182,6 +2214,13 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
         value: assembled.combined_characteristic_factor,
         transform_diagnostics,
     })
+}
+
+fn scale_trading_time_return_argument(
+    transition_context: &LocalTransitionRequestContext,
+    argument: ComplexScalar,
+) -> ComplexScalar {
+    argument.scale(transition_context.interval_factors.return_mark_scale)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2307,23 +2346,27 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
     driver_parameters: NigBuySellDriverParameters,
     shifted_argument: ComplexScalar,
 ) -> Result<PricingCharacteristicFunctionSharedPlusShiftSensitivity, VanillaOptionPricingRunError> {
+    let return_mark_scale = transition_context.interval_factors.return_mark_scale;
+    let trading_time_shifted_argument =
+        scale_trading_time_return_argument(transition_context, shifted_argument);
+
     let buy_side_sensitivity = driver_parameters
         .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
-            shifted_argument,
+            trading_time_shifted_argument,
         )
         .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
             message: format!(
-                "buy-side characteristic-exponent sensitivity failed for shifted_argument={shifted_argument:?}: {source}"
+                "buy-side characteristic-exponent sensitivity failed for shifted_argument={trading_time_shifted_argument:?}: {source}"
             ),
         })?;
 
     let sell_side_sensitivity = driver_parameters
         .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
-            shifted_argument,
+            trading_time_shifted_argument,
         )
         .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
             message: format!(
-                "sell-side characteristic-exponent sensitivity failed for shifted_argument={shifted_argument:?}: {source}"
+                "sell-side characteristic-exponent sensitivity failed for shifted_argument={trading_time_shifted_argument:?}: {source}"
             ),
         })?;
 
@@ -2405,13 +2448,17 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
         transform_sensitivities
             .u_plus_sensitivity
             .transform_value_derivative,
-        buy_side_sensitivity.theta_shift_derivative.scale(-1.0),
+        buy_side_sensitivity
+            .theta_shift_derivative
+            .scale(-return_mark_scale),
     )
     .plus(complex_multiply(
         transform_sensitivities
             .u_minus_sensitivity
             .transform_value_derivative,
-        sell_side_sensitivity.theta_shift_derivative.scale(-1.0),
+        sell_side_sensitivity
+            .theta_shift_derivative
+            .scale(-return_mark_scale),
     ));
 
     validate_finite_characteristic_sensitivity("alpha", alpha_derivative)?;
@@ -2690,6 +2737,7 @@ struct VanillaOptionPricingIntervalFactorsPayload {
     s_h: f64,
     nu_h_known: f64,
     nu_h_surprise: f64,
+    return_mark_scale: f64,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
@@ -2699,8 +2747,13 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
     {
         let payload = VanillaOptionPricingIntervalFactorsPayload::deserialize(deserializer)?;
 
-        Self::try_new(payload.s_h, payload.nu_h_known, payload.nu_h_surprise)
-            .map_err(serde::de::Error::custom)
+        Self::try_new(
+            payload.s_h,
+            payload.nu_h_known,
+            payload.nu_h_surprise,
+            payload.return_mark_scale,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 

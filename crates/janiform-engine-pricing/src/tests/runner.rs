@@ -46,7 +46,7 @@ fn transition_context_for_request(
 ) -> LocalTransitionRequestContext {
     LocalTransitionRequestContext::from_pricing_request(
         pricing_request,
-        VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
+        VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
             .expect("transition-context interval factors should construct"),
     )
     .expect("transition context should construct")
@@ -309,7 +309,7 @@ fn single_node_grid_execution_input(
         runtime_interval_schedule,
         interval_delta: 1.0,
         interval_factors: vec![
-            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
                 .expect("single-node interval factors should construct"),
         ],
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
@@ -367,9 +367,9 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
     .expect("pricing request should construct");
 
     let interval_factors = vec![
-        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
             .expect("first interval factors should construct"),
-        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
             .expect("second interval factors should construct"),
     ];
 
@@ -419,21 +419,24 @@ fn tilted_core_expected_increment_matches_return_composition_log_moment_derivati
             .expect("expected statistics should construct");
 
     let theta = -0.35;
+    let return_mark_scale = 1.7;
 
     let observed = tilted_core_expected_increment_from_statistics(
         driver_parameters,
         expected_statistics,
         theta,
+        return_mark_scale,
     )
     .expect("tilted core expected increment should evaluate");
 
-    let expected = driver_parameters
-        .differentiate_return_composition_log_moment(
-            expected_statistics.expected_a_plus,
-            expected_statistics.expected_a_minus,
-            theta,
-        )
-        .expect("return-composition log-moment derivative should evaluate");
+    let expected = return_mark_scale
+        * driver_parameters
+            .differentiate_return_composition_log_moment(
+                expected_statistics.expected_a_plus,
+                expected_statistics.expected_a_minus,
+                return_mark_scale * theta,
+            )
+            .expect("return-composition log-moment derivative should evaluate");
 
     let tolerance = f64::EPSILON.sqrt() * observed.abs().max(expected.abs()).max(1.0);
 
@@ -672,7 +675,7 @@ fn local_transition_theta_short_circuits_to_zero_for_zero_adjustment_requests() 
     )
     .expect("pricing request should construct");
 
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
         .expect("interval factors should construct");
 
     let (theta, diagnostics) = resolve_local_transition_theta(
@@ -712,7 +715,7 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
     )
     .expect("pricing request should construct");
 
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
+    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15, 1.0)
         .expect("interval factors should construct");
 
     let driver_parameters = request
@@ -789,7 +792,7 @@ fn near_origin_positive_real_characteristic_function_evaluation_remains_finite()
         .derive_driver_parameters()
         .expect("driver parameters should derive");
 
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
+    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15, 1.0)
         .expect("interval factors should construct");
 
     let news_intensity = interval_factors

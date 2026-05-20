@@ -109,6 +109,15 @@ def prepare_model_runtime_factors_for_model(
             field_path="return_components.fitted_parameters.news_process_configuration.shared_mark_law.gamma_severity_marks",
         ),
         news_process_configuration=news_process_configuration,
+        return_mark_hour_of_week_factors=require_payload_numeric_sequence(
+            require_payload_mapping(
+                return_components_fitted_parameters,
+                "return_mark_hour_of_week_scale_profile",
+                "return_components.fitted_parameters.return_mark_hour_of_week_scale_profile",
+            ),
+            "hour_of_week_factors",
+            "return_components.fitted_parameters.return_mark_hour_of_week_scale_profile.hour_of_week_factors",
+        ),
     )
 
 

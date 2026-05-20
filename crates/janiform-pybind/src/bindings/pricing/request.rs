@@ -26,6 +26,7 @@ pub(super) struct VanillaOptionPricingExecutionInputPayload {
     pub(super) request: VanillaOptionPricingRequest,
     pub(super) runtime_interval_schedule: PricingIntervalSchedule,
     pub(super) hourly_factor_contract: PricingHourlyFactorContractPayload,
+    pub(super) return_mark_hour_of_week_factors: Vec<f64>,
     #[serde(default)]
     pub(super) optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
 }
@@ -39,6 +40,7 @@ struct VanillaOptionGridBatchPricingExecutionInputPayload {
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
     hourly_factor_contract: PricingHourlyFactorContractPayload,
+    return_mark_hour_of_week_factors: Vec<f64>,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default)]
@@ -55,6 +57,7 @@ struct VanillaOptionSurfacePricingExecutionInputPayload {
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
     hourly_factor_contract: PricingHourlyFactorContractPayload,
+    return_mark_hour_of_week_factors: Vec<f64>,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default)]
@@ -64,9 +67,16 @@ struct VanillaOptionSurfacePricingExecutionInputPayload {
 
 #[derive(serde::Deserialize)]
 pub(super) struct PricingHourlyFactorContractPayload {
+    exchange_code: String,
+    exchange_timezone_name: String,
+    request_start_utc_nanos: i64,
+    request_end_utc_nanos: i64,
     interval_duration_nanos: i64,
+    interval_indices: Vec<u64>,
     interval_start_utc_nanos: Vec<i64>,
     interval_end_utc_nanos: Vec<i64>,
+    interval_start_exchange_local: Vec<String>,
+    interval_end_exchange_local: Vec<String>,
     s_h: Vec<f64>,
     known_component_nu_h: Vec<f64>,
     surprise_component_nu_h: Vec<f64>,
@@ -114,6 +124,7 @@ pub(super) fn vanilla_option_pricing_execution_input_from_py(
     let interval_factors = materialize_schedule_interval_factors(
         &execution_input.runtime_interval_schedule,
         &hourly_factor_contract,
+        execution_input.return_mark_hour_of_week_factors.as_slice(),
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
@@ -142,6 +153,7 @@ pub(super) fn grid_batch_execution_input_from_py(
     let interval_factors = materialize_schedule_interval_factors(
         &execution_input.runtime_interval_schedule,
         &hourly_factor_contract,
+        execution_input.return_mark_hour_of_week_factors.as_slice(),
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
@@ -175,6 +187,7 @@ pub(super) fn surface_execution_input_from_py(
     let interval_factors = materialize_schedule_interval_factors(
         &execution_input.runtime_interval_schedule,
         &hourly_factor_contract,
+        execution_input.return_mark_hour_of_week_factors.as_slice(),
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
@@ -211,16 +224,16 @@ pub(super) fn hourly_factor_contract_output_from_payload(
 
     HourlyFactorContractOutput {
         schema_version: "",
-        exchange_code: String::new(),
-        exchange_timezone_name: String::new(),
-        request_start_utc_nanos: first_interval_start_utc_nanos,
-        request_end_utc_nanos: last_interval_end_utc_nanos,
+        exchange_code: payload.exchange_code,
+        exchange_timezone_name: payload.exchange_timezone_name,
+        request_start_utc_nanos: payload.request_start_utc_nanos,
+        request_end_utc_nanos: payload.request_end_utc_nanos,
         interval_duration_nanos: payload.interval_duration_nanos,
-        interval_indices: (0..interval_count).map(|index| index as u64).collect(),
+        interval_indices: payload.interval_indices,
         interval_start_utc_nanos: payload.interval_start_utc_nanos,
         interval_end_utc_nanos: payload.interval_end_utc_nanos,
-        interval_start_exchange_local: vec![String::new(); interval_count],
-        interval_end_exchange_local: vec![String::new(); interval_count],
+        interval_start_exchange_local: payload.interval_start_exchange_local,
+        interval_end_exchange_local: payload.interval_end_exchange_local,
         nu_h: payload
             .known_component_nu_h
             .iter()

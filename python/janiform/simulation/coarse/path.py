@@ -6,6 +6,7 @@ from datetime import datetime
 from math import isfinite
 from typing import Any, Optional
 
+from ..._return_marks import validate_return_mark_hour_of_week_factors
 from ._native_path_hydration import coarse_simulation_path_from_validated_payload
 from .news import (
     COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
@@ -61,7 +62,6 @@ COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION = "simulation.coarse_interval.path_
 COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION = "simulation.coarse_interval.path_output_schema_metadata.v1"
 COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION = "simulation.coarse_interval.path_provenance.v1"
 COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION = "simulation.coarse_interval.path_diagnostics.v1"
-_RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT = 168
 COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY = (
     "time_indexed_coarse_interval_simulation_path_for_validation_and_analytics.v1"
 )
@@ -77,17 +77,12 @@ class CoarseSimulationModelInputs(ContractModel):
     exchange_code: str
 
     def __post_init__(self) -> None:
-        if len(self.return_mark_hour_of_week_factors) != _RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT:
-            raise _simulation_error(
-                "return_mark_hour_of_week_factors",
-                "must contain 168 local hour-of-week factors",
-            )
-        for factor_index, factor in enumerate(self.return_mark_hour_of_week_factors):
-            if not isinstance(factor, int | float) or not isfinite(factor) or factor <= 0.0:
-                raise _simulation_error(
-                    f"return_mark_hour_of_week_factors[{factor_index}]",
-                    "must be finite and strictly positive",
-                )
+        validate_return_mark_hour_of_week_factors(
+            self.return_mark_hour_of_week_factors,
+            field_path="return_mark_hour_of_week_factors",
+            error_factory=_simulation_error,
+        )
+
         if self.observed_price_tick_size is not None and (
             not isfinite(self.observed_price_tick_size)
             or self.observed_price_tick_size <= 0.0

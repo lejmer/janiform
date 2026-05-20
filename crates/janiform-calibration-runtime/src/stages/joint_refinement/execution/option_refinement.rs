@@ -556,12 +556,13 @@ fn refine_search_tier_candidates(
 
             emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
                 current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
-                current_item_label: Some("resumed"),
+                current_item_label: Some(dynamics_candidate.restart_id.as_str()),
                 current_weighted_objective: Some(resumed_candidate.search_tier_score),
                 best_restart_id: progress_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: progress_snapshot.best_weighted_objective,
                 active_restart_count: None,
                 aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
+                evaluation_progress_percent: Some(100),
                 ..OptionRefinementProgressEmissionInput::new(
                     progress_sender,
                     JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -766,9 +767,11 @@ fn refine_parallel_search_tier_candidate(
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
+        current_item_label: Some(dynamics_candidate.restart_id.as_str()),
         best_restart_id: started_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: started_snapshot.best_weighted_objective,
         active_restart_count: None,
+        evaluation_progress_percent: Some(0),
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -815,6 +818,7 @@ fn refine_parallel_search_tier_candidate(
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
+        current_item_label: Some(dynamics_candidate.restart_id.as_str()),
         current_weighted_objective: refined_candidate
             .as_ref()
             .map(|candidate| candidate.search_tier_score),
@@ -875,12 +879,13 @@ fn evaluate_selection_tier_candidates(
 
             emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
                 current_restart_id: Some(restart_id.as_str()),
-                current_item_label: Some("resumed"),
+                current_item_label: Some(restart_id.as_str()),
                 current_weighted_objective: Some(resumed_candidate.selection_tier_score),
                 best_restart_id: progress_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: progress_snapshot.best_weighted_objective,
                 active_restart_count: None,
                 aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
+                evaluation_progress_percent: Some(100),
                 ..OptionRefinementProgressEmissionInput::new(
                     progress_sender,
                     JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
@@ -1038,9 +1043,11 @@ fn evaluate_parallel_selection_tier_candidate(
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(restart_id),
+        current_item_label: Some(restart_id),
         best_restart_id: started_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: started_snapshot.best_weighted_objective,
         active_restart_count: None,
+        evaluation_progress_percent: Some(0),
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
@@ -1122,6 +1129,7 @@ fn evaluate_parallel_selection_tier_candidate(
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(restart_id),
+        current_item_label: Some(restart_id),
         current_weighted_objective: refined_candidate
             .as_ref()
             .map(|candidate| candidate.selection_tier_score),

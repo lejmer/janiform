@@ -16,6 +16,7 @@ use janiform_model_kernels::news::NewsProcessConfigurationError;
 use janiform_model_kernels::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
+use janiform_model_kernels::return_marks::ReturnMarkHourOfWeekFactorsError;
 
 /// Structured simulator run failure with explicit validation diagnostics.
 #[derive(Debug, Clone, PartialEq)]
@@ -449,5 +450,26 @@ impl Error for SeededTickSimulationRunError {
             Self::InternalInvariantViolation { .. } => None,
             _ => None,
         }
+    }
+}
+
+pub(crate) fn seeded_tick_return_mark_validation_error(
+    source: ReturnMarkHourOfWeekFactorsError,
+) -> SeededTickSimulationRunError {
+    match source {
+        ReturnMarkHourOfWeekFactorsError::FactorCountMismatch {
+            expected_factor_count,
+            observed_factor_count,
+        } => SeededTickSimulationRunError::ReturnMarkHourOfWeekFactorCountMismatch {
+            expected_factor_count,
+            observed_factor_count,
+        },
+        ReturnMarkHourOfWeekFactorsError::InvalidFactor {
+            factor_index,
+            value,
+        } => SeededTickSimulationRunError::InvalidReturnMarkHourOfWeekFactor {
+            factor_index,
+            value,
+        },
     }
 }

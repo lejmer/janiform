@@ -35,6 +35,7 @@ from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 TEST_REFERENCE_PRICE = 100.0
 TEST_SPOT_PRICE = 101.0
+UNIT_RETURN_MARK_HOUR_OF_WEEK_FACTORS = (1.0,) * 168
 
 
 def build_anchored_request_model() -> VanillaOptionPricingRequest:
@@ -109,6 +110,7 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
             known_component_nu_h=(0.0,),
             surprise_component_nu_h=(0.0,),
         ),
+        return_mark_hour_of_week_factors=UNIT_RETURN_MARK_HOUR_OF_WEEK_FACTORS,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,
@@ -172,6 +174,9 @@ def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricin
         ),
         runtime_interval_schedule=anchored_runtime_execution_input.runtime_interval_schedule,
         hourly_factor_contract=anchored_runtime_execution_input.hourly_factor_contract,
+        return_mark_hour_of_week_factors=(
+            anchored_runtime_execution_input.return_mark_hour_of_week_factors
+        ),
         optional_output_selection=anchored_runtime_execution_input.optional_output_selection,
         cpu_count=1,
     )

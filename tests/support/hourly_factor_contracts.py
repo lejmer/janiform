@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Iterable
+from zoneinfo import ZoneInfo
 
 from janiform._timestamps import NANOS_PER_HOUR
 from janiform.hourly_factors import HourlyFactorContract, load_hourly_factor_contract_payload
@@ -37,6 +39,7 @@ def build_hourly_factor_contract(
         interval_start_utc_nanos[interval_index] + interval_duration_nanos
         for interval_index in interval_indices
     ]
+    exchange_timezone = ZoneInfo(exchange_timezone_name)
     total_nu_h = [
         known_component_values[interval_index] + surprise_component_values[interval_index]
         for interval_index in interval_indices
@@ -58,11 +61,17 @@ def build_hourly_factor_contract(
             "interval_start_utc_nanos": interval_start_utc_nanos,
             "interval_end_utc_nanos": interval_end_utc_nanos,
             "interval_start_exchange_local": [
-                f"test_interval_start_{interval_index}"
+                _exchange_local_timestamp(
+                    interval_start_utc_nanos[interval_index],
+                    exchange_timezone,
+                )
                 for interval_index in interval_indices
             ],
             "interval_end_exchange_local": [
-                f"test_interval_end_{interval_index}"
+                _exchange_local_timestamp(
+                    interval_end_utc_nanos[interval_index],
+                    exchange_timezone,
+                )
                 for interval_index in interval_indices
             ],
             "s_h": list(seasonality_factors),
@@ -91,3 +100,8 @@ def build_hourly_factor_contract(
             "news_intensity_materialization_method": news_intensity_materialization_method,
         }
     )
+
+
+def _exchange_local_timestamp(timestamp_utc_nanos: int, exchange_timezone: ZoneInfo) -> str:
+    timestamp_utc = datetime.fromtimestamp(timestamp_utc_nanos / 1_000_000_000, UTC)
+    return timestamp_utc.astimezone(exchange_timezone).isoformat()

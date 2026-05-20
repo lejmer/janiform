@@ -6,7 +6,6 @@ use std::fmt::{Display, Formatter};
 use janiform_foundations::time::{
     DurationHoursToNanosError, duration_hours_to_nanos, utc_datetime_from_nanos,
 };
-use janiform_market_time::seasonality::HOURS_PER_WEEK;
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::sufficient_statistics::{
@@ -28,6 +27,9 @@ use janiform_market_time::calendar::{
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateValidationError;
 use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
+use janiform_model_kernels::return_marks::{
+    ReturnMarkHourOfWeekFactorsError, validate_return_mark_hour_of_week_factors,
+};
 
 use super::runtime::{
     compute_max_effective_endogenous_branching_ratio, is_valid_observed_price_tick_size,
@@ -170,30 +172,8 @@ impl CoarseSimulationModelInputs {
                 CoarseSimulationModelInputsError::InvalidNewsProcessConfiguration { source }
             })?;
 
-        if self.return_mark_hour_of_week_factors.len() != HOURS_PER_WEEK {
-            return Err(
-                CoarseSimulationModelInputsError::ReturnMarkHourOfWeekFactorCountMismatch {
-                    expected_factor_count: HOURS_PER_WEEK,
-                    observed_factor_count: self.return_mark_hour_of_week_factors.len(),
-                },
-            );
-        }
-
-        for (factor_index, factor) in self
-            .return_mark_hour_of_week_factors
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            if !factor.is_finite() || factor <= 0.0 {
-                return Err(
-                    CoarseSimulationModelInputsError::InvalidReturnMarkHourOfWeekFactor {
-                        factor_index,
-                        value: factor,
-                    },
-                );
-            }
-        }
+        validate_return_mark_hour_of_week_factors(self.return_mark_hour_of_week_factors.as_slice())
+            .map_err(coarse_simulation_return_mark_validation_error)?;
 
         if let Some(tick_size) = self.observed_price_tick_size
             && !is_valid_observed_price_tick_size(tick_size)
@@ -229,6 +209,27 @@ impl CoarseSimulationModelInputs {
         &self,
     ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
         ExchangeCalendarRegistry::from_artifact(self.calendar_registry_artifact.clone())
+    }
+}
+
+fn coarse_simulation_return_mark_validation_error(
+    source: ReturnMarkHourOfWeekFactorsError,
+) -> CoarseSimulationModelInputsError {
+    match source {
+        ReturnMarkHourOfWeekFactorsError::FactorCountMismatch {
+            expected_factor_count,
+            observed_factor_count,
+        } => CoarseSimulationModelInputsError::ReturnMarkHourOfWeekFactorCountMismatch {
+            expected_factor_count,
+            observed_factor_count,
+        },
+        ReturnMarkHourOfWeekFactorsError::InvalidFactor {
+            factor_index,
+            value,
+        } => CoarseSimulationModelInputsError::InvalidReturnMarkHourOfWeekFactor {
+            factor_index,
+            value,
+        },
     }
 }
 

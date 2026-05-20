@@ -547,6 +547,25 @@ pub(crate) fn resolve_local_tilt_search_domain(
 ) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
     let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
 
+    local_tilt_search_domain_from_admissible_domain(admissible_domain)
+}
+
+pub(crate) fn resolve_scaled_local_tilt_search_domain(
+    driver_parameters: NigBuySellDriverParameters,
+    return_mark_scale: f64,
+) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
+    let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
+    let scaled_domain = NigEsscherTiltDomain::new(
+        admissible_domain.lower_theta_exclusive / return_mark_scale,
+        admissible_domain.upper_theta_exclusive / return_mark_scale,
+    );
+
+    local_tilt_search_domain_from_admissible_domain(scaled_domain)
+}
+
+fn local_tilt_search_domain_from_admissible_domain(
+    admissible_domain: NigEsscherTiltDomain,
+) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
     let Some(lower_theta) = admissible_domain.interior_lower_bound() else {
         return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
             target_log_moment_exponent: f64::NAN,

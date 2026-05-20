@@ -18,7 +18,8 @@ mod table;
 
 use display::{
     format_elapsed_duration, format_elapsed_seconds, progress_measure_label,
-    progress_percent_label, work_item_status_text, work_item_waiting_status_text,
+    progress_percent_label, work_item_status_is_completed, work_item_status_text,
+    work_item_waiting_status_text,
 };
 use refresh::MessageRefresh;
 use render::ProgressRenderState;
@@ -474,6 +475,12 @@ impl ProgressAdapter {
             .iter_mut()
             .find(|work_item| work_item.label == label)
         {
+            if work_item_status_is_completed(&work_item.status)
+                && !work_item_status_is_completed(&status)
+            {
+                return;
+            }
+
             work_item.progress = progress;
             work_item.elapsed = elapsed;
             work_item.status = status;

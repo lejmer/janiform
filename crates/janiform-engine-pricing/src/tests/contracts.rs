@@ -122,7 +122,7 @@ fn vanilla_option_pricing_execution_input_roundtrip_serialization_preserves_spli
         build_valid_vanilla_option_request(),
         build_uniform_runtime_interval_schedule(1, 1.0),
         vec![
-            VanillaOptionPricingIntervalFactors::try_new(1.1, 0.03, 0.05)
+            VanillaOptionPricingIntervalFactors::try_new(1.1, 0.03, 0.05, 1.0)
                 .expect("interval factors should construct"),
         ],
         VanillaOptionPricingOptionalOutputSelection::new(true, false, true),
@@ -150,7 +150,8 @@ fn vanilla_option_pricing_execution_input_deserialization_requires_split_news_fi
         "interval_factors": [
             {
                 "s_h": 1.0,
-                "nu_h_known": 0.03
+                "nu_h_known": 0.03,
+                "return_mark_scale": 1.0
             }
         ],
         "optional_output_selection": {
@@ -176,7 +177,9 @@ fn vanilla_option_pricing_execution_input_rejects_negative_surprise_news_intensi
     let error = VanillaOptionPricingExecutionInput::try_new(
         build_valid_vanilla_option_request(),
         build_uniform_runtime_interval_schedule(1, 1.0),
-        vec![VanillaOptionPricingIntervalFactors::new(1.0, 0.03, -0.01)],
+        vec![VanillaOptionPricingIntervalFactors::new(
+            1.0, 0.03, -0.01, 1.0,
+        )],
         VanillaOptionPricingOptionalOutputSelection::default(),
     )
     .expect_err("negative surprise news intensity must fail execution input validation");
