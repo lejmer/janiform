@@ -4,9 +4,9 @@ use super::{
     MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT, NodePriceSharedPlusShiftSensitivity,
     RiskNeutralAnchorMaterialization, SpectralPricingDiagnostics,
     VanillaOptionGridBatchPricingRunError, VanillaOptionMaturitySummary,
-    VanillaOptionNodePriceSensitivity, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingRunError,
-    asset_reference_log_price_from_observed_spot,
+    VanillaOptionNodePriceSensitivity, VanillaOptionPayoffType,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingRunError, asset_reference_log_price_from_observed_spot,
     build_spectral_compatibility_integration_diagnostics,
 };
 
@@ -88,11 +88,14 @@ pub(super) fn build_spectral_domain(
     })?;
 
     let anchor_span = anchor_max - anchor_min;
+
     let mut domain_points = vec![
         current_observed_log_price,
         current_observed_log_price + anchor_span,
         current_observed_log_price - anchor_span,
     ];
+
+    let mut strike_boundaries = Vec::with_capacity(strikes.len());
 
     for strike in strikes {
         let strike_boundary =
@@ -102,6 +105,7 @@ pub(super) fn build_spectral_domain(
                 },
             )?;
 
+        strike_boundaries.push(strike_boundary);
         domain_points.push(strike_boundary);
     }
 
@@ -115,20 +119,29 @@ pub(super) fn build_spectral_domain(
             .to_string(),
     })?;
 
+    let (observed_log_lower_bound, observed_log_upper_bound) =
+        observed_log_domain_bounds_with_payoff_side_tail(
+            observed_log_center,
+            observed_log_half_width,
+            pricing_request.payoff.payoff_type,
+            strike_boundaries.as_slice(),
+        )
+        .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "COS domain construction requires finite payoff-side domain bounds"
+                .to_string(),
+        })?;
+
     let node_count = collocation_node_count_override
         .unwrap_or_else(|| spectral_collocation_node_count_from_domain_points(&domain_points));
 
     Ok(SpectralDomain {
-        deviation_lower_bound: observed_log_center - observed_log_half_width - terminal_anchor,
-        deviation_upper_bound: observed_log_center + observed_log_half_width - terminal_anchor,
+        deviation_lower_bound: observed_log_lower_bound - terminal_anchor,
+        deviation_upper_bound: observed_log_upper_bound - terminal_anchor,
         node_count,
     })
 }
 
-pub(super) fn observed_log_domain_half_width(
-    observed_log_center: f64,
-    domain_points: &[f64],
-) -> Option<f64> {
+fn observed_log_domain_half_width(observed_log_center: f64, domain_points: &[f64]) -> Option<f64> {
     if !observed_log_center.is_finite() {
         return None;
     }
@@ -143,7 +156,70 @@ pub(super) fn observed_log_domain_half_width(
     (half_width > 0.0 && half_width.is_finite()).then_some(half_width)
 }
 
-pub(super) fn spectral_collocation_node_count_from_domain_points(domain_points: &[f64]) -> usize {
+fn observed_log_domain_bounds_with_payoff_side_tail(
+    observed_log_center: f64,
+    envelope_half_width: f64,
+    payoff_type: VanillaOptionPayoffType,
+    strike_boundaries: &[f64],
+) -> Option<(f64, f64)> {
+    if !observed_log_center.is_finite()
+        || envelope_half_width <= 0.0
+        || !envelope_half_width.is_finite()
+    {
+        return None;
+    }
+
+    let mut lower_bound = observed_log_center - envelope_half_width;
+    let mut upper_bound = observed_log_center + envelope_half_width;
+
+    // The domain policy mirrors the farthest quoted strike on
+    // the payoff-active side around the observed log price.
+    match payoff_type {
+        VanillaOptionPayoffType::Call => {
+            let right_wing_strike_boundary = strike_boundaries
+                .iter()
+                .copied()
+                .filter(|strike_boundary| {
+                    strike_boundary.is_finite() && *strike_boundary > observed_log_center
+                })
+                .max_by(f64::total_cmp);
+
+            if let Some(strike_boundary) = right_wing_strike_boundary {
+                let required_upper_bound =
+                    strike_boundary + (strike_boundary - observed_log_center);
+                if !required_upper_bound.is_finite() {
+                    return None;
+                }
+
+                upper_bound = upper_bound.max(required_upper_bound);
+            }
+        }
+        VanillaOptionPayoffType::Put => {
+            let left_wing_strike_boundary = strike_boundaries
+                .iter()
+                .copied()
+                .filter(|strike_boundary| {
+                    strike_boundary.is_finite() && *strike_boundary < observed_log_center
+                })
+                .min_by(f64::total_cmp);
+
+            if let Some(strike_boundary) = left_wing_strike_boundary {
+                let required_lower_bound =
+                    strike_boundary - (observed_log_center - strike_boundary);
+                if !required_lower_bound.is_finite() {
+                    return None;
+                }
+
+                lower_bound = lower_bound.min(required_lower_bound);
+            }
+        }
+    }
+
+    (lower_bound < upper_bound && lower_bound.is_finite() && upper_bound.is_finite())
+        .then_some((lower_bound, upper_bound))
+}
+
+fn spectral_collocation_node_count_from_domain_points(domain_points: &[f64]) -> usize {
     let mut sorted_points = domain_points
         .iter()
         .copied()
@@ -156,6 +232,94 @@ pub(super) fn spectral_collocation_node_count_from_domain_points(domain_points: 
     sorted_points
         .len()
         .max(MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::payoff::payoff_cos_coefficient;
+    use super::{
+        VanillaOptionPayoffType, observed_log_domain_bounds_with_payoff_side_tail,
+        observed_log_domain_half_width, spectral_collocation_node_count_from_domain_points,
+    };
+    use crate::constants::MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT;
+
+    #[test]
+    fn spectral_domain_half_width_is_derived_from_envelope_points() {
+        let half_width = observed_log_domain_half_width(0.2, &[0.2, -0.1, 0.35, 0.05])
+            .expect("non-degenerate envelope should resolve");
+
+        assert!((half_width - 0.3).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn spectral_domain_half_width_rejects_degenerate_envelope() {
+        let half_width = observed_log_domain_half_width(0.2, &[0.2, 0.2]);
+
+        assert_eq!(half_width, None);
+    }
+
+    #[test]
+    fn spectral_domain_bounds_extend_the_payoff_side_beyond_wing_strikes() {
+        let call_bounds = observed_log_domain_bounds_with_payoff_side_tail(
+            0.0,
+            0.25,
+            VanillaOptionPayoffType::Call,
+            &[0.25],
+        )
+        .expect("call payoff-side bounds should resolve");
+
+        let put_bounds = observed_log_domain_bounds_with_payoff_side_tail(
+            0.0,
+            0.25,
+            VanillaOptionPayoffType::Put,
+            &[-0.25],
+        )
+        .expect("put payoff-side bounds should resolve");
+
+        assert_eq!(call_bounds, (-0.25, 0.5));
+        assert_eq!(put_bounds, (-0.5, 0.25));
+
+        let call_wing_strike_boundary = 0.25_f64;
+        let call_wing_strike = call_wing_strike_boundary.exp();
+        let call_wing_coefficient = payoff_cos_coefficient(
+            VanillaOptionPayoffType::Call,
+            1.0,
+            call_wing_strike,
+            call_bounds.0,
+            call_bounds.1,
+            call_wing_strike_boundary,
+            0,
+        )
+        .expect("call wing coefficient should resolve");
+
+        let put_wing_strike_boundary = -0.25_f64;
+        let put_wing_strike = put_wing_strike_boundary.exp();
+        let put_wing_coefficient = payoff_cos_coefficient(
+            VanillaOptionPayoffType::Put,
+            1.0,
+            put_wing_strike,
+            put_bounds.0,
+            put_bounds.1,
+            put_wing_strike_boundary,
+            0,
+        )
+        .expect("put wing coefficient should resolve");
+
+        assert!(call_wing_coefficient > 0.0);
+        assert!(put_wing_coefficient > 0.0);
+    }
+
+    #[test]
+    fn default_spectral_collocation_node_count_tracks_distinct_envelope_points() {
+        let node_count =
+            spectral_collocation_node_count_from_domain_points(&[0.0, 0.2, 0.2, -0.1, 0.5]);
+
+        assert_eq!(node_count, 4);
+        assert_eq!(
+            spectral_collocation_node_count_from_domain_points(&[0.0]),
+            MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT
+        );
+    }
 }
 
 pub(super) fn build_maturity_summary(

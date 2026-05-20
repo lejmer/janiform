@@ -20,10 +20,7 @@ use crate::thread_pool::build_pricing_thread_pool;
 #[cfg(test)]
 use super::asset_reference_log_price_from_observed_spot;
 #[cfg(test)]
-use super::domain::{
-    SpectralDomain, observed_log_domain_half_width,
-    spectral_collocation_node_count_from_domain_points,
-};
+use super::domain::SpectralDomain;
 use super::domain::{build_maturity_summary, build_spectral_domain};
 use super::interval_operator::{
     CachedIntervalOperatorBuildInput, SolvedMaturityLaw, build_cached_interval_operators,
@@ -603,11 +600,9 @@ mod tests {
     use super::{
         IntervalRowFrequencyBatchAdaptiveSolveInput, SolvedMaturityLaw, SpectralDomain,
         asset_reference_log_price_from_observed_spot, build_spectral_domain,
-        cos_price_from_terminal_characteristic_function, observed_log_domain_half_width,
-        payoff_cos_coefficient, solve_interval_row_frequency_batches_adaptively,
-        spectral_collocation_node_count_from_domain_points, strike_log_boundary_from_reference_log,
+        cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
+        solve_interval_row_frequency_batches_adaptively, strike_log_boundary_from_reference_log,
     };
-    use crate::constants::MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT;
     use crate::contracts::{
         AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
         VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
@@ -623,33 +618,6 @@ mod tests {
     use janiform_model_kernels::mean_reversion::{
         MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
     };
-
-    #[test]
-    fn spectral_domain_half_width_is_derived_from_envelope_points() {
-        let half_width = observed_log_domain_half_width(0.2, &[0.2, -0.1, 0.35, 0.05])
-            .expect("non-degenerate envelope should resolve");
-
-        assert!((half_width - 0.3).abs() <= f64::EPSILON);
-    }
-
-    #[test]
-    fn spectral_domain_half_width_rejects_degenerate_envelope() {
-        let half_width = observed_log_domain_half_width(0.2, &[0.2, 0.2]);
-
-        assert_eq!(half_width, None);
-    }
-
-    #[test]
-    fn default_spectral_collocation_node_count_tracks_distinct_envelope_points() {
-        let node_count =
-            spectral_collocation_node_count_from_domain_points(&[0.0, 0.2, 0.2, -0.1, 0.5]);
-
-        assert_eq!(node_count, 4);
-        assert_eq!(
-            spectral_collocation_node_count_from_domain_points(&[0.0]),
-            MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT
-        );
-    }
 
     #[test]
     fn cos_payoff_coefficients_use_reference_price_scale() {
