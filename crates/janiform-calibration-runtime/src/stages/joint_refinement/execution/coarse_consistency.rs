@@ -19,6 +19,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation, JointRefinementReturnScaleSummary,
     finalize_sell_share_proxies, return_scale_summary, zeroed_interval_observation_template,
@@ -514,8 +515,8 @@ pub(crate) fn build_joint_coarse_interval_observations(
             "hourly simulation start timestamp is outside nanosecond range".to_string()
         })?;
 
-    let interval_count = ((simulation_end_utc_nanos - simulation_start_utc_nanos)
-        .div_euclid(interval_duration_nanos)) as usize;
+    let interval_count = (simulation_end_utc_nanos - simulation_start_utc_nanos)
+        .div_euclid(interval_duration_nanos) as usize;
 
     let surprise_deterministic_time_multiplier_by_interval_index =
         build_surprise_multipliers_for_interval_grid(
@@ -537,8 +538,7 @@ pub(crate) fn build_joint_coarse_interval_observations(
             interval_duration_nanos,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: context.runtime_hourly_seasonality_factors.as_slice(),
-                materialization_method:
-                    "runtime_compact_seasonality_parameters_mean_renormalized.v1",
+                materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
             news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: fitted_parameters

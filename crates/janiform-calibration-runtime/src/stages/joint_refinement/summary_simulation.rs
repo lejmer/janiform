@@ -5,6 +5,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation, JointRefinementBusinessTimeBucketThresholds,
     JointRefinementIntervalObservationCursor, accumulate_return_into_intervals_with_cursor,
@@ -479,8 +480,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
                 hourly_factors: session_context
                     .runtime_hourly_seasonality_factors
                     .as_slice(),
-                materialization_method:
-                    "runtime_compact_seasonality_parameters_mean_renormalized.v1",
+                materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
             news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: session_context
@@ -1028,8 +1028,7 @@ pub(crate) mod tests {
                         .session_context
                         .runtime_hourly_seasonality_factors
                         .as_slice(),
-                    materialization_method:
-                        "runtime_compact_seasonality_parameters_mean_renormalized.v1",
+                    materialization_method: crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
                 }),
                 news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                     known_scheduled_event_timestamps_utc_nanos: fixture
@@ -1284,7 +1283,7 @@ pub(crate) mod tests {
                 .session_context
                 .simulated_hourly_interval_template
                 .as_slice(),
-            janiform_foundations::time::NANOS_PER_HOUR,
+            NANOS_PER_HOUR,
         );
 
         let simulated_5m_log_returns = simulated_5m_intervals
@@ -1403,7 +1402,6 @@ pub(crate) mod tests {
                             .intraday_factor_by_bin
                             .as_slice(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.as_slice(),
-                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.as_slice(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.as_slice(),
                         range_start_utc_nanos: observed_data
                             .hourly_simulation_start_utc
@@ -1413,7 +1411,7 @@ pub(crate) mod tests {
                             .hourly_simulation_end_utc
                             .timestamp_nanos_opt()
                             .expect("hourly simulation end timestamp should fit in i64"),
-                        interval_duration_nanos: janiform_foundations::time::NANOS_PER_HOUR,
+                        interval_duration_nanos: NANOS_PER_HOUR,
                     },
                 )
                 .expect("runtime hourly seasonality factors should build");

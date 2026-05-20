@@ -29,6 +29,7 @@ use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::current_state::{
     CurrentStateEstimationInput, estimate_current_state_from_observed_data,
 };
+use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageOptionPricingInput,
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate, progress_percent,
@@ -499,10 +500,6 @@ fn build_option_hourly_factor_contract(
                     .seasonality_factors_input
                     .day_of_week_factor
                     .as_slice(),
-                hour_of_week_factor: stage_input
-                    .seasonality_factors_input
-                    .hour_of_week_factor
-                    .as_slice(),
                 day_of_year_factor: stage_input
                     .seasonality_factors_input
                     .day_of_year_factor
@@ -545,8 +542,7 @@ fn build_option_hourly_factor_contract(
             interval_duration_nanos: NANOS_PER_HOUR,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
-                materialization_method:
-                    "runtime_compact_seasonality_parameters_mean_renormalized.v1",
+                materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
             news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: return_components_payload
@@ -2862,7 +2858,6 @@ mod tests {
                         .intraday_factor_by_bin
                         .as_slice(),
                     day_of_week_factor: seasonality_factors_input.day_of_week_factor.as_slice(),
-                    hour_of_week_factor: seasonality_factors_input.hour_of_week_factor.as_slice(),
                     day_of_year_factor: seasonality_factors_input.day_of_year_factor.as_slice(),
                     range_start_utc_nanos: hourly_coverage_start_utc_nanos,
                     range_end_utc_nanos: hourly_coverage_end_utc_nanos,
@@ -2906,8 +2901,7 @@ mod tests {
                 interval_duration_nanos: NANOS_PER_HOUR,
                 seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                     hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
-                    materialization_method:
-                        "runtime_compact_seasonality_parameters_mean_renormalized.v1",
+                    materialization_method: crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
                 }),
                 news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                     known_scheduled_event_timestamps_utc_nanos: return_components_payload

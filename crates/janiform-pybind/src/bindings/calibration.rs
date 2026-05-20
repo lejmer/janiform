@@ -1052,7 +1052,7 @@ fn estimate_current_state_from_observed_data(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, intraday_minutes_per_bin, intraday_factor_by_bin, day_of_week_factor, hour_of_week_factor, day_of_year_factor))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, intraday_minutes_per_bin, intraday_factor_by_bin, day_of_week_factor, day_of_year_factor))]
 #[expect(
     clippy::too_many_arguments,
     reason = "PyO3 boundary mirrors the public Python keyword API."
@@ -1067,7 +1067,6 @@ fn materialize_runtime_structural_seasonality(
     intraday_minutes_per_bin: u16,
     intraday_factor_by_bin: &Bound<'_, PyAny>,
     day_of_week_factor: &Bound<'_, PyAny>,
-    hour_of_week_factor: &Bound<'_, PyAny>,
     day_of_year_factor: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
     let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
@@ -1083,12 +1082,6 @@ fn materialize_runtime_structural_seasonality(
     let parsed_day_of_week_factor: Vec<f64> = day_of_week_factor.extract().map_err(|_| {
         CalibrationExecutionError::new_err(
             "runtime seasonality day_of_week_factor must be an iterable of float values",
-        )
-    })?;
-
-    let parsed_hour_of_week_factor: Vec<f64> = hour_of_week_factor.extract().map_err(|_| {
-        CalibrationExecutionError::new_err(
-            "runtime seasonality hour_of_week_factor must be an iterable of float values",
         )
     })?;
 
@@ -1120,7 +1113,6 @@ fn materialize_runtime_structural_seasonality(
                     intraday_minutes_per_bin,
                     intraday_factor_by_bin: parsed_intraday_factor_by_bin,
                     day_of_week_factor: parsed_day_of_week_factor,
-                    hour_of_week_factor: parsed_hour_of_week_factor,
                     day_of_year_factor: parsed_day_of_year_factor,
                     range_start_utc_nanos: parsed_range_start_utc_nanos,
                     range_end_utc_nanos: parsed_range_end_utc_nanos,

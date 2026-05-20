@@ -785,10 +785,6 @@ fn materialize_runtime_state(
                     .seasonality_factors_input
                     .day_of_week_factor
                     .as_slice(),
-                hour_of_week_factor: stage_input
-                    .seasonality_factors_input
-                    .hour_of_week_factor
-                    .as_slice(),
                 day_of_year_factor: stage_input
                     .seasonality_factors_input
                     .day_of_year_factor

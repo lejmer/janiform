@@ -27,6 +27,7 @@ use janiform_model_kernels::mean_reversion::{
 };
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_grid;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
@@ -58,8 +59,6 @@ const QUASI_LIKELIHOOD_MODEL_SELECTION_SAMPLE_SUPPORT_REQUIRED_REASON: &str =
     "gaussian_quasi_likelihood_bic_model_selection_sample_support_required.v1";
 const ENDOGENOUS_MODEL_SELECTION_POLICY: &str =
     "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1";
-const RUNTIME_SEASONALITY_MATERIALIZATION_METHOD: &str =
-    "runtime_compact_seasonality_parameters_mean_renormalized.v1";
 const CALIBRATION_GRID_ALIGNMENT_POLICY: &str =
     "calibration_grid_observation_boundary_alignment.v1";
 
@@ -643,7 +642,6 @@ fn build_endogenous_mean_reversion_calibration_context(
                 intraday_minutes_per_bin: seasonality_input.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_input.intraday_factor_by_bin.as_slice(),
                 day_of_week_factor: seasonality_input.day_of_week_factor.as_slice(),
-                hour_of_week_factor: seasonality_input.hour_of_week_factor.as_slice(),
                 day_of_year_factor: seasonality_input.day_of_year_factor.as_slice(),
                 range_start_utc_nanos: runtime_hourly_seasonality_range_start_utc_nanos,
                 range_end_utc_nanos: runtime_hourly_seasonality_range_end_utc_nanos,
@@ -677,7 +675,7 @@ fn build_endogenous_mean_reversion_calibration_context(
             interval_duration_nanos,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
-                materialization_method: RUNTIME_SEASONALITY_MATERIALIZATION_METHOD,
+                materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
             news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: return_components_payload

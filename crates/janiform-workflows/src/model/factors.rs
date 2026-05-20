@@ -6,6 +6,7 @@ use janiform::model::factors::hourly::{
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
     HourlySeasonalityFactorSource, NANOS_PER_HOUR,
 };
+use janiform_calibration_runtime::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use janiform_foundations::time::parse_utc_datetime;
 use serde_json::Value;
 
@@ -15,8 +16,6 @@ use super::context::{
     FittedModelContext, PersistedModelPayload, interval_span_nanos, validation_error,
 };
 
-const RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: &str =
-    "runtime_compact_seasonality_parameters_mean_renormalized.v1";
 const SURPRISE_MULTIPLIER_HOURS_PER_WEEK: usize = 168;
 const MINUTES_PER_DAY: usize = 1_440;
 
@@ -104,12 +103,6 @@ fn materialize_runtime_seasonality_grid(
         "seasonality.day_of_week_factor",
     )?;
 
-    let hour_of_week_factor = numeric_sequence(
-        seasonality_parameters,
-        "hour_of_week_factor",
-        "seasonality.hour_of_week_factor",
-    )?;
-
     let day_of_year_factor = numeric_sequence(
         seasonality_parameters,
         "day_of_year_factor",
@@ -140,7 +133,6 @@ fn materialize_runtime_seasonality_grid(
             intraday_minutes_per_bin,
             intraday_factor_by_bin,
             day_of_week_factor,
-            hour_of_week_factor,
             day_of_year_factor,
         },
     )

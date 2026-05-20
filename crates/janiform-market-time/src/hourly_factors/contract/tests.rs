@@ -73,6 +73,25 @@ fn hourly_factor_contract_builds_expected_schema_and_metadata() {
 }
 
 #[test]
+fn hourly_factor_contract_builder_accepts_zero_seasonality_factors() {
+    let registry = build_calendar_registry();
+
+    let output = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T16:00:00Z"),
+        interval_duration_nanos: NANOS_PER_HOUR,
+        seasonality_factors: &[0.0, 0.9],
+        news_intensity_factors: &[0.0, 0.2],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
+    .expect("zero seasonality factors should remain valid contract values");
+
+    assert_eq!(output.s_h, vec![0.0, 0.9]);
+}
+
+#[test]
 fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
     let registry = build_calendar_registry();
 

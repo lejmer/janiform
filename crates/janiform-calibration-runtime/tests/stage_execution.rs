@@ -922,11 +922,11 @@ fn hawkes_stage_tracks_unobserved_runtime_seasonality_without_branching_constrai
         .expect("selected candidate should be present in diagnostics");
 
     assert_eq!(original_candidate.constraint_violation_count, 0);
-    assert!(
+    assert_eq!(
         original_candidate
             .implied_metrics
-            .max_runtime_hourly_seasonality_factor
-            > 3.0
+            .max_runtime_hourly_seasonality_factor,
+        3.0
     );
     assert_eq!(
         original_candidate

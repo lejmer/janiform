@@ -9,6 +9,9 @@ use crate::stages::seasonality::{
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
+pub const RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: &str =
+    "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1";
+
 /// Rust-native input for compact structural runtime seasonality materialization.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeStructuralSeasonalityMaterializationInput {
@@ -16,7 +19,6 @@ pub struct RuntimeStructuralSeasonalityMaterializationInput {
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
-    pub hour_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
     pub range_start_utc_nanos: i64,
     pub range_end_utc_nanos: i64,
@@ -75,7 +77,6 @@ pub fn materialize_runtime_structural_seasonality(
             intraday_minutes_per_bin: input.intraday_minutes_per_bin,
             intraday_factor_by_bin: input.intraday_factor_by_bin.as_slice(),
             day_of_week_factor: input.day_of_week_factor.as_slice(),
-            hour_of_week_factor: input.hour_of_week_factor.as_slice(),
             day_of_year_factor: input.day_of_year_factor.as_slice(),
             range_start_utc_nanos: input.range_start_utc_nanos,
             range_end_utc_nanos: input.range_end_utc_nanos,

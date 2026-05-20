@@ -126,6 +126,7 @@ pub use optimizer_adapter::{
     CalibrationOptimizerParameterBoundError, run_constrained_optimizer_adapter,
 };
 pub use runtime_seasonality::{
+    RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
     RuntimeStructuralSeasonalityMaterializationError,
     RuntimeStructuralSeasonalityMaterializationInput,
     RuntimeStructuralSeasonalityMaterializationOutput, materialize_runtime_structural_seasonality,
