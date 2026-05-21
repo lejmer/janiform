@@ -2,7 +2,8 @@ use crate::characteristic::build_pricing_equation_specification;
 use crate::grids::{
     SpectralThetaWarmStartDriverConfiguration, SpectralThetaWarmStartKey,
     SpectralThetaWarmStartRowState, SpectralThetaWarmStartSensitivity, SpectralThetaWarmStartState,
-    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridRequest, run_vanilla_option_grid_batch_pricing,
     spectral_theta_warm_start_payoff_type_mask,
 };
@@ -319,6 +320,7 @@ fn single_node_grid_execution_input(
             include_node_price_sensitivities,
         },
         spectral_collocation_node_count_override: None,
+        operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
         cpu_count: Some(1),
     }
 }
@@ -331,6 +333,112 @@ fn single_node_price(model_parameters: crate::VanillaOptionPricingModelParameter
     .expect("finite-difference pricing run should succeed");
 
     pricing_result.grids[0].price_grid[0][0].expect("single-node price should exist")
+}
+
+#[test]
+fn grid_batch_bucketed_search_reports_representative_kernel_reuse() {
+    let pricing_result =
+        run_vanilla_option_grid_batch_pricing(multi_interval_grid_execution_input(
+            VanillaOptionGridBatchPricingOperatorApproximation::BucketedSearch,
+            false,
+        ))
+        .expect("bucketed grid pricing run should succeed");
+
+    let diagnostics = pricing_result
+        .operator_approximation_diagnostics
+        .expect("bucketed pricing should report approximation diagnostics");
+
+    assert!(diagnostics.representative_kernel_count < diagnostics.exact_interval_count);
+    assert_eq!(
+        diagnostics.reused_interval_count,
+        diagnostics.exact_interval_count - diagnostics.representative_kernel_count
+    );
+    assert!(!diagnostics.exact_pricing_forced_by_sensitivities);
+}
+
+#[test]
+fn grid_batch_bucketed_search_uses_exact_pricing_for_sensitivities() {
+    let pricing_result =
+        run_vanilla_option_grid_batch_pricing(multi_interval_grid_execution_input(
+            VanillaOptionGridBatchPricingOperatorApproximation::BucketedSearch,
+            true,
+        ))
+        .expect("sensitivity grid pricing run should succeed");
+
+    let diagnostics = pricing_result
+        .operator_approximation_diagnostics
+        .expect("forced exact pricing should report approximation diagnostics");
+
+    assert_eq!(
+        diagnostics.representative_kernel_count,
+        diagnostics.exact_interval_count
+    );
+    assert_eq!(diagnostics.reused_interval_count, 0);
+    assert!(diagnostics.exact_pricing_forced_by_sensitivities);
+}
+
+#[test]
+fn grid_batch_exact_pricing_reports_no_operator_approximation() {
+    let pricing_result =
+        run_vanilla_option_grid_batch_pricing(multi_interval_grid_execution_input(
+            VanillaOptionGridBatchPricingOperatorApproximation::Exact,
+            false,
+        ))
+        .expect("exact grid pricing run should succeed");
+
+    assert_eq!(pricing_result.operator_approximation_diagnostics, None);
+}
+
+fn multi_interval_grid_execution_input(
+    operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation,
+    include_node_price_sensitivities: bool,
+) -> VanillaOptionGridBatchPricingExecutionInput {
+    let runtime_interval_schedule: PricingIntervalSchedule =
+        build_uniform_runtime_interval_schedule(4, 0.25);
+
+    VanillaOptionGridBatchPricingExecutionInput {
+        request: VanillaOptionGridBatchPricingRequest {
+            spot: 101.0,
+            grids: vec![VanillaOptionGridRequest {
+                payoff_type: VanillaOptionPayoffType::Call,
+                risk_free_rate: 0.02,
+                dividend_yield: 0.01,
+                strikes: vec![100.0],
+                maturity_intervals: vec![1.0],
+            }],
+        },
+        boundary_input: disabled_boundary_input(
+            0.25,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        ),
+        model_parameters: valid_model_parameters(),
+        runtime_interval_schedule,
+        interval_delta: 0.25,
+        interval_factors: vec![
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+                .expect("first interval factors should construct"),
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+                .expect("second interval factors should construct"),
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+                .expect("third interval factors should construct"),
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+                .expect("fourth interval factors should construct"),
+        ],
+        optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
+            include_transform_diagnostics: false,
+            include_integration_quality_diagnostics: false,
+            include_calibration_hooks: false,
+            include_node_price_sensitivities,
+        },
+        spectral_collocation_node_count_override: None,
+        operator_approximation,
+        cpu_count: Some(1),
+    }
 }
 
 #[test]

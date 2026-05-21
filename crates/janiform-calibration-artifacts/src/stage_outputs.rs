@@ -302,9 +302,20 @@ pub struct JointRefinementStageOptionTierPricingDiagnostics {
     pub tier_kind: String,
     pub snapshot_metadata: JointRefinementStageOptionSnapshotMetadata,
     pub root_mean_square_spread_normalized_residual: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_approximation: Option<JointRefinementStageOptionOperatorApproximationDiagnostics>,
     pub maturity_scores: Vec<JointRefinementStageOptionMaturityScoreDiagnostic>,
     pub node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
     pub aggregate_diagnostics: Vec<JointRefinementStageOptionAggregateDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionOperatorApproximationDiagnostics {
+    pub exact_interval_count: usize,
+    pub representative_kernel_count: usize,
+    pub reused_interval_count: usize,
+    pub compression_ratio: f64,
+    pub exact_pricing_forced_by_sensitivities: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -342,4 +353,19 @@ pub struct JointRefinementStageOptionCalibrationDiagnostics {
     pub audit_tier_pricing: Option<JointRefinementStageOptionTierPricingDiagnostics>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reduced_model: Option<JointRefinementStageOptionReducedModelDiagnostics>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_selection_agreement:
+        Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionSearchSelectionAgreementDiagnostics {
+    pub frontier_size: usize,
+    pub best_by_search_restart_id: Option<String>,
+    pub best_by_selection_restart_id: Option<String>,
+    pub selected_restart_id: Option<String>,
+    pub selected_search_rank: Option<usize>,
+    pub selected_selection_rank: Option<usize>,
+    pub selected_rank_movement: Option<i64>,
+    pub spearman_rank_correlation: Option<f64>,
 }

@@ -6,9 +6,12 @@ use crate::contracts::{
 };
 use crate::grids::{
     SpectralThetaWarmStartKey, SpectralThetaWarmStartState,
-    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRunError,
-    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
-    VanillaOptionGridRequest, spectral_theta_warm_start_payoff_type_mask,
+    VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingOperatorApproximation,
+    VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
+    VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
+    VanillaOptionGridPricingResult, VanillaOptionGridRequest,
+    spectral_theta_warm_start_payoff_type_mask,
 };
 use crate::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use crate::progress::PricingProgressEvent;
@@ -99,7 +102,7 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_
 
     let pricing_thread_pool = build_pricing_thread_pool(execution_input.cpu_count);
 
-    let mut pricing_groups = prepare_pricing_group_contexts(
+    let (mut pricing_groups, operator_approximation_diagnostics) = prepare_pricing_group_contexts(
         &execution_input,
         pricing_thread_pool.as_ref(),
         execution_input.cpu_count,
@@ -151,6 +154,7 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_
         spot: execution_input.request.spot,
         grids: grid_results,
         runtime_interval_schedule: execution_input.runtime_interval_schedule,
+        operator_approximation_diagnostics,
     })
 }
 
@@ -204,6 +208,7 @@ pub(crate) fn run_single_option_pricing(
         interval_factors: execution_input.interval_factors.clone(),
         optional_output_selection: execution_input.optional_output_selection,
         spectral_collocation_node_count_override: None,
+        operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
         cpu_count: None,
     };
 
@@ -294,7 +299,13 @@ fn prepare_pricing_group_contexts(
     cpu_count: Option<usize>,
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
     mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
-) -> Result<BTreeMap<PricingGroupKey, PricingGroupSolveContext>, String> {
+) -> Result<
+    (
+        BTreeMap<PricingGroupKey, PricingGroupSolveContext>,
+        Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics>,
+    ),
+    String,
+> {
     let mut grouped_members = BTreeMap::<PricingGroupKey, PricingGroupMembers>::new();
 
     for grid in &execution_input.request.grids {
@@ -311,6 +322,7 @@ fn prepare_pricing_group_contexts(
     }
 
     let mut pricing_groups = BTreeMap::new();
+    let mut operator_approximation_diagnostics = None;
 
     for (pricing_group_key, members) in grouped_members {
         let union_strikes = members
@@ -412,7 +424,9 @@ fn prepare_pricing_group_contexts(
         )
         .map_err(|source| format!("failed to construct spectral domain: {source}"))?;
 
-        let cached_interval_operators =
+        let maturity_counts = unique_maturity_counts.iter().copied().collect::<Vec<_>>();
+
+        let cached_interval_operator_build =
             build_cached_interval_operators(CachedIntervalOperatorBuildInput {
                 pricing_request: &base_request,
                 include_node_price_sensitivities: execution_input
@@ -421,8 +435,10 @@ fn prepare_pricing_group_contexts(
                 interval_factors: execution_input.interval_factors.as_slice(),
                 materialization: &materialization,
                 maximum_maturity_count,
+                maturity_counts: maturity_counts.as_slice(),
                 spectral_domain,
                 driver_parameters,
+                operator_approximation: execution_input.operator_approximation,
                 theta_warm_start_key: pricing_group_key.theta_warm_start_key(payoff_type_mask),
                 pricing_thread_pool,
                 cpu_count,
@@ -430,6 +446,11 @@ fn prepare_pricing_group_contexts(
                 theta_warm_start_state: theta_warm_start_state.as_deref_mut(),
             })
             .map_err(|source| format!("spectral interval-operator assembly failed: {source}"))?;
+
+        operator_approximation_diagnostics = merge_operator_approximation_diagnostics(
+            operator_approximation_diagnostics,
+            cached_interval_operator_build.approximation_diagnostics,
+        );
 
         let mut maturity_laws = BTreeMap::new();
 
@@ -452,7 +473,7 @@ fn prepare_pricing_group_contexts(
                 &materialization,
                 maturity_count,
                 spectral_domain,
-                cached_interval_operators.as_slice(),
+                cached_interval_operator_build.operators.as_slice(),
             )
             .map_err(|source| format!("spectral maturity solve failed: {source}"))?;
 
@@ -481,7 +502,39 @@ fn prepare_pricing_group_contexts(
         );
     }
 
-    Ok(pricing_groups)
+    Ok((pricing_groups, operator_approximation_diagnostics))
+}
+
+fn merge_operator_approximation_diagnostics(
+    left: Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics>,
+    right: Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics>,
+) -> Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics> {
+    match (left, right) {
+        (None, None) => None,
+        (Some(diagnostics), None) | (None, Some(diagnostics)) => Some(diagnostics),
+        (Some(left), Some(right)) => {
+            let exact_interval_count = left.exact_interval_count + right.exact_interval_count;
+            let representative_kernel_count =
+                left.representative_kernel_count + right.representative_kernel_count;
+            let compression_ratio = if representative_kernel_count > 0 {
+                exact_interval_count as f64 / representative_kernel_count as f64
+            } else {
+                0.0
+            };
+
+            Some(
+                VanillaOptionGridBatchPricingOperatorApproximationDiagnostics {
+                    exact_interval_count,
+                    representative_kernel_count,
+                    reused_interval_count: left.reused_interval_count + right.reused_interval_count,
+                    compression_ratio,
+                    exact_pricing_forced_by_sensitivities: left
+                        .exact_pricing_forced_by_sensitivities
+                        || right.exact_pricing_forced_by_sensitivities,
+                },
+            )
+        }
+    }
 }
 
 fn build_grid_result(

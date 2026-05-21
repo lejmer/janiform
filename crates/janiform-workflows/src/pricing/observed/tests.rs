@@ -111,6 +111,8 @@ fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
     let mut worker_state = SurfaceWorkerState::started(0, 1, 10, 10);
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(5, 10, Some(5), 10));
 
+    assert_eq!(worker_state.interval_units, "5/10");
+
     worker_state.apply_pricing_event(&PricingProgressEvent::transition_row_progress(
         12,
         65,
@@ -129,7 +131,7 @@ fn surface_worker_stays_running_until_task_done() {
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(
         10,
         10,
-        Some(9),
+        Some(10),
         10,
     ));
 

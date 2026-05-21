@@ -6,8 +6,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
-use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+use janiform_calibration_artifacts::{
+    CalibrationOptimizerSettings, JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
+};
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
+use janiform_foundations::numeric::pearson_correlation;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::stages::joint_refinement::contracts::{
@@ -40,7 +43,7 @@ pub(super) struct OptionRefinementProgressContext<'a> {
     shared_progress_state: Arc<OptionRefinementSharedProgressState>,
     current_evaluation_count: Cell<usize>,
     current_weighted_objective: Cell<Option<f64>>,
-    total_evaluation_budget: usize,
+    total_evaluation_budget: Option<usize>,
 }
 
 impl OptionRefinementProgressContext<'_> {
@@ -62,7 +65,7 @@ impl OptionRefinementProgressContext<'_> {
         self.current_weighted_objective.get()
     }
 
-    pub(super) const fn total_evaluation_budget(&self) -> usize {
+    pub(super) const fn total_evaluation_budget(&self) -> Option<usize> {
         self.total_evaluation_budget
     }
 
@@ -72,12 +75,15 @@ impl OptionRefinementProgressContext<'_> {
     ) -> usize {
         let completed_evaluation_count = self.current_evaluation_count().saturating_sub(1);
         let current_evaluation_progress_percent = pricing_event_progress_percent.unwrap_or(0);
-        completed_evaluation_count
-            .saturating_mul(100)
-            .saturating_add(current_evaluation_progress_percent.min(100))
-            .checked_div(self.total_evaluation_budget.max(1))
-            .unwrap_or(0)
-            .min(99)
+        match self.total_evaluation_budget {
+            Some(total_evaluation_budget) => completed_evaluation_count
+                .saturating_mul(100)
+                .saturating_add(current_evaluation_progress_percent.min(100))
+                .checked_div(total_evaluation_budget.max(1))
+                .unwrap_or(0)
+                .min(99),
+            None => current_evaluation_progress_percent.min(99),
+        }
     }
 
     fn record_progress_percent(&self, progress_percent: usize) {
@@ -106,7 +112,7 @@ impl OptionPricingProgressSnapshotSource for OptionRefinementProgressContext<'_>
             aggregate_progress_percent: Some(shared_snapshot.aggregate_progress_percent),
             active_restart_count: None,
             current_evaluation_count: Some(self.current_evaluation_count()),
-            total_evaluation_budget: Some(self.total_evaluation_budget()),
+            total_evaluation_budget: self.total_evaluation_budget(),
             evaluation_progress_percent: Some(
                 self.running_pricing_progress_percent(pricing_event_progress_percent),
             ),
@@ -297,6 +303,14 @@ impl OptionRefinementSharedProgressState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct OptionSearchSelectionRankInput<'a> {
+    restart_id: &'a str,
+    source_rank: usize,
+    search_tier_score: f64,
+    selection_tier_score: f64,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct OptionRefinedCandidate {
     pub(crate) source_rank: usize,
@@ -322,6 +336,8 @@ pub(crate) struct JointRefinementOptionRefinementResult {
     pub(crate) selected_search_tier_pricing_artifact: Arc<JointRefinementOptionTierPricingArtifact>,
     pub(crate) selected_selection_tier_pricing_artifact:
         Arc<JointRefinementOptionTierPricingArtifact>,
+    pub(crate) search_selection_agreement:
+        Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics>,
 }
 
 pub(crate) fn desired_joint_refinement_option_refinement_candidate_count(
@@ -388,6 +404,9 @@ pub(crate) fn run_option_refinement(
         resume_store,
     );
 
+    let search_selection_agreement =
+        build_search_selection_agreement_diagnostics(selection_candidates.as_slice());
+
     let Some(best_candidate) = best_selection_tier_candidate(selection_candidates) else {
         return Err(
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -402,6 +421,7 @@ pub(crate) fn run_option_refinement(
         selected_restart_outcome: best_candidate.restart_outcome,
         selected_search_tier_pricing_artifact: best_candidate.search_tier_pricing_artifact,
         selected_selection_tier_pricing_artifact: best_candidate.selection_tier_pricing_artifact,
+        search_selection_agreement,
     })
 }
 
@@ -583,6 +603,7 @@ fn refine_search_tier_candidates(
         option_refinement_candidate_pricing_cpu_count(context, candidate_parallelism);
 
     let unresolved_candidate_count = unresolved_candidates.len().max(1);
+
     let wall_clock_budget =
         wall_clock_budget_millis.map(|budget_millis| OptionRefinementWallClockBudget {
             started_at: Instant::now(),
@@ -787,7 +808,7 @@ fn refine_parallel_search_tier_candidate(
         shared_progress_state: Arc::clone(&shared_progress_state),
         current_evaluation_count: Cell::new(0),
         current_weighted_objective: Cell::new(None),
-        total_evaluation_budget: option_refinement_candidate_total_evaluation_budget(),
+        total_evaluation_budget: None,
     };
 
     let refined_candidate = refine_single_search_tier_candidate(
@@ -826,7 +847,7 @@ fn refine_parallel_search_tier_candidate(
         active_restart_count: None,
         aggregate_progress_percent: Some(finished_snapshot.aggregate_progress_percent),
         current_evaluation_count: Some(progress_context.current_evaluation_count()),
-        total_evaluation_budget: Some(progress_context.total_evaluation_budget()),
+        total_evaluation_budget: progress_context.total_evaluation_budget(),
         evaluation_progress_percent: Some(100),
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
@@ -995,7 +1016,7 @@ pub(super) fn scored_pricing_vector(
                 current_evaluation_count: progress_context
                     .map(|context| context.current_evaluation_count()),
                 total_evaluation_budget: progress_context
-                    .map(|context| context.total_evaluation_budget()),
+                    .and_then(|context| context.total_evaluation_budget()),
                 evaluation_progress_percent: None,
                 current_weighted_objective: progress_context
                     .and_then(|context| context.current_weighted_objective()),
@@ -1168,6 +1189,118 @@ fn best_selection_tier_candidate(
     candidates.into_iter().next()
 }
 
+fn build_search_selection_agreement_diagnostics(
+    candidates: &[OptionRefinedCandidate],
+) -> Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics> {
+    let rank_inputs = candidates
+        .iter()
+        .map(|candidate| OptionSearchSelectionRankInput {
+            restart_id: candidate.restart_outcome.restart_id.as_str(),
+            source_rank: candidate.source_rank,
+            search_tier_score: candidate.search_tier_score,
+            selection_tier_score: candidate.selection_tier_score,
+        })
+        .collect::<Vec<_>>();
+
+    build_search_selection_agreement_diagnostics_from_scores(rank_inputs.as_slice())
+}
+
+fn build_search_selection_agreement_diagnostics_from_scores(
+    rank_inputs: &[OptionSearchSelectionRankInput<'_>],
+) -> Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics> {
+    if rank_inputs.is_empty() {
+        return None;
+    }
+
+    let search_ranks =
+        option_candidate_ranks_by_score(rank_inputs, |rank_input| rank_input.search_tier_score);
+
+    let selection_ranks =
+        option_candidate_ranks_by_score(rank_inputs, |rank_input| rank_input.selection_tier_score);
+
+    let best_by_search_restart_id = search_ranks
+        .iter()
+        .find(|(_, rank)| **rank == 1)
+        .map(|(restart_id, _)| restart_id.clone());
+
+    let best_by_selection_restart_id = selection_ranks
+        .iter()
+        .find(|(_, rank)| **rank == 1)
+        .map(|(restart_id, _)| restart_id.clone());
+
+    let selected_restart_id = best_by_selection_restart_id.clone();
+
+    let selected_search_rank = selected_restart_id
+        .as_ref()
+        .and_then(|restart_id| search_ranks.get(restart_id))
+        .copied();
+
+    let selected_selection_rank = selected_restart_id
+        .as_ref()
+        .and_then(|restart_id| selection_ranks.get(restart_id))
+        .copied();
+
+    let selected_rank_movement = selected_search_rank
+        .zip(selected_selection_rank)
+        .map(|(search_rank, selection_rank)| selection_rank as i64 - search_rank as i64);
+
+    let spearman_rank_correlation = (rank_inputs.len() >= 2)
+        .then(|| {
+            let mut search_rank_values = Vec::with_capacity(rank_inputs.len());
+            let mut selection_rank_values = Vec::with_capacity(rank_inputs.len());
+
+            for rank_input in rank_inputs {
+                let restart_id = rank_input.restart_id;
+                if let (Some(search_rank), Some(selection_rank)) = (
+                    search_ranks.get(restart_id),
+                    selection_ranks.get(restart_id),
+                ) {
+                    search_rank_values.push(*search_rank as f64);
+                    selection_rank_values.push(*selection_rank as f64);
+                }
+            }
+
+            pearson_correlation(
+                search_rank_values.as_slice(),
+                selection_rank_values.as_slice(),
+            )
+        })
+        .filter(|correlation| correlation.is_finite());
+
+    Some(
+        JointRefinementStageOptionSearchSelectionAgreementDiagnostics {
+            frontier_size: rank_inputs.len(),
+            best_by_search_restart_id,
+            best_by_selection_restart_id,
+            selected_restart_id,
+            selected_search_rank,
+            selected_selection_rank,
+            selected_rank_movement,
+            spearman_rank_correlation,
+        },
+    )
+}
+
+fn option_candidate_ranks_by_score(
+    rank_inputs: &[OptionSearchSelectionRankInput<'_>],
+    score: impl Fn(&OptionSearchSelectionRankInput<'_>) -> f64,
+) -> BTreeMap<String, usize> {
+    let mut ranked_inputs = rank_inputs.iter().collect::<Vec<_>>();
+
+    ranked_inputs.sort_by(|left, right| {
+        score(left)
+            .total_cmp(&score(right))
+            .then_with(|| left.source_rank.cmp(&right.source_rank))
+            .then_with(|| left.restart_id.cmp(right.restart_id))
+    });
+
+    ranked_inputs
+        .into_iter()
+        .enumerate()
+        .map(|(rank_index, rank_input)| (rank_input.restart_id.to_string(), rank_index + 1))
+        .collect()
+}
+
 fn pricing_block_refinement_context(
     context: &JointRefinementContext,
     dynamics_candidate: &JointRefinementRestartOutcome,
@@ -1227,10 +1360,6 @@ pub(crate) fn option_pricing_block_evaluation_budget() -> usize {
 
 pub(super) fn pricing_block_search_coordinate_count() -> usize {
     4
-}
-
-fn option_refinement_candidate_total_evaluation_budget() -> usize {
-    option_pricing_block_evaluation_budget()
 }
 
 fn pricing_block_parameter_bits(
@@ -1334,8 +1463,8 @@ mod tests {
     use super::{
         JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT,
         OptionRefinementProgressContext, OptionRefinementSharedProgressState,
+        OptionSearchSelectionRankInput, build_search_selection_agreement_diagnostics_from_scores,
         desired_joint_refinement_option_refinement_candidate_count,
-        option_refinement_candidate_total_evaluation_budget,
         option_refinement_selection_score_ceiling,
         resolved_option_refinement_candidate_parallelism,
         resolved_option_refinement_candidate_pricing_cpu_count,
@@ -1355,11 +1484,6 @@ mod tests {
             desired_joint_refinement_option_refinement_candidate_count(Some(7)),
             7,
         );
-    }
-
-    #[test]
-    fn option_refinement_candidate_budget_counts_search_pricing_run() {
-        assert_eq!(option_refinement_candidate_total_evaluation_budget(), 5);
     }
 
     #[test]
@@ -1413,6 +1537,78 @@ mod tests {
     }
 
     #[test]
+    fn search_selection_agreement_reports_single_candidate_frontier() {
+        let diagnostics = build_search_selection_agreement_diagnostics_from_scores(&[rank_input(
+            "baseline", 0, 2.0, 3.0,
+        )])
+        .expect("single-candidate frontier should produce diagnostics");
+
+        assert_eq!(diagnostics.frontier_size, 1);
+        assert_eq!(
+            diagnostics.best_by_search_restart_id,
+            Some("baseline".to_string())
+        );
+        assert_eq!(
+            diagnostics.best_by_selection_restart_id,
+            Some("baseline".to_string())
+        );
+        assert_eq!(diagnostics.selected_search_rank, Some(1));
+        assert_eq!(diagnostics.selected_selection_rank, Some(1));
+        assert_eq!(diagnostics.selected_rank_movement, Some(0));
+        assert_eq!(diagnostics.spearman_rank_correlation, None);
+    }
+
+    #[test]
+    fn search_selection_agreement_reports_matching_multiple_candidate_ranks() {
+        let diagnostics = build_search_selection_agreement_diagnostics_from_scores(&[
+            rank_input("baseline", 0, 1.0, 1.1),
+            rank_input("halton_01", 1, 2.0, 2.1),
+            rank_input("halton_02", 2, 3.0, 3.1),
+        ])
+        .expect("multiple-candidate frontier should produce diagnostics");
+
+        assert_eq!(diagnostics.frontier_size, 3);
+        assert_eq!(
+            diagnostics.best_by_search_restart_id,
+            Some("baseline".to_string())
+        );
+        assert_eq!(
+            diagnostics.best_by_selection_restart_id,
+            Some("baseline".to_string())
+        );
+        assert_eq!(diagnostics.selected_rank_movement, Some(0));
+        assert_eq!(diagnostics.spearman_rank_correlation, Some(1.0));
+    }
+
+    #[test]
+    fn search_selection_agreement_reports_rank_disagreement() {
+        let diagnostics = build_search_selection_agreement_diagnostics_from_scores(&[
+            rank_input("baseline", 0, 1.0, 3.0),
+            rank_input("halton_01", 1, 2.0, 1.0),
+            rank_input("halton_02", 2, 3.0, 2.0),
+        ])
+        .expect("rank-disagreement frontier should produce diagnostics");
+
+        assert_eq!(diagnostics.frontier_size, 3);
+        assert_eq!(
+            diagnostics.best_by_search_restart_id,
+            Some("baseline".to_string())
+        );
+        assert_eq!(
+            diagnostics.best_by_selection_restart_id,
+            Some("halton_01".to_string())
+        );
+        assert_eq!(
+            diagnostics.selected_restart_id,
+            Some("halton_01".to_string())
+        );
+        assert_eq!(diagnostics.selected_search_rank, Some(2));
+        assert_eq!(diagnostics.selected_selection_rank, Some(1));
+        assert_eq!(diagnostics.selected_rank_movement, Some(-1));
+        assert_eq!(diagnostics.spearman_rank_correlation, Some(-0.5));
+    }
+
+    #[test]
     fn option_refinement_progress_context_retains_latest_completed_objective() {
         let progress_context = OptionRefinementProgressContext {
             progress_sender: None,
@@ -1422,7 +1618,7 @@ mod tests {
             shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
             current_evaluation_count: Cell::new(0),
             current_weighted_objective: Cell::new(None),
-            total_evaluation_budget: 5,
+            total_evaluation_budget: None,
         };
 
         assert_eq!(progress_context.current_weighted_objective(), None);
@@ -1430,6 +1626,20 @@ mod tests {
         progress_context.record_weighted_objective(12.5);
 
         assert_eq!(progress_context.current_weighted_objective(), Some(12.5));
+    }
+
+    fn rank_input(
+        restart_id: &str,
+        source_rank: usize,
+        search_tier_score: f64,
+        selection_tier_score: f64,
+    ) -> OptionSearchSelectionRankInput<'_> {
+        OptionSearchSelectionRankInput {
+            restart_id,
+            source_rank,
+            search_tier_score,
+            selection_tier_score,
+        }
     }
 
     #[test]
@@ -1442,7 +1652,7 @@ mod tests {
             shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
             current_evaluation_count: Cell::new(0),
             current_weighted_objective: Cell::new(None),
-            total_evaluation_budget: 5,
+            total_evaluation_budget: Some(5),
         };
 
         progress_context.record_evaluation_started();

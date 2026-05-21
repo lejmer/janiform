@@ -78,15 +78,18 @@ pub use fourier::{
 };
 pub use grids::{
     SpectralThetaWarmStartState, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingExecutionInputError, VanillaOptionGridBatchPricingRequest,
-    VanillaOptionGridBatchPricingRequestError, VanillaOptionGridBatchPricingRunError,
-    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
-    VanillaOptionGridRequest, VanillaOptionMaturitySummary, VanillaOptionNodePriceSensitivity,
-    VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingExecutionInputError,
-    VanillaOptionSurfacePricingRequest, VanillaOptionSurfacePricingResponse,
-    VanillaOptionSurfacePricingRunError, VanillaOptionSurfacePricingRunResult,
-    run_vanilla_option_grid_batch_pricing, run_vanilla_option_grid_batch_pricing_with_observer,
-    run_vanilla_option_surface_pricing, run_vanilla_option_surface_pricing_with_observer,
+    VanillaOptionGridBatchPricingExecutionInputError,
+    VanillaOptionGridBatchPricingOperatorApproximation,
+    VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
+    VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRequestError,
+    VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
+    VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionMaturitySummary,
+    VanillaOptionNodePriceSensitivity, VanillaOptionSurfacePricingExecutionInput,
+    VanillaOptionSurfacePricingExecutionInputError, VanillaOptionSurfacePricingRequest,
+    VanillaOptionSurfacePricingResponse, VanillaOptionSurfacePricingRunError,
+    VanillaOptionSurfacePricingRunResult, run_vanilla_option_grid_batch_pricing,
+    run_vanilla_option_grid_batch_pricing_with_observer, run_vanilla_option_surface_pricing,
+    run_vanilla_option_surface_pricing_with_observer,
 };
 pub use implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 pub use interval_schedule::{

@@ -1,9 +1,9 @@
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalScheduleMetadata, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingRequest, VanillaOptionGridRequest,
-    VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridRequest, VanillaOptionImpliedVolatilityInversionStatus,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRunResult, VanillaOptionPricingStatus,
@@ -260,6 +260,7 @@ fn vanilla_option_grid_batch_pricing_populates_shared_grids() {
             ],
             optional_output_selection,
             spectral_collocation_node_count_override: None,
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");
@@ -335,6 +336,7 @@ fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids(
             ],
             optional_output_selection,
             spectral_collocation_node_count_override: None,
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");
@@ -411,6 +413,7 @@ fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
             ],
             optional_output_selection,
             spectral_collocation_node_count_override: Some(257),
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");

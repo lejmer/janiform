@@ -123,6 +123,9 @@ struct RestartSearchArtifacts {
         Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
     selected_option_audit_tier_pricing_artifact:
         Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
+    option_search_selection_agreement: Option<
+        janiform_calibration_artifacts::JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
+    >,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
     warning: Option<String>,
@@ -1222,6 +1225,7 @@ fn run_restart_search(
         selected_option_search_tier_pricing_artifact: None,
         selected_option_selection_tier_pricing_artifact: None,
         selected_option_audit_tier_pricing_artifact: None,
+        option_search_selection_agreement: None,
         coarse_consistency_artifacts_by_restart_id: restart_selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
         warning: restart_selection_artifacts.warning,
@@ -1369,6 +1373,8 @@ fn run_option_refinement_if_enabled(
         Some(option_refinement_result.selected_search_tier_pricing_artifact);
     restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
         Some(option_refinement_result.selected_selection_tier_pricing_artifact);
+    restart_search_artifacts.option_search_selection_agreement =
+        option_refinement_result.search_selection_agreement;
 
     if let (Some(search_artifact), Some(selection_artifact)) = (
         restart_search_artifacts
@@ -1786,6 +1792,9 @@ fn assemble_final_stage_outputs(
         restart_search_artifacts
             .selected_option_audit_tier_pricing_artifact
             .as_deref(),
+        restart_search_artifacts
+            .option_search_selection_agreement
+            .clone(),
     )
     .map_err(|error_message| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }

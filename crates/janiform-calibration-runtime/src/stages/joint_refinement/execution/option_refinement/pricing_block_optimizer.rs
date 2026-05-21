@@ -14,7 +14,7 @@ use super::super::super::setup::{
 use super::super::{JointRefinementContext, JointRefinementRestartOutcome, elapsed_millis};
 use super::residual_jacobian::weighted_option_residual_jacobian_rows;
 use super::workflow::{
-    OptionRefinementProgressContext, SearchTierCandidate, option_pricing_block_evaluation_budget,
+    OptionRefinementProgressContext, SearchTierCandidate,
     option_refinement_effective_search_sample_count, option_score_resolution,
     pricing_block_search_coordinate_count, scored_pricing_vector,
 };
@@ -62,20 +62,14 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
         initial_candidate.search_tier_score,
         option_refinement_effective_search_sample_count(&initial_candidate),
     );
-    let proposals = pricing_block_proposals(refinement_context, &initial_candidate)?;
+    let proposals =
+        pricing_block_proposals(refinement_context, &initial_candidate, score_resolution)?;
 
     let mut best_candidate = initial_candidate;
     let mut budget_limited = false;
     let mut prediction_rejected = false;
 
     for proposal in proposals {
-        if progress_context.is_some_and(|context| {
-            context.current_evaluation_count() >= context.total_evaluation_budget()
-        }) {
-            budget_limited = true;
-            break;
-        }
-
         if !wall_clock_budget.can_start_full_oracle_call() {
             budget_limited = true;
             break;
@@ -129,9 +123,13 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
 fn pricing_block_proposals(
     refinement_context: &JointRefinementContext,
     initial_candidate: &SearchTierCandidate,
+    score_resolution: f64,
 ) -> Result<Vec<PricingBlockProposal>, String> {
-    let least_squares_proposals =
-        pricing_block_least_squares_proposals(refinement_context, initial_candidate)?;
+    let least_squares_proposals = pricing_block_least_squares_proposals(
+        refinement_context,
+        initial_candidate,
+        score_resolution,
+    )?;
 
     if least_squares_proposals
         .iter()
@@ -140,12 +138,13 @@ fn pricing_block_proposals(
         return Ok(least_squares_proposals);
     }
 
-    pricing_block_gradient_proposals(refinement_context, initial_candidate)
+    pricing_block_gradient_proposals(refinement_context, initial_candidate, score_resolution)
 }
 
 fn pricing_block_least_squares_proposals(
     refinement_context: &JointRefinementContext,
     initial_candidate: &SearchTierCandidate,
+    score_resolution: f64,
 ) -> Result<Vec<PricingBlockProposal>, String> {
     let Some(node_sensitivities) = initial_candidate
         .search_tier_pricing_artifact
@@ -217,11 +216,11 @@ fn pricing_block_least_squares_proposals(
         return Ok(Vec::new());
     }
 
-    let proposal_count = option_pricing_block_evaluation_budget().saturating_sub(1);
-
-    Ok((0..proposal_count)
-        .filter_map(|step_index| {
-            let step_scale = maximum_step_scale / (1usize << step_index) as f64;
+    Ok(pricing_block_line_search_proposals(
+        maximum_step_scale,
+        initial_candidate.search_tier_score,
+        score_resolution,
+        |step_scale| {
             pricing_block_least_squares_proposal(
                 current_vector,
                 search_coordinate_rows.as_slice(),
@@ -229,13 +228,14 @@ fn pricing_block_least_squares_proposals(
                 step_scale,
                 refinement_context,
             )
-        })
-        .collect())
+        },
+    ))
 }
 
 fn pricing_block_gradient_proposals(
     refinement_context: &JointRefinementContext,
     initial_candidate: &SearchTierCandidate,
+    score_resolution: f64,
 ) -> Result<Vec<PricingBlockProposal>, String> {
     let Some(score_gradient_artifact) = initial_candidate
         .search_tier_pricing_artifact
@@ -280,11 +280,11 @@ fn pricing_block_gradient_proposals(
         return Ok(Vec::new());
     }
 
-    let proposal_count = option_pricing_block_evaluation_budget().saturating_sub(1);
-
-    Ok((0..proposal_count)
-        .filter_map(|step_index| {
-            let step = maximum_step / (1usize << step_index) as f64;
+    Ok(pricing_block_line_search_proposals(
+        maximum_step,
+        initial_candidate.search_tier_score,
+        score_resolution,
+        |step| {
             pricing_block_gradient_proposal(
                 current_vector,
                 &search_gradient,
@@ -293,8 +293,45 @@ fn pricing_block_gradient_proposals(
                 initial_candidate.search_tier_score,
                 refinement_context,
             )
-        })
-        .collect())
+        },
+    ))
+}
+
+fn pricing_block_line_search_proposals(
+    maximum_step: f64,
+    current_score: f64,
+    score_resolution: f64,
+    mut proposal_at_step: impl FnMut(f64) -> Option<PricingBlockProposal>,
+) -> Vec<PricingBlockProposal> {
+    let mut proposals = Vec::new();
+    let mut step = maximum_step;
+
+    while step > 0.0 && step.is_finite() {
+        let Some(proposal) = proposal_at_step(step) else {
+            break;
+        };
+
+        let predicted_improvement = current_score - proposal.predicted_score;
+        if predicted_improvement > 0.0 && predicted_improvement <= score_resolution {
+            break;
+        }
+
+        let predicted_change = predicted_improvement.abs();
+        proposals.push(proposal);
+
+        if predicted_change <= score_resolution {
+            break;
+        }
+
+        let next_step = step / 2.0;
+        if next_step == step {
+            break;
+        }
+
+        step = next_step;
+    }
+
+    proposals
 }
 
 fn pricing_block_gradient_proposal(

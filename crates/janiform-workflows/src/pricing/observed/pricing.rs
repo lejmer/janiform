@@ -3,7 +3,8 @@ use janiform::calibration::current_state::CurrentStateEstimationOutput;
 use janiform::pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, HighLevelPricingMaturityResolution,
     HighLevelPricingMaturityResolutionRequest, PricingIntervalSchedulePolicy, PricingProgressEvent,
-    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest,
     VanillaOptionPricingModelParameters, materialize_schedule_interval_factors,
     resolve_high_level_pricing_maturity_inputs, run_vanilla_option_grid_batch_pricing,
@@ -241,6 +242,7 @@ fn build_grid_batch_execution_input(
         interval_factors,
         optional_output_selection: request.optional_output_selection,
         spectral_collocation_node_count_override: None,
+        operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
         cpu_count,
     })
 }

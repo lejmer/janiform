@@ -7,12 +7,13 @@ use janiform_calibration_artifacts::{
     CalibrationLossEvaluation, CalibrationObjectivePolicy, HawkesStageFittedParameters,
     JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
     JointRefinementStageOptionAggregateDiagnostic, JointRefinementStageOptionNodeDiagnostic,
-    JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
+    JointRefinementStageOptionOperatorApproximationDiagnostics, JointRefinementStageRuntimeProfile,
+    ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
-    VanillaOptionGridBatchPricingRequest, VanillaOptionPayoffType,
-    VanillaOptionPricingIntervalFactors,
+    VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
 };
 use serde::{Deserialize, Serialize};
 
@@ -138,6 +139,7 @@ pub(crate) struct JointRefinementOptionPricingCacheKey {
     pub(crate) tier_kind: JointRefinementOptionSurfaceTierKind,
     #[serde(default)]
     pub(crate) include_node_price_sensitivities: bool,
+    pub(crate) operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation,
     pub(crate) source_dynamics_parameter_bits: Vec<u64>,
     pub(crate) pricing_parameter_bits: Vec<u64>,
 }
@@ -616,6 +618,9 @@ pub(crate) struct JointRefinementOptionTierPricingArtifact {
     pub(crate) maturity_scores: Vec<JointRefinementOptionMaturityScoreArtifact>,
     pub(crate) node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
     pub(crate) aggregate_diagnostics: Vec<JointRefinementStageOptionAggregateDiagnostic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) operator_approximation_diagnostics:
+        Option<JointRefinementStageOptionOperatorApproximationDiagnostics>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) score_gradient_artifact: Option<JointRefinementOptionTierScoreGradientArtifact>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

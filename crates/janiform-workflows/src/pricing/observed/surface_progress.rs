@@ -8,8 +8,8 @@ use janiform_terminal_ui::{
 
 use crate::error::WorkflowError;
 use crate::progress::{
-    ProgressUnitTracker, completed_tracked_progress_units, format_cpu_count, progress_percent,
-    total_tracked_progress_units,
+    ProgressUnitTracker, completed_tracked_progress_units, format_cpu_count, progress_count_label,
+    progress_percent, progress_position_label, total_tracked_progress_units,
 };
 
 use super::super::progress::pricing_progress_phase_label;
@@ -491,11 +491,18 @@ fn surface_worker_event_completed_intervals(event: &PricingProgressEvent) -> usi
 }
 
 fn surface_worker_interval_units(event: &PricingProgressEvent) -> String {
-    match (event.current_interval_index, event.total_intervals) {
-        (Some(interval_index), Some(total_intervals)) => {
-            format!("{}/{}", interval_index + 1, total_intervals)
+    match event.phase {
+        PricingProgressPhase::IntervalProgress => {
+            progress_count_label(Some(event.completed_units), event.total_intervals)
+                .unwrap_or_else(|| "-".to_string())
         }
-        _ => "-".to_string(),
+        PricingProgressPhase::TransitionRowProgress => {
+            progress_position_label(event.current_interval_index, event.total_intervals)
+                .unwrap_or_else(|| "-".to_string())
+        }
+        PricingProgressPhase::StrikePricingProgress
+        | PricingProgressPhase::GroupProgress
+        | PricingProgressPhase::MaturityProgress => "-".to_string(),
     }
 }
 

@@ -148,7 +148,19 @@ pub struct VanillaOptionGridBatchPricingExecutionInput {
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spectral_collocation_node_count_override: Option<usize>,
+    pub operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation,
     pub cpu_count: Option<usize>,
+}
+
+/// Selects the interval-operator construction used by grid batch pricing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VanillaOptionGridBatchPricingOperatorApproximation {
+    /// Build every interval operator from its own row-frequency kernel.
+    #[default]
+    Exact,
+    /// Reuse representative row-frequency kernels inside search-tier interval buckets.
+    BucketedSearch,
 }
 
 impl VanillaOptionGridBatchPricingExecutionInput {
@@ -369,6 +381,22 @@ pub struct VanillaOptionGridBatchPricingRunResult {
     pub spot: f64,
     pub grids: Vec<VanillaOptionGridPricingResult>,
     pub runtime_interval_schedule: PricingIntervalSchedule,
+    pub operator_approximation_diagnostics:
+        Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VanillaOptionGridBatchPricingOperatorApproximationDiagnostics {
+    /// Number of interval operators needed by exact pricing.
+    pub exact_interval_count: usize,
+    /// Number of row-frequency kernels solved directly.
+    pub representative_kernel_count: usize,
+    /// Number of interval operators built by reusing representative kernels.
+    pub reused_interval_count: usize,
+    /// Exact interval count divided by representative kernel count.
+    pub compression_ratio: f64,
+    /// Whether exact pricing was used because sensitivity output was requested.
+    pub exact_pricing_forced_by_sensitivities: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -468,6 +496,7 @@ impl VanillaOptionSurfacePricingExecutionInput {
             interval_factors: self.interval_factors.clone(),
             optional_output_selection: self.optional_output_selection,
             spectral_collocation_node_count_override: self.spectral_collocation_node_count_override,
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: self.cpu_count,
         }
         .validate()
@@ -809,6 +838,7 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
             optional_output_selection: execution_input.optional_output_selection,
             spectral_collocation_node_count_override: execution_input
                 .spectral_collocation_node_count_override,
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: execution_input.cpu_count,
         },
         observer,

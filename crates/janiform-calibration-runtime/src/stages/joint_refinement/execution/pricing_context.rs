@@ -10,7 +10,8 @@ use janiform_engine_pricing::internal::{
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalSchedulePolicy, PricingProgressEvent, PricingProgressPhase,
-    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest,
     VanillaOptionNodePriceSensitivity, VanillaOptionPayoffType,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
@@ -46,7 +47,10 @@ use janiform_calibration_artifacts::{
     CalibrationObjectivePolicy, JointRefinementStageOptionAggregateDiagnostic,
     JointRefinementStageOptionCalibrationDiagnostics,
     JointRefinementStageOptionMaturityScoreDiagnostic, JointRefinementStageOptionNodeDiagnostic,
-    JointRefinementStageOptionQuoteUniverseDiagnostics, JointRefinementStageOptionSnapshotMetadata,
+    JointRefinementStageOptionOperatorApproximationDiagnostics,
+    JointRefinementStageOptionQuoteUniverseDiagnostics,
+    JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
+    JointRefinementStageOptionSnapshotMetadata,
     JointRefinementStageOptionTierConstructionDiagnostic,
     JointRefinementStageOptionTierConstructionDiagnostics,
     JointRefinementStageOptionTierMaturityDiagnostic,
@@ -146,6 +150,7 @@ struct OptionGridBatchPricingRunInput<'a, 'theta> {
     context: &'a JointRefinementContext,
     fitted_parameters: &'a janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     tier_inputs: &'a JointRefinementOptionTierPricingInputs,
+    tier_kind: JointRefinementOptionSurfaceTierKind,
     include_node_price_sensitivities: bool,
     theta_warm_start_state: Option<&'theta mut SpectralThetaWarmStartState>,
     progress: OptionPricingProgressInput<'a>,
@@ -816,6 +821,7 @@ fn run_option_grid_batch_pricing(
         context,
         fitted_parameters,
         tier_inputs,
+        tier_kind,
         include_node_price_sensitivities,
         theta_warm_start_state,
         progress,
@@ -852,6 +858,10 @@ fn run_option_grid_batch_pricing(
         },
         spectral_collocation_node_count_override: tier_inputs
             .spectral_collocation_node_count_override,
+        operator_approximation: option_pricing_operator_approximation(
+            tier_kind,
+            include_node_price_sensitivities,
+        ),
         cpu_count: Some(option_pricing_context.cpu_count),
     };
 
@@ -910,6 +920,19 @@ fn run_option_grid_batch_pricing(
     );
 
     pricing_result.map_err(|source| format!("joint option pricing evaluation failed: {source}"))
+}
+
+fn option_pricing_operator_approximation(
+    tier_kind: JointRefinementOptionSurfaceTierKind,
+    include_node_price_sensitivities: bool,
+) -> VanillaOptionGridBatchPricingOperatorApproximation {
+    if tier_kind == JointRefinementOptionSurfaceTierKind::Search
+        && !include_node_price_sensitivities
+    {
+        VanillaOptionGridBatchPricingOperatorApproximation::BucketedSearch
+    } else {
+        VanillaOptionGridBatchPricingOperatorApproximation::Exact
+    }
 }
 
 fn option_pricing_progress_snapshot(
@@ -974,9 +997,13 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
         progress,
     } = input;
 
+    let operator_approximation =
+        option_pricing_operator_approximation(tier_kind, include_node_price_sensitivities);
+
     let cache_key = super::JointRefinementOptionPricingCacheKey {
         tier_kind,
         include_node_price_sensitivities,
+        operator_approximation,
         source_dynamics_parameter_bits: source_dynamics_parameter_bits.to_vec(),
         pricing_parameter_bits: pricing_parameter_bits.to_vec(),
     };
@@ -1001,6 +1028,7 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
         context,
         fitted_parameters,
         tier_inputs,
+        tier_kind,
         include_node_price_sensitivities,
         theta_warm_start_state,
         progress,
@@ -1376,6 +1404,10 @@ fn build_option_surface_tier_pricing_artifact(
         maturity_scores,
         node_diagnostics,
         aggregate_diagnostics,
+        operator_approximation_diagnostics: pricing_result
+            .operator_approximation_diagnostics
+            .as_ref()
+            .map(option_operator_approximation_diagnostics),
         score_gradient_artifact,
         reduced_model_artifact,
         node_sensitivities,
@@ -1408,6 +1440,9 @@ pub(crate) fn build_option_calibration_diagnostics(
     selected_search_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
     selected_selection_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
     audit_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
+    search_selection_agreement: Option<
+        JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
+    >,
 ) -> Result<Option<JointRefinementStageOptionCalibrationDiagnostics>, String> {
     let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
         return Ok(None);
@@ -1502,6 +1537,7 @@ pub(crate) fn build_option_calibration_diagnostics(
             build_option_tier_pricing_diagnostics(option_pricing_context, audit_artifact)
         }),
         reduced_model,
+        search_selection_agreement,
     }))
 }
 
@@ -1598,6 +1634,7 @@ fn build_option_tier_pricing_diagnostics(
         root_mean_square_spread_normalized_residual: artifact
             .score
             .root_mean_square_spread_normalized_residual,
+        operator_approximation: artifact.operator_approximation_diagnostics.clone(),
         maturity_scores: artifact
             .maturity_scores
             .iter()
@@ -1613,6 +1650,18 @@ fn build_option_tier_pricing_diagnostics(
             .collect(),
         node_diagnostics: artifact.node_diagnostics.clone(),
         aggregate_diagnostics: artifact.aggregate_diagnostics.clone(),
+    }
+}
+
+fn option_operator_approximation_diagnostics(
+    diagnostics: &janiform_engine_pricing::VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
+) -> JointRefinementStageOptionOperatorApproximationDiagnostics {
+    JointRefinementStageOptionOperatorApproximationDiagnostics {
+        exact_interval_count: diagnostics.exact_interval_count,
+        representative_kernel_count: diagnostics.representative_kernel_count,
+        reused_interval_count: diagnostics.reused_interval_count,
+        compression_ratio: diagnostics.compression_ratio,
+        exact_pricing_forced_by_sensitivities: diagnostics.exact_pricing_forced_by_sensitivities,
     }
 }
 
@@ -1679,7 +1728,7 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
             detail
         }
         PricingProgressPhase::IntervalProgress => {
-            format_progress_counts("interval", event.total_units, event.current_interval_index)
+            format_completed_progress_counts("interval", event.completed_units, event.total_units)
         }
         PricingProgressPhase::TransitionRowProgress => match event.total_intervals {
             Some(total_intervals) => format!(
@@ -1711,6 +1760,14 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
 fn format_progress_counts(label: &str, total_units: usize, current_index: Option<usize>) -> String {
     let current_position = current_index.map_or(0, |index| index.saturating_add(1));
     format!("{label} {current_position}/{total_units}")
+}
+
+fn format_completed_progress_counts(
+    label: &str,
+    completed_units: usize,
+    total_units: usize,
+) -> String {
+    format!("{label} {completed_units}/{total_units}")
 }
 
 fn display_position(index: Option<usize>, completed_units: usize) -> usize {
@@ -1914,17 +1971,20 @@ mod tests {
     use janiform_calibration_artifacts::JointRefinementStageCarryInput;
     use janiform_calibration_artifacts::{
         CalibrationObjectivePolicy, CalibrationRunSpec, HawkesStageFittedParameters,
-        MeanReversionStageDiagnostics, ReturnComponentsStageFittedParameters,
+        JointRefinementStageOptionOperatorApproximationDiagnostics, MeanReversionStageDiagnostics,
+        ReturnComponentsStageFittedParameters,
     };
     use janiform_engine_pricing::{
         AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
         PricingIntervalSchedulePolicy, PricingProgressEvent, PricingProgressPhase,
-        VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
-        VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
-        VanillaOptionGridRequest, VanillaOptionMaturitySummary, VanillaOptionPayoffType,
-        VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-        VanillaOptionPricingStatus, materialize_schedule_interval_factors,
-        run_vanilla_option_grid_batch_pricing,
+        VanillaOptionGridBatchPricingExecutionInput,
+        VanillaOptionGridBatchPricingOperatorApproximation,
+        VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
+        VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRunResult,
+        VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionMaturitySummary,
+        VanillaOptionPayoffType, VanillaOptionPricingModelParameters,
+        VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingStatus,
+        materialize_schedule_interval_factors, run_vanilla_option_grid_batch_pricing,
     };
     use janiform_foundations::time::NANOS_PER_HOUR;
     use janiform_market_time::calendar::ExchangeCalendarRegistry;
@@ -2064,6 +2124,27 @@ mod tests {
         assert_eq!(
             format_option_pricing_progress_item(&event),
             "interval 425/1890"
+        );
+    }
+
+    #[test]
+    fn interval_progress_lists_completed_interval_count() {
+        let event = PricingProgressEvent {
+            phase: PricingProgressPhase::IntervalProgress,
+            completed_units: 24,
+            total_units: 47,
+            current_group_index: None,
+            current_maturity_index: None,
+            total_maturities: None,
+            current_interval_index: Some(24),
+            total_intervals: Some(47),
+            current_strike_index: None,
+            total_strikes: None,
+        };
+
+        assert_eq!(
+            format_option_pricing_progress_item(&event),
+            "interval 24/47"
         );
     }
 
@@ -2261,6 +2342,7 @@ mod tests {
         let cache_key = JointRefinementOptionPricingCacheKey {
             tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
             include_node_price_sensitivities: false,
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             source_dynamics_parameter_bits: vec![1, 2, 3],
             pricing_parameter_bits: vec![4, 5],
         };
@@ -2340,6 +2422,15 @@ mod tests {
                 artifact_grid_result(VanillaOptionPayoffType::Put, vec![95.0], 2.0, 1, vec![0.9]),
             ],
             runtime_interval_schedule,
+            operator_approximation_diagnostics: Some(
+                VanillaOptionGridBatchPricingOperatorApproximationDiagnostics {
+                    exact_interval_count: 8,
+                    representative_kernel_count: 3,
+                    reused_interval_count: 5,
+                    compression_ratio: 8.0 / 3.0,
+                    exact_pricing_forced_by_sensitivities: false,
+                },
+            ),
         };
 
         let artifact = build_option_surface_tier_pricing_artifact(
@@ -2397,6 +2488,16 @@ mod tests {
         assert_eq!(artifact.maturity_scores[1].maturity_weight, 1);
         assert_eq!(artifact.aggregate_diagnostics.len(), 5);
         assert_eq!(artifact.spectral_collocation_node_count, Some(7));
+        assert_eq!(
+            artifact.operator_approximation_diagnostics,
+            Some(JointRefinementStageOptionOperatorApproximationDiagnostics {
+                exact_interval_count: 8,
+                representative_kernel_count: 3,
+                reused_interval_count: 5,
+                compression_ratio: 8.0 / 3.0,
+                exact_pricing_forced_by_sensitivities: false,
+            })
+        );
 
         let total_maturity_weight = artifact
             .maturity_scores
@@ -2423,6 +2524,7 @@ mod tests {
         let base_key = JointRefinementOptionPricingCacheKey {
             tier_kind: JointRefinementOptionSurfaceTierKind::Search,
             include_node_price_sensitivities: false,
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             source_dynamics_parameter_bits: vec![1, 2],
             pricing_parameter_bits: vec![3, 4],
         };
@@ -2432,6 +2534,7 @@ mod tests {
             JointRefinementOptionPricingCacheKey {
                 tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
                 include_node_price_sensitivities: false,
+                operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
                 source_dynamics_parameter_bits: vec![1, 2],
                 pricing_parameter_bits: vec![3, 4],
             }
@@ -2441,6 +2544,7 @@ mod tests {
             JointRefinementOptionPricingCacheKey {
                 tier_kind: JointRefinementOptionSurfaceTierKind::Search,
                 include_node_price_sensitivities: false,
+                operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
                 source_dynamics_parameter_bits: vec![1, 5],
                 pricing_parameter_bits: vec![3, 4],
             }
@@ -2450,6 +2554,7 @@ mod tests {
             JointRefinementOptionPricingCacheKey {
                 tier_kind: JointRefinementOptionSurfaceTierKind::Search,
                 include_node_price_sensitivities: false,
+                operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
                 source_dynamics_parameter_bits: vec![1, 2],
                 pricing_parameter_bits: vec![3, 6],
             }
@@ -2997,6 +3102,7 @@ mod tests {
                 include_node_price_sensitivities: false,
             },
             spectral_collocation_node_count_override: None,
+            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: Some(1),
         };
 
@@ -3107,6 +3213,7 @@ mod tests {
                 interval_factors: execution_input.interval_factors.clone(),
                 optional_output_selection: execution_input.optional_output_selection,
                 spectral_collocation_node_count_override: None,
+                operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
                 cpu_count: Some(1),
             };
 

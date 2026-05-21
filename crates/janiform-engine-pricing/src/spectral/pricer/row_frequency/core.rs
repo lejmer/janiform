@@ -216,6 +216,28 @@ pub(in crate::spectral::pricer) fn build_row_frequency_batch_from_shared_kernel(
     })
 }
 
+pub(in crate::spectral::pricer) fn build_row_frequency_batch_from_representative_kernel(
+    base_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    next_anchor_value: f64,
+    spectral_domain: SpectralDomain,
+    representative_solution: &RowFrequencyBatchSolution,
+) -> Result<RowFrequencyBatchSolution, VanillaOptionPricingRunError> {
+    let shared_kernel = SharedRowFrequencyBatchKernel {
+        theta: representative_solution.theta,
+        positive_frequency_values: representative_solution.positive_frequency_values.clone(),
+        representative_transform: representative_solution.representative_transform,
+    };
+
+    build_row_frequency_batch_from_shared_kernel(
+        base_context,
+        transition_row,
+        next_anchor_value,
+        spectral_domain,
+        &shared_kernel,
+    )
+}
+
 pub(in crate::spectral::pricer) fn build_row_operator_sensitivities(
     base_context: &LocalTransitionRequestContext,
     row_states: &[LocalTransitionRowState],

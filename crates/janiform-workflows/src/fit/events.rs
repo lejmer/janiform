@@ -28,6 +28,7 @@ use janiform_terminal_ui::{
 };
 
 use crate::error::WorkflowError;
+use crate::progress::{progress_count_label, progress_position_label};
 
 use super::labels::stage_label;
 
@@ -760,17 +761,14 @@ fn work_item_table_metrics(
         metrics.push(ProgressWorkItemMetric::new("eval", evaluation_label));
     }
 
-    if let Some(interval_label) = pricing_progress_position_label(
-        progress.current_pricing_interval_index,
-        progress.total_pricing_interval_count,
-    ) {
+    if let Some(interval_label) = pricing_interval_label(progress) {
         metrics.push(ProgressWorkItemMetric::new(
             "pricing_interval",
             interval_label,
         ));
     }
 
-    if let Some(row_label) = pricing_progress_count_label(
+    if let Some(row_label) = progress_count_label(
         progress.completed_pricing_row_count,
         progress.total_pricing_row_count,
     ) {
@@ -871,34 +869,19 @@ fn evaluation_label(
     })
 }
 
-fn pricing_progress_position_label(
-    current_index: Option<usize>,
-    total_count: Option<usize>,
-) -> Option<String> {
-    match (current_index, total_count) {
-        (Some(current_index), Some(total_count)) => Some(format!(
-            "{}/{}",
-            current_index.saturating_add(1),
-            total_count
-        )),
-        (Some(current_index), None) => Some(current_index.saturating_add(1).to_string()),
-        (None, Some(total_count)) => Some(format!("-/{total_count}")),
-        (None, None) => None,
+fn pricing_interval_label(progress: &CalibrationStagedRunStageProgressEvent) -> Option<String> {
+    if progress.completed_pricing_row_count.is_some() || progress.total_pricing_row_count.is_some()
+    {
+        return progress_position_label(
+            progress.current_pricing_interval_index,
+            progress.total_pricing_interval_count,
+        );
     }
-}
 
-fn pricing_progress_count_label(
-    completed_count: Option<usize>,
-    total_count: Option<usize>,
-) -> Option<String> {
-    match (completed_count, total_count) {
-        (Some(completed_count), Some(total_count)) => {
-            Some(format!("{completed_count}/{total_count}"))
-        }
-        (Some(completed_count), None) => Some(completed_count.to_string()),
-        (None, Some(total_count)) => Some(format!("-/{total_count}")),
-        (None, None) => None,
-    }
+    progress_count_label(
+        progress.current_pricing_interval_index,
+        progress.total_pricing_interval_count,
+    )
 }
 
 fn progress_work_item_label(

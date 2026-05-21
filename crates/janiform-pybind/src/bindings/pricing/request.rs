@@ -4,7 +4,8 @@ use janiform::model::factors::hourly::{
 };
 use janiform::pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
-    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
@@ -167,6 +168,7 @@ pub(super) fn grid_batch_execution_input_from_py(
         optional_output_selection: execution_input.optional_output_selection,
         spectral_collocation_node_count_override: execution_input
             .spectral_collocation_node_count_override,
+        operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
         cpu_count: execution_input.cpu_count,
     })
 }

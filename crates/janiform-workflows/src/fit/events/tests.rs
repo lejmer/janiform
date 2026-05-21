@@ -369,6 +369,38 @@ fn option_refinement_progress_table_includes_pricing_interval_and_rows() {
 }
 
 #[test]
+fn option_refinement_interval_metric_uses_completed_count_without_row_detail() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("restart_01"),
+        Some(3),
+        Some(27),
+        None,
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+    );
+
+    progress.current_pricing_interval_index = Some(24);
+    progress.total_pricing_interval_count = Some(47);
+
+    assert_eq!(
+        work_item_table_metrics(&progress)
+            .into_iter()
+            .map(|metric| (metric.key, metric.value))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "3/27".to_string()),
+            ("pricing_interval".to_string(), "24/47".to_string()),
+        ]
+    );
+}
+
+#[test]
 fn stage_progress_measure_uses_aggregate_percent_when_available() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,

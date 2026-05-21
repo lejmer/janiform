@@ -66,6 +66,36 @@ pub(crate) fn format_cpu_count(cpu_count: usize) -> String {
     }
 }
 
+pub(crate) fn progress_count_label(
+    completed_count: Option<usize>,
+    total_count: Option<usize>,
+) -> Option<String> {
+    match (completed_count, total_count) {
+        (Some(completed_count), Some(total_count)) => {
+            Some(format!("{completed_count}/{total_count}"))
+        }
+        (Some(completed_count), None) => Some(completed_count.to_string()),
+        (None, Some(total_count)) => Some(format!("-/{total_count}")),
+        (None, None) => None,
+    }
+}
+
+pub(crate) fn progress_position_label(
+    current_index: Option<usize>,
+    total_count: Option<usize>,
+) -> Option<String> {
+    match (current_index, total_count) {
+        (Some(current_index), Some(total_count)) => Some(format!(
+            "{}/{}",
+            current_index.saturating_add(1),
+            total_count
+        )),
+        (Some(current_index), None) => Some(current_index.saturating_add(1).to_string()),
+        (None, Some(total_count)) => Some(format!("-/{total_count}")),
+        (None, None) => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ProgressUnitTracker {
     completed_units: usize,
@@ -128,7 +158,8 @@ mod tests {
 
     use super::{
         ProgressUnitTracker, VolatileProgressGate, completed_tracked_progress_units,
-        format_cpu_count, progress_percent, total_tracked_progress_units,
+        format_cpu_count, progress_count_label, progress_percent, progress_position_label,
+        total_tracked_progress_units,
     };
 
     #[test]
@@ -167,6 +198,37 @@ mod tests {
     fn format_cpu_count_uses_singular_for_one_cpu() {
         assert_eq!(format_cpu_count(1), "1 CPU");
         assert_eq!(format_cpu_count(4), "4 CPUs");
+    }
+
+    #[test]
+    fn progress_count_label_formats_completed_units() {
+        assert_eq!(
+            progress_count_label(Some(24), Some(47)),
+            Some("24/47".to_string())
+        );
+        assert_eq!(progress_count_label(Some(24), None), Some("24".to_string()));
+        assert_eq!(
+            progress_count_label(None, Some(47)),
+            Some("-/47".to_string())
+        );
+        assert_eq!(progress_count_label(None, None), None);
+    }
+
+    #[test]
+    fn progress_position_label_formats_zero_based_position() {
+        assert_eq!(
+            progress_position_label(Some(24), Some(47)),
+            Some("25/47".to_string())
+        );
+        assert_eq!(
+            progress_position_label(Some(24), None),
+            Some("25".to_string())
+        );
+        assert_eq!(
+            progress_position_label(None, Some(47)),
+            Some("-/47".to_string())
+        );
+        assert_eq!(progress_position_label(None, None), None);
     }
 
     #[test]
