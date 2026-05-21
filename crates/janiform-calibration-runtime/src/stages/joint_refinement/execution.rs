@@ -2,8 +2,6 @@ mod coarse_consistency;
 mod entrypoint;
 mod inputs;
 mod optimization;
-mod option_objective_gradient;
-mod option_reduced_model;
 mod option_refinement;
 mod pipeline;
 mod pricing_context;
@@ -38,8 +36,10 @@ pub(crate) use inputs::{sampled_observed_tick_returns, tick_shape_sample_target_
 #[cfg(test)]
 pub(crate) use optimization::joint_refinement_restart_full_vector_direct_search_settings;
 pub(crate) use optimization::{
+    SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
     optimize_restart_seeds, precheck_seed_summary_workload,
+    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
 };
 pub(crate) use option_refinement::{
     desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,

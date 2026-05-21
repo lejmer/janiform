@@ -1125,6 +1125,7 @@ dependencies = [
  "arrow-schema",
  "chrono",
  "csv",
+ "nalgebra 0.34.2",
  "parquet",
  "serde",
  "serde_json",

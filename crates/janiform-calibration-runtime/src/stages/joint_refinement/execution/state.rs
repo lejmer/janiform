@@ -33,8 +33,10 @@ use crate::stages::return_components::{
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
-use super::option_objective_gradient::JointRefinementOptionTierScoreGradientArtifact;
-use super::option_reduced_model::JointRefinementOptionReducedModelArtifact;
+use super::option_refinement::objective_gradient::{
+    JointRefinementOptionNodeResidualSensitivity, JointRefinementOptionTierScoreGradientArtifact,
+};
+use super::option_refinement::reduced_model::JointRefinementOptionReducedModelArtifact;
 
 pub(crate) const JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
 pub(crate) const JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT: usize = 3;
@@ -618,6 +620,8 @@ pub(crate) struct JointRefinementOptionTierPricingArtifact {
     pub(crate) score_gradient_artifact: Option<JointRefinementOptionTierScoreGradientArtifact>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) reduced_model_artifact: Option<JointRefinementOptionReducedModelArtifact>,
+    #[serde(skip)]
+    pub(crate) node_sensitivities: Option<Vec<JointRefinementOptionNodeResidualSensitivity>>,
     pub(crate) maturity_intervals: Vec<f64>,
     pub(crate) maturity_terminal_interval_indices: Vec<usize>,
 }

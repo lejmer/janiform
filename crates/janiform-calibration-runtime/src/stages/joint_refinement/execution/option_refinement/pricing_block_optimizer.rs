@@ -1,3 +1,5 @@
+use janiform_foundations::linear_algebra::mean_diagonal_damped_least_squares_step_4;
+
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 
 use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
@@ -10,11 +12,15 @@ use super::super::super::setup::{
     parameter_vector_to_fitted_parameters, parameter_vector_to_nig_search_point,
 };
 use super::super::{JointRefinementContext, JointRefinementRestartOutcome, elapsed_millis};
-use super::{
+use super::residual_jacobian::weighted_option_residual_jacobian_rows;
+use super::workflow::{
     OptionRefinementProgressContext, SearchTierCandidate, option_pricing_block_evaluation_budget,
     option_refinement_effective_search_sample_count, option_score_resolution,
     pricing_block_search_coordinate_count, scored_pricing_vector,
 };
+
+// The Levenberg term is one mean diagonal of the local normal matrix.
+const OPTION_PRICING_BLOCK_NORMAL_EQUATION_DAMPING_MEAN_DIAGONAL_MULTIPLIER: f64 = 1.0;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OptionRefinementCandidateWallClockBudget {
@@ -32,9 +38,15 @@ impl OptionRefinementCandidateWallClockBudget {
 }
 
 #[derive(Debug, Clone)]
-struct PricingBlockGradientProposal {
+struct PricingBlockProposal {
     parameter_vector: Vec<f64>,
     predicted_score: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PricingBlockWeightedResidualJacobianRow {
+    residual: f64,
+    gradient: [f64; 4],
 }
 
 pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
@@ -50,10 +62,11 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
         initial_candidate.search_tier_score,
         option_refinement_effective_search_sample_count(&initial_candidate),
     );
-    let proposals = pricing_block_gradient_proposals(refinement_context, &initial_candidate)?;
+    let proposals = pricing_block_proposals(refinement_context, &initial_candidate)?;
 
     let mut best_candidate = initial_candidate;
     let mut budget_limited = false;
+    let mut prediction_rejected = false;
 
     for proposal in proposals {
         if progress_context.is_some_and(|context| {
@@ -69,7 +82,8 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
         }
 
         if proposal.predicted_score >= best_candidate.search_tier_score {
-            break;
+            prediction_rejected = true;
+            continue;
         }
 
         let evaluated_candidate = scored_pricing_vector(
@@ -98,24 +112,131 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
             continue;
         }
 
-        best_candidate.restart_outcome.stop_reason =
-            "option_pricing_block_reduced_model_prediction_rejected".to_string();
-
-        break;
+        prediction_rejected = true;
     }
 
     if budget_limited {
         best_candidate.restart_outcome.stop_reason =
             "option_pricing_block_budget_limited".to_string();
+    } else if prediction_rejected {
+        best_candidate.restart_outcome.stop_reason =
+            "option_pricing_block_reduced_model_prediction_rejected".to_string();
     }
 
     Ok(best_candidate)
 }
 
+fn pricing_block_proposals(
+    refinement_context: &JointRefinementContext,
+    initial_candidate: &SearchTierCandidate,
+) -> Result<Vec<PricingBlockProposal>, String> {
+    let least_squares_proposals =
+        pricing_block_least_squares_proposals(refinement_context, initial_candidate)?;
+
+    if least_squares_proposals
+        .iter()
+        .any(|proposal| proposal.predicted_score < initial_candidate.search_tier_score)
+    {
+        return Ok(least_squares_proposals);
+    }
+
+    pricing_block_gradient_proposals(refinement_context, initial_candidate)
+}
+
+fn pricing_block_least_squares_proposals(
+    refinement_context: &JointRefinementContext,
+    initial_candidate: &SearchTierCandidate,
+) -> Result<Vec<PricingBlockProposal>, String> {
+    let Some(node_sensitivities) = initial_candidate
+        .search_tier_pricing_artifact
+        .node_sensitivities
+        .as_ref()
+    else {
+        return Ok(Vec::new());
+    };
+
+    if node_sensitivities.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let current_vector = initial_candidate
+        .restart_outcome
+        .parameter_vector
+        .as_slice();
+
+    let current_search_point = parameter_vector_to_nig_search_point(
+        current_vector,
+        &refinement_context.active_parameter_layout,
+    );
+
+    let calibration_sample = pricing_block_calibration_sample(current_vector, refinement_context)?;
+
+    let mapping = nig_configuration_search_point_mapping(&calibration_sample, current_search_point)
+        .ok_or_else(|| "option pricing NIG search-point Jacobian mapping failed".to_string())?;
+
+    let weighted_rows = weighted_option_residual_jacobian_rows(node_sensitivities.as_slice())?;
+
+    let mut search_coordinate_rows = Vec::with_capacity(weighted_rows.len());
+    let mut residual_vector = Vec::with_capacity(weighted_rows.len());
+
+    for weighted_row in weighted_rows {
+        if weighted_row.gradient.len() != pricing_block_search_coordinate_count() {
+            return Err(
+                "option pricing residual Jacobian dimension does not match NIG pricing block"
+                    .to_string(),
+            );
+        }
+
+        residual_vector.push(weighted_row.residual);
+
+        search_coordinate_rows.push(PricingBlockWeightedResidualJacobianRow {
+            residual: weighted_row.residual,
+            gradient: search_coordinate_gradient_from_raw_nig_gradient(
+                weighted_row.gradient.as_slice(),
+                &mapping,
+            ),
+        });
+    }
+
+    let sensitivity_matrix = search_coordinate_rows
+        .iter()
+        .map(|weighted_row| weighted_row.gradient)
+        .collect::<Vec<_>>();
+
+    let Some(least_squares_step) = mean_diagonal_damped_least_squares_step_4(
+        sensitivity_matrix.as_slice(),
+        residual_vector.as_slice(),
+        OPTION_PRICING_BLOCK_NORMAL_EQUATION_DAMPING_MEAN_DIAGONAL_MULTIPLIER,
+    ) else {
+        return Ok(Vec::new());
+    };
+
+    let maximum_step_scale =
+        maximum_bounded_line_step(current_vector, &least_squares_step, refinement_context).min(1.0);
+    if maximum_step_scale <= 0.0 || !maximum_step_scale.is_finite() {
+        return Ok(Vec::new());
+    }
+
+    let proposal_count = option_pricing_block_evaluation_budget().saturating_sub(1);
+
+    Ok((0..proposal_count)
+        .filter_map(|step_index| {
+            let step_scale = maximum_step_scale / (1usize << step_index) as f64;
+            pricing_block_least_squares_proposal(
+                current_vector,
+                search_coordinate_rows.as_slice(),
+                &least_squares_step,
+                step_scale,
+                refinement_context,
+            )
+        })
+        .collect())
+}
+
 fn pricing_block_gradient_proposals(
     refinement_context: &JointRefinementContext,
     initial_candidate: &SearchTierCandidate,
-) -> Result<Vec<PricingBlockGradientProposal>, String> {
+) -> Result<Vec<PricingBlockProposal>, String> {
     let Some(score_gradient_artifact) = initial_candidate
         .search_tier_pricing_artifact
         .score_gradient_artifact
@@ -138,16 +259,20 @@ fn pricing_block_gradient_proposals(
         .restart_outcome
         .parameter_vector
         .as_slice();
+
     let current_search_point = parameter_vector_to_nig_search_point(
         current_vector,
         &refinement_context.active_parameter_layout,
     );
+
     let calibration_sample = pricing_block_calibration_sample(current_vector, refinement_context)?;
+
     let mapping = nig_configuration_search_point_mapping(&calibration_sample, current_search_point)
         .ok_or_else(|| "option pricing NIG search-point gradient mapping failed".to_string())?;
 
     let search_gradient =
         search_coordinate_gradient_from_raw_nig_gradient(raw_gradient.as_slice(), &mapping);
+
     let direction = search_gradient.map(|gradient| -gradient);
 
     let maximum_step = maximum_bounded_line_step(current_vector, &direction, refinement_context);
@@ -179,9 +304,80 @@ fn pricing_block_gradient_proposal(
     step: f64,
     current_score: f64,
     refinement_context: &JointRefinementContext,
-) -> Option<PricingBlockGradientProposal> {
-    let mut proposal_vector = current_vector.to_vec();
+) -> Option<PricingBlockProposal> {
+    let requested_delta = direction.map(|direction_value| step * direction_value);
+
+    let (proposal_vector, applied_delta) =
+        pricing_block_proposal_vector(current_vector, &requested_delta, refinement_context);
+
     let mut predicted_score = current_score;
+
+    if applied_delta
+        .iter()
+        .all(|coordinate_delta| *coordinate_delta == 0.0)
+    {
+        return None;
+    }
+
+    for (gradient_value, coordinate_delta) in search_gradient.iter().zip(applied_delta.iter()) {
+        predicted_score += gradient_value * coordinate_delta;
+    }
+
+    predicted_score.is_finite().then_some(PricingBlockProposal {
+        parameter_vector: proposal_vector,
+        predicted_score: predicted_score.max(0.0),
+    })
+}
+
+fn pricing_block_least_squares_proposal(
+    current_vector: &[f64],
+    weighted_rows: &[PricingBlockWeightedResidualJacobianRow],
+    least_squares_step: &[f64; 4],
+    step_scale: f64,
+    refinement_context: &JointRefinementContext,
+) -> Option<PricingBlockProposal> {
+    let requested_delta = least_squares_step.map(|component| step_scale * component);
+
+    let (proposal_vector, applied_delta) =
+        pricing_block_proposal_vector(current_vector, &requested_delta, refinement_context);
+
+    if applied_delta
+        .iter()
+        .all(|coordinate_delta| *coordinate_delta == 0.0)
+    {
+        return None;
+    }
+
+    let predicted_squared_norm = weighted_rows
+        .iter()
+        .map(|weighted_row| {
+            let predicted_residual = weighted_row.residual
+                + weighted_row
+                    .gradient
+                    .iter()
+                    .zip(applied_delta.iter())
+                    .map(|(sensitivity, coordinate_delta)| sensitivity * coordinate_delta)
+                    .sum::<f64>();
+
+            predicted_residual * predicted_residual
+        })
+        .sum::<f64>();
+
+    predicted_squared_norm
+        .is_finite()
+        .then_some(PricingBlockProposal {
+            parameter_vector: proposal_vector,
+            predicted_score: predicted_squared_norm.max(0.0).sqrt(),
+        })
+}
+
+fn pricing_block_proposal_vector(
+    current_vector: &[f64],
+    requested_delta: &[f64; 4],
+    refinement_context: &JointRefinementContext,
+) -> (Vec<f64>, [f64; 4]) {
+    let mut proposal_vector = current_vector.to_vec();
+    let mut applied_delta = [0.0; 4];
 
     for (coordinate_position, parameter_index) in refinement_context
         .active_parameter_layout
@@ -189,21 +385,16 @@ fn pricing_block_gradient_proposal(
         .iter()
         .enumerate()
     {
-        let coordinate_delta = step * direction[coordinate_position];
-        predicted_score += search_gradient[coordinate_position] * coordinate_delta;
-        proposal_vector[*parameter_index] = (current_vector[*parameter_index] + coordinate_delta)
-            .clamp(
+        proposal_vector[*parameter_index] =
+            (current_vector[*parameter_index] + requested_delta[coordinate_position]).clamp(
                 refinement_context.lower_bounds[*parameter_index],
                 refinement_context.upper_bounds[*parameter_index],
             );
+        applied_delta[coordinate_position] =
+            proposal_vector[*parameter_index] - current_vector[*parameter_index];
     }
 
-    predicted_score
-        .is_finite()
-        .then_some(PricingBlockGradientProposal {
-            parameter_vector: proposal_vector,
-            predicted_score: predicted_score.max(0.0),
-        })
+    (proposal_vector, applied_delta)
 }
 
 fn pricing_block_calibration_sample(

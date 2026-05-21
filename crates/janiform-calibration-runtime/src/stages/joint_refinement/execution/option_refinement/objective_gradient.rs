@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionNodeResidualSensitivity {
     pub(crate) expiry_timestamp_utc_nanos: i64,
@@ -11,7 +10,6 @@ pub(crate) struct JointRefinementOptionNodeResidualSensitivity {
     pub(crate) spread_normalized_residual_gradient: Vec<f64>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionMaturityScoreGradientArtifact {
     pub(crate) expiry_timestamp_utc_nanos: i64,
@@ -21,7 +19,6 @@ pub(crate) struct JointRefinementOptionMaturityScoreGradientArtifact {
     pub(crate) gradient: Option<Vec<f64>>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionTierScoreGradientArtifact {
     pub(crate) root_mean_square_spread_normalized_residual: f64,
@@ -29,7 +26,6 @@ pub(crate) struct JointRefinementOptionTierScoreGradientArtifact {
     pub(crate) maturity_gradients: Vec<JointRefinementOptionMaturityScoreGradientArtifact>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone)]
 struct OptionMaturityResidualGradientAccumulator {
     maturity_weight: usize,
@@ -38,7 +34,6 @@ struct OptionMaturityResidualGradientAccumulator {
     residual_gradient_inner_product_sum: Vec<f64>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn differentiate_option_tier_root_mean_square_score(
     node_sensitivities: &[JointRefinementOptionNodeResidualSensitivity],
 ) -> Result<JointRefinementOptionTierScoreGradientArtifact, String> {

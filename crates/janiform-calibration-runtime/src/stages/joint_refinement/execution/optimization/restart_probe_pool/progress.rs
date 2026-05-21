@@ -7,7 +7,7 @@ use crate::stages::joint_refinement::contracts::{
 };
 
 use super::super::super::JointRefinementRestartOutcome;
-use super::super::emit_joint_refinement_progress;
+use super::super::workflow::emit_joint_refinement_progress;
 use super::{
     RESTART_WORK_ITEM_STATUS_COMPLETED, RESTART_WORK_ITEM_STATUS_QUEUED,
     RESTART_WORK_ITEM_STATUS_REJECTED, RESTART_WORK_ITEM_STATUS_RUNNING,

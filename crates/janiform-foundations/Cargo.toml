@@ -16,6 +16,7 @@ doctest = false
 arrow-array = { workspace = true }
 chrono = { workspace = true }
 csv = { workspace = true }
+nalgebra = { workspace = true }
 parquet = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

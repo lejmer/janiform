@@ -16,7 +16,7 @@ use super::super::{
     JointRefinementActiveParameterLayout, JointRefinementContext, JointRefinementRestartOutcome,
     elapsed_millis, joint_refinement_parallel_worker_count,
 };
-use super::{
+use super::workflow::{
     JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR, JointRefinementBudgetSchedule,
     JointRefinementRestartOptimizationOutput, ParameterBlockObjectiveEvaluation,
     evaluate_prechecked_full_parameter_vector_objective,

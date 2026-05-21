@@ -1,5 +1,7 @@
 use janiform_calibration_artifacts::CalibrationLossTermDiagnostic;
 
+use janiform_foundations::linear_algebra::mean_diagonal_damped_least_squares_step;
+
 // Damping is measured in the mean diagonal units of J'J, so a unit multiplier
 // keeps the repair between an undamped Gauss-Newton step and a gradient step.
 const NORMAL_EQUATION_DAMPING_MEAN_DIAGONAL_MULTIPLIER: f64 = 1.0;
@@ -89,9 +91,11 @@ where
         .map(|residual| residual.standardized_residual)
         .collect::<Vec<_>>();
 
-    let Some(repair_step) =
-        damped_least_squares_repair_step(sensitivity_matrix.as_slice(), residual_vector.as_slice())
-    else {
+    let Some(repair_step) = mean_diagonal_damped_least_squares_step(
+        sensitivity_matrix.as_slice(),
+        residual_vector.as_slice(),
+        NORMAL_EQUATION_DAMPING_MEAN_DIAGONAL_MULTIPLIER,
+    ) else {
         return Vec::new();
     };
 
@@ -284,117 +288,6 @@ fn residual_by_term_id(evaluation: &SensitivityRepairEvaluation, term_id: &str) 
         .find(|term| term.term_id == term_id)
         .and_then(|term| term.standardized_residual)
         .filter(|residual| residual.is_finite())
-}
-
-fn damped_least_squares_repair_step(
-    sensitivity_matrix: &[Vec<f64>],
-    residual_vector: &[f64],
-) -> Option<Vec<f64>> {
-    let parameter_count = sensitivity_matrix.first()?.len();
-    if parameter_count == 0 || residual_vector.len() != sensitivity_matrix.len() {
-        return None;
-    }
-
-    let mut normal_matrix = vec![vec![0.0; parameter_count]; parameter_count];
-    let mut normal_rhs = vec![0.0; parameter_count];
-
-    for (row, residual) in sensitivity_matrix.iter().zip(residual_vector.iter()) {
-        if row.len() != parameter_count || !residual.is_finite() {
-            return None;
-        }
-
-        for left_position in 0..parameter_count {
-            normal_rhs[left_position] -= row[left_position] * residual;
-
-            for right_position in 0..parameter_count {
-                normal_matrix[left_position][right_position] +=
-                    row[left_position] * row[right_position];
-            }
-        }
-    }
-
-    let diagonal_mean = mean_normal_matrix_diagonal(normal_matrix.as_slice());
-    if !diagonal_mean.is_finite() || diagonal_mean <= 0.0 {
-        return None;
-    }
-
-    for (diagonal_position, row) in normal_matrix.iter_mut().enumerate() {
-        row[diagonal_position] += NORMAL_EQUATION_DAMPING_MEAN_DIAGONAL_MULTIPLIER * diagonal_mean;
-    }
-
-    solve_linear_system(normal_matrix, normal_rhs)
-}
-
-fn mean_normal_matrix_diagonal(normal_matrix: &[Vec<f64>]) -> f64 {
-    let diagonal_sum = normal_matrix
-        .iter()
-        .enumerate()
-        .map(|(position, row)| row[position])
-        .sum::<f64>();
-
-    diagonal_sum / normal_matrix.len().max(1) as f64
-}
-
-fn solve_linear_system(mut matrix: Vec<Vec<f64>>, mut rhs: Vec<f64>) -> Option<Vec<f64>> {
-    let dimension = rhs.len();
-    if matrix.len() != dimension || matrix.iter().any(|row| row.len() != dimension) {
-        return None;
-    }
-
-    let pivot_floor = linear_solve_pivot_floor(matrix.as_slice());
-
-    for pivot_position in 0..dimension {
-        let pivot_row = (pivot_position..dimension).max_by(|left, right| {
-            matrix[*left][pivot_position]
-                .abs()
-                .total_cmp(&matrix[*right][pivot_position].abs())
-        })?;
-
-        if matrix[pivot_row][pivot_position].abs() <= pivot_floor {
-            return None;
-        }
-
-        matrix.swap(pivot_position, pivot_row);
-        rhs.swap(pivot_position, pivot_row);
-
-        let pivot = matrix[pivot_position][pivot_position];
-
-        for column_position in pivot_position..dimension {
-            matrix[pivot_position][column_position] /= pivot;
-        }
-
-        rhs[pivot_position] /= pivot;
-
-        for row_position in 0..dimension {
-            if row_position == pivot_position {
-                continue;
-            }
-
-            let factor = matrix[row_position][pivot_position];
-            if factor == 0.0 {
-                continue;
-            }
-
-            for column_position in pivot_position..dimension {
-                matrix[row_position][column_position] -=
-                    factor * matrix[pivot_position][column_position];
-            }
-
-            rhs[row_position] -= factor * rhs[pivot_position];
-        }
-    }
-
-    rhs.iter().all(|value| value.is_finite()).then_some(rhs)
-}
-
-fn linear_solve_pivot_floor(matrix: &[Vec<f64>]) -> f64 {
-    let max_entry = matrix
-        .iter()
-        .flat_map(|row| row.iter())
-        .map(|value| value.abs())
-        .fold(0.0, f64::max);
-
-    f64::EPSILON * matrix.len().max(1) as f64 * max_entry.max(1.0)
 }
 
 fn bound_normalized_repair_step(

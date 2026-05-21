@@ -56,14 +56,14 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::root_mean_square;
 use super::super::setup::build_surprise_multipliers_for_interval_grid;
-use super::option_objective_gradient::{
+use super::option_refinement::objective_gradient::{
     JointRefinementOptionNodeResidualSensitivity, differentiate_option_tier_root_mean_square_score,
 };
-use super::option_reduced_model::{
+use super::option_refinement::option_pricing_block_evaluation_budget;
+use super::option_refinement::reduced_model::{
     build_option_reduced_model_artifact, populate_reduced_model_runtime_estimates,
     reduced_model_diagnostics_from_artifact,
 };
-use super::option_refinement::option_pricing_block_evaluation_budget;
 use super::state::{
     JointRefinementContext, JointRefinementOptionMaturityScoreArtifact,
     JointRefinementOptionNodeDefinition, JointRefinementOptionNodeLocation,
@@ -1378,6 +1378,7 @@ fn build_option_surface_tier_pricing_artifact(
         aggregate_diagnostics,
         score_gradient_artifact,
         reduced_model_artifact,
+        node_sensitivities,
         maturity_intervals: tier_inputs.maturity_intervals.clone(),
         maturity_terminal_interval_indices: tier_inputs.maturity_terminal_interval_indices.clone(),
     })

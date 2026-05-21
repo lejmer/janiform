@@ -8,7 +8,7 @@ use super::super::super::super::objective::evaluate_joint_candidate;
 use super::super::super::{
     JointRefinementContext, JointRefinementFidelityTier, JointRefinementRestartOutcome,
 };
-use super::super::{
+use super::super::workflow::{
     build_precheck_rejected_restart_outcome, joint_refinement_has_fatal_execution_failure,
     precheck_restart_seed, refreshed_full_vector_candidate,
 };
