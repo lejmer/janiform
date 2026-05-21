@@ -15,6 +15,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::output::{StylizedFactsValidationCacheLevel, StylizedFactsValidationPlan};
+use super::validation_error::stylized_facts_validation_error;
 use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
@@ -113,12 +114,11 @@ pub(super) fn write_cache_artifacts(
         simulation_manifests,
     )?;
 
-    let run_input = comparison_request.calibration_runs.first().ok_or(
-        WorkflowError::ValidationInputFailed {
-            field: "validate stylized-facts",
-            message: "generated comparison request must contain one validation run".to_string(),
-        },
-    )?;
+    let run_input = comparison_request.calibration_runs.first().ok_or_else(|| {
+        stylized_facts_validation_error(
+            "generated comparison request must contain one validation run",
+        )
+    })?;
 
     write_json_artifact(
         &output_dir.join(METRIC_OBSERVATIONS_FILE_NAME),
@@ -176,10 +176,7 @@ pub(super) fn cache_artifacts(
 fn map_report_generation_error(
     source: StylizedFactHorizonComparisonReportGenerationError,
 ) -> WorkflowError {
-    WorkflowError::ValidationInputFailed {
-        field: "validate stylized-facts",
-        message: source.to_string(),
-    }
+    stylized_facts_validation_error(source.to_string())
 }
 
 pub(super) fn load_typed_json_artifact<T: DeserializeOwned>(

@@ -11,7 +11,7 @@ use janiform_calibration_artifacts::{
 };
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 use janiform_foundations::numeric::pearson_correlation;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use janiform_work_scheduler::{StaticWorkPoolInput, run_static_work_pool};
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageProgressPhase,
@@ -24,9 +24,11 @@ use super::super::{
     JointRefinementContext, JointRefinementOptionTierPricingArtifact,
     JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
     OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
-    OptionSurfaceTierPricingArtifactResolutionInput, elapsed_millis,
-    joint_refinement_parallel_worker_count, ordered_parameter_bits,
-    resolve_option_surface_tier_pricing_artifact, with_joint_refinement_thread_pool,
+    OptionSurfaceTierPricingArtifactResolutionInput, elapsed_millis, ordered_parameter_bits,
+    resolve_option_surface_tier_pricing_artifact,
+};
+use super::candidate_parallelism::{
+    option_refinement_candidate_parallelism, option_refinement_candidate_pricing_cpu_count,
 };
 use super::pricing_block_optimizer::{
     OptionRefinementCandidateWallClockBudget, optimize_pricing_block_from_search_tier_sensitivities,
@@ -470,58 +472,6 @@ fn option_refinement_selection_score_ceiling(
     best_search_tier_score + option_score_resolution(best_search_tier_score, effective_sample_count)
 }
 
-fn resolved_option_refinement_candidate_parallelism(
-    _available_stage_thread_count: usize,
-    _total_pricing_cpu_count: usize,
-    _candidate_count: usize,
-) -> usize {
-    1
-}
-
-fn resolved_option_refinement_candidate_pricing_cpu_count(
-    total_pricing_cpu_count: usize,
-    candidate_parallelism: usize,
-) -> usize {
-    total_pricing_cpu_count
-        .max(1)
-        .checked_div(candidate_parallelism.max(1))
-        .unwrap_or(0)
-        .max(1)
-}
-
-fn option_refinement_candidate_parallelism(
-    context: &JointRefinementContext,
-    candidate_count: usize,
-) -> usize {
-    let total_pricing_cpu_count = context
-        .option_pricing_context
-        .as_ref()
-        .map(|option_pricing_context| option_pricing_context.cpu_count)
-        .unwrap_or(1);
-
-    resolved_option_refinement_candidate_parallelism(
-        joint_refinement_parallel_worker_count(context),
-        total_pricing_cpu_count,
-        candidate_count,
-    )
-}
-
-fn option_refinement_candidate_pricing_cpu_count(
-    context: &JointRefinementContext,
-    candidate_parallelism: usize,
-) -> usize {
-    let total_pricing_cpu_count = context
-        .option_pricing_context
-        .as_ref()
-        .map(|option_pricing_context| option_pricing_context.cpu_count)
-        .unwrap_or(1);
-
-    resolved_option_refinement_candidate_pricing_cpu_count(
-        total_pricing_cpu_count,
-        candidate_parallelism,
-    )
-}
-
 fn context_with_option_pricing_cpu_count(
     context: &JointRefinementContext,
     pricing_cpu_count: usize,
@@ -564,19 +514,18 @@ fn refine_search_tier_candidates(
             )
         {
             resumed_candidate.source_rank = source_rank;
+            let resumed_search_tier_score = resumed_candidate.search_tier_score;
 
             let progress_snapshot = shared_progress_state.record_resumed_candidate(
                 dynamics_candidate.restart_id.as_str(),
-                resumed_candidate.search_tier_score,
+                resumed_search_tier_score,
                 total_units,
             );
-
-            candidate_slots[source_rank] = Some(resumed_candidate.clone());
 
             emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
                 current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
                 current_item_label: Some(dynamics_candidate.restart_id.as_str()),
-                current_weighted_objective: Some(resumed_candidate.search_tier_score),
+                current_weighted_objective: Some(resumed_search_tier_score),
                 best_restart_id: progress_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: progress_snapshot.best_weighted_objective,
                 active_restart_count: None,
@@ -589,6 +538,8 @@ fn refine_search_tier_candidates(
                     total_units,
                 )
             });
+
+            candidate_slots[source_rank] = Some(resumed_candidate);
 
             continue;
         }
@@ -610,47 +561,36 @@ fn refine_search_tier_candidates(
             budget_millis,
         });
 
-    let unresolved_results = with_joint_refinement_thread_pool(context, || {
-        if unresolved_candidates.len() > 1 && candidate_parallelism > 1 {
-            unresolved_candidates
-                .par_iter()
-                .map(|(source_rank, dynamics_candidate)| {
-                    refine_parallel_search_tier_candidate(
-                        ParallelSearchTierCandidateRefinementInput {
-                            context,
-                            source_rank: *source_rank,
-                            dynamics_candidate,
-                            progress_sender,
-                            total_units,
-                            shared_progress_state: Arc::clone(&shared_progress_state),
-                            pricing_cpu_count,
-                            wall_clock_budget,
-                            candidate_budget_share_count: unresolved_candidate_count,
-                        },
-                    )
-                })
-                .collect::<Vec<_>>()
-        } else {
-            unresolved_candidates
-                .iter()
-                .map(|(source_rank, dynamics_candidate)| {
-                    refine_parallel_search_tier_candidate(
-                        ParallelSearchTierCandidateRefinementInput {
-                            context,
-                            source_rank: *source_rank,
-                            dynamics_candidate,
-                            progress_sender,
-                            total_units,
-                            shared_progress_state: Arc::clone(&shared_progress_state),
-                            pricing_cpu_count,
-                            wall_clock_budget,
-                            candidate_budget_share_count: unresolved_candidate_count,
-                        },
-                    )
-                })
-                .collect::<Vec<_>>()
-        }
-    });
+    let pending_jobs = unresolved_candidates
+        .into_iter()
+        .map(
+            |(source_rank, dynamics_candidate)| ParallelSearchTierCandidateRefinementInput {
+                context,
+                source_rank,
+                dynamics_candidate,
+                progress_sender,
+                total_units,
+                shared_progress_state: Arc::clone(&shared_progress_state),
+                pricing_cpu_count,
+                wall_clock_budget,
+                candidate_budget_share_count: unresolved_candidate_count,
+            },
+        )
+        .collect::<Vec<_>>();
+
+    let mut unresolved_results = Vec::with_capacity(pending_jobs.len());
+    run_static_work_pool(
+        context.stage_thread_pool.as_deref(),
+        StaticWorkPoolInput::new(
+            &mut unresolved_results,
+            pending_jobs,
+            candidate_parallelism,
+            refine_parallel_search_tier_candidate,
+            |results: &mut Vec<(usize, Option<SearchTierCandidate>)>, result, _status| {
+                results.push(result)
+            },
+        ),
+    );
 
     for (source_rank, candidate) in unresolved_results {
         if let Some(candidate) = candidate {
@@ -765,6 +705,16 @@ struct ParallelSearchTierCandidateRefinementInput<'a> {
     pricing_cpu_count: usize,
     wall_clock_budget: Option<OptionRefinementWallClockBudget>,
     candidate_budget_share_count: usize,
+}
+
+struct ParallelSelectionTierCandidateEvaluationInput<'a> {
+    context: &'a JointRefinementContext,
+    candidate_position: usize,
+    search_candidate: SearchTierCandidate,
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+    total_units: usize,
+    shared_progress_state: Arc<OptionRefinementSharedProgressState>,
+    pricing_cpu_count: usize,
 }
 
 fn refine_parallel_search_tier_candidate(
@@ -882,25 +832,24 @@ fn evaluate_selection_tier_candidates(
     ));
 
     for (candidate_position, search_candidate) in search_candidates.into_iter().enumerate() {
-        let restart_id = search_candidate.restart_outcome.restart_id.clone();
+        let restart_id = search_candidate.restart_outcome.restart_id.as_str();
         if let Some(resume_store) = resume_store.as_deref_mut()
-            && let Some(mut resumed_candidate) = resume_store
-                .selection_tier_candidate(option_context_fingerprint, restart_id.as_str())
+            && let Some(mut resumed_candidate) =
+                resume_store.selection_tier_candidate(option_context_fingerprint, restart_id)
         {
             resumed_candidate.source_rank = search_candidate.source_rank;
+            let resumed_selection_tier_score = resumed_candidate.selection_tier_score;
 
             let progress_snapshot = shared_progress_state.record_resumed_candidate(
-                restart_id.as_str(),
-                resumed_candidate.selection_tier_score,
+                restart_id,
+                resumed_selection_tier_score,
                 total_units,
             );
 
-            candidate_slots[candidate_position] = Some(resumed_candidate.clone());
-
             emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-                current_restart_id: Some(restart_id.as_str()),
-                current_item_label: Some(restart_id.as_str()),
-                current_weighted_objective: Some(resumed_candidate.selection_tier_score),
+                current_restart_id: Some(restart_id),
+                current_item_label: Some(restart_id),
+                current_weighted_objective: Some(resumed_selection_tier_score),
                 best_restart_id: progress_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: progress_snapshot.best_weighted_objective,
                 active_restart_count: None,
@@ -914,6 +863,8 @@ fn evaluate_selection_tier_candidates(
                 )
             });
 
+            candidate_slots[candidate_position] = Some(resumed_candidate);
+
             continue;
         }
 
@@ -926,39 +877,34 @@ fn evaluate_selection_tier_candidates(
     let pricing_cpu_count =
         option_refinement_candidate_pricing_cpu_count(context, candidate_parallelism);
 
-    let unresolved_results = with_joint_refinement_thread_pool(context, || {
-        if unresolved_candidates.len() > 1 && candidate_parallelism > 1 {
-            unresolved_candidates
-                .par_iter()
-                .map(|(candidate_position, search_candidate)| {
-                    evaluate_parallel_selection_tier_candidate(
-                        context,
-                        *candidate_position,
-                        search_candidate,
-                        progress_sender,
-                        total_units,
-                        Arc::clone(&shared_progress_state),
-                        pricing_cpu_count,
-                    )
-                })
-                .collect::<Vec<_>>()
-        } else {
-            unresolved_candidates
-                .iter()
-                .map(|(candidate_position, search_candidate)| {
-                    evaluate_parallel_selection_tier_candidate(
-                        context,
-                        *candidate_position,
-                        search_candidate,
-                        progress_sender,
-                        total_units,
-                        Arc::clone(&shared_progress_state),
-                        pricing_cpu_count,
-                    )
-                })
-                .collect::<Vec<_>>()
-        }
-    });
+    let pending_jobs = unresolved_candidates
+        .into_iter()
+        .map(|(candidate_position, search_candidate)| {
+            ParallelSelectionTierCandidateEvaluationInput {
+                context,
+                candidate_position,
+                search_candidate,
+                progress_sender,
+                total_units,
+                shared_progress_state: Arc::clone(&shared_progress_state),
+                pricing_cpu_count,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut unresolved_results = Vec::with_capacity(pending_jobs.len());
+    run_static_work_pool(
+        context.stage_thread_pool.as_deref(),
+        StaticWorkPoolInput::new(
+            &mut unresolved_results,
+            pending_jobs,
+            candidate_parallelism,
+            evaluate_parallel_selection_tier_candidate,
+            |results: &mut Vec<(usize, Option<OptionRefinedCandidate>)>, result, _status| {
+                results.push(result)
+            },
+        ),
+    );
 
     for (candidate_position, candidate) in unresolved_results {
         if let Some(candidate) = candidate {
@@ -1049,16 +995,27 @@ pub(super) fn scored_pricing_vector(
 }
 
 fn evaluate_parallel_selection_tier_candidate(
-    context: &JointRefinementContext,
-    candidate_position: usize,
-    search_candidate: &SearchTierCandidate,
-    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    total_units: usize,
-    shared_progress_state: Arc<OptionRefinementSharedProgressState>,
-    pricing_cpu_count: usize,
+    input: ParallelSelectionTierCandidateEvaluationInput<'_>,
 ) -> (usize, Option<OptionRefinedCandidate>) {
-    let restart_id = search_candidate.restart_outcome.restart_id.as_str();
+    let ParallelSelectionTierCandidateEvaluationInput {
+        context,
+        candidate_position,
+        search_candidate,
+        progress_sender,
+        total_units,
+        shared_progress_state,
+        pricing_cpu_count,
+    } = input;
 
+    let SearchTierCandidate {
+        source_rank,
+        source_dynamics_parameter_bits,
+        search_tier_score,
+        search_tier_pricing_artifact,
+        restart_outcome,
+    } = search_candidate;
+
+    let restart_id = restart_outcome.restart_id.as_str();
     let started_snapshot = shared_progress_state.record_candidate_started(restart_id, total_units);
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
@@ -1079,7 +1036,7 @@ fn evaluate_parallel_selection_tier_candidate(
     let selection_context = context_with_option_pricing_cpu_count(context, pricing_cpu_count);
 
     let pricing_parameter_bits = pricing_block_parameter_bits(
-        search_candidate.restart_outcome.parameter_vector.as_slice(),
+        restart_outcome.parameter_vector.as_slice(),
         &selection_context,
     );
 
@@ -1093,14 +1050,9 @@ fn evaluate_parallel_selection_tier_candidate(
     let selection_artifact = resolve_option_surface_tier_pricing_artifact(
         OptionSurfaceTierPricingArtifactResolutionInput {
             context: &selection_context,
-            fitted_parameters: &search_candidate
-                .restart_outcome
-                .final_evaluation
-                .fitted_parameters,
+            fitted_parameters: &restart_outcome.final_evaluation.fitted_parameters,
             tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
-            source_dynamics_parameter_bits: search_candidate
-                .source_dynamics_parameter_bits
-                .as_slice(),
+            source_dynamics_parameter_bits: source_dynamics_parameter_bits.as_slice(),
             pricing_parameter_bits: pricing_parameter_bits.as_slice(),
             include_node_price_sensitivities: false,
             theta_warm_start_state: None,
@@ -1125,34 +1077,24 @@ fn evaluate_parallel_selection_tier_candidate(
     )
     .ok();
 
-    let refined_candidate = selection_artifact.map(|selection_tier_pricing_artifact| {
-        let selection_tier_score = selection_tier_pricing_artifact
-            .score
-            .root_mean_square_spread_normalized_residual;
-        OptionRefinedCandidate {
-            source_rank: search_candidate.source_rank,
-            search_tier_score: search_candidate.search_tier_score,
-            selection_tier_score,
-            search_tier_pricing_artifact: search_candidate.search_tier_pricing_artifact.clone(),
-            selection_tier_pricing_artifact,
-            restart_outcome: search_candidate.restart_outcome.clone(),
-        }
-    });
+    let selection_tier_score = selection_artifact
+        .as_ref()
+        .map(|selection_tier_pricing_artifact| {
+            selection_tier_pricing_artifact
+                .score
+                .root_mean_square_spread_normalized_residual
+        });
 
     let finished_snapshot = shared_progress_state.record_candidate_completed(
         restart_id,
-        refined_candidate
-            .as_ref()
-            .map(|candidate| candidate.selection_tier_score),
+        selection_tier_score,
         total_units,
     );
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(restart_id),
         current_item_label: Some(restart_id),
-        current_weighted_objective: refined_candidate
-            .as_ref()
-            .map(|candidate| candidate.selection_tier_score),
+        current_weighted_objective: selection_tier_score,
         best_restart_id: finished_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: finished_snapshot.best_weighted_objective,
         active_restart_count: None,
@@ -1166,6 +1108,20 @@ fn evaluate_parallel_selection_tier_candidate(
             finished_snapshot.completed_units,
             total_units,
         )
+    });
+
+    let refined_candidate = selection_artifact.map(|selection_tier_pricing_artifact| {
+        let selection_tier_score = selection_tier_pricing_artifact
+            .score
+            .root_mean_square_spread_normalized_residual;
+        OptionRefinedCandidate {
+            source_rank,
+            search_tier_score,
+            selection_tier_score,
+            search_tier_pricing_artifact,
+            selection_tier_pricing_artifact,
+            restart_outcome,
+        }
     });
 
     (candidate_position, refined_candidate)
@@ -1466,8 +1422,6 @@ mod tests {
         OptionSearchSelectionRankInput, build_search_selection_agreement_diagnostics_from_scores,
         desired_joint_refinement_option_refinement_candidate_count,
         option_refinement_selection_score_ceiling,
-        resolved_option_refinement_candidate_parallelism,
-        resolved_option_refinement_candidate_pricing_cpu_count,
     };
 
     #[test]
@@ -1483,42 +1437,6 @@ mod tests {
         assert_eq!(
             desired_joint_refinement_option_refinement_candidate_count(Some(7)),
             7,
-        );
-    }
-
-    #[test]
-    fn option_refinement_parallelism_uses_full_pricing_cpu_budget_per_candidate() {
-        assert_eq!(
-            resolved_option_refinement_candidate_parallelism(24, 24, 5),
-            1
-        );
-        assert_eq!(
-            resolved_option_refinement_candidate_parallelism(2, 24, 5),
-            1
-        );
-        assert_eq!(
-            resolved_option_refinement_candidate_parallelism(24, 3, 5),
-            1
-        );
-    }
-
-    #[test]
-    fn option_refinement_candidate_pricing_cpu_count_keeps_total_cpu_budget_for_single_candidate() {
-        assert_eq!(
-            resolved_option_refinement_candidate_pricing_cpu_count(24, 1),
-            24
-        );
-        assert_eq!(
-            resolved_option_refinement_candidate_pricing_cpu_count(3, 1),
-            3
-        );
-    }
-
-    #[test]
-    fn option_refinement_candidate_pricing_cpu_count_remains_positive_for_empty_budget() {
-        assert_eq!(
-            resolved_option_refinement_candidate_pricing_cpu_count(0, 1),
-            1
         );
     }
 

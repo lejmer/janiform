@@ -9,6 +9,7 @@ pub mod progress;
 pub mod request;
 mod request_resolution;
 mod simulation;
+mod validation_error;
 pub mod workflow;
 
 pub use execution::{build_stylized_facts_validation_plan, run_stylized_facts_validation_workflow};

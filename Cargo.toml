@@ -19,6 +19,7 @@ members = [
     "crates/janiform-pybind",
     "crates/janiform-test-support",
     "crates/janiform-verification",
+    "crates/janiform-work-scheduler",
     "crates/janiform-workflows",
     "crates/janiform",
 ]

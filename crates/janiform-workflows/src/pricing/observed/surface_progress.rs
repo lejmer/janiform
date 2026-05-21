@@ -1,5 +1,3 @@
-use std::sync::mpsc;
-
 use chrono::{DateTime, Utc};
 use janiform::pricing::{PricingProgressEvent, PricingProgressPhase};
 use janiform_terminal_ui::{
@@ -29,12 +27,8 @@ pub(super) enum SurfacePricingMessage {
         worker_index: usize,
         event: Box<PricingProgressEvent>,
     },
-    Completed {
-        worker_index: usize,
-        task_position: usize,
-        result: Result<ObservedOptionsSnapshotResult, WorkflowError>,
-    },
 }
+
 #[derive(Clone)]
 pub(super) struct SurfaceWorkerState {
     pub(super) task_position: usize,
@@ -130,22 +124,45 @@ pub(super) struct SurfaceWorkerCompletedInput {
     pub(super) worker_state: SurfaceWorkerState,
 }
 
-pub(super) fn collect_parallel_surface_pricing_results(
-    receiver: mpsc::Receiver<SurfacePricingMessage>,
+pub(super) struct SurfacePricingResultCollector<'collector, 'adapter> {
+    progress_adapter: &'collector mut Option<&'adapter mut ProgressAdapter>,
+    worker_states: Vec<Option<SurfaceWorkerState>>,
+    task_progress_units: Vec<ProgressUnitTracker>,
+    completed_task_count: usize,
+    results: Vec<Option<ObservedOptionsSnapshotResult>>,
     task_count: usize,
     worker_count: usize,
-    task_interval_counts: &[usize],
-    progress_adapter: &mut Option<&mut ProgressAdapter>,
-) -> Result<Vec<ObservedOptionsSnapshotResult>, WorkflowError> {
-    let mut worker_states = (0..worker_count).map(|_| None).collect::<Vec<_>>();
-    let task_progress_totals = surface_task_progress_totals(task_interval_counts);
-    let mut task_progress_units =
-        ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
-    let mut completed_task_count = 0usize;
-    let mut results = (0..task_count).map(|_| None).collect::<Vec<_>>();
-    let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
+    total_progress_units: usize,
+}
 
-    for message in receiver {
+impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
+    pub(super) fn new(
+        task_count: usize,
+        worker_count: usize,
+        task_interval_counts: &[usize],
+        progress_adapter: &'collector mut Option<&'adapter mut ProgressAdapter>,
+    ) -> Self {
+        let task_progress_totals = surface_task_progress_totals(task_interval_counts);
+        let task_progress_units =
+            ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
+        let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
+
+        Self {
+            progress_adapter,
+            worker_states: (0..worker_count).map(|_| None).collect(),
+            task_progress_units,
+            completed_task_count: 0,
+            results: (0..task_count).map(|_| None).collect(),
+            task_count,
+            worker_count,
+            total_progress_units,
+        }
+    }
+
+    pub(super) fn record_progress(
+        &mut self,
+        message: SurfacePricingMessage,
+    ) -> Result<(), WorkflowError> {
         match message {
             SurfacePricingMessage::Started {
                 worker_index,
@@ -154,7 +171,7 @@ pub(super) fn collect_parallel_surface_pricing_results(
                 node_count,
                 total_interval_count,
             } => {
-                let Some(worker_state) = worker_states.get_mut(worker_index) else {
+                let Some(worker_state) = self.worker_states.get_mut(worker_index) else {
                     return Err(pricing_validation_error(
                         "pricing_progress.worker_index",
                         "referenced an unknown worker",
@@ -169,16 +186,16 @@ pub(super) fn collect_parallel_surface_pricing_results(
                 ));
 
                 emit_surface_worker_started(
-                    progress_adapter,
+                    self.progress_adapter,
                     SurfaceWorkerProgressInput {
                         worker_index,
                         task_position,
-                        task_count,
+                        task_count: self.task_count,
                         completed_progress_units: completed_tracked_progress_units(
-                            task_progress_units.as_slice(),
+                            self.task_progress_units.as_slice(),
                         ),
-                        total_progress_units,
-                        worker_count,
+                        total_progress_units: self.total_progress_units,
+                        worker_count: self.worker_count,
                         valuation_time_utc_nanos,
                         node_count,
                         total_interval_count,
@@ -189,7 +206,8 @@ pub(super) fn collect_parallel_surface_pricing_results(
                 worker_index,
                 event,
             } => {
-                let worker_state = worker_states
+                let worker_state = self
+                    .worker_states
                     .get_mut(worker_index)
                     .and_then(Option::as_mut)
                     .ok_or_else(|| {
@@ -200,7 +218,8 @@ pub(super) fn collect_parallel_surface_pricing_results(
                     })?;
                 worker_state.apply_pricing_event(&event);
 
-                let Some(task_progress) = task_progress_units.get_mut(worker_state.task_position)
+                let Some(task_progress) =
+                    self.task_progress_units.get_mut(worker_state.task_position)
                 else {
                     return Err(pricing_validation_error(
                         "pricing_progress.task_position",
@@ -211,97 +230,106 @@ pub(super) fn collect_parallel_surface_pricing_results(
                 task_progress.record(worker_state.completed_progress_units);
 
                 emit_surface_worker_progress(
-                    progress_adapter,
+                    self.progress_adapter,
                     SurfaceWorkerPricingProgressInput {
                         worker_index,
-                        task_count,
+                        task_count: self.task_count,
                         completed_progress_units: completed_tracked_progress_units(
-                            task_progress_units.as_slice(),
+                            self.task_progress_units.as_slice(),
                         ),
-                        total_progress_units,
-                        worker_count,
+                        total_progress_units: self.total_progress_units,
+                        worker_count: self.worker_count,
                         // Intentional copy because progress events carry a point-in-time
                         // worker snapshot while the worker keeps advancing.
                         worker_state: worker_state.clone(),
                     },
                 )?;
             }
-            SurfacePricingMessage::Completed {
-                worker_index,
-                task_position,
-                result,
-            } => {
-                let worker_state = worker_states
-                    .get_mut(worker_index)
-                    .and_then(Option::as_mut)
-                    .ok_or_else(|| {
-                        pricing_validation_error(
-                            "pricing_progress.worker_index",
-                            "received worker completion before worker start",
-                        )
-                    })?;
-                worker_state.complete();
-
-                let Some(task_progress) = task_progress_units.get_mut(task_position) else {
-                    return Err(pricing_validation_error(
-                        "pricing_progress.task_position",
-                        "referenced an unknown valuation task",
-                    ));
-                };
-
-                task_progress.complete();
-
-                // Intentional copy because the completion event needs a stable worker
-                // snapshot after the mutable worker-state borrow ends.
-                let worker_state = worker_state.clone();
-
-                let result = result?;
-
-                completed_task_count += 1;
-
-                let Some(output_slot) = results.get_mut(task_position) else {
-                    return Err(pricing_validation_error(
-                        "pricing_progress.task_position",
-                        "referenced an unknown valuation task",
-                    ));
-                };
-
-                *output_slot = Some(result);
-
-                emit_surface_worker_completed(
-                    progress_adapter,
-                    SurfaceWorkerCompletedInput {
-                        worker_index,
-                        task_count,
-                        completed_task_count,
-                        completed_progress_units: completed_tracked_progress_units(
-                            task_progress_units.as_slice(),
-                        ),
-                        total_progress_units,
-                        worker_count,
-                        worker_state,
-                    },
-                )?;
-            }
         }
+
+        Ok(())
     }
 
-    if completed_task_count != task_count {
-        return Err(WorkflowError::PricingExecutionFailed {
-            message: format!(
-                "observed surface pricing completed {completed_task_count}/{task_count} valuation tasks"
-            ),
-        });
+    pub(super) fn record_completed(
+        &mut self,
+        worker_index: usize,
+        task_position: usize,
+        result: Result<ObservedOptionsSnapshotResult, WorkflowError>,
+    ) -> Result<(), WorkflowError> {
+        let worker_state = self
+            .worker_states
+            .get_mut(worker_index)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| {
+                pricing_validation_error(
+                    "pricing_progress.worker_index",
+                    "received worker completion before worker start",
+                )
+            })?;
+        worker_state.complete();
+
+        let Some(task_progress) = self.task_progress_units.get_mut(task_position) else {
+            return Err(pricing_validation_error(
+                "pricing_progress.task_position",
+                "referenced an unknown valuation task",
+            ));
+        };
+
+        task_progress.complete();
+
+        // Intentional copy because the completion event needs a stable worker
+        // snapshot after the mutable worker-state borrow ends.
+        let worker_state = worker_state.clone();
+
+        let result = result?;
+
+        self.completed_task_count += 1;
+
+        let Some(output_slot) = self.results.get_mut(task_position) else {
+            return Err(pricing_validation_error(
+                "pricing_progress.task_position",
+                "referenced an unknown valuation task",
+            ));
+        };
+
+        *output_slot = Some(result);
+
+        emit_surface_worker_completed(
+            self.progress_adapter,
+            SurfaceWorkerCompletedInput {
+                worker_index,
+                task_count: self.task_count,
+                completed_task_count: self.completed_task_count,
+                completed_progress_units: completed_tracked_progress_units(
+                    self.task_progress_units.as_slice(),
+                ),
+                total_progress_units: self.total_progress_units,
+                worker_count: self.worker_count,
+                worker_state,
+            },
+        )
     }
 
-    results
-        .into_iter()
-        .map(|result| {
-            result.ok_or_else(|| WorkflowError::PricingExecutionFailed {
-                message: "observed surface pricing did not return every valuation task".to_string(),
+    pub(super) fn finish(self) -> Result<Vec<ObservedOptionsSnapshotResult>, WorkflowError> {
+        if self.completed_task_count != self.task_count {
+            return Err(WorkflowError::PricingExecutionFailed {
+                message: format!(
+                    "observed surface pricing completed {}/{} valuation tasks",
+                    self.completed_task_count, self.task_count
+                ),
+            });
+        }
+
+        self.results
+            .into_iter()
+            .map(|result| {
+                result.ok_or_else(|| WorkflowError::PricingExecutionFailed {
+                    message: "observed surface pricing did not return every valuation task"
+                        .to_string(),
+                })
             })
-        })
-        .collect()
+            .collect()
+    }
 }
 
 pub(super) fn emit_surface_pricing_plan(

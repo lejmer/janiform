@@ -1,10 +1,10 @@
-use std::collections::VecDeque;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-
 use janiform::pricing::PricingProgressEvent;
 use janiform_foundations::parallelism::resolved_cpu_count;
 use janiform_terminal_ui::ProgressAdapter;
+use janiform_work_scheduler::{
+    StreamingWorkContext, StreamingWorkOutput, StreamingWorkPoolInput, StreamingWorkProgress,
+    run_streaming_work_pool,
+};
 
 use crate::error::WorkflowError;
 use crate::progress::{
@@ -18,8 +18,8 @@ use super::pricing::{
 };
 use super::progress::{complete_observed_pricing_stage, start_observed_pricing_stage};
 use super::surface_progress::{
-    SurfacePricingMessage, SurfaceWorkerCompletedInput, SurfaceWorkerPricingProgressInput,
-    SurfaceWorkerProgressInput, SurfaceWorkerState, collect_parallel_surface_pricing_results,
+    SurfacePricingMessage, SurfacePricingResultCollector, SurfaceWorkerCompletedInput,
+    SurfaceWorkerPricingProgressInput, SurfaceWorkerProgressInput, SurfaceWorkerState,
     emit_surface_interval_planning, emit_surface_pricing_plan, emit_surface_worker_completed,
     emit_surface_worker_progress, emit_surface_worker_started, surface_task_progress_totals,
 };
@@ -93,100 +93,75 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
         worker_count,
         &task_interval_counts,
     )?;
-    let task_interval_counts = Arc::new(task_interval_counts);
+    let jobs = prepared_snapshots
+        .into_iter()
+        .enumerate()
+        .collect::<Vec<_>>();
+    let mut collector = SurfacePricingResultCollector::new(
+        task_count,
+        worker_count,
+        task_interval_counts.as_slice(),
+        progress_adapter,
+    );
 
-    let task_queue = Arc::new(Mutex::new(
-        prepared_snapshots
-            .into_iter()
-            .enumerate()
-            .collect::<VecDeque<_>>(),
-    ));
-    let (sender, receiver) = mpsc::channel::<SurfacePricingMessage>();
+    run_streaming_work_pool(StreamingWorkPoolInput::new(
+        &mut collector,
+        jobs,
+        worker_count,
+        |(task_position, prepared_snapshot),
+         context: StreamingWorkContext<
+            SurfacePricingMessage,
+            Result<ObservedOptionsSnapshotResult, WorkflowError>,
+        >| {
+            let worker_index = context.worker_index();
+            let node_count = prepared_snapshot_node_count(&prepared_snapshot);
+            let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
+            let total_interval_count = task_interval_counts
+                .get(task_position)
+                .copied()
+                .unwrap_or(0);
 
-    let results = std::thread::scope(|scope| {
-        for worker_index in 0..worker_count {
-            let sender = sender.clone();
-            let task_queue = Arc::clone(&task_queue);
-            // Intentional copy of the shared handle so each worker can read
-            // planned interval totals without sharing mutable state.
-            let task_interval_counts = Arc::clone(&task_interval_counts);
+            if !context.send_progress(SurfacePricingMessage::Started {
+                worker_index,
+                task_position,
+                valuation_time_utc_nanos,
+                node_count,
+                total_interval_count,
+            }) {
+                return Err(pricing_validation_error(
+                    "pricing_progress",
+                    "observed surface pricing progress channel closed",
+                ));
+            }
 
-            scope.spawn(move || {
-                loop {
-                    let task = {
-                        let Ok(mut guard) = task_queue.lock() else {
-                            return;
-                        };
+            let mut progress_observer = |event: PricingProgressEvent| {
+                let _ = context.send_progress(SurfacePricingMessage::Progress {
+                    worker_index,
+                    event: Box::new(event),
+                });
+            };
 
-                        guard.pop_front()
-                    };
+            price_prepared_snapshot(
+                request,
+                prepared_snapshot,
+                Some(&mut progress_observer),
+                // Surface valuation tasks own the outer CPU budget.
+                // Keeping each inner grid pricer single-threaded avoids
+                // nested thread pools competing for the same cores.
+                Some(1),
+            )
+        },
+        |collector: &mut SurfacePricingResultCollector<'_, '_>,
+         progress: StreamingWorkProgress<SurfacePricingMessage>| {
+            collector.record_progress(progress.progress)
+        },
+        |collector: &mut SurfacePricingResultCollector<'_, '_>,
+         output: StreamingWorkOutput<Result<ObservedOptionsSnapshotResult, WorkflowError>>| {
+            collector.record_completed(output.worker_index, output.job_position, output.output)
+        },
+    ))?;
 
-                    let Some((task_position, prepared_snapshot)) = task else {
-                        return;
-                    };
-
-                    let node_count = prepared_snapshot_node_count(&prepared_snapshot);
-                    let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
-                    let total_interval_count = task_interval_counts
-                        .get(task_position)
-                        .copied()
-                        .unwrap_or(0);
-
-                    if sender
-                        .send(SurfacePricingMessage::Started {
-                            worker_index,
-                            task_position,
-                            valuation_time_utc_nanos,
-                            node_count,
-                            total_interval_count,
-                        })
-                        .is_err()
-                    {
-                        return;
-                    }
-
-                    let progress_sender = sender.clone();
-                    let mut progress_observer = move |event: PricingProgressEvent| {
-                        let _ = progress_sender.send(SurfacePricingMessage::Progress {
-                            worker_index,
-                            event: Box::new(event),
-                        });
-                    };
-
-                    let result = price_prepared_snapshot(
-                        request,
-                        prepared_snapshot,
-                        Some(&mut progress_observer),
-                        // Surface valuation tasks own the outer CPU budget.
-                        // Keeping each inner grid pricer single-threaded avoids
-                        // nested thread pools competing for the same cores.
-                        Some(1),
-                    );
-
-                    if sender
-                        .send(SurfacePricingMessage::Completed {
-                            worker_index,
-                            task_position,
-                            result,
-                        })
-                        .is_err()
-                    {
-                        return;
-                    }
-                }
-            });
-        }
-
-        drop(sender);
-
-        collect_parallel_surface_pricing_results(
-            receiver,
-            task_count,
-            worker_count,
-            task_interval_counts.as_slice(),
-            progress_adapter,
-        )
-    })?;
+    let results = collector.finish()?;
 
     complete_observed_pricing_stage(
         progress_adapter,

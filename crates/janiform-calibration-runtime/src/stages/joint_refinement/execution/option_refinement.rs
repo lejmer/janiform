@@ -1,3 +1,4 @@
+mod candidate_parallelism;
 pub(crate) mod objective_gradient;
 mod pricing_block_optimizer;
 pub(crate) mod reduced_model;

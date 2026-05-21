@@ -25,6 +25,7 @@ janiform-engine-simulation = { path = "../janiform-engine-simulation" }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-market-time = { path = "../janiform-market-time" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
+janiform-work-scheduler = { path = "../janiform-work-scheduler" }
 nalgebra = { workspace = true }
 parquet = { workspace = true }
 postcard = { workspace = true }

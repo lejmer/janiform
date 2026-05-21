@@ -14,9 +14,8 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
+use janiform_work_scheduler::{StaticWorkPoolInput, run_static_work_pool};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
@@ -40,8 +39,8 @@ use super::execution::{
     JointRefinementActiveParameterLayout, JointRefinementContext, JointRefinementSeedSummary,
     JointRefinementSeedSummaryCacheKey, SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
     build_halton_restart_id, deduplicate_restart_seed_candidates, halton_parameter_vector,
-    joint_refinement_has_parallel_worker_capacity, precheck_seed_summary_workload,
-    rescaled_observed_tick_calibration_sample_for_modeled_rate,
+    joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
+    precheck_seed_summary_workload, rescaled_observed_tick_calibration_sample_for_modeled_rate,
     sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
     with_joint_refinement_thread_pool,
 };
@@ -1166,6 +1165,16 @@ struct SensitivityRepairRestartCandidatesInput<'a> {
     total_screening_units: usize,
 }
 
+struct SensitivityRepairRestartCandidateBatch {
+    anchor_position: usize,
+    candidates: Vec<(String, Vec<f64>)>,
+}
+
+struct ScreenedRestartCandidateOutput {
+    candidate_position: usize,
+    candidate: Option<ScreenedRestartCandidate>,
+}
+
 fn build_sensitivity_repair_restart_candidates(
     input: SensitivityRepairRestartCandidatesInput<'_>,
 ) -> Vec<(String, Vec<f64>)> {
@@ -1204,27 +1213,52 @@ fn build_sensitivity_repair_restart_candidates(
         evaluation
     };
 
-    let repair_candidate_batches = with_joint_refinement_thread_pool(joint_context, || {
-        anchor_candidates
-            .par_iter()
-            .map(|candidate| {
-                sensitivity_repair_seed_candidates(
-                    candidate.restart_id.as_str(),
-                    candidate.parameter_vector.as_slice(),
-                    lower_bounds,
-                    upper_bounds,
-                    joint_context.objective_policy.admissibility_z_threshold,
-                    policy,
-                    &sensitivity_evaluator,
-                )
-            })
-            .collect::<Vec<_>>()
-    });
+    let anchor_jobs = anchor_candidates
+        .into_iter()
+        .enumerate()
+        .collect::<Vec<_>>();
+
+    let mut repair_candidate_batches = std::iter::repeat_with(|| None)
+        .take(anchor_jobs.len())
+        .collect::<Vec<Option<Vec<(String, Vec<f64>)>>>>();
+
+    run_static_work_pool(
+        joint_context.stage_thread_pool.as_deref(),
+        StaticWorkPoolInput::new(
+            &mut repair_candidate_batches,
+            anchor_jobs,
+            joint_refinement_parallel_worker_count(joint_context),
+            |(anchor_position, candidate): (usize, &ScreenedRestartCandidate)| {
+                SensitivityRepairRestartCandidateBatch {
+                    anchor_position,
+                    candidates: sensitivity_repair_seed_candidates(
+                        candidate.restart_id.as_str(),
+                        candidate.parameter_vector.as_slice(),
+                        lower_bounds,
+                        upper_bounds,
+                        joint_context.objective_policy.admissibility_z_threshold,
+                        policy,
+                        &sensitivity_evaluator,
+                    )
+                    .into_iter()
+                    .map(|seed| (seed.restart_id, seed.parameter_vector))
+                    .collect(),
+                }
+            },
+            |repair_candidate_batches: &mut Vec<Option<Vec<(String, Vec<f64>)>>>,
+             batch: SensitivityRepairRestartCandidateBatch,
+             _status| {
+                if let Some(batch_slot) = repair_candidate_batches.get_mut(batch.anchor_position) {
+                    *batch_slot = Some(batch.candidates);
+                }
+            },
+        ),
+    );
 
     repair_candidate_batches
         .into_iter()
         .flatten()
-        .map(|seed| (seed.restart_id, seed.parameter_vector))
+        .flatten()
         .collect()
 }
 
@@ -1609,36 +1643,64 @@ fn screen_restart_candidates_with_thread_pool<F>(
 where
     F: Fn(&str, &[f64]) -> Option<JointRefinementRestartAdmissionScreening> + Sync + ?Sized,
 {
-    let screen_candidate = |(source_order, (restart_id, seed)): (usize, &(String, Vec<f64>))| {
-        let score = seed_score(restart_id.as_str(), seed.as_slice());
+    let screen_candidate =
+        |(candidate_position, (restart_id, seed)): (usize, &(String, Vec<f64>))| {
+            let score = seed_score(restart_id.as_str(), seed.as_slice());
 
-        emit_completed_restart_candidate_screening_unit(
-            progress_sender,
-            completed_screening_units,
-            total_screening_units,
-            restart_id.as_str(),
-        );
+            emit_completed_restart_candidate_screening_unit(
+                progress_sender,
+                completed_screening_units,
+                total_screening_units,
+                restart_id.as_str(),
+            );
 
-        ScreenedRestartCandidate::try_new(restart_id.as_str(), seed.as_slice(), score, source_order)
-    };
+            ScreenedRestartCandidateOutput {
+                candidate_position,
+                candidate: ScreenedRestartCandidate::try_new(
+                    restart_id.as_str(),
+                    seed.as_slice(),
+                    score,
+                    candidate_position,
+                ),
+            }
+        };
 
     if let Some(thread_pool) = thread_pool
         && thread_pool.current_num_threads() > 1
         && restart_candidates.len() > 1
     {
-        return thread_pool.install(|| {
-            restart_candidates
-                .par_iter()
-                .enumerate()
-                .filter_map(screen_candidate)
-                .collect()
-        });
+        let candidate_jobs = restart_candidates.iter().enumerate().collect::<Vec<_>>();
+
+        let mut screened_candidates = std::iter::repeat_with(|| None)
+            .take(candidate_jobs.len())
+            .collect::<Vec<Option<ScreenedRestartCandidate>>>();
+
+        run_static_work_pool(
+            Some(thread_pool),
+            StaticWorkPoolInput::new(
+                &mut screened_candidates,
+                candidate_jobs,
+                thread_pool.current_num_threads(),
+                screen_candidate,
+                |screened_candidates: &mut Vec<Option<ScreenedRestartCandidate>>,
+                 output: ScreenedRestartCandidateOutput,
+                 _status| {
+                    if let Some(candidate_slot) =
+                        screened_candidates.get_mut(output.candidate_position)
+                    {
+                        *candidate_slot = output.candidate;
+                    }
+                },
+            ),
+        );
+
+        return screened_candidates.into_iter().flatten().collect();
     }
 
     restart_candidates
         .iter()
         .enumerate()
-        .filter_map(screen_candidate)
+        .filter_map(|candidate| screen_candidate(candidate).candidate)
         .collect()
 }
 
@@ -1724,30 +1786,52 @@ where
             restart_id.as_str(),
         );
 
-        score.and_then(|score| {
-            ScreenedRestartCandidate::try_new(
-                restart_id.as_str(),
-                halton_seed.as_slice(),
-                Some(score),
-                source_order_offset.saturating_add(halton_position),
-            )
-        })
+        ScreenedRestartCandidateOutput {
+            candidate_position: halton_position.saturating_sub(1),
+            candidate: score.and_then(|score| {
+                ScreenedRestartCandidate::try_new(
+                    restart_id.as_str(),
+                    halton_seed.as_slice(),
+                    Some(score),
+                    source_order_offset.saturating_add(halton_position),
+                )
+            }),
+        }
     };
 
     if let Some(joint_context) = joint_context
         && joint_refinement_has_parallel_worker_capacity(joint_context)
         && target_restart_count > 1
     {
-        return with_joint_refinement_thread_pool(joint_context, || {
-            (1..=target_restart_count)
-                .into_par_iter()
-                .filter_map(screen_halton_position)
-                .collect()
-        });
+        let halton_jobs = (1..=target_restart_count).collect::<Vec<_>>();
+        let mut screened_candidates = std::iter::repeat_with(|| None)
+            .take(target_restart_count)
+            .collect::<Vec<Option<ScreenedRestartCandidate>>>();
+
+        run_static_work_pool(
+            joint_context.stage_thread_pool.as_deref(),
+            StaticWorkPoolInput::new(
+                &mut screened_candidates,
+                halton_jobs,
+                joint_refinement_parallel_worker_count(joint_context),
+                screen_halton_position,
+                |screened_candidates: &mut Vec<Option<ScreenedRestartCandidate>>,
+                 output: ScreenedRestartCandidateOutput,
+                 _status| {
+                    if let Some(candidate_slot) =
+                        screened_candidates.get_mut(output.candidate_position)
+                    {
+                        *candidate_slot = output.candidate;
+                    }
+                },
+            ),
+        );
+
+        return screened_candidates.into_iter().flatten().collect();
     }
 
     (1..=target_restart_count)
-        .filter_map(screen_halton_position)
+        .filter_map(|halton_position| screen_halton_position(halton_position).candidate)
         .collect()
 }
 

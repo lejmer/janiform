@@ -3,6 +3,7 @@ use std::sync::mpsc::Sender;
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageRestartEvaluationTimingDiagnostic,
 };
+use janiform_work_scheduler::{DynamicWorkPoolInput, DynamicWorkPoolStatus, run_dynamic_work_pool};
 
 use crate::stages::adaptive_direct_search::{
     adaptive_direct_search_poll_directions, initial_mesh_radii, mesh_is_at_tolerance,
@@ -92,15 +93,11 @@ struct RestartProbeFinalizationResult {
     outcome: JointRefinementRestartOutcome,
 }
 
-struct RestartProbeWorkerFillInput<'a, 'scope> {
-    scope: &'a rayon::Scope<'scope>,
-    result_sender: &'a std::sync::mpsc::Sender<RestartProbeResult>,
+struct RestartProbeWorkerPoolState<'a> {
     states: &'a mut [RestartProbeState],
-    poll_directions: &'a [Vec<f64>],
-    context: &'scope JointRefinementContext,
-    solver_settings: &'scope CalibrationOptimizerSettings,
-    search_pool_budget: usize,
-    worker_capacity: usize,
+    next_restart_position: usize,
+    evaluation_timing_diagnostics:
+        &'a mut Vec<JointRefinementStageRestartEvaluationTimingDiagnostic>,
 }
 
 pub(super) fn optimize_restart_seeds_batched_poll_pool(
@@ -232,195 +229,122 @@ fn run_restart_probe_worker_pool(
 ) -> usize {
     let worker_capacity = joint_refinement_parallel_worker_count(context).max(1);
 
-    match context.stage_thread_pool.as_ref() {
-        Some(thread_pool) => thread_pool.scope(|scope| {
-            run_restart_probe_worker_scope(
-                scope,
-                states,
-                poll_directions,
-                context,
-                solver_settings,
-                search_pool_budget,
-                total_progress_units,
-                progress_sender,
-                evaluation_timing_diagnostics,
-                worker_capacity,
-            )
-        }),
-        None => rayon::scope(|scope| {
-            run_restart_probe_worker_scope(
-                scope,
-                states,
-                poll_directions,
-                context,
-                solver_settings,
-                search_pool_budget,
-                total_progress_units,
-                progress_sender,
-                evaluation_timing_diagnostics,
-                worker_capacity,
-            )
-        }),
-    }
+    run_restart_probe_worker_pool_with_scheduler(
+        states,
+        poll_directions,
+        context,
+        solver_settings,
+        search_pool_budget,
+        total_progress_units,
+        progress_sender,
+        evaluation_timing_diagnostics,
+        worker_capacity,
+    )
 }
 
-fn run_restart_probe_worker_scope<'scope>(
-    scope: &rayon::Scope<'scope>,
+fn run_restart_probe_worker_pool_with_scheduler(
     states: &mut [RestartProbeState],
     poll_directions: &[Vec<f64>],
-    context: &'scope JointRefinementContext,
-    solver_settings: &'scope CalibrationOptimizerSettings,
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
     search_pool_budget: usize,
     total_progress_units: usize,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     evaluation_timing_diagnostics: &mut Vec<JointRefinementStageRestartEvaluationTimingDiagnostic>,
     worker_capacity: usize,
 ) -> usize {
-    let (result_sender, result_receiver) = std::sync::mpsc::channel::<RestartProbeResult>();
+    let mut pool_state = RestartProbeWorkerPoolState {
+        states,
+        next_restart_position: 0,
+        evaluation_timing_diagnostics,
+    };
 
-    let mut scheduled_evaluation_count = 0usize;
-    let mut completed_evaluation_count = 0usize;
-    let mut in_flight_count = 0usize;
-    let mut next_restart_position = 0usize;
-
-    fill_restart_probe_worker_slots(
-        RestartProbeWorkerFillInput {
-            scope,
-            result_sender: &result_sender,
-            states,
-            poll_directions,
-            context,
-            solver_settings,
-            search_pool_budget,
+    let summary = run_dynamic_work_pool(
+        context.stage_thread_pool.as_deref(),
+        DynamicWorkPoolInput::new(
+            &mut pool_state,
             worker_capacity,
-        },
-        &mut scheduled_evaluation_count,
-        &mut in_flight_count,
-        &mut next_restart_position,
+            |pool_state: &mut RestartProbeWorkerPoolState<'_>, _status| {
+                next_restart_probe_job_round_robin(
+                    pool_state.states,
+                    poll_directions,
+                    context,
+                    solver_settings,
+                    &mut pool_state.next_restart_position,
+                )
+            },
+            |probe_job| run_restart_probe_job(probe_job, context, solver_settings),
+            |pool_state: &mut RestartProbeWorkerPoolState<'_>,
+             result: RestartProbeResult,
+             status: DynamicWorkPoolStatus| {
+                let restart_position = result.restart_position;
+
+                let timing_diagnostic = restart_probe_evaluation_timing_diagnostic(
+                    &pool_state.states[restart_position],
+                    &result,
+                );
+
+                // Progress updates and the final diagnostic artifact both own this timing record.
+                pool_state
+                    .evaluation_timing_diagnostics
+                    .push(timing_diagnostic.clone());
+
+                record_restart_probe_result(
+                    &mut pool_state.states[restart_position],
+                    result,
+                    solver_settings,
+                );
+
+                emit_batched_restart_progress(
+                    progress_sender,
+                    pool_state.states,
+                    restart_position,
+                    status.completed_work_count,
+                    total_progress_units,
+                    Some(timing_diagnostic),
+                );
+            },
+            |_: &RestartProbeWorkerPoolState<'_>, status: DynamicWorkPoolStatus| {
+                status.scheduled_work_count >= search_pool_budget
+                    || joint_refinement_has_fatal_execution_failure(context)
+            },
+        ),
     );
 
-    while in_flight_count > 0 {
-        let Ok(result) = result_receiver.recv() else {
-            break;
-        };
-
-        in_flight_count = in_flight_count.saturating_sub(1);
-        completed_evaluation_count = completed_evaluation_count.saturating_add(1);
-
-        let restart_position = result.restart_position;
-
-        let timing_diagnostic =
-            restart_probe_evaluation_timing_diagnostic(&states[restart_position], &result);
-
-        // Progress updates and the final diagnostic artifact both own this timing record.
-        evaluation_timing_diagnostics.push(timing_diagnostic.clone());
-
-        record_restart_probe_result(&mut states[restart_position], result, solver_settings);
-
-        emit_batched_restart_progress(
-            progress_sender,
-            states,
-            restart_position,
-            completed_evaluation_count,
-            total_progress_units,
-            Some(timing_diagnostic),
-        );
-
-        if scheduled_evaluation_count >= search_pool_budget
-            || joint_refinement_has_fatal_execution_failure(context)
-        {
-            continue;
-        }
-
-        fill_restart_probe_worker_slots(
-            RestartProbeWorkerFillInput {
-                scope,
-                result_sender: &result_sender,
-                states,
-                poll_directions,
-                context,
-                solver_settings,
-                search_pool_budget,
-                worker_capacity,
-            },
-            &mut scheduled_evaluation_count,
-            &mut in_flight_count,
-            &mut next_restart_position,
-        );
-    }
-
-    if scheduled_evaluation_count >= search_pool_budget
+    if summary.scheduled_work_count >= search_pool_budget
         || joint_refinement_has_fatal_execution_failure(context)
     {
-        mark_pending_restart_probe_states_completed(states);
+        mark_pending_restart_probe_states_completed(pool_state.states);
     } else {
-        mark_unscheduled_restart_probe_states_completed(states);
+        mark_unscheduled_restart_probe_states_completed(pool_state.states);
     }
 
-    completed_evaluation_count
+    summary.completed_work_count
 }
 
-fn fill_restart_probe_worker_slots(
-    input: RestartProbeWorkerFillInput<'_, '_>,
-    scheduled_evaluation_count: &mut usize,
-    in_flight_count: &mut usize,
-    next_restart_position: &mut usize,
-) {
-    while *in_flight_count < input.worker_capacity
-        && *scheduled_evaluation_count < input.search_pool_budget
-        && !joint_refinement_has_fatal_execution_failure(input.context)
-    {
-        let Some(probe_job) = next_restart_probe_job_round_robin(
-            input.states,
-            input.poll_directions,
-            input.context,
-            input.solver_settings,
-            next_restart_position,
-        ) else {
-            break;
-        };
-
-        *scheduled_evaluation_count = (*scheduled_evaluation_count).saturating_add(1);
-        *in_flight_count = (*in_flight_count).saturating_add(1);
-
-        // Each worker gets its own channel handle so completed probes can be streamed back.
-        spawn_restart_probe_job(
-            input.scope,
-            input.result_sender.clone(),
-            probe_job,
-            input.context,
-            input.solver_settings,
-        );
-    }
-}
-
-fn spawn_restart_probe_job<'scope>(
-    scope: &rayon::Scope<'scope>,
-    result_sender: std::sync::mpsc::Sender<RestartProbeResult>,
+fn run_restart_probe_job(
     probe_job: RestartProbeJob,
-    context: &'scope JointRefinementContext,
-    solver_settings: &'scope CalibrationOptimizerSettings,
-) {
-    scope.spawn(move |_| {
-        let evaluation_started_at = std::time::Instant::now();
-        let evaluation = evaluate_prechecked_full_parameter_vector_objective(
-            probe_job.parameter_vector.as_slice(),
-            context,
-            solver_settings,
-        );
-        let evaluation_elapsed_millis = elapsed_millis(evaluation_started_at);
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> RestartProbeResult {
+    let evaluation_started_at = std::time::Instant::now();
+    let evaluation = evaluate_prechecked_full_parameter_vector_objective(
+        probe_job.parameter_vector.as_slice(),
+        context,
+        solver_settings,
+    );
+    let evaluation_elapsed_millis = elapsed_millis(evaluation_started_at);
 
-        let _ = result_sender.send(RestartProbeResult {
-            restart_position: probe_job.restart_position,
-            parameter_vector: probe_job.parameter_vector,
-            schedule_category: probe_job.schedule_category,
-            candidate_evaluation_count: probe_job.candidate_evaluation_count,
-            poll_direction_position: probe_job.poll_direction_position,
-            poll_direction_label: probe_job.poll_direction_label,
-            elapsed_millis: evaluation_elapsed_millis,
-            evaluation,
-        });
-    });
+    RestartProbeResult {
+        restart_position: probe_job.restart_position,
+        parameter_vector: probe_job.parameter_vector,
+        schedule_category: probe_job.schedule_category,
+        candidate_evaluation_count: probe_job.candidate_evaluation_count,
+        poll_direction_position: probe_job.poll_direction_position,
+        poll_direction_label: probe_job.poll_direction_label,
+        elapsed_millis: evaluation_elapsed_millis,
+        evaluation,
+    }
 }
 
 fn next_restart_probe_job_round_robin(

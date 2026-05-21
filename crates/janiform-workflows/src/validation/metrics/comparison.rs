@@ -18,6 +18,7 @@ use janiform::validation::tail_skew::{
 
 use super::super::empirical::{ParsedInterval, ReturnObservation, analysis_window};
 use super::super::request::StylizedFactsValidationWorkflowRequest;
+use super::super::validation_error::stylized_facts_validation_error;
 use super::super::workflow::StylizedFactsValidationWorkflowObserver;
 use super::progress::{
     emit_metric_completed, emit_metric_plan, emit_metric_started, emit_metric_task_completed,
@@ -231,9 +232,8 @@ fn metric_progress_total_units(
 ) -> Result<usize, WorkflowError> {
     interval_count
         .checked_mul(metric_task_count)
-        .ok_or_else(|| WorkflowError::ValidationInputFailed {
-            field: "validate stylized-facts",
-            message: "metric progress unit count does not fit in usize".to_string(),
+        .ok_or_else(|| {
+            stylized_facts_validation_error("metric progress unit count does not fit in usize")
         })
 }
 
@@ -289,10 +289,7 @@ fn observed_metrics_for_single_dataset(
         },
         &mut progress_observer,
     )
-    .map_err(|source| WorkflowError::ValidationInputFailed {
-        field: "validate stylized-facts",
-        message: source.to_string(),
-    })?;
+    .map_err(|source| stylized_facts_validation_error(source.to_string()))?;
 
     let mut metrics = Vec::new();
 
@@ -425,18 +422,13 @@ fn compact_observed_interval_timeline(
 
         let compact_timestamp = i128::from(analysis_window.start_utc_nanos)
             + i128::try_from(compact_interval_position).map_err(|_| {
-                WorkflowError::ValidationInputFailed {
-                    field: "validate stylized-facts",
-                    message: "compacted interval position does not fit in i128".to_string(),
-                }
+                stylized_facts_validation_error("compacted interval position does not fit in i128")
             })? * base_duration
             + offset_within_interval;
 
-        let timestamp_utc_nanos =
-            i64::try_from(compact_timestamp).map_err(|_| WorkflowError::ValidationInputFailed {
-                field: "validate stylized-facts",
-                message: "compacted timestamp does not fit in i64".to_string(),
-            })?;
+        let timestamp_utc_nanos = i64::try_from(compact_timestamp).map_err(|_| {
+            stylized_facts_validation_error("compacted timestamp does not fit in i64")
+        })?;
 
         compacted_returns.push(TailSkewReturnObservation {
             timestamp_utc_nanos,
@@ -453,18 +445,14 @@ fn compact_observed_interval_timeline(
     }
 
     let analysis_span_nanos = i128::try_from(compact_interval_count).map_err(|_| {
-        WorkflowError::ValidationInputFailed {
-            field: "validate stylized-facts",
-            message: "compacted interval count does not fit in i128".to_string(),
-        }
+        stylized_facts_validation_error("compacted interval count does not fit in i128")
     })? * i128::from(base_interval_duration_nanos);
 
     let analysis_end_utc_nanos = i64::try_from(
         i128::from(analysis_window.start_utc_nanos) + analysis_span_nanos,
     )
-    .map_err(|_| WorkflowError::ValidationInputFailed {
-        field: "validate stylized-facts",
-        message: "compacted analysis window end does not fit in i64".to_string(),
+    .map_err(|_| {
+        stylized_facts_validation_error("compacted analysis window end does not fit in i64")
     })?;
 
     Ok(CompactedReturnSeries {

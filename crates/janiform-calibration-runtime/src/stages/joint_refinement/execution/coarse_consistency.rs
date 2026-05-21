@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 use std::sync::mpsc::Sender;
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
@@ -15,7 +14,7 @@ use janiform_market_time::hourly_factors::{
     HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use janiform_work_scheduler::{DynamicWorkPoolStatus, StaticWorkPoolInput, run_static_work_pool};
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
@@ -41,7 +40,7 @@ use super::super::setup::{
 use super::{
     JointRefinementCoarseConsistencySummary, JointRefinementContext, JointRefinementSeedSummary,
     build_exchange_calendar_registry_artifact, joint_refinement_has_parallel_worker_capacity,
-    with_joint_refinement_thread_pool,
+    joint_refinement_parallel_worker_count,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +62,11 @@ struct JointRefinementCoarseConsistencyTaskOutput {
     simulation_seed: u64,
     horizon: JointRefinementCoarseConsistencyHorizon,
     intervals: Result<Vec<JointRefinementAggregatedIntervalObservation>, String>,
+}
+
+#[derive(Debug)]
+struct JointRefinementCoarseConsistencyWorkPoolState {
+    task_outputs: Vec<JointRefinementCoarseConsistencyTaskOutput>,
 }
 
 #[derive(Clone, Copy)]
@@ -195,38 +199,45 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
         })
         .collect::<Vec<_>>();
 
-    let completed_tasks = Mutex::new(0usize);
+    let mut pool_state = JointRefinementCoarseConsistencyWorkPoolState {
+        task_outputs: Vec::with_capacity(tasks.len()),
+    };
 
-    let task_outputs = with_joint_refinement_thread_pool(context, || {
-        tasks
-            .into_par_iter()
-            .map(|task| JointRefinementCoarseConsistencyTaskOutput {
-                seed_position: task.seed_position,
-                simulation_seed: task.simulation_seed,
-                horizon: task.horizon,
-                intervals: build_joint_coarse_interval_observations(
-                    context,
-                    fitted_parameters,
-                    task.simulation_seed,
-                    task.horizon.interval_duration_nanos(),
-                    task.horizon.template(context),
-                ),
-            })
-            .inspect(|task_output| {
-                if let Ok(mut completed_tasks_guard) = completed_tasks.lock() {
-                    *completed_tasks_guard = (*completed_tasks_guard).saturating_add(1);
-
-                    emit_coarse_consistency_metric_progress(
-                        progress,
-                        *completed_tasks_guard,
-                        task_count,
-                        task_output.simulation_seed(),
-                        task_output.horizon,
-                    );
+    run_static_work_pool(
+        context.stage_thread_pool.as_deref(),
+        StaticWorkPoolInput::new(
+            &mut pool_state,
+            tasks,
+            joint_refinement_parallel_worker_count(context),
+            |task: JointRefinementCoarseConsistencyTask| {
+                JointRefinementCoarseConsistencyTaskOutput {
+                    seed_position: task.seed_position,
+                    simulation_seed: task.simulation_seed,
+                    horizon: task.horizon,
+                    intervals: build_joint_coarse_interval_observations(
+                        context,
+                        fitted_parameters,
+                        task.simulation_seed,
+                        task.horizon.interval_duration_nanos(),
+                        task.horizon.template(context),
+                    ),
                 }
-            })
-            .collect::<Vec<_>>()
-    });
+            },
+            |pool_state: &mut JointRefinementCoarseConsistencyWorkPoolState,
+             task_output: JointRefinementCoarseConsistencyTaskOutput,
+             status: DynamicWorkPoolStatus| {
+                emit_coarse_consistency_metric_progress(
+                    progress,
+                    status.completed_work_count,
+                    task_count,
+                    task_output.simulation_seed(),
+                    task_output.horizon,
+                );
+
+                pool_state.task_outputs.push(task_output);
+            },
+        ),
+    );
 
     type AggregatedIntervalsByHorizon = (
         Option<Vec<JointRefinementAggregatedIntervalObservation>>,
@@ -237,7 +248,7 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
         .map(|_| (None, None))
         .collect();
 
-    for task_output in task_outputs {
+    for task_output in pool_state.task_outputs {
         let Some((coarse_5m_intervals, coarse_15m_intervals)) =
             intervals_by_seed.get_mut(task_output.seed_position)
         else {
