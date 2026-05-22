@@ -888,7 +888,7 @@ fn run_option_grid_batch_pricing(
                 total_evaluation_budget: snapshot.total_evaluation_budget,
                 evaluation_progress_percent: snapshot.evaluation_progress_percent,
                 current_global_loss: snapshot.current_weighted_objective,
-                current_pricing_interval_index: event.current_interval_index,
+                current_pricing_interval_index: pricing_progress_interval_value(&event),
                 total_pricing_interval_count: event.total_intervals,
                 completed_pricing_row_count: pricing_progress_completed_row_count(&event),
                 total_pricing_row_count: pricing_progress_total_row_count(&event),
@@ -1712,6 +1712,16 @@ fn pricing_progress_total_row_count(event: &PricingProgressEvent) -> Option<usiz
     }
 }
 
+fn pricing_progress_interval_value(event: &PricingProgressEvent) -> Option<usize> {
+    match event.phase {
+        PricingProgressPhase::IntervalProgress => {
+            Some(event.completed_units.min(event.total_units))
+        }
+        PricingProgressPhase::TransitionRowProgress => event.current_interval_index,
+        _ => event.current_interval_index,
+    }
+}
+
 fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
     match event.phase {
         PricingProgressPhase::GroupProgress => {
@@ -1999,7 +2009,8 @@ mod tests {
         derive_pricing_interval_schedule, estimate_option_pricing_current_state,
         format_option_pricing_progress_item, minimum_positive_option_quote_spread,
         option_quote_residual_scale, pricing_event_progress_percent, pricing_nig_configuration,
-        resolve_option_runtime_interval_schedule, validate_option_spot,
+        pricing_progress_interval_value, resolve_option_runtime_interval_schedule,
+        validate_option_spot,
     };
     use crate::adapters::load_hourly_factor_contract_for_calibration;
     use crate::stages::hawkes::HawkesStageFittedPayload;
@@ -2146,6 +2157,42 @@ mod tests {
             format_option_pricing_progress_item(&event),
             "interval 24/47"
         );
+    }
+
+    #[test]
+    fn completed_interval_progress_forwards_completed_interval_count() {
+        let event = PricingProgressEvent {
+            phase: PricingProgressPhase::IntervalProgress,
+            completed_units: 47,
+            total_units: 47,
+            current_group_index: None,
+            current_maturity_index: None,
+            total_maturities: None,
+            current_interval_index: None,
+            total_intervals: Some(47),
+            current_strike_index: None,
+            total_strikes: None,
+        };
+
+        assert_eq!(pricing_progress_interval_value(&event), Some(47));
+    }
+
+    #[test]
+    fn row_progress_forwards_current_interval_position_source() {
+        let event = PricingProgressEvent {
+            phase: PricingProgressPhase::TransitionRowProgress,
+            completed_units: 32,
+            total_units: 64,
+            current_group_index: None,
+            current_maturity_index: None,
+            total_maturities: None,
+            current_interval_index: Some(4),
+            total_intervals: Some(10),
+            current_strike_index: None,
+            total_strikes: None,
+        };
+
+        assert_eq!(pricing_progress_interval_value(&event), Some(4));
     }
 
     #[test]

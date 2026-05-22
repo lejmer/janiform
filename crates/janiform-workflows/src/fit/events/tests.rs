@@ -401,6 +401,38 @@ fn option_refinement_interval_metric_uses_completed_count_without_row_detail() {
 }
 
 #[test]
+fn option_refinement_progress_signal_prefers_best_loss_over_work_item_label() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("halton_02"),
+        Some(3),
+        Some(5),
+        Some(22.364253),
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+    );
+    progress.current_global_loss = Some(74.277624);
+    progress.current_pricing_interval_index = Some(47);
+    progress.total_pricing_interval_count = Some(47);
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("option refinement progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress { latest_signal, .. }) => {
+            assert_eq!(latest_signal.as_deref(), Some("best loss 22.364253"));
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
 fn stage_progress_measure_uses_aggregate_percent_when_available() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,

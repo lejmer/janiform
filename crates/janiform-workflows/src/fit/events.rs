@@ -514,7 +514,6 @@ fn stage_progress_signal_with_metrics(
             progress.cumulative_local_evaluation_count,
             progress.best_global_loss,
             progress.best_coarse_consistency_fit,
-            work_item_table_uses_restart_optimization_columns(&progress.progress_phase),
         )
     {
         return Some(signal);
@@ -568,7 +567,6 @@ fn parallel_stage_progress_signal(
     cumulative_local_evaluation_count: Option<usize>,
     best_global_loss: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
-    uses_restart_optimization_columns: bool,
 ) -> Option<String> {
     let mut parts = Vec::new();
 
@@ -587,13 +585,7 @@ fn parallel_stage_progress_signal(
     }
 
     if let Some(best_global_loss) = best_global_loss {
-        let best_score_label = if uses_restart_optimization_columns {
-            "best loss"
-        } else {
-            "best global loss"
-        };
-
-        parts.push(format!("{best_score_label} {best_global_loss:.6}"));
+        parts.push(format!("best loss {best_global_loss:.6}"));
     }
 
     if let Some(best_coarse_consistency_fit) = best_coarse_consistency_fit {

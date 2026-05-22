@@ -23,13 +23,31 @@ use super::workflow::{
 const OPTION_PRICING_BLOCK_NORMAL_EQUATION_DAMPING_MEAN_DIAGONAL_MULTIPLIER: f64 = 1.0;
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct OptionRefinementCandidateWallClockBudget {
+pub(super) struct OptionRefinementCandidateSearchBudget {
+    pub(super) total_evaluation_budget: usize,
+    pub(super) wall_clock_guard: Option<OptionRefinementCandidateWallClockGuard>,
+}
+
+impl OptionRefinementCandidateSearchBudget {
+    fn can_start_proposal_evaluation(self, used_evaluation_count: usize) -> bool {
+        if used_evaluation_count >= self.total_evaluation_budget.max(1) {
+            return false;
+        }
+
+        self.wall_clock_guard
+            .map(OptionRefinementCandidateWallClockGuard::can_start_full_oracle_call)
+            .unwrap_or(true)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct OptionRefinementCandidateWallClockGuard {
     pub(super) started_at: std::time::Instant,
     pub(super) budget_millis: u64,
     pub(super) reference_oracle_call_millis: u64,
 }
 
-impl OptionRefinementCandidateWallClockBudget {
+impl OptionRefinementCandidateWallClockGuard {
     fn can_start_full_oracle_call(self) -> bool {
         let elapsed_millis = elapsed_millis(self.started_at);
 
@@ -56,7 +74,7 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
     source_dynamics_parameter_bits: &[u64],
     theta_warm_start_state: &mut SpectralThetaWarmStartState,
     progress_context: Option<&OptionRefinementProgressContext<'_>>,
-    wall_clock_budget: OptionRefinementCandidateWallClockBudget,
+    search_budget: OptionRefinementCandidateSearchBudget,
 ) -> Result<SearchTierCandidate, String> {
     let score_resolution = option_score_resolution(
         initial_candidate.search_tier_score,
@@ -68,16 +86,17 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
     let mut best_candidate = initial_candidate;
     let mut budget_limited = false;
     let mut prediction_rejected = false;
+    let mut used_evaluation_count = 1usize;
 
     for proposal in proposals {
-        if !wall_clock_budget.can_start_full_oracle_call() {
-            budget_limited = true;
-            break;
-        }
-
         if proposal.predicted_score >= best_candidate.search_tier_score {
             prediction_rejected = true;
             continue;
+        }
+
+        if !search_budget.can_start_proposal_evaluation(used_evaluation_count) {
+            budget_limited = true;
+            break;
         }
 
         let evaluated_candidate = scored_pricing_vector(
@@ -91,6 +110,7 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
             Some(theta_warm_start_state),
             progress_context,
         )?;
+        used_evaluation_count = used_evaluation_count.saturating_add(1);
 
         if evaluated_candidate.search_tier_score < best_candidate.search_tier_score {
             let validated_improvement =
@@ -512,4 +532,41 @@ fn maximum_bounded_line_step(
         .filter(|step| step.is_finite() && *step > 0.0)
         .min_by(f64::total_cmp)
         .unwrap_or(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+    use std::time::Instant;
+
+    use super::{OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard};
+
+    #[test]
+    fn candidate_search_budget_allows_proposals_until_evaluation_budget_is_used() {
+        let search_budget = OptionRefinementCandidateSearchBudget {
+            total_evaluation_budget: 5,
+            wall_clock_guard: None,
+        };
+
+        assert!(search_budget.can_start_proposal_evaluation(1));
+        assert!(search_budget.can_start_proposal_evaluation(4));
+        assert!(!search_budget.can_start_proposal_evaluation(5));
+    }
+
+    #[test]
+    fn candidate_search_budget_respects_explicit_wall_clock_guard() {
+        let started_at = Instant::now()
+            .checked_sub(Duration::from_millis(20))
+            .expect("test duration is smaller than instant range");
+        let search_budget = OptionRefinementCandidateSearchBudget {
+            total_evaluation_budget: 5,
+            wall_clock_guard: Some(OptionRefinementCandidateWallClockGuard {
+                started_at,
+                budget_millis: 25,
+                reference_oracle_call_millis: 10,
+            }),
+        };
+
+        assert!(!search_budget.can_start_proposal_evaluation(1));
+    }
 }

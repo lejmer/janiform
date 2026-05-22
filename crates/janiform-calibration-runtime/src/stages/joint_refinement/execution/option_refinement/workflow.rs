@@ -31,7 +31,8 @@ use super::candidate_parallelism::{
     option_refinement_candidate_parallelism, option_refinement_candidate_pricing_cpu_count,
 };
 use super::pricing_block_optimizer::{
-    OptionRefinementCandidateWallClockBudget, optimize_pricing_block_from_search_tier_sensitivities,
+    OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard,
+    optimize_pricing_block_from_search_tier_sensitivities,
 };
 
 pub(crate) const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT: usize = 5;
@@ -61,6 +62,8 @@ impl OptionRefinementProgressContext<'_> {
     fn record_weighted_objective(&self, weighted_objective: f64) {
         self.current_weighted_objective
             .set(Some(weighted_objective));
+        self.shared_progress_state
+            .record_candidate_score(self.current_restart_id, weighted_objective);
     }
 
     fn current_weighted_objective(&self) -> Option<f64> {
@@ -75,17 +78,25 @@ impl OptionRefinementProgressContext<'_> {
         &self,
         pricing_event_progress_percent: Option<usize>,
     ) -> usize {
+        self.running_candidate_progress_percent(pricing_event_progress_percent)
+            .unwrap_or_else(|| pricing_event_progress_percent.unwrap_or(0).min(99))
+    }
+
+    fn running_candidate_progress_percent(
+        &self,
+        pricing_event_progress_percent: Option<usize>,
+    ) -> Option<usize> {
         let completed_evaluation_count = self.current_evaluation_count().saturating_sub(1);
         let current_evaluation_progress_percent = pricing_event_progress_percent.unwrap_or(0);
-        match self.total_evaluation_budget {
-            Some(total_evaluation_budget) => completed_evaluation_count
+
+        self.total_evaluation_budget.map(|total_evaluation_budget| {
+            completed_evaluation_count
                 .saturating_mul(100)
                 .saturating_add(current_evaluation_progress_percent.min(100))
                 .checked_div(total_evaluation_budget.max(1))
                 .unwrap_or(0)
-                .min(99),
-            None => current_evaluation_progress_percent.min(99),
-        }
+                .min(99)
+        })
     }
 
     fn record_progress_percent(&self, progress_percent: usize) {
@@ -103,9 +114,11 @@ impl OptionPricingProgressSnapshotSource for OptionRefinementProgressContext<'_>
         &self,
         pricing_event_progress_percent: Option<usize>,
     ) -> OptionPricingProgressSnapshot {
-        self.record_progress_percent(
-            self.running_pricing_progress_percent(pricing_event_progress_percent),
-        );
+        if let Some(candidate_progress_percent) =
+            self.running_candidate_progress_percent(pricing_event_progress_percent)
+        {
+            self.record_progress_percent(candidate_progress_percent);
+        }
 
         let shared_snapshot = self.shared_progress_snapshot();
 
@@ -169,21 +182,17 @@ struct OptionRefinementSharedProgressSnapshot {
 struct OptionRefinementSharedProgressState {
     completed_units: AtomicUsize,
     candidate_progress_percent_by_restart_id: Mutex<BTreeMap<String, usize>>,
+    best_scored_candidate: Mutex<Option<(String, f64)>>,
     best_completed_candidate: Mutex<Option<(String, f64)>>,
 }
 
 impl OptionRefinementSharedProgressState {
     fn snapshot(&self, total_units: usize) -> OptionRefinementSharedProgressSnapshot {
-        let best_candidate_guard = self
-            .best_completed_candidate
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        let (best_restart_id, best_weighted_objective) = best_candidate_guard
-            .as_ref()
-            .map(|(restart_id, weighted_objective)| {
-                (Some(restart_id.clone()), Some(*weighted_objective))
-            })
+        let best_candidate = self
+            .candidate_score_snapshot(&self.best_completed_candidate)
+            .or_else(|| self.candidate_score_snapshot(&self.best_scored_candidate));
+        let (best_restart_id, best_weighted_objective) = best_candidate
+            .map(|(restart_id, weighted_objective)| (Some(restart_id), Some(weighted_objective)))
             .unwrap_or((None, None));
 
         let aggregate_progress_percent = self.aggregate_progress_percent(total_units);
@@ -283,6 +292,35 @@ impl OptionRefinementSharedProgressState {
             .entry(restart_id.to_string())
             .or_insert(0);
         *candidate_progress = (*candidate_progress).max(progress_percent.min(100));
+    }
+
+    fn candidate_score_snapshot(
+        &self,
+        candidate_score: &Mutex<Option<(String, f64)>>,
+    ) -> Option<(String, f64)> {
+        let best_candidate_guard = candidate_score
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        // Snapshot payloads own restart ids so progress emission never borrows through a lock.
+        best_candidate_guard
+            .as_ref()
+            .map(|(restart_id, weighted_objective)| (restart_id.clone(), *weighted_objective))
+    }
+
+    fn record_candidate_score(&self, restart_id: &str, weighted_objective: f64) {
+        let mut best_candidate_guard = self
+            .best_scored_candidate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let should_replace_best = best_candidate_guard
+            .as_ref()
+            .map(|(_, best_weighted_objective)| weighted_objective < *best_weighted_objective)
+            .unwrap_or(true);
+        if should_replace_best {
+            *best_candidate_guard = Some((restart_id.to_string(), weighted_objective));
+        }
     }
 
     fn aggregate_progress_percent(&self, total_units: usize) -> usize {
@@ -637,7 +675,7 @@ fn refine_single_search_tier_candidate(
 
     let first_oracle_call_wall_clock_millis = elapsed_millis(option_refinement_started_at).max(1);
 
-    let wall_clock_budget = option_refinement_candidate_wall_clock_budget(
+    let search_budget = option_refinement_candidate_search_budget(
         option_refinement_started_at,
         first_oracle_call_wall_clock_millis,
         wall_clock_budget,
@@ -651,7 +689,7 @@ fn refine_single_search_tier_candidate(
         source_dynamics_parameter_bits.as_slice(),
         &mut theta_warm_start_state,
         progress_context,
-        wall_clock_budget,
+        search_budget,
     )
 }
 
@@ -667,31 +705,30 @@ struct OptionRefinementWallClockBudget {
     budget_millis: u64,
 }
 
-fn option_refinement_candidate_wall_clock_budget(
+fn option_refinement_candidate_search_budget(
     candidate_started_at: Instant,
     first_oracle_call_wall_clock_millis: u64,
     wall_clock_budget: Option<OptionRefinementWallClockBudget>,
     candidate_budget_share_count: usize,
-) -> OptionRefinementCandidateWallClockBudget {
-    let budget_millis = match wall_clock_budget {
-        Some(wall_clock_budget) => {
-            let elapsed_millis = elapsed_millis(wall_clock_budget.started_at);
-            let remaining_millis = wall_clock_budget
-                .budget_millis
-                .saturating_sub(elapsed_millis);
-            let candidate_share_millis =
-                remaining_millis / candidate_budget_share_count.max(1) as u64;
+) -> OptionRefinementCandidateSearchBudget {
+    let wall_clock_guard = wall_clock_budget.map(|wall_clock_budget| {
+        let elapsed_millis = elapsed_millis(wall_clock_budget.started_at);
+        let remaining_millis = wall_clock_budget
+            .budget_millis
+            .saturating_sub(elapsed_millis);
+        let candidate_share_millis = remaining_millis / candidate_budget_share_count.max(1) as u64;
 
-            first_oracle_call_wall_clock_millis.saturating_add(candidate_share_millis)
+        OptionRefinementCandidateWallClockGuard {
+            started_at: candidate_started_at,
+            budget_millis: first_oracle_call_wall_clock_millis
+                .saturating_add(candidate_share_millis),
+            reference_oracle_call_millis: first_oracle_call_wall_clock_millis,
         }
-        None => first_oracle_call_wall_clock_millis
-            .saturating_mul(option_pricing_block_evaluation_budget() as u64),
-    };
+    });
 
-    OptionRefinementCandidateWallClockBudget {
-        started_at: candidate_started_at,
-        budget_millis,
-        reference_oracle_call_millis: first_oracle_call_wall_clock_millis,
+    OptionRefinementCandidateSearchBudget {
+        total_evaluation_budget: option_pricing_block_evaluation_budget(),
+        wall_clock_guard,
     }
 }
 
@@ -741,6 +778,8 @@ fn refine_parallel_search_tier_candidate(
         best_restart_id: started_snapshot.best_restart_id.as_deref(),
         best_weighted_objective: started_snapshot.best_weighted_objective,
         active_restart_count: None,
+        current_evaluation_count: Some(0),
+        total_evaluation_budget: Some(option_pricing_block_evaluation_budget()),
         evaluation_progress_percent: Some(0),
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
@@ -758,7 +797,7 @@ fn refine_parallel_search_tier_candidate(
         shared_progress_state: Arc::clone(&shared_progress_state),
         current_evaluation_count: Cell::new(0),
         current_weighted_objective: Cell::new(None),
-        total_evaluation_budget: None,
+        total_evaluation_budget: Some(option_pricing_block_evaluation_budget()),
     };
 
     let refined_candidate = refine_single_search_tier_candidate(
@@ -1412,6 +1451,7 @@ fn emit_option_refinement_progress(input: OptionRefinementProgressEmissionInput<
 mod tests {
     use std::cell::Cell;
     use std::sync::Arc;
+    use std::time::Instant;
 
     use crate::stages::joint_refinement::contracts::JointRefinementStageProgressPhase;
     use crate::stages::joint_refinement::execution::OptionPricingProgressSnapshotSource;
@@ -1421,6 +1461,7 @@ mod tests {
         OptionRefinementProgressContext, OptionRefinementSharedProgressState,
         OptionSearchSelectionRankInput, build_search_selection_agreement_diagnostics_from_scores,
         desired_joint_refinement_option_refinement_candidate_count,
+        option_pricing_block_evaluation_budget, option_refinement_candidate_search_budget,
         option_refinement_selection_score_ceiling,
     };
 
@@ -1452,6 +1493,17 @@ mod tests {
             ),
             best_search_tier_score + best_search_tier_score / 32.0f64.sqrt()
         );
+    }
+
+    #[test]
+    fn option_refinement_candidate_search_budget_uses_deterministic_default() {
+        let search_budget = option_refinement_candidate_search_budget(Instant::now(), 100, None, 5);
+
+        assert_eq!(
+            search_budget.total_evaluation_budget,
+            option_pricing_block_evaluation_budget()
+        );
+        assert!(search_budget.wall_clock_guard.is_none());
     }
 
     #[test]
@@ -1546,6 +1598,55 @@ mod tests {
         assert_eq!(progress_context.current_weighted_objective(), Some(12.5));
     }
 
+    #[test]
+    fn option_refinement_progress_context_reports_scored_objective_as_best_before_completion() {
+        let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
+        shared_progress_state.record_candidate_started("baseline", 5);
+
+        let progress_context = OptionRefinementProgressContext {
+            progress_sender: None,
+            phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            total_units: 5,
+            current_restart_id: "baseline",
+            shared_progress_state,
+            current_evaluation_count: Cell::new(0),
+            current_weighted_objective: Cell::new(None),
+            total_evaluation_budget: None,
+        };
+
+        progress_context.record_weighted_objective(12.5);
+
+        let snapshot = progress_context.option_pricing_progress_snapshot(Some(100));
+
+        assert_eq!(snapshot.best_restart_id, Some("baseline".to_string()));
+        assert_eq!(snapshot.best_weighted_objective, Some(12.5));
+        assert_eq!(snapshot.current_weighted_objective, Some(12.5));
+    }
+
+    #[test]
+    fn option_refinement_progress_context_uses_completed_best_after_final_loss_exists() {
+        let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
+        shared_progress_state.record_candidate_completed("baseline", Some(10.0), 5);
+
+        let progress_context = OptionRefinementProgressContext {
+            progress_sender: None,
+            phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            total_units: 5,
+            current_restart_id: "halton_01",
+            shared_progress_state,
+            current_evaluation_count: Cell::new(0),
+            current_weighted_objective: Cell::new(None),
+            total_evaluation_budget: None,
+        };
+
+        progress_context.record_weighted_objective(4.0);
+
+        let snapshot = progress_context.option_pricing_progress_snapshot(Some(100));
+
+        assert_eq!(snapshot.best_restart_id, Some("baseline".to_string()));
+        assert_eq!(snapshot.best_weighted_objective, Some(10.0));
+    }
+
     fn rank_input(
         restart_id: &str,
         source_rank: usize,
@@ -1578,6 +1679,30 @@ mod tests {
         let snapshot = progress_context.option_pricing_progress_snapshot(Some(25));
 
         assert_eq!(snapshot.evaluation_progress_percent, Some(5));
+    }
+
+    #[test]
+    fn option_refinement_progress_context_does_not_count_unbounded_eval_in_global_progress() {
+        let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
+        shared_progress_state.record_candidate_started("baseline", 5);
+
+        let progress_context = OptionRefinementProgressContext {
+            progress_sender: None,
+            phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            total_units: 5,
+            current_restart_id: "baseline",
+            shared_progress_state,
+            current_evaluation_count: Cell::new(0),
+            current_weighted_objective: Cell::new(None),
+            total_evaluation_budget: None,
+        };
+
+        progress_context.record_evaluation_started();
+
+        let snapshot = progress_context.option_pricing_progress_snapshot(Some(100));
+
+        assert_eq!(snapshot.evaluation_progress_percent, Some(99));
+        assert_eq!(snapshot.aggregate_progress_percent, Some(0));
     }
 
     #[test]

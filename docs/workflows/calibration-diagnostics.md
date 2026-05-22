@@ -219,6 +219,16 @@ The restart table may also show exact return-likelihood evaluator counters. `CF-
 
 The report may mention these restarts because they explain how Janiform searched. You usually do not need to tune them when reading a normal fit report.
 
+### Option refinement progress
+
+Option refinement uses option quote residual scores, not the restart optimization pseudo-likelihood loss. The option score is the maturity-weighted root mean square of option quote residuals after each residual has been scaled by its quote spread. A score near `1.0` means the model is typically about one quoted spread away from the observed mid price on the tier being evaluated. Smaller is better.
+
+The option search tier first prices an exact sensitivity baseline, then validates pricing-block proposals with search-tier operator approximation. The default search budget is deterministic: one exact baseline evaluation plus one proposal evaluation per active pricing-block search coordinate. If `joint_refinement_option_refinement_wall_clock_budget_millis` is provided, it acts as an explicit wall-clock guard around that deterministic search work. Selection and audit tier pricing remain exact.
+
+In option progress tables, `Cur. loss` is the latest option residual score known for the running candidate. During a pricing call this can be the score from the previous completed evaluation for that candidate, because the current pricing call has not produced a score yet. `Best loss` is the best option score seen inside the active option phase. `Final loss` is the option score recorded when that candidate finishes the phase. These columns are not numerically comparable with restart `Trial loss`, `Accepted loss`, or `Final loss`, because those restart columns come from the joint underlying-data objective.
+
+The `Interval` column reports option-pricing interval progress. When row-level pricing detail is available, `Interval` shows the current interval position and `Rows` shows row progress inside that interval. When row detail is not available, `Interval` shows the completed interval count.
+
 ### Runtime profile
 
 Joint refinement reports `runtime_profile` in successful and failed stage reports. The wall-clock fields separate restart optimization, coarse consistency checks, final seed evaluation, and final assembly.
