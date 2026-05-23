@@ -27,6 +27,7 @@ pub(super) fn run_joint_refinement_like_stage(
     upstream_option_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
     match stage {
         CalibrationStage::JointRefinement => {
@@ -37,6 +38,7 @@ pub(super) fn run_joint_refinement_like_stage(
                     stage_input,
                     progress_observer,
                     disk_checkpoint_directory,
+                    load_current_stage_resume_state,
                 ),
             )))
         }
@@ -49,6 +51,7 @@ pub(super) fn run_joint_refinement_like_stage(
                     upstream_joint_refinement_handoff,
                     progress_observer,
                     disk_checkpoint_directory,
+                    load_current_stage_resume_state,
                 ),
             )))
         }
@@ -62,6 +65,7 @@ pub(super) fn run_joint_refinement_like_stage(
                     upstream_option_refinement_handoff,
                     progress_observer,
                     disk_checkpoint_directory,
+                    load_current_stage_resume_state,
                 ),
             )))
         }

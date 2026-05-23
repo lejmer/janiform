@@ -195,6 +195,21 @@ impl JointRefinementResumeStore {
         }
     }
 
+    pub(crate) fn fresh(
+        disk_checkpoint_directory: Option<&Path>,
+        run_id: &str,
+        stage: CalibrationStage,
+        stage_seed: u64,
+    ) -> Self {
+        let path =
+            disk_checkpoint_directory.map(|directory| directory.join(resume_state_filename(stage)));
+
+        Self {
+            path,
+            state: JointRefinementResumeState::new(run_id, stage, stage_seed),
+        }
+    }
+
     pub(crate) fn restart_outcome(
         &self,
         restart_id: &str,
@@ -625,6 +640,67 @@ mod tests {
         );
         assert!(ignored_store.restart_selection().is_none());
         assert!(persisted_path.exists());
+
+        let _ = fs::remove_file(persisted_path);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn joint_refinement_resume_store_fresh_starts_empty_and_persists_to_stage_path() {
+        let directory = temp_directory();
+        let persisted_path =
+            directory.join(resume_state_filename(CalibrationStage::OptionRefinement));
+        let mut persisted_state =
+            JointRefinementResumeState::new("run-001", CalibrationStage::OptionRefinement, 17);
+        persisted_state.restart_selection = Some(super::PersistedRestartSelectionArtifacts {
+            best_restart_id: "stale".to_string(),
+            option_refinement_candidate_frontier_ids: vec!["stale".to_string()],
+            selected_restart_count: 1,
+            option_pricing_context_fingerprint: Some("options-a".to_string()),
+            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            coarse_consistency_wall_clock_millis: 0,
+        });
+
+        persist_resume_state_to_disk(persisted_path.as_path(), &persisted_state)
+            .expect("stale resume state should persist");
+
+        let loaded_store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::OptionRefinement,
+            17,
+        );
+        assert!(loaded_store.restart_selection().is_some());
+
+        let mut fresh_store = JointRefinementResumeStore::fresh(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::OptionRefinement,
+            17,
+        );
+        assert!(fresh_store.restart_selection().is_none());
+
+        fresh_store.record_restart_selection(super::PersistedRestartSelectionArtifacts {
+            best_restart_id: "fresh".to_string(),
+            option_refinement_candidate_frontier_ids: vec!["fresh".to_string()],
+            selected_restart_count: 1,
+            option_pricing_context_fingerprint: Some("options-a".to_string()),
+            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            coarse_consistency_wall_clock_millis: 0,
+        });
+
+        let persisted_bytes =
+            fs::read(persisted_path.as_path()).expect("fresh resume state should persist");
+        let persisted_state: JointRefinementResumeState =
+            serde_json::from_slice(persisted_bytes.as_slice())
+                .expect("fresh resume state should deserialize");
+
+        assert_eq!(
+            persisted_state
+                .restart_selection
+                .map(|selection| selection.best_restart_id),
+            Some("fresh".to_string())
+        );
 
         let _ = fs::remove_file(persisted_path);
         let _ = fs::remove_dir_all(directory);

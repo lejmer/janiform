@@ -20,6 +20,7 @@ pub fn run_joint_refinement_calibration_stage(
         stage_input,
         None,
         None,
+        true,
     )
 }
 
@@ -29,6 +30,7 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_
     stage_input: JointRefinementStageExecutionInput,
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
     run_pipeline_stage_with_progress_observer_and_persistence(
         run_spec,
@@ -36,6 +38,7 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_
         stage_input,
         progress_observer,
         disk_checkpoint_directory,
+        load_current_stage_resume_state,
         super::pipeline::run_joint_refinement_calibration_stage_internal,
     )
 }
@@ -47,6 +50,7 @@ pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and
     upstream_joint_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
     run_pipeline_stage_with_progress_observer_and_persistence(
         run_spec,
@@ -54,11 +58,13 @@ pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and
         stage_input,
         progress_observer,
         disk_checkpoint_directory,
+        load_current_stage_resume_state,
         move |run_spec,
               calendar_registry,
               stage_input,
               progress_sender,
-              disk_checkpoint_directory| {
+              disk_checkpoint_directory,
+              load_current_stage_resume_state| {
             super::pipeline::run_option_refinement_calibration_stage_internal(
                 run_spec,
                 calendar_registry,
@@ -66,6 +72,7 @@ pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and
                 upstream_joint_refinement_handoff,
                 progress_sender,
                 disk_checkpoint_directory,
+                load_current_stage_resume_state,
             )
         },
     )
@@ -79,6 +86,7 @@ pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_pers
     upstream_option_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
     run_pipeline_stage_with_progress_observer_and_persistence(
         run_spec,
@@ -86,11 +94,13 @@ pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_pers
         stage_input,
         progress_observer,
         disk_checkpoint_directory,
+        load_current_stage_resume_state,
         move |run_spec,
               calendar_registry,
               stage_input,
               progress_sender,
-              disk_checkpoint_directory| {
+              disk_checkpoint_directory,
+              load_current_stage_resume_state| {
             super::pipeline::run_finalization_calibration_stage_internal(
                 run_spec,
                 calendar_registry,
@@ -99,6 +109,7 @@ pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_pers
                 upstream_option_refinement_handoff,
                 progress_sender,
                 disk_checkpoint_directory,
+                load_current_stage_resume_state,
             )
         },
     )
@@ -110,6 +121,7 @@ fn run_pipeline_stage_with_progress_observer_and_persistence<RunStage>(
     stage_input: JointRefinementStageExecutionInput,
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
     run_stage: RunStage,
 ) -> JointRefinementStageExecutionReport
 where
@@ -119,6 +131,7 @@ where
             JointRefinementStageExecutionInput,
             Option<mpsc::Sender<JointRefinementStageProgressUpdate>>,
             Option<&Path>,
+            bool,
         ) -> JointRefinementStageExecutionReport
         + Send,
 {
@@ -129,6 +142,7 @@ where
             stage_input,
             None,
             disk_checkpoint_directory,
+            load_current_stage_resume_state,
         );
     };
 
@@ -143,6 +157,7 @@ where
                 stage_input,
                 Some(progress_sender),
                 disk_checkpoint_directory,
+                load_current_stage_resume_state,
             )
         });
 

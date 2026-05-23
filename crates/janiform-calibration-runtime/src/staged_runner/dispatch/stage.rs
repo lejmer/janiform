@@ -342,6 +342,7 @@ fn run_joint_refinement_like_staged_execution_stage(
             upstream_option_refinement_handoff,
             None,
             input.disk_checkpoint_directory,
+            input.load_current_stage_resume_state,
         );
     }
 
@@ -365,6 +366,7 @@ fn run_joint_refinement_like_staged_execution_stage(
         upstream_option_refinement_handoff,
         Some(&mut progress_forwarder),
         input.disk_checkpoint_directory,
+        input.load_current_stage_resume_state,
     )
 }
 
@@ -377,6 +379,7 @@ pub(in crate::staged_runner) struct RunStageForStagedExecutionInput<'a, 'observe
     pub(in crate::staged_runner) stage_count: usize,
     pub(in crate::staged_runner) staged_run_inputs: &'a mut CalibrationStagedRunInputs,
     pub(in crate::staged_runner) payload_state: &'a CalibrationInMemoryStagePayloadState,
+    pub(in crate::staged_runner) load_current_stage_resume_state: bool,
     pub(in crate::staged_runner) observer:
         &'a mut Option<&'observer mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
 }

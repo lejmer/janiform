@@ -196,6 +196,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     stage_input: JointRefinementStageExecutionInput,
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
     run_joint_refinement_pipeline_stage_internal(
         run_spec,
@@ -205,6 +206,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         None,
         progress_sender,
         disk_checkpoint_directory,
+        load_current_stage_resume_state,
         JointRefinementPipelineStage::JointRefinement,
     )
 }
@@ -216,6 +218,7 @@ pub(super) fn run_option_refinement_calibration_stage_internal(
     upstream_joint_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
     run_joint_refinement_pipeline_stage_internal(
         run_spec,
@@ -225,6 +228,7 @@ pub(super) fn run_option_refinement_calibration_stage_internal(
         None,
         progress_sender,
         disk_checkpoint_directory,
+        load_current_stage_resume_state,
         JointRefinementPipelineStage::OptionRefinement,
     )
 }
@@ -237,6 +241,7 @@ pub(super) fn run_finalization_calibration_stage_internal(
     upstream_option_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
     run_joint_refinement_pipeline_stage_internal(
         run_spec,
@@ -246,6 +251,7 @@ pub(super) fn run_finalization_calibration_stage_internal(
         upstream_option_refinement_handoff,
         progress_sender,
         disk_checkpoint_directory,
+        load_current_stage_resume_state,
         JointRefinementPipelineStage::Finalization,
     )
 }
@@ -258,6 +264,7 @@ fn run_joint_refinement_pipeline_stage_internal(
     upstream_option_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
     pipeline_stage: JointRefinementPipelineStage,
 ) -> JointRefinementStageExecutionReport {
     let stage_started_at = Instant::now();
@@ -334,12 +341,21 @@ fn run_joint_refinement_pipeline_stage_internal(
             }
         };
 
-    let mut resume_store = JointRefinementResumeStore::load(
-        disk_checkpoint_directory,
-        run_spec.run_id.as_str(),
-        pipeline_stage.calibration_stage(),
-        resolved_stage_payloads.resolved_stage_seed.stage_seed,
-    );
+    let mut resume_store = if load_current_stage_resume_state {
+        JointRefinementResumeStore::load(
+            disk_checkpoint_directory,
+            run_spec.run_id.as_str(),
+            pipeline_stage.calibration_stage(),
+            resolved_stage_payloads.resolved_stage_seed.stage_seed,
+        )
+    } else {
+        JointRefinementResumeStore::fresh(
+            disk_checkpoint_directory,
+            run_spec.run_id.as_str(),
+            pipeline_stage.calibration_stage(),
+            resolved_stage_payloads.resolved_stage_seed.stage_seed,
+        )
+    };
 
     let mut prepared_bootstrap = match prepare_bootstrap_context(
         run_spec,

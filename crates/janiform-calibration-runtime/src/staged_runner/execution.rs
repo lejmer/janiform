@@ -378,6 +378,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
 
         for stage in execution_stage_order.iter().copied().take(start_position) {
             let artifact_reference = expected_stage_output_artifact_reference(run_spec, stage);
+
             let artifact_path = calibration_stage_parameter_artifact_path_in_run_directory(
                 artifact_run_writer.pending_run_directory(),
                 stage,
@@ -414,8 +415,15 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     }
 
     let run_start_time = Instant::now();
+
     let started_from_stage = execution_stage_order.get(start_position).copied();
     let completed_stage_count = start_position;
+
+    let load_current_stage_resume_state = run_spec
+        .resume_settings
+        .as_ref()
+        .and_then(|resume_settings| resume_settings.resume_from_stage)
+        .is_none();
 
     emit_observer_event(
         &mut observer,
@@ -496,6 +504,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             stage_count: execution_stage_order.len(),
             staged_run_inputs: &mut staged_run_inputs,
             payload_state: &payload_state,
+            load_current_stage_resume_state,
             observer: &mut observer,
         }) {
             Ok(stage_report) => stage_report,
