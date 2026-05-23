@@ -54,6 +54,18 @@ In the report, two sections matter most:
 
 Start with `objective_breakdown.family_losses`. If one area looks bad, use `objective_breakdown.term_diagnostics` to see the underlying observed and modeled numbers.
 
+## Full calibration stages
+
+Full calibration reports separate the final pipeline into the stages users see in the terminal:
+
+| Stage                | When it appears       | What it does                                                                 |
+|----------------------|-----------------------|-------------------------------------------------------------------------------|
+| `Refine dynamics`    | Full runs             | Searches restart candidates for the physical dynamics fitted to underlying data. |
+| `Fit option surface` | Full runs with options | Fits the option pricing block from the selected dynamics frontier.             |
+| `Finalize model`     | Full runs             | Builds final diagnostics and writes the canonical final fitted model payload.   |
+
+Runs without an option snapshot skip `Fit option surface`. The final fitted model parameters are saved under `parameters.finalization.fitted_parameters` in `model.jf`. When an option snapshot is present, that finalization payload contains the option-calibrated pricing block while the physical Hawkes and return components remain the dynamics fit used by simulation.
+
 ## Terms used on this page
 
 Janiform reports some terms that are useful but easy to misread.
@@ -63,6 +75,7 @@ Janiform reports some terms that are useful but easy to misread.
 | Candidate             | One complete fitted model that Janiform considered during calibration.                                       |
 | Baseline              | The starting fit used as a comparison point before final improvement attempts.                               |
 | Global loss           | The single pseudo-likelihood loss used to rank complete joint-refinement candidates. Lower is better.        |
+| Option surface loss   | The root mean square option quote residual after each quote is scaled by its quote spread floor. Lower is better. |
 | Family loss           | The mean loss for one named group of related checks, such as activity shape or return scale.                 |
 | Term diagnostic       | One observed-versus-modeled comparison inside a family.                                                      |
 | Standardized residual | The observed-versus-modeled difference divided by its uncertainty scale.                                     |
@@ -74,6 +87,8 @@ Janiform reports some terms that are useful but easy to misread.
 | Return shape          | The distributional shape of returns, including tails and how returns are spread out.                         |
 
 The global loss is not a probability, percentile, p-value, or percentage score. It is a calibration loss.
+
+The option search and selection tables use a different loss from restart optimization. During option refinement, `Cur. loss` is the best currently observed option surface loss for the active work item, and `Final loss` is the selected option surface loss after that work item completes. It is not the restart pseudo-likelihood plus an option term. A value around `1.0` means the model is around one quote scale away on average across the option tier being priced. Search-tier losses are proposal-screening losses, while selection and audit tiers use the exact pricing path as the guardrail.
 
 ## How to read losses
 

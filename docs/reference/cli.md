@@ -286,6 +286,9 @@ Disk execution writes a run directory with the fitted model, fit report, progres
 * `--cpu-count <COUNT>` — CPU count available to calibration preparation.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--treat-calibration-warnings-as-errors` — Treat calibration warning outcomes as fit failures for automation.
+* `--stylized-fact-huber-cutoff <Z>` — Stylized-fact Huber cutoff for the calibration objective.
+* `--stylized-fact-admissibility-z-threshold <Z>` — Stylized-fact admissibility z-threshold for the calibration objective.
 * `--resume-checkpoint-reference <REFERENCE>` — Resume disk execution from a checkpoint reference.
 
    Checkpoint references identify a saved checkpoint, for example checkpoint://RUN_ID/last-success or checkpoint://RUN_ID/STAGE_TOKEN. Resume is only valid for disk execution.
@@ -556,6 +559,9 @@ This command prepares the same calibration plan used by the default fit command,
 * `--cpu-count <COUNT>` — CPU count available to calibration planning.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--treat-calibration-warnings-as-errors` — Treat calibration warning outcomes as fit failures for automation.
+* `--stylized-fact-huber-cutoff <Z>` — Stylized-fact Huber cutoff for the calibration objective.
+* `--stylized-fact-admissibility-z-threshold <Z>` — Stylized-fact admissibility z-threshold for the calibration objective.
 * `--workflow-scope <WORKFLOW_SCOPE>` — Select which calibration workflow to plan.
 
   Possible values:
