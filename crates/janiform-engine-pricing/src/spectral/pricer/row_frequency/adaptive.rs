@@ -59,10 +59,10 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
 
     if row_states
         .iter()
-        .all(LocalTransitionRowState::uses_nested_transition_measure)
+        .all(LocalTransitionRowState::has_row_independent_local_tilt_target)
     {
-        return solve_nested_interval_row_frequency_batches_with_shared_theta(
-            NestedIntervalRowFrequencyBatchSharedThetaSolveInput {
+        return solve_row_independent_interval_row_frequency_batches_with_shared_theta(
+            RowIndependentIntervalRowFrequencyBatchSharedThetaSolveInput {
                 base_context,
                 row_states,
                 theta_hints,
@@ -84,7 +84,7 @@ pub(in crate::spectral::pricer) fn solve_interval_row_frequency_batches_adaptive
         derive_parallel_adaptive_seed_row_indices(row_count, resolved_pricing_cpu_count(cpu_count));
 
     for (row_index, row_state) in row_states.iter().enumerate() {
-        if row_state.uses_nested_transition_measure() {
+        if row_state.has_row_independent_local_tilt_target() {
             seeded_row_indices.push(row_index);
         }
     }
@@ -321,7 +321,7 @@ pub(super) fn derive_parallel_adaptive_seed_row_indices(
     seeded_row_indices
 }
 
-pub(super) struct NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'a> {
+pub(super) struct RowIndependentIntervalRowFrequencyBatchSharedThetaSolveInput<'a> {
     pub(in crate::spectral::pricer) base_context: &'a LocalTransitionRequestContext,
     pub(in crate::spectral::pricer) row_states: &'a [LocalTransitionRowState],
     pub(in crate::spectral::pricer) theta_hints: &'a [Option<f64>],
@@ -335,8 +335,8 @@ pub(super) struct NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'a> {
     pub(in crate::spectral::pricer) progress_observer: Option<&'a mut dyn FnMut(usize)>,
 }
 
-pub(super) fn solve_nested_interval_row_frequency_batches_with_shared_theta(
-    input: NestedIntervalRowFrequencyBatchSharedThetaSolveInput<'_>,
+pub(super) fn solve_row_independent_interval_row_frequency_batches_with_shared_theta(
+    input: RowIndependentIntervalRowFrequencyBatchSharedThetaSolveInput<'_>,
 ) -> Result<
     (
         Vec<RowFrequencyBatchSolution>,
@@ -344,7 +344,7 @@ pub(super) fn solve_nested_interval_row_frequency_batches_with_shared_theta(
     ),
     VanillaOptionPricingRunError,
 > {
-    let NestedIntervalRowFrequencyBatchSharedThetaSolveInput {
+    let RowIndependentIntervalRowFrequencyBatchSharedThetaSolveInput {
         base_context,
         row_states,
         theta_hints,
@@ -369,7 +369,8 @@ pub(super) fn solve_nested_interval_row_frequency_batches_with_shared_theta(
         })
         .map(|(row_index, _)| row_index)
         .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: "nested spectral interval solve expected at least one row".to_string(),
+            message: "row-independent spectral interval solve expected at least one row"
+                .to_string(),
         })?;
 
     let (theta, _) = resolve_local_transition_theta_for_row_with_parallelism_and_hint(

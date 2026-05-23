@@ -3130,7 +3130,7 @@ mod tests {
             )
             .expect("boundary input should build");
 
-        let local_measure_uses_nested = boundary_input
+        let local_tilt_target_is_row_independent = boundary_input
             .local_martingale_deviation_adjustment()
             .expect("boundary input should yield local martingale deviation")
             == 0.0;
@@ -3316,7 +3316,7 @@ mod tests {
         }
 
         panic!(
-            "local_measure_uses_nested={local_measure_uses_nested} zero_seasonality_interval_count={zero_seasonality_interval_count} expected_severity_mark={expected_severity_mark} known_activity_coupling_scale={known_activity_coupling_scale} surprise_activity_coupling_scale={surprise_activity_coupling_scale} first_nonfinite_loading={first_nonfinite_loading:?} max_closed_form_loading_interval_index={max_closed_form_loading_interval_index} max_closed_form_loading_delta={max_closed_form_loading_delta} max_closed_form_loading_known={max_closed_form_loading_known} max_closed_form_loading_surprise={max_closed_form_loading_surprise} max_closed_form_loading={max_closed_form_loading} request_grid_count={} runtime_interval_count={} current_state_hawkes={:?} current_state_boundary={:?} first_failed_node={first_failed_node:?}",
+            "local_tilt_target_is_row_independent={local_tilt_target_is_row_independent} zero_seasonality_interval_count={zero_seasonality_interval_count} expected_severity_mark={expected_severity_mark} known_activity_coupling_scale={known_activity_coupling_scale} surprise_activity_coupling_scale={surprise_activity_coupling_scale} first_nonfinite_loading={first_nonfinite_loading:?} max_closed_form_loading_interval_index={max_closed_form_loading_interval_index} max_closed_form_loading_delta={max_closed_form_loading_delta} max_closed_form_loading_known={max_closed_form_loading_known} max_closed_form_loading_surprise={max_closed_form_loading_surprise} max_closed_form_loading={max_closed_form_loading} request_grid_count={} runtime_interval_count={} current_state_hawkes={:?} current_state_boundary={:?} first_failed_node={first_failed_node:?}",
             execution_input.request.grids.len(),
             execution_input
                 .runtime_interval_schedule

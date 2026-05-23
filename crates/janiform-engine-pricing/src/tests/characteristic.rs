@@ -685,7 +685,7 @@ fn full_characteristic_function_assembly_rejects_invalid_return_decomposition_pa
 }
 
 #[test]
-fn anchored_local_tilt_solver_accepts_kappa_zero_nested_case() {
+fn anchored_local_tilt_solver_accepts_kappa_zero_row_independent_target_case() {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
@@ -717,7 +717,7 @@ fn anchored_local_tilt_solver_accepts_kappa_zero_nested_case() {
 
     let diagnostics =
         solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
-            .expect("kappa=0 nested case should solve");
+            .expect("kappa=0 row-independent target case should solve");
 
     assert_eq!(diagnostics.policy, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY);
     assert!(diagnostics.absolute_residual <= diagnostics.tolerance);

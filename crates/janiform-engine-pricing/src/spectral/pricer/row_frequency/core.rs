@@ -259,16 +259,24 @@ pub(in crate::spectral::pricer) fn build_row_operator_sensitivities(
 
     if row_states
         .iter()
-        .all(LocalTransitionRowState::uses_nested_transition_measure)
+        .all(LocalTransitionRowState::has_row_independent_local_tilt_target)
     {
         let shared_theta = row_operators[0].theta;
+
+        let theta_sensitivity = node_price_shared_plus_shift_theta_sensitivity(
+            differentiate_core_local_tilt_theta_for_tilt(
+                base_context,
+                driver_parameters,
+                shared_theta,
+            )?,
+        );
 
         let shared_kernel_sensitivity = build_shared_row_frequency_batch_kernel_sensitivity(
             base_context,
             spectral_domain,
             driver_parameters,
             shared_theta,
-            NodePriceSharedPlusShiftSensitivity::zero(),
+            theta_sensitivity,
         )?;
 
         return row_states

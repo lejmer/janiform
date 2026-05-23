@@ -432,6 +432,17 @@ pub(crate) struct CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
     pub(crate) delta_beta_derivative: f64,
 }
 
+impl CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
+    pub(crate) fn zero() -> Self {
+        Self {
+            alpha_derivative: 0.0,
+            beta_0_derivative: 0.0,
+            delta_derivative: 0.0,
+            delta_beta_derivative: 0.0,
+        }
+    }
+}
+
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PreparedTransitionRowKernel {
@@ -618,7 +629,7 @@ impl LocalTransitionRowState {
         }
     }
 
-    pub(crate) fn uses_nested_transition_measure(&self) -> bool {
+    pub(crate) fn has_row_independent_local_tilt_target(&self) -> bool {
         self.local_martingale_deviation_adjustment == 0.0
     }
 }
@@ -1023,6 +1034,17 @@ pub(crate) fn differentiate_core_local_tilt_theta_for_tilt(
         driver_parameters,
         theta,
     )?;
+    if sensitivity.theta_derivative == 0.0
+        && sensitivity.alpha_derivative == 0.0
+        && sensitivity.beta_0_derivative == 0.0
+        && sensitivity.delta_derivative == 0.0
+        && sensitivity.delta_beta_derivative == 0.0
+    {
+        // A flat residual with no shared-plus-shift parameter exposure leaves the
+        // canonical solved theta locally unchanged.
+        return Ok(CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity::zero());
+    }
+
     if !sensitivity.theta_derivative.is_finite() || sensitivity.theta_derivative == 0.0 {
         return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
             message: format!(
@@ -1066,11 +1088,6 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
     interval_tilt_curve: &mut IntervalTiltCurve<'_>,
     transition_row: &LocalTransitionRowState,
 ) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
-    if transition_row.uses_nested_transition_measure() {
-        interval_tilt_curve.last_solved_theta = Some(0.0);
-        return Ok((0.0, None));
-    }
-
     if let Some(previous_theta) = interval_tilt_curve.last_solved_theta {
         match interval_tilt_curve.evaluate_row_residual(transition_row, previous_theta) {
             Ok(previous_evaluation) => {
@@ -1260,22 +1277,23 @@ pub(crate) fn prepare_transition_row_kernel_with_curve(
         interval_tilt_curve.cpu_count,
     )?;
 
-    let representative_transform_diagnostics = if transition_row.uses_nested_transition_measure() {
-        None
-    } else {
-        Some(
-            interval_tilt_curve
-                .evaluate_core_log_moment(theta)
-                .map_err(
-                    |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-                        interval_index: interval_tilt_curve.transition_context.interval_index,
-                        deviation: transition_row.boundary_state.deviation,
-                        source: Box::new(source),
-                    },
-                )?
-                .transform_diagnostics,
-        )
-    };
+    let representative_transform_diagnostics =
+        if transition_row.has_row_independent_local_tilt_target() && theta == 0.0 {
+            None
+        } else {
+            Some(
+                interval_tilt_curve
+                    .evaluate_core_log_moment(theta)
+                    .map_err(|source| {
+                        VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
+                            interval_index: interval_tilt_curve.transition_context.interval_index,
+                            deviation: transition_row.boundary_state.deviation,
+                            source: Box::new(source),
+                        }
+                    })?
+                    .transform_diagnostics,
+            )
+        };
 
     Ok(PreparedTransitionRowKernel {
         transition_row,
@@ -1487,13 +1505,15 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
 ) -> Result<LocalTiltedIntervalExpectations, VanillaOptionPricingRunError> {
-    let nested_projection = if transition_row.uses_nested_transition_measure() {
-        Some(derive_nested_local_expected_interval_projection_from_context(transition_context)?)
+    let untilted_projection = if transition_row.has_row_independent_local_tilt_target()
+        && theta == 0.0
+    {
+        Some(derive_untilted_local_expected_interval_projection_from_context(transition_context)?)
     } else {
         None
     };
 
-    let (tilted_statistics, expected_hawkes_state_after) = match nested_projection {
+    let (tilted_statistics, expected_hawkes_state_after) = match untilted_projection {
         Some(projection) => (
             projection.expected_statistics,
             Some(projection.structural_state_after),
@@ -1601,8 +1621,8 @@ fn derive_local_tilted_expected_interval_statistics_for_row(
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
 ) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
-    if transition_row.uses_nested_transition_measure() {
-        return derive_nested_local_expected_interval_statistics_from_context(transition_context);
+    if transition_row.has_row_independent_local_tilt_target() && theta == 0.0 {
+        return derive_untilted_local_expected_interval_statistics_from_context(transition_context);
     }
 
     let settings = SufficientStatisticsTransformSliceSettings::default();
@@ -1718,14 +1738,14 @@ fn derive_local_tilted_expected_interval_statistics_for_row(
     })
 }
 
-fn derive_nested_local_expected_interval_statistics_from_context(
+fn derive_untilted_local_expected_interval_statistics_from_context(
     transition_context: &LocalTransitionRequestContext,
 ) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
-    derive_nested_local_expected_interval_projection_from_context(transition_context)
+    derive_untilted_local_expected_interval_projection_from_context(transition_context)
         .map(|projection| projection.expected_statistics)
 }
 
-fn derive_nested_local_expected_interval_projection_from_context(
+fn derive_untilted_local_expected_interval_projection_from_context(
     transition_context: &LocalTransitionRequestContext,
 ) -> Result<
     janiform_affine_oracle::endogenous_anchor::EndogenousAnchorFirstMomentIntervalProjection,

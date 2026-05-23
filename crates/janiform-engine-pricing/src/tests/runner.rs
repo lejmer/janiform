@@ -1,4 +1,5 @@
 use crate::characteristic::build_pricing_equation_specification;
+use crate::expected_hawkes_state::evolve_expected_hawkes_state_from_integrated_statistics;
 use crate::grids::{
     SpectralThetaWarmStartDriverConfiguration, SpectralThetaWarmStartKey,
     SpectralThetaWarmStartRowState, SpectralThetaWarmStartSensitivity, SpectralThetaWarmStartState,
@@ -26,6 +27,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use crate::runner::{
     IntervalTiltCurve, LocalTransitionRequestContext,
     build_pricing_sufficient_statistics_neutral_anchor_materialization,
+    derive_local_tilted_interval_expectations,
     evaluate_core_pure_imaginary_log_moment_exponent_for_tilt,
     evaluate_pricing_log_return_characteristic_function, prepare_transition_row_kernel_with_curve,
     recover_pure_imaginary_log_moment_exponent, resolve_local_transition_theta,
@@ -51,6 +53,20 @@ fn transition_context_for_request(
             .expect("transition-context interval factors should construct"),
     )
     .expect("transition context should construct")
+}
+
+fn nontrivial_hawkes_state() -> HawkesExcitationState {
+    HawkesExcitationState {
+        y_plus_plus: 0.35,
+        y_plus_minus: 0.15,
+        y_minus_plus: 0.25,
+        y_minus_minus: 0.4,
+    }
+}
+
+fn nontrivial_interval_factors() -> VanillaOptionPricingIntervalFactors {
+    VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15, 1.0)
+        .expect("non-trivial interval factors should construct")
 }
 
 #[test]
@@ -117,7 +133,7 @@ fn theta_warm_start_state_predicts_interval_hint_from_parameter_delta() {
 }
 
 #[test]
-fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary() {
+fn row_independent_tilt_target_detection_accepts_disabled_multi_interval_boundary() {
     let pricing_request = VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 105.0, 1.0, 0.0, 0.0)
             .expect("market inputs should construct"),
@@ -154,11 +170,11 @@ fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary(
         )
         .expect("transition row should construct");
 
-    assert!(transition_row.uses_nested_transition_measure());
+    assert!(transition_row.has_row_independent_local_tilt_target());
 }
 
 #[test]
-fn nested_transition_measure_detection_rejects_nonzero_local_martingale_deviation_adjustment() {
+fn row_independent_tilt_target_detection_rejects_nonzero_local_martingale_deviation_adjustment() {
     let pricing_request = VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 105.0, 1.0, 0.0, 0.0)
             .expect("market inputs should construct"),
@@ -198,7 +214,7 @@ fn nested_transition_measure_detection_rejects_nonzero_local_martingale_deviatio
         )
         .expect("transition row should construct");
 
-    assert!(!transition_row.uses_nested_transition_measure());
+    assert!(!transition_row.has_row_independent_local_tilt_target());
 }
 
 #[test]
@@ -291,28 +307,17 @@ fn single_node_grid_execution_input(
             spot: 101.0,
             grids: vec![VanillaOptionGridRequest {
                 payoff_type: VanillaOptionPayoffType::Call,
-                risk_free_rate: 0.02,
-                dividend_yield: 0.01,
+                risk_free_rate: 0.0,
+                dividend_yield: 0.0,
                 strikes: vec![100.0],
                 maturity_intervals: vec![1.0],
             }],
         },
-        boundary_input: disabled_boundary_input(
-            1.0,
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-        ),
+        boundary_input: disabled_boundary_input(1.0, nontrivial_hawkes_state()),
         model_parameters,
         runtime_interval_schedule,
         interval_delta: 1.0,
-        interval_factors: vec![
-            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
-                .expect("single-node interval factors should construct"),
-        ],
+        interval_factors: vec![nontrivial_interval_factors()],
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
             include_transform_diagnostics: false,
             include_integration_quality_diagnostics: false,
@@ -401,8 +406,8 @@ fn multi_interval_grid_execution_input(
             spot: 101.0,
             grids: vec![VanillaOptionGridRequest {
                 payoff_type: VanillaOptionPayoffType::Call,
-                risk_free_rate: 0.02,
-                dividend_yield: 0.01,
+                risk_free_rate: 0.0,
+                dividend_yield: 0.0,
                 strikes: vec![100.0],
                 maturity_intervals: vec![1.0],
             }],
@@ -442,7 +447,7 @@ fn multi_interval_grid_execution_input(
 }
 
 #[test]
-fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() {
+fn risk_neutral_anchor_materialization_accepts_row_independent_zero_carry_request() {
     let mut model_parameters = valid_model_parameters();
 
     model_parameters
@@ -455,7 +460,7 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
         .activity_coupling_scale = 0.0;
 
     let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.0, 0.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -556,7 +561,7 @@ fn tilted_core_expected_increment_matches_return_composition_log_moment_derivati
 
 #[test]
 fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
-    let pricing_request = build_non_nested_transition_request();
+    let pricing_request = build_row_dependent_tilt_request();
 
     let transition_context = transition_context_for_request(&pricing_request);
 
@@ -567,30 +572,32 @@ fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
         .expect("driver parameters should construct");
 
     let resolved_rows =
-        build_resolved_non_nested_transition_rows(&transition_context, driver_parameters);
+        build_resolved_row_dependent_tilt_rows(&transition_context, driver_parameters);
 
     let mut interval_tilt_curve =
         IntervalTiltCurve::try_new(&transition_context, driver_parameters, None, None)
             .expect("interval tilt curve should construct");
 
-    let nested_row = transition_context
+    let row_independent_row = transition_context
         .build_row_state(0.0)
-        .expect("nested transition row should construct");
+        .expect("row-independent transition row should construct");
 
-    let nested_direct = resolve_local_transition_theta_for_row_with_parallelism(
+    let row_independent_direct = resolve_local_transition_theta_for_row_with_parallelism(
         &transition_context,
-        &nested_row,
+        &row_independent_row,
         driver_parameters,
         None,
         None,
     )
-    .expect("nested direct row solve should succeed");
+    .expect("row-independent direct row solve should succeed");
 
-    let nested_cached =
-        resolve_local_transition_theta_for_row_with_curve(&mut interval_tilt_curve, &nested_row)
-            .expect("nested curve-backed row solve should succeed");
+    let row_independent_cached = resolve_local_transition_theta_for_row_with_curve(
+        &mut interval_tilt_curve,
+        &row_independent_row,
+    )
+    .expect("row-independent curve-backed row solve should succeed");
 
-    assert_eq!(nested_cached, nested_direct);
+    assert_eq!(row_independent_cached, row_independent_direct);
 
     for (transition_row, direct) in resolved_rows {
         let cached = resolve_local_transition_theta_for_row_with_curve(
@@ -605,7 +612,7 @@ fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
 
 #[test]
 fn prepared_transition_row_kernel_matches_direct_row_expectations() {
-    let pricing_request = build_non_nested_transition_request();
+    let pricing_request = build_row_dependent_tilt_request();
 
     let transition_context = transition_context_for_request(&pricing_request);
 
@@ -616,10 +623,10 @@ fn prepared_transition_row_kernel_matches_direct_row_expectations() {
         .expect("driver parameters should construct");
 
     let (transition_row, direct_theta) =
-        build_resolved_non_nested_transition_rows(&transition_context, driver_parameters)
+        build_resolved_row_dependent_tilt_rows(&transition_context, driver_parameters)
             .into_iter()
             .next()
-            .expect("at least one non-nested row should resolve");
+            .expect("at least one row-dependent transition row should resolve");
 
     let direct_expectations =
         crate::runner::derive_local_tilted_interval_expectations_for_row_with_parallelism(
@@ -646,7 +653,7 @@ fn prepared_transition_row_kernel_matches_direct_row_expectations() {
 
 #[test]
 fn core_pure_imaginary_log_moment_matches_row_diagnostics() {
-    let pricing_request = build_non_nested_transition_request();
+    let pricing_request = build_row_dependent_tilt_request();
 
     let transition_context = transition_context_for_request(&pricing_request);
 
@@ -657,16 +664,16 @@ fn core_pure_imaginary_log_moment_matches_row_diagnostics() {
         .expect("driver parameters should construct");
 
     let (transition_row, direct_theta) =
-        build_resolved_non_nested_transition_rows(&transition_context, driver_parameters)
+        build_resolved_row_dependent_tilt_rows(&transition_context, driver_parameters)
             .into_iter()
             .next()
-            .expect("at least one non-nested row should resolve");
+            .expect("at least one row-dependent transition row should resolve");
 
     let theta = direct_theta.0;
 
     let diagnostics = direct_theta
         .1
-        .expect("non-nested row should return diagnostics");
+        .expect("row-dependent transition row should return diagnostics");
 
     let core_evaluation = evaluate_core_pure_imaginary_log_moment_exponent_for_tilt(
         &transition_context,
@@ -691,7 +698,7 @@ fn core_pure_imaginary_log_moment_matches_row_diagnostics() {
     );
 }
 
-fn build_non_nested_transition_request() -> VanillaOptionPricingRequest {
+fn build_row_dependent_tilt_request() -> VanillaOptionPricingRequest {
     VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 105.0, 1.0, 0.0, 0.0)
             .expect("market inputs should construct"),
@@ -722,7 +729,7 @@ fn build_non_nested_transition_request() -> VanillaOptionPricingRequest {
     .expect("pricing request should construct")
 }
 
-fn build_resolved_non_nested_transition_rows(
+fn build_resolved_row_dependent_tilt_rows(
     transition_context: &LocalTransitionRequestContext,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
 ) -> Vec<(
@@ -737,7 +744,7 @@ fn build_resolved_non_nested_transition_rows(
         let transition_row = transition_context
             .build_row_state(deviation)
             .expect("transition row should construct");
-        if transition_row.uses_nested_transition_measure() {
+        if transition_row.has_row_independent_local_tilt_target() {
             continue;
         }
 
@@ -755,36 +762,27 @@ fn build_resolved_non_nested_transition_rows(
 
     assert!(
         !resolved_rows.is_empty(),
-        "expected at least one resolvable non-nested transition row"
+        "expected at least one resolvable row-dependent transition row"
     );
 
     resolved_rows
 }
 
 #[test]
-fn local_transition_theta_short_circuits_to_zero_for_zero_adjustment_requests() {
+fn local_transition_theta_solves_martingale_for_zero_adjustment_requests() {
     let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.0, 0.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        disabled_boundary_input(
-            1.0,
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-        ),
+        disabled_boundary_input(1.0, nontrivial_hawkes_state()),
         valid_model_parameters(),
         1.0,
     )
     .expect("pricing request should construct");
 
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
-        .expect("interval factors should construct");
+    let interval_factors = nontrivial_interval_factors();
 
     let (theta, diagnostics) = resolve_local_transition_theta(
         &request,
@@ -797,40 +795,62 @@ fn local_transition_theta_short_circuits_to_zero_for_zero_adjustment_requests() 
     )
     .expect("zero-adjustment request should resolve transition theta");
 
-    assert_eq!(theta, 0.0);
-    assert_eq!(diagnostics, None);
+    let diagnostics = diagnostics.expect("non-trivial zero-adjustment request should solve theta");
+
+    assert_ne!(theta, 0.0);
+    assert_eq!(diagnostics.theta, theta);
+    assert_eq!(diagnostics.target_log_moment_exponent, 0.0);
+    assert!(
+        diagnostics.absolute_residual <= diagnostics.tolerance,
+        "theta residual {} exceeded tolerance {}",
+        diagnostics.absolute_residual,
+        diagnostics.tolerance
+    );
 }
 
 #[test]
-fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
+fn zero_adjustment_materialization_uses_tilted_hawkes_update_when_theta_is_nonzero() {
     let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.0, 0.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        disabled_boundary_input(
-            1.0,
-            HawkesExcitationState {
-                y_plus_plus: 0.35,
-                y_plus_minus: 0.15,
-                y_minus_plus: 0.25,
-                y_minus_minus: 0.4,
-            },
-        ),
+        disabled_boundary_input(1.0, nontrivial_hawkes_state()),
         valid_model_parameters(),
         1.0,
     )
     .expect("pricing request should construct");
 
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15, 1.0)
-        .expect("interval factors should construct");
+    let interval_factors = nontrivial_interval_factors();
 
     let driver_parameters = request
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .expect("driver parameters should derive");
+
+    let (theta, diagnostics) =
+        resolve_local_transition_theta(&request, interval_factors, driver_parameters)
+            .expect("local transition theta should resolve");
+
+    let diagnostics = diagnostics.expect("non-trivial zero-adjustment request should solve theta");
+
+    assert_ne!(theta, 0.0);
+    assert!(
+        diagnostics.absolute_residual <= diagnostics.tolerance,
+        "theta residual {} exceeded tolerance {}",
+        diagnostics.absolute_residual,
+        diagnostics.tolerance
+    );
+
+    let local_expectations = derive_local_tilted_interval_expectations(
+        &request,
+        driver_parameters,
+        interval_factors,
+        theta,
+    )
+    .expect("local tilted expectations should derive");
 
     let mut observer = None;
 
@@ -866,8 +886,21 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
     )
     .expect("first-moment expected projection should evaluate");
 
+    let expected_tilted_state = evolve_expected_hawkes_state_from_integrated_statistics(
+        request.model_parameters.hawkes_kernel_parameters,
+        interval_factors.s_h,
+        request.interval_delta,
+        request.boundary_input.hawkes_boundary_state,
+        local_expectations.expected_statistics,
+    )
+    .expect("tilted expected Hawkes state should evolve");
+
     assert_eq!(
         materialization.expected_hawkes_state_path[1],
+        expected_tilted_state
+    );
+    assert_ne!(
+        expected_tilted_state,
         expected_projection.structural_state_after
     );
 }
@@ -880,15 +913,7 @@ fn near_origin_positive_real_characteristic_function_evaluation_remains_finite()
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        disabled_boundary_input(
-            1.0,
-            HawkesExcitationState {
-                y_plus_plus: 0.35,
-                y_plus_minus: 0.15,
-                y_minus_plus: 0.25,
-                y_minus_minus: 0.4,
-            },
-        ),
+        disabled_boundary_input(1.0, nontrivial_hawkes_state()),
         valid_model_parameters(),
         1.0,
     )
@@ -900,8 +925,7 @@ fn near_origin_positive_real_characteristic_function_evaluation_remains_finite()
         .derive_driver_parameters()
         .expect("driver parameters should derive");
 
-    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15, 1.0)
-        .expect("interval factors should construct");
+    let interval_factors = nontrivial_interval_factors();
 
     let news_intensity = interval_factors
         .news_intensity_input()

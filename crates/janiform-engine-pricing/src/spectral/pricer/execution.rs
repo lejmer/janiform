@@ -949,7 +949,7 @@ mod tests {
         assert!(
             row_states
                 .iter()
-                .any(|row_state| !row_state.uses_nested_transition_measure()),
+                .any(|row_state| !row_state.has_row_independent_local_tilt_target()),
             "test fixture should require true adaptive midpoint certification"
         );
 
