@@ -87,6 +87,12 @@ fn fit_help_shows_no_persist_opt_out() {
         stdout.contains("--no-persist"),
         "missing --no-persist in fit help:\n{stdout}"
     );
+    for expected_resume_stage in ["option-refinement", "finalization"] {
+        assert!(
+            stdout.contains(expected_resume_stage),
+            "missing resume stage `{expected_resume_stage}` in fit help:\n{stdout}"
+        );
+    }
 }
 
 #[test]

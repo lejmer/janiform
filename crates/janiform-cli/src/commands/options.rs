@@ -37,6 +37,10 @@ pub(crate) enum CalibrationStageOption {
     MeanReversion,
     #[value(help = "Resume from the joint-refinement stage.")]
     JointRefinement,
+    #[value(help = "Resume from the option-refinement stage.")]
+    OptionRefinement,
+    #[value(help = "Resume from the finalization stage.")]
+    Finalization,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
