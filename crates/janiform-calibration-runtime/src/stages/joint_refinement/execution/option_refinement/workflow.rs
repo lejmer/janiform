@@ -25,10 +25,11 @@ use super::super::{
     JointRefinementOptionTierPricingArtifact, JointRefinementRestartOutcome,
     JointRefinementResumeStore, OptionPricingProgressInput, OptionPricingProgressSnapshot,
     OptionPricingProgressSnapshotSource, OptionSurfaceTierPricingArtifactResolutionInput,
-    elapsed_millis, ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact,
+    elapsed_millis, ordered_parameter_bits, planned_restart_work_item_labels,
+    resolve_option_surface_tier_pricing_artifact,
 };
 use super::candidate_parallelism::{
-    option_refinement_candidate_parallelism, option_refinement_candidate_pricing_cpu_count,
+    option_refinement_candidate_parallelism, option_refinement_candidate_pricing_cpu_counts,
 };
 use super::pricing_block_optimizer::{
     OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard,
@@ -535,15 +536,25 @@ fn refine_search_tier_candidates(
 
     let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
 
+    let planned_work_item_labels = planned_restart_work_item_labels(
+        dynamics_candidates
+            .iter()
+            .map(|candidate| candidate.restart_id.as_str()),
+    );
+
     let mut candidate_slots = vec![None; total_units];
     let mut unresolved_candidates = Vec::new();
 
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput::new(
-        progress_sender,
-        JointRefinementStageProgressPhase::OptionSearchTierRefinement,
-        0,
-        total_units,
-    ));
+    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
+        aggregate_progress_percent: Some(0),
+        planned_work_item_labels: planned_work_item_labels.as_slice(),
+        ..OptionRefinementProgressEmissionInput::new(
+            progress_sender,
+            JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            0,
+            total_units,
+        )
+    });
 
     for (source_rank, dynamics_candidate) in dynamics_candidates.iter().enumerate() {
         if let Some(resume_store) = resume_store.as_deref_mut()
@@ -553,6 +564,7 @@ fn refine_search_tier_candidates(
             )
         {
             resumed_candidate.source_rank = source_rank;
+
             let resumed_search_tier_score = resumed_candidate.search_tier_score;
 
             let progress_snapshot = shared_progress_state.record_resumed_candidate(
@@ -589,8 +601,8 @@ fn refine_search_tier_candidates(
     let candidate_parallelism =
         option_refinement_candidate_parallelism(context, unresolved_candidates.len());
 
-    let pricing_cpu_count =
-        option_refinement_candidate_pricing_cpu_count(context, candidate_parallelism);
+    let pricing_cpu_counts =
+        option_refinement_candidate_pricing_cpu_counts(context, candidate_parallelism);
 
     let unresolved_candidate_count = unresolved_candidates.len().max(1);
 
@@ -602,8 +614,9 @@ fn refine_search_tier_candidates(
 
     let pending_jobs = unresolved_candidates
         .into_iter()
-        .map(
-            |(source_rank, dynamics_candidate)| ParallelSearchTierCandidateRefinementInput {
+        .zip(pricing_cpu_counts.iter().copied().cycle())
+        .map(|((source_rank, dynamics_candidate), pricing_cpu_count)| {
+            ParallelSearchTierCandidateRefinementInput {
                 context,
                 source_rank,
                 dynamics_candidate,
@@ -613,8 +626,8 @@ fn refine_search_tier_candidates(
                 pricing_cpu_count,
                 wall_clock_budget,
                 candidate_budget_share_count: unresolved_candidate_count,
-            },
-        )
+            }
+        })
         .collect::<Vec<_>>();
 
     let mut unresolved_results = Vec::with_capacity(pending_jobs.len());
@@ -860,16 +873,25 @@ fn evaluate_selection_tier_candidates(
     let total_units = search_candidates.len();
 
     let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
+    let planned_work_item_labels = planned_restart_work_item_labels(
+        search_candidates
+            .iter()
+            .map(|candidate| candidate.restart_outcome.restart_id.as_str()),
+    );
 
     let mut candidate_slots = vec![None; total_units];
     let mut unresolved_candidates = Vec::new();
 
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput::new(
-        progress_sender,
-        JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
-        0,
-        total_units,
-    ));
+    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
+        aggregate_progress_percent: Some(0),
+        planned_work_item_labels: planned_work_item_labels.as_slice(),
+        ..OptionRefinementProgressEmissionInput::new(
+            progress_sender,
+            JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+            0,
+            total_units,
+        )
+    });
 
     for (candidate_position, search_candidate) in search_candidates.into_iter().enumerate() {
         let restart_id = search_candidate.restart_outcome.restart_id.as_str();
@@ -914,22 +936,25 @@ fn evaluate_selection_tier_candidates(
     let candidate_parallelism =
         option_refinement_candidate_parallelism(context, unresolved_candidates.len());
 
-    let pricing_cpu_count =
-        option_refinement_candidate_pricing_cpu_count(context, candidate_parallelism);
+    let pricing_cpu_counts =
+        option_refinement_candidate_pricing_cpu_counts(context, candidate_parallelism);
 
     let pending_jobs = unresolved_candidates
         .into_iter()
-        .map(|(candidate_position, search_candidate)| {
-            ParallelSelectionTierCandidateEvaluationInput {
-                context,
-                candidate_position,
-                search_candidate,
-                progress_sender,
-                total_units,
-                shared_progress_state: Arc::clone(&shared_progress_state),
-                pricing_cpu_count,
-            }
-        })
+        .zip(pricing_cpu_counts.iter().copied().cycle())
+        .map(
+            |((candidate_position, search_candidate), pricing_cpu_count)| {
+                ParallelSelectionTierCandidateEvaluationInput {
+                    context,
+                    candidate_position,
+                    search_candidate,
+                    progress_sender,
+                    total_units,
+                    shared_progress_state: Arc::clone(&shared_progress_state),
+                    pricing_cpu_count,
+                }
+            },
+        )
         .collect::<Vec<_>>();
 
     let mut unresolved_results = Vec::with_capacity(pending_jobs.len());
@@ -1400,6 +1425,7 @@ struct OptionRefinementProgressEmissionInput<'a> {
     total_evaluation_budget: Option<usize>,
     evaluation_progress_percent: Option<usize>,
     aggregate_progress_percent: Option<usize>,
+    planned_work_item_labels: &'a [String],
 }
 
 impl<'a> OptionRefinementProgressEmissionInput<'a> {
@@ -1424,6 +1450,7 @@ impl<'a> OptionRefinementProgressEmissionInput<'a> {
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
             aggregate_progress_percent: None,
+            planned_work_item_labels: &[],
         }
     }
 }
@@ -1444,9 +1471,11 @@ fn emit_option_refinement_progress(input: OptionRefinementProgressEmissionInput<
         total_evaluation_budget,
         evaluation_progress_percent,
         aggregate_progress_percent,
+        planned_work_item_labels,
     } = input;
 
     if let Some(progress_sender) = progress_sender {
+        // Progress updates own labels because they cross the observer channel.
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
             aggregate_progress_percent,
             current_restart_id: current_restart_id.map(str::to_string),
@@ -1458,6 +1487,7 @@ fn emit_option_refinement_progress(input: OptionRefinementProgressEmissionInput<
             current_global_loss: current_weighted_objective,
             best_restart_id: best_restart_id.map(str::to_string),
             best_global_loss: best_weighted_objective,
+            planned_work_item_labels: planned_work_item_labels.to_vec(),
             ..JointRefinementStageProgressUpdate::new(phase, completed_units, total_units)
         });
     }

@@ -81,7 +81,7 @@ pub(crate) use shared::{
     build_exchange_calendar_registry_artifact, build_halton_restart_id,
     deduplicate_restart_seed_candidates, elapsed_millis, halton_parameter_vector,
     joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
-    ordered_parameter_bits, with_joint_refinement_thread_pool,
+    ordered_parameter_bits, planned_restart_work_item_labels, with_joint_refinement_thread_pool,
 };
 pub(crate) use state::{
     JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT,

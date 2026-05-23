@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use janiform_foundations::numeric::ceil_integer_square_root;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::grids::{
     SpectralThetaWarmStartKey, VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
@@ -11,7 +12,7 @@ use super::super::row_frequency::{
 };
 use super::super::{
     PricingProgressEvent, SpectralThetaWarmStartState, VanillaOptionPricingRunError,
-    emit_pricing_progress,
+    emit_pricing_progress, install_pricing_parallelism, resolved_pricing_cpu_count,
 };
 use super::super::{RiskNeutralAnchorMaterialization, VanillaOptionPricingIntervalFactors};
 use super::core::{
@@ -96,29 +97,17 @@ pub(super) fn build_bucketed_cached_interval_operators(
 
     let current_driver_configuration = theta_warm_start_driver_configuration(driver_parameters);
 
-    let mut cached_interval_operators = Vec::with_capacity(jobs.len());
+    let bucketed_outputs = build_bucketed_interval_operator_outputs(
+        jobs,
+        features.as_slice(),
+        &representative_offset_set,
+        &representative_outputs,
+        solve_context,
+    )?;
 
-    for job in jobs {
-        let output = if representative_offset_set.contains(&job.interval_offset) {
-            representative_outputs
-                .get(&job.interval_offset)
-                .cloned()
-                .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-                    message: "missing bucket representative interval operator".to_string(),
-                })?
-        } else {
-            let representative_offset =
-                nearest_representative_interval_offset(job.interval_offset, features.as_slice());
+    let mut cached_interval_operators = Vec::with_capacity(bucketed_outputs.len());
 
-            let representative_output = representative_outputs
-                .get(&representative_offset)
-                .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-                    message: "missing nearest bucket representative interval operator".to_string(),
-                })?;
-
-            build_bucketed_interval_operator(job, solve_context, representative_output)?
-        };
-
+    for output in bucketed_outputs {
         if let Some(state) = theta_warm_start_state.as_deref_mut() {
             state.record_interval_theta_states(
                 theta_warm_start_key,
@@ -157,6 +146,70 @@ pub(super) fn build_bucketed_cached_interval_operators(
             },
         ),
     })
+}
+
+fn build_bucketed_interval_operator_outputs(
+    jobs: &[CachedIntervalOperatorJob],
+    features: &[IntervalBucketFeature],
+    representative_offset_set: &BTreeSet<usize>,
+    representative_outputs: &BTreeMap<usize, CachedIntervalOperatorSolveOutput>,
+    solve_context: CachedIntervalOperatorSolveContext<'_>,
+) -> Result<Vec<CachedIntervalOperatorSolveOutput>, VanillaOptionPricingRunError> {
+    if resolved_pricing_cpu_count(solve_context.cpu_count) > 1 && jobs.len() > 1 {
+        return install_pricing_parallelism(solve_context.pricing_thread_pool, || {
+            jobs.par_iter()
+                .map(|job| {
+                    build_single_bucketed_interval_operator_output(
+                        job,
+                        features,
+                        representative_offset_set,
+                        representative_outputs,
+                        solve_context,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()
+        });
+    }
+
+    jobs.iter()
+        .map(|job| {
+            build_single_bucketed_interval_operator_output(
+                job,
+                features,
+                representative_offset_set,
+                representative_outputs,
+                solve_context,
+            )
+        })
+        .collect()
+}
+
+fn build_single_bucketed_interval_operator_output(
+    job: &CachedIntervalOperatorJob,
+    features: &[IntervalBucketFeature],
+    representative_offset_set: &BTreeSet<usize>,
+    representative_outputs: &BTreeMap<usize, CachedIntervalOperatorSolveOutput>,
+    solve_context: CachedIntervalOperatorSolveContext<'_>,
+) -> Result<CachedIntervalOperatorSolveOutput, VanillaOptionPricingRunError> {
+    if representative_offset_set.contains(&job.interval_offset) {
+        return representative_outputs
+            .get(&job.interval_offset)
+            .cloned()
+            .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: "missing bucket representative interval operator".to_string(),
+            });
+    }
+
+    let representative_offset =
+        nearest_representative_interval_offset(job.interval_offset, features);
+
+    let representative_output = representative_outputs
+        .get(&representative_offset)
+        .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "missing nearest bucket representative interval operator".to_string(),
+        })?;
+
+    build_bucketed_interval_operator(job, solve_context, representative_output)
 }
 
 fn solve_bucket_representative_interval_operators(

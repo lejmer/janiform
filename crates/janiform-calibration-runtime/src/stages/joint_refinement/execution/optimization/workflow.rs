@@ -27,7 +27,7 @@ use super::super::{
     JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementContext, JointRefinementFidelityTier,
     JointRefinementRestartOutcome, JointRefinementResumeStore,
     joint_refinement_has_parallel_worker_capacity, option_pricing_execution_failure_message,
-    simulation_infrastructure_failure_message,
+    planned_restart_work_item_labels, simulation_infrastructure_failure_message,
 };
 
 // Joint restart direct search uses binary mesh refinement after a failed complete
@@ -106,10 +106,11 @@ pub(crate) fn optimize_restart_seeds(
     // Resume passes only pending restart seeds while retaining the original search depth.
     let total_units = restart_seeds.len();
 
-    let planned_work_item_labels = restart_seeds
-        .iter()
-        .map(|(restart_id, _)| restart_id.clone())
-        .collect::<Vec<_>>();
+    let planned_work_item_labels = planned_restart_work_item_labels(
+        restart_seeds
+            .iter()
+            .map(|(restart_id, _)| restart_id.as_str()),
+    );
 
     let total_evaluation_budget =
         restart_candidate_total_evaluation_budget(context, solver_settings, budget_schedule);

@@ -369,6 +369,51 @@ fn option_refinement_progress_table_includes_pricing_interval_and_rows() {
 }
 
 #[test]
+fn option_refinement_phase_start_seeds_planned_rows_without_active_work_item() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+    );
+    progress.aggregate_progress_percent = Some(0);
+    progress.planned_work_item_labels = vec!["halton_02".to_string(), "halton_14".to_string()];
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("option refinement phase-start progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            work_item_label,
+            planned_work_item_labels,
+            work_item_columns,
+            work_item_metrics,
+            latest_signal,
+            ..
+        }) => {
+            assert_eq!(work_item_label, None);
+            assert_eq!(
+                planned_work_item_labels,
+                vec!["halton_02".to_string(), "halton_14".to_string()]
+            );
+            assert_eq!(work_item_columns, Vec::new());
+            assert_eq!(work_item_metrics, Vec::new());
+            assert_eq!(latest_signal, None);
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
 fn option_refinement_interval_metric_uses_completed_count_without_row_detail() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,

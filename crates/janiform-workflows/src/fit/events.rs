@@ -222,7 +222,7 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
             let work_item_metrics = work_item_table_metrics(progress);
             let work_item_label = progress_work_item_label(progress, work_item_metrics.as_slice());
-            let planned_work_item_labels = work_item_planned_labels(progress, &work_item_label);
+            let planned_work_item_labels = progress.planned_work_item_labels.clone();
             let work_item_columns = work_item_columns(progress, &work_item_label);
             let work_item_metrics = display_work_item_metrics(work_item_metrics, &work_item_label);
 
@@ -702,22 +702,11 @@ fn work_item_columns(
     progress: &CalibrationStagedRunStageProgressEvent,
     work_item_label: &Option<String>,
 ) -> Vec<ProgressWorkItemColumn> {
-    if work_item_label.is_none() {
+    if work_item_label.is_none() && progress.planned_work_item_labels.is_empty() {
         return Vec::new();
     }
 
     work_item_table_columns(progress)
-}
-
-fn work_item_planned_labels(
-    progress: &CalibrationStagedRunStageProgressEvent,
-    work_item_label: &Option<String>,
-) -> Vec<String> {
-    if work_item_label.is_none() {
-        return Vec::new();
-    }
-
-    progress.planned_work_item_labels.clone()
 }
 
 fn display_work_item_metrics(

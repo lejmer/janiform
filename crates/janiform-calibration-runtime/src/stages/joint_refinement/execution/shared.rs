@@ -18,6 +18,12 @@ pub(crate) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
         .collect::<Vec<_>>()
 }
 
+pub(crate) fn planned_restart_work_item_labels<'a>(
+    restart_ids: impl IntoIterator<Item = &'a str>,
+) -> Vec<String> {
+    restart_ids.into_iter().map(str::to_string).collect()
+}
+
 pub(crate) fn elapsed_millis(started_at: Instant) -> u64 {
     started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }

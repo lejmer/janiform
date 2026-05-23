@@ -350,6 +350,10 @@ fn should_observe_staged_event(
         return true;
     }
 
+    if progress.current_item_label.is_some() && progress.evaluation_progress_percent == Some(0) {
+        return true;
+    }
+
     if progress.current_item_label.is_some()
         && progress.current_parameter_block.is_some()
         && progress.evaluation_progress_percent.is_none()
@@ -575,11 +579,49 @@ mod tests {
 
         assert!(should_observe_staged_event(
             &mut progress_gate,
-            &joint_refinement_restart_progress_event("baseline", None, Some(1), Some(1),)
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::RestartOptimization,
+                Some("baseline"),
+                None,
+                Some(1),
+                Some(1),
+            )
         ));
         assert!(should_observe_staged_event(
             &mut progress_gate,
-            &joint_refinement_restart_progress_event("midpoint", Some("nig"), Some(0), None,)
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::RestartOptimization,
+                Some("midpoint"),
+                Some("nig"),
+                Some(0),
+                None,
+            )
+        ));
+    }
+
+    #[test]
+    fn progress_gate_observes_active_option_work_item_start_after_phase_start() {
+        let mut progress_gate = VolatileProgressGate::default();
+
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+                None,
+                None,
+                None,
+                None,
+            )
+        ));
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+                Some("halton_02"),
+                None,
+                Some(0),
+                Some(0),
+            )
         ));
     }
 
@@ -635,8 +677,9 @@ mod tests {
         ))
     }
 
-    fn joint_refinement_restart_progress_event(
-        restart_id: &str,
+    fn joint_refinement_progress_event(
+        phase: JointRefinementStageProgressPhase,
+        restart_id: Option<&str>,
         current_parameter_block: Option<&str>,
         current_evaluation_count: Option<usize>,
         evaluation_progress_percent: Option<usize>,
@@ -647,15 +690,13 @@ mod tests {
                 stage: CalibrationStage::JointRefinement,
                 stage_index: 5,
                 stage_count: 5,
-                progress_phase: CalibrationStageProgressPhase::JointRefinement(
-                    JointRefinementStageProgressPhase::RestartOptimization,
-                ),
+                progress_phase: CalibrationStageProgressPhase::JointRefinement(phase),
                 completed_units: 0,
                 total_units: 6,
                 stage_progress_percent: None,
                 aggregate_progress_percent: None,
-                current_item_label: Some(restart_id.to_string()),
-                current_restart_id: Some(restart_id.to_string()),
+                current_item_label: restart_id.map(str::to_string),
+                current_restart_id: restart_id.map(str::to_string),
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: Some(5),
