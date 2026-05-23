@@ -1155,6 +1155,7 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
     Ok((theta, Some(diagnostics)))
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_local_transition_theta(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: VanillaOptionPricingIntervalFactors,
@@ -1340,6 +1341,8 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
     observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
 ) -> Result<RiskNeutralAnchorMaterialization, VanillaOptionPricingRunError> {
     let mut current_boundary_state = pricing_request
         .boundary_input
@@ -1389,14 +1392,21 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
             interval_delta,
         )?;
 
-        let (local_transition_theta, _) =
-            resolve_local_transition_theta(&local_request, interval_factor, driver_parameters)?;
+        let (local_transition_theta, _) = resolve_local_transition_theta_with_parallelism(
+            &local_request,
+            interval_factor,
+            driver_parameters,
+            pricing_thread_pool,
+            cpu_count,
+        )?;
 
-        let local_expectations = derive_local_tilted_interval_expectations(
+        let local_expectations = derive_local_tilted_interval_expectations_with_parallelism(
             &local_request,
             driver_parameters,
             interval_factor,
             local_transition_theta,
+            pricing_thread_pool,
+            cpu_count,
         )?;
 
         current_boundary_state = evolve_mean_reversion_boundary_state_with_endogenous_pressure(
@@ -1427,6 +1437,17 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
         expected_hawkes_state_path.push(current_hawkes_state);
     }
 
+    emit_node_progress(
+        observer,
+        PricingNodeProgress::new(
+            PricingNodeProgressPhase::MaterializingRiskNeutralAnchors,
+            None,
+            Some(interval_factors.len()),
+            None,
+            None,
+        ),
+    );
+
     let runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
         "pricing_internal_endogenous_q_anchor_recursion.v1",
         pricing_request
@@ -1453,6 +1474,7 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
     })
 }
 
+#[cfg(test)]
 pub(crate) fn derive_local_tilted_interval_expectations(
     pricing_request: &VanillaOptionPricingRequest,
     driver_parameters: NigBuySellDriverParameters,

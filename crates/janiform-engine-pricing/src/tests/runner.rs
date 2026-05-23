@@ -500,6 +500,8 @@ fn risk_neutral_anchor_materialization_accepts_row_independent_zero_carry_reques
         interval_factors.as_slice(),
         driver_parameters,
         &mut observer,
+        None,
+        None,
     )
     .expect("risk-neutral anchor materialization should succeed");
 
@@ -860,6 +862,8 @@ fn zero_adjustment_materialization_uses_tilted_hawkes_update_when_theta_is_nonze
         &[interval_factors],
         driver_parameters,
         &mut observer,
+        None,
+        None,
     )
     .expect("risk-neutral anchor materialization should succeed");
 

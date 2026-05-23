@@ -14,7 +14,7 @@ use crate::grids::{
     spectral_theta_warm_start_payoff_type_mask,
 };
 use crate::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
-use crate::progress::PricingProgressEvent;
+use crate::progress::{PricingNodeProgress, PricingProgressEvent};
 use crate::runner::{
     VanillaOptionPricingExecutionInput, VanillaOptionPricingRunError,
     build_pricing_sufficient_statistics_neutral_anchor_materialization,
@@ -380,16 +380,28 @@ fn prepare_pricing_group_contexts(
             .derive_driver_parameters()
             .map_err(|source| format!("failed to derive pricing driver parameters: {source}"))?;
 
-        let mut no_observer = None;
+        let materialization = {
+            let mut materialization_progress_observer = |event: PricingNodeProgress| {
+                if let Some(pricing_event) =
+                    PricingProgressEvent::from_risk_neutral_anchor_materialization_progress(event)
+                {
+                    emit_pricing_progress(observer, pricing_event);
+                }
+            };
+            let mut materialization_observer =
+                Some(&mut materialization_progress_observer as &mut dyn FnMut(PricingNodeProgress));
 
-        let materialization = build_pricing_sufficient_statistics_neutral_anchor_materialization(
-            &base_request,
-            &execution_input.runtime_interval_schedule,
-            execution_input.interval_factors.as_slice(),
-            driver_parameters,
-            &mut no_observer,
-        )
-        .map_err(|source| format!("failed to materialize spectral pricing anchors: {source}"))?;
+            build_pricing_sufficient_statistics_neutral_anchor_materialization(
+                &base_request,
+                &execution_input.runtime_interval_schedule,
+                execution_input.interval_factors.as_slice(),
+                driver_parameters,
+                &mut materialization_observer,
+                pricing_thread_pool,
+                cpu_count,
+            )
+            .map_err(|source| format!("failed to materialize spectral pricing anchors: {source}"))?
+        };
 
         let unique_maturity_counts = execution_input
             .request
@@ -910,6 +922,8 @@ mod tests {
             interval_factors.as_slice(),
             driver_parameters,
             &mut no_observer,
+            None,
+            None,
         )
         .expect("risk-neutral anchor materialization should succeed");
 

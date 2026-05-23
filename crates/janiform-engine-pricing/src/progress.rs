@@ -94,6 +94,27 @@ pub struct PricingProgressEvent {
 }
 
 impl PricingProgressEvent {
+    pub(crate) fn from_risk_neutral_anchor_materialization_progress(
+        event: PricingNodeProgress,
+    ) -> Option<Self> {
+        if event.phase != PricingNodeProgressPhase::MaterializingRiskNeutralAnchors {
+            return None;
+        }
+
+        let total_intervals = event.total_intervals?;
+        let completed_interval_count = event
+            .current_interval_index
+            .unwrap_or(total_intervals)
+            .min(total_intervals);
+
+        Some(Self::interval_progress(
+            completed_interval_count,
+            total_intervals,
+            Some(completed_interval_count),
+            total_intervals,
+        ))
+    }
+
     pub fn group_progress(
         completed_units: usize,
         total_units: usize,
@@ -202,5 +223,54 @@ pub(crate) fn emit_node_progress(
 ) {
     if let Some(observer) = observer.as_deref_mut() {
         observer(event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PricingNodeProgress, PricingNodeProgressPhase, PricingProgressEvent};
+
+    #[test]
+    fn anchor_materialization_progress_forwards_interval_counts() {
+        let progress_events = [
+            PricingNodeProgress::for_interval(
+                PricingNodeProgressPhase::MaterializingRiskNeutralAnchors,
+                0,
+                47,
+            ),
+            PricingNodeProgress::for_interval(
+                PricingNodeProgressPhase::MaterializingRiskNeutralAnchors,
+                47,
+                47,
+            ),
+        ]
+        .into_iter()
+        .map(PricingProgressEvent::from_risk_neutral_anchor_materialization_progress)
+        .collect::<Vec<_>>();
+
+        assert_eq!(
+            progress_events,
+            vec![
+                Some(PricingProgressEvent::interval_progress(0, 47, Some(0), 47)),
+                Some(PricingProgressEvent::interval_progress(
+                    47,
+                    47,
+                    Some(47),
+                    47
+                )),
+            ],
+        );
+    }
+
+    #[test]
+    fn non_materialization_node_progress_does_not_map_to_interval_progress() {
+        assert_eq!(
+            PricingProgressEvent::from_risk_neutral_anchor_materialization_progress(
+                PricingNodeProgress::phase_only(
+                    PricingNodeProgressPhase::EvaluatingFourierInversion
+                ),
+            ),
+            None,
+        );
     }
 }

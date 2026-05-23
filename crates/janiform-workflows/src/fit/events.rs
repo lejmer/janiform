@@ -520,9 +520,17 @@ fn stage_progress_signal_with_metrics(
         return Some(signal);
     }
 
+    if work_item_phase_uses_row_scoped_evaluations(&progress.progress_phase)
+        && progress_work_item_label(progress, work_item_metrics).is_some()
+    {
+        return None;
+    }
+
     let mut parts = Vec::new();
 
-    if let Some(current_item_label) = progress.current_item_label.as_deref() {
+    if progress_signal_includes_current_item_label(&progress.progress_phase)
+        && let Some(current_item_label) = progress.current_item_label.as_deref()
+    {
         parts.push(current_item_label.to_string());
     }
 
@@ -560,6 +568,28 @@ fn stage_progress_signal_with_metrics(
     }
 
     (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+fn progress_signal_includes_current_item_label(phase: &CalibrationStageProgressPhase) -> bool {
+    !matches!(
+        phase,
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::OptionSearchTierRefinement
+                | JointRefinementStageProgressPhase::OptionSelectionTierEvaluation
+                | JointRefinementStageProgressPhase::OptionAuditTierEvaluation
+        )
+    )
+}
+
+fn work_item_phase_uses_row_scoped_evaluations(phase: &CalibrationStageProgressPhase) -> bool {
+    matches!(
+        phase,
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::OptionSearchTierRefinement
+                | JointRefinementStageProgressPhase::OptionSelectionTierEvaluation
+                | JointRefinementStageProgressPhase::OptionAuditTierEvaluation
+        )
+    )
 }
 
 fn parallel_stage_progress_signal(
