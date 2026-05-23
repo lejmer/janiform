@@ -16,7 +16,9 @@ use super::super::progress::{
 use super::bessel::{log_modified_bessel_k1, modified_bessel_k0_to_k1_ratio};
 use super::bounds::nig_search_point_from_configuration;
 use super::likelihood::{maximum_open_beta_ratio, minimum_open_beta_ratio};
-use super::proxy_em_diagnostics::{ProxyEmFitOutcome, ProxyEmFitStopReason, ProxyEmSeedCounters};
+use super::proxy_em_diagnostics::{
+    ProxyEmBestObjectiveDiagnostic, ProxyEmFitOutcome, ProxyEmFitStopReason, ProxyEmSeedCounters,
+};
 use super::proxy_em_sample::{ProxyEmFittingSample, build_proxy_em_fitting_sample};
 use super::types::{
     ContinuousReturnProxyEmDiagnostic, NigShapeSearchPoint,
@@ -30,8 +32,7 @@ struct ProxyEmProgressContext<'a> {
     progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
     completed_seed_count: &'a AtomicUsize,
     completed_evaluation_count: &'a AtomicUsize,
-    best_objective: &'a Mutex<Option<f64>>,
-    final_convergence_ratio: &'a Mutex<Option<f64>>,
+    best_objective: &'a Mutex<ProxyEmBestObjectiveDiagnostic>,
     total_seed_count: usize,
     seed_label: String,
 }
@@ -42,8 +43,7 @@ struct ProxyEmSearchPointBuildContext<'a> {
     progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
     seed_counters: &'a ProxyEmSeedCounters,
     completed_evaluation_count: &'a AtomicUsize,
-    best_objective: &'a Mutex<Option<f64>>,
-    final_convergence_ratio: &'a Mutex<Option<f64>>,
+    best_objective: &'a Mutex<ProxyEmBestObjectiveDiagnostic>,
     total_seed_count: usize,
 }
 
@@ -61,8 +61,7 @@ pub(super) fn build_effective_nig_em_search_points(
 ) -> EffectiveNigProxyEmSearchPointBuildOutput {
     let seed_counters = ProxyEmSeedCounters::new();
     let completed_evaluation_count = AtomicUsize::new(0);
-    let best_objective = Mutex::new(None);
-    let final_convergence_ratio = Mutex::new(None);
+    let best_objective = Mutex::new(ProxyEmBestObjectiveDiagnostic::default());
     let total_seed_count = moment_seed_candidates.len();
     let fitting_sample = build_proxy_em_fitting_sample(calibration_sample);
 
@@ -85,7 +84,6 @@ pub(super) fn build_effective_nig_em_search_points(
                     seed_counters: &seed_counters,
                     completed_evaluation_count: &completed_evaluation_count,
                     best_objective: &best_objective,
-                    final_convergence_ratio: &final_convergence_ratio,
                     total_seed_count,
                 },
                 seed_label.as_str(),
@@ -133,7 +131,6 @@ pub(super) fn build_effective_nig_em_search_points(
         search_points: refined_search_points,
         diagnostic: seed_counters.diagnostic(
             &best_objective,
-            &final_convergence_ratio,
             &completed_evaluation_count,
             total_seed_count,
             maximum_iteration_count.max(1),
@@ -164,7 +161,6 @@ fn build_single_effective_nig_em_search_point(
         completed_seed_count: &build_context.seed_counters.completed_seed_count,
         completed_evaluation_count: build_context.completed_evaluation_count,
         best_objective: build_context.best_objective,
-        final_convergence_ratio: build_context.final_convergence_ratio,
         total_seed_count: build_context.total_seed_count,
         seed_label: seed_label.to_string(),
     };
@@ -258,7 +254,7 @@ fn fit_effective_zero_drift_nig_via_em(
     )?;
 
     if let Some(progress_context) = progress_context {
-        record_proxy_em_best_objective(progress_context.best_objective, current_objective);
+        record_proxy_em_best_objective(progress_context.best_objective, current_objective, None);
     }
 
     for _ in 0..maximum_iteration_count.max(1) {
@@ -310,14 +306,12 @@ fn fit_effective_zero_drift_nig_via_em(
                 .fetch_add(1, Ordering::Relaxed)
                 + 1;
 
-            let best_objective =
-                record_proxy_em_best_objective(progress_context.best_objective, next_objective);
-
             let current_convergence_ratio =
                 convergence_ratio(objective_improvement, objective_tolerance);
 
-            record_proxy_em_final_convergence_ratio(
-                progress_context.final_convergence_ratio,
+            let best_objective = record_proxy_em_best_objective(
+                progress_context.best_objective,
+                next_objective,
                 current_convergence_ratio,
             );
 
@@ -363,40 +357,31 @@ fn fit_effective_zero_drift_nig_via_em(
 }
 
 fn record_proxy_em_best_objective(
-    best_objective: &Mutex<Option<f64>>,
+    best_objective: &Mutex<ProxyEmBestObjectiveDiagnostic>,
     objective: f64,
+    convergence_ratio: Option<f64>,
 ) -> Option<f64> {
     if !objective.is_finite() {
-        return best_objective.lock().ok().and_then(|guard| *guard);
+        return best_objective
+            .lock()
+            .ok()
+            .and_then(|guard| guard.best_objective);
     }
 
     let Ok(mut best_objective_guard) = best_objective.lock() else {
         return None;
     };
 
-    match *best_objective_guard {
+    match best_objective_guard.best_objective {
         Some(current_best_objective) if current_best_objective <= objective => {}
-        _ => *best_objective_guard = Some(objective),
+        _ => {
+            best_objective_guard.best_objective = Some(objective);
+            best_objective_guard.final_convergence_ratio =
+                convergence_ratio.filter(|ratio| ratio.is_finite());
+        }
     }
 
-    *best_objective_guard
-}
-
-fn record_proxy_em_final_convergence_ratio(
-    final_convergence_ratio: &Mutex<Option<f64>>,
-    convergence_ratio: Option<f64>,
-) {
-    let Some(convergence_ratio) = convergence_ratio else {
-        return;
-    };
-
-    if !convergence_ratio.is_finite() {
-        return;
-    }
-
-    if let Ok(mut final_convergence_ratio_guard) = final_convergence_ratio.lock() {
-        *final_convergence_ratio_guard = Some(convergence_ratio);
-    }
+    best_objective_guard.best_objective
 }
 
 fn convergence_ratio(objective_improvement: f64, objective_tolerance: f64) -> Option<f64> {

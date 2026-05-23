@@ -5,8 +5,8 @@ use super::{
     CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
     CalibrationStageParameterOptimizerStateInput, CalibrationStageSeedSource,
     CalibrationStagedRunFailure, CalibrationStagedRunStageReport,
-    calibration_checkpoint_reference_for_stage,
 };
+use janiform_calibration_artifacts::calibration_stage_checkpoint_reference;
 
 pub(super) fn build_stage_parameter_artifact_input(
     stage_report: &CalibrationStagedRunStageReport,
@@ -204,60 +204,81 @@ pub(super) fn build_stage_parameter_artifact_input(
             ))
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
-            let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
-                "successful joint-refinement stage is missing its payload".to_string()
-            })?;
-            let metadata = report.metadata.as_ref().ok_or_else(|| {
-                "successful joint-refinement stage is missing metadata".to_string()
-            })?;
-
-            Ok(CalibrationStageParameterArtifactInput::JointRefinement(
-                Box::new(
-                    janiform_calibration_artifacts::JointRefinementStageParameterArtifactInput {
-                        metadata: build_stage_parameter_metadata(
-                            metadata.stage_output_schema_version,
-                            metadata.run_global_seed,
-                            metadata.stage_seed,
-                            metadata.stage_seed_source,
-                            metadata.stage_seed_derivation_policy,
-                            metadata.solver_settings.clone(),
-                        ),
-                        optimizer_state: build_stage_parameter_optimizer_state_input(
-                            StageParameterOptimizerStateInputBuildInput {
-                                backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
-                                random_seed: metadata.optimizer_adapter_metadata.random_seed,
-                                selection_policy: metadata
-                                    .optimizer_adapter_metadata
-                                    .selection_policy,
-                                penalty_policy: metadata.optimizer_adapter_metadata.penalty_policy,
-                                bounds_policy: metadata.optimizer_adapter_metadata.bounds_policy,
-                                solver_settings: metadata
-                                    .optimizer_adapter_metadata
-                                    .solver_settings
-                                    .clone(),
-                                input_candidate_count: metadata.input_candidate_count,
-                                valid_candidate_count: metadata.valid_candidate_count,
-                                selected_candidate_raw_objective: metadata
-                                    .selected_candidate_raw_objective,
-                                selected_candidate_penalized_objective: metadata
-                                    .selected_candidate_penalized_objective,
-                            },
-                        ),
-                        selected_candidate_id: payload.selected_candidate_id.clone(),
-                        fitted_parameters: payload.fitted_parameters.clone(),
-                        baseline_hawkes_fitted_parameters: payload
-                            .baseline_hawkes_fitted_parameters
-                            .clone(),
-                        baseline_return_components_fitted_parameters: payload
-                            .baseline_return_components_fitted_parameters
-                            .clone(),
-                        objective_breakdown: payload.objective_breakdown.clone(),
-                        optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
-                    },
-                ),
-            ))
+            build_joint_refinement_stage_parameter_artifact_input(
+                report,
+                CalibrationStageParameterArtifactInput::JointRefinement,
+                "joint-refinement",
+            )
+        }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            build_joint_refinement_stage_parameter_artifact_input(
+                report,
+                CalibrationStageParameterArtifactInput::OptionRefinement,
+                "option-refinement",
+            )
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
+            build_joint_refinement_stage_parameter_artifact_input(
+                report,
+                CalibrationStageParameterArtifactInput::Finalization,
+                "finalization",
+            )
         }
     }
+}
+
+fn build_joint_refinement_stage_parameter_artifact_input(
+    report: &crate::stages::joint_refinement::JointRefinementStageExecutionReport,
+    wrap: fn(
+        Box<janiform_calibration_artifacts::JointRefinementStageParameterArtifactInput>,
+    ) -> CalibrationStageParameterArtifactInput,
+    stage_label: &str,
+) -> Result<CalibrationStageParameterArtifactInput, String> {
+    let payload = report
+        .fitted_stage_payload
+        .as_ref()
+        .ok_or_else(|| format!("successful {stage_label} stage is missing its payload"))?;
+
+    let metadata = report
+        .metadata
+        .as_ref()
+        .ok_or_else(|| format!("successful {stage_label} stage is missing metadata"))?;
+
+    Ok(wrap(Box::new(
+        janiform_calibration_artifacts::JointRefinementStageParameterArtifactInput {
+            metadata: build_stage_parameter_metadata(
+                metadata.stage_output_schema_version,
+                metadata.run_global_seed,
+                metadata.stage_seed,
+                metadata.stage_seed_source,
+                metadata.stage_seed_derivation_policy,
+                metadata.solver_settings.clone(),
+            ),
+            optimizer_state: build_stage_parameter_optimizer_state_input(
+                StageParameterOptimizerStateInputBuildInput {
+                    backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
+                    random_seed: metadata.optimizer_adapter_metadata.random_seed,
+                    selection_policy: metadata.optimizer_adapter_metadata.selection_policy,
+                    penalty_policy: metadata.optimizer_adapter_metadata.penalty_policy,
+                    bounds_policy: metadata.optimizer_adapter_metadata.bounds_policy,
+                    solver_settings: metadata.optimizer_adapter_metadata.solver_settings.clone(),
+                    input_candidate_count: metadata.input_candidate_count,
+                    valid_candidate_count: metadata.valid_candidate_count,
+                    selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
+                    selected_candidate_penalized_objective: metadata
+                        .selected_candidate_penalized_objective,
+                },
+            ),
+            selected_candidate_id: payload.selected_candidate_id.clone(),
+            fitted_parameters: payload.fitted_parameters.clone(),
+            baseline_hawkes_fitted_parameters: payload.baseline_hawkes_fitted_parameters.clone(),
+            baseline_return_components_fitted_parameters: payload
+                .baseline_return_components_fitted_parameters
+                .clone(),
+            objective_breakdown: payload.objective_breakdown.clone(),
+            optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
+        },
+    )))
 }
 
 pub(super) fn build_stage_parameter_metadata(
@@ -338,7 +359,7 @@ pub(super) fn build_stage_checkpoint_metadata(
         checkpoint_reference_policy: CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY.to_string(),
         disk_write_policy: CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY.to_string(),
         artifact_manifest_schema_version: CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION.to_string(),
-        checkpoint_reference: calibration_checkpoint_reference_for_stage(
+        checkpoint_reference: calibration_stage_checkpoint_reference(
             run_contract.run_spec.run_id.as_str(),
             stage,
         ),

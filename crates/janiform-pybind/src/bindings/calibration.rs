@@ -1222,6 +1222,12 @@ fn flatten_stage_report_for_python(
         CalibrationStagedRunStageReport::JointRefinement(stage_report) => {
             ("joint_refinement", serde_json::to_value(stage_report)?)
         }
+        CalibrationStagedRunStageReport::OptionRefinement(stage_report) => {
+            ("option_refinement", serde_json::to_value(stage_report)?)
+        }
+        CalibrationStagedRunStageReport::Finalization(stage_report) => {
+            ("finalization", serde_json::to_value(stage_report)?)
+        }
     };
 
     let mut flattened_report = match raw_report {

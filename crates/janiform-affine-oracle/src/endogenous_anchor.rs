@@ -13,7 +13,7 @@ use crate::sufficient_statistics::{
     SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsIntervalStatisticsError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSolveError,
 };
-use janiform_foundations::matrix2::solve_two_by_two_linear_source_system;
+use janiform_foundations::linear_algebra::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::MeanReversionRuntimeIntervalAnchors;
 use janiform_model_kernels::news::{
@@ -23,6 +23,7 @@ use janiform_model_kernels::nig::{
     NigIncrementSamplingError, NigSharedPlusShiftConfiguration,
     NigSharedPlusShiftConfigurationError,
 };
+use nalgebra::{Matrix2, Vector2};
 
 /// One interval's structural factors used by endogenous-anchor recursion.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -634,10 +635,13 @@ fn integrate_expected_target_sums(
     let target_plus_before = structural_state_before.target_plus_sum();
     let target_minus_before = structural_state_before.target_minus_sum();
 
-    let matrix_a = -kernel_parameters.beta + alpha.plus_plus;
-    let matrix_b = alpha.plus_minus;
-    let matrix_c = alpha.minus_plus;
-    let matrix_d = -kernel_parameters.beta + alpha.minus_minus;
+    let system_matrix = Matrix2::new(
+        -kernel_parameters.beta + alpha.plus_plus,
+        alpha.plus_minus,
+        alpha.minus_plus,
+        -kernel_parameters.beta + alpha.minus_minus,
+    );
+    let initial_state = Vector2::new(target_plus_before, target_minus_before);
 
     let source_plus =
         factors.s_h * kernel_parameters.lambda_bar * (alpha.plus_plus + alpha.plus_minus)
@@ -646,23 +650,18 @@ fn integrate_expected_target_sums(
         factors.s_h * kernel_parameters.lambda_bar * (alpha.minus_plus + alpha.minus_minus)
             + expected_activity_loading_rate * (rho.minus_plus + rho.minus_minus);
 
-    let system_solution = solve_two_by_two_linear_source_system(
-        matrix_a,
-        matrix_b,
-        matrix_c,
-        matrix_d,
-        target_plus_before,
-        target_minus_before,
-        source_plus,
-        source_minus,
+    let (target_after, integrated_target) = solve_two_by_two_linear_source_system(
+        system_matrix,
+        initial_state,
+        Vector2::new(source_plus, source_minus),
         factors.delta,
     );
 
     HawkesTargetSumFirstMoment {
-        target_plus_after: system_solution.first_component_after_interval,
-        target_minus_after: system_solution.second_component_after_interval,
-        integrated_target_plus: system_solution.integrated_first_component,
-        integrated_target_minus: system_solution.integrated_second_component,
+        target_plus_after: target_after[0],
+        target_minus_after: target_after[1],
+        integrated_target_plus: integrated_target[0],
+        integrated_target_minus: integrated_target[1],
     }
 }
 

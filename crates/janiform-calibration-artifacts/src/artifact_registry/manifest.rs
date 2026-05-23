@@ -19,10 +19,11 @@ use super::dataset_snapshot::{
 };
 use super::shared::{
     CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
-    calibration_committed_artifact_run_directory, calibration_stage_token,
-    load_validated_json_artifact, persist_validated_json_artifact,
+    calibration_committed_artifact_run_directory, load_validated_json_artifact,
+    persist_validated_json_artifact,
 };
 use super::stage_parameter::CalibrationStageParameterArtifact;
+use super::stage_references::calibration_stage_token;
 use super::validation_metric::{
     CalibrationValidationMetricArtifact, CalibrationValidationMetricArtifactRole,
     CalibrationValidationMetricStatus,
@@ -481,6 +482,12 @@ fn build_manifest_index_metadata(
                 .map(|artifact| artifact.stage_output_schema_version.clone()),
             joint_refinement_stage_output_schema_version: stage_artifacts_by_stage
                 .get(&CalibrationStage::JointRefinement)
+                .map(|artifact| artifact.stage_output_schema_version.clone()),
+            option_refinement_stage_output_schema_version: stage_artifacts_by_stage
+                .get(&CalibrationStage::OptionRefinement)
+                .map(|artifact| artifact.stage_output_schema_version.clone()),
+            finalization_stage_output_schema_version: stage_artifacts_by_stage
+                .get(&CalibrationStage::Finalization)
                 .map(|artifact| artifact.stage_output_schema_version.clone()),
             seasonality_estimator_version,
         },

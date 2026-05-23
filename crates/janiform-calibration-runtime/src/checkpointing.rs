@@ -4,7 +4,8 @@ use janiform_calibration_artifacts::{CalibrationStage, CalibrationStageCheckpoin
 
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::{
-    JointRefinementStageFittedPayload, JointRefinementStageSeasonalityFactorsInput,
+    JointRefinementStageFittedPayload, JointRefinementStageRuntimeHandoff,
+    JointRefinementStageSeasonalityFactorsInput,
 };
 use crate::stages::mean_reversion::{
     MeanReversionStageFittedPayload, MeanReversionStageSeasonalityInput,
@@ -22,6 +23,10 @@ pub(crate) struct CalibrationInMemoryStagePayloadState {
     pub(crate) return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
     pub(crate) mean_reversion_stage_payload: Option<MeanReversionStageFittedPayload>,
     pub(crate) joint_refinement_stage_payload: Option<JointRefinementStageFittedPayload>,
+    pub(crate) option_refinement_stage_payload: Option<JointRefinementStageFittedPayload>,
+    pub(crate) finalization_stage_payload: Option<JointRefinementStageFittedPayload>,
+    pub(crate) joint_refinement_runtime_handoff: Option<JointRefinementStageRuntimeHandoff>,
+    pub(crate) option_refinement_runtime_handoff: Option<JointRefinementStageRuntimeHandoff>,
 }
 
 #[derive(Debug, Clone, Default)]

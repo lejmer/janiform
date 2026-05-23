@@ -998,6 +998,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-model-kernels",
  "janiform-test-support",
+ "nalgebra 0.34.2",
  "serde",
  "serde_json",
 ]
@@ -1073,6 +1074,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "nalgebra 0.34.2",
  "rayon",
  "rustdct",
  "serde",
@@ -1229,6 +1231,7 @@ name = "janiform-test-support"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "janiform-foundations",
  "janiform-market-time",
  "janiform-verification",
  "serde",

@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
+use janiform_foundations::hashing::fnv1a_64_hex_lowercase;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, MarketState,
 };
@@ -2390,14 +2391,7 @@ fn validate_threshold_configuration(
 }
 
 pub fn compute_content_hash_hex(payload_bytes: &[u8]) -> String {
-    let mut hash_state: u64 = 0xcbf29ce484222325;
-
-    for payload_byte in payload_bytes {
-        hash_state ^= u64::from(*payload_byte);
-        hash_state = hash_state.wrapping_mul(0x100000001b3);
-    }
-
-    format!("{hash_state:016x}")
+    fnv1a_64_hex_lowercase(payload_bytes)
 }
 
 pub fn fixtures_root_path() -> PathBuf {

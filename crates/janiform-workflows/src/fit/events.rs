@@ -2,6 +2,7 @@ use std::path::Path;
 
 use janiform_calibration_artifacts::{
     CalibrationStage, JointRefinementStageRestartEvaluationTimingDiagnostic,
+    calibration_stage_token,
 };
 use janiform_calibration_runtime::{
     CalibrationStageExecutionStatus, CalibrationStageProgressPhase, CalibrationStagedRunFailure,
@@ -903,21 +904,11 @@ fn progress_work_item_label(
 }
 
 fn stage_ref(stage: CalibrationStage) -> RunStageRef {
-    RunStageRef::labeled(stage_token(stage), stage_label(stage))
+    RunStageRef::labeled(calibration_stage_token(stage), stage_label(stage))
 }
 
 fn phase_ref(token: &str, label: &str) -> RunPhaseRef {
     RunPhaseRef::labeled(token, label)
-}
-
-fn stage_token(stage: CalibrationStage) -> &'static str {
-    match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-        CalibrationStage::MeanReversion => "mean_reversion",
-        CalibrationStage::JointRefinement => "joint_refinement",
-    }
 }
 
 fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {

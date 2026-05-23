@@ -7,6 +7,7 @@ from typing import Any, Optional, TypedDict, cast
 
 import orjson
 
+from janiform._native_api import native_module
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.errors import calibration_error
 from janiform.contracts import require_boolean
@@ -594,12 +595,8 @@ class ScaleConsistencyRegressionFixtureDocument(TypedDict):
 
 
 def compute_content_hash_hex(payload_bytes: bytes) -> str:
-    hash_state: int = 0xCBF29CE484222325
-    for payload_byte in payload_bytes:
-        hash_state ^= payload_byte
-        hash_state = (hash_state * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
-
-    return f"{hash_state:016x}"
+    native = native_module()
+    return str(native.compute_fnv1a_64_hex_lowercase(payload_bytes))
 
 
 def load_validation_fixture_manifest(manifest_path: Path) -> ValidationFixtureManifestDocument:

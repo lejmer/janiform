@@ -4,6 +4,7 @@ mod manifest;
 mod reload;
 mod shared;
 mod stage_parameter;
+mod stage_references;
 mod validation_metric;
 mod writer;
 
@@ -54,8 +55,7 @@ pub use shared::{
     CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
     calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_experiment_index_path,
-    calibration_experiment_index_root_directory, calibration_stage_token,
-    stage_output_artifact_references_for_stage,
+    calibration_experiment_index_root_directory,
 };
 pub use stage_parameter::{
     CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION,
@@ -80,6 +80,10 @@ pub use stage_parameter::{
     load_calibration_stage_parameter_artifact_from_disk,
     persist_calibration_stage_parameter_artifact_to_disk,
     persist_calibration_stage_parameter_artifact_to_run_directory,
+};
+pub use stage_references::{
+    calibration_stage_artifact_reference, calibration_stage_from_token, calibration_stage_token,
+    stage_output_artifact_references_for_stage,
 };
 pub use validation_metric::{
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_OUTPUT_SCHEMA_METADATA_VERSION,

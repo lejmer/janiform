@@ -10,11 +10,9 @@ use janiform_calibration_artifacts::{
     CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY, CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageCheckpointMetadata, CalibrationStageSeedSource,
+    calibration_stage_checkpoint_reference,
 };
-use janiform_calibration_runtime::{
-    CalibrationStageExecutionStatus, CalibrationStagedRunReport,
-    calibration_checkpoint_reference_for_stage,
-};
+use janiform_calibration_runtime::{CalibrationStageExecutionStatus, CalibrationStagedRunReport};
 use janiform_terminal_ui::CompletionSummary;
 
 use super::FitWorkflowPaths;
@@ -23,10 +21,12 @@ use super::success_summary;
 #[test]
 fn success_summary_reports_latest_emitted_resume_checkpoint() {
     let run_id = "test-run";
+
     let resumed_from_checkpoint_reference =
-        calibration_checkpoint_reference_for_stage(run_id, CalibrationStage::MeanReversion);
+        calibration_stage_checkpoint_reference(run_id, CalibrationStage::MeanReversion);
     let latest_checkpoint_reference =
-        calibration_checkpoint_reference_for_stage(run_id, CalibrationStage::JointRefinement);
+        calibration_stage_checkpoint_reference(run_id, CalibrationStage::JointRefinement);
+
     let report = successful_report(
         run_id,
         Some(resumed_from_checkpoint_reference),
@@ -80,7 +80,7 @@ fn checkpoint_metadata(
         checkpoint_reference_policy: CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY.to_string(),
         disk_write_policy: CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY.to_string(),
         artifact_manifest_schema_version: CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION.to_string(),
-        checkpoint_reference: calibration_checkpoint_reference_for_stage(run_id, completed_stage),
+        checkpoint_reference: calibration_stage_checkpoint_reference(run_id, completed_stage),
         run_id: run_id.to_string(),
         execution_mode: CalibrationExecutionMode::Disk,
         run_contract_schema_version: CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION.to_string(),
@@ -111,6 +111,8 @@ fn completed_stage_position(stage: CalibrationStage) -> usize {
         CalibrationStage::ReturnComponents => 2,
         CalibrationStage::MeanReversion => 3,
         CalibrationStage::JointRefinement => 4,
+        CalibrationStage::OptionRefinement => 5,
+        CalibrationStage::Finalization => 6,
     }
 }
 

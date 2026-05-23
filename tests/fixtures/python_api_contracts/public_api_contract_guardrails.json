@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "2fabe8b0e6616d8812ca735919b121669df67c147f38a4afbf4892e1c98cc22f",
+  "approved_snapshot_sha256": "f66c7528a12d8b2048790681ad2c8d33257c1364d3be165255b1ba469f2667ab",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1418,6 +1418,25 @@
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-23",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/calibration-diagnostics.md"
+      ],
+      "rationale": "Calibration now exposes option refinement and finalization as first-class staged calibration steps, records deterministic calibration effort and warning policy controls, and carries fitted return-mark factors through public vanilla-option pricing request contracts so pricing and staged calibration use the same validated runtime inputs.",
+      "snapshot_sha256": "f66c7528a12d8b2048790681ad2c8d33257c1364d3be165255b1ba469f2667ab",
+      "summary": "Approve staged option refinement, finalization, and pricing runtime contract fields.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged",
+        "janiform.pricing",
+        "janiform.pricing.contracts"
       ]
     }
   ],

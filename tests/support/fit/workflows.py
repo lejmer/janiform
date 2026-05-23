@@ -8,7 +8,6 @@ import pytest
 import janiform.calibration.fit._execution as fit_execution_module
 from janiform._workflow_outputs import generate_workflow_run_id
 from janiform.calibration.fit import JaniformEstimator
-from janiform.model import JaniformModel
 from janiform.calibration.fit._preparation.contracts import FitExecutionConfiguration
 from janiform.calibration.fit._runtime.workflow import NativeFitWorkflowOutput
 from janiform.calibration.market_data import (
@@ -18,8 +17,10 @@ from janiform.calibration.market_data import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
-from janiform.calibration.staged import StagedCalibrationResponse
+from janiform.calibration.staged import CalibrationStage, StagedCalibrationResponse
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
+from janiform.model import JaniformModel
+from tests.support.calibration import stage_report_by_stage
 from tests.support.high_level_workflows import successful_full_model_staged_runner_payload
 
 StagedRunner = Callable[..., tuple[StagedCalibrationResponse, dict[str, Any]]]
@@ -620,16 +621,18 @@ def _input_inference_payload(
 def _successful_full_model_parameters_payload() -> dict[str, Any]:
     _, raw_response = successful_full_model_staged_runner_payload("fixture-run")
     stage_reports = cast(list[dict[str, Any]], raw_response["stage_reports"])
-    seasonality_stage_payload = cast(dict[str, Any], stage_reports[0]["normalized_stage_payload"])
-    joint_refinement_payload = deepcopy(stage_reports[4]["fitted_stage_payload"])
-    joint_refinement_payload.pop("baseline_hawkes_fitted_parameters", None)
-    joint_refinement_payload.pop("baseline_return_components_fitted_parameters", None)
-    joint_refinement_payload.pop("objective_breakdown", None)
-    joint_refinement_payload.pop("optimizer_diagnostics", None)
-    joint_refinement_payload.pop("candidate_frontier", None)
-    joint_refinement_payload.pop("simulation_summaries", None)
-    joint_refinement_payload.pop("coarse_tick_consistency", None)
-    joint_refinement_payload.pop("option_calibration_diagnostics", None)
+    seasonality_report = stage_report_by_stage(stage_reports, CalibrationStage.SEASONALITY)
+    finalization_report = stage_report_by_stage(stage_reports, CalibrationStage.FINALIZATION)
+    seasonality_stage_payload = cast(dict[str, Any], seasonality_report["normalized_stage_payload"])
+    finalization_payload = deepcopy(finalization_report["fitted_stage_payload"])
+    finalization_payload.pop("baseline_hawkes_fitted_parameters", None)
+    finalization_payload.pop("baseline_return_components_fitted_parameters", None)
+    finalization_payload.pop("objective_breakdown", None)
+    finalization_payload.pop("optimizer_diagnostics", None)
+    finalization_payload.pop("candidate_frontier", None)
+    finalization_payload.pop("simulation_summaries", None)
+    finalization_payload.pop("coarse_tick_consistency", None)
+    finalization_payload.pop("option_calibration_diagnostics", None)
 
     return {
         "seasonality": {
@@ -640,7 +643,7 @@ def _successful_full_model_parameters_payload() -> dict[str, Any]:
             "day_of_week_factor": tuple(seasonality_stage_payload["day_of_week_factor"]),
             "day_of_year_factor": tuple(seasonality_stage_payload["day_of_year_factor"]),
         },
-        "joint_refinement": joint_refinement_payload,
+        "finalization": finalization_payload,
     }
 
 
@@ -665,6 +668,7 @@ def _successful_full_model_metadata_fixture(
             "return_components",
             "mean_reversion",
             "joint_refinement",
+            "finalization",
         ],
         "market_profile": market_profile_name,
         "session_preset": session_preset_name,
@@ -673,13 +677,14 @@ def _successful_full_model_metadata_fixture(
         "known_news_source_kind": "built_in",
         "fitted_parameter_summary": {
             "stage_keys": [
-                "joint_refinement",
+                "finalization",
                 "seasonality",
             ],
             "selected_candidate_ids": {
                 "hawkes": "candidate_stable_low_loss",
                 "return_components": "return_candidate_balanced",
                 "joint_refinement": "joint_refinement_baseline",
+                "finalization": "joint_refinement_baseline",
             },
         },
         "preset_provenance": {
@@ -759,6 +764,7 @@ def _successful_full_model_metadata_fixture(
                 "return_components",
                 "mean_reversion",
                 "joint_refinement",
+                "finalization",
             ],
             "stage_statuses": [
                 {"stage": "seasonality", "status": "success"},
@@ -766,6 +772,7 @@ def _successful_full_model_metadata_fixture(
                 {"stage": "return_components", "status": "success"},
                 {"stage": "mean_reversion", "status": "success"},
                 {"stage": "joint_refinement", "status": "success"},
+                {"stage": "finalization", "status": "success"},
             ],
             "diagnostic_count": 0,
         },

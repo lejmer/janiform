@@ -402,13 +402,22 @@ fn selected_stages_for_scope(
         CalibrationMarketDataWorkflowScope::SeasonalityOnly => {
             vec![CalibrationStage::Seasonality]
         }
-        CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface
-        | CalibrationMarketDataWorkflowScope::FullWithOptionSurface => vec![
+        CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface => vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
+            CalibrationStage::Finalization,
+        ],
+        CalibrationMarketDataWorkflowScope::FullWithOptionSurface => vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+            CalibrationStage::OptionRefinement,
+            CalibrationStage::Finalization,
         ],
     }
 }

@@ -63,10 +63,12 @@ use super::super::setup::build_surprise_multipliers_for_interval_grid;
 use super::option_refinement::objective_gradient::{
     JointRefinementOptionNodeResidualSensitivity, differentiate_option_tier_root_mean_square_score,
 };
-use super::option_refinement::option_pricing_block_evaluation_budget;
 use super::option_refinement::reduced_model::{
     build_option_reduced_model_artifact, populate_reduced_model_runtime_estimates,
     reduced_model_diagnostics_from_artifact,
+};
+use super::option_refinement::{
+    option_pricing_block_evaluation_budget, pricing_block_search_coordinate_count,
 };
 use super::state::{
     JointRefinementContext, JointRefinementOptionMaturityScoreArtifact,
@@ -204,6 +206,16 @@ fn pricing_nig_configuration(
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
         )
+}
+
+fn pricing_hawkes_kernel_parameters(
+    fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+) -> janiform_model_kernels::hawkes::HawkesKernelParameters {
+    fitted_parameters
+        .pricing_block_fitted_parameters
+        .as_ref()
+        .map(|pricing_block| pricing_block.hawkes_kernel_parameters)
+        .unwrap_or(fitted_parameters.hawkes_fitted_parameters.kernel_parameters)
 }
 
 pub(crate) fn build_option_pricing_context(
@@ -840,7 +852,7 @@ fn run_option_grid_batch_pricing(
         request: tier_inputs.grid_batch_pricing_request.clone(),
         boundary_input,
         model_parameters: VanillaOptionPricingModelParameters::new(
-            fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
+            pricing_hawkes_kernel_parameters(fitted_parameters),
             fitted_parameters
                 .return_components_fitted_parameters
                 .news_process_configuration
@@ -1965,12 +1977,16 @@ fn spread_normalized_residual_gradient(
         / option_quote_residual_scale(observed_node, quote_scale_floor)
             .unwrap_or(quote_scale_floor);
 
-    vec![
+    let mut gradient = vec![
         model_price_sensitivity.alpha_derivative * spread_inverse,
         model_price_sensitivity.beta_0_derivative * spread_inverse,
         model_price_sensitivity.delta_derivative * spread_inverse,
         model_price_sensitivity.delta_beta_derivative * spread_inverse,
-    ]
+    ];
+
+    gradient.resize(pricing_block_search_coordinate_count(), 0.0);
+
+    gradient
 }
 
 #[cfg(test)]

@@ -15,6 +15,7 @@ doctest = false
 [dependencies]
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
+nalgebra = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]

@@ -4,5 +4,6 @@ pub use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationResumeSettings,
     CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageSolverSettings, ReturnComponentsStageFittedParameters,
-    SurpriseNewsDeterministicIntensityProfile,
+    SurpriseNewsDeterministicIntensityProfile, calibration_stage_from_token,
+    calibration_stage_token,
 };

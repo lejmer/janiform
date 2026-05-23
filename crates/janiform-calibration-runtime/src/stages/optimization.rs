@@ -1,4 +1,4 @@
-use janiform_foundations::numeric::clamp_point;
+use janiform_foundations::numeric::{GOLDEN_RATIO_RECIPROCAL, clamp_point};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct PowellOptimizerSettings {
@@ -214,12 +214,10 @@ where
     let mut best_objective = evaluate(current_point);
     let mut evaluation_count = 0usize;
 
-    let golden_ratio = (5.0_f64.sqrt() - 1.0) * 0.5;
-
     let mut left = lower_step;
     let mut right = upper_step;
-    let mut left_inner = right - golden_ratio * (right - left);
-    let mut right_inner = left + golden_ratio * (right - left);
+    let mut left_inner = right - GOLDEN_RATIO_RECIPROCAL * (right - left);
+    let mut right_inner = left + GOLDEN_RATIO_RECIPROCAL * (right - left);
 
     let mut left_inner_evaluation = evaluate_line_search_step(
         current_point,
@@ -267,7 +265,7 @@ where
             right_inner = left_inner;
             right_inner_evaluation = left_inner_evaluation.clone();
 
-            left_inner = right - golden_ratio * (right - left);
+            left_inner = right - GOLDEN_RATIO_RECIPROCAL * (right - left);
             left_inner_evaluation = evaluate_line_search_step(
                 current_point,
                 direction,
@@ -289,7 +287,7 @@ where
             left_inner = right_inner;
             left_inner_evaluation = right_inner_evaluation.clone();
 
-            right_inner = left + golden_ratio * (right - left);
+            right_inner = left + GOLDEN_RATIO_RECIPROCAL * (right - left);
             right_inner_evaluation = evaluate_line_search_step(
                 current_point,
                 direction,

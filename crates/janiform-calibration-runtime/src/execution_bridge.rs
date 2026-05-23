@@ -703,13 +703,12 @@ impl CalibrationStagedExecutionInput {
             joint_refinement_calibration_effort: self.joint_refinement_calibration_effort,
             treat_inadmissible_calibration_warning_as_error: self
                 .treat_inadmissible_calibration_warning_as_error,
-            joint_refinement_option_refinement_candidate_count_override: self
+            option_refinement_candidate_count_override: self
                 .joint_refinement_option_refinement_candidate_count_override,
-            joint_refinement_option_refinement_wall_clock_budget_millis: self
+            option_refinement_wall_clock_budget_millis: self
                 .joint_refinement_option_refinement_wall_clock_budget_millis,
-            joint_refinement_audit_option_pricing_enabled: self
-                .joint_refinement_audit_option_pricing_enabled,
-            joint_refinement_option_pricing_input: self
+            audit_option_pricing_enabled: self.joint_refinement_audit_option_pricing_enabled,
+            option_refinement_pricing_input: self
                 .joint_refinement_option_pricing_input
                 .map(CalibrationJointRefinementOptionPricingInput::try_into_core)
                 .transpose()?,
@@ -807,12 +806,27 @@ fn canonical_stage_graph_for_selected_stages(
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::MeanReversion,
         },
+        CalibrationStageDependency {
+            stage: CalibrationStage::OptionRefinement,
+            depends_on: CalibrationStage::JointRefinement,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::Finalization,
+            depends_on: CalibrationStage::JointRefinement,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::Finalization,
+            depends_on: CalibrationStage::OptionRefinement,
+        },
     ];
 
     CalibrationStageGraph::new(
         dependencies
             .into_iter()
-            .filter(|dependency| selected_stage_set.contains(&dependency.stage))
+            .filter(|dependency| {
+                selected_stage_set.contains(&dependency.stage)
+                    && selected_stage_set.contains(&dependency.depends_on)
+            })
             .collect(),
     )
 }

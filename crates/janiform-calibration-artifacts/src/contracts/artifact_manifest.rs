@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::hashing::fnv1a_64_hex_lowercase;
 use janiform_foundations::strings::is_non_empty_string;
 use janiform_foundations::time::parse_utc_datetime;
 use serde::{Deserialize, Serialize};
@@ -242,6 +243,10 @@ pub struct CalibrationArtifactManifestModelVersion {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_stage_output_schema_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_refinement_stage_output_schema_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finalization_stage_output_schema_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seasonality_estimator_version: Option<String>,
 }
 
@@ -282,6 +287,14 @@ impl CalibrationArtifactManifestModelVersion {
             (
                 "index_metadata.model_version.joint_refinement_stage_output_schema_version",
                 self.joint_refinement_stage_output_schema_version.as_ref(),
+            ),
+            (
+                "index_metadata.model_version.option_refinement_stage_output_schema_version",
+                self.option_refinement_stage_output_schema_version.as_ref(),
+            ),
+            (
+                "index_metadata.model_version.finalization_stage_output_schema_version",
+                self.finalization_stage_output_schema_version.as_ref(),
             ),
             (
                 "index_metadata.model_version.seasonality_estimator_version",
@@ -650,7 +663,7 @@ fn validate_reference_checksum(
 ) -> Result<(), CalibrationArtifactManifestError> {
     validate_checksum_hex(field, checksum_hex)?;
 
-    let expected_checksum = format!("{:016x}", fnv1a_64(data_reference.as_bytes()));
+    let expected_checksum = fnv1a_64_hex_lowercase(data_reference.as_bytes());
     if checksum_hex != expected_checksum {
         return Err(
             CalibrationArtifactManifestError::ReferenceChecksumMismatch {
@@ -662,18 +675,6 @@ fn validate_reference_checksum(
     }
 
     Ok(())
-}
-
-fn fnv1a_64(payload: &[u8]) -> u64 {
-    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-    let mut hash = FNV_OFFSET;
-    for byte in payload {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 fn validate_artifact_manifest_schema_version(

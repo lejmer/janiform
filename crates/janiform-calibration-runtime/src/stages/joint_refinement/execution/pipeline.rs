@@ -11,7 +11,8 @@ use janiform_calibration_artifacts::{
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationOptimizerSettings,
     CalibrationResolvedStageSeed, CalibrationRunSpec, CalibrationStage,
     JointRefinementStageOptimizerDiagnostics, ReturnComponentsStageFittedParameters,
-    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
+    calibration_stage_token, resolve_calibration_stage_seed_metadata,
+    stage_solver_settings_for_stage,
 };
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -47,6 +48,7 @@ use super::super::setup::{
     selected_return_components_candidate, stage_input_to_activity_input,
 };
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
+use super::stage_resume::restart_search_artifacts_from_upstream_or_resume;
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementCandidateEvaluation,
     JointRefinementContext, JointRefinementFidelityTier, JointRefinementProfilingState,
@@ -54,8 +56,7 @@ use super::{
     OptionSurfaceTierPricingArtifactResolutionInput, PersistedRestartSelectionArtifacts,
     build_joint_candidate_coarse_consistency_artifacts_result,
     build_joint_candidate_frontier_diagnostics, build_joint_finalist_seed_summaries,
-    build_joint_refinement_stage_failure_report,
-    build_joint_refinement_stage_failure_report_with_runtime_profile,
+    build_joint_refinement_like_stage_failure_report_with_runtime_profile,
     build_joint_restart_diagnostics, build_joint_simulation_summaries, build_observed_data,
     build_option_calibration_diagnostics, build_option_pricing_context,
     build_summary_simulation_session_context,
@@ -70,6 +71,23 @@ use super::{
 
 const JOINT_REFINEMENT_SELECTION_POLICY: &str =
     "validity_then_admissibility_then_global_loss_with_diversity_and_coarse_consistency.v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum JointRefinementPipelineStage {
+    JointRefinement,
+    OptionRefinement,
+    Finalization,
+}
+
+impl JointRefinementPipelineStage {
+    const fn calibration_stage(self) -> CalibrationStage {
+        match self {
+            Self::JointRefinement => CalibrationStage::JointRefinement,
+            Self::OptionRefinement => CalibrationStage::OptionRefinement,
+            Self::Finalization => CalibrationStage::Finalization,
+        }
+    }
+}
 
 struct ResolvedStagePayloads<'a> {
     stage_solver_settings: CalibrationOptimizerSettings,
@@ -104,33 +122,33 @@ struct PreparedParameterization {
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
 }
 
-struct BaselineEvaluationArtifacts {
-    baseline_restart_outcome: JointRefinementRestartOutcome,
+pub(super) struct BaselineEvaluationArtifacts {
+    pub(super) baseline_restart_outcome: JointRefinementRestartOutcome,
     baseline_coarse_consistency_artifacts:
         Option<super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
 }
 
-struct RestartSearchArtifacts {
-    restart_outcomes: Vec<JointRefinementRestartOutcome>,
-    restart_evaluation_timing_diagnostics:
+pub(super) struct RestartSearchArtifacts {
+    pub(super) restart_outcomes: Vec<JointRefinementRestartOutcome>,
+    pub(super) restart_evaluation_timing_diagnostics:
         Vec<janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic>,
-    valid_restart_count: usize,
-    best_restart: JointRefinementRestartOutcome,
-    option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
-    selected_option_search_tier_pricing_artifact:
+    pub(super) valid_restart_count: usize,
+    pub(super) best_restart: JointRefinementRestartOutcome,
+    pub(super) option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
+    pub(super) selected_option_search_tier_pricing_artifact:
         Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
-    selected_option_selection_tier_pricing_artifact:
+    pub(super) selected_option_selection_tier_pricing_artifact:
         Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
-    selected_option_audit_tier_pricing_artifact:
+    pub(super) selected_option_audit_tier_pricing_artifact:
         Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
-    option_search_selection_agreement: Option<
+    pub(super) option_search_selection_agreement: Option<
         janiform_calibration_artifacts::JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
     >,
-    coarse_consistency_artifacts_by_restart_id:
+    pub(super) coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
-    warning: Option<String>,
-    restart_optimization_wall_clock_millis: u64,
-    coarse_consistency_wall_clock_millis: u64,
+    pub(super) warning: Option<String>,
+    pub(super) restart_optimization_wall_clock_millis: u64,
+    pub(super) coarse_consistency_wall_clock_millis: u64,
 }
 
 struct RestartSearchPlan {
@@ -161,6 +179,17 @@ struct FinalAssemblyArtifacts {
     final_assembly_wall_clock_millis: u64,
 }
 
+fn empty_final_assembly_artifacts() -> FinalAssemblyArtifacts {
+    FinalAssemblyArtifacts {
+        candidate_frontier: Vec::new(),
+        simulation_summaries: Vec::new(),
+        coarse_tick_consistency: Vec::new(),
+        option_calibration_diagnostics: None,
+        final_seed_evaluation_wall_clock_millis: 0,
+        final_assembly_wall_clock_millis: 0,
+    }
+}
+
 pub(super) fn run_joint_refinement_calibration_stage_internal(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
@@ -168,11 +197,75 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
 ) -> JointRefinementStageExecutionReport {
+    run_joint_refinement_pipeline_stage_internal(
+        run_spec,
+        calendar_registry,
+        stage_input,
+        None,
+        None,
+        progress_sender,
+        disk_checkpoint_directory,
+        JointRefinementPipelineStage::JointRefinement,
+    )
+}
+
+pub(super) fn run_option_refinement_calibration_stage_internal(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: JointRefinementStageExecutionInput,
+    upstream_joint_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
+    progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> JointRefinementStageExecutionReport {
+    run_joint_refinement_pipeline_stage_internal(
+        run_spec,
+        calendar_registry,
+        stage_input,
+        upstream_joint_refinement_handoff,
+        None,
+        progress_sender,
+        disk_checkpoint_directory,
+        JointRefinementPipelineStage::OptionRefinement,
+    )
+}
+
+pub(super) fn run_finalization_calibration_stage_internal(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: JointRefinementStageExecutionInput,
+    upstream_joint_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
+    upstream_option_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
+    progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> JointRefinementStageExecutionReport {
+    run_joint_refinement_pipeline_stage_internal(
+        run_spec,
+        calendar_registry,
+        stage_input,
+        upstream_joint_refinement_handoff,
+        upstream_option_refinement_handoff,
+        progress_sender,
+        disk_checkpoint_directory,
+        JointRefinementPipelineStage::Finalization,
+    )
+}
+
+fn run_joint_refinement_pipeline_stage_internal(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: JointRefinementStageExecutionInput,
+    upstream_joint_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
+    upstream_option_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
+    progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
+    disk_checkpoint_directory: Option<&Path>,
+    pipeline_stage: JointRefinementPipelineStage,
+) -> JointRefinementStageExecutionReport {
     let stage_started_at = Instant::now();
 
     if stage_input.restart_candidate_budget_override == Some(0) {
-        return build_joint_refinement_stage_failure_report(
+        return build_stage_failure_report(
             run_spec,
+            pipeline_stage.calibration_stage(),
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
                 error_message:
                     "joint refinement restart_candidate_budget_override must be greater than zero"
@@ -184,8 +277,9 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     if let Some(calibration_effort) = stage_input.calibration_effort
         && let Err(source) = calibration_effort.validate()
     {
-        return build_joint_refinement_stage_failure_report(
+        return build_stage_failure_report(
             run_spec,
+            pipeline_stage.calibration_stage(),
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
                 error_message: format!("joint refinement calibration_effort {source}"),
             },
@@ -193,8 +287,9 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     }
 
     if stage_input.option_refinement_candidate_count_override == Some(0) {
-        return build_joint_refinement_stage_failure_report(
+        return build_stage_failure_report(
             run_spec,
+            pipeline_stage.calibration_stage(),
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
                 error_message:
                     "joint refinement option_refinement_candidate_count_override must be greater than zero"
@@ -204,8 +299,9 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     }
 
     if stage_input.option_refinement_wall_clock_budget_millis == Some(0) {
-        return build_joint_refinement_stage_failure_report(
+        return build_stage_failure_report(
             run_spec,
+            pipeline_stage.calibration_stage(),
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
                 error_message:
                     "joint refinement option_refinement_wall_clock_budget_millis must be greater than zero"
@@ -215,8 +311,9 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     }
 
     if stage_input.audit_option_pricing_enabled && stage_input.option_pricing_input.is_none() {
-        return build_joint_refinement_stage_failure_report(
+        return build_stage_failure_report(
             run_spec,
+            pipeline_stage.calibration_stage(),
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
                 error_message:
                     "joint refinement audit_option_pricing_enabled requires option_pricing_input"
@@ -226,14 +323,21 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     }
 
     let resolved_stage_payloads =
-        match resolve_stage_payloads(run_spec, calendar_registry, &stage_input) {
+        match resolve_stage_payloads(run_spec, calendar_registry, &stage_input, pipeline_stage) {
             Ok(payloads) => payloads,
-            Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
+            Err(failure) => {
+                return build_stage_failure_report(
+                    run_spec,
+                    pipeline_stage.calibration_stage(),
+                    failure,
+                );
+            }
         };
 
     let mut resume_store = JointRefinementResumeStore::load(
         disk_checkpoint_directory,
         run_spec.run_id.as_str(),
+        pipeline_stage.calibration_stage(),
         resolved_stage_payloads.resolved_stage_seed.stage_seed,
     );
 
@@ -244,7 +348,13 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         &resolved_stage_payloads,
     ) {
         Ok(prepared_bootstrap) => prepared_bootstrap,
-        Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
+        Err(failure) => {
+            return build_stage_failure_report(
+                run_spec,
+                pipeline_stage.calibration_stage(),
+                failure,
+            );
+        }
     };
 
     let baseline_evaluation_artifacts = match establish_baseline_evaluation(
@@ -259,84 +369,103 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
                 run_spec,
                 &prepared_bootstrap.bootstrap_context,
                 stage_started_at,
+                pipeline_stage.calibration_stage(),
                 failure,
             );
         }
     };
 
-    let mut restart_search_artifacts = match run_restart_search(
-        &stage_input,
-        &resolved_stage_payloads,
-        &prepared_bootstrap,
-        &baseline_evaluation_artifacts,
-        progress_sender.as_ref(),
-        &mut resume_store,
-    ) {
-        Ok(artifacts) => artifacts,
-        Err(failure) => {
+    let mut restart_search_artifacts =
+        match resolve_restart_search_artifacts_for_stage(RestartSearchArtifactResolutionInput {
+            run_spec,
+            stage_input: &stage_input,
+            resolved_stage_payloads: &resolved_stage_payloads,
+            prepared_bootstrap: &prepared_bootstrap,
+            baseline_evaluation_artifacts: &baseline_evaluation_artifacts,
+            progress_sender: progress_sender.as_ref(),
+            resume_store: &mut resume_store,
+            disk_checkpoint_directory,
+            pipeline_stage,
+            upstream_joint_refinement_handoff,
+            upstream_option_refinement_handoff,
+        }) {
+            Ok(artifacts) => artifacts,
+            Err(failure) => {
+                return build_failure_report_with_runtime_profile(
+                    run_spec,
+                    &prepared_bootstrap.bootstrap_context,
+                    stage_started_at,
+                    pipeline_stage.calibration_stage(),
+                    failure,
+                );
+            }
+        };
+
+    if should_run_option_pricing_stage(pipeline_stage) {
+        if let Err(failure) = run_option_refinement_if_enabled(
+            &stage_input,
+            &resolved_stage_payloads,
+            &prepared_bootstrap.bootstrap_context,
+            &mut restart_search_artifacts,
+            progress_sender.as_ref(),
+            &mut resume_store,
+        ) {
             return build_failure_report_with_runtime_profile(
                 run_spec,
                 &prepared_bootstrap.bootstrap_context,
                 stage_started_at,
+                pipeline_stage.calibration_stage(),
                 failure,
             );
         }
-    };
 
-    if let Err(failure) = run_option_refinement_if_enabled(
-        &stage_input,
-        &resolved_stage_payloads,
-        &prepared_bootstrap.bootstrap_context,
-        &mut restart_search_artifacts,
-        progress_sender.as_ref(),
-        &mut resume_store,
-    ) {
-        return build_failure_report_with_runtime_profile(
-            run_spec,
+        if let Err(failure) = run_audit_option_pricing_if_enabled(
+            &stage_input,
             &prepared_bootstrap.bootstrap_context,
-            stage_started_at,
-            failure,
-        );
-    }
-
-    if let Err(failure) = run_audit_option_pricing_if_enabled(
-        &stage_input,
-        &prepared_bootstrap.bootstrap_context,
-        &mut restart_search_artifacts,
-        progress_sender.as_ref(),
-        &mut resume_store,
-    ) {
-        return build_failure_report_with_runtime_profile(
-            run_spec,
-            &prepared_bootstrap.bootstrap_context,
-            stage_started_at,
-            failure,
-        );
-    }
-
-    let final_assembly_artifacts = match assemble_final_stage_outputs(
-        &prepared_bootstrap.bootstrap_context,
-        &baseline_evaluation_artifacts,
-        &restart_search_artifacts,
-        progress_sender.as_ref(),
-    ) {
-        Ok(artifacts) => artifacts,
-        Err(failure) => {
+            &mut restart_search_artifacts,
+            progress_sender.as_ref(),
+            &mut resume_store,
+        ) {
             return build_failure_report_with_runtime_profile(
                 run_spec,
                 &prepared_bootstrap.bootstrap_context,
                 stage_started_at,
+                pipeline_stage.calibration_stage(),
                 failure,
             );
         }
+    }
+
+    let final_assembly_artifacts = if pipeline_stage == JointRefinementPipelineStage::Finalization {
+        match assemble_final_stage_outputs(
+            &prepared_bootstrap.bootstrap_context,
+            &baseline_evaluation_artifacts,
+            &restart_search_artifacts,
+            progress_sender.as_ref(),
+        ) {
+            Ok(artifacts) => artifacts,
+            Err(failure) => {
+                return build_failure_report_with_runtime_profile(
+                    run_spec,
+                    &prepared_bootstrap.bootstrap_context,
+                    stage_started_at,
+                    pipeline_stage.calibration_stage(),
+                    failure,
+                );
+            }
+        }
+    } else {
+        empty_final_assembly_artifacts()
     };
 
     build_success_report(
         run_spec,
         &resolved_stage_payloads,
         &prepared_bootstrap.bootstrap_context,
+        &baseline_evaluation_artifacts,
         &restart_search_artifacts,
         final_assembly_artifacts,
+        pipeline_stage.calibration_stage(),
     )
 }
 
@@ -344,6 +473,7 @@ fn build_failure_report_with_runtime_profile(
     run_spec: &CalibrationRunSpec,
     bootstrap_context: &JointRefinementContext,
     stage_started_at: Instant,
+    stage: CalibrationStage,
     failure: JointRefinementStageExecutionFailure,
 ) -> JointRefinementStageExecutionReport {
     let runtime_profile = bootstrap_context.profiling_state.snapshot_runtime_profile(
@@ -353,10 +483,21 @@ fn build_failure_report_with_runtime_profile(
         0,
     );
 
-    build_joint_refinement_stage_failure_report_with_runtime_profile(
+    build_joint_refinement_like_stage_failure_report_with_runtime_profile(
         run_spec,
+        stage,
         failure,
         Some(runtime_profile),
+    )
+}
+
+fn build_stage_failure_report(
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+    failure: JointRefinementStageExecutionFailure,
+) -> JointRefinementStageExecutionReport {
+    build_joint_refinement_like_stage_failure_report_with_runtime_profile(
+        run_spec, stage, failure, None,
     )
 }
 
@@ -364,11 +505,12 @@ fn resolve_stage_payloads<'a>(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: &'a JointRefinementStageExecutionInput,
+    pipeline_stage: JointRefinementPipelineStage,
 ) -> Result<ResolvedStagePayloads<'a>, JointRefinementStageExecutionFailure> {
-    validate_joint_refinement_stage_request(run_spec)?;
+    validate_joint_refinement_stage_request(run_spec, pipeline_stage.calibration_stage())?;
 
     let stage_solver_settings =
-        stage_solver_settings_for_stage(run_spec, CalibrationStage::JointRefinement)
+        stage_solver_settings_for_stage(run_spec, pipeline_stage.calibration_stage())
             .ok_or(JointRefinementStageExecutionFailure::MissingStageSolverSettings)?;
 
     let hawkes_payload = stage_input
@@ -387,7 +529,7 @@ fn resolve_stage_payloads<'a>(
         .ok_or(JointRefinementStageExecutionFailure::MissingMeanReversionPayload)?;
 
     let resolved_stage_seed =
-        resolve_calibration_stage_seed_metadata(run_spec, CalibrationStage::JointRefinement);
+        resolve_calibration_stage_seed_metadata(run_spec, pipeline_stage.calibration_stage());
 
     let activity_context = resolve_activity_calibration_context(&stage_input_to_activity_input(
         &stage_input.hawkes_input,
@@ -426,6 +568,7 @@ fn resolve_stage_payloads<'a>(
 
 fn validate_joint_refinement_stage_request(
     run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
 ) -> Result<(), JointRefinementStageExecutionFailure> {
     run_spec.validate().map_err(
         |source| JointRefinementStageExecutionFailure::InvalidRunSpec {
@@ -437,7 +580,7 @@ fn validate_joint_refinement_stage_request(
         .selected_stages
         .iter()
         .copied()
-        .any(|selected_stage| selected_stage == CalibrationStage::JointRefinement)
+        .any(|selected_stage| selected_stage == stage)
     {
         return Ok(());
     }
@@ -1297,7 +1440,9 @@ fn build_restart_search_plan(
     }
 }
 
-fn count_valid_restart_outcomes(restart_outcomes: &[JointRefinementRestartOutcome]) -> usize {
+pub(super) fn count_valid_restart_outcomes(
+    restart_outcomes: &[JointRefinementRestartOutcome],
+) -> usize {
     restart_outcomes
         .iter()
         .filter(|restart_outcome| {
@@ -1307,7 +1452,9 @@ fn count_valid_restart_outcomes(restart_outcomes: &[JointRefinementRestartOutcom
         .count()
 }
 
-fn count_admissible_restart_outcomes(restart_outcomes: &[&JointRefinementRestartOutcome]) -> usize {
+pub(super) fn count_admissible_restart_outcomes(
+    restart_outcomes: &[&JointRefinementRestartOutcome],
+) -> usize {
     restart_outcomes
         .iter()
         .copied()
@@ -1325,6 +1472,93 @@ fn filter_admissible_restart_outcomes<'a>(
         .collect()
 }
 
+struct RestartSearchArtifactResolutionInput<'a> {
+    run_spec: &'a CalibrationRunSpec,
+    stage_input: &'a JointRefinementStageExecutionInput,
+    resolved_stage_payloads: &'a ResolvedStagePayloads<'a>,
+    prepared_bootstrap: &'a PreparedBootstrapContext,
+    baseline_evaluation_artifacts: &'a BaselineEvaluationArtifacts,
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+    resume_store: &'a mut JointRefinementResumeStore,
+    disk_checkpoint_directory: Option<&'a Path>,
+    pipeline_stage: JointRefinementPipelineStage,
+    upstream_joint_refinement_handoff: Option<&'a super::state::JointRefinementStageRuntimeHandoff>,
+    upstream_option_refinement_handoff:
+        Option<&'a super::state::JointRefinementStageRuntimeHandoff>,
+}
+
+fn resolve_restart_search_artifacts_for_stage(
+    input: RestartSearchArtifactResolutionInput<'_>,
+) -> Result<RestartSearchArtifacts, JointRefinementStageExecutionFailure> {
+    let RestartSearchArtifactResolutionInput {
+        run_spec,
+        stage_input,
+        resolved_stage_payloads,
+        prepared_bootstrap,
+        baseline_evaluation_artifacts,
+        progress_sender,
+        resume_store,
+        disk_checkpoint_directory,
+        pipeline_stage,
+        upstream_joint_refinement_handoff,
+        upstream_option_refinement_handoff,
+    } = input;
+
+    match pipeline_stage {
+        JointRefinementPipelineStage::JointRefinement => run_restart_search(
+            stage_input,
+            resolved_stage_payloads,
+            prepared_bootstrap,
+            baseline_evaluation_artifacts,
+            progress_sender,
+            resume_store,
+        ),
+        JointRefinementPipelineStage::OptionRefinement => {
+            restart_search_artifacts_from_upstream_or_resume(
+                run_spec,
+                disk_checkpoint_directory,
+                CalibrationStage::JointRefinement,
+                upstream_joint_refinement_handoff,
+                baseline_evaluation_artifacts,
+                &prepared_bootstrap.bootstrap_context,
+            )
+        }
+        JointRefinementPipelineStage::Finalization => {
+            if run_spec
+                .selected_stages
+                .iter()
+                .any(|stage| *stage == CalibrationStage::OptionRefinement)
+            {
+                return restart_search_artifacts_from_upstream_or_resume(
+                    run_spec,
+                    disk_checkpoint_directory,
+                    CalibrationStage::OptionRefinement,
+                    upstream_option_refinement_handoff,
+                    baseline_evaluation_artifacts,
+                    &prepared_bootstrap.bootstrap_context,
+                );
+            }
+
+            restart_search_artifacts_from_upstream_or_resume(
+                run_spec,
+                disk_checkpoint_directory,
+                CalibrationStage::JointRefinement,
+                upstream_joint_refinement_handoff,
+                baseline_evaluation_artifacts,
+                &prepared_bootstrap.bootstrap_context,
+            )
+        }
+    }
+}
+
+fn should_run_option_pricing_stage(pipeline_stage: JointRefinementPipelineStage) -> bool {
+    match pipeline_stage {
+        JointRefinementPipelineStage::OptionRefinement => true,
+        JointRefinementPipelineStage::JointRefinement
+        | JointRefinementPipelineStage::Finalization => false,
+    }
+}
+
 fn run_option_refinement_if_enabled(
     stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
@@ -1335,6 +1569,10 @@ fn run_option_refinement_if_enabled(
 ) -> Result<(), JointRefinementStageExecutionFailure> {
     if stage_input.option_pricing_input.is_none() {
         return Ok(());
+    }
+
+    for restart_outcome in &restart_search_artifacts.option_refinement_candidate_frontier {
+        resume_store.record_restart_outcome(restart_outcome);
     }
 
     let option_context_fingerprint = require_option_context_fingerprint(bootstrap_context)?;
@@ -1348,6 +1586,7 @@ fn run_option_refinement_if_enabled(
             .cloned()
     {
         restart_search_artifacts.best_restart = selected_restart_outcome;
+
         restart_search_artifacts.selected_option_search_tier_pricing_artifact =
             Some(search_tier_artifact);
         restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
@@ -1369,10 +1608,12 @@ fn run_option_refinement_if_enabled(
     )?;
 
     restart_search_artifacts.best_restart = option_refinement_result.selected_restart_outcome;
+
     restart_search_artifacts.selected_option_search_tier_pricing_artifact =
         Some(option_refinement_result.selected_search_tier_pricing_artifact);
     restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
         Some(option_refinement_result.selected_selection_tier_pricing_artifact);
+
     restart_search_artifacts.option_search_selection_agreement =
         option_refinement_result.search_selection_agreement;
 
@@ -1468,7 +1709,7 @@ fn run_audit_option_pricing_if_enabled(
     Ok(())
 }
 
-fn require_option_context_fingerprint(
+pub(super) fn require_option_context_fingerprint(
     bootstrap_context: &JointRefinementContext,
 ) -> Result<String, JointRefinementStageExecutionFailure> {
     bootstrap_context
@@ -1672,7 +1913,7 @@ fn ensure_simulation_infrastructure_available(
     Ok(())
 }
 
-fn build_selectable_restart_outcomes(
+pub(super) fn build_selectable_restart_outcomes(
     restart_outcomes: &[JointRefinementRestartOutcome],
     baseline_restart_outcome: &JointRefinementRestartOutcome,
 ) -> Vec<JointRefinementRestartOutcome> {
@@ -1876,14 +2117,17 @@ fn build_success_report(
     run_spec: &CalibrationRunSpec,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     bootstrap_context: &JointRefinementContext,
+    baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     restart_search_artifacts: &RestartSearchArtifacts,
     final_assembly_artifacts: FinalAssemblyArtifacts,
+    stage: CalibrationStage,
 ) -> JointRefinementStageExecutionReport {
     let fitted_stage_payload = build_fitted_stage_payload(
         resolved_stage_payloads,
         bootstrap_context,
         restart_search_artifacts,
         final_assembly_artifacts,
+        stage,
     );
 
     let metadata = build_execution_metadata(
@@ -1906,7 +2150,7 @@ fn build_success_report(
 
     JointRefinementStageExecutionReport {
         schema_version: CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
-        stage: CalibrationStage::JointRefinement,
+        stage,
         status,
         run_id: run_spec.run_id.clone(),
         execution_mode: run_spec.execution_mode,
@@ -1916,6 +2160,46 @@ fn build_success_report(
         runtime_profile: None,
         warnings,
         failure: None,
+        runtime_handoff: Some(build_runtime_handoff(
+            &baseline_evaluation_artifacts.baseline_restart_outcome,
+            restart_search_artifacts,
+        )),
+    }
+}
+
+fn build_runtime_handoff(
+    baseline_restart_outcome: &JointRefinementRestartOutcome,
+    restart_search_artifacts: &RestartSearchArtifacts,
+) -> super::state::JointRefinementStageRuntimeHandoff {
+    // Stage reports are retained after this function returns, so the handoff owns its artifacts.
+    super::state::JointRefinementStageRuntimeHandoff {
+        baseline_restart_outcome: baseline_restart_outcome.clone(),
+        restart_outcomes: restart_search_artifacts.restart_outcomes.clone(),
+        restart_evaluation_timing_diagnostics: restart_search_artifacts
+            .restart_evaluation_timing_diagnostics
+            .clone(),
+        valid_restart_count: restart_search_artifacts.valid_restart_count,
+        best_restart: restart_search_artifacts.best_restart.clone(),
+        option_refinement_candidate_frontier: restart_search_artifacts
+            .option_refinement_candidate_frontier
+            .clone(),
+        selected_option_search_tier_pricing_artifact: restart_search_artifacts
+            .selected_option_search_tier_pricing_artifact
+            .clone(),
+        selected_option_selection_tier_pricing_artifact: restart_search_artifacts
+            .selected_option_selection_tier_pricing_artifact
+            .clone(),
+        selected_option_audit_tier_pricing_artifact: restart_search_artifacts
+            .selected_option_audit_tier_pricing_artifact
+            .clone(),
+        option_search_selection_agreement: restart_search_artifacts
+            .option_search_selection_agreement
+            .clone(),
+        warning: restart_search_artifacts.warning.clone(),
+        restart_optimization_wall_clock_millis: restart_search_artifacts
+            .restart_optimization_wall_clock_millis,
+        coarse_consistency_wall_clock_millis: restart_search_artifacts
+            .coarse_consistency_wall_clock_millis,
     }
 }
 
@@ -1924,6 +2208,7 @@ fn build_fitted_stage_payload(
     bootstrap_context: &JointRefinementContext,
     restart_search_artifacts: &RestartSearchArtifacts,
     final_assembly_artifacts: FinalAssemblyArtifacts,
+    stage: CalibrationStage,
 ) -> JointRefinementStageFittedPayload {
     let restart_diagnostics =
         build_joint_restart_diagnostics(restart_search_artifacts.restart_outcomes.as_slice());
@@ -1938,7 +2223,8 @@ fn build_fitted_stage_payload(
     JointRefinementStageFittedPayload {
         schema_version: CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
         selected_candidate_id: format!(
-            "joint_refinement_{}",
+            "{}_{}",
+            calibration_stage_token(stage),
             restart_search_artifacts.best_restart.restart_id
         ),
         fitted_parameters: restart_search_artifacts

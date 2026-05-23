@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use janiform_calibration_artifacts::JointRefinementStageRuntimeProfile;
+use janiform_calibration_artifacts::{
+    CalibrationStage, JointRefinementStageRuntimeProfile, calibration_stage_token,
+};
 
 use super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts;
 use super::option_refinement::{OptionRefinedCandidate, SearchTierCandidate};
@@ -16,7 +18,6 @@ use super::{JointRefinementOptionTierPricingArtifact, JointRefinementRestartOutc
 
 const JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION: &str =
     "janiform.joint_refinement.resume_state.v1";
-const JOINT_REFINEMENT_RESUME_STATE_FILENAME: &str = "joint-refinement.resume_state.json";
 const JOINT_REFINEMENT_OPTION_PRICING_CONTEXT_FINGERPRINT_POLICY: &str =
     "joint_refinement_option_pricing_context_sha256_canonical_tiers_and_pricing_inputs.v1";
 
@@ -127,6 +128,7 @@ pub(crate) struct PersistedSelectedOptionRefinement {
 struct JointRefinementResumeState {
     schema_version: String,
     run_id: String,
+    stage: CalibrationStage,
     stage_seed: u64,
     restart_outcomes_by_id: BTreeMap<String, JointRefinementRestartOutcome>,
     restart_selection: Option<PersistedRestartSelectionArtifacts>,
@@ -146,10 +148,11 @@ struct JointRefinementResumeState {
 }
 
 impl JointRefinementResumeState {
-    fn new(run_id: &str, stage_seed: u64) -> Self {
+    fn new(run_id: &str, stage: CalibrationStage, stage_seed: u64) -> Self {
         Self {
             schema_version: JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION.to_string(),
             run_id: run_id.to_string(),
+            stage,
             stage_seed,
             restart_outcomes_by_id: BTreeMap::new(),
             restart_selection: None,
@@ -171,19 +174,20 @@ impl JointRefinementResumeStore {
     pub(crate) fn load(
         disk_checkpoint_directory: Option<&Path>,
         run_id: &str,
+        stage: CalibrationStage,
         stage_seed: u64,
     ) -> Self {
         let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
             return Self {
                 path: None,
-                state: JointRefinementResumeState::new(run_id, stage_seed),
+                state: JointRefinementResumeState::new(run_id, stage, stage_seed),
             };
         };
 
-        let path = disk_checkpoint_directory.join(JOINT_REFINEMENT_RESUME_STATE_FILENAME);
+        let path = disk_checkpoint_directory.join(resume_state_filename(stage));
 
-        let state = load_resume_state_from_disk(path.as_path(), run_id, stage_seed)
-            .unwrap_or_else(|| JointRefinementResumeState::new(run_id, stage_seed));
+        let state = load_resume_state_from_disk(path.as_path(), run_id, stage, stage_seed)
+            .unwrap_or_else(|| JointRefinementResumeState::new(run_id, stage, stage_seed));
 
         Self {
             path: Some(path),
@@ -196,6 +200,14 @@ impl JointRefinementResumeStore {
         restart_id: &str,
     ) -> Option<JointRefinementRestartOutcome> {
         self.state.restart_outcomes_by_id.get(restart_id).cloned()
+    }
+
+    pub(crate) fn restart_outcomes(&self) -> Vec<JointRefinementRestartOutcome> {
+        self.state
+            .restart_outcomes_by_id
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn restart_selection(&self) -> Option<&PersistedRestartSelectionArtifacts> {
@@ -494,6 +506,7 @@ fn tier_pricing_inputs_fingerprint_payload(
 fn load_resume_state_from_disk(
     path: &Path,
     run_id: &str,
+    stage: CalibrationStage,
     stage_seed: u64,
 ) -> Option<JointRefinementResumeState> {
     let raw_bytes = match fs::read(path) {
@@ -509,12 +522,20 @@ fn load_resume_state_from_disk(
 
     if resume_state.schema_version != JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION
         || resume_state.run_id != run_id
+        || resume_state.stage != stage
         || resume_state.stage_seed != stage_seed
     {
         return None;
     }
 
     Some(resume_state)
+}
+
+fn resume_state_filename(stage: CalibrationStage) -> String {
+    format!(
+        "{}.resume_state.json",
+        calibration_stage_token(stage).replace('_', "-")
+    )
 }
 
 fn persist_resume_state_to_disk(
@@ -549,11 +570,11 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use janiform_calibration_artifacts::JointRefinementStageRuntimeProfile;
+    use janiform_calibration_artifacts::{CalibrationStage, JointRefinementStageRuntimeProfile};
 
     use super::{
-        JOINT_REFINEMENT_RESUME_STATE_FILENAME, JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION,
-        JointRefinementResumeState, JointRefinementResumeStore, persist_resume_state_to_disk,
+        JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION, JointRefinementResumeState,
+        JointRefinementResumeStore, persist_resume_state_to_disk, resume_state_filename,
     };
 
     fn temp_directory() -> PathBuf {
@@ -569,29 +590,39 @@ mod tests {
     #[test]
     fn joint_refinement_resume_store_loads_matching_state_and_ignores_mismatches() {
         let directory = temp_directory();
-        let persisted_path = directory.join(JOINT_REFINEMENT_RESUME_STATE_FILENAME);
+        let persisted_path =
+            directory.join(resume_state_filename(CalibrationStage::JointRefinement));
 
-        let matching_state = JointRefinementResumeState::new("run-001", 17);
+        let matching_state =
+            JointRefinementResumeState::new("run-001", CalibrationStage::JointRefinement, 17);
 
         persist_resume_state_to_disk(persisted_path.as_path(), &matching_state)
             .expect("matching resume state should persist");
 
-        let loaded_store =
-            JointRefinementResumeStore::load(Some(directory.as_path()), "run-001", 17);
+        let loaded_store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::JointRefinement,
+            17,
+        );
         assert!(loaded_store.restart_selection().is_none());
 
         let mismatched_state = JointRefinementResumeState {
             schema_version: JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION.to_string(),
             run_id: "run-002".to_string(),
             stage_seed: 17,
-            ..JointRefinementResumeState::new("run-002", 17)
+            ..JointRefinementResumeState::new("run-002", CalibrationStage::JointRefinement, 17)
         };
 
         persist_resume_state_to_disk(persisted_path.as_path(), &mismatched_state)
             .expect("mismatched resume state should persist");
 
-        let ignored_store =
-            JointRefinementResumeStore::load(Some(directory.as_path()), "run-001", 17);
+        let ignored_store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::JointRefinement,
+            17,
+        );
         assert!(ignored_store.restart_selection().is_none());
         assert!(persisted_path.exists());
 
@@ -636,9 +667,14 @@ mod tests {
     #[test]
     fn joint_refinement_resume_store_persists_runtime_profile() {
         let directory = temp_directory();
-        let persisted_path = directory.join(JOINT_REFINEMENT_RESUME_STATE_FILENAME);
-
-        let mut store = JointRefinementResumeStore::load(Some(directory.as_path()), "run-001", 17);
+        let persisted_path =
+            directory.join(resume_state_filename(CalibrationStage::JointRefinement));
+        let mut store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::JointRefinement,
+            17,
+        );
         let runtime_profile = JointRefinementStageRuntimeProfile {
             restart_optimization_wall_clock_millis: 123,
             coarse_consistency_wall_clock_millis: 0,

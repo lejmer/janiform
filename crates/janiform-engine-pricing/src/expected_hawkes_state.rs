@@ -2,10 +2,9 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
-use janiform_foundations::matrix2::{
-    solve_two_by_two_linear_source_system, solve_two_by_two_linear_system,
-};
+use janiform_foundations::linear_algebra::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
+use nalgebra::{Matrix2, Vector2};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ExpectedHawkesStateError {
@@ -69,73 +68,65 @@ pub(crate) fn evolve_expected_hawkes_state_from_integrated_statistics(
     validate_integrated_target_moment("integrated_target_plus", integrated_target_plus)?;
     validate_integrated_target_moment("integrated_target_minus", integrated_target_minus)?;
 
-    let matrix_a = -kernel_parameters.beta + kernel_parameters.alpha.plus_plus;
-    let matrix_b = kernel_parameters.alpha.plus_minus;
-    let matrix_c = kernel_parameters.alpha.minus_plus;
-    let matrix_d = -kernel_parameters.beta + kernel_parameters.alpha.minus_minus;
-
     let target_plus_before = state_before_update.target_plus_sum();
     let target_minus_before = state_before_update.target_minus_sum();
 
-    let base_solution = solve_two_by_two_linear_source_system(
-        matrix_a,
-        matrix_b,
-        matrix_c,
-        matrix_d,
-        target_plus_before,
-        target_minus_before,
-        0.0,
-        0.0,
+    let system_matrix = Matrix2::new(
+        -kernel_parameters.beta + kernel_parameters.alpha.plus_plus,
+        kernel_parameters.alpha.plus_minus,
+        kernel_parameters.alpha.minus_plus,
+        -kernel_parameters.beta + kernel_parameters.alpha.minus_minus,
+    );
+    let initial_state = Vector2::new(target_plus_before, target_minus_before);
+
+    let (base_state_after, base_integrated_state) = solve_two_by_two_linear_source_system(
+        system_matrix,
+        initial_state,
+        Vector2::zeros(),
         interval_delta,
     );
 
-    let unit_plus_source_solution = solve_two_by_two_linear_source_system(
-        matrix_a,
-        matrix_b,
-        matrix_c,
-        matrix_d,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        interval_delta,
+    let (unit_plus_source_state_after, unit_plus_source_integrated_state) =
+        solve_two_by_two_linear_source_system(
+            system_matrix,
+            Vector2::zeros(),
+            Vector2::new(1.0, 0.0),
+            interval_delta,
+        );
+
+    let (unit_minus_source_state_after, unit_minus_source_integrated_state) =
+        solve_two_by_two_linear_source_system(
+            system_matrix,
+            Vector2::zeros(),
+            Vector2::new(0.0, 1.0),
+            interval_delta,
+        );
+
+    let source_system_matrix = Matrix2::new(
+        unit_plus_source_integrated_state[0],
+        unit_minus_source_integrated_state[0],
+        unit_plus_source_integrated_state[1],
+        unit_minus_source_integrated_state[1],
     );
-
-    let unit_minus_source_solution = solve_two_by_two_linear_source_system(
-        matrix_a,
-        matrix_b,
-        matrix_c,
-        matrix_d,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        interval_delta,
+    let source_system_rhs = Vector2::new(
+        integrated_target_plus - base_integrated_state[0],
+        integrated_target_minus - base_integrated_state[1],
     );
+    let source_solution = source_system_matrix.lu().solve(&source_system_rhs).ok_or(
+        ExpectedHawkesStateError::SingularIntegratedSourceSystem {
+            integrated_plus_from_plus_source: unit_plus_source_integrated_state[0],
+            integrated_plus_from_minus_source: unit_minus_source_integrated_state[0],
+            integrated_minus_from_plus_source: unit_plus_source_integrated_state[1],
+            integrated_minus_from_minus_source: unit_minus_source_integrated_state[1],
+        },
+    )?;
 
-    let source_solution = solve_two_by_two_linear_system(
-        unit_plus_source_solution.integrated_first_component,
-        unit_minus_source_solution.integrated_first_component,
-        unit_plus_source_solution.integrated_second_component,
-        unit_minus_source_solution.integrated_second_component,
-        [
-            integrated_target_plus - base_solution.integrated_first_component,
-            integrated_target_minus - base_solution.integrated_second_component,
-        ],
-    )
-    .ok_or(ExpectedHawkesStateError::SingularIntegratedSourceSystem {
-        integrated_plus_from_plus_source: unit_plus_source_solution.integrated_first_component,
-        integrated_plus_from_minus_source: unit_minus_source_solution.integrated_first_component,
-        integrated_minus_from_plus_source: unit_plus_source_solution.integrated_second_component,
-        integrated_minus_from_minus_source: unit_minus_source_solution.integrated_second_component,
-    })?;
-
-    let target_plus_after = base_solution.first_component_after_interval
-        + source_solution[0] * unit_plus_source_solution.first_component_after_interval
-        + source_solution[1] * unit_minus_source_solution.first_component_after_interval;
-    let target_minus_after = base_solution.second_component_after_interval
-        + source_solution[0] * unit_plus_source_solution.second_component_after_interval
-        + source_solution[1] * unit_minus_source_solution.second_component_after_interval;
+    let target_plus_after = base_state_after[0]
+        + source_solution[0] * unit_plus_source_state_after[0]
+        + source_solution[1] * unit_minus_source_state_after[0];
+    let target_minus_after = base_state_after[1]
+        + source_solution[0] * unit_plus_source_state_after[1]
+        + source_solution[1] * unit_minus_source_state_after[1];
 
     validate_expected_state_component("target_plus_after", target_plus_after)?;
     validate_expected_state_component("target_minus_after", target_minus_after)?;

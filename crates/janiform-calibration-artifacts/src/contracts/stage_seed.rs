@@ -53,6 +53,8 @@ const fn calibration_stage_seed_derivation_nonce(stage: CalibrationStage) -> u64
         CalibrationStage::ReturnComponents => 0x3CF2_D8A1_6B94_C705,
         CalibrationStage::MeanReversion => 0x6D28_A14C_09F3_B572,
         CalibrationStage::JointRefinement => 0x9B5D_3F41_7A2C_E811,
+        CalibrationStage::OptionRefinement => 0xD4E1_72A9_3C0B_6F58,
+        CalibrationStage::Finalization => 0x42B7_C9E6_81D5_0A33,
     }
 }
 

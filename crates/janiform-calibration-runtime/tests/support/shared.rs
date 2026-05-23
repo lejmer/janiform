@@ -122,6 +122,7 @@ pub(crate) use janiform_calibration_artifacts::{
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
+    calibration_last_success_checkpoint_reference, calibration_stage_checkpoint_reference,
     calibration_stage_parameter_artifact_path,
     calibration_stage_parameter_artifact_path_in_run_directory, calibration_stage_token,
     calibration_validation_metric_artifact_path, calibration_validation_metric_artifact_reference,
@@ -269,7 +270,6 @@ pub(crate) use janiform_calibration_runtime::{
     SeasonalityStageHandoffOutput, SeasonalityStageNormalizedPayload,
     SeasonalityStageOverlayMetadata,
     build_option_surface_calibration_observation_from_pricing_hooks,
-    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
     compose_calibration_weighted_objective, current_process_resident_bytes,
     estimate_current_state_from_observed_data,
     evaluate_calibration_martingale_condition_under_esscher_tilt,
@@ -1228,6 +1228,10 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             stage: CalibrationStage::JointRefinement,
             optimizer_settings: build_joint_refinement_solver_settings(),
         },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::Finalization,
+            optimizer_settings: build_joint_refinement_solver_settings(),
+        },
     ]
 }
 
@@ -1332,6 +1336,8 @@ pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
                 joint_refinement_stage_output_schema_version: Some(
                     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
                 ),
+                option_refinement_stage_output_schema_version: None,
+                finalization_stage_output_schema_version: None,
                 seasonality_estimator_version: Some(
                     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string(),
                 ),
@@ -1746,71 +1752,27 @@ fn stage_parameter_artifact_input(
             ))
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
-            let payload = report.fitted_stage_payload.as_ref().ok_or(
-                CalibrationStageParameterArtifactBuildError::ValidationFailed {
-                    stage: CalibrationStage::JointRefinement,
-                    error_message: "successful joint-refinement stage is missing its payload"
-                        .to_string(),
-                },
-            )?;
-            let metadata = report.metadata.as_ref().ok_or(
-                CalibrationStageParameterArtifactBuildError::ValidationFailed {
-                    stage: CalibrationStage::JointRefinement,
-                    error_message: "successful joint-refinement stage is missing metadata"
-                        .to_string(),
-                },
-            )?;
-
             Ok(CalibrationStageParameterArtifactInput::JointRefinement(
-                Box::new(JointRefinementStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    optimizer_state: CalibrationStageParameterOptimizerStateInput {
-                        backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
-                        random_seed: metadata.optimizer_adapter_metadata.random_seed,
-                        selection_policy: metadata
-                            .optimizer_adapter_metadata
-                            .selection_policy
-                            .to_string(),
-                        penalty_policy: metadata
-                            .optimizer_adapter_metadata
-                            .penalty_policy
-                            .to_string(),
-                        bounds_policy: metadata
-                            .optimizer_adapter_metadata
-                            .bounds_policy
-                            .to_string(),
-                        solver_settings: metadata
-                            .optimizer_adapter_metadata
-                            .solver_settings
-                            .clone(),
-                        input_candidate_count: metadata.input_candidate_count,
-                        valid_candidate_count: metadata.valid_candidate_count,
-                        selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
-                        selected_candidate_penalized_objective: metadata
-                            .selected_candidate_penalized_objective,
-                    },
-                    selected_candidate_id: payload.selected_candidate_id.clone(),
-                    fitted_parameters: payload.fitted_parameters.clone(),
-                    baseline_hawkes_fitted_parameters: payload
-                        .baseline_hawkes_fitted_parameters
-                        .clone(),
-                    baseline_return_components_fitted_parameters: payload
-                        .baseline_return_components_fitted_parameters
-                        .clone(),
-                    objective_breakdown: payload.objective_breakdown.clone(),
-                    optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
-                }),
+                Box::new(joint_refinement_like_stage_parameter_artifact_input(
+                    CalibrationStage::JointRefinement,
+                    report,
+                )?),
+            ))
+        }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            Ok(CalibrationStageParameterArtifactInput::OptionRefinement(
+                Box::new(joint_refinement_like_stage_parameter_artifact_input(
+                    CalibrationStage::OptionRefinement,
+                    report,
+                )?),
+            ))
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
+            Ok(CalibrationStageParameterArtifactInput::Finalization(
+                Box::new(joint_refinement_like_stage_parameter_artifact_input(
+                    CalibrationStage::Finalization,
+                    report,
+                )?),
             ))
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
@@ -1858,6 +1820,71 @@ fn stage_parameter_artifact_input(
     }
 }
 
+fn joint_refinement_like_stage_parameter_artifact_input(
+    stage: CalibrationStage,
+    report: &JointRefinementStageExecutionReport,
+) -> Result<JointRefinementStageParameterArtifactInput, CalibrationStageParameterArtifactBuildError>
+{
+    let payload = report.fitted_stage_payload.as_ref().ok_or(
+        CalibrationStageParameterArtifactBuildError::ValidationFailed {
+            stage,
+            error_message: format!(
+                "successful {} stage is missing its payload",
+                calibration_stage_token(stage)
+            ),
+        },
+    )?;
+    let metadata = report.metadata.as_ref().ok_or(
+        CalibrationStageParameterArtifactBuildError::ValidationFailed {
+            stage,
+            error_message: format!(
+                "successful {} stage is missing metadata",
+                calibration_stage_token(stage)
+            ),
+        },
+    )?;
+
+    Ok(JointRefinementStageParameterArtifactInput {
+        metadata: CalibrationStageParameterBuildMetadata {
+            stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+            run_global_seed: metadata.run_global_seed,
+            stage_seed: metadata.stage_seed,
+            stage_seed_source: metadata.stage_seed_source,
+            stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+            solver_settings: metadata.solver_settings.clone(),
+        },
+        optimizer_state: CalibrationStageParameterOptimizerStateInput {
+            backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
+            random_seed: metadata.optimizer_adapter_metadata.random_seed,
+            selection_policy: metadata
+                .optimizer_adapter_metadata
+                .selection_policy
+                .to_string(),
+            penalty_policy: metadata
+                .optimizer_adapter_metadata
+                .penalty_policy
+                .to_string(),
+            bounds_policy: metadata
+                .optimizer_adapter_metadata
+                .bounds_policy
+                .to_string(),
+            solver_settings: metadata.optimizer_adapter_metadata.solver_settings.clone(),
+            input_candidate_count: metadata.input_candidate_count,
+            valid_candidate_count: metadata.valid_candidate_count,
+            selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
+            selected_candidate_penalized_objective: metadata.selected_candidate_penalized_objective,
+        },
+        selected_candidate_id: payload.selected_candidate_id.clone(),
+        fitted_parameters: payload.fitted_parameters.clone(),
+        baseline_hawkes_fitted_parameters: payload.baseline_hawkes_fitted_parameters.clone(),
+        baseline_return_components_fitted_parameters: payload
+            .baseline_return_components_fitted_parameters
+            .clone(),
+        objective_breakdown: payload.objective_breakdown.clone(),
+        optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
+    })
+}
+
 pub(crate) fn build_run_contract_with_mode_and_resume(
     run_id: &str,
     execution_mode: CalibrationExecutionMode,
@@ -1872,6 +1899,7 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
             CalibrationStage::ReturnComponents,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
+            CalibrationStage::Finalization,
         ],
         build_solver_settings_for_all_stages(),
         resume_settings,
@@ -1965,6 +1993,7 @@ pub(crate) fn build_run_contract_for_caller_surface(
             CalibrationStage::ReturnComponents,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
+            CalibrationStage::Finalization,
         ],
         build_solver_settings_for_all_stages(),
     )
@@ -2082,6 +2111,7 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
         CalibrationStage::ReturnComponents,
         CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
+        CalibrationStage::Finalization,
     ])
 }
 
@@ -2138,9 +2168,24 @@ pub(crate) fn stage_graph_for_selected_stages(
                 stage: CalibrationStage::JointRefinement,
                 depends_on: CalibrationStage::MeanReversion,
             },
+            CalibrationStageDependency {
+                stage: CalibrationStage::OptionRefinement,
+                depends_on: CalibrationStage::JointRefinement,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::Finalization,
+                depends_on: CalibrationStage::JointRefinement,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::Finalization,
+                depends_on: CalibrationStage::OptionRefinement,
+            },
         ]
         .into_iter()
-        .filter(|dependency| selected_stage_set.contains(&dependency.stage))
+        .filter(|dependency| {
+            selected_stage_set.contains(&dependency.stage)
+                && selected_stage_set.contains(&dependency.depends_on)
+        })
         .collect(),
     )
 }
@@ -2197,10 +2242,10 @@ pub(crate) fn staged_run_inputs(
         joint_refinement_calibration_effort: None,
         joint_refinement_restart_candidate_budget_override: Some(1),
         treat_inadmissible_calibration_warning_as_error: false,
-        joint_refinement_option_refinement_candidate_count_override: Some(1),
-        joint_refinement_option_refinement_wall_clock_budget_millis: None,
-        joint_refinement_audit_option_pricing_enabled: false,
-        joint_refinement_option_pricing_input: None,
+        option_refinement_candidate_count_override: Some(1),
+        option_refinement_wall_clock_budget_millis: None,
+        audit_option_pricing_enabled: false,
+        option_refinement_pricing_input: None,
     }
 }
 

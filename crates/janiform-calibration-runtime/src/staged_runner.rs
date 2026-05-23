@@ -18,9 +18,13 @@ pub(super) use crate::stages::hawkes::{
 pub(super) use crate::stages::joint_refinement::{
     JointRefinementStageExecutionInput, JointRefinementStageExecutionMetadata,
     JointRefinementStageExecutionReport, JointRefinementStageHawkesInput,
+    JointRefinementStageMeanReversionInput, JointRefinementStageOptionPricingInput,
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
-    JointRefinementStageReturnComponentsInput, JointRefinementStageSeasonalityFactorsInput,
+    JointRefinementStageReturnComponentsInput, JointRefinementStageRuntimeHandoff,
+    JointRefinementStageSeasonalityFactorsInput,
+    run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
+    run_option_refinement_calibration_stage_with_progress_observer_and_persistence,
 };
 pub(super) use crate::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
@@ -51,7 +55,8 @@ pub(super) use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
     CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
     CalibrationStageParameterOptimizerStateInput, CalibrationStageParameterPayload,
-    CalibrationStageSeedSource, stage_output_artifact_references_for_stage,
+    CalibrationStageSeedSource, calibration_stage_artifact_reference,
+    stage_output_artifact_references_for_stage,
 };
 pub(super) use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -59,7 +64,6 @@ pub use contracts::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
     CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
-    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
 };
 pub use execution::{
     run_staged_calibration_with_checkpointing,

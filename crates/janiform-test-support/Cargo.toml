@@ -15,6 +15,7 @@ doctest = false
 
 [dependencies]
 chrono = { workspace = true }
+janiform-foundations = { path = "../janiform-foundations" }
 janiform-market-time = { path = "../janiform-market-time" }
 janiform-verification = { path = "../janiform-verification" }
 serde = { workspace = true, features = ["derive"] }

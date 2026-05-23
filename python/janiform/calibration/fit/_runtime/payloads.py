@@ -16,7 +16,6 @@ from ...market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
 )
-from ...staged.contracts import CalibrationStage
 from ..state import CurrentStateEstimationRequest
 from .input_inference import tick_data_input_inference_from_model_metadata
 from .shared import PreparedModelRuntimeFactors
@@ -26,15 +25,6 @@ if TYPE_CHECKING:
 
 
 def mean_reversion_fitted_parameters_for_model(model: JaniformModel) -> MeanReversionFittedParameters:
-    raw_mean_reversion = model.parameters.get("mean_reversion")
-    if isinstance(raw_mean_reversion, Mapping):
-        fitted_parameters = raw_mean_reversion.get("fitted_parameters")
-        if isinstance(fitted_parameters, Mapping):
-            return MeanReversionFittedParameters.from_mapping(
-                dict(fitted_parameters),
-                field_path="mean_reversion.fitted_parameters",
-            )
-
     return MeanReversionFittedParameters.from_mapping(
         dict(
             require_payload_mapping(
@@ -60,11 +50,15 @@ def prepare_model_runtime_factors_for_model(
         raise calibration_error("start_time_utc", "must be timezone-aware")
 
     interval_duration_nanos = _parse_interval_duration_nanos(interval, field_name="interval")
+
     range_end_utc = start_time_utc + timedelta(
         seconds=(interval_duration_nanos * horizon_interval_count) / 1_000_000_000
     )
+
     calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
+
     exchange_code = model.session_resolution.exchange_code
+
     return_components_fitted_parameters = return_components_fitted_parameters_payload(model)
 
     nig_configuration_payload = (
@@ -76,6 +70,7 @@ def prepare_model_runtime_factors_for_model(
             "return_components.fitted_parameters.nig_shared_plus_shift_configuration",
         )
     )
+
     news_process_configuration = NewsProcessConfiguration.from_mapping(
         require_payload_mapping(
             return_components_fitted_parameters,
@@ -83,6 +78,7 @@ def prepare_model_runtime_factors_for_model(
             "return_components.fitted_parameters.news_process_configuration",
         )
     )
+
     shared_mark_law = require_payload_mapping(
         news_process_configuration.to_payload(),
         "shared_mark_law",
@@ -126,7 +122,9 @@ def require_runtime_ready_model(model: JaniformModel) -> None:
         raise RuntimeError(
             "JaniformModel runtime methods require a fitted model with Hawkes and return-components stages"
         )
+
     hawkes_fitted_parameters_payload(model)
+
     return_components_fitted_parameters_payload(model)
 
 
@@ -150,6 +148,7 @@ def current_state_tick_data_column_mapping_for_model(
         column_mapping = request.tick_data_column_mapping
     else:
         input_inference = tick_data_input_inference_from_model_metadata(model.metadata)
+
         price_column = input_inference.price_column
         trade_sign_column = input_inference.trade_sign_column
 
@@ -158,6 +157,7 @@ def current_state_tick_data_column_mapping_for_model(
                 "metadata.input_inference.tick_data_column_mapping.price_column",
                 "must be present so current-state estimation can read observed tick prices",
             )
+
         if trade_sign_column is None:
             raise calibration_error(
                 "metadata.input_inference.tick_data_column_mapping.trade_sign_column",
@@ -181,6 +181,7 @@ def current_state_tick_data_column_mapping_for_model(
             "tick_data_column_mapping.trade_sign_column",
             "is required for current-state estimation",
         )
+
     return column_mapping
 
 
@@ -188,41 +189,34 @@ def seasonality_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
     raw_seasonality = model.parameters.get("seasonality")
     if not isinstance(raw_seasonality, Mapping):
         raise RuntimeError("JaniformModel does not contain compact seasonality parameters")
+
     return raw_seasonality
 
 
 def hawkes_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
-    joint_refinement_parameters = model.parameters.get("joint_refinement")
-    if isinstance(joint_refinement_parameters, Mapping):
-        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
-        if isinstance(fitted_parameters, Mapping):
-            refined_parameters = fitted_parameters.get("hawkes_fitted_parameters")
-            if isinstance(refined_parameters, Mapping):
-                return refined_parameters
-    return fitted_parameters_from_model_parameters(model, stage_kind=CalibrationStage.HAWKES)
+    return require_payload_mapping(
+        finalization_fitted_parameters_payload(model),
+        "hawkes_fitted_parameters",
+        "finalization.fitted_parameters.hawkes_fitted_parameters",
+    )
 
 
 def return_components_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
-    joint_refinement_parameters = model.parameters.get("joint_refinement")
-    if isinstance(joint_refinement_parameters, Mapping):
-        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
-        if isinstance(fitted_parameters, Mapping):
-            refined_parameters = fitted_parameters.get("return_components_fitted_parameters")
-            if isinstance(refined_parameters, Mapping):
-                return refined_parameters
-    return fitted_parameters_from_model_parameters(model, stage_kind=CalibrationStage.RETURN_COMPONENTS)
+    return require_payload_mapping(
+        finalization_fitted_parameters_payload(model),
+        "return_components_fitted_parameters",
+        "finalization.fitted_parameters.return_components_fitted_parameters",
+    )
 
 
 def pricing_nig_shared_plus_shift_configuration_payload(model: JaniformModel) -> Mapping[str, Any]:
-    joint_refinement_parameters = model.parameters.get("joint_refinement")
-    if isinstance(joint_refinement_parameters, Mapping):
-        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
-        if isinstance(fitted_parameters, Mapping):
-            pricing_block = fitted_parameters.get("pricing_block_fitted_parameters")
-            if isinstance(pricing_block, Mapping):
-                nig_configuration = pricing_block.get("nig_shared_plus_shift_configuration")
-                if isinstance(nig_configuration, Mapping):
-                    return nig_configuration
+    pricing_block = finalization_fitted_parameters_payload(model).get(
+        "pricing_block_fitted_parameters"
+    )
+    if isinstance(pricing_block, Mapping):
+        nig_configuration = pricing_block.get("nig_shared_plus_shift_configuration")
+        if isinstance(nig_configuration, Mapping):
+            return nig_configuration
 
     return require_payload_mapping(
         return_components_fitted_parameters_payload(model),
@@ -231,17 +225,15 @@ def pricing_nig_shared_plus_shift_configuration_payload(model: JaniformModel) ->
     )
 
 
-def fitted_parameters_from_model_parameters(
-    model: JaniformModel,
-    *,
-    stage_kind: CalibrationStage,
-) -> Mapping[str, Any]:
-    stage_parameters = model.parameters.get(stage_kind.value)
-    if not isinstance(stage_parameters, Mapping):
-        raise RuntimeError(f"JaniformModel does not contain `{stage_kind.value}` parameters")
-    fitted_parameters = stage_parameters.get("fitted_parameters")
+def finalization_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
+    finalization_parameters = model.parameters.get("finalization")
+    if not isinstance(finalization_parameters, Mapping):
+        raise RuntimeError("JaniformModel does not contain finalization parameters")
+
+    fitted_parameters = finalization_parameters.get("fitted_parameters")
     if not isinstance(fitted_parameters, Mapping):
-        raise RuntimeError(f"JaniformModel is missing fitted parameters for stage `{stage_kind.value}`")
+        raise RuntimeError("JaniformModel is missing finalization fitted parameters")
+
     return fitted_parameters
 
 
@@ -258,21 +250,25 @@ def surprise_baseline_intensity(model: JaniformModel) -> float:
         "news_process_configuration",
         "return_components.fitted_parameters.news_process_configuration",
     )
+
     arrivals = require_payload_mapping(
         news_process_configuration,
         "arrivals",
         "return_components.fitted_parameters.news_process_configuration.arrivals",
     )
+
     surprise = require_payload_mapping(
         arrivals,
         "surprise",
         "return_components.fitted_parameters.news_process_configuration.arrivals.surprise",
     )
+
     baseline_intensity = surprise.get("baseline_intensity")
     if not isinstance(baseline_intensity, int | float) or isinstance(baseline_intensity, bool):
         raise RuntimeError(
             "JaniformModel is missing a numeric surprise baseline intensity in the fitted model payload"
         )
+
     return float(baseline_intensity)
 
 
@@ -280,6 +276,7 @@ def require_payload_mapping(payload: Mapping[str, Any], field_name: str, field_p
     raw_value = payload.get(field_name)
     if not isinstance(raw_value, Mapping):
         raise RuntimeError(f"JaniformModel payload field `{field_path}` must be an object")
+
     return raw_value
 
 
@@ -287,6 +284,7 @@ def require_payload_numeric_value(payload: Mapping[str, Any], field_name: str, f
     raw_value = payload.get(field_name)
     if not isinstance(raw_value, int | float) or isinstance(raw_value, bool):
         raise RuntimeError(f"JaniformModel payload field `{field_path}` must be numeric")
+
     return float(raw_value)
 
 
@@ -303,10 +301,12 @@ def require_payload_numeric_sequence(
     for entry_index, entry_value in enumerate(raw_value):
         if not isinstance(entry_value, int | float) or isinstance(entry_value, bool):
             raise RuntimeError(f"JaniformModel payload field `{field_path}[{entry_index}]` must be numeric")
+
         values.append(float(entry_value))
 
     if not values:
         raise RuntimeError(f"JaniformModel payload field `{field_path}` must not be empty")
+
     return tuple(values)
 
 

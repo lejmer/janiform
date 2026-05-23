@@ -48,6 +48,12 @@ fn stage_report_payload(
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             stage_report_payload_from_report("joint_refinement", report)
         }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            stage_report_payload_from_report("option_refinement", report)
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
+            stage_report_payload_from_report("finalization", report)
+        }
     }
 }
 

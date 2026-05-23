@@ -71,6 +71,7 @@ pub use artifact_registry::{
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
+    calibration_stage_artifact_reference, calibration_stage_from_token,
     calibration_stage_parameter_artifact_path,
     calibration_stage_parameter_artifact_path_in_run_directory, calibration_stage_token,
     calibration_validation_metric_artifact_path, calibration_validation_metric_artifact_reference,
@@ -94,7 +95,8 @@ pub use artifact_registry::{
 pub use checkpointing::{
     CalibrationCheckpointReferenceParseError, CalibrationDiskCheckpointError,
     CalibrationStageCheckpointCompatibilityError, CalibrationStageCheckpointMetadata,
-    calibration_last_success_checkpoint_path, calibration_stage_checkpoint_path,
+    calibration_last_success_checkpoint_path, calibration_last_success_checkpoint_reference,
+    calibration_stage_checkpoint_path, calibration_stage_checkpoint_reference,
     load_stage_checkpoint_from_disk, persist_stage_checkpoint_to_disk,
 };
 pub use contracts::{

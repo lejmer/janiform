@@ -9,6 +9,7 @@ mod report;
 mod resume_state;
 mod selection;
 mod shared;
+mod stage_resume;
 mod state;
 #[cfg(test)]
 mod test_support;
@@ -19,7 +20,11 @@ mod tests;
 pub use entrypoint::run_joint_refinement_calibration_stage;
 pub use state::JointRefinementSeedSummary;
 
-pub(crate) use entrypoint::run_joint_refinement_calibration_stage_with_progress_observer_and_persistence;
+pub(crate) use entrypoint::{
+    run_finalization_calibration_stage_with_progress_observer_and_persistence,
+    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
+    run_option_refinement_calibration_stage_with_progress_observer_and_persistence,
+};
 
 #[cfg(test)]
 pub(crate) use coarse_consistency::extend_joint_coarse_tick_consistency_metrics_for_seed;
@@ -42,7 +47,8 @@ pub(crate) use optimization::{
     sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
 };
 pub(crate) use option_refinement::{
-    desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,
+    desired_joint_refinement_option_refinement_candidate_count,
+    pricing_block_search_coordinate_count, run_option_refinement,
 };
 #[cfg(test)]
 pub(crate) use pipeline::{
@@ -55,10 +61,11 @@ pub(crate) use pricing_context::{
     build_option_pricing_context, resolve_option_surface_tier_pricing_artifact,
 };
 pub(crate) use report::{
-    build_joint_finalist_seed_summaries, build_joint_refinement_stage_failure_report,
-    build_joint_refinement_stage_failure_report_with_runtime_profile,
-    build_joint_restart_diagnostics, build_joint_simulation_summaries,
-    option_pricing_execution_failure_message, simulation_infrastructure_failure_message,
+    build_joint_finalist_seed_summaries,
+    build_joint_refinement_like_stage_failure_report_with_runtime_profile,
+    build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
+    build_joint_simulation_summaries, option_pricing_execution_failure_message,
+    simulation_infrastructure_failure_message,
 };
 pub(crate) use resume_state::{
     JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
@@ -88,7 +95,7 @@ pub(crate) use state::{
     JointRefinementOptionTierPricingArtifact, JointRefinementProfilingState,
     JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
     JointRefinementReturnShapeHorizon, JointRefinementReturnShapeStatisticEstimate,
-    JointRefinementSeedSummaryCacheKey,
+    JointRefinementSeedSummaryCacheKey, JointRefinementStageRuntimeHandoff,
 };
 #[cfg(test)]
 pub(crate) use test_support::test_joint_fitted_parameters;

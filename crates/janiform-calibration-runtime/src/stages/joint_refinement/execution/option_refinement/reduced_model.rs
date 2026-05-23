@@ -6,7 +6,22 @@ use janiform_calibration_artifacts::JointRefinementStageOptionReducedModelDiagno
 use super::objective_gradient::JointRefinementOptionNodeResidualSensitivity;
 use super::residual_jacobian::weighted_option_residual_jacobian_rows;
 
-const OPTION_REDUCED_MODEL_PARAMETER_LABELS: [&str; 4] = ["alpha", "beta_0", "delta", "delta_beta"];
+const OPTION_REDUCED_MODEL_PARAMETER_LABELS: &[&str] = &[
+    "alpha",
+    "beta_0",
+    "delta",
+    "delta_beta",
+    "log_stationary_event_rate_scale",
+    "log_beta_scale",
+    "log_alpha_plus_plus_scale",
+    "log_alpha_plus_minus_scale",
+    "log_alpha_minus_plus_scale",
+    "log_alpha_minus_minus_scale",
+];
+
+pub(crate) fn option_reduced_model_parameter_count() -> usize {
+    OPTION_REDUCED_MODEL_PARAMETER_LABELS.len()
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionReducedModelArtifact {

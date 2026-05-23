@@ -1,4 +1,3 @@
-use super::dispatch::calibration_stage_token;
 use janiform_calibration_artifacts::{
     CalibrationEffortOptions, JointRefinementStageRestartEvaluationTimingDiagnostic,
 };
@@ -30,10 +29,10 @@ pub struct CalibrationStagedRunInputs {
     pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
     pub joint_refinement_restart_candidate_budget_override: Option<usize>,
     pub treat_inadmissible_calibration_warning_as_error: bool,
-    pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
-    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
-    pub joint_refinement_audit_option_pricing_enabled: bool,
-    pub joint_refinement_option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
+    pub option_refinement_candidate_count_override: Option<usize>,
+    pub option_refinement_wall_clock_budget_millis: Option<u64>,
+    pub audit_option_pricing_enabled: bool,
+    pub option_refinement_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -48,6 +47,8 @@ pub enum CalibrationStagedRunStageReport {
     ReturnComponents(Box<ReturnComponentsStageExecutionReport>),
     MeanReversion(Box<MeanReversionStageExecutionReport>),
     JointRefinement(Box<JointRefinementStageExecutionReport>),
+    OptionRefinement(Box<JointRefinementStageExecutionReport>),
+    Finalization(Box<JointRefinementStageExecutionReport>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +221,8 @@ impl CalibrationStagedRunStageReport {
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
+            Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
+            Self::Finalization(_) => CalibrationStage::Finalization,
         }
     }
 
@@ -230,6 +233,8 @@ impl CalibrationStagedRunStageReport {
             Self::ReturnComponents(report) => report.status,
             Self::MeanReversion(report) => report.status,
             Self::JointRefinement(report) => report.status,
+            Self::OptionRefinement(report) => report.status,
+            Self::Finalization(report) => report.status,
         }
     }
 
@@ -246,6 +251,12 @@ impl CalibrationStagedRunStageReport {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::JointRefinement(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::OptionRefinement(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::Finalization(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
         }
@@ -481,12 +492,4 @@ pub struct CalibrationStagedRunStageProgressEvent {
         Option<JointRefinementStageRestartEvaluationTimingDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_convergence_ratio: Option<f64>,
-}
-
-pub fn calibration_checkpoint_reference_for_stage(run_id: &str, stage: CalibrationStage) -> String {
-    format!("checkpoint://{run_id}/{}", calibration_stage_token(stage))
-}
-
-pub fn calibration_last_success_checkpoint_reference(run_id: &str) -> String {
-    format!("checkpoint://{run_id}/last-success")
 }

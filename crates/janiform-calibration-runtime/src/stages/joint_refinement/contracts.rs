@@ -571,4 +571,6 @@ pub struct JointRefinementStageExecutionReport {
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<JointRefinementStageExecutionFailure>,
+    #[serde(skip)]
+    pub(crate) runtime_handoff: Option<super::execution::JointRefinementStageRuntimeHandoff>,
 }

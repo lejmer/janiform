@@ -175,9 +175,23 @@ pub(crate) fn build_joint_refinement_stage_failure_report_with_runtime_profile(
     failure: JointRefinementStageExecutionFailure,
     runtime_profile: Option<JointRefinementStageRuntimeProfile>,
 ) -> JointRefinementStageExecutionReport {
+    build_joint_refinement_like_stage_failure_report_with_runtime_profile(
+        run_spec,
+        CalibrationStage::JointRefinement,
+        failure,
+        runtime_profile,
+    )
+}
+
+pub(crate) fn build_joint_refinement_like_stage_failure_report_with_runtime_profile(
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+    failure: JointRefinementStageExecutionFailure,
+    runtime_profile: Option<JointRefinementStageRuntimeProfile>,
+) -> JointRefinementStageExecutionReport {
     JointRefinementStageExecutionReport {
         schema_version: CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
-        stage: CalibrationStage::JointRefinement,
+        stage,
         status: CalibrationStageExecutionStatus::Failure,
         run_id: run_spec.run_id.clone(),
         execution_mode: run_spec.execution_mode,
@@ -187,6 +201,7 @@ pub(crate) fn build_joint_refinement_stage_failure_report_with_runtime_profile(
         runtime_profile,
         warnings: Vec::new(),
         failure: Some(failure),
+        runtime_handoff: None,
     }
 }
 

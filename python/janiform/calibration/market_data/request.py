@@ -211,17 +211,29 @@ class MarketDataCalibrationRequest(ContractModel):
                 "must be finite and greater than zero when provided",
             )
 
-        selected_stages = (
-            (CalibrationStage.SEASONALITY,)
-            if self.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
-            else (
-                CalibrationStage.SEASONALITY,
-                CalibrationStage.HAWKES,
-                CalibrationStage.RETURN_COMPONENTS,
-                CalibrationStage.MEAN_REVERSION,
-                CalibrationStage.JOINT_REFINEMENT,
-            )
-        )
+        match self.workflow_scope:
+            case CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
+                selected_stages = (CalibrationStage.SEASONALITY,)
+            case CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE:
+                selected_stages = (
+                    CalibrationStage.SEASONALITY,
+                    CalibrationStage.HAWKES,
+                    CalibrationStage.RETURN_COMPONENTS,
+                    CalibrationStage.MEAN_REVERSION,
+                    CalibrationStage.JOINT_REFINEMENT,
+                    CalibrationStage.OPTION_REFINEMENT,
+                    CalibrationStage.FINALIZATION,
+                )
+            case CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE:
+                selected_stages = (
+                    CalibrationStage.SEASONALITY,
+                    CalibrationStage.HAWKES,
+                    CalibrationStage.RETURN_COMPONENTS,
+                    CalibrationStage.MEAN_REVERSION,
+                    CalibrationStage.JOINT_REFINEMENT,
+                    CalibrationStage.FINALIZATION,
+                )
+
         selected_stage_set = set(selected_stages)
         configured_stage_set: set[CalibrationStage] = set()
 

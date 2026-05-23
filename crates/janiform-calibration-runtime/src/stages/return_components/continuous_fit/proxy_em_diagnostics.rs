@@ -19,6 +19,12 @@ pub(super) struct ProxyEmFitOutcome {
     pub(super) stop_reason: ProxyEmFitStopReason,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct ProxyEmBestObjectiveDiagnostic {
+    pub(super) best_objective: Option<f64>,
+    pub(super) final_convergence_ratio: Option<f64>,
+}
+
 pub(super) struct ProxyEmSeedCounters {
     pub(super) completed_seed_count: AtomicUsize,
     pub(super) refined_seed_count: AtomicUsize,
@@ -71,17 +77,20 @@ impl ProxyEmSeedCounters {
 
     pub(super) fn diagnostic(
         &self,
-        best_objective: &Mutex<Option<f64>>,
-        final_convergence_ratio: &Mutex<Option<f64>>,
+        best_objective: &Mutex<ProxyEmBestObjectiveDiagnostic>,
         evaluation_count: &AtomicUsize,
         requested_seed_count: usize,
         iteration_budget_per_seed: usize,
         fitting_sample_count: usize,
         fitting_sample_weight_sum: f64,
     ) -> ContinuousReturnProxyEmDiagnostic {
+        let best_objective_diagnostic = best_objective.lock().ok().map(|guard| *guard);
+
         ContinuousReturnProxyEmDiagnostic {
-            best_objective: best_objective.lock().ok().and_then(|guard| *guard),
-            final_convergence_ratio: final_convergence_ratio.lock().ok().and_then(|guard| *guard),
+            best_objective: best_objective_diagnostic
+                .and_then(|diagnostic| diagnostic.best_objective),
+            final_convergence_ratio: best_objective_diagnostic
+                .and_then(|diagnostic| diagnostic.final_convergence_ratio),
             evaluation_count: evaluation_count.load(Ordering::Relaxed),
             completed_seed_count: self.completed_seed_count.load(Ordering::Relaxed),
             refined_seed_count: self.refined_seed_count.load(Ordering::Relaxed),

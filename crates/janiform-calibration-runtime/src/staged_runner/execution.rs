@@ -13,6 +13,7 @@ use janiform_calibration_artifacts::{
     CalibrationDiskCheckpointError, CalibrationExecutionMode, CalibrationResumeSource,
     CalibrationRunContract, build_calibration_artifact_manifest,
     build_calibration_dataset_snapshot_artifact, calibration_dataset_snapshot_artifact_reference,
+    calibration_last_success_checkpoint_reference,
     calibration_stage_parameter_artifact_path_in_run_directory,
     load_calibration_stage_parameter_artifact_from_disk, load_stage_checkpoint_from_disk,
     persist_calibration_artifact_manifest_to_run_directory,
@@ -27,7 +28,6 @@ use super::checkpointing::{build_stage_checkpoint_metadata, build_stage_paramete
 use super::contracts::{
     CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    calibration_last_success_checkpoint_reference,
 };
 use super::dispatch::{
     RunStageForStagedExecutionInput, expected_stage_output_artifact_reference,
@@ -408,6 +408,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                 &mut payload_state,
                 &artifact,
             );
+
             persisted_stage_parameter_artifacts.push(artifact);
         }
     }
@@ -948,6 +949,7 @@ fn persist_stage_report_snapshot_to_run_directory(
     let artifact_path =
         stage_report_snapshot_path_in_run_directory(run_directory, stage_report.stage());
     let temporary_path = artifact_path.with_extension("json.tmp");
+
     let serialized_payload =
         serde_json::to_vec_pretty(stage_report).map_err(|source| source.to_string())?;
 
@@ -957,6 +959,7 @@ fn persist_stage_report_snapshot_to_run_directory(
             temporary_path.display()
         )
     })?;
+
     temporary_file
         .write_all(serialized_payload.as_slice())
         .and_then(|_| temporary_file.flush())
@@ -966,6 +969,7 @@ fn persist_stage_report_snapshot_to_run_directory(
                 temporary_path.display()
             )
         })?;
+
     fs::rename(temporary_path.as_path(), artifact_path.as_path()).map_err(|source| {
         format!(
             "unable to publish stage report `{}` from `{}`: {source}",
@@ -1008,6 +1012,12 @@ fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport)
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }
     }

@@ -55,12 +55,8 @@ pub(crate) fn build_diagnostic_artifact_bundle(
         })?;
     let joint_payload = stage_reports
         .iter()
-        .find_map(|stage_report| match stage_report {
-            CalibrationStagedRunStageReport::JointRefinement(report) => {
-                report.fitted_stage_payload.as_ref()
-            }
-            _ => None,
-        })?;
+        .rev()
+        .find_map(joint_refinement_payload_from_stage_report)?;
 
     let observed_targets = build_observed_targets_artifact(hawkes_payload, return_payload);
     let candidate_frontier =
@@ -86,6 +82,19 @@ pub(crate) fn build_diagnostic_artifact_bundle(
         search_surface_manifest,
         runtime_profile,
     })
+}
+
+fn joint_refinement_payload_from_stage_report(
+    stage_report: &CalibrationStagedRunStageReport,
+) -> Option<&JointRefinementStageFittedPayload> {
+    match stage_report {
+        CalibrationStagedRunStageReport::JointRefinement(report)
+        | CalibrationStagedRunStageReport::OptionRefinement(report)
+        | CalibrationStagedRunStageReport::Finalization(report) => {
+            report.fitted_stage_payload.as_ref()
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn persist_diagnostic_artifact_bundle(

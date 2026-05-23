@@ -39,29 +39,11 @@ def normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, A
 
 
 def normalize_mean_reversion_model_parameters(parameters: dict[str, Any]) -> None:
-    raw_mean_reversion = parameters.get("mean_reversion")
-    if isinstance(raw_mean_reversion, Mapping):
-        fitted_parameters = raw_mean_reversion.get("fitted_parameters")
-        if isinstance(fitted_parameters, Mapping):
-            raw_mean_reversion["fitted_parameters"] = MeanReversionFittedParameters.from_mapping(
-                dict(fitted_parameters),
-                field_path="parameters.mean_reversion.fitted_parameters",
-            ).to_payload()
-
-    raw_return_components = parameters.get("return_components")
-    if isinstance(raw_return_components, Mapping):
-        fitted_parameters = raw_return_components.get("fitted_parameters")
-        if isinstance(fitted_parameters, Mapping):
-            normalize_return_components_mean_reversion_block(
-                fitted_parameters,
-                field_path="parameters.return_components.fitted_parameters",
-            )
-
-    raw_joint_refinement = parameters.get("joint_refinement")
-    if not isinstance(raw_joint_refinement, Mapping):
+    raw_finalization = parameters.get("finalization")
+    if not isinstance(raw_finalization, Mapping):
         return
 
-    raw_fitted_parameters = raw_joint_refinement.get("fitted_parameters")
+    raw_fitted_parameters = raw_finalization.get("fitted_parameters")
     if isinstance(raw_fitted_parameters, Mapping):
         raw_return_components_fitted_parameters = raw_fitted_parameters.get(
             "return_components_fitted_parameters"
@@ -69,7 +51,7 @@ def normalize_mean_reversion_model_parameters(parameters: dict[str, Any]) -> Non
         if isinstance(raw_return_components_fitted_parameters, Mapping):
             normalize_return_components_mean_reversion_block(
                 raw_return_components_fitted_parameters,
-                field_path="parameters.joint_refinement.fitted_parameters.return_components_fitted_parameters",
+                field_path="parameters.finalization.fitted_parameters.return_components_fitted_parameters",
             )
 
 

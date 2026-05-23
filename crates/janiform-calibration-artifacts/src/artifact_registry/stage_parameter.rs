@@ -19,8 +19,11 @@ use super::super::{
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::shared::{
     CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
-    calibration_committed_artifact_run_directory, calibration_stage_token,
-    load_validated_json_artifact, persist_validated_json_artifact,
+    calibration_committed_artifact_run_directory, load_validated_json_artifact,
+    persist_validated_json_artifact,
+};
+use super::stage_references::{
+    calibration_stage_artifact_reference, calibration_stage_token,
     stage_output_artifact_references_for_stage,
 };
 
@@ -192,6 +195,8 @@ pub enum CalibrationStageParameterPayload {
     ReturnComponents(Box<ReturnComponentsStageParameterPayload>),
     MeanReversion(Box<MeanReversionStageParameterPayload>),
     JointRefinement(Box<JointRefinementStageParameterPayload>),
+    OptionRefinement(Box<JointRefinementStageParameterPayload>),
+    Finalization(Box<JointRefinementStageParameterPayload>),
 }
 
 impl CalibrationStageParameterPayload {
@@ -202,6 +207,8 @@ impl CalibrationStageParameterPayload {
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
+            Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
+            Self::Finalization(_) => CalibrationStage::Finalization,
         }
     }
 }
@@ -431,12 +438,14 @@ impl CalibrationStageParameterArtifact {
 
                 validate_optimizer_state_presence(self.stage, self.optimizer_state.as_ref())?;
             }
-            CalibrationStageParameterPayload::JointRefinement(payload) => {
+            CalibrationStageParameterPayload::JointRefinement(payload)
+            | CalibrationStageParameterPayload::OptionRefinement(payload)
+            | CalibrationStageParameterPayload::Finalization(payload) => {
                 validate_non_empty_artifact_value(
                     payload.selected_candidate_id.as_str(),
                     CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
                         stage: self.stage,
-                        field: "stage_parameters.joint_refinement.selected_candidate_id",
+                        field: "stage_parameters.selected_candidate_id",
                     },
                 )?;
 
@@ -692,6 +701,8 @@ pub enum CalibrationStageParameterArtifactInput {
     ReturnComponents(Box<ReturnComponentsStageParameterArtifactInput>),
     MeanReversion(Box<MeanReversionStageParameterArtifactInput>),
     JointRefinement(Box<JointRefinementStageParameterArtifactInput>),
+    OptionRefinement(Box<JointRefinementStageParameterArtifactInput>),
+    Finalization(Box<JointRefinementStageParameterArtifactInput>),
 }
 
 pub fn build_calibration_stage_parameter_artifact(
@@ -717,6 +728,10 @@ pub fn build_calibration_stage_parameter_artifact(
         CalibrationStageParameterArtifactInput::JointRefinement(_) => {
             CalibrationStage::JointRefinement
         }
+        CalibrationStageParameterArtifactInput::OptionRefinement(_) => {
+            CalibrationStage::OptionRefinement
+        }
+        CalibrationStageParameterArtifactInput::Finalization(_) => CalibrationStage::Finalization,
     };
     let artifact_reference =
         resolve_stage_output_artifact_reference(&run_contract.run_spec, stage)?;
@@ -758,6 +773,25 @@ pub fn build_calibration_stage_parameter_artifact(
             build_joint_refinement_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
+                CalibrationStage::JointRefinement,
+                *input,
+                artifact_reference,
+            )
+        }
+        CalibrationStageParameterArtifactInput::OptionRefinement(input) => {
+            build_joint_refinement_stage_parameter_artifact(
+                run_contract.run_spec.run_id.as_str(),
+                run_contract.run_spec.execution_mode,
+                CalibrationStage::OptionRefinement,
+                *input,
+                artifact_reference,
+            )
+        }
+        CalibrationStageParameterArtifactInput::Finalization(input) => {
+            build_joint_refinement_stage_parameter_artifact(
+                run_contract.run_spec.run_id.as_str(),
+                run_contract.run_spec.execution_mode,
+                CalibrationStage::Finalization,
                 *input,
                 artifact_reference,
             )
@@ -1282,14 +1316,57 @@ fn build_mean_reversion_stage_parameter_artifact(
 fn build_joint_refinement_stage_parameter_artifact(
     run_id: &str,
     execution_mode: CalibrationExecutionMode,
+    stage: CalibrationStage,
     input: JointRefinementStageParameterArtifactInput,
     artifact_reference: String,
 ) -> Result<CalibrationStageParameterArtifact, CalibrationStageParameterArtifactBuildError> {
+    let JointRefinementStageParameterArtifactInput {
+        metadata,
+        optimizer_state,
+        selected_candidate_id,
+        fitted_parameters,
+        baseline_hawkes_fitted_parameters,
+        baseline_return_components_fitted_parameters,
+        objective_breakdown,
+        optimizer_diagnostics,
+    } = input;
+
+    let payload = JointRefinementStageParameterPayload {
+        selected_candidate_id,
+        fitted_parameters,
+        baseline_hawkes_fitted_parameters,
+        baseline_return_components_fitted_parameters,
+        objective_breakdown,
+        optimizer_diagnostics,
+    };
+
+    let stage_parameters = match stage {
+        CalibrationStage::JointRefinement => {
+            CalibrationStageParameterPayload::JointRefinement(Box::new(payload))
+        }
+        CalibrationStage::OptionRefinement => {
+            CalibrationStageParameterPayload::OptionRefinement(Box::new(payload))
+        }
+        CalibrationStage::Finalization => {
+            CalibrationStageParameterPayload::Finalization(Box::new(payload))
+        }
+        _ => {
+            return Err(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage,
+                    error_message:
+                        "joint refinement parameter payload cannot be used for this stage"
+                            .to_string(),
+                },
+            );
+        }
+    };
+
     Ok(CalibrationStageParameterArtifact {
         schema_version: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION.to_string(),
         run_id: run_id.to_string(),
         execution_mode,
-        stage: CalibrationStage::JointRefinement,
+        stage,
         artifact_reference,
         schema_metadata: CalibrationStageParameterSchemaMetadata {
             schema_family: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_FAMILY.to_string(),
@@ -1298,26 +1375,16 @@ fn build_joint_refinement_stage_parameter_artifact(
                 .to_string(),
         },
         output_schema_metadata: build_stage_parameter_output_schema_metadata(),
-        stage_output_schema_version: input.metadata.stage_output_schema_version,
+        stage_output_schema_version: metadata.stage_output_schema_version,
         seed_metadata: build_stage_parameter_seed_metadata(
-            input.metadata.run_global_seed,
-            input.metadata.stage_seed,
-            input.metadata.stage_seed_source,
-            input.metadata.stage_seed_derivation_policy.as_str(),
+            metadata.run_global_seed,
+            metadata.stage_seed,
+            metadata.stage_seed_source,
+            metadata.stage_seed_derivation_policy.as_str(),
         ),
-        solver_settings: input.metadata.solver_settings,
-        optimizer_state: Some(build_optimizer_state(input.optimizer_state)),
-        stage_parameters: CalibrationStageParameterPayload::JointRefinement(Box::new(
-            JointRefinementStageParameterPayload {
-                selected_candidate_id: input.selected_candidate_id,
-                fitted_parameters: input.fitted_parameters,
-                baseline_hawkes_fitted_parameters: input.baseline_hawkes_fitted_parameters,
-                baseline_return_components_fitted_parameters: input
-                    .baseline_return_components_fitted_parameters,
-                objective_breakdown: input.objective_breakdown,
-                optimizer_diagnostics: input.optimizer_diagnostics,
-            },
-        )),
+        solver_settings: metadata.solver_settings,
+        optimizer_state: Some(build_optimizer_state(optimizer_state)),
+        stage_parameters,
     })
 }
 
@@ -1328,10 +1395,9 @@ fn resolve_stage_output_artifact_reference(
     let artifact_references = stage_output_artifact_references_for_stage(run_spec, stage);
 
     match artifact_references.as_slice() {
-        [] => Ok(format!(
-            "artifact://{}/{}",
-            calibration_stage_token(stage),
-            run_spec.run_id
+        [] => Ok(calibration_stage_artifact_reference(
+            run_spec.run_id.as_str(),
+            stage,
         )),
         [artifact_reference] => Ok(artifact_reference.clone()),
         _ => Err(

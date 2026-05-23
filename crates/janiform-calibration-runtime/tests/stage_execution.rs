@@ -327,7 +327,9 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(1),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
@@ -363,7 +365,9 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                     payload: Some(build_mean_reversion_stage_success_payload()),
                 },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(1),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
@@ -371,16 +375,8 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         },
     );
 
-    assert_eq!(
-        memory_report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{memory_report:#?}"
-    );
-    assert_eq!(
-        disk_report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{disk_report:#?}"
-    );
+    assert!(memory_report.status.is_successful(), "{memory_report:#?}");
+    assert!(disk_report.status.is_successful(), "{disk_report:#?}");
 }
 
 #[test]
@@ -434,7 +430,9 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
+                    treat_inadmissible_calibration_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
@@ -465,7 +463,9 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
+                    treat_inadmissible_calibration_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
@@ -537,7 +537,9 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
             payload: build_mean_reversion_stage_success_payload(),
         },
         candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        calibration_effort: None,
         restart_candidate_budget_override: Some(1),
+        treat_inadmissible_calibration_warning_as_error: false,
         option_refinement_candidate_count_override: Some(1),
         option_refinement_wall_clock_budget_millis: None,
         audit_option_pricing_enabled: false,
@@ -607,7 +609,9 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(1),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
@@ -668,7 +672,9 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(0),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,

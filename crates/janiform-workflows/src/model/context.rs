@@ -195,18 +195,18 @@ pub(crate) fn pricing_nig_shared_plus_shift_configuration(
     let Some(payload) = context
         .model
         .parameters
-        .pointer("/joint_refinement/fitted_parameters/pricing_block_fitted_parameters/nig_shared_plus_shift_configuration")
+        .pointer("/finalization/fitted_parameters/pricing_block_fitted_parameters/nig_shared_plus_shift_configuration")
     else {
         return Ok(context
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration);
     };
 
-    // Intentional copy because serde_json deserializes the optional joint
-    // pricing block from an owned payload while the model remains available.
+    // Intentional copy because serde_json deserializes the optional pricing
+    // block from an owned payload while the model remains available.
     serde_json::from_value(payload.clone()).map_err(|source| {
         validation_error(
-            "model_payload.parameters.joint_refinement.fitted_parameters.pricing_block_fitted_parameters.nig_shared_plus_shift_configuration",
+            "model_payload.parameters.finalization.fitted_parameters.pricing_block_fitted_parameters.nig_shared_plus_shift_configuration",
             format!("failed to deserialize pricing block NIG parameters: {source}"),
         )
     })
@@ -301,11 +301,10 @@ fn hawkes_fitted_parameters(
     parameters: &Value,
 ) -> Result<HawkesStageFittedParameters, WorkflowError> {
     let payload = parameters
-        .pointer("/joint_refinement/fitted_parameters/hawkes_fitted_parameters")
-        .or_else(|| parameters.pointer("/hawkes/fitted_parameters"))
+        .pointer("/finalization/fitted_parameters/hawkes_fitted_parameters")
         .ok_or_else(|| {
             validation_error(
-                "model_payload.parameters.hawkes",
+                "model_payload.parameters.finalization.fitted_parameters.hawkes_fitted_parameters",
                 "missing fitted parameters",
             )
         })?;
@@ -314,7 +313,7 @@ fn hawkes_fitted_parameters(
     // owned Value payloads while model parameters remain available to callers.
     serde_json::from_value(payload.clone()).map_err(|source| {
         validation_error(
-            "model_payload.parameters.hawkes.fitted_parameters",
+            "model_payload.parameters.finalization.fitted_parameters.hawkes_fitted_parameters",
             format!("failed to deserialize Hawkes fitted parameters: {source}"),
         )
     })
@@ -324,11 +323,10 @@ fn return_components_fitted_parameters(
     parameters: &Value,
 ) -> Result<ReturnComponentsStageFittedParameters, WorkflowError> {
     let payload = parameters
-        .pointer("/joint_refinement/fitted_parameters/return_components_fitted_parameters")
-        .or_else(|| parameters.pointer("/return_components/fitted_parameters"))
+        .pointer("/finalization/fitted_parameters/return_components_fitted_parameters")
         .ok_or_else(|| {
             validation_error(
-                "model_payload.parameters.return_components",
+                "model_payload.parameters.finalization.fitted_parameters.return_components_fitted_parameters",
                 "missing fitted parameters",
             )
         })?;
@@ -337,7 +335,7 @@ fn return_components_fitted_parameters(
     // owned Value payloads while model parameters remain available to callers.
     serde_json::from_value(payload.clone()).map_err(|source| {
         validation_error(
-            "model_payload.parameters.return_components.fitted_parameters",
+            "model_payload.parameters.finalization.fitted_parameters.return_components_fitted_parameters",
             format!("failed to deserialize return-components fitted parameters: {source}"),
         )
     })

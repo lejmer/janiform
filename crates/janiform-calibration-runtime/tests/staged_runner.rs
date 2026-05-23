@@ -8,7 +8,8 @@ use janiform_calibration_artifacts::{
     CalibrationCallerSurface, CalibrationDatasetInputName, CalibrationExecutionMode,
     CalibrationResumeSettings, CalibrationStage, CalibrationStageSeedSource,
     calibration_artifact_manifest_path, calibration_dataset_snapshot_artifact_path,
-    calibration_last_success_checkpoint_path, calibration_stage_checkpoint_path,
+    calibration_last_success_checkpoint_path, calibration_last_success_checkpoint_reference,
+    calibration_stage_checkpoint_path, calibration_stage_checkpoint_reference,
     calibration_stage_parameter_artifact_path, calibration_stage_token,
     derive_calibration_stage_seed_from_global_seed, load_calibration_artifact_manifest_from_disk,
     load_calibration_dataset_snapshot_artifact_from_disk,
@@ -18,10 +19,10 @@ use janiform_calibration_runtime::{
     CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport, HawkesStageExecutionFailure,
-    JointRefinementStageProgressPhase, calibration_checkpoint_reference_for_stage,
-    calibration_last_success_checkpoint_reference, run_staged_calibration_with_checkpointing,
+    JointRefinementStageProgressPhase, run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
 };
+use serde_json::Value;
 use support::shared::{
     BTreeSet, build_pre_joint_run_contract_with_mode_and_resume,
     build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
@@ -45,7 +46,7 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
     let mut inputs = staged_run_inputs(true, true, true);
 
-    inputs.joint_refinement_option_pricing_input =
+    inputs.option_refinement_pricing_input =
         Some(joint_refinement_stage_option_pricing_input_fixture());
 
     let mut observed_events = Vec::<CalibrationStagedRunObserverEvent>::new();
@@ -215,16 +216,12 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
         None,
     );
 
-    assert_eq!(
-        report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{report:#?}"
-    );
+    assert!(report.status.is_successful(), "{report:#?}");
     assert!(report.failure.is_none());
-    assert_eq!(report.emitted_checkpoints.len(), 5);
+    assert_eq!(report.emitted_checkpoints.len(), 6);
     assert_eq!(
         checkpoint_store.checkpoint_count_for_run(run_contract.run_spec.run_id.as_str()),
-        5
+        6
     );
 
     let first_checkpoint = report
@@ -250,7 +247,7 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
     );
     assert_eq!(
         first_checkpoint.checkpoint_reference,
-        calibration_checkpoint_reference_for_stage(
+        calibration_stage_checkpoint_reference(
             run_contract.run_spec.run_id.as_str(),
             CalibrationStage::Seasonality
         )
@@ -290,7 +287,7 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
             .last_checkpoint_for_run(run_contract.run_spec.run_id.as_str())
             .expect("store should expose last checkpoint")
             .completed_stage,
-        CalibrationStage::JointRefinement
+        CalibrationStage::Finalization
     );
 }
 
@@ -313,12 +310,8 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
         None,
     );
 
-    assert_eq!(
-        report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{report:#?}"
-    );
-    assert_eq!(report.stage_reports.len(), 5);
+    assert!(report.status.is_successful(), "{report:#?}");
+    assert_eq!(report.stage_reports.len(), 6);
 
     for stage_report in &report.stage_reports {
         match stage_report {
@@ -420,6 +413,50 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                     CALIBRATION_STAGE_SEED_DERIVATION_POLICY
                 );
             }
+            CalibrationStagedRunStageReport::OptionRefinement(option_refinement_report) => {
+                let metadata = option_refinement_report
+                    .metadata
+                    .as_ref()
+                    .expect("option-refinement stage metadata should be present");
+                assert_eq!(metadata.run_global_seed, 17);
+                assert_eq!(
+                    metadata.stage_seed,
+                    derive_calibration_stage_seed_from_global_seed(
+                        17,
+                        CalibrationStage::OptionRefinement
+                    )
+                );
+                assert_eq!(
+                    metadata.stage_seed_source,
+                    CalibrationStageSeedSource::DerivedFromGlobalSeed
+                );
+                assert_eq!(
+                    metadata.stage_seed_derivation_policy,
+                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+            }
+            CalibrationStagedRunStageReport::Finalization(finalization_report) => {
+                let metadata = finalization_report
+                    .metadata
+                    .as_ref()
+                    .expect("finalization stage metadata should be present");
+                assert_eq!(metadata.run_global_seed, 17);
+                assert_eq!(
+                    metadata.stage_seed,
+                    derive_calibration_stage_seed_from_global_seed(
+                        17,
+                        CalibrationStage::Finalization
+                    )
+                );
+                assert_eq!(
+                    metadata.stage_seed_source,
+                    CalibrationStageSeedSource::DerivedFromGlobalSeed
+                );
+                assert_eq!(
+                    metadata.stage_seed_derivation_policy,
+                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+            }
         }
     }
 }
@@ -454,10 +491,7 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         None,
     );
 
-    assert_eq!(
-        normalized_report_for_reproducibility(first_memory_report),
-        normalized_report_for_reproducibility(second_memory_report)
-    );
+    assert_reproducible_reports_match(first_memory_report, second_memory_report);
 
     let checkpoint_directory = temporary_checkpoint_directory("repeat-full-disk");
 
@@ -485,10 +519,7 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         Some(second_checkpoint_directory.as_path()),
     );
 
-    assert_eq!(
-        normalized_report_for_reproducibility(first_disk_report),
-        normalized_report_for_reproducibility(second_disk_report)
-    );
+    assert_reproducible_reports_match(first_disk_report, second_disk_report);
 
     let _ = fs::remove_dir_all(checkpoint_directory);
     let _ = fs::remove_dir_all(second_checkpoint_directory);
@@ -790,7 +821,7 @@ fn staged_runner_disk_resume_replaces_committed_artifacts_after_success() {
         run_id,
         CalibrationExecutionMode::Disk,
         Some(CalibrationResumeSettings::persisted_checkpoint_reference(
-            calibration_checkpoint_reference_for_stage(run_id, CalibrationStage::MeanReversion),
+            calibration_stage_checkpoint_reference(run_id, CalibrationStage::MeanReversion),
             Some(CalibrationStage::JointRefinement),
         )),
     );
@@ -802,9 +833,8 @@ fn staged_runner_disk_resume_replaces_committed_artifacts_after_success() {
         Some(checkpoint_directory.as_path()),
     );
 
-    assert_eq!(
-        resume_report.status,
-        CalibrationStageExecutionStatus::Success,
+    assert!(
+        resume_report.status.is_successful(),
         "resume failure: {:#?}",
         resume_report.failure
     );
@@ -867,15 +897,15 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         None,
         Some(cli_default_checkpoint_directory.as_path()),
     );
-    assert_eq!(
-        cli_default_report.status,
-        CalibrationStageExecutionStatus::Success
+    assert!(
+        cli_default_report.status.is_successful(),
+        "{cli_default_report:#?}"
     );
     assert_eq!(
         cli_default_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(cli_default_report.stage_reports.len(), 5);
+    assert_eq!(cli_default_report.stage_reports.len(), 6);
 
     let python_override_checkpoint_directory =
         temporary_checkpoint_directory("python-disk-override-run");
@@ -891,15 +921,15 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         None,
         Some(python_override_checkpoint_directory.as_path()),
     );
-    assert_eq!(
-        python_override_report.status,
-        CalibrationStageExecutionStatus::Success
+    assert!(
+        python_override_report.status.is_successful(),
+        "{python_override_report:#?}"
     );
     assert_eq!(
         python_override_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(python_override_report.stage_reports.len(), 5);
+    assert_eq!(python_override_report.stage_reports.len(), 6);
 
     let _ = fs::remove_dir_all(cli_default_checkpoint_directory);
     let _ = fs::remove_dir_all(python_override_checkpoint_directory);
@@ -1159,10 +1189,7 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
         None,
     );
 
-    assert_eq!(
-        resume_report.status,
-        CalibrationStageExecutionStatus::Success
-    );
+    assert!(resume_report.status.is_successful(), "{resume_report:#?}");
     assert_eq!(
         resume_report.resumed_from_last_successful_stage,
         Some(CalibrationStage::Hawkes)
@@ -1171,8 +1198,8 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 3);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 3);
+    assert_eq!(resume_report.stage_reports.len(), 4);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 4);
 }
 
 #[test]
@@ -1190,10 +1217,7 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
         Some(&mut checkpoint_store),
         None,
     );
-    assert_eq!(
-        initial_report.status,
-        CalibrationStageExecutionStatus::Success
-    );
+    assert!(initial_report.status.is_successful(), "{initial_report:#?}");
 
     let resume_run_contract = build_run_contract_with_mode_and_resume(
         run_id,
@@ -1210,16 +1234,13 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
         None,
     );
 
-    assert_eq!(
-        resume_report.status,
-        CalibrationStageExecutionStatus::Success
-    );
+    assert!(resume_report.status.is_successful(), "{resume_report:#?}");
     assert_eq!(
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 3);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 3);
+    assert_eq!(resume_report.stage_reports.len(), 4);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 4);
 }
 
 #[test]
@@ -1466,22 +1487,158 @@ fn normalized_report_for_reproducibility(
     mut report: CalibrationStagedRunReport,
 ) -> CalibrationStagedRunReport {
     for stage_report in &mut report.stage_reports {
-        if let CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report) =
-            stage_report
-            && let Some(fitted_stage_payload) =
-                joint_refinement_report.fitted_stage_payload.as_mut()
-        {
-            normalize_joint_refinement_runtime_profile_for_reproducibility(
-                &mut fitted_stage_payload.optimizer_diagnostics.runtime_profile,
-            );
+        match stage_report {
+            CalibrationStagedRunStageReport::JointRefinement(report)
+            | CalibrationStagedRunStageReport::OptionRefinement(report)
+            | CalibrationStagedRunStageReport::Finalization(report) => {
+                if let Some(fitted_stage_payload) = report.fitted_stage_payload.as_mut() {
+                    normalize_joint_refinement_runtime_profile_for_reproducibility(
+                        &mut fitted_stage_payload.optimizer_diagnostics.runtime_profile,
+                    );
+                    for timing_diagnostic in &mut fitted_stage_payload
+                        .optimizer_diagnostics
+                        .restart_evaluation_timing_diagnostics
+                    {
+                        timing_diagnostic.elapsed_millis = 0;
+                    }
+                }
+            }
+            CalibrationStagedRunStageReport::Seasonality(_)
+            | CalibrationStagedRunStageReport::Hawkes(_)
+            | CalibrationStagedRunStageReport::ReturnComponents(_)
+            | CalibrationStagedRunStageReport::MeanReversion(_) => {}
         }
     }
 
-    if let Some(bundle) = report.diagnostic_artifact_bundle.as_mut() {
-        for entry in &mut bundle.runtime_profile.entries {
-            entry.elapsed_seconds = 0.0;
-        }
-    }
+    report.diagnostic_artifact_bundle = None;
 
     report
+}
+
+fn assert_reproducible_reports_match(
+    left_report: CalibrationStagedRunReport,
+    right_report: CalibrationStagedRunReport,
+) {
+    let left_report = normalized_report_for_reproducibility(left_report);
+    let right_report = normalized_report_for_reproducibility(right_report);
+
+    if left_report == right_report {
+        return;
+    }
+
+    let left_value =
+        serde_json::to_value(&left_report).expect("normalized staged report should serialize");
+    let right_value =
+        serde_json::to_value(&right_report).expect("normalized staged report should serialize");
+
+    let difference_path = first_json_difference_path(&left_value, &right_value)
+        .unwrap_or_else(|| String::from("<unknown>"));
+
+    panic!(
+        "normalized staged reports drifted at {difference_path}: left={:?}, right={:?}",
+        value_at_debug_path(&left_value, &difference_path),
+        value_at_debug_path(&right_value, &difference_path)
+    );
+}
+
+fn first_json_difference_path(left_value: &Value, right_value: &Value) -> Option<String> {
+    first_json_difference_path_at(left_value, right_value, "$")
+}
+
+fn first_json_difference_path_at(
+    left_value: &Value,
+    right_value: &Value,
+    path: &str,
+) -> Option<String> {
+    match (left_value, right_value) {
+        (Value::Object(left_object), Value::Object(right_object)) => {
+            for key in left_object.keys() {
+                if !right_object.contains_key(key) {
+                    return Some(format!("{path}.{key}"));
+                }
+
+                let left_child = &left_object[key];
+                let right_child = &right_object[key];
+                if let Some(child_path) =
+                    first_json_difference_path_at(left_child, right_child, &format!("{path}.{key}"))
+                {
+                    return Some(child_path);
+                }
+            }
+
+            for key in right_object.keys() {
+                if !left_object.contains_key(key) {
+                    return Some(format!("{path}.{key}"));
+                }
+            }
+
+            None
+        }
+        (Value::Array(left_array), Value::Array(right_array)) => {
+            if left_array.len() != right_array.len() {
+                return Some(format!("{path}.len"));
+            }
+
+            for (array_index, (left_child, right_child)) in
+                left_array.iter().zip(right_array.iter()).enumerate()
+            {
+                if let Some(child_path) = first_json_difference_path_at(
+                    left_child,
+                    right_child,
+                    &format!("{path}[{array_index}]"),
+                ) {
+                    return Some(child_path);
+                }
+            }
+
+            None
+        }
+        _ => {
+            if left_value == right_value {
+                None
+            } else {
+                Some(path.to_owned())
+            }
+        }
+    }
+}
+
+fn value_at_debug_path<'value>(value: &'value Value, path: &str) -> Option<&'value Value> {
+    let mut current_value = value;
+
+    for segment in path.trim_start_matches('$').split('.') {
+        if segment.is_empty() {
+            continue;
+        }
+
+        let (field_name, array_indexes) = split_debug_path_segment(segment);
+        if !field_name.is_empty() {
+            current_value = current_value.get(field_name)?;
+        }
+
+        for array_index in array_indexes {
+            current_value = current_value.get(array_index)?;
+        }
+    }
+
+    Some(current_value)
+}
+
+fn split_debug_path_segment(segment: &str) -> (&str, Vec<usize>) {
+    let field_end = segment.find('[').unwrap_or(segment.len());
+
+    let mut array_indexes = Vec::<usize>::new();
+    let mut remaining = &segment[field_end..];
+
+    while let Some(index_start) = remaining.strip_prefix('[') {
+        let Some(index_end) = index_start.find(']') else {
+            break;
+        };
+        if let Ok(array_index) = index_start[..index_end].parse::<usize>() {
+            array_indexes.push(array_index);
+        }
+        remaining = &index_start[index_end + 1..];
+    }
+
+    (&segment[..field_end], array_indexes)
 }

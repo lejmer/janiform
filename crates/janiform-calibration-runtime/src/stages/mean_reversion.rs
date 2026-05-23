@@ -14,8 +14,7 @@ use janiform_calibration_artifacts::{
     MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
     MeanReversionStageDiagnostics,
 };
-use janiform_foundations::matrix2::solve_two_by_two_linear_system;
-use janiform_foundations::numeric::{clamp_to_unit_interval, coverage_ratio};
+use janiform_foundations::numeric::{GOLDEN_RATIO, clamp_to_unit_interval, coverage_ratio};
 use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
@@ -25,6 +24,7 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionFittedParameters,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
+use nalgebra::{Matrix2, Vector2};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
@@ -1159,10 +1159,8 @@ fn profile_candidate_over_unit_interval<Error>(
     let mut lower_position = 0.0_f64;
     let mut upper_position = 1.0_f64;
 
-    let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
-
-    let mut left_position = upper_position - (upper_position - lower_position) / golden_ratio;
-    let mut right_position = lower_position + (upper_position - lower_position) / golden_ratio;
+    let mut left_position = upper_position - (upper_position - lower_position) / GOLDEN_RATIO;
+    let mut right_position = lower_position + (upper_position - lower_position) / GOLDEN_RATIO;
 
     let mut left_candidate = evaluate_candidate_at_position(left_position)?;
     let mut right_candidate = evaluate_candidate_at_position(right_position)?;
@@ -1183,7 +1181,7 @@ fn profile_candidate_over_unit_interval<Error>(
 
             right_candidate = left_candidate;
 
-            left_position = upper_position - (upper_position - lower_position) / golden_ratio;
+            left_position = upper_position - (upper_position - lower_position) / GOLDEN_RATIO;
             left_candidate = evaluate_candidate_at_position(left_position)?;
         } else {
             lower_position = left_position;
@@ -1191,7 +1189,7 @@ fn profile_candidate_over_unit_interval<Error>(
 
             left_candidate = right_candidate;
 
-            right_position = lower_position + (upper_position - lower_position) / golden_ratio;
+            right_position = lower_position + (upper_position - lower_position) / GOLDEN_RATIO;
             right_candidate = evaluate_candidate_at_position(right_position)?;
         }
     }
@@ -1597,16 +1595,17 @@ fn solve_two_column_least_squares(
         };
     }
 
-    if let Some([first_coefficient, second_coefficient]) = solve_two_by_two_linear_system(
+    let normal_matrix = Matrix2::new(
         first_self_inner_product,
         cross_inner_product,
         cross_inner_product,
         second_self_inner_product,
-        [first_response_inner_product, second_response_inner_product],
-    ) {
+    );
+    let response_vector = Vector2::new(first_response_inner_product, second_response_inner_product);
+    if let Some(coefficients) = normal_matrix.lu().solve(&response_vector) {
         return MeanReversionLeastSquaresSolution {
-            first_coefficient,
-            second_coefficient,
+            first_coefficient: coefficients[0],
+            second_coefficient: coefficients[1],
             rank: 2,
         };
     }

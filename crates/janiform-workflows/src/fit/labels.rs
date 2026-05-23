@@ -54,6 +54,8 @@ pub const fn stage_label(stage: CalibrationStage) -> &'static str {
         CalibrationStage::ReturnComponents => "Fit return distribution",
         CalibrationStage::MeanReversion => "Fit mean reversion",
         CalibrationStage::JointRefinement => "Refine dynamics",
+        CalibrationStage::OptionRefinement => "Fit option surface",
+        CalibrationStage::Finalization => "Finalize model",
     }
 }
 
@@ -65,6 +67,8 @@ pub fn stage_label_from_token(stage: &str) -> String {
         "return_components" => "Fit return distribution",
         "mean_reversion" => "Fit mean reversion",
         "joint_refinement" => "Refine dynamics",
+        "option_refinement" => "Fit option surface",
+        "finalization" => "Finalize model",
         other => return format_token_as_words(other),
     };
 

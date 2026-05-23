@@ -218,6 +218,7 @@ pub struct JointRefinementStageFittedParameters {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStagePricingBlockFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub hawkes_kernel_parameters: HawkesKernelParameters,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

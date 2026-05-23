@@ -1,4 +1,6 @@
-use janiform::calibration::artifacts::CalibrationStage;
+use janiform::calibration::artifacts::{
+    CalibrationStage, calibration_stage_from_token, calibration_stage_token,
+};
 use janiform::calibration::market_data::MarketDataNormalizedTickOutput;
 use janiform::calibration::staged::{
     CalibrationMemoryCheckpointStore, CalibrationStagedExecutionInput,
@@ -98,14 +100,21 @@ impl PyNormalizedMarketDataHandle {
 }
 
 fn parse_calibration_stage(raw_stage: &str) -> PyResult<CalibrationStage> {
-    match raw_stage {
-        "seasonality" => Ok(CalibrationStage::Seasonality),
-        "hawkes" => Ok(CalibrationStage::Hawkes),
-        "return_components" => Ok(CalibrationStage::ReturnComponents),
-        "mean_reversion" => Ok(CalibrationStage::MeanReversion),
-        "joint_refinement" => Ok(CalibrationStage::JointRefinement),
-        _ => Err(PyValueError::new_err(
-            "stage must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
-        )),
+    match calibration_stage_from_token(raw_stage) {
+        Some(stage) => Ok(stage),
+        None => Err(PyValueError::new_err(format!(
+            "stage must be one of: {}",
+            [
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
+                CalibrationStage::JointRefinement,
+                CalibrationStage::OptionRefinement,
+                CalibrationStage::Finalization,
+            ]
+            .map(calibration_stage_token)
+            .join(", ")
+        ))),
     }
 }

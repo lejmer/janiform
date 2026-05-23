@@ -21,11 +21,11 @@ use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOpti
 
 use super::super::super::setup::parameter_vector_to_fitted_parameters;
 use super::super::{
-    JointRefinementContext, JointRefinementOptionTierPricingArtifact,
-    JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
-    OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
-    OptionSurfaceTierPricingArtifactResolutionInput, elapsed_millis, ordered_parameter_bits,
-    resolve_option_surface_tier_pricing_artifact,
+    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementContext,
+    JointRefinementOptionTierPricingArtifact, JointRefinementRestartOutcome,
+    JointRefinementResumeStore, OptionPricingProgressInput, OptionPricingProgressSnapshot,
+    OptionPricingProgressSnapshotSource, OptionSurfaceTierPricingArtifactResolutionInput,
+    elapsed_millis, ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact,
 };
 use super::candidate_parallelism::{
     option_refinement_candidate_parallelism, option_refinement_candidate_pricing_cpu_count,
@@ -34,6 +34,7 @@ use super::pricing_block_optimizer::{
     OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard,
     optimize_pricing_block_from_search_tier_sensitivities,
 };
+use super::reduced_model::option_reduced_model_parameter_count;
 
 pub(crate) const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT: usize = 5;
 
@@ -1324,6 +1325,15 @@ fn pricing_block_refinement_context(
 
     refinement_context.option_pricing_refinement_enabled = true;
 
+    for parameter_index in &refinement_context
+        .active_parameter_layout
+        .option_pricing_hawkes_block
+    {
+        refinement_context.lower_bounds[*parameter_index] =
+            -JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
+        refinement_context.upper_bounds[*parameter_index] = JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
+    }
+
     refinement_context
 }
 
@@ -1350,11 +1360,11 @@ fn restart_outcome_with_pricing_block(
 }
 
 pub(crate) fn option_pricing_block_evaluation_budget() -> usize {
-    1 + pricing_block_search_coordinate_count()
+    1 + 2 * pricing_block_search_coordinate_count()
 }
 
-pub(super) fn pricing_block_search_coordinate_count() -> usize {
-    4
+pub(crate) fn pricing_block_search_coordinate_count() -> usize {
+    option_reduced_model_parameter_count()
 }
 
 fn pricing_block_parameter_bits(
@@ -1365,6 +1375,12 @@ fn pricing_block_parameter_bits(
         .active_parameter_layout
         .nig_block
         .iter()
+        .chain(
+            context
+                .active_parameter_layout
+                .option_pricing_hawkes_block
+                .iter(),
+        )
         .map(|parameter_index| parameter_vector[*parameter_index].to_bits())
         .collect()
 }

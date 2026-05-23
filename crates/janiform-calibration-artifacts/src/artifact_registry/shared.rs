@@ -4,10 +4,11 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use janiform_foundations::hashing::fnv1a_64_hex_lowercase;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use super::super::contracts::{CalibrationExecutionMode, CalibrationRunSpec, CalibrationStage};
+use super::super::contracts::CalibrationExecutionMode;
 
 pub const CALIBRATION_ARTIFACT_STORAGE_LAYOUT_POLICY: &str = "run_directory_separates_committed_calibration_artifacts_pending_artifacts_quarantine_and_checkpoints.v1";
 pub const CALIBRATION_ARTIFACT_ROOT_CONFIGURATION_POLICY: &str =
@@ -71,33 +72,6 @@ pub(crate) fn calibration_execution_mode_token(
         CalibrationExecutionMode::Memory => "memory",
         CalibrationExecutionMode::Disk => "disk",
     }
-}
-
-pub fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
-    match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-        CalibrationStage::MeanReversion => "mean_reversion",
-        CalibrationStage::JointRefinement => "joint_refinement",
-    }
-}
-
-pub fn stage_output_artifact_references_for_stage(
-    run_spec: &CalibrationRunSpec,
-    stage: CalibrationStage,
-) -> Vec<String> {
-    let mut artifact_references = run_spec
-        .stage_handoffs
-        .iter()
-        .filter(|handoff| handoff.from_stage == stage)
-        .filter_map(|handoff| handoff.artifact_reference())
-        .filter(|artifact_reference| !artifact_reference.trim().is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    artifact_references.sort();
-    artifact_references.dedup();
-    artifact_references
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -325,19 +299,7 @@ impl Display for CalibrationArtifactIoError {
 impl Error for CalibrationArtifactIoError {}
 
 pub(crate) fn compute_reference_checksum_hex(data_reference: &str) -> String {
-    format!("{:016x}", fnv1a_64(data_reference.as_bytes()))
-}
-
-fn fnv1a_64(payload: &[u8]) -> u64 {
-    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-    let mut hash = FNV_OFFSET;
-    for byte in payload {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
+    fnv1a_64_hex_lowercase(data_reference.as_bytes())
 }
 
 pub(crate) fn validate_checksum_hex<E>(checksum_hex: &str, error: E) -> Result<(), E> {

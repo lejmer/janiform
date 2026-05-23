@@ -8,6 +8,8 @@ pub enum CalibrationStage {
     ReturnComponents,
     MeanReversion,
     JointRefinement,
+    OptionRefinement,
+    Finalization,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

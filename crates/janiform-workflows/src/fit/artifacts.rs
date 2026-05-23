@@ -463,6 +463,17 @@ fn apply_stage_reports_to_model_parameters(
                     stage_parameters.joint_refinement = Some(joint_refinement_parameters(payload)?);
                 }
             }
+            CalibrationStagedRunStageReport::OptionRefinement(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    stage_parameters.option_refinement =
+                        Some(joint_refinement_parameters(payload)?);
+                }
+            }
+            CalibrationStagedRunStageReport::Finalization(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    stage_parameters.finalization = Some(joint_refinement_parameters(payload)?);
+                }
+            }
         }
     }
 
@@ -476,6 +487,8 @@ fn stage_report_stage(stage_report: &CalibrationStagedRunStageReport) -> Calibra
         CalibrationStagedRunStageReport::ReturnComponents(_) => CalibrationStage::ReturnComponents,
         CalibrationStagedRunStageReport::MeanReversion(_) => CalibrationStage::MeanReversion,
         CalibrationStagedRunStageReport::JointRefinement(_) => CalibrationStage::JointRefinement,
+        CalibrationStagedRunStageReport::OptionRefinement(_) => CalibrationStage::OptionRefinement,
+        CalibrationStagedRunStageReport::Finalization(_) => CalibrationStage::Finalization,
     }
 }
 
@@ -502,6 +515,14 @@ fn apply_stage_parameter_artifact_to_model_parameters(
             stage_parameters.joint_refinement =
                 Some(joint_refinement_parameters_from_artifact(payload)?);
         }
+        CalibrationStageParameterPayload::OptionRefinement(payload) => {
+            stage_parameters.option_refinement =
+                Some(joint_refinement_parameters_from_artifact(payload)?);
+        }
+        CalibrationStageParameterPayload::Finalization(payload) => {
+            stage_parameters.finalization =
+                Some(joint_refinement_parameters_from_artifact(payload)?);
+        }
     }
 
     Ok(())
@@ -514,6 +535,8 @@ struct ModelStageParameters {
     return_components: Option<Value>,
     mean_reversion: Option<Value>,
     joint_refinement: Option<Value>,
+    option_refinement: Option<Value>,
+    finalization: Option<Value>,
 }
 
 impl ModelStageParameters {
@@ -522,6 +545,18 @@ impl ModelStageParameters {
 
         if let Some(seasonality) = self.seasonality {
             parameters.insert("seasonality".to_string(), seasonality);
+        }
+
+        if let Some(finalization) = self.finalization {
+            parameters.insert("finalization".to_string(), finalization);
+
+            return parameters;
+        }
+
+        if let Some(option_refinement) = self.option_refinement {
+            parameters.insert("option_refinement".to_string(), option_refinement);
+
+            return parameters;
         }
 
         if let Some(joint_refinement) = self.joint_refinement {
@@ -690,6 +725,12 @@ fn stage_statuses(report: &CalibrationStagedRunReport) -> Vec<Value> {
             CalibrationStagedRunStageReport::JointRefinement(report) => {
                 json!({"stage": "joint_refinement", "status": report.status})
             }
+            CalibrationStagedRunStageReport::OptionRefinement(report) => {
+                json!({"stage": "option_refinement", "status": report.status})
+            }
+            CalibrationStagedRunStageReport::Finalization(report) => {
+                json!({"stage": "finalization", "status": report.status})
+            }
         })
         .collect()
 }
@@ -730,6 +771,22 @@ fn selected_candidate_ids(report: &CalibrationStagedRunReport) -> Value {
                 if let Some(payload) = &report.fitted_stage_payload {
                     selected.insert(
                         "joint_refinement".to_string(),
+                        Value::String(payload.selected_candidate_id.to_owned()),
+                    );
+                }
+            }
+            CalibrationStagedRunStageReport::OptionRefinement(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    selected.insert(
+                        "option_refinement".to_string(),
+                        Value::String(payload.selected_candidate_id.to_owned()),
+                    );
+                }
+            }
+            CalibrationStagedRunStageReport::Finalization(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    selected.insert(
+                        "finalization".to_string(),
                         Value::String(payload.selected_candidate_id.to_owned()),
                     );
                 }

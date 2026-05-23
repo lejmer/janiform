@@ -7,8 +7,9 @@ use janiform_calibration_artifacts::{
     CalibrationLossEvaluation, CalibrationObjectivePolicy, HawkesStageFittedParameters,
     JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
     JointRefinementStageOptionAggregateDiagnostic, JointRefinementStageOptionNodeDiagnostic,
-    JointRefinementStageOptionOperatorApproximationDiagnostics, JointRefinementStageRuntimeProfile,
-    ReturnComponentsStageFittedParameters,
+    JointRefinementStageOptionOperatorApproximationDiagnostics,
+    JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
+    JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -448,11 +449,18 @@ impl JointRefinementProfilingState {
 pub(crate) struct JointRefinementActiveParameterLayout {
     pub(crate) hawkes_block: Vec<usize>,
     pub(crate) nig_block: Vec<usize>,
+    pub(crate) option_pricing_hawkes_block: Vec<usize>,
     pub(crate) coupling_block: Vec<usize>,
     pub(crate) log_stationary_event_rate_scale_index: usize,
     pub(crate) log_beta_scale_index: usize,
     pub(crate) log_self_excitation_scale_index: usize,
     pub(crate) log_cross_excitation_scale_index: usize,
+    pub(crate) option_pricing_log_stationary_event_rate_scale_index: usize,
+    pub(crate) option_pricing_log_beta_scale_index: usize,
+    pub(crate) option_pricing_log_alpha_plus_plus_scale_index: usize,
+    pub(crate) option_pricing_log_alpha_plus_minus_scale_index: usize,
+    pub(crate) option_pricing_log_alpha_minus_plus_scale_index: usize,
+    pub(crate) option_pricing_log_alpha_minus_minus_scale_index: usize,
     pub(crate) known_activity_scale_index: Option<usize>,
     pub(crate) surprise_activity_scale_index: Option<usize>,
     pub(crate) surprise_baseline_scale_index: Option<usize>,
@@ -676,6 +684,28 @@ pub(crate) struct JointRefinementRestartOutcome {
     pub(crate) final_evaluation: JointRefinementCandidateEvaluation,
     pub(crate) local_evaluation_count: usize,
     pub(crate) stop_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct JointRefinementStageRuntimeHandoff {
+    pub(crate) baseline_restart_outcome: JointRefinementRestartOutcome,
+    pub(crate) restart_outcomes: Vec<JointRefinementRestartOutcome>,
+    pub(crate) restart_evaluation_timing_diagnostics:
+        Vec<janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic>,
+    pub(crate) valid_restart_count: usize,
+    pub(crate) best_restart: JointRefinementRestartOutcome,
+    pub(crate) option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
+    pub(crate) selected_option_search_tier_pricing_artifact:
+        Option<Arc<JointRefinementOptionTierPricingArtifact>>,
+    pub(crate) selected_option_selection_tier_pricing_artifact:
+        Option<Arc<JointRefinementOptionTierPricingArtifact>>,
+    pub(crate) selected_option_audit_tier_pricing_artifact:
+        Option<Arc<JointRefinementOptionTierPricingArtifact>>,
+    pub(crate) option_search_selection_agreement:
+        Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics>,
+    pub(crate) warning: Option<String>,
+    pub(crate) restart_optimization_wall_clock_millis: u64,
+    pub(crate) coarse_consistency_wall_clock_millis: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

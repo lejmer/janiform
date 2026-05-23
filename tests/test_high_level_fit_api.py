@@ -101,7 +101,10 @@ from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 from janiform.simulation import SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
+    append_finalization_stage_report_from_joint_refinement,
     build_endogenous_mean_reversion_fitted_parameters_payload,
+    build_nominal_tick_grid_observation_model_payload,
+    build_unit_return_mark_hour_of_week_scale_profile_payload,
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
@@ -1351,14 +1354,14 @@ def test_high_level_model_load_preserves_rust_model_artifact_metadata(
         "resolved_configuration",
         "session_resolution",
     }
-    assert set(persisted_payload["parameters"]) == {"seasonality", "joint_refinement"}
-    assert set(persisted_payload["parameters"]["joint_refinement"]) == {
+    assert set(persisted_payload["parameters"]) == {"seasonality", "finalization"}
+    assert set(persisted_payload["parameters"]["finalization"]) == {
         "schema_version",
         "selected_candidate_id",
         "fitted_parameters",
     }
     assert (
-        persisted_payload["parameters"]["joint_refinement"]["fitted_parameters"][
+        persisted_payload["parameters"]["finalization"]["fitted_parameters"][
             "return_components_fitted_parameters"
         ]["mean_reversion_fitted_parameters"]
         == build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
@@ -1559,7 +1562,7 @@ def test_high_level_model_load_preserves_endogenous_mean_reversion_block(
     loaded_model = JaniformModel.load(persisted_model_path)
 
     assert (
-        loaded_model.parameters["joint_refinement"]["fitted_parameters"][
+        loaded_model.parameters["finalization"]["fitted_parameters"][
             "return_components_fitted_parameters"
         ]["mean_reversion_fitted_parameters"]
         == mean_reversion_payload
@@ -4202,6 +4205,7 @@ def test_high_level_fit_report_returns_success_details_with_model(
         "return_components",
         "mean_reversion",
         "joint_refinement",
+        "finalization",
     ]
 
 
@@ -4293,6 +4297,7 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
             CalibrationStage.RETURN_COMPONENTS,
             CalibrationStage.MEAN_REVERSION,
             CalibrationStage.JOINT_REFINEMENT,
+            CalibrationStage.FINALIZATION,
         ),
     )
 
@@ -4631,8 +4636,8 @@ def _capture_native_single_option_pricing_requests(
 def _mean_reversion_fitted_parameters_payload_from_model_payload(
     model_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    raw_joint_refinement = model_payload["parameters"]["joint_refinement"]
-    raw_fitted_parameters = raw_joint_refinement["fitted_parameters"]
+    raw_finalization = model_payload["parameters"]["finalization"]
+    raw_fitted_parameters = raw_finalization["fitted_parameters"]
     raw_return_components = raw_fitted_parameters["return_components_fitted_parameters"]
 
     return raw_return_components["mean_reversion_fitted_parameters"]
@@ -5015,6 +5020,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                        "return_mark_hour_of_week_scale_profile": (
+                            build_unit_return_mark_hour_of_week_scale_profile_payload()
+                        ),
+                        "tick_grid_observation_model": (
+                            build_nominal_tick_grid_observation_model_payload()
+                        ),
                         "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
                 },
@@ -5184,6 +5195,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                     "exposure_weighted_mean_one_over_source_window.v1"
                                 ),
                             },
+                            "return_mark_hour_of_week_scale_profile": (
+                                build_unit_return_mark_hour_of_week_scale_profile_payload()
+                            ),
+                            "tick_grid_observation_model": (
+                                build_nominal_tick_grid_observation_model_payload()
+                            ),
                             "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                         },
                     },
@@ -5275,6 +5292,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                        "return_mark_hour_of_week_scale_profile": (
+                            build_unit_return_mark_hour_of_week_scale_profile_payload()
+                        ),
+                        "tick_grid_observation_model": (
+                            build_nominal_tick_grid_observation_model_payload()
+                        ),
                         "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
                     "objective_breakdown": {
@@ -5302,6 +5325,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
         ],
         "emitted_checkpoints": [],
     }
+    append_finalization_stage_report_from_joint_refinement(raw_response)
 
     return validate_staged_calibration_response(raw_response), raw_response
 
