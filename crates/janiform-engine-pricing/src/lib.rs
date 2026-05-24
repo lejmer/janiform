@@ -21,6 +21,7 @@ pub use black_scholes::{
     black_scholes_log_return_characteristic_function, black_scholes_no_arbitrage_price_bounds,
     black_scholes_price, intraday_black_scholes_log_return_characteristic_function,
     intraday_black_scholes_no_arbitrage_price_bounds, intraday_black_scholes_price,
+    intraday_discount_factor, intraday_forward_price,
 };
 pub use characteristic::{
     AnchoredLocalTiltSolveError, PricingTransformInputBuildError,

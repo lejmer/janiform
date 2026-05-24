@@ -2,18 +2,9 @@ use super::interval_operator::SolvedMaturityLaw;
 use super::{
     ComplexScalar, NodePriceSharedPlusShiftSensitivity, VanillaOptionPayoffType,
     VanillaOptionPricingRunError, asset_reference_log_price_from_observed_spot,
-    complex_exponential, complex_multiply, intraday_year_fraction,
+    complex_exponential, complex_multiply,
 };
-
-pub(super) fn spectral_projection_payoff_type(
-    payoff_type: VanillaOptionPayoffType,
-) -> VanillaOptionPayoffType {
-    match payoff_type {
-        VanillaOptionPayoffType::Call | VanillaOptionPayoffType::Put => {
-            VanillaOptionPayoffType::Call
-        }
-    }
-}
+use crate::intraday_discount_factor;
 
 #[derive(Debug, Clone, Copy)]
 struct CosPayoffProjection {
@@ -32,8 +23,6 @@ impl CosPayoffProjection {
         risk_free_rate: f64,
         solved_maturity: &SolvedMaturityLaw,
     ) -> Option<Self> {
-        let maturity_year_fraction = intraday_year_fraction(solved_maturity.maturity_interval);
-
         let domain_lower_bound =
             solved_maturity.terminal_anchor_value + solved_maturity.deviation_lower_bound;
         let domain_upper_bound =
@@ -53,10 +42,8 @@ impl CosPayoffProjection {
 
         let strike_boundary =
             strike_log_boundary_from_reference_log(strike, asset_reference_log_price)?;
-        let discount_factor = (-risk_free_rate * maturity_year_fraction).exp();
-        if !discount_factor.is_finite() {
-            return None;
-        }
+        let discount_factor =
+            intraday_discount_factor(risk_free_rate, solved_maturity.maturity_interval)?;
 
         Some(Self {
             asset_reference_price,
@@ -107,6 +94,7 @@ pub(super) fn cos_price_from_terminal_characteristic_function(
     }
 
     let projection = CosPayoffProjection::try_new(spot, strike, risk_free_rate, solved_maturity)?;
+
     let mut price = 0.0;
 
     for (frequency_index, phi_value) in solved_maturity
@@ -123,6 +111,7 @@ pub(super) fn cos_price_from_terminal_characteristic_function(
     }
 
     let discounted_price = projection.discount_factor * price;
+
     discounted_price
         .is_finite()
         .then_some(discounted_price.max(0.0))

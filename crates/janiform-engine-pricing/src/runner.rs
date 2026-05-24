@@ -34,6 +34,7 @@ use janiform_model_kernels::nig::{
     NigBuySellDriverParameters, NigSharedPlusShiftConfigurationError,
 };
 
+use super::black_scholes::{intraday_discount_factor, intraday_forward_price};
 use super::characteristic::{
     LocalTiltResidualEvaluation, LocalTiltSearchDomain, PricingTransformInputBuildError,
     build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator,
@@ -757,7 +758,24 @@ pub fn run_vanilla_option_pricing_with_observer(
                     },
                 )?;
 
-            let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+            let forward_price = intraday_forward_price(
+                pricing_request.market_inputs.spot,
+                pricing_request.market_inputs.risk_free_rate,
+                pricing_request.market_inputs.dividend_yield,
+                maturity_interval,
+            )
+            .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: "pricing diagnostics require a finite positive forward price".to_string(),
+            })?;
+
+            let discount_factor = intraday_discount_factor(
+                pricing_request.market_inputs.risk_free_rate,
+                maturity_interval,
+            )
+            .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: "pricing diagnostics require a finite positive discount factor"
+                    .to_string(),
+            })?;
 
             let response = VanillaOptionPricingResponse::try_new(
                 VanillaOptionPricingStatus::Succeeded,
@@ -765,13 +783,8 @@ pub fn run_vanilla_option_pricing_with_observer(
                 Some(spectral_outcome.price),
                 Some(
                     VanillaOptionPricingDiagnostics::try_new(
-                        pricing_request.market_inputs.spot
-                            * ((pricing_request.market_inputs.risk_free_rate
-                                - pricing_request.market_inputs.dividend_yield)
-                                * maturity_year_fraction)
-                                .exp(),
-                        (-pricing_request.market_inputs.risk_free_rate * maturity_year_fraction)
-                            .exp(),
+                        forward_price,
+                        discount_factor,
                         maturity_interval,
                         hawkes_boundary_state_norm(
                             pricing_request.boundary_input.hawkes_boundary_state,

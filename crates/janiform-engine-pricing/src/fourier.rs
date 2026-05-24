@@ -21,7 +21,10 @@ use super::contracts::{
     VanillaOptionPricingMarketInputsError,
 };
 use super::time_scaling::intraday_year_fraction;
-use super::vanilla_payoff::vanilla_payoff_price_from_discounted_call;
+use super::vanilla_payoff::{
+    unvalidated_vanilla_payoff_price_from_discounted_projection,
+    vanilla_payoff_price_from_discounted_call,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FourierInversionProgress {
@@ -1155,12 +1158,13 @@ fn map_discounted_call_to_vanilla_payoff(
         discounted_strike,
     )
     .ok_or_else(|| {
-        let value = match payoff_type {
-            VanillaOptionPayoffType::Call => discounted_call_price,
-            VanillaOptionPayoffType::Put => {
-                discounted_call_price - discounted_spot + discounted_strike
-            }
-        };
+        let value = unvalidated_vanilla_payoff_price_from_discounted_projection(
+            payoff_type,
+            VanillaOptionPayoffType::Call,
+            discounted_call_price,
+            discounted_spot,
+            discounted_strike,
+        );
 
         FourierInversionPricingError::NonFiniteFinalPrice { value }
     })?;

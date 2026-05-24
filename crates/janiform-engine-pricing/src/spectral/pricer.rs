@@ -3,6 +3,7 @@ mod execution;
 mod interval_operator;
 mod math;
 mod payoff;
+mod projection;
 mod row_frequency;
 mod strike;
 
@@ -46,7 +47,6 @@ pub(super) use crate::runner::{
     pricing_ratio_derivative, resolve_local_transition_theta_for_row_with_parallelism_and_hint,
 };
 pub(super) use crate::thread_pool::{install_pricing_parallelism, resolved_pricing_cpu_count};
-pub(super) use crate::time_scaling::intraday_year_fraction;
 pub(in crate::spectral::pricer) use execution::emit_pricing_progress;
 pub(crate) use execution::run_single_option_pricing;
 pub use execution::run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state;

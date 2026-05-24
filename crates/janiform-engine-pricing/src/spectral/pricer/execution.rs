@@ -30,12 +30,12 @@ use super::interval_operator::{
     CachedIntervalOperatorBuildInput, SolvedMaturityLaw, build_cached_interval_operators,
     solve_maturity_law,
 };
-use super::payoff::spectral_projection_payoff_type;
 #[cfg(test)]
 use super::payoff::{
     cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
     strike_log_boundary_from_reference_log,
 };
+use super::projection::required_projection_payoff_types_for_grid;
 #[cfg(test)]
 use super::row_frequency::{
     IntervalRowFrequencyBatchAdaptiveSolveInput, solve_interval_row_frequency_batches_adaptively,
@@ -312,9 +312,11 @@ fn prepare_pricing_group_contexts(
         let pricing_group_key = PricingGroupKey::from_grid(grid);
         let members = grouped_members.entry(pricing_group_key).or_default();
 
-        members
-            .payoff_types
-            .insert(spectral_projection_payoff_type(grid.payoff_type));
+        for payoff_type in
+            required_projection_payoff_types_for_grid(execution_input.request.spot, grid)?
+        {
+            members.payoff_types.insert(payoff_type);
+        }
 
         for strike in &grid.strikes {
             members.strike_bits.insert(strike.to_bits());
@@ -699,7 +701,7 @@ mod tests {
         IntervalRowFrequencyBatchAdaptiveSolveInput, PricingGroupKey, SolvedMaturityLaw,
         SpectralDomain, asset_reference_log_price_from_observed_spot, build_spectral_domain,
         cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
-        solve_interval_row_frequency_batches_adaptively, spectral_projection_payoff_type,
+        required_projection_payoff_types_for_grid, solve_interval_row_frequency_batches_adaptively,
         spectral_theta_warm_start_payoff_type_mask, strike_log_boundary_from_reference_log,
     };
     use crate::contracts::{
@@ -847,7 +849,7 @@ mod tests {
             payoff_type: VanillaOptionPayoffType::Call,
             risk_free_rate: 0.02,
             dividend_yield: 0.01,
-            strikes: vec![100.0],
+            strikes: vec![99.0, 101.0],
             maturity_intervals: vec![1.0],
         };
 
@@ -860,13 +862,30 @@ mod tests {
         let put_key = PricingGroupKey::from_grid(&put_grid);
 
         assert_eq!(call_key, put_key);
+
+        let call_projection_payoff_types =
+            required_projection_payoff_types_for_grid(100.0, &call_grid)
+                .expect("call projection payoff types should resolve")
+                .into_iter()
+                .collect::<Vec<_>>();
+        let put_projection_payoff_types =
+            required_projection_payoff_types_for_grid(100.0, &put_grid)
+                .expect("put projection payoff types should resolve")
+                .into_iter()
+                .collect::<Vec<_>>();
+
         assert_eq!(
-            call_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(&[
-                VanillaOptionPayoffType::Call,
-            ])),
-            put_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(&[
-                spectral_projection_payoff_type(VanillaOptionPayoffType::Put),
-            ])),
+            call_projection_payoff_types,
+            vec![VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put,],
+        );
+        assert_eq!(call_projection_payoff_types, put_projection_payoff_types);
+        assert_eq!(
+            call_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(
+                call_projection_payoff_types.as_slice()
+            )),
+            put_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(
+                put_projection_payoff_types.as_slice()
+            )),
         );
     }
 

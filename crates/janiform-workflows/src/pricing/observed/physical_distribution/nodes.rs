@@ -1,6 +1,6 @@
 use janiform::pricing::{
     VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffType,
-    VanillaOptionPricingMarketInputs, intraday_year_fraction,
+    VanillaOptionPricingMarketInputs, intraday_discount_factor, intraday_forward_price,
     invert_vanilla_option_implied_volatility, vanilla_option_terminal_payoff,
 };
 use janiform_foundations::numeric::arithmetic_mean;
@@ -148,12 +148,26 @@ fn compute_physical_distribution_node_values(
 
     let p_simulated_forward_price = spot * mean_terminal_ratio;
 
-    let maturity_year_fraction = intraday_year_fraction(node.maturity_interval);
+    let q_forward_price = intraday_forward_price(
+        spot,
+        node.risk_free_rate,
+        node.dividend_yield,
+        node.maturity_interval,
+    )
+    .ok_or_else(|| {
+        pricing_validation_error(
+            "physical_distribution_diagnostics",
+            "failed to resolve finite positive Q forward price",
+        )
+    })?;
 
-    let q_forward_price =
-        spot * ((node.risk_free_rate - node.dividend_yield) * maturity_year_fraction).exp();
-
-    let discount_factor = (-node.risk_free_rate * maturity_year_fraction).exp();
+    let discount_factor = intraday_discount_factor(node.risk_free_rate, node.maturity_interval)
+        .ok_or_else(|| {
+            pricing_validation_error(
+                "physical_distribution_diagnostics",
+                "failed to resolve finite positive discount factor",
+            )
+        })?;
 
     let physical_forward_normalized_strike = node.strike / p_simulated_forward_price;
     let physical_forward_normalized_price = mean_physical_forward_normalized_payoff(
