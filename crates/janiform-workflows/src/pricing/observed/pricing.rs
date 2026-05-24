@@ -268,6 +268,7 @@ fn resolve_prepared_snapshot_progress_plan(
 ) -> Result<SurfaceTaskProgressPlan, WorkflowError> {
     let valuation_time_utc =
         DateTime::<Utc>::from_timestamp_nanos(prepared_snapshot.valuation_time_utc_nanos);
+
     let maturity_resolution = resolve_snapshot_maturity_resolution(
         valuation_time_utc,
         &prepared_snapshot.snapshot_groups,
@@ -317,24 +318,30 @@ fn surface_task_progress_plan_from_resolution(
     prepared_snapshot: &PreparedObservedSnapshot,
     maturity_resolution: &HighLevelPricingMaturityResolution,
 ) -> Result<SurfaceTaskProgressPlan, WorkflowError> {
-    let interval_operator_units = maturity_resolution
+    let pricing_interval_units = maturity_resolution
         .pricing_interval_schedule
         .interval_count();
+
     let maturity_operator_application_units = maturity_resolution
-        .maturity_intervals
+        .maturity_terminal_interval_indices
         .iter()
-        .map(|maturity_interval| {
-            maturity_resolution
-                .pricing_interval_schedule
-                .terminal_interval_index_for_maturity_interval(*maturity_interval)
-                .map_err(|source| pricing_validation_error("maturity_input", source.to_string()))
+        .map(|terminal_interval_index| {
+            terminal_interval_index.checked_add(1).ok_or_else(|| {
+                pricing_validation_error("maturity_input", "terminal interval index overflowed")
+            })
         })
         .collect::<Result<BTreeSet<_>, _>>()?
-        .len();
-    let strike_row_units = prepared_snapshot.snapshot_groups.len();
+        .into_iter()
+        .fold(0usize, usize::saturating_add);
+
+    let strike_row_units = prepared_snapshot
+        .snapshot_groups
+        .iter()
+        .map(|group| group.nodes.len())
+        .fold(0usize, usize::saturating_add);
 
     Ok(SurfaceTaskProgressPlan::new(
-        interval_operator_units,
+        pricing_interval_units,
         maturity_operator_application_units,
         strike_row_units,
     ))
@@ -428,6 +435,7 @@ fn build_priced_nodes(
 
     Ok(nodes)
 }
+
 pub(super) fn prepared_snapshot_node_count(prepared_snapshot: &PreparedObservedSnapshot) -> usize {
     prepared_snapshot
         .snapshot_groups

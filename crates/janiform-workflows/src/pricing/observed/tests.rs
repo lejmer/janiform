@@ -110,22 +110,25 @@ fn surface_global_progress_sums_real_task_progress() {
         SurfaceTaskProgressPlan::new(200, 2, 3),
         SurfaceTaskProgressPlan::new(300, 3, 4),
     ]);
+
     let mut task_progress = ProgressUnitTracker::planned_for_totals(&task_progress_totals);
+
     task_progress[0].record(25);
     task_progress[1].record(50);
     task_progress[2].complete();
 
-    assert_eq!(total_tracked_progress_units(&task_progress), 618);
-    assert_eq!(completed_tracked_progress_units(&task_progress), 383);
+    assert_eq!(total_tracked_progress_units(&task_progress), 1218);
+    assert_eq!(completed_tracked_progress_units(&task_progress), 683);
 }
 
 #[test]
 fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
     let mut worker_state =
         SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 1));
+
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(5, 10, Some(5), 10));
 
-    assert_eq!(worker_state.pass_units, "1/3");
+    assert_eq!(worker_state.pass_units, "0/3 done");
     assert_eq!(worker_state.interval_units, "5/10");
 
     worker_state.apply_pricing_event(&PricingProgressEvent::transition_row_progress(
@@ -135,8 +138,8 @@ fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
         Some(10),
     ));
 
-    assert_eq!(worker_state.progress_percent, 38);
-    assert_eq!(worker_state.pass_units, "1/3");
+    assert_eq!(worker_state.progress_percent, 21);
+    assert_eq!(worker_state.pass_units, "0/3 done");
     assert_eq!(worker_state.interval_units, "5/10");
 }
 
@@ -144,6 +147,7 @@ fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
 fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
     let mut worker_state =
         SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 1));
+
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(
         10,
         10,
@@ -151,14 +155,14 @@ fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
         10,
     ));
 
-    assert_eq!(worker_state.progress_percent, 76);
-    assert_eq!(worker_state.pass_units, "1/3");
+    assert_eq!(worker_state.progress_percent, 43);
+    assert_eq!(worker_state.pass_units, "1/3 done");
     assert_eq!(worker_state.phase, "pricing intervals");
 
     worker_state.complete();
 
     assert_eq!(worker_state.progress_percent, 100);
-    assert_eq!(worker_state.pass_units, "-");
+    assert_eq!(worker_state.pass_units, "3/3 done");
     assert_eq!(worker_state.phase, "done");
 }
 
@@ -166,6 +170,7 @@ fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
 fn surface_worker_strike_progress_uses_later_pricing_phase_units() {
     let mut worker_state =
         SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 1));
+
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(10, 10, None, 10));
     worker_state.apply_pricing_event(&PricingProgressEvent::maturity_progress(1, 1, None, 1));
     worker_state.apply_pricing_event(&PricingProgressEvent::strike_pricing_progress(
@@ -177,8 +182,8 @@ fn surface_worker_strike_progress_uses_later_pricing_phase_units() {
         10,
     ));
 
-    assert_eq!(worker_state.progress_percent, 92);
-    assert_eq!(worker_state.pass_units, "3/3");
+    assert_eq!(worker_state.progress_percent, 95);
+    assert_eq!(worker_state.pass_units, "3/3 done");
     assert_eq!(worker_state.phase, "pricing strikes");
 }
 
@@ -186,24 +191,54 @@ fn surface_worker_strike_progress_uses_later_pricing_phase_units() {
 fn surface_worker_group_progress_advances_strike_row_units() {
     let mut worker_state =
         SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 3));
+
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(10, 10, None, 10));
     worker_state.apply_pricing_event(&PricingProgressEvent::maturity_progress(1, 1, None, 1));
     worker_state.apply_pricing_event(&PricingProgressEvent::group_progress(2, 3, Some(2)));
 
-    assert_eq!(worker_state.progress_percent, 86);
-    assert_eq!(worker_state.pass_units, "3/3");
+    assert_eq!(worker_state.progress_percent, 92);
+    assert_eq!(worker_state.pass_units, "3/3 done");
     assert_eq!(worker_state.phase, "pricing groups");
+}
+
+#[test]
+fn surface_worker_repeated_interval_pass_keeps_progress_bounded() {
+    let mut worker_state =
+        SurfaceWorkerState::started(0, 1, 129, SurfaceTaskProgressPlan::new(751, 751, 129));
+
+    worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(
+        751, 751, None, 751,
+    ));
+
+    assert_eq!(worker_state.progress_percent, 31);
+    assert_eq!(worker_state.pass_units, "1/3 done");
+    assert_eq!(worker_state.interval_units, "751/751");
+
+    worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(
+        56,
+        751,
+        Some(56),
+        751,
+    ));
+
+    assert_eq!(worker_state.progress_percent, 33);
+    assert_eq!(worker_state.pass_units, "1/3 done");
+    assert_eq!(worker_state.interval_units, "56/751");
 }
 
 #[test]
 fn observed_primary_artifact_matches_native_result_shape() {
     let valuation_time_utc = DateTime::<Utc>::from_timestamp_nanos(1_000_000_000);
+
     let output_directory = std::env::temp_dir().join(format!(
         "janiform-observed-pricing-artifact-test-{}",
         std::process::id()
     ));
+
     let output_path = output_directory.join("observed_pricing.json");
+
     let node = observed_pricing_node(valuation_time_utc);
+
     let snapshot_result = ObservedOptionsSnapshotResult {
         valuation_time_utc,
         spot: 100.0,
@@ -222,6 +257,7 @@ fn observed_primary_artifact_matches_native_result_shape() {
     )
     .expect("observed artifact should be writable")
     .expect("artifact paths should be returned");
+
     let primary_payload: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(&paths.primary_output_path)
             .expect("primary observed artifact should be readable"),
@@ -252,17 +288,22 @@ fn observed_primary_artifact_matches_native_result_shape() {
 #[test]
 fn observed_artifacts_write_physical_distribution_sidecars_when_present() {
     let valuation_time_utc = DateTime::<Utc>::from_timestamp_nanos(1_000_000_000);
+
     let output_directory = std::env::temp_dir().join(format!(
         "janiform-observed-physical-distribution-artifact-test-{}",
         std::process::id()
     ));
+
     let output_path = output_directory.join("observed_pricing.json");
+
     let node = observed_pricing_node(valuation_time_utc);
+
     let snapshot_result = ObservedOptionsSnapshotResult {
         valuation_time_utc,
         spot: 100.0,
         nodes: vec![node.clone()],
     };
+
     let diagnostics = physical_distribution_output(valuation_time_utc);
 
     let paths = write_observed_artifacts_if_requested(
@@ -277,24 +318,29 @@ fn observed_artifacts_write_physical_distribution_sidecars_when_present() {
     )
     .expect("observed artifact should be writable")
     .expect("artifact paths should be returned");
+
     let physical_nodes_path = paths
         .physical_distribution_nodes_path
         .as_ref()
         .expect("physical node path should be present");
+
     let physical_report_path = paths
         .physical_distribution_report_path
         .as_ref()
         .expect("physical report path should be present");
+
     let primary_payload: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(&paths.primary_output_path)
             .expect("primary observed artifact should be readable"),
     )
     .expect("primary observed artifact should be valid JSON");
+
     let physical_nodes_payload: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(physical_nodes_path)
             .expect("physical distribution nodes artifact should be readable"),
     )
     .expect("physical distribution nodes artifact should be valid JSON");
+
     let physical_report_payload: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(physical_report_path)
             .expect("physical distribution report artifact should be readable"),

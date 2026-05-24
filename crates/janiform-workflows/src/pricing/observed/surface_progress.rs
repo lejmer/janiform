@@ -15,15 +15,9 @@ use super::super::validation::pricing_validation_error;
 use super::progress::{ObservedWorkItemUpdate, emit_observed_stage_progress};
 use super::types::{ObservedOptionsSnapshotResult, SURFACE_TASK_FINALIZATION_UNIT};
 
-const SURFACE_TASK_PROGRESS_PHASES: [PricingProgressPhase; 3] = [
-    PricingProgressPhase::IntervalProgress,
-    PricingProgressPhase::MaturityProgress,
-    PricingProgressPhase::StrikePricingProgress,
-];
-const SURFACE_TASK_PASS_COUNT: usize = SURFACE_TASK_PROGRESS_PHASES.len();
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SurfaceTaskProgressPlan {
+    anchor_materialization_interval_units: usize,
     interval_operator_units: usize,
     maturity_operator_application_units: usize,
     strike_row_units: usize,
@@ -31,19 +25,25 @@ pub(super) struct SurfaceTaskProgressPlan {
 
 impl SurfaceTaskProgressPlan {
     pub(super) const fn new(
-        interval_operator_units: usize,
+        pricing_interval_units: usize,
         maturity_operator_application_units: usize,
         strike_row_units: usize,
     ) -> Self {
         Self {
-            interval_operator_units,
+            anchor_materialization_interval_units: pricing_interval_units,
+            interval_operator_units: pricing_interval_units,
             maturity_operator_application_units,
             strike_row_units,
         }
     }
 
-    const fn interval_operator_units(self) -> usize {
+    const fn pricing_interval_units(self) -> usize {
         self.interval_operator_units
+    }
+
+    const fn interval_progress_units(self) -> usize {
+        self.anchor_materialization_interval_units
+            .saturating_add(self.interval_operator_units)
     }
 
     const fn maturity_operator_application_units(self) -> usize {
@@ -54,8 +54,18 @@ impl SurfaceTaskProgressPlan {
         self.strike_row_units
     }
 
+    fn interval_pass_count(self) -> usize {
+        usize::from(self.anchor_materialization_interval_units > 0)
+            + usize::from(self.interval_operator_units > 0)
+    }
+
+    fn pricing_pass_count(self) -> usize {
+        self.interval_pass_count() + usize::from(self.maturity_operator_application_units > 0)
+    }
+
     const fn total_units(self) -> usize {
-        self.interval_operator_units
+        self.anchor_materialization_interval_units
+            .saturating_add(self.interval_operator_units)
             .saturating_add(self.maturity_operator_application_units)
             .saturating_add(self.strike_row_units)
             .saturating_add(SURFACE_TASK_FINALIZATION_UNIT)
@@ -89,6 +99,12 @@ pub(super) struct SurfaceWorkerState {
     pub(super) pass_units: String,
     pub(super) interval_units: String,
     pub(super) phase: String,
+    completed_interval_pass_units: usize,
+    completed_interval_pass_count: usize,
+    current_interval_pass_completed_units: usize,
+    current_interval_pass_total_units: usize,
+    has_interval_pass_progress: bool,
+    completed_pricing_pass_count: usize,
 }
 
 impl SurfaceWorkerState {
@@ -110,20 +126,34 @@ impl SurfaceWorkerState {
             pass_units: "-".to_string(),
             interval_units: "-".to_string(),
             phase: "starting".to_string(),
+            completed_interval_pass_units: 0,
+            completed_interval_pass_count: 0,
+            current_interval_pass_completed_units: 0,
+            current_interval_pass_total_units: 0,
+            has_interval_pass_progress: false,
+            completed_pricing_pass_count: 0,
         }
     }
 
     pub(super) fn apply_pricing_event(&mut self, event: &PricingProgressEvent) {
-        self.completed_pricing_units =
-            self.completed_pricing_units
-                .max(surface_worker_event_completed_progress_units(
-                    event,
-                    self.progress_plan,
-                ));
+        let progress_update = self.progress_update_for_event(event);
+
+        self.completed_pricing_units = self.completed_pricing_units.max(progress_update.units);
         self.completed_progress_units = self.completed_pricing_units.min(self.total_progress_units);
+
         self.progress_percent =
             progress_percent(self.completed_progress_units, self.total_progress_units);
-        self.pass_units = surface_worker_pass_units(event);
+
+        self.completed_pricing_pass_count = self
+            .completed_pricing_pass_count
+            .max(progress_update.completed_pass_count)
+            .min(self.progress_plan.pricing_pass_count());
+
+        self.pass_units = surface_worker_pass_units(
+            self.completed_pricing_pass_count,
+            self.progress_plan.pricing_pass_count(),
+        );
+
         self.interval_units = surface_worker_interval_units(event);
         self.phase = pricing_progress_phase_label(event.phase).to_string();
     }
@@ -131,11 +161,149 @@ impl SurfaceWorkerState {
     pub(super) fn complete(&mut self) {
         self.completed_progress_units = self.total_progress_units;
         self.completed_pricing_units = self.total_progress_units;
+
         self.progress_percent = 100;
-        self.pass_units = "-".to_string();
+
+        self.completed_pricing_pass_count = self.progress_plan.pricing_pass_count();
+
+        self.pass_units = surface_worker_pass_units(
+            self.completed_pricing_pass_count,
+            self.progress_plan.pricing_pass_count(),
+        );
+
         self.interval_units = "-".to_string();
         self.phase = "done".to_string();
     }
+
+    fn progress_update_for_event(&mut self, event: &PricingProgressEvent) -> SurfaceProgressUpdate {
+        match event.phase {
+            PricingProgressPhase::IntervalProgress => self.interval_progress_update(event),
+            PricingProgressPhase::TransitionRowProgress => {
+                self.transition_row_progress_update(event)
+            }
+            PricingProgressPhase::MaturityProgress => {
+                let maturity_units = progress_scaled_units(
+                    event.completed_units,
+                    event.total_units,
+                    self.progress_plan.maturity_operator_application_units(),
+                );
+
+                let completed_pass_count =
+                    self.progress_plan
+                        .interval_pass_count()
+                        .saturating_add(usize::from(
+                            event.total_units > 0 && event.completed_units >= event.total_units,
+                        ));
+
+                SurfaceProgressUpdate {
+                    units: self
+                        .progress_plan
+                        .interval_progress_units()
+                        .saturating_add(maturity_units),
+                    completed_pass_count,
+                }
+            }
+            PricingProgressPhase::StrikePricingProgress => SurfaceProgressUpdate {
+                units: self
+                    .progress_plan
+                    .interval_progress_units()
+                    .saturating_add(self.progress_plan.maturity_operator_application_units())
+                    .saturating_add(surface_worker_strike_progress_units(
+                        event,
+                        self.progress_plan,
+                    )),
+                completed_pass_count: self.progress_plan.pricing_pass_count(),
+            },
+            PricingProgressPhase::GroupProgress => SurfaceProgressUpdate {
+                units: self
+                    .progress_plan
+                    .interval_progress_units()
+                    .saturating_add(self.progress_plan.maturity_operator_application_units())
+                    .saturating_add(surface_worker_group_progress_units(
+                        event,
+                        self.progress_plan,
+                    )),
+                completed_pass_count: self.progress_plan.pricing_pass_count(),
+            },
+        }
+    }
+
+    fn interval_progress_update(&mut self, event: &PricingProgressEvent) -> SurfaceProgressUpdate {
+        let completed_units = event.completed_units.min(event.total_units);
+
+        self.record_interval_pass_progress(completed_units, event.total_units);
+
+        let current_pass_is_complete =
+            event.total_units > 0 && completed_units >= event.total_units;
+
+        let completed_pass_count = self
+            .completed_interval_pass_count
+            .saturating_add(usize::from(current_pass_is_complete))
+            .min(self.progress_plan.interval_pass_count());
+
+        SurfaceProgressUpdate {
+            units: self
+                .completed_interval_pass_units
+                .saturating_add(completed_units)
+                .min(self.progress_plan.interval_progress_units()),
+            completed_pass_count,
+        }
+    }
+
+    fn transition_row_progress_update(
+        &mut self,
+        event: &PricingProgressEvent,
+    ) -> SurfaceProgressUpdate {
+        let total_intervals = event
+            .total_intervals
+            .unwrap_or(self.progress_plan.pricing_interval_units());
+
+        let completed_units = surface_worker_transition_row_progress_units(event, total_intervals);
+
+        self.record_interval_pass_progress(completed_units, total_intervals);
+
+        let current_pass_is_complete = total_intervals > 0 && completed_units >= total_intervals;
+
+        let completed_pass_count = self
+            .completed_interval_pass_count
+            .saturating_add(usize::from(current_pass_is_complete))
+            .min(self.progress_plan.interval_pass_count());
+
+        SurfaceProgressUpdate {
+            units: self
+                .completed_interval_pass_units
+                .saturating_add(completed_units)
+                .min(self.progress_plan.interval_progress_units()),
+            completed_pass_count,
+        }
+    }
+
+    fn record_interval_pass_progress(&mut self, completed_units: usize, total_units: usize) {
+        let interval_progress_reset = self.has_interval_pass_progress
+            && completed_units < self.current_interval_pass_completed_units;
+
+        if interval_progress_reset {
+            self.completed_interval_pass_units = self
+                .completed_interval_pass_units
+                .saturating_add(self.current_interval_pass_total_units)
+                .min(self.progress_plan.interval_progress_units());
+
+            self.completed_interval_pass_count = self
+                .completed_interval_pass_count
+                .saturating_add(1)
+                .min(self.progress_plan.interval_pass_count());
+        }
+
+        self.current_interval_pass_completed_units = completed_units;
+        self.current_interval_pass_total_units = total_units;
+
+        self.has_interval_pass_progress = true;
+    }
+}
+
+struct SurfaceProgressUpdate {
+    units: usize,
+    completed_pass_count: usize,
 }
 
 pub(super) struct SurfaceWorkerProgressInput {
@@ -188,8 +356,10 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
         progress_adapter: &'collector mut Option<&'adapter mut ProgressAdapter>,
     ) -> Self {
         let task_progress_totals = surface_task_progress_totals(task_progress_plans);
+
         let task_progress_units =
             ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
+
         let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
 
         Self {
@@ -261,6 +431,7 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
                             "received worker progress before worker start",
                         )
                     })?;
+
                 worker_state.apply_pricing_event(&event);
 
                 let Some(task_progress) =
@@ -311,6 +482,7 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
                     "received worker completion before worker start",
                 )
             })?;
+
         worker_state.complete();
 
         let Some(task_progress) = self.task_progress_units.get_mut(task_position) else {
@@ -384,8 +556,10 @@ pub(super) fn emit_surface_pricing_plan(
     task_progress_plans: &[SurfaceTaskProgressPlan],
 ) -> Result<(), WorkflowError> {
     let task_progress_totals = surface_task_progress_totals(task_progress_plans);
+
     let task_progress_units =
         ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
+
     let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
 
     emit_observed_stage_progress(
@@ -437,7 +611,7 @@ pub(super) fn emit_surface_worker_started(
             "pricing task {}/{} with {} intervals on {}",
             input.task_position + 1,
             input.task_count,
-            input.progress_plan.interval_operator_units(),
+            input.progress_plan.pricing_interval_units(),
             format_cpu_count(input.worker_count)
         )),
         ObservedWorkItemUpdate::active(
@@ -548,58 +722,17 @@ fn worker_label(worker_index: usize) -> String {
     format!("worker {:02}", worker_index + 1)
 }
 
-fn surface_worker_event_completed_progress_units(
-    event: &PricingProgressEvent,
-    progress_plan: SurfaceTaskProgressPlan,
-) -> usize {
-    match event.phase {
-        PricingProgressPhase::IntervalProgress => event
-            .completed_units
-            .min(progress_plan.interval_operator_units()),
-        PricingProgressPhase::TransitionRowProgress => {
-            surface_worker_transition_row_progress_units(
-                event,
-                progress_plan.interval_operator_units(),
-            )
-        }
-        PricingProgressPhase::MaturityProgress => progress_plan
-            .interval_operator_units()
-            .saturating_add(progress_scaled_units(
-                event.completed_units,
-                event.total_units,
-                progress_plan.maturity_operator_application_units(),
-            )),
-        PricingProgressPhase::StrikePricingProgress => progress_plan
-            .interval_operator_units()
-            .saturating_add(progress_plan.maturity_operator_application_units())
-            .saturating_add(surface_worker_strike_progress_units(event, progress_plan)),
-        PricingProgressPhase::GroupProgress => progress_plan
-            .interval_operator_units()
-            .saturating_add(progress_plan.maturity_operator_application_units())
-            .saturating_add(surface_worker_group_progress_units(event, progress_plan)),
-    }
-}
-
-fn surface_worker_pass_units(event: &PricingProgressEvent) -> String {
-    if event.phase == PricingProgressPhase::TransitionRowProgress {
-        return format!("1/{SURFACE_TASK_PASS_COUNT}");
+fn surface_worker_pass_units(completed_pass_count: usize, total_pass_count: usize) -> String {
+    if total_pass_count == 0 {
+        return "-".to_string();
     }
 
-    let pass_position = match event.phase {
-        PricingProgressPhase::GroupProgress => SURFACE_TASK_PASS_COUNT.saturating_sub(1),
-        _ => {
-            let Some(pass_position) = SURFACE_TASK_PROGRESS_PHASES
-                .iter()
-                .position(|phase| *phase == event.phase)
-            else {
-                return "-".to_string();
-            };
-
-            pass_position
-        }
-    };
-
-    format!("{}/{}", pass_position + 1, SURFACE_TASK_PASS_COUNT)
+    progress_count_label(
+        Some(completed_pass_count.min(total_pass_count)),
+        Some(total_pass_count),
+    )
+    .map(|label| format!("{label} done"))
+    .unwrap_or_else(|| "-".to_string())
 }
 
 fn surface_worker_interval_units(event: &PricingProgressEvent) -> String {
@@ -658,20 +791,31 @@ fn surface_worker_strike_progress_units(
         .total_maturities
         .unwrap_or(progress_plan.strike_row_units())
         .max(1);
+
     let maturity_index = event
         .current_maturity_index
         .unwrap_or_default()
         .min(total_maturities);
-    let current_row_completed = event.total_units > 0 && event.completed_units >= event.total_units;
-    let completed_strike_rows = maturity_index
-        .saturating_add(usize::from(current_row_completed))
-        .min(total_maturities);
 
-    progress_scaled_units(
-        completed_strike_rows,
+    let previous_row_units = progress_scaled_units(
+        maturity_index,
         total_maturities,
         progress_plan.strike_row_units(),
-    )
+    );
+
+    let next_row_units = progress_scaled_units(
+        maturity_index.saturating_add(1),
+        total_maturities,
+        progress_plan.strike_row_units(),
+    );
+
+    let current_row_units = next_row_units.saturating_sub(previous_row_units);
+
+    previous_row_units.saturating_add(progress_scaled_units(
+        event.completed_units,
+        event.total_units,
+        current_row_units,
+    ))
 }
 
 fn surface_worker_group_progress_units(
