@@ -44,6 +44,7 @@ from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
 from ..internal.common import native_datetime
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
+from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +90,11 @@ class JaniformObservedOptionSurfaceNode:
 class JaniformObservedOptionSurfacePricingResult:
     valuation_time_utc: datetime
     nodes: tuple[JaniformObservedOptionSurfaceNode, ...]
-    raw_results: tuple[JaniformObservedOptionSnapshotPricingResult, ...] = field(repr=False)
+    physical_distribution: Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput] = None
+    raw_results: tuple[JaniformObservedOptionSnapshotPricingResult, ...] = field(
+        default=(),
+        repr=False,
+    )
 
     @staticmethod
     def from_native_mapping(
@@ -142,6 +147,12 @@ class JaniformObservedOptionSurfacePricingResult:
                 )
                 for snapshot_result in snapshot_results
                 for snapshot_node in snapshot_result.nodes
+            ),
+            physical_distribution=(
+                ObservedOptionsPhysicalDistributionDiagnosticsOutput.from_native_mapping(
+                    raw_payload.get("physical_distribution"),
+                    field_path=f"{field_path}.physical_distribution",
+                )
             ),
             raw_results=snapshot_results,
         )

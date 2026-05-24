@@ -1007,7 +1007,7 @@ def estimate_current_state_from_observed_data(
     kernel_parameters: object,
     mean_reversion_fitted_parameters: object,
     state_time_utc_nanos: int,
-    observed_log_price: float,
+    observed_log_return: float,
     observation_timestamps_utc: object,
     observation_trade_prices: object,
     observation_trade_sides: object,

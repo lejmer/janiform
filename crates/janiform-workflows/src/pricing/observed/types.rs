@@ -20,12 +20,16 @@ use serde_json::{Value, json};
 use crate::error::WorkflowError;
 
 use super::super::artifacts::PricingArtifactPaths;
+use super::physical_distribution::{
+    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
+};
 
 pub(super) const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
-pub(super) const OBSERVED_PRICING_STAGE_COUNT: usize = 4;
 pub(super) const LOAD_OBSERVED_DATA_STAGE: &str = "load observed data";
 pub(super) const PREPARE_VALUATION_STATES_STAGE: &str = "prepare valuation states";
 pub(super) const PRICE_VALUATION_SURFACE_STAGE: &str = "price valuation surface";
+pub(super) const PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE: &str = "diagnose physical distribution";
 pub(super) const WRITE_ARTIFACTS_STAGE: &str = "write artifacts";
 pub(super) const SURFACE_TASK_FINALIZATION_UNIT: usize = 1;
 
@@ -98,6 +102,10 @@ pub struct ObservedOptionsPricingRequest {
     /// Pricing interval schedule policy.
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
+    /// Optional model-P terminal distribution diagnostics for observed option nodes.
+    #[serde(default)]
+    pub physical_distribution_diagnostics:
+        Option<ObservedOptionsPhysicalDistributionDiagnosticsRequest>,
     /// Primary output path.
     pub output_path: Option<PathBuf>,
 }
@@ -112,6 +120,8 @@ pub struct ObservedOptionsPricingOutput {
     pub valuation_time_utc: DateTime<Utc>,
     pub nodes: Vec<ObservedOptionsPricingNode>,
     pub snapshot_results: Vec<ObservedOptionsSnapshotResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_distribution: Option<ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
     pub artifact_paths: Option<PricingArtifactPaths>,
     pub execution_duration_seconds: f64,
 }
@@ -131,9 +141,12 @@ impl ObservedOptionsPricingOutput {
             "primary_output_path": self.artifact_paths.as_ref().map(|paths| &paths.primary_output_path),
             "report_path": self.artifact_paths.as_ref().map(|paths| &paths.report_path),
             "manifest_path": self.artifact_paths.as_ref().map(|paths| &paths.manifest_path),
+            "physical_distribution_nodes_path": self.artifact_paths.as_ref().and_then(|paths| paths.physical_distribution_nodes_path.as_ref()),
+            "physical_distribution_report_path": self.artifact_paths.as_ref().and_then(|paths| paths.physical_distribution_report_path.as_ref()),
             "run_directory": self.artifact_paths.as_ref().map(|paths| &paths.run_directory),
             "priced_node_count": self.nodes.iter().filter(|node| node.model_price.is_some()).count(),
             "failed_node_count": self.nodes.iter().filter(|node| node.model_price.is_none()).count(),
+            "physical_distribution_node_count": self.physical_distribution.as_ref().map(|diagnostics| diagnostics.nodes.len()),
             "execution_duration_seconds": self.execution_duration_seconds,
             "response": response,
         }))
@@ -196,6 +209,7 @@ pub(super) struct PreparedSnapshotNode {
     pub(super) observed_mid_price: Option<f64>,
 }
 
+#[derive(Clone)]
 pub(super) struct PreparedObservedSnapshot {
     pub(super) valuation_time_utc_nanos: i64,
     pub(super) spot: f64,

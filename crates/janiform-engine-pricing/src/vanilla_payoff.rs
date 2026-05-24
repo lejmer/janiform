@@ -1,5 +1,17 @@
 use crate::contracts::VanillaOptionPayoffType;
 
+/// Evaluate an undiscounted vanilla option payoff at terminal spot.
+pub fn vanilla_option_terminal_payoff(
+    payoff_type: VanillaOptionPayoffType,
+    terminal_spot: f64,
+    strike: f64,
+) -> f64 {
+    match payoff_type {
+        VanillaOptionPayoffType::Call => (terminal_spot - strike).max(0.0),
+        VanillaOptionPayoffType::Put => (strike - terminal_spot).max(0.0),
+    }
+}
+
 pub(crate) fn vanilla_payoff_price_from_discounted_call(
     payoff_type: VanillaOptionPayoffType,
     discounted_call_price: f64,

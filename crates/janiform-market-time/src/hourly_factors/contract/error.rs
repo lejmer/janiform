@@ -276,7 +276,7 @@ impl Display for HourlyFactorContractError {
                 value,
             } => write!(
                 formatter,
-                "seasonality source factors must be finite positive values, found {value} at source position {source_position}"
+                "seasonality source factors must be finite non-negative values, found {value} at source position {source_position}"
             ),
             Self::InvalidSeasonalityInterpolationMethod { method } => write!(
                 formatter,

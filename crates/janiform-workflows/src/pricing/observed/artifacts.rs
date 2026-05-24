@@ -9,10 +9,14 @@ use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
 use super::super::artifacts::{PricingArtifactPaths, pricing_artifact_paths};
+use super::physical_distribution::ObservedOptionsPhysicalDistributionDiagnosticsOutput;
 use super::types::{
     ObservedOptionsPricingNode, ObservedOptionsPricingOutput, ObservedOptionsPricingRequest,
     ObservedOptionsPricingScope, ObservedOptionsSnapshotResult,
 };
+
+const PHYSICAL_DISTRIBUTION_NODES_FILE_NAME: &str = "physical_distribution_nodes.json";
+const PHYSICAL_DISTRIBUTION_REPORT_FILE_NAME: &str = "physical_distribution_report.json";
 
 pub(super) fn write_observed_artifacts_if_requested(
     output_path: Option<&PathBuf>,
@@ -21,13 +25,26 @@ pub(super) fn write_observed_artifacts_if_requested(
     valuation_time_utc: DateTime<Utc>,
     nodes: &[ObservedOptionsPricingNode],
     snapshot_results: &[ObservedOptionsSnapshotResult],
+    physical_distribution: Option<&ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
     execution_duration: Duration,
 ) -> Result<Option<PricingArtifactPaths>, WorkflowError> {
     let Some(output_path) = output_path else {
         return Ok(None);
     };
 
-    let paths = pricing_artifact_paths(output_path);
+    let mut paths = pricing_artifact_paths(output_path);
+    if physical_distribution.is_some() {
+        paths.physical_distribution_nodes_path = Some(
+            paths
+                .run_directory
+                .join(PHYSICAL_DISTRIBUTION_NODES_FILE_NAME),
+        );
+        paths.physical_distribution_report_path = Some(
+            paths
+                .run_directory
+                .join(PHYSICAL_DISTRIBUTION_REPORT_FILE_NAME),
+        );
+    }
 
     let primary_payload = json!({
         "schema_version": "janiform.observed_options_pricing_result.v1",
@@ -36,6 +53,7 @@ pub(super) fn write_observed_artifacts_if_requested(
         "valuation_time_utc": valuation_time_utc.to_rfc3339(),
         "nodes": nodes,
         "snapshot_results": snapshot_results,
+        "physical_distribution": physical_distribution,
         "artifact_paths": null,
         "execution_duration_seconds": execution_duration.as_secs_f64(),
     });
@@ -46,6 +64,28 @@ pub(super) fn write_observed_artifacts_if_requested(
         ArtifactWriteKind::Pricing,
     )?;
 
+    if let Some(physical_distribution) = physical_distribution {
+        if let Some(path) = paths.physical_distribution_nodes_path.as_ref() {
+            write_pretty_json_file(
+                path,
+                &json!({
+                    "schema_version": physical_distribution.schema_version,
+                    "request": physical_distribution.request,
+                    "nodes": &physical_distribution.nodes,
+                }),
+                ArtifactWriteKind::Pricing,
+            )?;
+        }
+
+        if let Some(path) = paths.physical_distribution_report_path.as_ref() {
+            write_pretty_json_file(
+                path,
+                &physical_distribution.report,
+                ArtifactWriteKind::Pricing,
+            )?;
+        }
+    }
+
     write_pretty_json_file(
         &paths.report_path,
         &json!({
@@ -54,6 +94,9 @@ pub(super) fn write_observed_artifacts_if_requested(
             "primary_output_path": paths.primary_output_path,
             "snapshot_count": snapshot_results.len(),
             "node_count": snapshot_results.iter().map(|result| result.nodes.len()).sum::<usize>(),
+            "physical_distribution_nodes_path": &paths.physical_distribution_nodes_path,
+            "physical_distribution_report_path": &paths.physical_distribution_report_path,
+            "physical_distribution": physical_distribution.map(|diagnostics| &diagnostics.report),
             "execution_duration_seconds": execution_duration.as_secs_f64(),
         }),
         ArtifactWriteKind::Pricing,
@@ -68,6 +111,8 @@ pub(super) fn write_observed_artifacts_if_requested(
             "run_directory": paths.run_directory,
             "primary_output_path": paths.primary_output_path,
             "report_path": paths.report_path,
+            "physical_distribution_nodes_path": &paths.physical_distribution_nodes_path,
+            "physical_distribution_report_path": &paths.physical_distribution_report_path,
         }),
         ArtifactWriteKind::Pricing,
     )?;

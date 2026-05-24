@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Optional
 from ....._workflow_progress import WorkflowProgressMode
 from .....calibration.market_data.contracts import CalibrationOptionSurfaceColumnMapping
 from .....pricing import VanillaOptionPayoffType
+from ...physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsRequest
 from ...internal.native_observed import (
     observed_snapshot_result_from_native_payload,
     run_native_observed_options_pricing,
@@ -31,6 +32,9 @@ def price_option_snapshot_for_model(
     risk_free_rate: float = 0.0,
     dividend_yield: float = 0.0,
     cpu_count: Optional[int] = None,
+    physical_distribution_diagnostics: (
+        bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
+    ) = False,
     output_path: Optional[str | Path] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -47,6 +51,7 @@ def price_option_snapshot_for_model(
         valuation_count=None,
         use_all_valuation_times=False,
         cpu_count=cpu_count,
+        physical_distribution_diagnostics=physical_distribution_diagnostics,
         output_path=output_path,
         silent=silent,
         progress_mode=progress_mode,

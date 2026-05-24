@@ -992,12 +992,12 @@ fn joint_option_current_state_estimation_input(
                     .to_string(),
             )
         })?;
-    let observed_log_price = (observed_spot / reference_price).ln();
+    let observed_log_return = observed_spot.ln() - reference_price.ln();
 
     Ok(CalibrationJointRefinementCurrentStateEstimationInput {
         state_time_utc_nanos: valuation_time_utc_nanos,
         observed_spot,
-        observed_log_price,
+        observed_log_return,
         observation_timestamp_utc_nanos,
         observation_trade_prices,
         observation_trade_sides,

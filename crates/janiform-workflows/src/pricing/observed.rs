@@ -1,5 +1,8 @@
 mod artifacts;
 mod data;
+mod loading;
+mod normalization;
+mod physical_distribution;
 mod pricing;
 mod progress;
 mod state;
@@ -10,6 +13,13 @@ mod tests;
 mod types;
 mod workflow;
 
+pub use physical_distribution::{
+    ObservedOptionsPhysicalDistributionDiagnosticsDefaults,
+    ObservedOptionsPhysicalDistributionDiagnosticsNode,
+    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
+    ObservedOptionsPhysicalDistributionDiagnosticsReport,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
+};
 pub use types::{
     ObservedOptionTypeFilter, ObservedOptionsPricingNode, ObservedOptionsPricingOutput,
     ObservedOptionsPricingRequest, ObservedOptionsPricingScope, ObservedOptionsSnapshotResult,

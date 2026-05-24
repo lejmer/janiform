@@ -141,12 +141,12 @@ fn materialize_runtime_seasonality_grid(
     Ok((output.interval_start_utc_nanos, output.seasonality_factors))
 }
 
-fn hourly_seasonality_source<'a>(
+fn hourly_seasonality_source(
     range_start_utc: DateTime<Utc>,
     range_end_utc: DateTime<Utc>,
     interval_duration_nanos: i64,
-    seasonality_grid: &'a (Vec<i64>, Vec<f64>),
-) -> HourlySeasonalityFactorSource<'a> {
+    seasonality_grid: &'_ (Vec<i64>, Vec<f64>),
+) -> HourlySeasonalityFactorSource<'_> {
     if seasonality_grid.1.is_empty() {
         return HourlySeasonalityFactorSource::Explicit {
             hourly_factors: seasonality_grid.1.as_slice(),

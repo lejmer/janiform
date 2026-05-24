@@ -17,7 +17,7 @@ pub struct CurrentStateEstimationInput {
     pub kernel_parameters: HawkesKernelParameters,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     pub state_time_utc_nanos: i64,
-    pub observed_log_price: f64,
+    pub observed_log_return: f64,
     pub observation_timestamp_utc_nanos: Vec<i64>,
     pub observation_trade_prices: Vec<f64>,
     pub observation_trade_sides: Vec<HawkesEventSide>,
@@ -78,7 +78,7 @@ pub enum CurrentStateEstimationError {
         state_time_utc_nanos: i64,
         first_observation_timestamp_utc_nanos: i64,
     },
-    InvalidObservedLogPrice {
+    InvalidObservedLogReturn {
         value: f64,
     },
     InvalidReferencePrice {
@@ -145,9 +145,9 @@ impl Display for CurrentStateEstimationError {
                 formatter,
                 "batch current-state estimation requires state_times[{state_index}]={state_time_utc_nanos} to retain at least one observation, but the first observation is {first_observation_timestamp_utc_nanos}"
             ),
-            Self::InvalidObservedLogPrice { value } => write!(
+            Self::InvalidObservedLogReturn { value } => write!(
                 formatter,
-                "current-state estimation requires a finite observed_log_price, found {value}"
+                "current-state estimation requires a finite observed_log_return, found {value}"
             ),
             Self::InvalidReferencePrice { value } => write!(
                 formatter,
@@ -198,7 +198,7 @@ impl Error for CurrentStateEstimationError {
             | Self::ObservationColumnLengthMismatch { .. }
             | Self::StateTimeOutOfOrder { .. }
             | Self::StateTimeBeforeFirstObservation { .. }
-            | Self::InvalidObservedLogPrice { .. }
+            | Self::InvalidObservedLogReturn { .. }
             | Self::InvalidReferencePrice { .. }
             | Self::InvalidObservationTradePrice { .. }
             | Self::ObservationTimestampOutOfOrder { .. }
@@ -231,9 +231,9 @@ pub fn estimate_current_state_from_observed_data(
             },
         );
     }
-    if !input.observed_log_price.is_finite() {
-        return Err(CurrentStateEstimationError::InvalidObservedLogPrice {
-            value: input.observed_log_price,
+    if !input.observed_log_return.is_finite() {
+        return Err(CurrentStateEstimationError::InvalidObservedLogReturn {
+            value: input.observed_log_return,
         });
     }
 
@@ -251,8 +251,8 @@ pub fn estimate_current_state_from_observed_data(
     );
 
     let mean_reversion_boundary_state = MeanReversionBoundaryState::try_new(
-        input.observed_log_price,
-        input.observed_log_price,
+        input.observed_log_return,
+        input.observed_log_return,
         0.0,
         0.0,
     )
@@ -379,11 +379,11 @@ pub fn estimate_current_states_from_observed_data_with_observer(
             );
         };
 
-        let observed_log_price = (observed_price / input.reference_price).ln();
+        let observed_log_return = observed_price.ln() - input.reference_price.ln();
 
-        if !observed_log_price.is_finite() {
-            return Err(CurrentStateEstimationError::InvalidObservedLogPrice {
-                value: observed_log_price,
+        if !observed_log_return.is_finite() {
+            return Err(CurrentStateEstimationError::InvalidObservedLogReturn {
+                value: observed_log_return,
             });
         }
 
@@ -393,10 +393,10 @@ pub fn estimate_current_states_from_observed_data_with_observer(
             .apply_shared_decay_drift(input.kernel_parameters.beta, trailing_delta_hours);
 
         let mean_reversion_boundary_state =
-            MeanReversionBoundaryState::try_new(observed_log_price, observed_log_price, 0.0, 0.0)
-                .map_err(
-                |source| CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source },
-            )?;
+            MeanReversionBoundaryState::try_new(observed_log_return, observed_log_return, 0.0, 0.0)
+                .map_err(|source| {
+                    CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source }
+                })?;
 
         state_items.push(CurrentStateEstimationBatchItem {
             state_time_utc_nanos,
@@ -564,7 +564,7 @@ mod tests {
                     .take_while(|&&timestamp_utc_nanos| timestamp_utc_nanos <= state_time_utc_nanos)
                     .count();
                 let observed_price = input.observation_trade_prices[retained_observation_count - 1];
-                let observed_log_price = (observed_price / input.reference_price).ln();
+                let observed_log_return = observed_price.ln() - input.reference_price.ln();
 
                 estimate_current_state_from_observed_data(CurrentStateEstimationInput {
                     kernel_parameters: input.kernel_parameters,
@@ -572,7 +572,7 @@ mod tests {
                         .mean_reversion_fitted_parameters
                         .clone(),
                     state_time_utc_nanos,
-                    observed_log_price,
+                    observed_log_return,
                     observation_timestamp_utc_nanos: input.observation_timestamp_utc_nanos
                         [0..retained_observation_count]
                         .to_vec(),

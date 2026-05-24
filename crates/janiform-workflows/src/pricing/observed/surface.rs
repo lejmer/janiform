@@ -14,14 +14,17 @@ use crate::progress::{
 use super::super::validation::pricing_validation_error;
 use super::pricing::{
     prepared_snapshot_node_count, price_prepared_snapshot,
-    price_prepared_snapshot_with_terminal_progress, resolve_surface_task_interval_counts,
+    price_prepared_snapshot_with_terminal_progress, resolve_surface_task_progress_plans,
 };
-use super::progress::{complete_observed_pricing_stage, start_observed_pricing_stage};
+use super::progress::{
+    complete_observed_pricing_stage, observed_pricing_stage_count, start_observed_pricing_stage,
+};
 use super::surface_progress::{
-    SurfacePricingMessage, SurfacePricingResultCollector, SurfaceWorkerCompletedInput,
-    SurfaceWorkerPricingProgressInput, SurfaceWorkerProgressInput, SurfaceWorkerState,
-    emit_surface_interval_planning, emit_surface_pricing_plan, emit_surface_worker_completed,
-    emit_surface_worker_progress, emit_surface_worker_started, surface_task_progress_totals,
+    SurfacePricingMessage, SurfacePricingResultCollector, SurfaceTaskProgressPlan,
+    SurfaceWorkerCompletedInput, SurfaceWorkerPricingProgressInput, SurfaceWorkerProgressInput,
+    SurfaceWorkerState, emit_surface_interval_planning, emit_surface_pricing_plan,
+    emit_surface_worker_completed, emit_surface_worker_progress, emit_surface_worker_started,
+    surface_task_progress_totals,
 };
 use super::types::{
     ObservedOptionsPricingRequest, ObservedOptionsSnapshotResult, PRICE_VALUATION_SURFACE_STAGE,
@@ -40,8 +43,14 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
 
     let worker_count = resolved_cpu_count(request.cpu_count).min(task_count.max(1));
 
-    let pricing_stage_started_at =
-        start_observed_pricing_stage(progress_adapter, 3, PRICE_VALUATION_SURFACE_STAGE)?;
+    let stage_count =
+        observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+    let pricing_stage_started_at = start_observed_pricing_stage(
+        progress_adapter,
+        3,
+        stage_count,
+        PRICE_VALUATION_SURFACE_STAGE,
+    )?;
 
     if task_count == 1 {
         let prepared_snapshot = prepared_snapshots.into_iter().next().ok_or_else(|| {
@@ -64,12 +73,12 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
     }
 
     if worker_count <= 1 {
-        let task_interval_counts =
-            resolve_surface_task_interval_counts(request, prepared_snapshots.as_slice())?;
+        let task_progress_plans =
+            resolve_surface_task_progress_plans(request, prepared_snapshots.as_slice())?;
         let results = price_prepared_surface_snapshots_serial(
             request,
             prepared_snapshots,
-            task_interval_counts,
+            task_progress_plans,
             progress_adapter,
             worker_count,
         )?;
@@ -84,14 +93,14 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
     }
 
     emit_surface_interval_planning(progress_adapter, task_count)?;
-    let task_interval_counts =
-        resolve_surface_task_interval_counts(request, prepared_snapshots.as_slice())?;
+    let task_progress_plans =
+        resolve_surface_task_progress_plans(request, prepared_snapshots.as_slice())?;
 
     emit_surface_pricing_plan(
         progress_adapter,
         task_count,
         worker_count,
-        &task_interval_counts,
+        &task_progress_plans,
     )?;
     let jobs = prepared_snapshots
         .into_iter()
@@ -100,7 +109,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
     let mut collector = SurfacePricingResultCollector::new(
         task_count,
         worker_count,
-        task_interval_counts.as_slice(),
+        task_progress_plans.as_slice(),
         progress_adapter,
     );
 
@@ -116,17 +125,22 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
             let worker_index = context.worker_index();
             let node_count = prepared_snapshot_node_count(&prepared_snapshot);
             let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
-            let total_interval_count = task_interval_counts
+            let progress_plan = task_progress_plans
                 .get(task_position)
                 .copied()
-                .unwrap_or(0);
+                .ok_or_else(|| {
+                    pricing_validation_error(
+                        "pricing_progress.task_position",
+                        "referenced an unknown valuation task",
+                    )
+                })?;
 
             if !context.send_progress(SurfacePricingMessage::Started {
                 worker_index,
                 task_position,
                 valuation_time_utc_nanos,
                 node_count,
-                total_interval_count,
+                progress_plan,
             }) {
                 return Err(pricing_validation_error(
                     "pricing_progress",
@@ -175,13 +189,13 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
 fn price_prepared_surface_snapshots_serial(
     request: &ObservedOptionsPricingRequest,
     prepared_snapshots: Vec<PreparedObservedSnapshot>,
-    task_interval_counts: Vec<usize>,
+    task_progress_plans: Vec<SurfaceTaskProgressPlan>,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     worker_count: usize,
 ) -> Result<Vec<ObservedOptionsSnapshotResult>, WorkflowError> {
     let task_count = prepared_snapshots.len();
     let mut results = Vec::with_capacity(task_count);
-    let task_progress_totals = surface_task_progress_totals(task_interval_counts.as_slice());
+    let task_progress_totals = surface_task_progress_totals(task_progress_plans.as_slice());
     let mut task_progress_units =
         ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
     let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
@@ -190,21 +204,26 @@ fn price_prepared_surface_snapshots_serial(
         progress_adapter,
         task_count,
         worker_count.max(1),
-        task_interval_counts.as_slice(),
+        task_progress_plans.as_slice(),
     )?;
 
     for (task_position, prepared_snapshot) in prepared_snapshots.into_iter().enumerate() {
         let node_count = prepared_snapshot_node_count(&prepared_snapshot);
         let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
-        let total_interval_count = task_interval_counts
+        let progress_plan = task_progress_plans
             .get(task_position)
             .copied()
-            .unwrap_or(0);
+            .ok_or_else(|| {
+                pricing_validation_error(
+                    "pricing_progress.task_position",
+                    "referenced an unknown valuation task",
+                )
+            })?;
         let mut worker_state = SurfaceWorkerState::started(
             task_position,
             valuation_time_utc_nanos,
             node_count,
-            total_interval_count,
+            progress_plan,
         );
 
         emit_surface_worker_started(
@@ -220,7 +239,7 @@ fn price_prepared_surface_snapshots_serial(
                 worker_count: worker_count.max(1),
                 valuation_time_utc_nanos,
                 node_count,
-                total_interval_count,
+                progress_plan,
             },
         )?;
 

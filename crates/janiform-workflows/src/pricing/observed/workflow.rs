@@ -3,11 +3,7 @@ use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use janiform::calibration::market_data::{
-    MarketDataInputFileReference, MarketDataNormalizationPolicy,
-    MarketDataNormalizedOptionSurfaceRecord, MarketDataOptionSurfaceLoadingInput,
-    MarketDataTickDataColumnMapping, MarketDataTranslationTickRecord,
-    infer_market_data_tick_price_input_policy, normalize_market_data_source,
-    normalize_option_surface_source,
+    MarketDataNormalizedOptionSurfaceRecord, MarketDataTranslationTickRecord,
 };
 use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
 
@@ -24,21 +20,24 @@ use super::artifacts::{
     write_observed_artifacts_if_requested,
 };
 use super::data::{
-    prepare_selected_expiry_snapshot_specs_by_valuation_times, prepare_snapshot_groups,
-    resolve_effective_valuation_time_utc_nanos, resolve_single_expiry_surface_valuation_times,
-    retained_snapshot_valuation_count, selected_expiry_history,
+    prepare_selected_expiry_snapshot_specs_by_valuation_times,
+    resolve_single_expiry_surface_valuation_times, retained_snapshot_valuation_count,
+    selected_expiry_history,
 };
+use super::loading::{LoadedObservedOptionsPricingInputs, load_observed_pricing_inputs};
+use super::physical_distribution::compute_physical_distribution_diagnostics_if_requested;
 use super::pricing::price_prepared_snapshot_with_terminal_progress;
 use super::progress::{
     ObservedWorkItemUpdate, complete_observed_pricing_stage, emit_observed_stage_progress,
-    start_observed_pricing_progress, start_observed_pricing_stage,
+    observed_pricing_stage_count, start_observed_pricing_progress, start_observed_pricing_stage,
 };
 use super::state::prepare_observed_snapshots;
 use super::surface::price_prepared_surface_snapshots_parallel;
 use super::types::{
-    LOAD_OBSERVED_DATA_STAGE, ObservedOptionsPricingOutput, ObservedOptionsPricingRequest,
-    ObservedOptionsPricingScope, ObservedOptionsSnapshotResult, PREPARE_VALUATION_STATES_STAGE,
-    PRICE_VALUATION_SURFACE_STAGE, PreparedSnapshotGroup, WRITE_ARTIFACTS_STAGE,
+    ObservedOptionsPricingOutput, ObservedOptionsPricingRequest, ObservedOptionsPricingScope,
+    ObservedOptionsSnapshotResult, PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
+    PREPARE_VALUATION_STATES_STAGE, PRICE_VALUATION_SURFACE_STAGE, PreparedObservedSnapshot,
+    PreparedSnapshotGroup, WRITE_ARTIFACTS_STAGE,
 };
 
 pub fn run_observed_options_pricing(
@@ -84,102 +83,89 @@ pub fn run_observed_options_pricing_with_observer(
         observed_options_start_summary(&run_id, &request),
     )?;
 
+    let include_physical_distribution_diagnostics =
+        request.physical_distribution_diagnostics.is_some();
+    let stage_count = observed_pricing_stage_count(include_physical_distribution_diagnostics);
+
     start_observed_pricing_progress(
         &mut observer.progress_adapter,
         &run_id,
         request.output_path.as_deref(),
+        include_physical_distribution_diagnostics,
     )?;
 
-    let load_stage_started_at =
-        start_observed_pricing_stage(&mut observer.progress_adapter, 1, LOAD_OBSERVED_DATA_STAGE)?;
-    emit_observed_stage_progress(
-        &mut observer.progress_adapter,
-        "load observed data",
-        ProgressMeasure::Unbounded,
-        Some("loading observed ticks and option quotes".to_string()),
-        ObservedWorkItemUpdate::none(),
-    )?;
-    let tick_normalization_policy = observed_tick_normalization_policy(
-        &request.tick_data_source,
-        &request.tick_data_column_mapping,
-        &request.normalization_policy,
-    )?;
-    let tick_output = normalize_market_data_source(
-        &request.tick_data_source,
-        &request.tick_data_column_mapping,
-        &tick_normalization_policy,
-        true,
-    )
-    .map_err(|source| pricing_validation_error("tick_data_source", source.to_string()))?;
+    let loaded_inputs =
+        load_observed_pricing_inputs(&request, stage_count, &mut observer.progress_adapter)?;
 
-    let option_output = normalize_option_surface_source(
-        &MarketDataOptionSurfaceLoadingInput {
-            // Intentional copies because the calibration-runtime loader owns
-            // its source and mapping contract for normalization.
-            source: request.option_surface_source.clone(),
-            column_mapping: request.option_surface_column_mapping.clone(),
-        },
-        &request.normalization_policy,
-    )
-    .map_err(|source| pricing_validation_error("option_surface_source", source.to_string()))?;
-
-    emit_observed_stage_progress(
-        &mut observer.progress_adapter,
-        "load observed data",
-        ProgressMeasure::bounded(1, 1)
-            .map_err(|source| WorkflowError::OutputProgress { source })?,
-        Some(format!(
-            "loaded {} ticks and {} option quotes",
-            tick_output.tick_records.len(),
-            option_output.option_surface_records.len()
-        )),
-        ObservedWorkItemUpdate::none(),
-    )?;
-    complete_observed_pricing_stage(
-        &mut observer.progress_adapter,
-        LOAD_OBSERVED_DATA_STAGE,
-        load_stage_started_at,
-    )?;
-
-    let valuation_time_utc_nanos = resolve_effective_valuation_time_utc_nanos(
-        request.valuation_time_utc,
-        option_output.option_surface_records.as_slice(),
-    )?;
-
-    let snapshot_groups = prepare_snapshot_groups(
-        option_output.option_surface_records.as_slice(),
+    let LoadedObservedOptionsPricingInputs {
         valuation_time_utc_nanos,
-        request.option_type,
-    )?;
+        snapshot_groups,
+        option_records,
+        tick_records,
+    } = loaded_inputs;
 
-    let snapshot_results = match request.scope {
-        ObservedOptionsPricingScope::Snapshot => vec![price_snapshot_groups(
+    let pricing_execution = match request.scope {
+        ObservedOptionsPricingScope::Snapshot => price_snapshot_groups(
             &request,
             valuation_time_utc_nanos,
             snapshot_groups,
-            tick_output.tick_records.as_slice(),
+            tick_records.as_slice(),
             &mut observer.progress_adapter,
-        )?],
+        )?,
         ObservedOptionsPricingScope::Surface => price_surface_groups(
             &request,
             valuation_time_utc_nanos,
             snapshot_groups,
-            option_output.option_surface_records.as_slice(),
-            tick_output.tick_records.as_slice(),
+            option_records.as_slice(),
+            tick_records.as_slice(),
             &mut observer.progress_adapter,
         )?,
+    };
+
+    let physical_distribution = if include_physical_distribution_diagnostics {
+        let physical_stage_started_at = start_observed_pricing_stage(
+            &mut observer.progress_adapter,
+            4,
+            stage_count,
+            PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
+        )?;
+        let physical_distribution = compute_physical_distribution_diagnostics_if_requested(
+            &request,
+            pricing_execution.prepared_snapshots.as_slice(),
+            pricing_execution.snapshot_results.as_slice(),
+            &mut observer.progress_adapter,
+        )?;
+
+        complete_observed_pricing_stage(
+            &mut observer.progress_adapter,
+            PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
+            physical_stage_started_at,
+        )?;
+
+        physical_distribution
+    } else {
+        None
     };
 
     let execution_duration = started_at.elapsed();
 
     let mut nodes = Vec::new();
 
-    for snapshot_result in &snapshot_results {
+    for snapshot_result in &pricing_execution.snapshot_results {
         nodes.extend(snapshot_result.nodes.iter().cloned());
     }
 
-    let write_stage_started_at =
-        start_observed_pricing_stage(&mut observer.progress_adapter, 4, WRITE_ARTIFACTS_STAGE)?;
+    let write_stage_number = if include_physical_distribution_diagnostics {
+        5
+    } else {
+        4
+    };
+    let write_stage_started_at = start_observed_pricing_stage(
+        &mut observer.progress_adapter,
+        write_stage_number,
+        stage_count,
+        WRITE_ARTIFACTS_STAGE,
+    )?;
     emit_observed_stage_progress(
         &mut observer.progress_adapter,
         "write artifacts",
@@ -197,7 +183,8 @@ pub fn run_observed_options_pricing_with_observer(
         request.scope,
         resolved_valuation_time_utc,
         nodes.as_slice(),
-        &snapshot_results,
+        &pricing_execution.snapshot_results,
+        physical_distribution.as_ref(),
         execution_duration,
     )?;
 
@@ -224,7 +211,8 @@ pub fn run_observed_options_pricing_with_observer(
         scope: request.scope,
         valuation_time_utc: resolved_valuation_time_utc,
         nodes,
-        snapshot_results,
+        snapshot_results: pricing_execution.snapshot_results,
+        physical_distribution,
         artifact_paths,
         execution_duration_seconds: execution_duration.as_secs_f64(),
     };
@@ -273,36 +261,13 @@ fn validate_request(request: &ObservedOptionsPricingRequest) -> Result<(), Workf
         ));
     }
 
-    Ok(())
-}
-
-fn observed_tick_normalization_policy(
-    tick_data_source: &MarketDataInputFileReference,
-    tick_data_column_mapping: &MarketDataTickDataColumnMapping,
-    normalization_policy: &MarketDataNormalizationPolicy,
-) -> Result<MarketDataNormalizationPolicy, WorkflowError> {
-    if normalization_policy.tick_price_input_policy.is_some() {
-        // Intentional copy because the observed-pricing workflow resolves an
-        // effective boundary policy without mutating the request contract.
-        return Ok(normalization_policy.clone());
+    if let Some(physical_distribution_diagnostics) =
+        request.physical_distribution_diagnostics.as_ref()
+    {
+        physical_distribution_diagnostics.validate()?;
     }
 
-    let inferred_policy =
-        infer_market_data_tick_price_input_policy(tick_data_source, tick_data_column_mapping)
-            .map_err(|source| pricing_validation_error("tick_data_source", source.to_string()))?
-            .ok_or_else(|| {
-                pricing_validation_error(
-                    "tick_data.price",
-                    "could not infer a tick price input policy from the supplied source",
-                )
-            })?;
-
-    // Intentional copy because the observed-pricing workflow injects a resolved
-    // tick price policy while preserving the original request payload.
-    let mut resolved_policy = normalization_policy.clone();
-    resolved_policy.tick_price_input_policy = Some(inferred_policy);
-
-    Ok(resolved_policy)
+    Ok(())
 }
 
 fn price_surface_groups(
@@ -312,7 +277,7 @@ fn price_surface_groups(
     option_records: &[MarketDataNormalizedOptionSurfaceRecord],
     tick_records: &[MarketDataTranslationTickRecord],
     progress_adapter: &mut Option<&mut ProgressAdapter>,
-) -> Result<Vec<ObservedOptionsSnapshotResult>, WorkflowError> {
+) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
     let expiry_count = snapshot_groups
         .iter()
         .map(|group| group.expiry_timestamp_utc_nanos)
@@ -320,13 +285,13 @@ fn price_surface_groups(
         .len();
 
     if expiry_count > 1 {
-        return Ok(vec![price_snapshot_groups(
+        return price_snapshot_groups(
             request,
             valuation_time_utc_nanos,
             snapshot_groups,
             tick_records,
             progress_adapter,
-        )?]);
+        );
     }
 
     let selected_expiry_timestamp_utc_nanos = snapshot_groups
@@ -349,8 +314,14 @@ fn price_surface_groups(
         request.use_all_valuation_times,
     );
 
-    let prepare_stage_started_at =
-        start_observed_pricing_stage(progress_adapter, 2, PREPARE_VALUATION_STATES_STAGE)?;
+    let stage_count =
+        observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+    let prepare_stage_started_at = start_observed_pricing_stage(
+        progress_adapter,
+        2,
+        stage_count,
+        PREPARE_VALUATION_STATES_STAGE,
+    )?;
 
     let snapshot_specs = prepare_selected_expiry_snapshot_specs_by_valuation_times(
         history.as_slice(),
@@ -366,7 +337,20 @@ fn price_surface_groups(
         prepare_stage_started_at,
     )?;
 
-    price_prepared_surface_snapshots_parallel(request, prepared_snapshots, progress_adapter)
+    let retained_prepared_snapshots = if request.physical_distribution_diagnostics.is_some() {
+        // Intentional copy because Q pricing consumes prepared snapshots while
+        // the optional P diagnostic reuses the same valuation states afterward.
+        prepared_snapshots.clone()
+    } else {
+        Vec::new()
+    };
+    let snapshot_results =
+        price_prepared_surface_snapshots_parallel(request, prepared_snapshots, progress_adapter)?;
+
+    Ok(ObservedOptionsPricingExecutionResult {
+        prepared_snapshots: retained_prepared_snapshots,
+        snapshot_results,
+    })
 }
 
 fn price_snapshot_groups(
@@ -375,9 +359,15 @@ fn price_snapshot_groups(
     snapshot_groups: Vec<PreparedSnapshotGroup>,
     tick_records: &[MarketDataTranslationTickRecord],
     progress_adapter: &mut Option<&mut ProgressAdapter>,
-) -> Result<ObservedOptionsSnapshotResult, WorkflowError> {
-    let prepare_stage_started_at =
-        start_observed_pricing_stage(progress_adapter, 2, PREPARE_VALUATION_STATES_STAGE)?;
+) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
+    let stage_count =
+        observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+    let prepare_stage_started_at = start_observed_pricing_stage(
+        progress_adapter,
+        2,
+        stage_count,
+        PREPARE_VALUATION_STATES_STAGE,
+    )?;
 
     let mut prepared_snapshots = prepare_observed_snapshots(
         request,
@@ -392,8 +382,20 @@ fn price_snapshot_groups(
         prepare_stage_started_at,
     )?;
 
-    let pricing_stage_started_at =
-        start_observed_pricing_stage(progress_adapter, 3, PRICE_VALUATION_SURFACE_STAGE)?;
+    let retained_prepared_snapshots = if request.physical_distribution_diagnostics.is_some() {
+        // Intentional copy because Q pricing consumes prepared snapshots while
+        // the optional P diagnostic reuses the same valuation state afterward.
+        prepared_snapshots.clone()
+    } else {
+        Vec::new()
+    };
+
+    let pricing_stage_started_at = start_observed_pricing_stage(
+        progress_adapter,
+        3,
+        stage_count,
+        PRICE_VALUATION_SURFACE_STAGE,
+    )?;
 
     let prepared_snapshot = prepared_snapshots.pop().ok_or_else(|| {
         pricing_validation_error("valuation_time_utc", "snapshot was not prepared")
@@ -411,5 +413,13 @@ fn price_snapshot_groups(
         pricing_stage_started_at,
     )?;
 
-    Ok(result)
+    Ok(ObservedOptionsPricingExecutionResult {
+        prepared_snapshots: retained_prepared_snapshots,
+        snapshot_results: vec![result],
+    })
+}
+
+struct ObservedOptionsPricingExecutionResult {
+    prepared_snapshots: Vec<PreparedObservedSnapshot>,
+    snapshot_results: Vec<ObservedOptionsSnapshotResult>,
 }

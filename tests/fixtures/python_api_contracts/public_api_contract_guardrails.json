@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "f66c7528a12d8b2048790681ad2c8d33257c1364d3be165255b1ba469f2667ab",
+  "approved_snapshot_sha256": "e6c87d8cbcd368b9fbc5270a7866279f762b6c858b516814fa691c78712d7c7c",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1437,6 +1437,22 @@
         "janiform.calibration.staged",
         "janiform.pricing",
         "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-24",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Observed-options pricing now exposes an optional physical terminal-distribution diagnostic request and result so Python callers can compare model-P volatility equivalents with observed and model-Q option surfaces without owning artifact persistence.",
+      "snapshot_sha256": "e6c87d8cbcd368b9fbc5270a7866279f762b6c858b516814fa691c78712d7c7c",
+      "summary": "Expose observed-options physical distribution diagnostics.",
+      "updated_surfaces": [
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.market_surface"
       ]
     }
   ],

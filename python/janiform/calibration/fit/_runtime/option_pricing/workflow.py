@@ -44,7 +44,7 @@ from .native import (
 )
 from .support import (
     build_model_pricing_hourly_factor_contract,
-    price_observed_log_price_from_spot,
+    price_observed_log_return_from_spot,
     runtime_schedule_hourly_factor_contract_coverage,
 )
 from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
@@ -401,7 +401,7 @@ def prepare_model_pricing_runtime_input(
             runtime_factors=runtime_factors,
             hourly_factor_contract=boundary_hourly_factor_contract,
             initial_excitation_state=effective_boundary_state,
-            start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
+            start_anchor_value=price_observed_log_return_from_spot(model, spot=spot),
         )
     else:
         pricing_state = estimate_model_state_from_observed_data(
@@ -422,7 +422,7 @@ def prepare_model_pricing_runtime_input(
                 runtime_factors=runtime_factors,
                 hourly_factor_contract=boundary_hourly_factor_contract,
                 initial_excitation_state=effective_boundary_state,
-                start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
+                start_anchor_value=price_observed_log_return_from_spot(model, spot=spot),
             )
 
     return PreparedModelPricingRuntimeInput(

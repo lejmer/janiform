@@ -16,13 +16,17 @@ pub enum VanillaOptionImpliedVolatilityInversionStatus {
     PriceAboveFiniteUpperBound,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct VanillaOptionImpliedVolatilityInversionOutcome {
+/// Implied-volatility inversion result for one vanilla option price.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct VanillaOptionImpliedVolatilityInversionOutcome {
+    /// Annualized Black-Scholes implied volatility when inversion succeeded with a finite value.
     pub implied_volatility: Option<f64>,
+    /// Structured inversion status for no-arbitrage boundary cases and successful inversions.
     pub inversion_status: VanillaOptionImpliedVolatilityInversionStatus,
 }
 
-pub(crate) fn invert_vanilla_option_implied_volatility(
+/// Invert one vanilla option price to annualized Black-Scholes implied volatility.
+pub fn invert_vanilla_option_implied_volatility(
     market_inputs: &VanillaOptionPricingMarketInputs,
     payoff_type: VanillaOptionPayoffType,
     option_price: f64,

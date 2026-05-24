@@ -162,6 +162,31 @@ pub fn checked_interval_count_between_utc_nanos(
     usize::try_from(duration_nanos / interval_duration_nanos).ok()
 }
 
+/// Count fixed-width intervals needed to cover a UTC nanosecond timestamp range.
+///
+/// Returns `None` when the interval duration is not positive, the timestamp
+/// range is inverted, or the count cannot be represented as `usize`.
+pub fn checked_ceil_interval_count_between_utc_nanos(
+    start_utc_nanos: i64,
+    end_utc_nanos: i64,
+    interval_duration_nanos: i64,
+) -> Option<usize> {
+    if interval_duration_nanos <= 0 {
+        return None;
+    }
+
+    let duration_nanos = end_utc_nanos.checked_sub(start_utc_nanos)?;
+    if duration_nanos < 0 {
+        return None;
+    }
+
+    let quotient = duration_nanos / interval_duration_nanos;
+    let remainder = duration_nanos % interval_duration_nanos;
+    let count = quotient.checked_add(i64::from(remainder > 0))?;
+
+    usize::try_from(count).ok()
+}
+
 /// Parse an RFC 3339 timestamp string and normalize it to UTC.
 pub fn parse_utc_datetime(value: &str) -> Result<DateTime<Utc>, ParseError> {
     DateTime::parse_from_rfc3339(value).map(|timestamp| timestamp.with_timezone(&Utc))
@@ -424,13 +449,13 @@ pub fn checked_ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Option<i64> {
 mod tests {
     use super::{
         DurationHoursToNanosError, NANOS_PER_HOUR, ceil_to_hour_utc_nanos,
-        ceil_to_interval_utc_nanos, checked_ceil_to_hour_utc_nanos,
-        checked_floor_to_hour_utc_nanos, checked_interval_count_between_utc_nanos,
-        deserialize_optional_utc_datetime, deserialize_utc_datetime, duration_hours_to_nanos,
-        duration_nanos_to_hours, elapsed_between_utc_timestamps, elapsed_utc_nanos_to_hours,
-        floor_to_hour_utc_nanos, floor_to_interval_utc_nanos, format_utc_nanos,
-        parse_duration_spec_nanos, parse_utc_datetime, serialize_utc_datetime,
-        utc_datetime_from_nanos, utc_nanos,
+        ceil_to_interval_utc_nanos, checked_ceil_interval_count_between_utc_nanos,
+        checked_ceil_to_hour_utc_nanos, checked_floor_to_hour_utc_nanos,
+        checked_interval_count_between_utc_nanos, deserialize_optional_utc_datetime,
+        deserialize_utc_datetime, duration_hours_to_nanos, duration_nanos_to_hours,
+        elapsed_between_utc_timestamps, elapsed_utc_nanos_to_hours, floor_to_hour_utc_nanos,
+        floor_to_interval_utc_nanos, format_utc_nanos, parse_duration_spec_nanos,
+        parse_utc_datetime, serialize_utc_datetime, utc_datetime_from_nanos, utc_nanos,
     };
     use chrono::{DateTime, Utc};
     use serde::{Deserialize, Serialize};
@@ -520,6 +545,34 @@ mod tests {
         );
         assert_eq!(
             checked_interval_count_between_utc_nanos(100, 100 + NANOS_PER_HOUR, 0),
+            None
+        );
+    }
+
+    #[test]
+    fn checked_ceil_interval_count_between_utc_nanos_covers_partial_intervals() {
+        assert_eq!(
+            checked_ceil_interval_count_between_utc_nanos(
+                100,
+                100 + 2 * NANOS_PER_HOUR + 1,
+                NANOS_PER_HOUR
+            ),
+            Some(3)
+        );
+        assert_eq!(
+            checked_ceil_interval_count_between_utc_nanos(
+                100,
+                100 + 2 * NANOS_PER_HOUR,
+                NANOS_PER_HOUR
+            ),
+            Some(2)
+        );
+        assert_eq!(
+            checked_ceil_interval_count_between_utc_nanos(100, 99, NANOS_PER_HOUR),
+            None
+        );
+        assert_eq!(
+            checked_ceil_interval_count_between_utc_nanos(100, 100 + NANOS_PER_HOUR, 0),
             None
         );
     }

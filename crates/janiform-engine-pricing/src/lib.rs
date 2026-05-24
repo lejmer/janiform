@@ -91,7 +91,10 @@ pub use grids::{
     run_vanilla_option_grid_batch_pricing_with_observer, run_vanilla_option_surface_pricing,
     run_vanilla_option_surface_pricing_with_observer,
 };
-pub use implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
+pub use implied_volatility::{
+    VanillaOptionImpliedVolatilityInversionOutcome, VanillaOptionImpliedVolatilityInversionStatus,
+    invert_vanilla_option_implied_volatility,
+};
 pub use interval_schedule::{
     DerivedPricingIntervalSchedule, PricingIntervalSchedule, PricingIntervalScheduleError,
     PricingIntervalScheduleMetadata, PricingIntervalSchedulePolicy,
@@ -111,6 +114,8 @@ pub use runner::{
     VanillaOptionPricingRunError, run_vanilla_option_pricing,
     run_vanilla_option_pricing_with_observer,
 };
+pub use time_scaling::intraday_year_fraction;
+pub use vanilla_payoff::vanilla_option_terminal_payoff;
 
 #[doc(hidden)]
 pub mod internal {

@@ -957,7 +957,7 @@ fn estimate_current_state_from_observed_data(
     kernel_parameters: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
     state_time_utc_nanos: i64,
-    observed_log_price: f64,
+    observed_log_return: f64,
     observation_timestamps_utc: &Bound<'_, PyAny>,
     observation_trade_prices: &Bound<'_, PyAny>,
     observation_trade_sides: &Bound<'_, PyAny>,
@@ -1035,7 +1035,7 @@ fn estimate_current_state_from_observed_data(
             kernel_parameters: parsed_kernel_parameters,
             mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
             state_time_utc_nanos,
-            observed_log_price,
+            observed_log_return,
             observation_timestamp_utc_nanos: parsed_observation_timestamp_utc_nanos,
             observation_trade_prices: parsed_observation_trade_prices,
             observation_trade_sides: parsed_observation_trade_sides,
@@ -1098,11 +1098,12 @@ fn materialize_runtime_structural_seasonality(
             )
         })?;
 
-    let parsed_range_end_utc_nanos = parsed_range_end_utc.timestamp_nanos_opt().ok_or_else(|| {
-        CalibrationExecutionError::new_err(
+    let parsed_range_end_utc_nanos =
+        parsed_range_end_utc.timestamp_nanos_opt().ok_or_else(|| {
+            CalibrationExecutionError::new_err(
             "runtime seasonality range_end_utc is outside the supported nanosecond timestamp range",
         )
-    })?;
+        })?;
 
     let materialization = py
         .detach(|| {

@@ -7,12 +7,12 @@ use janiform_terminal_ui::{
 use crate::error::WorkflowError;
 use crate::progress::{
     ProgressUnitTracker, completed_tracked_progress_units, format_cpu_count, progress_count_label,
-    progress_percent, progress_position_label, progress_scaled_units, total_tracked_progress_units,
+    progress_percent, progress_scaled_units, total_tracked_progress_units,
 };
 
 use super::super::progress::pricing_progress_phase_label;
 use super::super::validation::pricing_validation_error;
-use super::progress::{ObservedWorkItemUpdate, emit_observed_stage_progress, pricing_event_units};
+use super::progress::{ObservedWorkItemUpdate, emit_observed_stage_progress};
 use super::types::{ObservedOptionsSnapshotResult, SURFACE_TASK_FINALIZATION_UNIT};
 
 const SURFACE_TASK_PROGRESS_PHASES: [PricingProgressPhase; 3] = [
@@ -20,6 +20,47 @@ const SURFACE_TASK_PROGRESS_PHASES: [PricingProgressPhase; 3] = [
     PricingProgressPhase::MaturityProgress,
     PricingProgressPhase::StrikePricingProgress,
 ];
+const SURFACE_TASK_PASS_COUNT: usize = SURFACE_TASK_PROGRESS_PHASES.len();
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct SurfaceTaskProgressPlan {
+    interval_operator_units: usize,
+    maturity_operator_application_units: usize,
+    strike_row_units: usize,
+}
+
+impl SurfaceTaskProgressPlan {
+    pub(super) const fn new(
+        interval_operator_units: usize,
+        maturity_operator_application_units: usize,
+        strike_row_units: usize,
+    ) -> Self {
+        Self {
+            interval_operator_units,
+            maturity_operator_application_units,
+            strike_row_units,
+        }
+    }
+
+    const fn interval_operator_units(self) -> usize {
+        self.interval_operator_units
+    }
+
+    const fn maturity_operator_application_units(self) -> usize {
+        self.maturity_operator_application_units
+    }
+
+    const fn strike_row_units(self) -> usize {
+        self.strike_row_units
+    }
+
+    const fn total_units(self) -> usize {
+        self.interval_operator_units
+            .saturating_add(self.maturity_operator_application_units)
+            .saturating_add(self.strike_row_units)
+            .saturating_add(SURFACE_TASK_FINALIZATION_UNIT)
+    }
+}
 
 pub(super) enum SurfacePricingMessage {
     Started {
@@ -27,7 +68,7 @@ pub(super) enum SurfacePricingMessage {
         task_position: usize,
         valuation_time_utc_nanos: i64,
         node_count: usize,
-        total_interval_count: usize,
+        progress_plan: SurfaceTaskProgressPlan,
     },
     Progress {
         worker_index: usize,
@@ -40,13 +81,13 @@ pub(super) struct SurfaceWorkerState {
     pub(super) task_position: usize,
     pub(super) valuation_time_utc_nanos: i64,
     pub(super) node_count: usize,
+    pub(super) progress_plan: SurfaceTaskProgressPlan,
     pub(super) completed_pricing_units: usize,
-    pub(super) total_intervals: usize,
     pub(super) completed_progress_units: usize,
     pub(super) total_progress_units: usize,
     pub(super) progress_percent: usize,
+    pub(super) pass_units: String,
     pub(super) interval_units: String,
-    pub(super) row_units: String,
     pub(super) phase: String,
 }
 
@@ -55,40 +96,35 @@ impl SurfaceWorkerState {
         task_position: usize,
         valuation_time_utc_nanos: i64,
         node_count: usize,
-        total_intervals: usize,
+        progress_plan: SurfaceTaskProgressPlan,
     ) -> Self {
         Self {
             task_position,
             valuation_time_utc_nanos,
             node_count,
+            progress_plan,
             completed_pricing_units: 0,
-            total_intervals,
             completed_progress_units: 0,
-            total_progress_units: surface_task_progress_total(total_intervals),
+            total_progress_units: progress_plan.total_units(),
             progress_percent: 0,
+            pass_units: "-".to_string(),
             interval_units: "-".to_string(),
-            row_units: "-".to_string(),
             phase: "starting".to_string(),
         }
     }
 
     pub(super) fn apply_pricing_event(&mut self, event: &PricingProgressEvent) {
-        if let Some(total_intervals) = event.total_intervals {
-            self.total_intervals = self.total_intervals.max(total_intervals);
-        }
-
-        self.total_progress_units = surface_task_progress_total(self.total_intervals);
         self.completed_pricing_units =
             self.completed_pricing_units
                 .max(surface_worker_event_completed_progress_units(
                     event,
-                    self.total_intervals,
+                    self.progress_plan,
                 ));
         self.completed_progress_units = self.completed_pricing_units.min(self.total_progress_units);
         self.progress_percent =
             progress_percent(self.completed_progress_units, self.total_progress_units);
-        self.interval_units = surface_worker_interval_units(event, self.total_intervals);
-        self.row_units = surface_worker_row_units(event);
+        self.pass_units = surface_worker_pass_units(event);
+        self.interval_units = surface_worker_interval_units(event);
         self.phase = pricing_progress_phase_label(event.phase).to_string();
     }
 
@@ -96,8 +132,8 @@ impl SurfaceWorkerState {
         self.completed_progress_units = self.total_progress_units;
         self.completed_pricing_units = self.total_progress_units;
         self.progress_percent = 100;
+        self.pass_units = "-".to_string();
         self.interval_units = "-".to_string();
-        self.row_units = "-".to_string();
         self.phase = "done".to_string();
     }
 }
@@ -111,7 +147,7 @@ pub(super) struct SurfaceWorkerProgressInput {
     pub(super) worker_count: usize,
     pub(super) valuation_time_utc_nanos: i64,
     pub(super) node_count: usize,
-    pub(super) total_interval_count: usize,
+    pub(super) progress_plan: SurfaceTaskProgressPlan,
 }
 
 pub(super) struct SurfaceWorkerPricingProgressInput {
@@ -148,10 +184,10 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
     pub(super) fn new(
         task_count: usize,
         worker_count: usize,
-        task_interval_counts: &[usize],
+        task_progress_plans: &[SurfaceTaskProgressPlan],
         progress_adapter: &'collector mut Option<&'adapter mut ProgressAdapter>,
     ) -> Self {
-        let task_progress_totals = surface_task_progress_totals(task_interval_counts);
+        let task_progress_totals = surface_task_progress_totals(task_progress_plans);
         let task_progress_units =
             ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
         let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
@@ -178,7 +214,7 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
                 task_position,
                 valuation_time_utc_nanos,
                 node_count,
-                total_interval_count,
+                progress_plan,
             } => {
                 let Some(worker_state) = self.worker_states.get_mut(worker_index) else {
                     return Err(pricing_validation_error(
@@ -191,7 +227,7 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
                     task_position,
                     valuation_time_utc_nanos,
                     node_count,
-                    total_interval_count,
+                    progress_plan,
                 ));
 
                 emit_surface_worker_started(
@@ -207,7 +243,7 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
                         worker_count: self.worker_count,
                         valuation_time_utc_nanos,
                         node_count,
-                        total_interval_count,
+                        progress_plan,
                     },
                 )?;
             }
@@ -345,9 +381,9 @@ pub(super) fn emit_surface_pricing_plan(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     task_count: usize,
     worker_count: usize,
-    task_interval_counts: &[usize],
+    task_progress_plans: &[SurfaceTaskProgressPlan],
 ) -> Result<(), WorkflowError> {
-    let task_progress_totals = surface_task_progress_totals(task_interval_counts);
+    let task_progress_totals = surface_task_progress_totals(task_progress_plans);
     let task_progress_units =
         ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
     let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
@@ -390,7 +426,7 @@ pub(super) fn emit_surface_worker_started(
         input.task_position,
         input.valuation_time_utc_nanos,
         input.node_count,
-        input.total_interval_count,
+        input.progress_plan,
     );
 
     emit_observed_stage_progress(
@@ -401,7 +437,7 @@ pub(super) fn emit_surface_worker_started(
             "pricing task {}/{} with {} intervals on {}",
             input.task_position + 1,
             input.task_count,
-            input.total_interval_count,
+            input.progress_plan.interval_operator_units(),
             format_cpu_count(input.worker_count)
         )),
         ObservedWorkItemUpdate::active(
@@ -422,7 +458,8 @@ pub(super) fn emit_surface_worker_progress(
         "price valuation surface",
         surface_progress_measure(input.completed_progress_units, input.total_progress_units),
         Some(format!(
-            "pricing intervals on {}",
+            "{} on {}",
+            input.worker_state.phase,
             format_cpu_count(input.worker_count)
         )),
         ObservedWorkItemUpdate::active(
@@ -462,8 +499,8 @@ fn surface_worker_columns() -> Vec<ProgressWorkItemColumn> {
         ProgressWorkItemColumn::new("task", "Task"),
         ProgressWorkItemColumn::new("time", "Time"),
         ProgressWorkItemColumn::new("nodes", "Nodes"),
+        ProgressWorkItemColumn::new("pass", "Pass"),
         ProgressWorkItemColumn::new("interval", "Interval"),
-        ProgressWorkItemColumn::new("rows", "Rows"),
         ProgressWorkItemColumn::new("phase", "Phase"),
     ]
 }
@@ -483,8 +520,8 @@ fn surface_worker_metrics(
                 .to_rfc3339(),
         ),
         ProgressWorkItemMetric::new("nodes", worker_state.node_count.to_string()),
+        ProgressWorkItemMetric::new("pass", worker_state.pass_units.clone()),
         ProgressWorkItemMetric::new("interval", worker_state.interval_units.clone()),
-        ProgressWorkItemMetric::new("rows", worker_state.row_units.clone()),
         ProgressWorkItemMetric::new("phase", worker_state.phase.clone()),
     ]
 }
@@ -493,18 +530,14 @@ pub(super) fn surface_worker_labels(worker_count: usize) -> Vec<String> {
     (0..worker_count).map(worker_label).collect()
 }
 
-pub(super) fn surface_task_progress_totals(task_interval_counts: &[usize]) -> Vec<usize> {
-    task_interval_counts
+pub(super) fn surface_task_progress_totals(
+    task_progress_plans: &[SurfaceTaskProgressPlan],
+) -> Vec<usize> {
+    task_progress_plans
         .iter()
         .copied()
-        .map(surface_task_progress_total)
+        .map(SurfaceTaskProgressPlan::total_units)
         .collect()
-}
-
-const fn surface_task_progress_total(total_intervals: usize) -> usize {
-    total_intervals
-        .saturating_mul(SURFACE_TASK_PROGRESS_PHASES.len())
-        .saturating_add(SURFACE_TASK_FINALIZATION_UNIT)
 }
 
 fn surface_progress_measure(completed_units: usize, total_units: usize) -> ProgressMeasure {
@@ -517,80 +550,137 @@ fn worker_label(worker_index: usize) -> String {
 
 fn surface_worker_event_completed_progress_units(
     event: &PricingProgressEvent,
-    total_intervals: usize,
+    progress_plan: SurfaceTaskProgressPlan,
 ) -> usize {
     match event.phase {
-        PricingProgressPhase::IntervalProgress => event.completed_units.min(total_intervals),
-        PricingProgressPhase::MaturityProgress => total_intervals.saturating_add(
-            progress_scaled_units(event.completed_units, event.total_units, total_intervals),
-        ),
-        PricingProgressPhase::TransitionRowProgress => total_intervals.saturating_add(
-            surface_worker_transition_row_progress_units(event, total_intervals),
-        ),
-        PricingProgressPhase::StrikePricingProgress => total_intervals
-            .saturating_mul(2)
-            .saturating_add(surface_worker_strike_progress_units(event, total_intervals)),
-        PricingProgressPhase::GroupProgress => 0,
+        PricingProgressPhase::IntervalProgress => event
+            .completed_units
+            .min(progress_plan.interval_operator_units()),
+        PricingProgressPhase::TransitionRowProgress => {
+            surface_worker_transition_row_progress_units(
+                event,
+                progress_plan.interval_operator_units(),
+            )
+        }
+        PricingProgressPhase::MaturityProgress => progress_plan
+            .interval_operator_units()
+            .saturating_add(progress_scaled_units(
+                event.completed_units,
+                event.total_units,
+                progress_plan.maturity_operator_application_units(),
+            )),
+        PricingProgressPhase::StrikePricingProgress => progress_plan
+            .interval_operator_units()
+            .saturating_add(progress_plan.maturity_operator_application_units())
+            .saturating_add(surface_worker_strike_progress_units(event, progress_plan)),
+        PricingProgressPhase::GroupProgress => progress_plan
+            .interval_operator_units()
+            .saturating_add(progress_plan.maturity_operator_application_units())
+            .saturating_add(surface_worker_group_progress_units(event, progress_plan)),
     }
 }
 
-fn surface_worker_interval_units(event: &PricingProgressEvent, total_intervals: usize) -> String {
+fn surface_worker_pass_units(event: &PricingProgressEvent) -> String {
+    if event.phase == PricingProgressPhase::TransitionRowProgress {
+        return format!("1/{SURFACE_TASK_PASS_COUNT}");
+    }
+
+    let pass_position = match event.phase {
+        PricingProgressPhase::GroupProgress => SURFACE_TASK_PASS_COUNT.saturating_sub(1),
+        _ => {
+            let Some(pass_position) = SURFACE_TASK_PROGRESS_PHASES
+                .iter()
+                .position(|phase| *phase == event.phase)
+            else {
+                return "-".to_string();
+            };
+
+            pass_position
+        }
+    };
+
+    format!("{}/{}", pass_position + 1, SURFACE_TASK_PASS_COUNT)
+}
+
+fn surface_worker_interval_units(event: &PricingProgressEvent) -> String {
     match event.phase {
         PricingProgressPhase::IntervalProgress => progress_count_label(
-            Some(event.completed_units.min(total_intervals)),
-            Some(total_intervals),
+            Some(event.completed_units.min(event.total_units)),
+            Some(event.total_units),
         )
         .unwrap_or_else(|| "-".to_string()),
         PricingProgressPhase::TransitionRowProgress => {
-            progress_position_label(event.current_interval_index, Some(total_intervals))
-                .unwrap_or_else(|| "-".to_string())
+            surface_worker_transition_interval_units(event)
         }
-        PricingProgressPhase::StrikePricingProgress
-        | PricingProgressPhase::GroupProgress
-        | PricingProgressPhase::MaturityProgress => "-".to_string(),
+        PricingProgressPhase::GroupProgress
+        | PricingProgressPhase::MaturityProgress
+        | PricingProgressPhase::StrikePricingProgress => "-".to_string(),
     }
 }
 
-fn surface_worker_row_units(event: &PricingProgressEvent) -> String {
-    match event.phase {
-        PricingProgressPhase::TransitionRowProgress => pricing_event_units(event),
-        _ => "-".to_string(),
-    }
+fn surface_worker_transition_interval_units(event: &PricingProgressEvent) -> String {
+    let Some(total_intervals) = event.total_intervals else {
+        return "-".to_string();
+    };
+
+    progress_count_label(
+        Some(surface_worker_transition_row_progress_units(
+            event,
+            total_intervals,
+        )),
+        Some(total_intervals),
+    )
+    .unwrap_or_else(|| "-".to_string())
 }
 
 fn surface_worker_transition_row_progress_units(
     event: &PricingProgressEvent,
-    total_intervals: usize,
+    interval_operator_units: usize,
 ) -> usize {
     let completed_interval_count = event
         .current_interval_index
-        .unwrap_or(total_intervals)
-        .min(total_intervals);
+        .unwrap_or(interval_operator_units)
+        .min(interval_operator_units);
 
     let current_interval_completed =
         event.total_units > 0 && event.completed_units >= event.total_units;
 
     completed_interval_count
         .saturating_add(usize::from(current_interval_completed))
-        .min(total_intervals)
+        .min(interval_operator_units)
 }
 
 fn surface_worker_strike_progress_units(
     event: &PricingProgressEvent,
-    total_intervals: usize,
+    progress_plan: SurfaceTaskProgressPlan,
 ) -> usize {
-    let total_maturities = event.total_maturities.unwrap_or(1).max(1);
-    let total_strikes = event.total_strikes.unwrap_or(event.total_units).max(1);
+    let total_maturities = event
+        .total_maturities
+        .unwrap_or(progress_plan.strike_row_units())
+        .max(1);
     let maturity_index = event
         .current_maturity_index
         .unwrap_or_default()
         .min(total_maturities);
-    let completed_strikes = event.completed_units.min(total_strikes);
+    let current_row_completed = event.total_units > 0 && event.completed_units >= event.total_units;
+    let completed_strike_rows = maturity_index
+        .saturating_add(usize::from(current_row_completed))
+        .min(total_maturities);
 
-    let completed_strike_units = maturity_index
-        .saturating_mul(total_strikes)
-        .saturating_add(completed_strikes);
-    let total_strike_units = total_maturities.saturating_mul(total_strikes);
+    progress_scaled_units(
+        completed_strike_rows,
+        total_maturities,
+        progress_plan.strike_row_units(),
+    )
+}
 
-    progress_scaled_units(completed_strike_units, total_strike_units, total_intervals)
+fn surface_worker_group_progress_units(
+    event: &PricingProgressEvent,
+    progress_plan: SurfaceTaskProgressPlan,
+) -> usize {
+    progress_scaled_units(
+        event.completed_units,
+        event.total_units,
+        progress_plan.strike_row_units(),
+    )
 }

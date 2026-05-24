@@ -5912,7 +5912,11 @@
         "JaniformVanillaOptionMaturityIntervalSummary",
         "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingResult"
+        "JaniformVanillaOptionSurfacePricingResult",
+        "ObservedOptionsPhysicalDistributionDiagnosticsNode",
+        "ObservedOptionsPhysicalDistributionDiagnosticsOutput",
+        "ObservedOptionsPhysicalDistributionDiagnosticsReport",
+        "ObservedOptionsPhysicalDistributionDiagnosticsRequest"
       ],
       "module_name": "janiform.pricing.fitted",
       "schema_identifiers": [],
@@ -5947,10 +5951,11 @@
             "valuation_time_utc",
             "spot",
             "nodes",
+            "physical_distribution",
             "raw_result"
           ],
           "kind": "contract_model",
-          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'"
+          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]' = None) -> 'None'"
         },
         "JaniformObservedOptionSurfaceNode": {
           "field_names": [
@@ -5982,10 +5987,11 @@
           "field_names": [
             "valuation_time_utc",
             "nodes",
+            "physical_distribution",
             "raw_results"
           ],
           "kind": "contract_model",
-          "signature": "(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]') -> 'None'"
+          "signature": "(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]' = ()) -> 'None'"
         },
         "JaniformVanillaOptionGrid": {
           "field_names": [
@@ -6105,6 +6111,63 @@
           ],
           "kind": "contract_model",
           "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'"
+        },
+        "ObservedOptionsPhysicalDistributionDiagnosticsNode": {
+          "field_names": [
+            "valuation_time_utc",
+            "quote_timestamp_utc",
+            "expiry_timestamp_utc",
+            "strike",
+            "option_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "maturity_interval",
+            "q_forward_price",
+            "p_simulated_forward_price",
+            "model_q_implied_volatility",
+            "observed_q_implied_volatility",
+            "observed_q_implied_volatility_inversion_status",
+            "sample_count",
+            "physical_forward_normalized_price",
+            "physical_forward_normalized_implied_volatility",
+            "physical_forward_normalized_implied_volatility_inversion_status",
+            "market_forward_physical_price",
+            "market_forward_physical_implied_volatility",
+            "market_forward_physical_implied_volatility_inversion_status"
+          ],
+          "kind": "contract_model",
+          "signature": "(valuation_time_utc: 'datetime', quote_timestamp_utc: 'datetime', expiry_timestamp_utc: 'datetime', strike: 'float', option_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', maturity_interval: 'float', q_forward_price: 'float', p_simulated_forward_price: 'float', model_q_implied_volatility: 'Optional[float]', observed_q_implied_volatility: 'Optional[float]', observed_q_implied_volatility_inversion_status: 'Optional[VanillaOptionImpliedVolatilityInversionStatus]', sample_count: 'int', physical_forward_normalized_price: 'float', physical_forward_normalized_implied_volatility: 'Optional[float]', physical_forward_normalized_implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus', market_forward_physical_price: 'float', market_forward_physical_implied_volatility: 'Optional[float]', market_forward_physical_implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus') -> 'None'"
+        },
+        "ObservedOptionsPhysicalDistributionDiagnosticsOutput": {
+          "field_names": [
+            "schema_version",
+            "request",
+            "report",
+            "nodes"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', request: 'ObservedOptionsPhysicalDistributionDiagnosticsRequest', report: 'ObservedOptionsPhysicalDistributionDiagnosticsReport', nodes: 'tuple[ObservedOptionsPhysicalDistributionDiagnosticsNode, ...]') -> 'None'"
+        },
+        "ObservedOptionsPhysicalDistributionDiagnosticsReport": {
+          "field_names": [
+            "schema_version",
+            "valuation_count",
+            "node_count",
+            "path_count_per_valuation",
+            "path_partition_count",
+            "worker_count",
+            "maximum_horizon_interval_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', valuation_count: 'int', node_count: 'int', path_count_per_valuation: 'int', path_partition_count: 'int', worker_count: 'int', maximum_horizon_interval_count: 'int') -> 'None'"
+        },
+        "ObservedOptionsPhysicalDistributionDiagnosticsRequest": {
+          "field_names": [
+            "path_count",
+            "seed"
+          ],
+          "kind": "contract_model",
+          "signature": "(path_count: 'int' = 1024, seed: 'int' = 0) -> 'None'"
         }
       }
     },
@@ -6210,10 +6273,11 @@
             "valuation_time_utc",
             "spot",
             "nodes",
+            "physical_distribution",
             "raw_result"
           ],
           "kind": "contract_model",
-          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'"
+          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]' = None) -> 'None'"
         }
       }
     },
@@ -6268,10 +6332,11 @@
           "field_names": [
             "valuation_time_utc",
             "nodes",
+            "physical_distribution",
             "raw_results"
           ],
           "kind": "contract_model",
-          "signature": "(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]') -> 'None'"
+          "signature": "(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]' = ()) -> 'None'"
         }
       }
     },

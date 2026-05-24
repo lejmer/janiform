@@ -10,8 +10,8 @@ use crate::error::WorkflowError;
 
 use super::super::progress::pricing_progress_phase_label;
 use super::types::{
-    LOAD_OBSERVED_DATA_STAGE, OBSERVED_PRICING_STAGE_COUNT, PREPARE_VALUATION_STATES_STAGE,
-    PRICE_VALUATION_SURFACE_STAGE, WRITE_ARTIFACTS_STAGE,
+    LOAD_OBSERVED_DATA_STAGE, PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
+    PREPARE_VALUATION_STATES_STAGE, PRICE_VALUATION_SURFACE_STAGE, WRITE_ARTIFACTS_STAGE,
 };
 
 pub(super) struct ObservedWorkItemUpdate {
@@ -66,6 +66,7 @@ pub(super) fn start_observed_pricing_progress(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     run_id: &str,
     output_path: Option<&std::path::Path>,
+    include_physical_distribution_diagnostics: bool,
 ) -> Result<(), WorkflowError> {
     let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
         return Ok(());
@@ -76,12 +77,7 @@ pub(super) fn start_observed_pricing_progress(
         scope: "Observed options".to_string(),
         input_count: 1,
         output_path: output_path.map(janiform_terminal_ui::format_path),
-        stage_sequence: vec![
-            LOAD_OBSERVED_DATA_STAGE.to_string(),
-            PREPARE_VALUATION_STATES_STAGE.to_string(),
-            PRICE_VALUATION_SURFACE_STAGE.to_string(),
-            WRITE_ARTIFACTS_STAGE.to_string(),
-        ],
+        stage_sequence: observed_pricing_stage_sequence(include_physical_distribution_diagnostics),
         completed_stage_count: 0,
     });
 
@@ -93,6 +89,7 @@ pub(super) fn start_observed_pricing_progress(
 pub(super) fn start_observed_pricing_stage(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     stage_number: usize,
+    stage_count: usize,
     stage: &str,
 ) -> Result<Instant, WorkflowError> {
     let started_at = Instant::now();
@@ -104,7 +101,7 @@ pub(super) fn start_observed_pricing_stage(
     progress_adapter.observe(ProgressEvent::StageStarted {
         stage: stage.to_string(),
         stage_number,
-        stage_count: OBSERVED_PRICING_STAGE_COUNT,
+        stage_count,
     });
 
     progress_adapter
@@ -112,6 +109,28 @@ pub(super) fn start_observed_pricing_stage(
         .map_err(|source| WorkflowError::OutputProgress { source })?;
 
     Ok(started_at)
+}
+
+pub(super) fn observed_pricing_stage_count(
+    include_physical_distribution_diagnostics: bool,
+) -> usize {
+    observed_pricing_stage_sequence(include_physical_distribution_diagnostics).len()
+}
+
+fn observed_pricing_stage_sequence(include_physical_distribution_diagnostics: bool) -> Vec<String> {
+    let mut stages = vec![
+        LOAD_OBSERVED_DATA_STAGE.to_string(),
+        PREPARE_VALUATION_STATES_STAGE.to_string(),
+        PRICE_VALUATION_SURFACE_STAGE.to_string(),
+    ];
+
+    if include_physical_distribution_diagnostics {
+        stages.push(PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE.to_string());
+    }
+
+    stages.push(WRITE_ARTIFACTS_STAGE.to_string());
+
+    stages
 }
 
 pub(super) fn complete_observed_pricing_stage(

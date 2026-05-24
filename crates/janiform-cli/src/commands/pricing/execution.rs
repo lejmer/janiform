@@ -9,9 +9,10 @@ use janiform_foundations::time::parse_utc_datetime;
 use janiform_workflows::pricing::{
     FittedModelSingleOptionPricingOutput, FittedModelSingleOptionPricingRequest,
     FittedModelSingleOptionPricingWorkflowRequest, ObservedOptionTypeFilter,
-    ObservedOptionsPricingOutput, ObservedOptionsPricingRequest, ObservedOptionsPricingScope,
-    PricingWorkflowObserver, run_fitted_model_single_option_pricing_workflow,
-    run_observed_options_pricing_with_observer,
+    ObservedOptionsPhysicalDistributionDiagnosticsDefaults,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest, ObservedOptionsPricingOutput,
+    ObservedOptionsPricingRequest, ObservedOptionsPricingScope, PricingWorkflowObserver,
+    run_fitted_model_single_option_pricing_workflow, run_observed_options_pricing_with_observer,
 };
 use serde_json::Value;
 
@@ -58,6 +59,8 @@ pub(crate) fn run_price_observed_options_command(
     context: &CommandContext,
     mut command: ObservedOptionPricingCommand,
 ) -> Result<(), CliError> {
+    let physical_distribution_diagnostics =
+        observed_physical_distribution_diagnostics_request(&command)?;
     let model_path = required_model_path(context, command.model.model_path)?;
 
     let model_payload = load_json_artifact(&model_path, "model")?;
@@ -96,7 +99,6 @@ pub(crate) fn run_price_observed_options_command(
 
     let output_path =
         resolve_pricing_output_path(context, command.output_path.output_path, &run_id);
-
     let workflow_request = ObservedOptionsPricingRequest {
         model_payload,
         run_id: Some(run_id),
@@ -119,6 +121,7 @@ pub(crate) fn run_price_observed_options_command(
         cpu_count: command.cpu_count,
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection::default(),
         pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::default(),
+        physical_distribution_diagnostics,
         output_path: Some(output_path),
     };
 
@@ -312,6 +315,36 @@ fn observed_option_type_filter(payoff_type: PricePayoffType) -> ObservedOptionTy
         PricePayoffType::Call => ObservedOptionTypeFilter::Call,
         PricePayoffType::Put => ObservedOptionTypeFilter::Put,
     }
+}
+
+fn observed_physical_distribution_diagnostics_request(
+    command: &ObservedOptionPricingCommand,
+) -> Result<Option<ObservedOptionsPhysicalDistributionDiagnosticsRequest>, CliError> {
+    let diagnostics_requested = command.physical_distribution_diagnostics
+        || command.physical_distribution_path_count.is_some()
+        || command.physical_distribution_seed.is_some();
+    if !diagnostics_requested {
+        return Ok(None);
+    }
+
+    let path_count = command
+        .physical_distribution_path_count
+        .unwrap_or(ObservedOptionsPhysicalDistributionDiagnosticsDefaults::PATH_COUNT);
+    if path_count == 0 {
+        return Err(CliError::InvalidCommandArgument {
+            argument_name: "--physical-distribution-path-count",
+            message: "must be strictly positive".to_string(),
+        });
+    }
+
+    Ok(Some(
+        ObservedOptionsPhysicalDistributionDiagnosticsRequest {
+            path_count,
+            seed: command
+                .physical_distribution_seed
+                .unwrap_or(ObservedOptionsPhysicalDistributionDiagnosticsDefaults::SEED),
+        },
+    ))
 }
 
 fn pricing_run_id(model_run_id: &str) -> String {

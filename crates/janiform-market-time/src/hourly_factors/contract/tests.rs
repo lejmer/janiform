@@ -320,6 +320,41 @@ fn seasonality_materializer_handles_sparse_and_missing_intervals_with_fallback_p
 }
 
 #[test]
+fn seasonality_materializer_accepts_zero_source_factors() {
+    let registry = build_calendar_registry();
+
+    let output = materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T17:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+        source_signal: HourlySeasonalitySourceSignal {
+            timestamp_utc_nanos: &[
+                parse_timestamp("2026-02-02T14:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-02-02T15:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-02-02T16:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+            ],
+            seasonality_factors: &[1.0, 0.0, 1.5],
+        },
+        policy: HourlySeasonalityMaterializationPolicy {
+            interpolation_method: "previous_observation_carry_forward.v1",
+            aggregation_method: "last_observation.v1",
+            sparse_fallback_policy: "global_mean.v1",
+            sparse_hour_minimum_observation_count: 1,
+        },
+    })
+    .expect("zero source seasonality factors should remain valid");
+
+    assert_eq!(output.s_h, vec![1.0, 0.0, 1.5]);
+}
+
+#[test]
 fn seasonality_materializer_is_deterministic_for_identical_inputs() {
     let registry = build_calendar_registry();
 

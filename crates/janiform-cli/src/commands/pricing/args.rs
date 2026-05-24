@@ -132,6 +132,26 @@ pub(crate) struct ObservedOptionPricingCommand {
     #[arg(long, value_name = "COUNT", help = "CPU count for native pricing.")]
     pub(crate) cpu_count: Option<usize>,
 
+    #[arg(
+        long,
+        help = "Compute model-P terminal distribution diagnostics for observed option nodes."
+    )]
+    pub(crate) physical_distribution_diagnostics: bool,
+
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Physical distribution diagnostic path count."
+    )]
+    pub(crate) physical_distribution_path_count: Option<usize>,
+
+    #[arg(
+        long,
+        value_name = "SEED",
+        help = "Physical distribution diagnostic root seed."
+    )]
+    pub(crate) physical_distribution_seed: Option<u64>,
+
     #[command(flatten)]
     pub(crate) output_path: OutputPathOptions,
 }

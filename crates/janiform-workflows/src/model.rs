@@ -1,5 +1,6 @@
 mod context;
 mod factors;
+mod inputs;
 mod mean_reversion;
 
 pub use context::ModelStateObservationData;
@@ -10,4 +11,8 @@ pub(crate) use context::{
     validation_error,
 };
 pub(crate) use factors::build_hourly_factor_contract;
+pub(crate) use inputs::{
+    build_coarse_simulation_model_inputs, build_seeded_tick_simulation_model_inputs,
+    build_sufficient_statistics_interval_factors, build_sufficient_statistics_model_inputs,
+};
 pub(crate) use mean_reversion::materialize_mean_reversion_runtime_inputs;

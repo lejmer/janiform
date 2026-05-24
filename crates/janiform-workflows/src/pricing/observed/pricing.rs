@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use chrono::{DateTime, Utc};
 use janiform::calibration::current_state::CurrentStateEstimationOutput;
 use janiform::pricing::{
@@ -24,6 +26,7 @@ use super::super::validation::pricing_validation_error;
 use super::progress::{
     ObservedWorkItemUpdate, emit_observed_stage_progress, emit_single_snapshot_pricing_progress,
 };
+use super::surface_progress::SurfaceTaskProgressPlan;
 use super::types::{
     DEFAULT_PRICING_INTERVAL_DURATION_NANOS, ObservedOptionsPricingNode,
     ObservedOptionsPricingRequest, ObservedOptionsSnapshotResult, PreparedObservedSnapshot,
@@ -165,7 +168,7 @@ fn build_grid_batch_execution_input(
     )?;
 
     let reference_price = model_reference_price(&context.model)?;
-    let observed_log_price = (spot / reference_price).ln();
+    let observed_log_return = spot.ln() - reference_price.ln();
 
     let interval_delta = maturity_resolution
         .pricing_interval_schedule
@@ -190,10 +193,10 @@ fn build_grid_batch_execution_input(
     )
     .map_err(|source| pricing_validation_error("boundary_input", source.to_string()))?;
 
-    if !observed_log_price.is_finite() {
+    if !observed_log_return.is_finite() {
         return Err(pricing_validation_error(
             "tick_data.last_price",
-            "must produce a finite observed log price",
+            "must produce a finite observed log return",
         ));
     }
 
@@ -247,22 +250,22 @@ fn build_grid_batch_execution_input(
     })
 }
 
-pub(super) fn resolve_surface_task_interval_counts(
+pub(super) fn resolve_surface_task_progress_plans(
     request: &ObservedOptionsPricingRequest,
     prepared_snapshots: &[PreparedObservedSnapshot],
-) -> Result<Vec<usize>, WorkflowError> {
+) -> Result<Vec<SurfaceTaskProgressPlan>, WorkflowError> {
     prepared_snapshots
         .iter()
         .map(|prepared_snapshot| {
-            resolve_prepared_snapshot_interval_count(request, prepared_snapshot)
+            resolve_prepared_snapshot_progress_plan(request, prepared_snapshot)
         })
         .collect()
 }
 
-fn resolve_prepared_snapshot_interval_count(
+fn resolve_prepared_snapshot_progress_plan(
     request: &ObservedOptionsPricingRequest,
     prepared_snapshot: &PreparedObservedSnapshot,
-) -> Result<usize, WorkflowError> {
+) -> Result<SurfaceTaskProgressPlan, WorkflowError> {
     let valuation_time_utc =
         DateTime::<Utc>::from_timestamp_nanos(prepared_snapshot.valuation_time_utc_nanos);
     let maturity_resolution = resolve_snapshot_maturity_resolution(
@@ -275,9 +278,10 @@ fn resolve_prepared_snapshot_interval_count(
         request.pricing_interval_schedule_policy,
         PricingIntervalSchedulePolicy::AutoActivityCompressed
     ) {
-        return Ok(maturity_resolution
-            .pricing_interval_schedule
-            .interval_count());
+        return Ok(surface_task_progress_plan_from_resolution(
+            prepared_snapshot,
+            &maturity_resolution,
+        )?);
     }
 
     let context = fitted_model_context(
@@ -306,9 +310,34 @@ fn resolve_prepared_snapshot_interval_count(
         &pricing_hourly_factor_contract,
     )?;
 
-    Ok(maturity_resolution
+    surface_task_progress_plan_from_resolution(prepared_snapshot, &maturity_resolution)
+}
+
+fn surface_task_progress_plan_from_resolution(
+    prepared_snapshot: &PreparedObservedSnapshot,
+    maturity_resolution: &HighLevelPricingMaturityResolution,
+) -> Result<SurfaceTaskProgressPlan, WorkflowError> {
+    let interval_operator_units = maturity_resolution
         .pricing_interval_schedule
-        .interval_count())
+        .interval_count();
+    let maturity_operator_application_units = maturity_resolution
+        .maturity_intervals
+        .iter()
+        .map(|maturity_interval| {
+            maturity_resolution
+                .pricing_interval_schedule
+                .terminal_interval_index_for_maturity_interval(*maturity_interval)
+                .map_err(|source| pricing_validation_error("maturity_input", source.to_string()))
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?
+        .len();
+    let strike_row_units = prepared_snapshot.snapshot_groups.len();
+
+    Ok(SurfaceTaskProgressPlan::new(
+        interval_operator_units,
+        maturity_operator_application_units,
+        strike_row_units,
+    ))
 }
 
 fn resolve_snapshot_maturity_resolution(

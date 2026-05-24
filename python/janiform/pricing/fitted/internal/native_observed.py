@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -33,6 +33,11 @@ from ....pricing.errors import (
 from ..market_snapshot.inputs import TabularFrameInput
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 from ..market_surface.result import JaniformObservedOptionSurfacePricingResult
+from ..physical_distribution import (
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
+    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
+    physical_distribution_diagnostics_request_payload,
+)
 
 if TYPE_CHECKING:
     from ....model import JaniformModel
@@ -57,6 +62,9 @@ def run_native_observed_options_pricing(
     valuation_count: Optional[int],
     use_all_valuation_times: bool,
     cpu_count: Optional[int],
+    physical_distribution_diagnostics: (
+        bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
+    ),
     output_path: Optional[str | Path],
     silent: bool,
     progress_mode: WorkflowProgressMode | str,
@@ -121,6 +129,11 @@ def run_native_observed_options_pricing(
                 "include_calibration_hooks": False,
             },
             "pricing_interval_schedule_policy": {"policy": "auto_activity_compressed"},
+            "physical_distribution_diagnostics": (
+                physical_distribution_diagnostics_request_payload(
+                    physical_distribution_diagnostics
+                )
+            ),
             "output_path": None if output_path is None else str(output_path),
             "progress_mode": _native_pricing_terminal_progress_mode(
                 silent=silent,
@@ -170,10 +183,18 @@ def observed_snapshot_result_from_native_payload(
             },
         )
 
-    return JaniformObservedOptionSnapshotPricingResult.from_native_snapshot_mapping(
+    snapshot_result = JaniformObservedOptionSnapshotPricingResult.from_native_snapshot_mapping(
         raw_snapshot_results[0],
         field_path="observed_options_pricing_result.snapshot_results[0]",
     )
+    physical_distribution = (
+        ObservedOptionsPhysicalDistributionDiagnosticsOutput.from_native_mapping(
+            raw_result.get("physical_distribution"),
+            field_path="observed_options_pricing_result.physical_distribution",
+        )
+    )
+
+    return replace(snapshot_result, physical_distribution=physical_distribution)
 
 
 def observed_surface_result_from_native_payload(

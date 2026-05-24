@@ -42,6 +42,13 @@ def native_datetime(raw_value: Any, *, field_path: str) -> datetime:
         raise _pricing_error(field_path, "must be a UTC timestamp") from error
 
 
+def optional_float(raw_value: Any) -> Optional[float]:
+    if raw_value is None:
+        return None
+
+    return float(raw_value)
+
+
 def tuple_of_positive_floats(
     raw_payload: dict[str, Any],
     *,

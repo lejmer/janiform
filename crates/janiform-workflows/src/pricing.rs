@@ -15,9 +15,14 @@ pub use execution::{
     run_fitted_model_single_option_pricing, run_fitted_model_single_option_pricing_workflow,
 };
 pub use observed::{
-    ObservedOptionTypeFilter, ObservedOptionsPricingNode, ObservedOptionsPricingOutput,
-    ObservedOptionsPricingRequest, ObservedOptionsPricingScope, ObservedOptionsSnapshotResult,
-    run_observed_options_pricing, run_observed_options_pricing_with_observer,
+    ObservedOptionTypeFilter, ObservedOptionsPhysicalDistributionDiagnosticsDefaults,
+    ObservedOptionsPhysicalDistributionDiagnosticsNode,
+    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
+    ObservedOptionsPhysicalDistributionDiagnosticsReport,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest, ObservedOptionsPricingNode,
+    ObservedOptionsPricingOutput, ObservedOptionsPricingRequest, ObservedOptionsPricingScope,
+    ObservedOptionsSnapshotResult, run_observed_options_pricing,
+    run_observed_options_pricing_with_observer,
     run_observed_options_pricing_with_terminal_progress,
 };
 pub use output::FittedModelSingleOptionPricingOutput;

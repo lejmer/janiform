@@ -39,7 +39,8 @@ from janiform.pricing import (
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
 from ..grids import JaniformVanillaOptionGridBatchPricingResult
-from ..internal.common import native_datetime
+from ..internal.common import native_datetime, optional_float
+from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +78,11 @@ class JaniformObservedOptionSnapshotPricingResult:
     valuation_time_utc: datetime
     spot: float
     nodes: tuple[JaniformObservedOptionSnapshotNode, ...]
-    raw_result: Optional[JaniformVanillaOptionGridBatchPricingResult] = field(repr=False)
+    physical_distribution: Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput] = None
+    raw_result: Optional[JaniformVanillaOptionGridBatchPricingResult] = field(
+        default=None,
+        repr=False,
+    )
 
     @staticmethod
     def from_native_snapshot_mapping(
@@ -206,11 +211,11 @@ def _snapshot_node_from_native_mapping(
         risk_free_rate=float(raw_payload["risk_free_rate"]),
         dividend_yield=float(raw_payload["dividend_yield"]),
         maturity_interval=float(raw_payload["maturity_interval"]),
-        observed_bid_price=_optional_float(raw_payload.get("observed_bid_price")),
-        observed_ask_price=_optional_float(raw_payload.get("observed_ask_price")),
-        observed_mid_price=_optional_float(raw_payload.get("observed_mid_price")),
-        model_price=_optional_float(raw_payload.get("model_price")),
-        model_implied_volatility=_optional_float(raw_payload.get("model_implied_volatility")),
+        observed_bid_price=optional_float(raw_payload.get("observed_bid_price")),
+        observed_ask_price=optional_float(raw_payload.get("observed_ask_price")),
+        observed_mid_price=optional_float(raw_payload.get("observed_mid_price")),
+        model_price=optional_float(raw_payload.get("model_price")),
+        model_implied_volatility=optional_float(raw_payload.get("model_implied_volatility")),
         implied_volatility_inversion_status=(
             None
             if raw_payload.get("implied_volatility_inversion_status") is None
@@ -225,14 +230,7 @@ def _snapshot_node_from_native_mapping(
             else VanillaOptionPricingFailureStage(raw_payload["pricing_failure_stage"])
         ),
         pricing_failure_reason=raw_payload.get("pricing_failure_reason"),
-        forward_price=_optional_float(raw_payload.get("forward_price")),
-        discount_factor=_optional_float(raw_payload.get("discount_factor")),
-        boundary_state_norm=_optional_float(raw_payload.get("boundary_state_norm")),
+        forward_price=optional_float(raw_payload.get("forward_price")),
+        discount_factor=optional_float(raw_payload.get("discount_factor")),
+        boundary_state_norm=optional_float(raw_payload.get("boundary_state_norm")),
     )
-
-
-def _optional_float(raw_value: Any) -> Optional[float]:
-    if raw_value is None:
-        return None
-
-    return float(raw_value)

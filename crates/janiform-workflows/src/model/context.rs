@@ -229,7 +229,7 @@ pub(crate) fn estimate_current_state_from_observation_data(
         })?;
 
     let reference_price = model_reference_price(&context.model)?;
-    let observed_log_price = (observed_price / reference_price).ln();
+    let observed_log_return = observed_price.ln() - reference_price.ln();
 
     let observation_trade_sides = observation_data
         .observation_trade_sides
@@ -259,7 +259,7 @@ pub(crate) fn estimate_current_state_from_observation_data(
             .mean_reversion_fitted_parameters
             .clone(),
         state_time_utc_nanos,
-        observed_log_price,
+        observed_log_return,
         // Intentional copies because current-state estimation owns observation
         // columns while the workflow request stays available for error context.
         observation_timestamp_utc_nanos: observation_data.observation_timestamp_utc_nanos.clone(),

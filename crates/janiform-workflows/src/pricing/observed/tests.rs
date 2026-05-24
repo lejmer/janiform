@@ -4,7 +4,9 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use janiform::calibration::market_data::MarketDataTranslationTickRecord;
 use janiform::model::hawkes::HawkesEventSide;
-use janiform::pricing::{PricingProgressEvent, VanillaOptionPayoffType};
+use janiform::pricing::{
+    PricingProgressEvent, VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffType,
+};
 use janiform_engine_pricing::VanillaOptionPricingStatus;
 use serde_json::json;
 
@@ -14,9 +16,16 @@ use crate::progress::{
 
 use super::artifacts::write_observed_artifacts_if_requested;
 use super::data::prepare_selected_expiry_snapshot_specs_by_valuation_times;
+use super::physical_distribution::{
+    ObservedOptionsPhysicalDistributionDiagnosticsNode,
+    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
+    ObservedOptionsPhysicalDistributionDiagnosticsReport,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
+};
 use super::state::observed_tick_state_columns;
 use super::surface_progress::{
-    SurfaceWorkerState, surface_task_progress_totals, surface_worker_labels,
+    SurfaceTaskProgressPlan, SurfaceWorkerState, surface_task_progress_totals,
+    surface_worker_labels,
 };
 use super::types::{
     ObservedOptionsPricingNode, ObservedOptionsPricingScope, ObservedOptionsSnapshotResult,
@@ -96,21 +105,27 @@ fn surface_worker_labels_are_stable_worker_lanes() {
 
 #[test]
 fn surface_global_progress_sums_real_task_progress() {
-    let task_progress_totals = surface_task_progress_totals(&[100, 200, 300]);
+    let task_progress_totals = surface_task_progress_totals(&[
+        SurfaceTaskProgressPlan::new(100, 1, 2),
+        SurfaceTaskProgressPlan::new(200, 2, 3),
+        SurfaceTaskProgressPlan::new(300, 3, 4),
+    ]);
     let mut task_progress = ProgressUnitTracker::planned_for_totals(&task_progress_totals);
     task_progress[0].record(25);
     task_progress[1].record(50);
     task_progress[2].complete();
 
-    assert_eq!(total_tracked_progress_units(&task_progress), 1803);
-    assert_eq!(completed_tracked_progress_units(&task_progress), 976);
+    assert_eq!(total_tracked_progress_units(&task_progress), 618);
+    assert_eq!(completed_tracked_progress_units(&task_progress), 383);
 }
 
 #[test]
 fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
-    let mut worker_state = SurfaceWorkerState::started(0, 1, 10, 10);
+    let mut worker_state =
+        SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 1));
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(5, 10, Some(5), 10));
 
+    assert_eq!(worker_state.pass_units, "1/3");
     assert_eq!(worker_state.interval_units, "5/10");
 
     worker_state.apply_pricing_event(&PricingProgressEvent::transition_row_progress(
@@ -120,14 +135,15 @@ fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
         Some(10),
     ));
 
-    assert_eq!(worker_state.progress_percent, 48);
-    assert_eq!(worker_state.interval_units, "6/10");
-    assert_eq!(worker_state.row_units, "12/65");
+    assert_eq!(worker_state.progress_percent, 38);
+    assert_eq!(worker_state.pass_units, "1/3");
+    assert_eq!(worker_state.interval_units, "5/10");
 }
 
 #[test]
 fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
-    let mut worker_state = SurfaceWorkerState::started(0, 1, 10, 10);
+    let mut worker_state =
+        SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 1));
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(
         10,
         10,
@@ -135,30 +151,48 @@ fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
         10,
     ));
 
-    assert_eq!(worker_state.progress_percent, 32);
+    assert_eq!(worker_state.progress_percent, 76);
+    assert_eq!(worker_state.pass_units, "1/3");
     assert_eq!(worker_state.phase, "pricing intervals");
 
     worker_state.complete();
 
     assert_eq!(worker_state.progress_percent, 100);
+    assert_eq!(worker_state.pass_units, "-");
     assert_eq!(worker_state.phase, "done");
 }
 
 #[test]
 fn surface_worker_strike_progress_uses_later_pricing_phase_units() {
-    let mut worker_state = SurfaceWorkerState::started(0, 1, 10, 10);
+    let mut worker_state =
+        SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 1));
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(10, 10, None, 10));
+    worker_state.apply_pricing_event(&PricingProgressEvent::maturity_progress(1, 1, None, 1));
     worker_state.apply_pricing_event(&PricingProgressEvent::strike_pricing_progress(
-        5,
+        10,
         10,
         Some(0),
-        Some(2),
-        Some(5),
+        Some(1),
+        Some(9),
         10,
     ));
 
-    assert_eq!(worker_state.progress_percent, 70);
+    assert_eq!(worker_state.progress_percent, 92);
+    assert_eq!(worker_state.pass_units, "3/3");
     assert_eq!(worker_state.phase, "pricing strikes");
+}
+
+#[test]
+fn surface_worker_group_progress_advances_strike_row_units() {
+    let mut worker_state =
+        SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 3));
+    worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(10, 10, None, 10));
+    worker_state.apply_pricing_event(&PricingProgressEvent::maturity_progress(1, 1, None, 1));
+    worker_state.apply_pricing_event(&PricingProgressEvent::group_progress(2, 3, Some(2)));
+
+    assert_eq!(worker_state.progress_percent, 86);
+    assert_eq!(worker_state.pass_units, "3/3");
+    assert_eq!(worker_state.phase, "pricing groups");
 }
 
 #[test]
@@ -183,6 +217,7 @@ fn observed_primary_artifact_matches_native_result_shape() {
         valuation_time_utc,
         &[node],
         &[snapshot_result],
+        None,
         Duration::from_secs(2),
     )
     .expect("observed artifact should be writable")
@@ -212,6 +247,73 @@ fn observed_primary_artifact_matches_native_result_shape() {
     );
     assert_eq!(primary_payload["artifact_paths"], json!(null));
     assert_eq!(primary_payload["execution_duration_seconds"], json!(2.0));
+}
+
+#[test]
+fn observed_artifacts_write_physical_distribution_sidecars_when_present() {
+    let valuation_time_utc = DateTime::<Utc>::from_timestamp_nanos(1_000_000_000);
+    let output_directory = std::env::temp_dir().join(format!(
+        "janiform-observed-physical-distribution-artifact-test-{}",
+        std::process::id()
+    ));
+    let output_path = output_directory.join("observed_pricing.json");
+    let node = observed_pricing_node(valuation_time_utc);
+    let snapshot_result = ObservedOptionsSnapshotResult {
+        valuation_time_utc,
+        spot: 100.0,
+        nodes: vec![node.clone()],
+    };
+    let diagnostics = physical_distribution_output(valuation_time_utc);
+
+    let paths = write_observed_artifacts_if_requested(
+        Some(&output_path),
+        "observed-options-test",
+        ObservedOptionsPricingScope::Surface,
+        valuation_time_utc,
+        &[node],
+        &[snapshot_result],
+        Some(&diagnostics),
+        Duration::from_secs(2),
+    )
+    .expect("observed artifact should be writable")
+    .expect("artifact paths should be returned");
+    let physical_nodes_path = paths
+        .physical_distribution_nodes_path
+        .as_ref()
+        .expect("physical node path should be present");
+    let physical_report_path = paths
+        .physical_distribution_report_path
+        .as_ref()
+        .expect("physical report path should be present");
+    let primary_payload: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&paths.primary_output_path)
+            .expect("primary observed artifact should be readable"),
+    )
+    .expect("primary observed artifact should be valid JSON");
+    let physical_nodes_payload: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(physical_nodes_path)
+            .expect("physical distribution nodes artifact should be readable"),
+    )
+    .expect("physical distribution nodes artifact should be valid JSON");
+    let physical_report_payload: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(physical_report_path)
+            .expect("physical distribution report artifact should be readable"),
+    )
+    .expect("physical distribution report artifact should be valid JSON");
+
+    fs::remove_dir_all(&output_directory).expect("test artifact directory should be removable");
+
+    assert_eq!(
+        primary_payload["physical_distribution"]["nodes"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        physical_nodes_payload["nodes"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(physical_report_payload["node_count"], json!(1));
 }
 
 fn snapshot_node(
@@ -253,6 +355,53 @@ fn observed_pricing_node(valuation_time_utc: DateTime<Utc>) -> ObservedOptionsPr
         forward_price: Some(100.0),
         discount_factor: Some(1.0),
         boundary_state_norm: Some(0.0),
+    }
+}
+
+fn physical_distribution_output(
+    valuation_time_utc: DateTime<Utc>,
+) -> ObservedOptionsPhysicalDistributionDiagnosticsOutput {
+    ObservedOptionsPhysicalDistributionDiagnosticsOutput {
+        schema_version: "janiform.observed_options_physical_distribution_diagnostics.v1",
+        request: ObservedOptionsPhysicalDistributionDiagnosticsRequest {
+            path_count: 4,
+            seed: 0,
+        },
+        report: ObservedOptionsPhysicalDistributionDiagnosticsReport {
+            schema_version: "janiform.observed_options_physical_distribution_report.v1",
+            valuation_count: 1,
+            node_count: 1,
+            path_count_per_valuation: 4,
+            path_partition_count: 1,
+            worker_count: 1,
+            maximum_horizon_interval_count: 1,
+        },
+        nodes: vec![ObservedOptionsPhysicalDistributionDiagnosticsNode {
+            valuation_time_utc,
+            quote_timestamp_utc: valuation_time_utc,
+            expiry_timestamp_utc: DateTime::<Utc>::from_timestamp_nanos(3_600_000_000_000),
+            strike: 100.0,
+            option_type: VanillaOptionPayoffType::Call,
+            risk_free_rate: 0.0,
+            dividend_yield: 0.0,
+            maturity_interval: 1.0,
+            q_forward_price: 100.0,
+            p_simulated_forward_price: 100.2,
+            model_q_implied_volatility: Some(0.2),
+            observed_q_implied_volatility: Some(0.21),
+            observed_q_implied_volatility_inversion_status: Some(
+                VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+            ),
+            sample_count: 4,
+            physical_forward_normalized_price: 0.01,
+            physical_forward_normalized_implied_volatility: Some(0.18),
+            physical_forward_normalized_implied_volatility_inversion_status:
+                VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+            market_forward_physical_price: 1.2,
+            market_forward_physical_implied_volatility: Some(0.19),
+            market_forward_physical_implied_volatility_inversion_status:
+                VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+        }],
     }
 }
 

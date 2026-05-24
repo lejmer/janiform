@@ -18,6 +18,12 @@ pub struct PricingArtifactPaths {
     pub report_path: PathBuf,
     /// Run manifest path.
     pub manifest_path: PathBuf,
+    /// Optional observed-options physical distribution diagnostic nodes path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_distribution_nodes_path: Option<PathBuf>,
+    /// Optional observed-options physical distribution diagnostic report path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_distribution_report_path: Option<PathBuf>,
 }
 
 pub(super) fn pricing_artifact_paths(output_path: &Path) -> PricingArtifactPaths {
@@ -37,6 +43,8 @@ pub(super) fn pricing_artifact_paths(output_path: &Path) -> PricingArtifactPaths
         manifest_path: run_directory.join("run.json"),
         run_directory,
         primary_output_path,
+        physical_distribution_nodes_path: None,
+        physical_distribution_report_path: None,
     }
 }
 

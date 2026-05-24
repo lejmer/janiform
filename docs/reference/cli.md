@@ -1088,6 +1088,9 @@ This command reads a saved Janiform model and an observed option snapshot, then 
 * `--valuation-count <COUNT>` — Number of surface valuation times to retain.
 * `--use-all-valuation-times` — Use every retained quote timestamp for single-expiry surface pricing.
 * `--cpu-count <COUNT>` — CPU count for native pricing.
+* `--physical-distribution-diagnostics` — Compute model-P terminal distribution diagnostics for observed option nodes.
+* `--physical-distribution-path-count <COUNT>` — Physical distribution diagnostic path count.
+* `--physical-distribution-seed <SEED>` — Physical distribution diagnostic root seed.
 * `--output-path <PATH>` — Primary output path.
 
    When omitted, Janiform chooses a default output path for the command.

@@ -248,13 +248,13 @@ fn prepare_pricing_input(
     )?;
 
     let reference_price = model_reference_price(&context.model)?;
-    let observed_log_price = (request.spot / reference_price).ln();
+    let observed_log_return = request.spot.ln() - reference_price.ln();
 
     let boundary_state = resolve_pricing_boundary_state(
         request,
         context,
         &boundary_hourly_factor_contract,
-        observed_log_price,
+        observed_log_return,
     )?;
 
     let interval_delta = maturity_resolution

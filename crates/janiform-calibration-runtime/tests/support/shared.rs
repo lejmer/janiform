@@ -2264,7 +2264,7 @@ pub(crate) fn joint_refinement_stage_option_pricing_input_fixture()
         current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
             state_time_utc_nanos: valuation_time_utc_nanos,
             observed_spot: 100.0,
-            observed_log_price: 100.0_f64.ln(),
+            observed_log_return: 100.0_f64.ln(),
             observation_timestamp_utc_nanos: vec![valuation_time_utc_nanos],
             observation_trade_prices: vec![100.0],
             observation_trade_sides: vec![HawkesEventSide::Buy],
