@@ -215,6 +215,27 @@ pub struct JointRefinementStageFittedParameters {
     pub pricing_block_fitted_parameters: Option<JointRefinementStagePricingBlockFittedParameters>,
 }
 
+impl JointRefinementStageFittedParameters {
+    /// Return the Hawkes kernel that option-pricing workflows should use.
+    pub fn pricing_hawkes_kernel_parameters(&self) -> HawkesKernelParameters {
+        self.pricing_block_fitted_parameters
+            .as_ref()
+            .map(|pricing_block| pricing_block.hawkes_kernel_parameters)
+            .unwrap_or(self.hawkes_fitted_parameters.kernel_parameters)
+    }
+
+    /// Return the NIG configuration that option-pricing workflows should use.
+    pub fn pricing_nig_shared_plus_shift_configuration(&self) -> NigSharedPlusShiftConfiguration {
+        self.pricing_block_fitted_parameters
+            .as_ref()
+            .map(|pricing_block| pricing_block.nig_shared_plus_shift_configuration)
+            .unwrap_or(
+                self.return_components_fitted_parameters
+                    .nig_shared_plus_shift_configuration,
+            )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStagePricingBlockFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,

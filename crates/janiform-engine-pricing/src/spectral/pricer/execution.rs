@@ -35,7 +35,6 @@ use super::payoff::{
     cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
     strike_log_boundary_from_reference_log,
 };
-use super::projection::required_projection_payoff_types_for_grid;
 #[cfg(test)]
 use super::row_frequency::{
     IntervalRowFrequencyBatchAdaptiveSolveInput, solve_interval_row_frequency_batches_adaptively,
@@ -312,11 +311,7 @@ fn prepare_pricing_group_contexts(
         let pricing_group_key = PricingGroupKey::from_grid(grid);
         let members = grouped_members.entry(pricing_group_key).or_default();
 
-        for payoff_type in
-            required_projection_payoff_types_for_grid(execution_input.request.spot, grid)?
-        {
-            members.payoff_types.insert(payoff_type);
-        }
+        members.payoff_types.insert(grid.payoff_type);
 
         for strike in &grid.strikes {
             members.strike_bits.insert(strike.to_bits());
@@ -701,7 +696,7 @@ mod tests {
         IntervalRowFrequencyBatchAdaptiveSolveInput, PricingGroupKey, SolvedMaturityLaw,
         SpectralDomain, asset_reference_log_price_from_observed_spot, build_spectral_domain,
         cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
-        required_projection_payoff_types_for_grid, solve_interval_row_frequency_batches_adaptively,
+        solve_interval_row_frequency_batches_adaptively,
         spectral_theta_warm_start_payoff_type_mask, strike_log_boundary_from_reference_log,
     };
     use crate::contracts::{
@@ -863,28 +858,13 @@ mod tests {
 
         assert_eq!(call_key, put_key);
 
-        let call_projection_payoff_types =
-            required_projection_payoff_types_for_grid(100.0, &call_grid)
-                .expect("call projection payoff types should resolve")
-                .into_iter()
-                .collect::<Vec<_>>();
-        let put_projection_payoff_types =
-            required_projection_payoff_types_for_grid(100.0, &put_grid)
-                .expect("put projection payoff types should resolve")
-                .into_iter()
-                .collect::<Vec<_>>();
-
-        assert_eq!(
-            call_projection_payoff_types,
-            vec![VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put,],
-        );
-        assert_eq!(call_projection_payoff_types, put_projection_payoff_types);
+        let mixed_payoff_types = vec![VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put];
         assert_eq!(
             call_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(
-                call_projection_payoff_types.as_slice()
+                mixed_payoff_types.as_slice()
             )),
             put_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(
-                put_projection_payoff_types.as_slice()
+                mixed_payoff_types.as_slice()
             )),
         );
     }

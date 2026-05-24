@@ -61,10 +61,14 @@ pub(super) fn prepare_observed_snapshots(
 
     let state_items = estimate_current_states_from_observed_data_with_observer(
         CurrentStateEstimationBatchInput {
-            kernel_parameters: context.hawkes_fitted_parameters.kernel_parameters,
+            kernel_parameters: context
+                .fitted_parameters
+                .hawkes_fitted_parameters
+                .kernel_parameters,
             // Intentional copy because the batch estimator owns validated
             // fitted parameters while the workflow context remains reusable.
             mean_reversion_fitted_parameters: context
+                .fitted_parameters
                 .return_components_fitted_parameters
                 .mean_reversion_fitted_parameters
                 .clone(),

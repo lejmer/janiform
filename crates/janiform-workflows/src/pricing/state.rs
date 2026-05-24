@@ -52,8 +52,8 @@ pub(super) fn resolve_pricing_boundary_state(
     }
 
     let excitation_state = context
-        .hawkes_fitted_parameters
-        .kernel_parameters
+        .fitted_parameters
+        .pricing_hawkes_kernel_parameters()
         .stationary_excitation_state()
         .map_err(|source| validation_error("kernel_parameters", source.to_string()))?;
 

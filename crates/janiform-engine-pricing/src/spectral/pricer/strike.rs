@@ -6,7 +6,6 @@ use super::payoff::{
     cos_price_from_terminal_characteristic_function,
     cos_price_sensitivity_from_terminal_characteristic_function,
 };
-use super::projection::spectral_projection_payoff_type_for_forward;
 use super::{
     PricingProgressEvent, VanillaOptionGridRequest, VanillaOptionImpliedVolatilityInversionOutcome,
     VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionNodePriceSensitivity,
@@ -15,7 +14,6 @@ use super::{
     intraday_black_scholes_no_arbitrage_price_bounds, invert_vanilla_option_implied_volatility,
     resolved_pricing_cpu_count,
 };
-use crate::vanilla_payoff::vanilla_payoff_price_from_discounted_projection;
 use crate::{intraday_discount_factor, intraday_forward_price};
 
 pub(super) struct PricedStrikeRow {
@@ -48,9 +46,6 @@ struct StrikeNodePricingContext<'a> {
     spot: f64,
     grid: &'a VanillaOptionGridRequest,
     solved_maturity: &'a SolvedMaturityLaw,
-    forward_price: Option<f64>,
-    discount_factor: Option<f64>,
-    discounted_spot: Option<f64>,
     boundary_state_norm: Option<f64>,
 }
 
@@ -90,10 +85,6 @@ pub(super) fn price_strike_row(input: StrikeRowPricingInput<'_, '_, '_>) -> Pric
     let discount_factor_row_value =
         intraday_discount_factor(grid.risk_free_rate, solved_maturity.maturity_interval);
 
-    let discounted_spot = forward_price_row_value
-        .zip(discount_factor_row_value)
-        .map(|(forward_price, discount_factor)| forward_price * discount_factor);
-
     let boundary_state_norm_row_value = Some(
         (boundary_state.y_plus_plus * boundary_state.y_plus_plus
             + boundary_state.y_plus_minus * boundary_state.y_plus_minus
@@ -120,9 +111,6 @@ pub(super) fn price_strike_row(input: StrikeRowPricingInput<'_, '_, '_>) -> Pric
         spot,
         grid,
         solved_maturity,
-        forward_price: forward_price_row_value,
-        discount_factor: discount_factor_row_value,
-        discounted_spot,
         boundary_state_norm: boundary_state_norm_row_value,
     };
 
@@ -218,36 +206,13 @@ fn build_priced_strike_row(
 }
 
 fn price_strike_node(context: &StrikeNodePricingContext<'_>, strike: f64) -> PricedStrikeNode {
-    let discounted_strike = context
-        .discount_factor
-        .map(|discount_factor| discount_factor * strike);
-    let projection_payoff_type = context.forward_price.and_then(|forward_price| {
-        spectral_projection_payoff_type_for_forward(context.grid.payoff_type, forward_price, strike)
-    });
-
-    let model_price = projection_payoff_type
-        .zip(context.discounted_spot)
-        .zip(discounted_strike)
-        .and_then(
-            |((projection_payoff_type, discounted_spot), discounted_strike)| {
-                cos_price_from_terminal_characteristic_function(
-                    context.spot,
-                    strike,
-                    projection_payoff_type,
-                    context.grid.risk_free_rate,
-                    context.solved_maturity,
-                )
-                .and_then(|price| {
-                    vanilla_payoff_price_from_discounted_projection(
-                        context.grid.payoff_type,
-                        projection_payoff_type,
-                        price,
-                        discounted_spot,
-                        discounted_strike,
-                    )
-                })
-            },
-        );
+    let model_price = cos_price_from_terminal_characteristic_function(
+        context.spot,
+        strike,
+        context.grid.payoff_type,
+        context.grid.risk_free_rate,
+        context.solved_maturity,
+    );
 
     let market_inputs = VanillaOptionPricingMarketInputs::new_single_node(
         context.spot,
@@ -265,13 +230,8 @@ fn price_strike_node(context: &StrikeNodePricingContext<'_>, strike: f64) -> Pri
             );
 
             let bounded_price = price.clamp(lower_bound, upper_bound);
-            let bounded_price_sensitivity = bounded_node_price_sensitivity(
-                context,
-                strike,
-                projection_payoff_type,
-                price,
-                bounded_price,
-            );
+            let bounded_price_sensitivity =
+                bounded_node_price_sensitivity(context, strike, price, bounded_price);
 
             let iv_outcome = invert_spectral_implied_volatility(
                 &market_inputs,
@@ -308,7 +268,6 @@ fn price_strike_node(context: &StrikeNodePricingContext<'_>, strike: f64) -> Pri
 fn bounded_node_price_sensitivity(
     context: &StrikeNodePricingContext<'_>,
     strike: f64,
-    projection_payoff_type: Option<VanillaOptionPayoffType>,
     price: f64,
     bounded_price: f64,
 ) -> Option<VanillaOptionNodePriceSensitivity> {
@@ -316,12 +275,11 @@ fn bounded_node_price_sensitivity(
         .solved_maturity
         .characteristic_function_sensitivities
         .as_ref()?;
-    let projection_payoff_type = projection_payoff_type?;
 
     match cos_price_sensitivity_from_terminal_characteristic_function(
         context.spot,
         strike,
-        projection_payoff_type,
+        context.grid.payoff_type,
         context.grid.risk_free_rate,
         context.solved_maturity,
     ) {

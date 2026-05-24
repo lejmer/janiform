@@ -4,11 +4,8 @@ use janiform::calibration::current_state::{
 };
 use janiform::model::factors::hourly::duration_nanos_to_hours;
 use janiform::model::hawkes::HawkesEventSide;
-use janiform::model::nig::NigSharedPlusShiftConfiguration;
 use janiform::time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
-use janiform_calibration_artifacts::{
-    HawkesStageFittedParameters, ReturnComponentsStageFittedParameters,
-};
+use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -22,8 +19,7 @@ pub(crate) struct FittedModelContext {
     pub(crate) calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub(crate) interval_delta: f64,
     pub(crate) range_end_utc: DateTime<Utc>,
-    pub(crate) hawkes_fitted_parameters: HawkesStageFittedParameters,
-    pub(crate) return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+    pub(crate) fitted_parameters: JointRefinementStageFittedParameters,
 }
 
 /// Trade observations used to estimate the state at a model workflow boundary.
@@ -105,10 +101,7 @@ pub(crate) fn fitted_model_context(
             )
         })?;
 
-    let hawkes_fitted_parameters = hawkes_fitted_parameters(&model.parameters)?;
-
-    let return_components_fitted_parameters =
-        return_components_fitted_parameters(&model.parameters)?;
+    let fitted_parameters = fitted_parameters(&model.parameters)?;
 
     let interval_delta = duration_nanos_to_hours(interval_duration_nanos);
 
@@ -125,8 +118,7 @@ pub(crate) fn fitted_model_context(
         calendar_registry_artifact,
         interval_delta,
         range_end_utc,
-        hawkes_fitted_parameters,
-        return_components_fitted_parameters,
+        fitted_parameters,
     })
 }
 
@@ -189,29 +181,6 @@ pub(crate) fn model_reference_price(model: &PersistedModelPayload) -> Result<f64
     Ok(reference_price)
 }
 
-pub(crate) fn pricing_nig_shared_plus_shift_configuration(
-    context: &FittedModelContext,
-) -> Result<NigSharedPlusShiftConfiguration, WorkflowError> {
-    let Some(payload) = context
-        .model
-        .parameters
-        .pointer("/finalization/fitted_parameters/pricing_block_fitted_parameters/nig_shared_plus_shift_configuration")
-    else {
-        return Ok(context
-            .return_components_fitted_parameters
-            .nig_shared_plus_shift_configuration);
-    };
-
-    // Intentional copy because serde_json deserializes the optional pricing
-    // block from an owned payload while the model remains available.
-    serde_json::from_value(payload.clone()).map_err(|source| {
-        validation_error(
-            "model_payload.parameters.finalization.fitted_parameters.pricing_block_fitted_parameters.nig_shared_plus_shift_configuration",
-            format!("failed to deserialize pricing block NIG parameters: {source}"),
-        )
-    })
-}
-
 pub(crate) fn estimate_current_state_from_observation_data(
     context: &FittedModelContext,
     state_time_utc: DateTime<Utc>,
@@ -251,10 +220,14 @@ pub(crate) fn estimate_current_state_from_observation_data(
     })?;
 
     estimate_current_state_from_observed_data(CurrentStateEstimationInput {
-        kernel_parameters: context.hawkes_fitted_parameters.kernel_parameters,
+        kernel_parameters: context
+            .fitted_parameters
+            .hawkes_fitted_parameters
+            .kernel_parameters,
         // Intentional copy because current-state estimation owns the fitted
         // payload while the runtime context remains available to request builders.
         mean_reversion_fitted_parameters: context
+            .fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
             .clone(),
@@ -297,14 +270,14 @@ pub(crate) fn interval_span_nanos(
         })
 }
 
-fn hawkes_fitted_parameters(
+fn fitted_parameters(
     parameters: &Value,
-) -> Result<HawkesStageFittedParameters, WorkflowError> {
+) -> Result<JointRefinementStageFittedParameters, WorkflowError> {
     let payload = parameters
-        .pointer("/finalization/fitted_parameters/hawkes_fitted_parameters")
+        .pointer("/finalization/fitted_parameters")
         .ok_or_else(|| {
             validation_error(
-                "model_payload.parameters.finalization.fitted_parameters.hawkes_fitted_parameters",
+                "model_payload.parameters.finalization.fitted_parameters",
                 "missing fitted parameters",
             )
         })?;
@@ -313,30 +286,8 @@ fn hawkes_fitted_parameters(
     // owned Value payloads while model parameters remain available to callers.
     serde_json::from_value(payload.clone()).map_err(|source| {
         validation_error(
-            "model_payload.parameters.finalization.fitted_parameters.hawkes_fitted_parameters",
-            format!("failed to deserialize Hawkes fitted parameters: {source}"),
-        )
-    })
-}
-
-fn return_components_fitted_parameters(
-    parameters: &Value,
-) -> Result<ReturnComponentsStageFittedParameters, WorkflowError> {
-    let payload = parameters
-        .pointer("/finalization/fitted_parameters/return_components_fitted_parameters")
-        .ok_or_else(|| {
-            validation_error(
-                "model_payload.parameters.finalization.fitted_parameters.return_components_fitted_parameters",
-                "missing fitted parameters",
-            )
-        })?;
-
-    // Intentional copy because serde_json deserializes typed contracts from
-    // owned Value payloads while model parameters remain available to callers.
-    serde_json::from_value(payload.clone()).map_err(|source| {
-        validation_error(
-            "model_payload.parameters.finalization.fitted_parameters.return_components_fitted_parameters",
-            format!("failed to deserialize return-components fitted parameters: {source}"),
+            "model_payload.parameters.finalization.fitted_parameters",
+            format!("failed to deserialize final fitted parameters: {source}"),
         )
     })
 }

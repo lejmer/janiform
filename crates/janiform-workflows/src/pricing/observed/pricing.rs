@@ -8,20 +8,20 @@ use janiform::pricing::{
     VanillaOptionGridBatchPricingExecutionInput,
     VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest,
-    VanillaOptionPricingModelParameters, materialize_schedule_interval_factors,
-    resolve_high_level_pricing_maturity_inputs, run_vanilla_option_grid_batch_pricing,
+    materialize_schedule_interval_factors, resolve_high_level_pricing_maturity_inputs,
+    run_vanilla_option_grid_batch_pricing,
 };
 use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
 
 use crate::error::WorkflowError;
 use crate::model::{
-    build_hourly_factor_contract, fitted_model_context, model_reference_price,
-    pricing_nig_shared_plus_shift_configuration, validation_error,
+    build_hourly_factor_contract, fitted_model_context, model_reference_price, validation_error,
 };
 
 use super::super::maturity::{
     finalize_maturity_resolution, runtime_schedule_hourly_factor_contract_coverage,
 };
+use super::super::model_parameters::build_vanilla_option_pricing_model_parameters;
 use super::super::validation::pricing_validation_error;
 use super::progress::{
     ObservedWorkItemUpdate, emit_observed_stage_progress, emit_single_snapshot_pricing_progress,
@@ -181,6 +181,7 @@ fn build_grid_batch_execution_input(
         0,
         estimated_state.hawkes_excitation_state,
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
             // Intentional copy because the pricing boundary owns a validated
@@ -200,22 +201,13 @@ fn build_grid_batch_execution_input(
         ));
     }
 
-    let model_parameters = VanillaOptionPricingModelParameters::try_new(
-        context.hawkes_fitted_parameters.kernel_parameters,
-        context
-            .return_components_fitted_parameters
-            .news_process_configuration
-            // Intentional copy because pricing model parameters own their
-            // native contract after workflow preparation completes.
-            .clone(),
-        pricing_nig_shared_plus_shift_configuration(&context)?,
-    )
-    .map_err(|source| pricing_validation_error("model_parameters", source.to_string()))?;
+    let model_parameters = build_vanilla_option_pricing_model_parameters(&context)?;
 
     let interval_factors = materialize_schedule_interval_factors(
         &maturity_resolution.pricing_interval_schedule,
         &pricing_hourly_factor_contract,
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .return_mark_hour_of_week_scale_profile
             .hour_of_week_factors

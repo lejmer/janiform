@@ -46,6 +46,7 @@ pub(crate) fn build_hourly_factor_contract(
         range_end_utc,
         interval_duration_nanos,
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .surprise_deterministic_intensity_profile
             .weekly_hour_utc_multipliers
@@ -53,6 +54,7 @@ pub(crate) fn build_hourly_factor_contract(
     )?;
 
     let surprise_baseline_intensity = context
+        .fitted_parameters
         .return_components_fitted_parameters
         .news_process_configuration
         .arrivals

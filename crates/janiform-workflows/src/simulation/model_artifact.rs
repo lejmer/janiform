@@ -174,6 +174,7 @@ fn resolve_initial_state(
         (Some(excitation_state), _) => excitation_state,
         (None, Some(estimated_state)) => estimated_state.hawkes_excitation_state,
         (None, None) => context
+            .fitted_parameters
             .hawkes_fitted_parameters
             .kernel_parameters
             .stationary_excitation_state()

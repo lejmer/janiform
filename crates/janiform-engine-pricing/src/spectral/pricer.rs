@@ -3,7 +3,6 @@ mod execution;
 mod interval_operator;
 mod math;
 mod payoff;
-mod projection;
 mod row_frequency;
 mod strike;
 

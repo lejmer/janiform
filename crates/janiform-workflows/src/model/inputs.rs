@@ -21,13 +21,18 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
     hourly_factor_contract: HourlyFactorContractOutput,
 ) -> SeededTickSimulationModelInputs {
     SeededTickSimulationModelInputs {
-        kernel_parameters: context.hawkes_fitted_parameters.kernel_parameters,
+        kernel_parameters: context
+            .fitted_parameters
+            .hawkes_fitted_parameters
+            .kernel_parameters,
         nig_shared_plus_shift_configuration: context
+            .fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
         // Intentional copy because seeded simulation owns model inputs
         // independent of the shared workflow context.
         news_process_configuration: context
+            .fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration
             .clone(),
@@ -35,6 +40,7 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
         // Intentional copy because seeded simulation owns a validated model
         // input independent of the shared workflow context.
         mean_reversion_fitted_parameters: context
+            .fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
             .clone(),
@@ -42,11 +48,13 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
         return_mark_hour_of_week_factors: context
+            .fitted_parameters
             .return_components_fitted_parameters
             .return_mark_hour_of_week_scale_profile
             .hour_of_week_factors
             .clone(),
         observed_price_tick_size: context
+            .fitted_parameters
             .return_components_fitted_parameters
             .tick_grid_observation_model
             .tick_size,
@@ -63,8 +71,12 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 ) -> Result<SufficientStatisticsModelInputs, WorkflowError> {
     let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
-        context.hawkes_fitted_parameters.kernel_parameters,
         context
+            .fitted_parameters
+            .hawkes_fitted_parameters
+            .kernel_parameters,
+        context
+            .fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration
             .shared_mark_law
@@ -75,12 +87,14 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
     SufficientStatisticsModelInputs::try_new(
         equation_specification,
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
         initial_excitation_state,
         // Intentional copy because the sufficient-statistics contract owns
         // validated fitted parameters independent of the shared workflow context.
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
             .clone(),
@@ -99,16 +113,19 @@ pub(crate) fn build_coarse_simulation_model_inputs(
         // Intentional copy because the coarse simulation contract owns model inputs
         // independent of the shared workflow context.
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration
             .clone(),
         // Intentional copy because coarse simulation owns the return-mark profile.
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .return_mark_hour_of_week_scale_profile
             .hour_of_week_factors
             .clone(),
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .tick_grid_observation_model
             .tick_size,

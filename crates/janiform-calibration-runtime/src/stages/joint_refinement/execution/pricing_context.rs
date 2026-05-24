@@ -194,30 +194,6 @@ struct OptionMaturityResidualBucket {
     residuals: Vec<f64>,
 }
 
-fn pricing_nig_configuration(
-    fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
-) -> janiform_model_kernels::nig::NigSharedPlusShiftConfiguration {
-    fitted_parameters
-        .pricing_block_fitted_parameters
-        .as_ref()
-        .map(|pricing_block| pricing_block.nig_shared_plus_shift_configuration)
-        .unwrap_or(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-        )
-}
-
-fn pricing_hawkes_kernel_parameters(
-    fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
-) -> janiform_model_kernels::hawkes::HawkesKernelParameters {
-    fitted_parameters
-        .pricing_block_fitted_parameters
-        .as_ref()
-        .map(|pricing_block| pricing_block.hawkes_kernel_parameters)
-        .unwrap_or(fitted_parameters.hawkes_fitted_parameters.kernel_parameters)
-}
-
 pub(crate) fn build_option_pricing_context(
     run_spec: &janiform_calibration_artifacts::CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
@@ -852,12 +828,12 @@ fn run_option_grid_batch_pricing(
         request: tier_inputs.grid_batch_pricing_request.clone(),
         boundary_input,
         model_parameters: VanillaOptionPricingModelParameters::new(
-            pricing_hawkes_kernel_parameters(fitted_parameters),
+            fitted_parameters.pricing_hawkes_kernel_parameters(),
             fitted_parameters
                 .return_components_fitted_parameters
                 .news_process_configuration
                 .clone(),
-            pricing_nig_configuration(fitted_parameters),
+            fitted_parameters.pricing_nig_shared_plus_shift_configuration(),
         ),
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
         interval_delta: tier_inputs.runtime_interval_schedule.interval_deltas_hours[0],
@@ -2024,7 +2000,7 @@ mod tests {
         build_option_surface_tier_pricing_artifact, build_surprise_multipliers_for_interval_grid,
         derive_pricing_interval_schedule, estimate_option_pricing_current_state,
         format_option_pricing_progress_item, minimum_positive_option_quote_spread,
-        option_quote_residual_scale, pricing_event_progress_percent, pricing_nig_configuration,
+        option_quote_residual_scale, pricing_event_progress_percent,
         pricing_progress_interval_value, resolve_option_runtime_interval_schedule,
         validate_option_spot,
     };
@@ -3147,13 +3123,7 @@ mod tests {
                 return_components_fitted_parameters
                     .news_process_configuration
                     .clone(),
-                pricing_nig_configuration(
-                    &janiform_calibration_artifacts::JointRefinementStageFittedParameters {
-                        hawkes_fitted_parameters,
-                        return_components_fitted_parameters,
-                        pricing_block_fitted_parameters: None,
-                    },
-                ),
+                return_components_fitted_parameters.nig_shared_plus_shift_configuration,
             ),
             runtime_interval_schedule: horizon,
             interval_delta: boundary_input.interval_delta,
