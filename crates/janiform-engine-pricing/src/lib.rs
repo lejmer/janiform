@@ -31,7 +31,7 @@ pub use characteristic::{
     compose_total_return_characteristic_function_from_oracle_output,
     compose_total_return_characteristic_function_with_edge_mode, evolve_hawkes_state,
     load_hourly_factor_contract, project_hawkes_intensities_coarse_interval,
-    solve_anchored_local_pricing_tilt, solve_exponential_affine_transform,
+    solve_anchored_local_pricing_tilt,
 };
 pub use constants::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_CONTOUR_POLICY,

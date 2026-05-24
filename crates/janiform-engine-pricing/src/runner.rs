@@ -11,7 +11,7 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
-    ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformSolverSettings, solve_exponential_affine_transform,
     solve_exponential_affine_transform_input_sensitivities_with_settings,
 };
 use janiform_affine_oracle::endogenous_anchor::{
@@ -36,11 +36,10 @@ use janiform_model_kernels::nig::{
 
 use super::characteristic::{
     LocalTiltResidualEvaluation, LocalTiltSearchDomain, PricingTransformInputBuildError,
-    build_local_tilt_bracket_with_search_domain_and_residual_evaluator,
+    build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator,
     build_pricing_equation_specification,
     compose_total_return_characteristic_function_from_oracle_output,
     resolve_scaled_local_tilt_search_domain, should_retry_local_tilt_side_evaluation,
-    solve_exponential_affine_transform_with_internal_selection,
 };
 use super::constants::{
     FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
@@ -58,7 +57,7 @@ use super::contracts::{
     VanillaOptionPricingRunResultBuildError, VanillaOptionPricingRunResultBuildInput,
     VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
 };
-use super::expected_hawkes_state::evolve_expected_hawkes_state_from_integrated_statistics;
+use super::expected_hawkes_state::evolve_expected_hawkes_state_from_expected_counts;
 use super::fourier::{
     FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
     FourierInversionNumericQualityGate, FourierInversionPricingError,
@@ -1118,11 +1117,16 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
     }
 
     let core_target_log_moment_exponent = transition_row.target_log_moment_exponent;
+
+    let preferred_theta =
+        local_tilt_newton_theta_candidate(interval_tilt_curve, core_target_log_moment_exponent);
+
     let (theta, core_evaluation) =
-        build_local_tilt_bracket_with_search_domain_and_residual_evaluator(
+        build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator(
             interval_tilt_curve.search_domain,
             core_target_log_moment_exponent,
             local_tilt_tolerance(),
+            preferred_theta,
             |theta| {
                 let core_log_moment_evaluation =
                     interval_tilt_curve.evaluate_core_log_moment(theta)?;
@@ -1155,6 +1159,34 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
     Ok((theta, Some(diagnostics)))
 }
 
+fn local_tilt_newton_theta_candidate(
+    interval_tilt_curve: &IntervalTiltCurve<'_>,
+    target_log_moment_exponent: f64,
+) -> Option<f64> {
+    let reference_theta = interval_tilt_curve.search_domain.reference_theta;
+
+    let sensitivity = match differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
+        interval_tilt_curve.transition_context,
+        interval_tilt_curve.driver_parameters,
+        reference_theta,
+    ) {
+        Ok(sensitivity) => sensitivity,
+        Err(_) => return None,
+    };
+
+    if !sensitivity.theta_derivative.is_finite() || sensitivity.theta_derivative == 0.0 {
+        return None;
+    }
+
+    let reference_residual = sensitivity.observed_log_moment_exponent - target_log_moment_exponent;
+    let candidate_theta = reference_theta - reference_residual / sensitivity.theta_derivative;
+
+    interval_tilt_curve
+        .search_domain
+        .contains(candidate_theta)
+        .then_some(candidate_theta)
+}
+
 #[cfg(test)]
 pub(crate) fn resolve_local_transition_theta(
     pricing_request: &VanillaOptionPricingRequest,
@@ -1170,10 +1202,29 @@ pub(crate) fn resolve_local_transition_theta(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_local_transition_theta_with_parallelism(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: VanillaOptionPricingIntervalFactors,
     driver_parameters: NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
+    resolve_local_transition_theta_with_parallelism_and_hint(
+        pricing_request,
+        interval_factors,
+        driver_parameters,
+        None,
+        pricing_thread_pool,
+        cpu_count,
+    )
+}
+
+pub(crate) fn resolve_local_transition_theta_with_parallelism_and_hint(
+    pricing_request: &VanillaOptionPricingRequest,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    driver_parameters: NigBuySellDriverParameters,
+    initial_theta_hint: Option<f64>,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
 ) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
@@ -1187,15 +1238,17 @@ pub(crate) fn resolve_local_transition_theta_with_parallelism(
             .deviation,
     )?;
 
-    resolve_local_transition_theta_for_row_with_parallelism(
+    resolve_local_transition_theta_for_row_with_parallelism_and_hint(
         &transition_context,
         &transition_row,
         driver_parameters,
+        initial_theta_hint,
         pricing_thread_pool,
         cpu_count,
     )
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_local_transition_theta_for_row_with_parallelism(
     transition_context: &LocalTransitionRequestContext,
     transition_row: &LocalTransitionRowState,
@@ -1355,6 +1408,7 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
     let mut end_pressure_states = Vec::with_capacity(interval_factors.len());
     let mut interval_deltas = Vec::with_capacity(interval_factors.len());
     let mut expected_hawkes_state_path = Vec::with_capacity(interval_factors.len() + 1);
+    let mut previous_local_transition_theta = None;
 
     expected_hawkes_state_path.push(current_hawkes_state);
 
@@ -1392,13 +1446,16 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
             interval_delta,
         )?;
 
-        let (local_transition_theta, _) = resolve_local_transition_theta_with_parallelism(
+        let (local_transition_theta, _) = resolve_local_transition_theta_with_parallelism_and_hint(
             &local_request,
             interval_factor,
             driver_parameters,
+            previous_local_transition_theta,
             pricing_thread_pool,
             cpu_count,
         )?;
+
+        previous_local_transition_theta = Some(local_transition_theta);
 
         let local_expectations = derive_local_tilted_interval_expectations_with_parallelism(
             &local_request,
@@ -1839,12 +1896,12 @@ fn solve_local_tilted_transform_slice_value(
         transition_context.build_transform_input(buy_side_shift, sell_side_shift, z_plus, z_minus);
 
     let transform_diagnostics =
-        solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
-            |source| VanillaOptionPricingRunError::TransformSolveFailure {
+        solve_exponential_affine_transform(transform_input).map_err(|source| {
+            VanillaOptionPricingRunError::TransformSolveFailure {
                 argument: shifted_argument,
                 source: Box::new(source),
-            },
-        )?;
+            }
+        })?;
 
     let transform_output = transform_diagnostics.output.ok_or(
         VanillaOptionPricingRunError::MissingTransformOutput {
@@ -1932,21 +1989,35 @@ fn evolve_expected_hawkes_state_under_local_measure(
 
     let kernel_parameters = pricing_request.model_parameters.hawkes_kernel_parameters;
 
-    evolve_expected_hawkes_state_from_integrated_statistics(
+    let expected_news_loading_rate = interval_factors.total_news_intensity()
+        * pricing_request
+            .model_parameters
+            .news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks
+            .expected_severity_mark()
+            .map_err(
+                |source| VanillaOptionPricingRunError::ExpectedHawkesStateUpdateFailure {
+                    message: source.to_string(),
+                },
+            )?;
+
+    evolve_expected_hawkes_state_from_expected_counts(
         kernel_parameters,
-        interval_factors.s_h,
+        expected_news_loading_rate,
         pricing_request.interval_delta,
         state_before_update,
         local_expectations.expected_statistics,
     )
     .map_err(|source| VanillaOptionPricingRunError::ExpectedHawkesStateUpdateFailure {
         message: format!(
-            "{source}; interval_index={} interval_delta={} s_h={} nu_h_known={} nu_h_surprise={} expected_a_plus={} expected_a_minus={} expected_n_plus={} expected_n_minus={}",
+            "{source}; interval_index={} interval_delta={} s_h={} nu_h_known={} nu_h_surprise={} expected_news_loading_rate={} expected_a_plus={} expected_a_minus={} expected_n_plus={} expected_n_minus={}",
             pricing_request.boundary_input.interval_index,
             pricing_request.interval_delta,
             interval_factors.s_h,
             interval_factors.nu_h_known,
             interval_factors.nu_h_surprise,
+            expected_news_loading_rate,
             local_expectations.expected_statistics.expected_a_plus,
             local_expectations.expected_statistics.expected_a_minus,
             local_expectations.expected_statistics.expected_n_plus,
@@ -2213,12 +2284,12 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
     );
 
     let transform_diagnostics =
-        solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
-            |source| VanillaOptionPricingRunError::TransformSolveFailure {
+        solve_exponential_affine_transform(transform_input).map_err(|source| {
+            VanillaOptionPricingRunError::TransformSolveFailure {
                 argument,
                 source: Box::new(source),
-            },
-        )?;
+            }
+        })?;
 
     let transform_output = transform_diagnostics.output.ok_or(
         VanillaOptionPricingRunError::MissingTransformOutput {
@@ -2292,12 +2363,12 @@ fn solve_affine_transform_value_input_sensitivities_for_context(
     );
 
     let transform_diagnostics =
-        solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
-            |source| VanillaOptionPricingRunError::TransformSolveFailure {
+        solve_exponential_affine_transform(transform_input).map_err(|source| {
+            VanillaOptionPricingRunError::TransformSolveFailure {
                 argument: ComplexScalar::new(0.0, 0.0),
                 source: Box::new(source),
-            },
-        )?;
+            }
+        })?;
 
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         transform_diagnostics.metadata.integrator_method,

@@ -236,7 +236,7 @@ The report may mention these restarts because they explain how Janiform searched
 
 ### Option refinement progress
 
-Option refinement uses option quote residual scores, not the restart optimization pseudo-likelihood loss. The option score is the maturity-weighted root mean square of option quote residuals after each residual has been scaled by its quote spread. A score near `1.0` means the model is typically about one quoted spread away from the observed mid price on the tier being evaluated. Smaller is better.
+Option refinement uses option quote residual scores, not the restart optimization pseudo-likelihood loss. The option score is the maturity-weighted root-mean-square of option quote residuals after each residual has been scaled by its quote spread. A score near `1.0` means the model is typically about one quoted spread away from the observed mid-price on the tier being evaluated. Smaller is better.
 
 The option search tier first prices an exact sensitivity baseline, then validates pricing-block proposals with search-tier operator approximation. The default search budget is deterministic: one exact baseline evaluation plus one proposal evaluation per active pricing-block search coordinate. If `joint_refinement_option_refinement_wall_clock_budget_millis` is provided, it acts as an explicit wall-clock guard around that deterministic search work. Selection and audit tier pricing remain exact.
 

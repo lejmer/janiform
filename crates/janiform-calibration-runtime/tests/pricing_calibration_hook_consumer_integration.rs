@@ -3,6 +3,7 @@ mod support;
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformSolverSettings, ExponentialAffineTransformTelemetryMode,
+    solve_exponential_affine_transform_with_settings,
 };
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
 use janiform_engine_pricing::internal::{
@@ -19,7 +20,6 @@ use janiform_engine_pricing::{
     VanillaOptionPricingRequest, VanillaOptionPricingResponse,
     VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingStatus,
     build_pricing_transform_input, build_vanilla_option_pricing_run_result,
-    solve_exponential_affine_transform,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -186,7 +186,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     )
     .expect("pricing transform input should construct");
 
-    let transform_diagnostics = solve_exponential_affine_transform(
+    let transform_diagnostics = solve_exponential_affine_transform_with_settings(
         transform_input,
         reference_affine_transform_solver_settings(),
     )

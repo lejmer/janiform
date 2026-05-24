@@ -26,6 +26,12 @@ use super::{
 
 // Public default ODE step count for one-interval solves, overrideable on solver settings.
 const DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT: usize = 64;
+// For the linear Hawkes decay subproblem D' = -beta D, RK4 has stability
+// polynomial R(-x) = 1 - x + x^2/2 - x^3/6 + x^4/24. The positive
+// stability boundary solves R(-x) = 1, or x^3 - 4x^2 + 12x - 24 = 0.
+const FOURTH_ORDER_RUNGE_KUTTA_NEGATIVE_REAL_STABILITY_LIMIT: f64 = 2.7852935634052816;
+// Forward Euler has R(-x) = 1 - x and remains stable for 0 <= x <= 2.
+const FORWARD_EULER_NEGATIVE_REAL_STABILITY_LIMIT: f64 = 2.0;
 
 /// Supported one-step numerical integration methods for affine transform ODE solving.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -321,11 +327,11 @@ pub fn solve_exponential_affine_transform_with_optional_settings(
     transform_input: ExponentialAffineTransformInput,
     solver_settings: Option<ExponentialAffineTransformSolverSettings>,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
-    let effective_solver_settings = solver_settings.unwrap_or_default();
-
     transform_input
         .validate()
         .map_err(|source| ExponentialAffineTransformSolverError::InvalidInput { source })?;
+    let effective_solver_settings = solver_settings
+        .unwrap_or_else(|| internally_selected_default_solver_settings(transform_input));
     effective_solver_settings.validate().map_err(|source| {
         ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
     })?;
@@ -353,6 +359,52 @@ pub fn solve_exponential_affine_transform_with_optional_settings(
             )
         }
     }
+}
+
+fn internally_selected_default_solver_settings(
+    transform_input: ExponentialAffineTransformInput,
+) -> ExponentialAffineTransformSolverSettings {
+    let mut solver_settings = ExponentialAffineTransformSolverSettings::default();
+    solver_settings.step_count =
+        solver_settings
+            .step_count
+            .max(minimum_stable_hawkes_decay_step_count(
+                transform_input
+                    .equation_specification
+                    .hawkes_kernel_parameters
+                    .beta,
+                transform_input.delta,
+                solver_settings.integrator_method,
+            ));
+
+    solver_settings
+}
+
+fn minimum_stable_hawkes_decay_step_count(
+    beta: f64,
+    delta: f64,
+    integrator_method: ExponentialAffineTransformIntegratorMethod,
+) -> usize {
+    let stability_limit = match integrator_method {
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta => {
+            FOURTH_ORDER_RUNGE_KUTTA_NEGATIVE_REAL_STABILITY_LIMIT
+        }
+        ExponentialAffineTransformIntegratorMethod::ForwardEuler => {
+            FORWARD_EULER_NEGATIVE_REAL_STABILITY_LIMIT
+        }
+    };
+
+    let stiffness_horizon = beta * delta;
+    if stiffness_horizon <= 0.0 {
+        return 1;
+    }
+
+    let required_step_count = (stiffness_horizon / stability_limit).ceil();
+    if required_step_count >= usize::MAX as f64 {
+        return usize::MAX;
+    }
+
+    required_step_count.max(1.0) as usize
 }
 
 fn exact_identity_result(

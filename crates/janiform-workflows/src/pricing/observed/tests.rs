@@ -102,8 +102,8 @@ fn surface_global_progress_sums_real_task_progress() {
     task_progress[1].record(50);
     task_progress[2].complete();
 
-    assert_eq!(total_tracked_progress_units(&task_progress), 603);
-    assert_eq!(completed_tracked_progress_units(&task_progress), 376);
+    assert_eq!(total_tracked_progress_units(&task_progress), 1803);
+    assert_eq!(completed_tracked_progress_units(&task_progress), 976);
 }
 
 #[test]
@@ -120,13 +120,13 @@ fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
         Some(10),
     ));
 
-    assert_eq!(worker_state.progress_percent, 45);
+    assert_eq!(worker_state.progress_percent, 48);
     assert_eq!(worker_state.interval_units, "6/10");
     assert_eq!(worker_state.row_units, "12/65");
 }
 
 #[test]
-fn surface_worker_stays_running_until_task_done() {
+fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
     let mut worker_state = SurfaceWorkerState::started(0, 1, 10, 10);
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(
         10,
@@ -135,13 +135,30 @@ fn surface_worker_stays_running_until_task_done() {
         10,
     ));
 
-    assert_eq!(worker_state.progress_percent, 90);
+    assert_eq!(worker_state.progress_percent, 32);
     assert_eq!(worker_state.phase, "pricing intervals");
 
     worker_state.complete();
 
     assert_eq!(worker_state.progress_percent, 100);
     assert_eq!(worker_state.phase, "done");
+}
+
+#[test]
+fn surface_worker_strike_progress_uses_later_pricing_phase_units() {
+    let mut worker_state = SurfaceWorkerState::started(0, 1, 10, 10);
+    worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(10, 10, None, 10));
+    worker_state.apply_pricing_event(&PricingProgressEvent::strike_pricing_progress(
+        5,
+        10,
+        Some(0),
+        Some(2),
+        Some(5),
+        10,
+    ));
+
+    assert_eq!(worker_state.progress_percent, 70);
+    assert_eq!(worker_state.phase, "pricing strikes");
 }
 
 #[test]

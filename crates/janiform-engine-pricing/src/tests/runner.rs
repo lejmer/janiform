@@ -1,5 +1,5 @@
 use crate::characteristic::build_pricing_equation_specification;
-use crate::expected_hawkes_state::evolve_expected_hawkes_state_from_integrated_statistics;
+use crate::expected_hawkes_state::evolve_expected_hawkes_state_from_expected_counts;
 use crate::grids::{
     SpectralThetaWarmStartDriverConfiguration, SpectralThetaWarmStartKey,
     SpectralThetaWarmStartRowState, SpectralThetaWarmStartSensitivity, SpectralThetaWarmStartState,
@@ -37,6 +37,7 @@ use crate::runner::{
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformSolverSettings,
 };
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
 
@@ -175,34 +176,7 @@ fn row_independent_tilt_target_detection_accepts_disabled_multi_interval_boundar
 
 #[test]
 fn row_independent_tilt_target_detection_rejects_nonzero_local_martingale_deviation_adjustment() {
-    let pricing_request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 105.0, 1.0, 0.0, 0.0)
-            .expect("market inputs should construct"),
-        VanillaOptionPayoffConfiguration {
-            payoff_type: VanillaOptionPayoffType::Call,
-        },
-        AnchoredVanillaOptionPricingBoundaryInput::try_new(
-            0,
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-            MeanReversionFittedParameters::try_new(
-                0.5,
-                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
-            )
-            .expect("mean-reversion fitted parameters should construct"),
-            1.0,
-            MeanReversionBoundaryState::try_new(0.2, 0.0, 0.0, 0.2)
-                .expect("observed boundary state should construct"),
-        )
-        .expect("boundary input should construct"),
-        valid_model_parameters(),
-        1.0,
-    )
-    .expect("pricing request should construct");
+    let pricing_request = build_row_dependent_tilt_request();
 
     let transition_context = transition_context_for_request(&pricing_request);
     let transition_row = transition_context
@@ -890,9 +864,12 @@ fn zero_adjustment_materialization_uses_tilted_hawkes_update_when_theta_is_nonze
     )
     .expect("first-moment expected projection should evaluate");
 
-    let expected_tilted_state = evolve_expected_hawkes_state_from_integrated_statistics(
+    let expected_news_loading_rate =
+        interval_factors.total_news_intensity() * expected_severity_mark;
+
+    let expected_tilted_state = evolve_expected_hawkes_state_from_expected_counts(
         request.model_parameters.hawkes_kernel_parameters,
-        interval_factors.s_h,
+        expected_news_loading_rate,
         request.interval_delta,
         request.boundary_input.hawkes_boundary_state,
         local_expectations.expected_statistics,
@@ -949,6 +926,20 @@ fn near_origin_positive_real_characteristic_function_evaluation_remains_finite()
         evaluation.transform_diagnostics.status,
         ExponentialAffineTransformIntegrationStatus::Completed
     );
+
+    let default_settings = ExponentialAffineTransformSolverSettings::default();
+    assert_eq!(
+        evaluation
+            .transform_diagnostics
+            .metadata
+            .configured_step_count,
+        default_settings.step_count
+    );
+    assert_eq!(
+        evaluation.transform_diagnostics.metadata.integrator_method,
+        default_settings.integrator_method
+    );
+
     assert!(
         evaluation
             .transform_diagnostics

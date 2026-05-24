@@ -1,7 +1,7 @@
 pub const EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY: &str =
     "compact_model_spec_section_8_named_component_mapping.v1";
 pub const EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY: &str =
-    "fourth_order_runge_kutta_fixed_step.v1";
+    "fourth_order_runge_kutta_fixed_step_with_hawkes_decay_stability_floor.v1";
 pub const EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY: &str =
     "enforce_d_dot_r_real_strict_upper_bound_at_runtime_checkpoints.v1";
 pub const EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY: &str =

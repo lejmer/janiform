@@ -9,13 +9,13 @@ use crate::{
     PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    build_pricing_transform_input, solve_exponential_affine_transform,
+    build_pricing_transform_input,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformOutput, ExponentialAffineTransformSolverSettings,
-    ExponentialAffineTransformTelemetryMode,
+    ExponentialAffineTransformTelemetryMode, solve_exponential_affine_transform_with_settings,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -236,7 +236,7 @@ pub(crate) fn build_reference_transform_diagnostics_source()
     )
     .expect("pricing transform input should construct");
 
-    solve_exponential_affine_transform(
+    solve_exponential_affine_transform_with_settings(
         transform_input,
         build_reference_affine_transform_solver_settings(),
     )

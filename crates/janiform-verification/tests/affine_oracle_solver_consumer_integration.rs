@@ -3,12 +3,13 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
+    solve_exponential_affine_transform_with_settings,
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
-    build_pricing_transform_input, solve_exponential_affine_transform,
+    build_pricing_transform_input,
 };
 use janiform_engine_sufficient_statistics::{
     solve_exponential_affine_transform_for_sufficient_statistics_sampling,
@@ -37,8 +38,9 @@ fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_co
     )
     .expect("pricing integration settings should construct");
 
-    let pricing_result = solve_exponential_affine_transform(transform_input, solver_settings)
-        .expect("pricing consumer solve should succeed");
+    let pricing_result =
+        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+            .expect("pricing consumer solve should succeed");
     let sufficient_statistics_result =
         solve_exponential_affine_transform_for_sufficient_statistics_sampling(transform_input)
             .expect("sufficient-statistics consumer solve should succeed");
@@ -55,7 +57,7 @@ fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_co
 }
 
 #[test]
-fn pricing_consumer_calls_shared_solver_entrypoint() {
+fn explicit_settings_solver_entrypoint_matches_optional_settings_entrypoint() {
     let transform_input = build_transform_input(1.0);
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::ForwardEuler,
@@ -63,8 +65,9 @@ fn pricing_consumer_calls_shared_solver_entrypoint() {
     )
     .expect("pricing integration settings should construct");
 
-    let pricing_result = solve_exponential_affine_transform(transform_input, solver_settings)
-        .expect("pricing solve with explicit settings should succeed");
+    let pricing_result =
+        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+            .expect("pricing solve with explicit settings should succeed");
     let shared_result = solve_exponential_affine_transform_with_optional_settings(
         transform_input,
         Some(solver_settings),

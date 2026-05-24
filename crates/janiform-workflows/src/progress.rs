@@ -59,6 +59,18 @@ pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> us
         .unwrap_or(0)
 }
 
+pub(crate) fn progress_scaled_units(
+    completed_units: usize,
+    total_units: usize,
+    target_total_units: usize,
+) -> usize {
+    completed_units
+        .saturating_mul(target_total_units)
+        .checked_div(total_units)
+        .unwrap_or(0)
+        .min(target_total_units)
+}
+
 pub(crate) fn format_cpu_count(cpu_count: usize) -> String {
     match cpu_count {
         1 => "1 CPU".to_string(),
@@ -159,7 +171,7 @@ mod tests {
     use super::{
         ProgressUnitTracker, VolatileProgressGate, completed_tracked_progress_units,
         format_cpu_count, progress_count_label, progress_percent, progress_position_label,
-        total_tracked_progress_units,
+        progress_scaled_units, total_tracked_progress_units,
     };
 
     #[test]
@@ -192,6 +204,13 @@ mod tests {
     fn progress_percent_uses_bounded_integer_units() {
         assert_eq!(progress_percent(4, 10), 40);
         assert_eq!(progress_percent(1, 0), 0);
+    }
+
+    #[test]
+    fn progress_scaled_units_projects_progress_onto_target_unit_count() {
+        assert_eq!(progress_scaled_units(3, 10, 100), 30);
+        assert_eq!(progress_scaled_units(12, 10, 100), 100);
+        assert_eq!(progress_scaled_units(1, 0, 100), 0);
     }
 
     #[test]

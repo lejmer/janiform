@@ -6,6 +6,7 @@ use crate::{
     VanillaOptionPricingRequest,
     characteristic::{
         LocalTiltResidualEvaluation, build_local_tilt_bracket_with_residual_evaluator,
+        build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator,
         differentiate_local_tilt_root_for_shared_plus_shift_configuration,
         resolve_local_tilt_search_domain,
     },
@@ -1104,6 +1105,74 @@ fn anchored_local_tilt_bracket_search_shrinks_inward_from_non_admissible_side_bo
 
     assert!((theta + 0.5).abs() <= 1.0e-8);
     assert!(evaluation.residual.abs() <= 1.0e-8);
+}
+
+#[test]
+fn anchored_local_tilt_bracket_search_does_not_probe_admissibility_edge_first() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let search_domain = resolve_local_tilt_search_domain(driver_parameters)
+        .expect("valid driver parameters should produce a search domain");
+    let mut evaluated_left_edge = false;
+    let mut evaluated_right_edge = false;
+
+    let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        -0.5,
+        1.0e-8,
+        |theta| {
+            evaluated_left_edge |= theta == search_domain.lower_theta;
+            evaluated_right_edge |= theta == search_domain.upper_theta;
+
+            Ok(LocalTiltResidualEvaluation {
+                observed_log_moment_exponent: theta,
+                residual: theta + 0.5,
+            })
+        },
+    )
+    .expect("solver should recover the interior root without probing domain edges first");
+
+    assert!((theta + 0.5).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+    assert!(!evaluated_left_edge);
+    assert!(!evaluated_right_edge);
+}
+
+#[test]
+fn anchored_local_tilt_bracket_search_uses_preferred_candidate_before_wide_midpoint() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let search_domain = resolve_local_tilt_search_domain(driver_parameters)
+        .expect("valid driver parameters should produce a search domain");
+
+    let mut evaluated_wide_point = false;
+
+    let (theta, evaluation) =
+        build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator(
+            search_domain,
+            -0.5,
+            1.0e-8,
+            Some(-0.5),
+            |theta| {
+                evaluated_wide_point |= theta.abs() > 1.0;
+
+                Ok(LocalTiltResidualEvaluation {
+                    observed_log_moment_exponent: theta,
+                    residual: theta + 0.5,
+                })
+            },
+        )
+        .expect("solver should recover the preferred interior root");
+
+    assert!((theta + 0.5).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+    assert!(!evaluated_wide_point);
 }
 
 #[test]

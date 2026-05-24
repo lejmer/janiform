@@ -446,6 +446,65 @@ fn option_refinement_interval_metric_uses_completed_count_without_row_detail() {
 }
 
 #[test]
+fn option_selection_progress_table_includes_single_pricing_eval() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("tick_moment_04"),
+        Some(1),
+        Some(1),
+        None,
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+    );
+    progress.evaluation_progress_percent = Some(37);
+    progress.current_pricing_interval_index = Some(145);
+    progress.total_pricing_interval_count = Some(734);
+
+    assert_eq!(
+        work_item_table_columns(&progress)
+            .into_iter()
+            .map(|column| (column.key, column.label))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "Evals".to_string()),
+            ("pricing_interval".to_string(), "Interval".to_string()),
+        ]
+    );
+
+    assert_eq!(
+        work_item_table_metrics(&progress)
+            .into_iter()
+            .map(|metric| (metric.key, metric.value))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "1/1".to_string()),
+            ("pricing_interval".to_string(), "145/734".to_string()),
+        ]
+    );
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("option selection progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            work_item_progress_percent,
+            latest_signal,
+            ..
+        }) => {
+            assert_eq!(work_item_progress_percent, Some(37));
+            assert_eq!(latest_signal, None);
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
 fn option_refinement_progress_signal_prefers_best_loss_over_work_item_label() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,

@@ -230,6 +230,48 @@ fn transform_value_overflow_fixture_input() -> ExponentialAffineTransformInput {
     transform_input
 }
 
+fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
+    ExponentialAffineTransformInput::try_new(
+        ExponentialAffineTransformEquationSpecification::try_new(
+            HawkesKernelParameters::try_new(
+                100.0,
+                700.0,
+                HawkesKernelLoadings {
+                    plus_plus: 0.0,
+                    plus_minus: 0.0,
+                    minus_plus: 0.0,
+                    minus_minus: 0.0,
+                },
+                HawkesKernelLoadings {
+                    plus_plus: 0.0,
+                    plus_minus: 0.0,
+                    minus_plus: 0.0,
+                    minus_minus: 0.0,
+                },
+            )
+            .expect("stiff fixture kernel payload should construct"),
+            GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+                .expect("stiff fixture gamma payload should construct"),
+        )
+        .expect("stiff fixture equation specification should construct"),
+        ComplexScalar::new(-4.5e-10, 0.0),
+        ComplexScalar::new(-4.5e-10, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        0.36,
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+            .expect("stiff fixture news-intensity payload should construct"),
+        1.0,
+        HawkesExcitationState {
+            y_plus_plus: 991.0,
+            y_plus_minus: 991.0,
+            y_minus_plus: 991.0,
+            y_minus_minus: 991.0,
+        },
+    )
+    .expect("stiff fixture input should construct")
+}
+
 fn exact_identity_query_input() -> ExponentialAffineTransformInput {
     ExponentialAffineTransformInput::try_new(
         valid_equation_specification(),
@@ -585,7 +627,7 @@ fn equation_mapping_policy_constant_is_stable() {
     );
     assert_eq!(
         EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
-        "fourth_order_runge_kutta_fixed_step.v1"
+        "fourth_order_runge_kutta_fixed_step_with_hawkes_decay_stability_floor.v1"
     );
     assert_eq!(
         EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
@@ -723,6 +765,26 @@ fn ode_rhs_is_deterministic_for_identical_inputs() {
     let second = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
 
     assert_eq!(first, second);
+}
+
+#[test]
+fn default_solver_applies_hawkes_decay_stability_floor_for_stiff_input() {
+    let result = solve_exponential_affine_transform(stiff_near_identity_fixture_input())
+        .expect("stiff near-identity query should solve with default settings");
+
+    assert_eq!(
+        result.status,
+        ExponentialAffineTransformIntegrationStatus::Completed
+    );
+    assert!(result.output.is_some());
+    assert!(
+        result.metadata.configured_step_count
+            > ExponentialAffineTransformSolverSettings::default().step_count
+    );
+    assert_eq!(
+        result.metadata.completed_step_count,
+        result.metadata.configured_step_count
+    );
 }
 
 #[test]

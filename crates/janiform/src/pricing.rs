@@ -36,5 +36,5 @@ pub use janiform_engine_pricing::{
     project_hawkes_intensities_coarse_interval, resolve_high_level_pricing_maturity_inputs,
     run_vanilla_option_grid_batch_pricing, run_vanilla_option_grid_batch_pricing_with_observer,
     run_vanilla_option_pricing, run_vanilla_option_surface_pricing,
-    run_vanilla_option_surface_pricing_with_observer, solve_exponential_affine_transform,
+    run_vanilla_option_surface_pricing_with_observer,
 };
