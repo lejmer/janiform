@@ -41,6 +41,7 @@ pub use constants::{
     EXPONENTIAL_AFFINE_TRANSFORM_NEWS_INTENSITY_USAGE_POLICY,
 };
 pub use contracts::{
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformActivityLoadingsError,
     ExponentialAffineTransformDVector, ExponentialAffineTransformDVectorError,
     ExponentialAffineTransformEquationSpecification,
     ExponentialAffineTransformEquationSpecificationError, ExponentialAffineTransformInput,

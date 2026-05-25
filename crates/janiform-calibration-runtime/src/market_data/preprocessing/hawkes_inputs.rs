@@ -3,8 +3,8 @@ use super::known_news_samples::{
     attributed_open_return_timestamps, open_session_known_news_activity_share,
 };
 use super::shared::{
-    CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-    CalibrationHawkesStageCandidateInput, HawkesStructuredAlphaParameterization,
+    CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+    HawkesStageObservedSourceRegime, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy, MarketState,
     OpenTickRecord, ResolvedKnownNewsRecord, ResolvedTickRecord, arithmetic_mean,
     clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation, logistic,
@@ -108,7 +108,7 @@ pub(super) fn build_hawkes_candidate_inputs(
         known_news_attributed_open_return_timestamps.as_slice(),
     );
 
-    let source_regime = CalibrationHawkesObservedSourceRegime {
+    let source_regime = HawkesStageObservedSourceRegime {
         observation_duration_hours: round_to(observation_duration_hours, 6),
         open_session_duration_hours: round_to(open_session_duration_hours, 6),
         total_tick_count: tick_count,

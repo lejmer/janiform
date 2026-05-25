@@ -1,8 +1,8 @@
 use crate::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-    ExponentialAffineTransformInputSensitivityOutput, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformSolverError,
-    ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformInputSensitivityOutput,
+    ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
 use janiform_foundations::complex_math::ComplexScalar;
@@ -137,6 +137,7 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     )?;
 
     SufficientStatisticsTransformSlices::try_new(
+        equation_specification,
         context,
         settings,
         baseline_transform,
@@ -184,6 +185,7 @@ pub fn derive_expected_interval_statistics_from_transform_slices(
 
 /// Extract interval sufficient-statistic expectations from analytic transform sensitivities.
 pub fn derive_expected_interval_statistics_from_transform_sensitivities(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
     context: SufficientStatisticsTransformSliceContext,
     sensitivities: ExponentialAffineTransformInputSensitivityOutput,
 ) -> Result<
@@ -203,7 +205,7 @@ pub fn derive_expected_interval_statistics_from_transform_sensitivities(
         "a_plus",
         transform_value,
         sensitivities
-            .u_plus_sensitivity
+            .u_plus_total_activity_sensitivity()
             .transform_value_derivative
             .scale(-1.0),
     )?;
@@ -213,7 +215,7 @@ pub fn derive_expected_interval_statistics_from_transform_sensitivities(
         "a_minus",
         transform_value,
         sensitivities
-            .u_minus_sensitivity
+            .u_minus_total_activity_sensitivity()
             .transform_value_derivative
             .scale(-1.0),
     )?;
@@ -232,9 +234,28 @@ pub fn derive_expected_interval_statistics_from_transform_sensitivities(
         sensitivities.z_minus_sensitivity.transform_value_derivative,
     )?;
 
-    SufficientStatisticsExpectedIntervalStatistics::try_new(
+    let baseline_expected_business_time =
+        expected_baseline_business_time_for_context(equation_specification, context);
+
+    let expected_endogenous_a_plus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_plus",
         expected_a_plus,
+        baseline_expected_business_time,
+    )?;
+
+    let expected_endogenous_a_minus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_minus",
         expected_a_minus,
+        baseline_expected_business_time,
+    )?;
+
+    SufficientStatisticsExpectedIntervalStatistics::try_new(
+        baseline_expected_business_time,
+        expected_endogenous_a_plus,
+        baseline_expected_business_time,
+        expected_endogenous_a_minus,
         expected_n_plus,
         expected_n_minus,
     )
@@ -615,8 +636,10 @@ fn solve_transform_slice_value(
 ) -> Result<ComplexScalar, SufficientStatisticsTransformSliceSolveError> {
     let transform_input = ExponentialAffineTransformInput::try_new(
         equation_specification,
-        evaluation_point.u_plus,
-        evaluation_point.u_minus,
+        ExponentialAffineTransformActivityLoadings::total_activity(
+            evaluation_point.u_plus,
+            evaluation_point.u_minus,
+        ),
         evaluation_point.z_plus,
         evaluation_point.z_minus,
         context.s_h,
@@ -736,12 +759,11 @@ where
     let sampled_n_minus =
         sample_count_from_expectation(expected_statistics.expected_n_minus, &mut n_minus_stream);
 
-    let sampled_a_plus = expected_statistics.expected_a_plus;
-    let sampled_a_minus = expected_statistics.expected_a_minus;
-
     SufficientStatisticsIntervalStatistics::try_new(
-        sampled_a_plus,
-        sampled_a_minus,
+        expected_statistics.expected_baseline_a_plus,
+        expected_statistics.expected_endogenous_a_plus,
+        expected_statistics.expected_baseline_a_minus,
+        expected_statistics.expected_endogenous_a_minus,
         sampled_n_plus,
         sampled_n_minus,
     )
@@ -807,9 +829,26 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
         (settings.n_minus_z - 1.0) * normalization_baseline,
     )?;
 
-    SufficientStatisticsExpectedIntervalStatistics::try_new(
+    let baseline_expected_business_time =
+        expected_baseline_business_time_for_context(slices.equation_specification, context);
+    let expected_endogenous_a_plus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_plus",
         expected_a_plus,
+        baseline_expected_business_time,
+    )?;
+    let expected_endogenous_a_minus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_minus",
         expected_a_minus,
+        baseline_expected_business_time,
+    )?;
+
+    SufficientStatisticsExpectedIntervalStatistics::try_new(
+        baseline_expected_business_time,
+        expected_endogenous_a_plus,
+        baseline_expected_business_time,
+        expected_endogenous_a_minus,
         expected_n_plus,
         expected_n_minus,
     )
@@ -819,6 +858,27 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
             source,
         }
     })
+}
+
+fn expected_baseline_business_time_for_context(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    context: SufficientStatisticsTransformSliceContext,
+) -> f64 {
+    equation_specification.hawkes_kernel_parameters.lambda_bar * context.s_h * context.delta
+}
+
+fn derive_endogenous_activity_expectation(
+    context: SufficientStatisticsTransformSliceContext,
+    statistic: &'static str,
+    expected_total_activity: f64,
+    baseline_expected_business_time: f64,
+) -> Result<f64, SufficientStatisticsTransformSliceSamplingError> {
+    derive_non_negative_expectation(
+        context,
+        statistic,
+        expected_total_activity - baseline_expected_business_time,
+        1.0,
+    )
 }
 
 fn extract_real_transform_value(
@@ -1168,12 +1228,18 @@ pub fn solve_exponential_affine_transform_for_sufficient_statistics_sampling_wit
 #[cfg(test)]
 mod tests {
     use janiform_foundations::complex_math::ComplexScalar;
-    use janiform_model_kernels::hawkes::HawkesExcitationState;
+    use janiform_model_kernels::hawkes::{
+        HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+    };
+    use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
     use super::{
         derive_expected_interval_statistics_from_transform_slices, extract_real_transform_value,
     };
-    use crate::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+    use crate::affine_oracle::{
+        ExponentialAffineTransformEquationSpecification,
+        ExponentialAffineTransformNewsIntensityInput,
+    };
     use crate::sufficient_statistics::{
         SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSettings,
         SufficientStatisticsTransformSlices,
@@ -1225,6 +1291,28 @@ mod tests {
             .expect("slice settings should construct");
 
         let slices = SufficientStatisticsTransformSlices::try_new(
+            ExponentialAffineTransformEquationSpecification::try_new(
+                HawkesKernelParameters::try_new(
+                    0.0,
+                    1.0,
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                )
+                .expect("kernel parameters should construct"),
+                GammaSeverityMarkConfiguration::try_new(1.0, 1.0)
+                    .expect("gamma severity marks should construct"),
+            )
+            .expect("equation specification should construct"),
             context,
             settings,
             ComplexScalar::new(2.0, 0.0),

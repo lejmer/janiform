@@ -34,12 +34,10 @@ def build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload() -> di
     return build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.0)
 
 
-def build_unit_return_mark_hour_of_week_scale_profile_payload() -> dict[str, Any]:
+def build_neutral_return_clock_exposure_parameters_payload() -> dict[str, Any]:
     return {
-        "hour_of_week_factors": [1.0] * (24 * 7),
-        "profile_resolution_hours": 1,
-        "fit_policy": "unit_test_flat_hour_of_week_return_mark_scale.v1",
-        "normalization_policy": "unit_mean_flat_test_profile.v1",
+        "buy_excitation_return_clock_scale": 1.0,
+        "sell_excitation_return_clock_scale": 1.0,
     }
 
 

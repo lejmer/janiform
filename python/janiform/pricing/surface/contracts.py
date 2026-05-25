@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 
 from ..._pricing_node_validation import validate_option_pricing_node_payload
-from ..._return_marks import validate_return_mark_hour_of_week_factors
 from ...contracts.collections import (
     grid_of_optional_finite_floats,
     grid_of_scalars,
@@ -428,7 +427,6 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
     request: VanillaOptionSurfacePricingRequest
     runtime_interval_schedule: PricingIntervalSchedule
     hourly_factor_contract: HourlyFactorContract
-    return_mark_hour_of_week_factors: tuple[float, ...]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = field(
         default_factory=VanillaOptionPricingOptionalOutputSelection
     )
@@ -483,12 +481,6 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
                     f"{self.hourly_factor_contract.interval_duration_nanos})"
                 ),
             )
-
-        validate_return_mark_hour_of_week_factors(
-            self.return_mark_hour_of_week_factors,
-            field_path="return_mark_hour_of_week_factors",
-            error_factory=_pricing_error,
-        )
 
         if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
             raise _pricing_error(

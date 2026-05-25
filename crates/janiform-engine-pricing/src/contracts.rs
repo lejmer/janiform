@@ -20,6 +20,9 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigur
 use janiform_model_kernels::nig::{
     NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
 };
+use janiform_model_kernels::return_clock::{
+    ReturnClockExposureParameters, ReturnClockExposureParametersError,
+};
 
 use super::constants::{
     MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT, SPECTRAL_PRICING_COLLOCATION_POLICY,
@@ -387,6 +390,7 @@ pub struct VanillaOptionPricingModelParameters {
     pub hawkes_kernel_parameters: HawkesKernelParameters,
     pub news_process_configuration: NewsProcessConfiguration,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
@@ -395,12 +399,14 @@ impl VanillaOptionPricingModelParameters {
         hawkes_kernel_parameters: HawkesKernelParameters,
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Self {
         Self {
             hawkes_kernel_parameters,
             news_process_configuration,
             nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters,
             pricing_kernel_parameters,
         }
     }
@@ -409,12 +415,14 @@ impl VanillaOptionPricingModelParameters {
         hawkes_kernel_parameters: HawkesKernelParameters,
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Result<Self, VanillaOptionPricingModelParametersError> {
         let model_parameters = Self::new(
             hawkes_kernel_parameters,
             news_process_configuration,
             nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters,
             pricing_kernel_parameters,
         );
 
@@ -448,6 +456,14 @@ impl VanillaOptionPricingModelParameters {
                 }
             })?;
 
+        self.return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidReturnClockExposureParameters {
+                    source,
+                }
+            })?;
+
         self.pricing_kernel_parameters
             .validate()
             .map_err(|source| {
@@ -470,6 +486,9 @@ pub enum VanillaOptionPricingModelParametersError {
     InvalidNigSharedPlusShiftConfiguration {
         source: NigSharedPlusShiftConfigurationError,
     },
+    InvalidReturnClockExposureParameters {
+        source: ReturnClockExposureParametersError,
+    },
     InvalidPricingKernelParameters {
         source: VanillaOptionPricingKernelParametersError,
     },
@@ -490,6 +509,10 @@ impl Display for VanillaOptionPricingModelParametersError {
                 formatter,
                 "model_parameters.nig_shared_plus_shift_configuration is invalid: {source}"
             ),
+            Self::InvalidReturnClockExposureParameters { source } => write!(
+                formatter,
+                "model_parameters.return_clock_exposure_parameters are invalid: {source}"
+            ),
             Self::InvalidPricingKernelParameters { source } => write!(
                 formatter,
                 "model_parameters.pricing_kernel_parameters is invalid: {source}"
@@ -504,6 +527,7 @@ impl Error for VanillaOptionPricingModelParametersError {
             Self::InvalidHawkesKernelParameters { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
+            Self::InvalidReturnClockExposureParameters { source } => Some(source),
             Self::InvalidPricingKernelParameters { source } => Some(source),
         }
     }
@@ -2263,6 +2287,7 @@ struct VanillaOptionPricingModelParametersPayload {
     hawkes_kernel_parameters: HawkesKernelParameters,
     news_process_configuration: NewsProcessConfiguration,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
@@ -2277,6 +2302,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
             payload.hawkes_kernel_parameters,
             payload.news_process_configuration,
             payload.nig_shared_plus_shift_configuration,
+            payload.return_clock_exposure_parameters,
             payload.pricing_kernel_parameters,
         )
         .map_err(serde::de::Error::custom)

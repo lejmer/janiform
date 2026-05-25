@@ -1,7 +1,8 @@
 use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
-    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
     solve_exponential_affine_transform_with_settings,
 };
@@ -29,6 +30,7 @@ use janiform_model_kernels::news::{
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 };
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 #[test]
 fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_consumers() {
@@ -182,8 +184,10 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
                 .expect("fixture gamma mark configuration should construct"),
         )
         .expect("fixture equation specification should construct"),
-        ComplexScalar::new(0.2, -0.1),
-        ComplexScalar::new(0.3, 0.05),
+        ExponentialAffineTransformActivityLoadings::total_activity(
+            ComplexScalar::new(0.2, -0.1),
+            ComplexScalar::new(0.3, 0.05),
+        ),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         1.1,
@@ -256,6 +260,7 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
             2.3, -0.8, 0.7, 0.1, -0.2,
         )
         .expect("pricing fixture NIG configuration should construct"),
+        ReturnClockExposureParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing fixture model parameters should construct");

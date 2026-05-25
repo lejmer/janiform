@@ -197,7 +197,7 @@ fn restart_progress_table_includes_losses_and_exact_evaluator_counts() {
         JointRefinementStageProgressPhase::RestartOptimization,
     );
 
-    progress.current_block_best_global_loss = Some(0.5);
+    progress.current_restart_best_global_loss = Some(0.5);
 
     progress.exact_closed_form_buy_count = Some(3);
     progress.exact_closed_form_sell_count = Some(4);
@@ -609,7 +609,6 @@ fn return_components_progress_event(
         current_work_item_status: None,
         planned_work_item_labels: Vec::new(),
         active_restart_count: None,
-        current_parameter_block: None,
         completed_outer_cycles: None,
         total_outer_cycles: None,
         current_evaluation_count,
@@ -622,7 +621,7 @@ fn return_components_progress_event(
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
         current_global_loss: None,
-        current_block_best_global_loss: None,
+        current_restart_best_global_loss: None,
         current_candidate_assessment: None,
         best_restart_id: None,
         best_global_loss,

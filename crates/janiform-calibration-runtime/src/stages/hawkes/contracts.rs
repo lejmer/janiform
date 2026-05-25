@@ -17,6 +17,7 @@ use janiform_model_kernels::hawkes::{
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HawkesStageObservedSourceRegime {
     pub observation_duration_hours: f64,
     pub open_session_duration_hours: f64,

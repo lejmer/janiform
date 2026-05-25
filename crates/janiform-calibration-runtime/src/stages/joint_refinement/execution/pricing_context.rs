@@ -236,11 +236,6 @@ pub(crate) fn build_option_pricing_context(
     let interval_factors = materialize_schedule_interval_factors_with_cpu_count(
         &runtime_interval_schedule,
         &hourly_factor_contract,
-        return_components_payload
-            .fitted_parameters
-            .return_mark_hour_of_week_scale_profile
-            .hour_of_week_factors
-            .as_slice(),
         Some(cpu_count.max(1)),
     )
     .map_err(|source| {
@@ -269,11 +264,6 @@ pub(crate) fn build_option_pricing_context(
         materialize_schedule_interval_factors_with_cpu_count(
             &audit_runtime_interval_schedule,
             &hourly_factor_contract,
-            return_components_payload
-                .fitted_parameters
-                .return_mark_hour_of_week_scale_profile
-                .hour_of_week_factors
-                .as_slice(),
             Some(cpu_count.max(1)),
         )
         .map_err(|source| {
@@ -834,6 +824,9 @@ fn run_option_grid_batch_pricing(
                 .news_process_configuration
                 .clone(),
             fitted_parameters.pricing_nig_shared_plus_shift_configuration(),
+            fitted_parameters
+                .return_components_fitted_parameters
+                .return_clock_exposure_parameters,
             fitted_parameters.pricing_kernel_parameters(),
         ),
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
@@ -3078,16 +3071,9 @@ mod tests {
         )
         .expect("hourly factor contract should materialize");
 
-        let interval_factors = materialize_schedule_interval_factors(
-            &horizon,
-            &hourly_factor_contract,
-            return_components_payload
-                .fitted_parameters
-                .return_mark_hour_of_week_scale_profile
-                .hour_of_week_factors
-                .as_slice(),
-        )
-        .expect("interval factors should materialize");
+        let interval_factors =
+            materialize_schedule_interval_factors(&horizon, &hourly_factor_contract)
+                .expect("interval factors should materialize");
 
         let zero_seasonality_interval_count = interval_factors
             .iter()
@@ -3123,6 +3109,7 @@ mod tests {
                     .news_process_configuration
                     .clone(),
                 return_components_fitted_parameters.nig_shared_plus_shift_configuration,
+                return_components_fitted_parameters.return_clock_exposure_parameters,
                 janiform_engine_pricing::VanillaOptionPricingKernelParameters::identity(),
             ),
             runtime_interval_schedule: horizon,

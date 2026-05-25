@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::affine_oracle::{
+    ExponentialAffineTransformEquationSpecificationError,
     ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInputError,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformNewsIntensityInputError,
     ExponentialAffineTransformSolverError,
@@ -105,6 +106,9 @@ impl Display for SufficientStatisticsTransformSliceSettingsError {
 impl Error for SufficientStatisticsTransformSliceSettingsError {}
 #[derive(Debug, Clone, PartialEq)]
 pub enum SufficientStatisticsTransformSlicesError {
+    InvalidEquationSpecification {
+        source: ExponentialAffineTransformEquationSpecificationError,
+    },
     InvalidContext {
         source: SufficientStatisticsTransformSliceContextError,
     },
@@ -120,6 +124,9 @@ pub enum SufficientStatisticsTransformSlicesError {
 impl Display for SufficientStatisticsTransformSlicesError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidEquationSpecification { source } => {
+                write!(formatter, "equation specification is invalid: {source}")
+            }
             Self::InvalidContext { source } => {
                 write!(formatter, "transform-slice context is invalid: {source}")
             }
@@ -137,6 +144,7 @@ impl Display for SufficientStatisticsTransformSlicesError {
 impl Error for SufficientStatisticsTransformSlicesError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::InvalidEquationSpecification { source } => Some(source),
             Self::InvalidContext { source } => Some(source),
             Self::InvalidSettings { source } => Some(source),
             _ => None,
@@ -390,10 +398,26 @@ impl Error for SufficientStatisticsTransformSliceExecutionError {
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum SufficientStatisticsIntervalStatisticsError {
-    InvalidAPlus { value: f64 },
-    InvalidAMinus { value: f64 },
-    NonFiniteStatistic { field: &'static str, value: f64 },
-    NegativeStatistic { field: &'static str, value: f64 },
+    InvalidAPlus {
+        value: f64,
+    },
+    InvalidAMinus {
+        value: f64,
+    },
+    NonFiniteStatistic {
+        field: &'static str,
+        value: f64,
+    },
+    NegativeStatistic {
+        field: &'static str,
+        value: f64,
+    },
+    InconsistentActivityTotal {
+        total_field: &'static str,
+        total: f64,
+        baseline: f64,
+        endogenous: f64,
+    },
 }
 
 impl Display for SufficientStatisticsIntervalStatisticsError {
@@ -423,6 +447,15 @@ impl Display for SufficientStatisticsIntervalStatisticsError {
                     "{field} must be finite and non-negative, found {value}"
                 )
             }
+            Self::InconsistentActivityTotal {
+                total_field,
+                total,
+                baseline,
+                endogenous,
+            } => write!(
+                formatter,
+                "{total_field} must equal baseline plus endogenous activity ({baseline} + {endogenous}), found {total}"
+            ),
         }
     }
 }

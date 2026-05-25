@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from math import isfinite
 from typing import Any, Optional
 
-from ..._return_marks import validate_return_mark_hour_of_week_factors
 from ._native_path_hydration import coarse_simulation_path_from_validated_payload
 from .news import (
     COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
@@ -32,6 +31,7 @@ from ..shared.errors import (
     _simulation_error,
 )
 from ...mean_reversion import MeanReversionBoundaryState
+from ...return_clock import ReturnClockExposureParameters
 from ...contracts.base import (
     ContractModel,
     parse_json_object,
@@ -71,17 +71,20 @@ COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY = (
 class CoarseSimulationModelInputs(ContractModel):
     sufficient_statistics_model_inputs: Any
     news_process_configuration: NewsProcessConfiguration
-    return_mark_hour_of_week_factors: tuple[float, ...]
+    return_clock_exposure_parameters: ReturnClockExposureParameters
     observed_price_tick_size: Optional[float]
     calendar_registry_artifact: dict[str, Any]
     exchange_code: str
 
     def __post_init__(self) -> None:
-        validate_return_mark_hour_of_week_factors(
-            self.return_mark_hour_of_week_factors,
-            field_path="return_mark_hour_of_week_factors",
-            error_factory=_simulation_error,
-        )
+        if not isinstance(
+            self.return_clock_exposure_parameters,
+            ReturnClockExposureParameters,
+        ):
+            raise _simulation_error(
+                "return_clock_exposure_parameters",
+                "must be a ReturnClockExposureParameters",
+            )
 
         if self.observed_price_tick_size is not None and (
             not isfinite(self.observed_price_tick_size)
@@ -91,6 +94,7 @@ class CoarseSimulationModelInputs(ContractModel):
                 "observed_price_tick_size",
                 "must be finite and strictly positive when provided",
             )
+
         if not self.exchange_code.strip():
             raise _simulation_error("exchange_code", "must be a non-empty string")
 
@@ -139,21 +143,15 @@ class CoarseSimulationModelInputs(ContractModel):
                     SIMULATION_ERROR_FACTORY,
                 )
             ),
-            return_mark_hour_of_week_factors=tuple(
-                require_finite_number(
-                    {"value": raw_value},
-                    "value",
-                    f"{field_path}.return_mark_hour_of_week_factors[{factor_index}]",
+            return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "return_clock_exposure_parameters",
+                    f"{field_path}.return_clock_exposure_parameters",
                     SIMULATION_ERROR_FACTORY,
-                )
-                for factor_index, raw_value in enumerate(
-                    require_sequence(
-                        raw_payload,
-                        "return_mark_hour_of_week_factors",
-                        f"{field_path}.return_mark_hour_of_week_factors",
-                        SIMULATION_ERROR_FACTORY,
-                    )
-                )
+                ),
+                field_path=f"{field_path}.return_clock_exposure_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
             ),
             observed_price_tick_size=(
                 require_finite_number(
@@ -283,7 +281,7 @@ class CoarseSimulationRunRequest(ContractModel):
         sufficient_statistics_model_inputs: Any,
         hourly_factor_contract: HourlyFactorContract,
         news_process_configuration: NewsProcessConfiguration,
-        return_mark_hour_of_week_factors: Sequence[float],
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
         observed_price_tick_size: Optional[float],
         calendar_registry: CalendarRegistry,
         exchange_code: str,
@@ -303,7 +301,7 @@ class CoarseSimulationRunRequest(ContractModel):
             model_inputs=CoarseSimulationModelInputs(
                 sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
                 news_process_configuration=news_process_configuration,
-                return_mark_hour_of_week_factors=tuple(return_mark_hour_of_week_factors),
+                return_clock_exposure_parameters=return_clock_exposure_parameters,
                 observed_price_tick_size=observed_price_tick_size,
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,

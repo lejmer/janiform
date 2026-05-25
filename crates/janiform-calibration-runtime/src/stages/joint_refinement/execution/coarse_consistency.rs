@@ -757,9 +757,7 @@ fn build_joint_coarse_model_inputs(
             .clone(),
         fitted_parameters
             .return_components_fitted_parameters
-            .return_mark_hour_of_week_scale_profile
-            .hour_of_week_factors
-            .clone(),
+            .return_clock_exposure_parameters,
         fitted_parameters
             .return_components_fitted_parameters
             .tick_grid_observation_model

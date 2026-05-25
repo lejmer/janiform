@@ -16,6 +16,7 @@ from ....pricing import (
     VanillaOptionPricingKernelParameters,
     VanillaOptionPricingModelParameters,
 )
+from ....return_clock import ReturnClockExposureParameters
 from ....simulation.coarse import NewsProcessConfiguration
 from ....simulation.shared import HawkesExcitationState, HawkesKernelParameters
 
@@ -36,7 +37,7 @@ class PreparedModelRuntimeFactors:
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
-    return_mark_hour_of_week_factors: tuple[float, ...]
+    return_clock_exposure_parameters: ReturnClockExposureParameters
 
 
 @dataclass(frozen=True, slots=True)

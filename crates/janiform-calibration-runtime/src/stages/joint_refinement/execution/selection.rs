@@ -609,6 +609,14 @@ pub(crate) fn joint_parameter_name_by_index(
             "nig.sell_relative_coordinate",
         ),
         (active_parameter_layout.nig_block[3], "nig.log_delta_offset"),
+        (
+            active_parameter_layout.log_buy_excitation_return_clock_scale_index,
+            "log_buy_excitation_return_clock_scale",
+        ),
+        (
+            active_parameter_layout.log_sell_excitation_return_clock_scale_index,
+            "log_sell_excitation_return_clock_scale",
+        ),
     ];
 
     if let Some(index) = active_parameter_layout.known_activity_scale_index {

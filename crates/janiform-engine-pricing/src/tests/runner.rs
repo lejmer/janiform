@@ -50,7 +50,7 @@ fn transition_context_for_request(
 ) -> LocalTransitionRequestContext {
     LocalTransitionRequestContext::from_pricing_request(
         pricing_request,
-        VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+        VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
             .expect("transition-context interval factors should construct"),
     )
     .expect("transition context should construct")
@@ -66,7 +66,7 @@ fn nontrivial_hawkes_state() -> HawkesExcitationState {
 }
 
 fn nontrivial_interval_factors() -> VanillaOptionPricingIntervalFactors {
-    VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15, 1.0)
+    VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
         .expect("non-trivial interval factors should construct")
 }
 
@@ -399,13 +399,13 @@ fn multi_interval_grid_execution_input(
         runtime_interval_schedule,
         interval_delta: 0.25,
         interval_factors: vec![
-            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
                 .expect("first interval factors should construct"),
-            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
                 .expect("second interval factors should construct"),
-            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
                 .expect("third interval factors should construct"),
-            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0, 1.0)
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
                 .expect("fourth interval factors should construct"),
         ],
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
@@ -454,9 +454,9 @@ fn risk_neutral_anchor_materialization_accepts_row_independent_zero_carry_reques
     .expect("pricing request should construct");
 
     let interval_factors = vec![
-        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
             .expect("first interval factors should construct"),
-        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
             .expect("second interval factors should construct"),
     ];
 
@@ -504,28 +504,32 @@ fn tilted_core_expected_increment_matches_return_composition_log_moment_derivati
         .expect("valid shared-plus-shift payload should derive drivers");
 
     let expected_statistics =
-        SufficientStatisticsExpectedIntervalStatistics::try_new(17.5, 43.25, 0.0, 0.0)
+        SufficientStatisticsExpectedIntervalStatistics::try_new(0.0, 17.5, 0.0, 43.25, 0.0, 0.0)
             .expect("expected statistics should construct");
 
     let theta = -0.35;
-    let return_mark_scale = 1.7;
+
+    let return_clock_exposure_parameters =
+        janiform_model_kernels::return_clock::ReturnClockExposureParameters::try_new(1.7, 1.7)
+            .expect("return-clock exposure parameters should construct");
 
     let observed = tilted_core_expected_increment_from_statistics(
         driver_parameters,
         expected_statistics,
+        return_clock_exposure_parameters,
         theta,
-        return_mark_scale,
     )
     .expect("tilted core expected increment should evaluate");
 
-    let expected = return_mark_scale
-        * driver_parameters
-            .differentiate_return_composition_log_moment(
-                expected_statistics.expected_a_plus,
-                expected_statistics.expected_a_minus,
-                return_mark_scale * theta,
-            )
-            .expect("return-composition log-moment derivative should evaluate");
+    let expected = driver_parameters
+        .differentiate_return_composition_log_moment(
+            expected_statistics.expected_endogenous_a_plus
+                * return_clock_exposure_parameters.buy_excitation_return_clock_scale,
+            expected_statistics.expected_endogenous_a_minus
+                * return_clock_exposure_parameters.sell_excitation_return_clock_scale,
+            theta,
+        )
+        .expect("return-composition log-moment derivative should evaluate");
 
     let tolerance = f64::EPSILON.sqrt() * observed.abs().max(expected.abs()).max(1.0);
 

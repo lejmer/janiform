@@ -57,7 +57,7 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
         .expect("pricing request should construct"),
         build_uniform_runtime_interval_schedule(1, 1.0),
         vec![
-            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                 .expect("interval factors should construct"),
         ],
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
@@ -123,7 +123,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
     };
 
     let interval_factors = vec![
-        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
             .expect("interval factors should construct"),
     ];
 
@@ -256,7 +256,7 @@ fn vanilla_option_grid_batch_pricing_populates_shared_grids() {
             runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
             interval_delta: 1.0,
             interval_factors: vec![
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
@@ -330,9 +330,9 @@ fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids(
             runtime_interval_schedule: build_uniform_runtime_interval_schedule(2, 1.0),
             interval_delta: 1.0,
             interval_factors: vec![
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
@@ -409,7 +409,7 @@ fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
             ),
             interval_delta: maturity_interval,
             interval_factors: vec![
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
@@ -478,7 +478,7 @@ fn vanilla_option_surface_pricing_populates_shared_grid() {
             runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
             interval_delta: 1.0,
             interval_factors: vec![
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
@@ -622,6 +622,7 @@ fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
         .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
+        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")

@@ -330,6 +330,10 @@ def _valid_path_payload() -> dict[str, Any]:
                         "sufficient_statistics": {
                             "a_plus": 0.7,
                             "a_minus": 0.5,
+                            "baseline_a_plus": 0.4,
+                            "endogenous_a_plus": 0.3,
+                            "baseline_a_minus": 0.2,
+                            "endogenous_a_minus": 0.3,
                             "n_plus": 3,
                             "n_minus": 2,
                         },
@@ -374,6 +378,10 @@ def _valid_path_payload() -> dict[str, Any]:
                         "sufficient_statistics": {
                             "a_plus": 0.7,
                             "a_minus": 0.5,
+                            "baseline_a_plus": 0.4,
+                            "endogenous_a_plus": 0.3,
+                            "baseline_a_minus": 0.2,
+                            "endogenous_a_minus": 0.3,
                             "n_plus": 3,
                             "n_minus": 2,
                         },
@@ -418,6 +426,10 @@ def _valid_path_payload() -> dict[str, Any]:
                         "sufficient_statistics": {
                             "a_plus": 0.7,
                             "a_minus": 0.5,
+                            "baseline_a_plus": 0.4,
+                            "endogenous_a_plus": 0.3,
+                            "baseline_a_minus": 0.2,
+                            "endogenous_a_minus": 0.3,
                             "n_plus": 3,
                             "n_minus": 2,
                         },
@@ -460,6 +472,10 @@ def _valid_path_payload() -> dict[str, Any]:
                 sufficient_statistics=SufficientStatisticsIntervalStatistics(
                     a_plus=0.7,
                     a_minus=0.5,
+                    baseline_a_plus=0.4,
+                    endogenous_a_plus=0.3,
+                    baseline_a_minus=0.2,
+                    endogenous_a_minus=0.3,
                     n_plus=3,
                     n_minus=2,
                 ),

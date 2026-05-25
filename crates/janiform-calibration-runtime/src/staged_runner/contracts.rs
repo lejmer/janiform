@@ -444,8 +444,6 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_restart_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_parameter_block: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_outer_cycles: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_outer_cycles: Option<usize>,
@@ -470,7 +468,7 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_block_best_global_loss: Option<f64>,
+    pub current_restart_best_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     #[serde(skip_serializing_if = "Option::is_none")]

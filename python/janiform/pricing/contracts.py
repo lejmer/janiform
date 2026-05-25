@@ -33,9 +33,9 @@ from .._pricing_field_names import (
     MATURITY_INTERVAL_FIELD_NAME,
     PRICING_STATUS_FIELD_NAME,
 )
-from .._return_marks import validate_return_mark_hour_of_week_factors
 from ._moneyness import calculate_log_forward_moneyness
 from .errors import PRICING_ERROR_FACTORY, _pricing_error
+from ..return_clock import ReturnClockExposureParameters
 from ..contracts.base import (
     require_boolean,
     require_optional_finite_number,
@@ -572,6 +572,7 @@ class VanillaOptionPricingModelParameters(ContractModel):
     hawkes_kernel_parameters: HawkesKernelParameters
     news_process_configuration: NewsProcessConfiguration
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+    return_clock_exposure_parameters: ReturnClockExposureParameters
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters
 
     def __post_init__(self) -> None:
@@ -597,6 +598,15 @@ class VanillaOptionPricingModelParameters(ContractModel):
             raise _pricing_error(
                 "model_parameters.nig_shared_plus_shift_configuration",
                 "must be a NigSharedPlusShiftConfiguration",
+            )
+
+        if not isinstance(
+            self.return_clock_exposure_parameters,
+            ReturnClockExposureParameters,
+        ):
+            raise _pricing_error(
+                "model_parameters.return_clock_exposure_parameters",
+                "must be a ReturnClockExposureParameters",
             )
 
         if not isinstance(
@@ -645,6 +655,16 @@ class VanillaOptionPricingModelParameters(ContractModel):
                         PRICING_ERROR_FACTORY,
                     ),
                     field_path=f"{field_path}.nig_shared_plus_shift_configuration",
+                ),
+                return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "return_clock_exposure_parameters",
+                        f"{field_path}.return_clock_exposure_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.return_clock_exposure_parameters",
+                    error_factory=PRICING_ERROR_FACTORY,
                 ),
                 pricing_kernel_parameters=VanillaOptionPricingKernelParameters.from_mapping(
                     require_mapping(
@@ -1740,7 +1760,6 @@ class VanillaOptionPricingExecutionInput(ContractModel):
     request: VanillaOptionPricingRequest
     runtime_interval_schedule: PricingIntervalSchedule
     hourly_factor_contract: HourlyFactorContract
-    return_mark_hour_of_week_factors: tuple[float, ...]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = (
         VanillaOptionPricingOptionalOutputSelection()
     )
@@ -1786,12 +1805,6 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 ),
             )
 
-        validate_return_mark_hour_of_week_factors(
-            self.return_mark_hour_of_week_factors,
-            field_path="return_mark_hour_of_week_factors",
-            error_factory=_pricing_error,
-        )
-
         if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
             raise _pricing_error(
                 "request.interval_delta",
@@ -1819,7 +1832,6 @@ class VanillaOptionPricingExecutionInput(ContractModel):
             "request": self.request.to_payload(),
             "runtime_interval_schedule": self.runtime_interval_schedule.to_payload(),
             "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
-            "return_mark_hour_of_week_factors": list(self.return_mark_hour_of_week_factors),
             "optional_output_selection": self.optional_output_selection.to_payload(),
         }
 

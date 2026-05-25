@@ -2969,7 +2969,8 @@ impl SimulationRandomnessStream for FixtureRandomnessStream {
                 self.substream_index.wrapping_add(self.draw_count)
             }
             SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
-            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
+            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
         }
@@ -3109,7 +3110,8 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
-            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
+            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
                 Vec::new()
             }
         };
@@ -3174,7 +3176,10 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
-            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => vec![],
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
+            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
+                vec![]
+            }
         };
 
         ScriptedRandomnessStream::new(draws)
@@ -3259,7 +3264,8 @@ fn one_interval_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
-        return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -3547,7 +3553,8 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
-        return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),

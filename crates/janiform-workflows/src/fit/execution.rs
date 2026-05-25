@@ -354,13 +354,6 @@ fn should_observe_staged_event(
         return true;
     }
 
-    if progress.current_item_label.is_some()
-        && progress.current_parameter_block.is_some()
-        && progress.evaluation_progress_percent.is_none()
-    {
-        return true;
-    }
-
     progress_gate.should_emit(
         Instant::now(),
         (progress.stage, progress.progress_phase),
@@ -574,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn progress_gate_observes_restart_block_start_without_eval_metrics() {
+    fn progress_gate_observes_restart_work_item_start_without_eval_metrics() {
         let mut progress_gate = VolatileProgressGate::default();
 
         assert!(should_observe_staged_event(
@@ -582,7 +575,6 @@ mod tests {
             &joint_refinement_progress_event(
                 JointRefinementStageProgressPhase::RestartOptimization,
                 Some("baseline"),
-                None,
                 Some(1),
                 Some(1),
             )
@@ -592,8 +584,7 @@ mod tests {
             &joint_refinement_progress_event(
                 JointRefinementStageProgressPhase::RestartOptimization,
                 Some("midpoint"),
-                Some("nig"),
-                Some(0),
+                None,
                 None,
             )
         ));
@@ -610,7 +601,6 @@ mod tests {
                 None,
                 None,
                 None,
-                None,
             )
         ));
         assert!(should_observe_staged_event(
@@ -618,7 +608,6 @@ mod tests {
             &joint_refinement_progress_event(
                 JointRefinementStageProgressPhase::OptionSearchTierRefinement,
                 Some("halton_02"),
-                None,
                 Some(0),
                 Some(0),
             )
@@ -649,7 +638,6 @@ mod tests {
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: None,
-                current_parameter_block: None,
                 completed_outer_cycles: None,
                 total_outer_cycles: None,
                 current_evaluation_count,
@@ -662,7 +650,7 @@ mod tests {
                 valid_completed_units: None,
                 cumulative_local_evaluation_count: None,
                 current_global_loss: None,
-                current_block_best_global_loss: None,
+                current_restart_best_global_loss: None,
                 current_candidate_assessment: None,
                 best_restart_id: None,
                 best_global_loss: None,
@@ -680,7 +668,6 @@ mod tests {
     fn joint_refinement_progress_event(
         phase: JointRefinementStageProgressPhase,
         restart_id: Option<&str>,
-        current_parameter_block: Option<&str>,
         current_evaluation_count: Option<usize>,
         evaluation_progress_percent: Option<usize>,
     ) -> CalibrationStagedRunObserverEvent {
@@ -700,8 +687,7 @@ mod tests {
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: Some(5),
-                current_parameter_block: current_parameter_block.map(str::to_string),
-                completed_outer_cycles: current_parameter_block.map(|_| 0),
+                completed_outer_cycles: None,
                 total_outer_cycles: Some(1),
                 current_evaluation_count,
                 total_evaluation_budget: Some(59),
@@ -713,7 +699,7 @@ mod tests {
                 valid_completed_units: Some(0),
                 cumulative_local_evaluation_count: Some(0),
                 current_global_loss: None,
-                current_block_best_global_loss: None,
+                current_restart_best_global_loss: None,
                 current_candidate_assessment: None,
                 best_restart_id: None,
                 best_global_loss: None,

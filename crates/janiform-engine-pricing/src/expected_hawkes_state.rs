@@ -178,7 +178,7 @@ mod tests {
         };
 
         let expected_statistics =
-            SufficientStatisticsExpectedIntervalStatistics::try_new(1.0, 1.5, 5.0, 7.0)
+            SufficientStatisticsExpectedIntervalStatistics::try_new(0.4, 0.6, 0.7, 0.8, 5.0, 7.0)
                 .expect("expected statistics should construct");
 
         let observed = evolve_expected_hawkes_state_from_expected_counts(
@@ -228,6 +228,10 @@ mod tests {
         let expected_statistics = SufficientStatisticsExpectedIntervalStatistics {
             expected_a_plus: 1.0,
             expected_a_minus: 1.0,
+            expected_baseline_a_plus: 0.5,
+            expected_endogenous_a_plus: 0.5,
+            expected_baseline_a_minus: 0.5,
+            expected_endogenous_a_minus: 0.5,
             expected_n_plus: f64::NAN,
             expected_n_minus: 1.0,
         };

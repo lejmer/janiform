@@ -935,7 +935,7 @@ mod tests {
         .expect("pricing request should construct");
 
         let interval_factors = vec![
-            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                 .expect("interval factors should construct"),
         ];
 

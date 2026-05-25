@@ -156,9 +156,9 @@ pub(crate) use janiform_calibration_runtime::{
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
     CalibrationDayOfYearSeasonalityEstimatorSettings,
     CalibrationDirectionalLabelDiagnosticsPayload, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesObservedSourceRegime, CalibrationHawkesStageCandidateInput,
-    CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
-    CalibrationJointRefinementCarryInput, CalibrationJointRefinementCurrentStateEstimationInput,
+    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
+    CalibrationIntradaySmoothingKernel, CalibrationJointRefinementCarryInput,
+    CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
     CalibrationMemoryCheckpointStore, CalibrationObjectiveCompositionError,
@@ -2884,13 +2884,8 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
             .expect("double-exponential base-shock configuration should validate"),
             coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
         },
-        return_mark_hour_of_week_scale_profile:
-            janiform_calibration_artifacts::ReturnMarkHourOfWeekScaleProfile {
-                hour_of_week_factors: vec![1.0; 24 * 7],
-                profile_resolution_hours: 1,
-                fit_policy: "test".to_string(),
-                normalization_policy: "test".to_string(),
-            },
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
             tick_size: None,
             tick_size_source: "test".to_string(),

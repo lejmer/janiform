@@ -41,7 +41,7 @@ use super::signals::{
 use super::{
     ReturnComponentsStageSortedSignalInputs, build_activity_coupling_diagnostic,
     build_gap_diagnostic, build_jump_diagnostic, build_price_range_sanity_diagnostic,
-    build_surprise_arrival_diagnostic, default_return_mark_hour_of_week_scale_profile,
+    build_surprise_arrival_diagnostic, default_return_clock_exposure_parameters,
     default_surprise_deterministic_intensity_profile, default_tick_grid_observation_model,
     derive_close_open_gap_candidates, evaluate_return_components_exact_candidate,
     sort_candidate_generation_signals, summarize_candidate_generation_signals,
@@ -485,7 +485,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
-        return_mark_hour_of_week_scale_profile: default_return_mark_hour_of_week_scale_profile(),
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
@@ -606,7 +606,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
-        return_mark_hour_of_week_scale_profile: default_return_mark_hour_of_week_scale_profile(),
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
@@ -694,7 +694,7 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
-        return_mark_hour_of_week_scale_profile: default_return_mark_hour_of_week_scale_profile(),
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
@@ -826,7 +826,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
-        return_mark_hour_of_week_scale_profile: default_return_mark_hour_of_week_scale_profile(),
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
@@ -868,7 +868,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         .expect("news process configuration should validate"),
         surprise_deterministic_intensity_profile: default_surprise_deterministic_intensity_profile(
         ),
-        return_mark_hour_of_week_scale_profile: default_return_mark_hour_of_week_scale_profile(),
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         mean_reversion_fitted_parameters:
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)

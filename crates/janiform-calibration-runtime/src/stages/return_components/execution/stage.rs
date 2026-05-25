@@ -734,9 +734,8 @@ fn build_return_components_stage_success_report(
                     .normalization_policy
                     .clone(),
             },
-            return_mark_hour_of_week_scale_profile: selected_candidate_input
-                .return_mark_hour_of_week_scale_profile
-                .clone(),
+            return_clock_exposure_parameters: selected_candidate_input
+                .return_clock_exposure_parameters,
             tick_grid_observation_model: selected_candidate_input
                 .tick_grid_observation_model
                 .clone(),

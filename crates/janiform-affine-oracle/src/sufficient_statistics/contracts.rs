@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+use crate::affine_oracle::{
+    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformNewsIntensityInput,
+};
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
@@ -44,7 +46,9 @@ impl SufficientStatisticsTransformSliceContext {
             delta,
             initial_excitation_state,
         };
+
         context.validate()?;
+
         Ok(context)
     }
 
@@ -57,12 +61,14 @@ impl SufficientStatisticsTransformSliceContext {
                 },
             );
         }
+
         self.news_intensity.validate().map_err(|source| {
             SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
                 interval_index: self.interval_index,
                 source,
             }
         })?;
+
         if !self.delta.is_finite() || self.delta <= 0.0 {
             return Err(
                 SufficientStatisticsTransformSliceContextError::InvalidIntervalDelta {
@@ -106,7 +112,9 @@ impl SufficientStatisticsTransformSliceSettings {
             n_plus_z,
             n_minus_z,
         };
+
         settings.validate()?;
+
         Ok(settings)
     }
 
@@ -118,6 +126,7 @@ impl SufficientStatisticsTransformSliceSettings {
                 },
             );
         }
+
         if !self.a_minus_u.is_finite() || self.a_minus_u <= 0.0 {
             return Err(
                 SufficientStatisticsTransformSliceSettingsError::InvalidAMinusU {
@@ -125,6 +134,7 @@ impl SufficientStatisticsTransformSliceSettings {
                 },
             );
         }
+
         if !self.n_plus_z.is_finite() || self.n_plus_z <= 0.0 || self.n_plus_z == 1.0 {
             return Err(
                 SufficientStatisticsTransformSliceSettingsError::InvalidNPlusZ {
@@ -132,6 +142,7 @@ impl SufficientStatisticsTransformSliceSettings {
                 },
             );
         }
+
         if !self.n_minus_z.is_finite() || self.n_minus_z <= 0.0 || self.n_minus_z == 1.0 {
             return Err(
                 SufficientStatisticsTransformSliceSettingsError::InvalidNMinusZ {
@@ -162,6 +173,7 @@ impl Default for SufficientStatisticsTransformSliceSettings {
 /// One interval's transform-slice payload used to sample `A` and `N` sufficient statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct SufficientStatisticsTransformSlices {
+    pub equation_specification: ExponentialAffineTransformEquationSpecification,
     pub context: SufficientStatisticsTransformSliceContext,
     pub settings: SufficientStatisticsTransformSliceSettings,
     pub baseline_transform: ComplexScalar,
@@ -176,20 +188,34 @@ pub struct SufficientStatisticsTransformSlices {
 pub struct SufficientStatisticsExpectedIntervalStatistics {
     pub expected_a_plus: f64,
     pub expected_a_minus: f64,
+    pub expected_baseline_a_plus: f64,
+    pub expected_endogenous_a_plus: f64,
+    pub expected_baseline_a_minus: f64,
+    pub expected_endogenous_a_minus: f64,
     pub expected_n_plus: f64,
     pub expected_n_minus: f64,
 }
 
 impl SufficientStatisticsExpectedIntervalStatistics {
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
-        expected_a_plus: f64,
-        expected_a_minus: f64,
+        expected_baseline_a_plus: f64,
+        expected_endogenous_a_plus: f64,
+        expected_baseline_a_minus: f64,
+        expected_endogenous_a_minus: f64,
         expected_n_plus: f64,
         expected_n_minus: f64,
     ) -> Result<Self, SufficientStatisticsIntervalStatisticsError> {
+        let expected_a_plus = expected_baseline_a_plus + expected_endogenous_a_plus;
+        let expected_a_minus = expected_baseline_a_minus + expected_endogenous_a_minus;
+
         let statistics = Self {
             expected_a_plus,
             expected_a_minus,
+            expected_baseline_a_plus,
+            expected_endogenous_a_plus,
+            expected_baseline_a_minus,
+            expected_endogenous_a_minus,
             expected_n_plus,
             expected_n_minus,
         };
@@ -202,6 +228,27 @@ impl SufficientStatisticsExpectedIntervalStatistics {
     pub fn validate(self) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
         validate_non_negative_finite_statistic("expected_a_plus", self.expected_a_plus)?;
         validate_non_negative_finite_statistic("expected_a_minus", self.expected_a_minus)?;
+
+        validate_non_negative_finite_statistic(
+            "expected_baseline_a_plus",
+            self.expected_baseline_a_plus,
+        )?;
+
+        validate_non_negative_finite_statistic(
+            "expected_endogenous_a_plus",
+            self.expected_endogenous_a_plus,
+        )?;
+
+        validate_non_negative_finite_statistic(
+            "expected_baseline_a_minus",
+            self.expected_baseline_a_minus,
+        )?;
+
+        validate_non_negative_finite_statistic(
+            "expected_endogenous_a_minus",
+            self.expected_endogenous_a_minus,
+        )?;
+
         validate_non_negative_finite_statistic("expected_n_plus", self.expected_n_plus)?;
         validate_non_negative_finite_statistic("expected_n_minus", self.expected_n_minus)?;
 
@@ -212,6 +259,7 @@ impl SufficientStatisticsExpectedIntervalStatistics {
 impl SufficientStatisticsTransformSlices {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
+        equation_specification: ExponentialAffineTransformEquationSpecification,
         context: SufficientStatisticsTransformSliceContext,
         settings: SufficientStatisticsTransformSliceSettings,
         baseline_transform: ComplexScalar,
@@ -221,6 +269,7 @@ impl SufficientStatisticsTransformSlices {
         n_minus_transform: ComplexScalar,
     ) -> Result<Self, SufficientStatisticsTransformSlicesError> {
         let slices = Self {
+            equation_specification,
             context,
             settings,
             baseline_transform,
@@ -236,9 +285,14 @@ impl SufficientStatisticsTransformSlices {
     }
 
     pub fn validate(self) -> Result<(), SufficientStatisticsTransformSlicesError> {
+        self.equation_specification.validate().map_err(|source| {
+            SufficientStatisticsTransformSlicesError::InvalidEquationSpecification { source }
+        })?;
+
         self.context.validate().map_err(|source| {
             SufficientStatisticsTransformSlicesError::InvalidContext { source }
         })?;
+
         self.settings.validate().map_err(|source| {
             SufficientStatisticsTransformSlicesError::InvalidSettings { source }
         })?;
@@ -327,20 +381,33 @@ fn ensure_finite_transform_slice(
 pub struct SufficientStatisticsIntervalStatistics {
     pub a_plus: f64,
     pub a_minus: f64,
+    pub baseline_a_plus: f64,
+    pub endogenous_a_plus: f64,
+    pub baseline_a_minus: f64,
+    pub endogenous_a_minus: f64,
     pub n_plus: u64,
     pub n_minus: u64,
 }
 
 impl SufficientStatisticsIntervalStatistics {
     pub fn try_new(
-        a_plus: f64,
-        a_minus: f64,
+        baseline_a_plus: f64,
+        endogenous_a_plus: f64,
+        baseline_a_minus: f64,
+        endogenous_a_minus: f64,
         n_plus: u64,
         n_minus: u64,
     ) -> Result<Self, SufficientStatisticsIntervalStatisticsError> {
+        let a_plus = baseline_a_plus + endogenous_a_plus;
+        let a_minus = baseline_a_minus + endogenous_a_minus;
+
         let interval_statistics = Self {
             a_plus,
             a_minus,
+            baseline_a_plus,
+            endogenous_a_plus,
+            baseline_a_minus,
+            endogenous_a_minus,
             n_plus,
             n_minus,
         };
@@ -356,11 +423,31 @@ impl SufficientStatisticsIntervalStatistics {
                 value: self.a_plus,
             });
         }
+
         if !self.a_minus.is_finite() || self.a_minus < 0.0 {
             return Err(SufficientStatisticsIntervalStatisticsError::InvalidAMinus {
                 value: self.a_minus,
             });
         }
+
+        validate_non_negative_finite_statistic("baseline_a_plus", self.baseline_a_plus)?;
+        validate_non_negative_finite_statistic("endogenous_a_plus", self.endogenous_a_plus)?;
+        validate_non_negative_finite_statistic("baseline_a_minus", self.baseline_a_minus)?;
+        validate_non_negative_finite_statistic("endogenous_a_minus", self.endogenous_a_minus)?;
+
+        validate_activity_total(
+            "a_plus",
+            self.a_plus,
+            self.baseline_a_plus,
+            self.endogenous_a_plus,
+        )?;
+
+        validate_activity_total(
+            "a_minus",
+            self.a_minus,
+            self.baseline_a_minus,
+            self.endogenous_a_minus,
+        )?;
 
         Ok(())
     }
@@ -371,6 +458,10 @@ impl SufficientStatisticsIntervalStatistics {
 struct SufficientStatisticsIntervalStatisticsPayload {
     a_plus: f64,
     a_minus: f64,
+    baseline_a_plus: f64,
+    endogenous_a_plus: f64,
+    baseline_a_minus: f64,
+    endogenous_a_minus: f64,
     n_plus: u64,
     n_minus: u64,
 }
@@ -382,14 +473,60 @@ impl<'de> Deserialize<'de> for SufficientStatisticsIntervalStatistics {
     {
         let payload = SufficientStatisticsIntervalStatisticsPayload::deserialize(deserializer)?;
 
-        Self::try_new(
-            payload.a_plus,
-            payload.a_minus,
+        let statistics = Self::try_new(
+            payload.baseline_a_plus,
+            payload.endogenous_a_plus,
+            payload.baseline_a_minus,
+            payload.endogenous_a_minus,
             payload.n_plus,
             payload.n_minus,
         )
-        .map_err(serde::de::Error::custom)
+        .map_err(serde::de::Error::custom)?;
+
+        if statistics.a_plus != payload.a_plus {
+            return Err(serde::de::Error::custom(
+                SufficientStatisticsIntervalStatisticsError::InconsistentActivityTotal {
+                    total_field: "a_plus",
+                    total: payload.a_plus,
+                    baseline: payload.baseline_a_plus,
+                    endogenous: payload.endogenous_a_plus,
+                },
+            ));
+        }
+
+        if statistics.a_minus != payload.a_minus {
+            return Err(serde::de::Error::custom(
+                SufficientStatisticsIntervalStatisticsError::InconsistentActivityTotal {
+                    total_field: "a_minus",
+                    total: payload.a_minus,
+                    baseline: payload.baseline_a_minus,
+                    endogenous: payload.endogenous_a_minus,
+                },
+            ));
+        }
+
+        Ok(statistics)
     }
+}
+
+fn validate_activity_total(
+    total_field: &'static str,
+    total: f64,
+    baseline: f64,
+    endogenous: f64,
+) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
+    if total != baseline + endogenous {
+        return Err(
+            SufficientStatisticsIntervalStatisticsError::InconsistentActivityTotal {
+                total_field,
+                total,
+                baseline,
+                endogenous,
+            },
+        );
+    }
+
+    Ok(())
 }
 
 fn validate_non_negative_finite_statistic(
@@ -401,6 +538,7 @@ fn validate_non_negative_finite_statistic(
             SufficientStatisticsIntervalStatisticsError::NonFiniteStatistic { field, value },
         );
     }
+
     if value < 0.0 {
         return Err(
             SufficientStatisticsIntervalStatisticsError::NegativeStatistic { field, value },

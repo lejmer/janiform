@@ -47,12 +47,10 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
-        return_mark_hour_of_week_factors: context
+        return_clock_exposure_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .return_mark_hour_of_week_scale_profile
-            .hour_of_week_factors
-            .clone(),
+            .return_clock_exposure_parameters,
         observed_price_tick_size: context
             .fitted_parameters
             .return_components_fitted_parameters
@@ -117,13 +115,10 @@ pub(crate) fn build_coarse_simulation_model_inputs(
             .return_components_fitted_parameters
             .news_process_configuration
             .clone(),
-        // Intentional copy because coarse simulation owns the return-mark profile.
         context
             .fitted_parameters
             .return_components_fitted_parameters
-            .return_mark_hour_of_week_scale_profile
-            .hour_of_week_factors
-            .clone(),
+            .return_clock_exposure_parameters,
         context
             .fitted_parameters
             .return_components_fitted_parameters

@@ -36,7 +36,6 @@ pub(crate) use news::{
 pub(crate) use observed_state::SeededObservedState;
 pub(crate) use trading_time::{
     build_interval_open_market_segments, integrate_open_market_elapsed_hours,
-    return_mark_scale_factor_for_timestamp,
 };
 pub(crate) use validation::{
     compute_max_effective_endogenous_branching_ratio, is_valid_observed_price_tick_size,

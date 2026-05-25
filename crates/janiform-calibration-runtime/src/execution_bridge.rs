@@ -9,7 +9,7 @@ use janiform_calibration_artifacts::{
     CalibrationEffortOptions, CalibrationExecutionMode, CalibrationRunContract,
     CalibrationRunContractError, CalibrationRunSpec, CalibrationStage, CalibrationStageDependency,
     CalibrationStageGraph, JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
-    ReturnMarkHourOfWeekScaleProfile, TickGridObservationModel,
+    TickGridObservationModel,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
 use janiform_market_time::calendar::{
@@ -27,6 +27,7 @@ use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;
 use super::staged_runner::{
@@ -34,7 +35,7 @@ use super::staged_runner::{
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
 };
-use super::stages::hawkes::HawkesStageCandidateInput;
+use super::stages::hawkes::{HawkesStageCandidateInput, HawkesStageObservedSourceRegime};
 use super::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageObservation,
 };
@@ -254,24 +255,6 @@ pub struct CalibrationSeasonalityStageExecutionInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationHawkesObservedSourceRegime {
-    pub observation_duration_hours: f64,
-    pub open_session_duration_hours: f64,
-    pub total_tick_count: usize,
-    pub open_session_tick_count: usize,
-    pub closed_session_tick_count: usize,
-    pub open_session_buy_tick_count: usize,
-    pub open_session_sell_tick_count: usize,
-    pub open_session_mean_interarrival_seconds: f64,
-    pub open_session_interarrival_coefficient_of_variation: f64,
-    pub open_session_short_gap_threshold_seconds: f64,
-    pub open_session_short_gap_ratio: f64,
-    pub known_news_open_event_count: usize,
-    pub open_session_known_news_activity_share: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CalibrationHawkesDirectionalLabelDiagnostics {
     pub policy_id: String,
     pub first_inferred_trade_sign: String,
@@ -293,7 +276,7 @@ pub struct CalibrationHawkesStageCandidateInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
     pub stability_numeric_tolerance: f64,
-    pub source_regime: CalibrationHawkesObservedSourceRegime,
+    pub source_regime: HawkesStageObservedSourceRegime,
     pub directional_label_diagnostics: CalibrationHawkesDirectionalLabelDiagnostics,
 }
 
@@ -387,7 +370,7 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
-    pub return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
 }
@@ -402,7 +385,7 @@ pub struct CalibrationReturnComponentsActivityContextImpliedMetrics {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsActivityContextCandidateDiagnostic {
     pub candidate_id: String,
-    pub source_regime: CalibrationHawkesObservedSourceRegime,
+    pub source_regime: HawkesStageObservedSourceRegime,
     pub implied_metrics: CalibrationReturnComponentsActivityContextImpliedMetrics,
 }
 
@@ -925,29 +908,8 @@ impl CalibrationHawkesStageCandidateInput {
             structured_rho: self.structured_rho,
             self_dominance_policy: self.self_dominance_policy,
             stability_numeric_tolerance: self.stability_numeric_tolerance,
-            source_regime: self.source_regime.into_core(),
+            source_regime: self.source_regime,
             directional_label_diagnostics: self.directional_label_diagnostics.into_core(),
-        }
-    }
-}
-
-impl CalibrationHawkesObservedSourceRegime {
-    fn into_core(self) -> super::stages::hawkes::HawkesStageObservedSourceRegime {
-        super::stages::hawkes::HawkesStageObservedSourceRegime {
-            observation_duration_hours: self.observation_duration_hours,
-            open_session_duration_hours: self.open_session_duration_hours,
-            total_tick_count: self.total_tick_count,
-            open_session_tick_count: self.open_session_tick_count,
-            closed_session_tick_count: self.closed_session_tick_count,
-            open_session_buy_tick_count: self.open_session_buy_tick_count,
-            open_session_sell_tick_count: self.open_session_sell_tick_count,
-            open_session_mean_interarrival_seconds: self.open_session_mean_interarrival_seconds,
-            open_session_interarrival_coefficient_of_variation: self
-                .open_session_interarrival_coefficient_of_variation,
-            open_session_short_gap_threshold_seconds: self.open_session_short_gap_threshold_seconds,
-            open_session_short_gap_ratio: self.open_session_short_gap_ratio,
-            known_news_open_event_count: self.known_news_open_event_count,
-            open_session_known_news_activity_share: self.open_session_known_news_activity_share,
         }
     }
 }
@@ -993,7 +955,7 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
             close_open_gap_detection_policy: self.close_open_gap_detection_policy.into_core(),
             open_session_sell_share_proxy: self.open_session_sell_share_proxy,
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
-            return_mark_hour_of_week_scale_profile: self.return_mark_hour_of_week_scale_profile,
+            return_clock_exposure_parameters: self.return_clock_exposure_parameters,
             tick_grid_observation_model: self.tick_grid_observation_model,
             objective_metric_weights: self.objective_metric_weights.into_core(),
         }
@@ -1239,8 +1201,8 @@ impl CalibrationMeanReversionStageObservation {
 mod tests {
     use super::{
         CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-        CalibrationHawkesStageCandidateInput, CalibrationJointRefinementCarryInput,
+        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+        CalibrationJointRefinementCarryInput,
         CalibrationJointRefinementCurrentStateEstimationInput,
         CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
         CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
@@ -1256,14 +1218,14 @@ mod tests {
         CalibrationSeasonalityStageExecutionInput, CalibrationSharedNewsMarkLawConfiguration,
         CalibrationStagedExecutionBridgeError, CalibrationStagedExecutionInput,
         CalibrationStagedExecutionRuntimeResources, CalibrationTimestampEventRecord,
+        HawkesStageObservedSourceRegime,
     };
     use std::path::PathBuf;
 
     use janiform_calibration_artifacts::{
         CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
-        CalibrationStageSeedOverride, CalibrationStageSolverSettings,
-        ReturnMarkHourOfWeekScaleProfile, TickGridObservationModel,
+        CalibrationStageSeedOverride, CalibrationStageSolverSettings, TickGridObservationModel,
     };
     use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
     use janiform_model_kernels::hawkes::{
@@ -1351,7 +1313,7 @@ mod tests {
                 structured_rho: HawkesStructuredRhoParameterization::new(0.30, 0.08, 0.04, 0.05),
                 self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
                 stability_numeric_tolerance: 0.0,
-                source_regime: CalibrationHawkesObservedSourceRegime {
+                source_regime: HawkesStageObservedSourceRegime {
                     observation_duration_hours: 12.0,
                     open_session_duration_hours: 8.0,
                     total_tick_count: 95,
@@ -1444,12 +1406,9 @@ mod tests {
                                 .expect("base shock configuration should validate"),
                         coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
                     },
-                    return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
-                        hour_of_week_factors: vec![1.0; 24 * 7],
-                        profile_resolution_hours: 1,
-                        fit_policy: "test".to_string(),
-                        normalization_policy: "test".to_string(),
-                    },
+                    return_clock_exposure_parameters:
+                        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
+                        ),
                     tick_grid_observation_model: TickGridObservationModel {
                         tick_size: None,
                         tick_size_source: "test".to_string(),

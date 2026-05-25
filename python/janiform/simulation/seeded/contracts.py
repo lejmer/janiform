@@ -5,9 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from math import isfinite
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
-from ..._return_marks import validate_return_mark_hour_of_week_factors
 from ..coarse.news import NewsProcessConfiguration
 from ..shared import (
     HawkesExcitationState,
@@ -23,6 +22,7 @@ from ...mean_reversion import (
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
 )
+from ...return_clock import ReturnClockExposureParameters
 from ...contracts import ContractModel
 from ...contracts.base import (
     require_datetime_utc,
@@ -259,7 +259,7 @@ class SeededTickSimulationRequest(ContractModel):
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState
     hourly_factor_summary: SeededTickSimulationHourlyFactorSummary
-    return_mark_hour_of_week_factors: tuple[float, ...]
+    return_clock_exposure_parameters: ReturnClockExposureParameters
     observed_price_tick_size: Optional[float] = None
     debug_trace_enabled: bool = False
     sample_every_nth_transition: int = 1
@@ -292,11 +292,14 @@ class SeededTickSimulationRequest(ContractModel):
                 "must match horizon_interval_count",
             )
 
-        validate_return_mark_hour_of_week_factors(
-            self.return_mark_hour_of_week_factors,
-            field_path="return_mark_hour_of_week_factors",
-            error_factory=_simulation_error,
-        )
+        if not isinstance(
+            self.return_clock_exposure_parameters,
+            ReturnClockExposureParameters,
+        ):
+            raise _simulation_error(
+                "return_clock_exposure_parameters",
+                "must be a ReturnClockExposureParameters",
+            )
 
         if self.observed_price_tick_size is not None and (
             not isfinite(self.observed_price_tick_size)
@@ -358,7 +361,7 @@ class SeededTickSimulationRequest(ContractModel):
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
         initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
         hourly_factor_contract: HourlyFactorContract,
-        return_mark_hour_of_week_factors: Sequence[float],
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
         observed_price_tick_size: Optional[float] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
@@ -382,7 +385,7 @@ class SeededTickSimulationRequest(ContractModel):
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract),
-            return_mark_hour_of_week_factors=tuple(return_mark_hour_of_week_factors),
+            return_clock_exposure_parameters=return_clock_exposure_parameters,
             observed_price_tick_size=observed_price_tick_size,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
@@ -434,13 +437,6 @@ class SeededTickSimulationRequest(ContractModel):
             )
             if "max_records_per_chunk" in raw_payload
             else 1024
-        )
-
-        raw_return_mark_factors = require_sequence(
-            raw_payload,
-            "return_mark_hour_of_week_factors",
-            "return_mark_hour_of_week_factors",
-            SIMULATION_ERROR_FACTORY,
         )
 
         return SeededTickSimulationRequest(
@@ -532,14 +528,15 @@ class SeededTickSimulationRequest(ContractModel):
                 ),
                 field_path="hourly_factor_summary",
             ),
-            return_mark_hour_of_week_factors=tuple(
-                require_finite_number(
-                    {"value": raw_value},
-                    "value",
-                    f"return_mark_hour_of_week_factors[{factor_index}]",
+            return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "return_clock_exposure_parameters",
+                    "return_clock_exposure_parameters",
                     SIMULATION_ERROR_FACTORY,
-                )
-                for factor_index, raw_value in enumerate(raw_return_mark_factors)
+                ),
+                field_path="return_clock_exposure_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
             ),
             observed_price_tick_size=(
                 require_finite_number(
@@ -779,7 +776,7 @@ class SeededTickEventTapeMetadata(ContractModel):
                 SIMULATION_ERROR_FACTORY,
             ),
             state_snapshot_capture=capture,
-            state_snapshot_capture_point_policy=cast(Optional[str], raw_capture_policy),
+            state_snapshot_capture_point_policy=raw_capture_policy,
         )
 
 
@@ -866,7 +863,7 @@ class SeededFinePathMetadata(ContractModel):
                 SIMULATION_ERROR_FACTORY,
             ),
             state_snapshot_capture=capture,
-            state_snapshot_capture_point_policy=cast(Optional[str], raw_capture_policy),
+            state_snapshot_capture_point_policy=raw_capture_policy,
         )
 
 

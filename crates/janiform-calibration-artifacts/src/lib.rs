@@ -169,6 +169,6 @@ pub use stage_outputs::{
     JointRefinementStageRestartEvaluationTimingDiagnostic, JointRefinementStageRuntimeProfile,
     MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
     MeanReversionStageDiagnostics, ReturnComponentsStageFittedParameters,
-    ReturnMarkHourOfWeekScaleProfile, SeasonalityStageNormalizationMetadata,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
+    SeasonalityStageNormalizationMetadata, SurpriseNewsDeterministicIntensityProfile,
+    TickGridObservationModel,
 };

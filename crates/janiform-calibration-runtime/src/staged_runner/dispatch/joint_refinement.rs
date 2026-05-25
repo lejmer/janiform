@@ -104,7 +104,6 @@ pub(super) fn forward_joint_refinement_like_stage_progress(
                 current_work_item_status: progress_update.current_work_item_status,
                 planned_work_item_labels: progress_update.planned_work_item_labels,
                 active_restart_count: progress_update.active_restart_count,
-                current_parameter_block: progress_update.current_parameter_block,
                 completed_outer_cycles: progress_update.completed_outer_cycles,
                 total_outer_cycles: progress_update.total_outer_cycles,
                 current_evaluation_count: progress_update.current_evaluation_count,
@@ -118,7 +117,7 @@ pub(super) fn forward_joint_refinement_like_stage_progress(
                 cumulative_local_evaluation_count: progress_update
                     .cumulative_local_evaluation_count,
                 current_global_loss: progress_update.current_global_loss,
-                current_block_best_global_loss: progress_update.current_block_best_global_loss,
+                current_restart_best_global_loss: progress_update.current_restart_best_global_loss,
                 current_candidate_assessment: progress_update.current_candidate_assessment,
                 best_restart_id: progress_update.best_restart_id,
                 best_global_loss: progress_update.best_global_loss,

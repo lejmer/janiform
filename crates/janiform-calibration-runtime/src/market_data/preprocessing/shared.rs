@@ -7,9 +7,8 @@ pub(super) use chrono_tz::Tz;
 pub(super) use crate::execution_bridge::{
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
     CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesObservedSourceRegime, CalibrationHawkesStageCandidateInput,
-    CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
-    CalibrationMeanReversionStageObservation,
+    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
+    CalibrationIntradaySmoothingKernel, CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -24,6 +23,7 @@ pub(super) use crate::execution_bridge::{
     CalibrationTimestampEventSessionFilter,
 };
 pub(super) use crate::shock_mark_fitting::fit_shared_news_mark_law_from_shock_samples;
+pub(super) use crate::stages::hawkes::HawkesStageObservedSourceRegime;
 pub(super) use crate::temporal::datetime_from_nanos;
 pub(super) use janiform_foundations::numeric::{
     arithmetic_mean, clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation,

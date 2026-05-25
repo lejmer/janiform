@@ -1,4 +1,5 @@
 use janiform::model::news::NewsProcessConfiguration;
+use janiform::model::return_clock::ReturnClockExposureParameters;
 use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
@@ -217,9 +218,9 @@ impl<'py> SeededTickSimulationWorkflowRequestPayload<'py> {
                     .model_inputs
                     .initial_mean_reversion_boundary_state,
                 hourly_factor_contract: self.hourly_factor_contract.output.clone(),
-                return_mark_hour_of_week_factors: self
+                return_clock_exposure_parameters: self
                     .model_inputs
-                    .return_mark_hour_of_week_factors,
+                    .return_clock_exposure_parameters,
                 observed_price_tick_size: self.model_inputs.observed_price_tick_size,
                 calendar_registry,
             },
@@ -238,7 +239,7 @@ struct SeededTickSimulationModelInputsPayload {
     mean_reversion_runtime_interval_anchors:
         janiform::simulation::MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: janiform::simulation::MeanReversionBoundaryState,
-    return_mark_hour_of_week_factors: Vec<f64>,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
     observed_price_tick_size: Option<f64>,
 }
 
@@ -288,10 +289,10 @@ impl SeededTickSimulationModelInputsPayload {
                     "seeded_tick_simulation_request",
                     "initial_mean_reversion_boundary_state",
                 )?)?,
-            return_mark_hour_of_week_factors: parse_required_json_field(
+            return_clock_exposure_parameters: parse_required_json_field(
                 request,
                 "seeded_tick_simulation_request",
-                "return_mark_hour_of_week_factors",
+                "return_clock_exposure_parameters",
             )?,
             observed_price_tick_size: parse_required_json_field(
                 request,

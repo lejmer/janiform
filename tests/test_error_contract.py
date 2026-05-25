@@ -38,6 +38,7 @@ from janiform.pricing import (
     run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
 )
+from janiform.return_clock import ReturnClockExposureParameters
 from janiform.sufficient_statistics import (
     SufficientStatisticsEquationSpecification,
     SufficientStatisticsModelInputs,
@@ -143,7 +144,7 @@ def test_validation_error_string_format_is_stable() -> None:
                 s_h=(1.0, 1.1),
                 nu_h=(0.2, 0.1),
             ),
-            return_mark_hour_of_week_factors=(1.0,) * 168,
+            return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
             sample_every_nth_transition=0,
         )
 
@@ -683,7 +684,7 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
         ),
         initial_excitation_state=_valid_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
-        return_mark_hour_of_week_factors=(1.0,) * 168,
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -727,7 +728,7 @@ def _valid_coarse_simulation_request(
         ),
         hourly_factor_contract=hourly_factor_contract,
         news_process_configuration=_valid_news_process_configuration(),
-        return_mark_hour_of_week_factors=(1.0,) * 168,
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",

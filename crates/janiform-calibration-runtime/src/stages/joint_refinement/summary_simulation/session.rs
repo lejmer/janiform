@@ -713,11 +713,9 @@ fn build_seeded_summary_simulation_run_config(
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
             hourly_factor_contract,
-            return_mark_hour_of_week_factors: fitted_parameters
+            return_clock_exposure_parameters: fitted_parameters
                 .return_components_fitted_parameters
-                .return_mark_hour_of_week_scale_profile
-                .hour_of_week_factors
-                .clone(),
+                .return_clock_exposure_parameters,
             observed_price_tick_size: fitted_parameters
                 .return_components_fitted_parameters
                 .tick_grid_observation_model
@@ -2110,13 +2108,8 @@ pub(crate) mod tests {
                 .expect("double-exponential base-shock configuration should validate"),
                 coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
             },
-            return_mark_hour_of_week_scale_profile:
-                janiform_calibration_artifacts::ReturnMarkHourOfWeekScaleProfile {
-                    hour_of_week_factors: vec![1.0; 24 * 7],
-                    profile_resolution_hours: 1,
-                    fit_policy: "test".to_string(),
-                    normalization_policy: "test".to_string(),
-                },
+            return_clock_exposure_parameters:
+                janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
                 tick_size: None,
                 tick_size_source: "test".to_string(),

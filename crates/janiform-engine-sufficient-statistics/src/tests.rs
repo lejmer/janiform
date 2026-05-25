@@ -29,11 +29,11 @@ use super::{
     SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY, SufficientStatisticsBoundaryStateUpdateError,
     SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsGeneratedIntervalReturn,
     SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalFactorsError,
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsModelInputs,
-    SufficientStatisticsPath, SufficientStatisticsPathError, SufficientStatisticsPathRecord,
-    SufficientStatisticsReturnComponents, SufficientStatisticsReturnGenerationOptions,
-    SufficientStatisticsRunRequest, SufficientStatisticsRunRequestError,
-    SufficientStatisticsStreamingChunkingSettings,
+    SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError,
+    SufficientStatisticsModelInputs, SufficientStatisticsPath, SufficientStatisticsPathError,
+    SufficientStatisticsPathRecord, SufficientStatisticsReturnComponents,
+    SufficientStatisticsReturnGenerationOptions, SufficientStatisticsRunRequest,
+    SufficientStatisticsRunRequestError, SufficientStatisticsStreamingChunkingSettings,
     SufficientStatisticsStreamingChunkingSettingsError, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceExecutionError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
@@ -131,8 +131,7 @@ fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
 fn path_round_trip_serialization_preserves_interval_statistics_and_return_components() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
@@ -193,8 +192,7 @@ fn path_round_trip_serialization_preserves_interval_statistics_and_return_compon
 fn sufficient_statistics_path_diagnostics_schema_metadata_exposes_required_fields() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.9, 0.4, 2, 1)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.9, 0.4, 2, 1).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.03, -0.02, 0.01, 0.0, -0.01, 0.0)
             .expect("return components should be valid"),
         0.0,
@@ -256,8 +254,7 @@ fn sufficient_statistics_path_diagnostics_schema_metadata_exposes_required_field
 fn sufficient_statistics_path_deserialization_rejects_incorrect_diagnostics_with_field_context() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
@@ -290,8 +287,7 @@ fn sufficient_statistics_path_deserialization_rejects_incorrect_diagnostics_with
 fn sufficient_statistics_path_metadata_values_are_deterministic_across_repeated_runs() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
@@ -481,8 +477,7 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
 fn path_validation_rejects_non_sequential_interval_indices() {
     let first_record = build_sufficient_statistics_path_record(
         1,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
@@ -509,8 +504,8 @@ fn path_validation_rejects_non_sequential_interval_indices() {
 
 #[test]
 fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_gap() {
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.8, 0.6, 2, 1)
-        .expect("sampled statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(0.8, 0.6, 2, 1).expect("sampled statistics should be valid");
 
     let driver_parameters = valid_nig_driver_parameters();
 
@@ -579,8 +574,8 @@ fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_
 
 #[test]
 fn interval_return_generator_closed_window_routes_closed_gap_and_supports_optional_breakdown() {
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.9, 0.7, 3, 2)
-        .expect("sampled statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(0.9, 0.7, 3, 2).expect("sampled statistics should be valid");
 
     let driver_parameters = valid_nig_driver_parameters();
 
@@ -632,8 +627,8 @@ fn interval_return_generator_closed_window_routes_closed_gap_and_supports_option
 
 #[test]
 fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(1.0, 0.4, 1, 2)
-        .expect("sampled statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(1.0, 0.4, 1, 2).expect("sampled statistics should be valid");
 
     let driver_parameters = valid_nig_driver_parameters();
 
@@ -675,8 +670,8 @@ fn boundary_state_update_is_consistent_with_shared_transition_api_reference_sequ
 
     let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
 
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(1.4, 1.1, 3, 2)
-        .expect("statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(1.4, 1.1, 3, 2).expect("statistics should be valid");
 
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         3,
@@ -731,8 +726,8 @@ fn boundary_state_update_maps_sampled_counts_to_canonical_components() {
 
     let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
 
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.8, 0.6, 4, 5)
-        .expect("statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(0.8, 0.6, 4, 5).expect("statistics should be valid");
 
     let interval_delta = 0.5;
 
@@ -774,11 +769,11 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
     let interval_delta = 1.0;
 
     let sampled_statistics_path = [
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
+        build_interval_statistics(0.7, 0.5, 2, 1)
             .expect("first interval statistics should be valid"),
-        SufficientStatisticsIntervalStatistics::try_new(0.4, 0.9, 1, 3)
+        build_interval_statistics(0.4, 0.9, 1, 3)
             .expect("second interval statistics should be valid"),
-        SufficientStatisticsIntervalStatistics::try_new(1.1, 0.2, 4, 0)
+        build_interval_statistics(1.1, 0.2, 4, 0)
             .expect("third interval statistics should be valid"),
     ];
 
@@ -828,8 +823,8 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
 fn boundary_state_update_failures_include_interval_and_state_snapshot_metadata() {
     let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
 
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
-        .expect("statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(0.7, 0.5, 2, 1).expect("statistics should be valid");
 
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         9,
@@ -876,8 +871,7 @@ fn boundary_state_update_wraps_transition_failures_with_snapshot_metadata() {
         4,
         0.5,
         build_initial_state(),
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 2, 1).expect("statistics should be valid"),
     );
 
     let error =
@@ -1237,6 +1231,7 @@ fn transform_slice_sampler_uses_modulus_for_finite_complex_transform_inputs() {
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let slices = SufficientStatisticsTransformSlices::try_new(
+        build_equation_specification(),
         context,
         settings,
         ComplexScalar::new(1.0, 1.0e-3),
@@ -1271,6 +1266,7 @@ fn transform_slice_sampler_rejects_invalid_expected_statistics_from_invalid_slic
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let invalid_slices = SufficientStatisticsTransformSlices::try_new(
+        build_equation_specification(),
         context,
         settings,
         ComplexScalar::new(1.0, 0.0),
@@ -1415,6 +1411,15 @@ fn build_sufficient_statistics_path_record(
         observed_log_price_end,
     )
     .expect("record should be valid")
+}
+
+fn build_interval_statistics(
+    a_plus: f64,
+    a_minus: f64,
+    n_plus: u64,
+    n_minus: u64,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError> {
+    SufficientStatisticsIntervalStatistics::try_new(a_plus, 0.0, a_minus, 0.0, n_plus, n_minus)
 }
 
 fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDriverParameters {

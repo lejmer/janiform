@@ -50,7 +50,7 @@ def run_seeded_tick_event_simulation(
         mean_reversion_runtime_interval_anchors=request.mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=request.initial_mean_reversion_boundary_state,
         hourly_factor_summary=request.hourly_factor_summary,
-        return_mark_hour_of_week_factors=request.return_mark_hour_of_week_factors,
+        return_clock_exposure_parameters=request.return_clock_exposure_parameters,
         observed_price_tick_size=request.observed_price_tick_size,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,

@@ -5,7 +5,6 @@ use janiform_foundations::time::{duration_hours_to_nanos, duration_nanos_to_hour
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
-use janiform_model_kernels::return_marks::validate_return_mark_hour_of_week_factors;
 use serde::{Deserialize, Serialize};
 
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
@@ -13,12 +12,13 @@ use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
 };
-use super::error::{SeededTickSimulationRunError, seeded_tick_return_mark_validation_error};
+use super::error::SeededTickSimulationRunError;
 use super::runtime::{
     compute_max_effective_endogenous_branching_ratio, validate_hourly_factor_field_length,
     validate_hourly_factor_interval_coverage, validate_known_scheduled_news_timestamps,
@@ -135,8 +135,8 @@ pub struct SeededTickSimulationModelInputs {
     /// Interval-aligned hourly factors (`s_h`, `nu_h`) used by the simulator.
     pub hourly_factor_contract: HourlyFactorContractOutput,
 
-    /// Local hour-of-week scale factors applied to continuous trading-time return marks.
-    pub return_mark_hour_of_week_factors: Vec<f64>,
+    /// Exposure parameters mapping endogenous activity into return-clock time.
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
 
     /// Optional reference-price-normalized observed-price tick size for tick-grid rounding.
     pub observed_price_tick_size: Option<f64>,
@@ -238,12 +238,14 @@ impl SeededTickSimulationRunConfig {
             hourly_factor_contract.nu_h.len(),
         )?;
 
-        validate_return_mark_hour_of_week_factors(
-            self.model_inputs
-                .return_mark_hour_of_week_factors
-                .as_slice(),
-        )
-        .map_err(seeded_tick_return_mark_validation_error)?;
+        self.model_inputs
+            .return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidReturnClockExposureParameters {
+                    source: Box::new(source),
+                }
+            })?;
 
         if let Some(tick_size) = self.model_inputs.observed_price_tick_size
             && !super::runtime::is_valid_observed_price_tick_size(tick_size)

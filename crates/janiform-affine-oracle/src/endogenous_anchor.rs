@@ -607,17 +607,13 @@ fn expected_interval_statistics_from_target_sum_first_moment(
     let baseline_expected_business_time =
         equation_specification.hawkes_kernel_parameters.lambda_bar * factors.s_h * factors.delta;
 
-    let expected_a_plus =
-        baseline_expected_business_time + target_sum_first_moment.integrated_target_plus;
-
-    let expected_a_minus =
-        baseline_expected_business_time + target_sum_first_moment.integrated_target_minus;
-
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        expected_a_plus,
-        expected_a_minus,
-        expected_a_plus,
-        expected_a_minus,
+        baseline_expected_business_time,
+        target_sum_first_moment.integrated_target_plus,
+        baseline_expected_business_time,
+        target_sum_first_moment.integrated_target_minus,
+        baseline_expected_business_time + target_sum_first_moment.integrated_target_plus,
+        baseline_expected_business_time + target_sum_first_moment.integrated_target_minus,
     )
 }
 

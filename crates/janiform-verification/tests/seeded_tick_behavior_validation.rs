@@ -1299,7 +1299,8 @@ fn build_run_config_with_options(
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
             hourly_factor_contract,
-            return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+            return_clock_exposure_parameters:
+                janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             observed_price_tick_size: None,
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -1528,7 +1529,8 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
-        return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -1577,7 +1579,8 @@ fn build_one_interval_ordering_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
-        return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -1625,7 +1628,8 @@ fn build_two_interval_boundary_adjacent_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
-        return_mark_hour_of_week_factors: vec![1.0; 24 * 7],
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),

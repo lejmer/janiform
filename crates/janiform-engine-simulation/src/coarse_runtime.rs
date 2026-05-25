@@ -21,6 +21,10 @@ use janiform_model_kernels::news::{
     SharedNewsAccumulatorState, SharedNewsEventDispatchError, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };
+use janiform_model_kernels::return_clock::{
+    EffectiveReturnClocksBuildError, IntegratedSideActivityDecomposition,
+    compute_effective_return_clocks,
+};
 use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
 use super::coarse::{CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord};
@@ -28,8 +32,8 @@ use super::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_pro
 use super::runtime::{
     SeededObservedState, SeededSimulationMarketStateResolver, build_interval_open_market_segments,
     build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,
-    integrate_open_market_elapsed_hours, return_mark_scale_factor_for_timestamp,
-    sample_count_from_expectation, sample_interval_timestamp_utc_nanos,
+    integrate_open_market_elapsed_hours, sample_count_from_expectation,
+    sample_interval_timestamp_utc_nanos,
 };
 use super::{CoarseSimulationRunRequest, CoarseSimulationRunRequestError};
 
@@ -305,9 +309,27 @@ where
             interval_index as u64,
         );
 
+        let effective_return_clocks = compute_effective_return_clocks(
+            model_inputs.return_clock_exposure_parameters,
+            IntegratedSideActivityDecomposition::new(
+                sampled_statistics.baseline_a_plus,
+                sampled_statistics.endogenous_a_plus,
+            ),
+            IntegratedSideActivityDecomposition::new(
+                sampled_statistics.baseline_a_minus,
+                sampled_statistics.endogenous_a_minus,
+            ),
+        )
+        .map_err(
+            |source| CoarseSimulationRunError::EffectiveReturnClockBuildFailure {
+                interval_index,
+                source: Box::new(source),
+            },
+        )?;
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-            a_plus: sampled_statistics.a_plus,
-            a_minus: sampled_statistics.a_minus,
+            a_plus: effective_return_clocks.buy_return_clock,
+            a_minus: effective_return_clocks.sell_return_clock,
             open_jump: interval_direct_jump_totals.open_jump_return,
             closed_gap: interval_direct_jump_totals.closed_gap_return,
         })
@@ -327,26 +349,10 @@ where
                 },
             )?;
 
-        let return_mark_scale_factor = return_mark_scale_factor_for_timestamp(
-            model_inputs.return_mark_hour_of_week_factors.as_slice(),
-            market_state_resolver.timezone,
-            interval_start_utc_nanos,
-        )
-        .map_err(|source| {
-            CoarseSimulationRunError::ReturnMarkScaleFactorResolutionFailure {
-                interval_index,
-                source: Box::new(source),
-            }
-        })?;
+        let buy_side_return = trading_time_contributions.buy_side_increment;
+        let sell_side_return = -trading_time_contributions.sell_side_increment;
 
-        let buy_side_return =
-            return_mark_scale_factor * trading_time_contributions.buy_side_increment;
-
-        let sell_side_return =
-            -return_mark_scale_factor * trading_time_contributions.sell_side_increment;
-
-        let trading_time_return =
-            return_mark_scale_factor * trading_time_contributions.combined_increment;
+        let trading_time_return = trading_time_contributions.combined_increment;
 
         let raw_total_return = trading_time_return
             + interval_direct_jump_totals.open_jump_return
@@ -516,9 +522,9 @@ pub enum CoarseSimulationRunError {
         interval_index: usize,
         source: Box<janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError>,
     },
-    ReturnMarkScaleFactorResolutionFailure {
+    EffectiveReturnClockBuildFailure {
         interval_index: usize,
-        source: Box<super::error::SeededTickSimulationRunError>,
+        source: Box<EffectiveReturnClocksBuildError>,
     },
     TickGridProjectionFailure {
         interval_index: usize,
@@ -628,12 +634,12 @@ impl Display for CoarseSimulationRunError {
                 formatter,
                 "interval {interval_index} trading-time increment sampling failed: {source}"
             ),
-            Self::ReturnMarkScaleFactorResolutionFailure {
+            Self::EffectiveReturnClockBuildFailure {
                 interval_index,
                 source,
             } => write!(
                 formatter,
-                "interval {interval_index} return-mark hour-of-week factor resolution failed: {source}"
+                "interval {interval_index} effective return-clock construction failed: {source}"
             ),
             Self::TickGridProjectionFailure {
                 interval_index,
@@ -690,7 +696,7 @@ impl Error for CoarseSimulationRunError {
             Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
             Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
-            Self::ReturnMarkScaleFactorResolutionFailure { source, .. } => Some(source.as_ref()),
+            Self::EffectiveReturnClockBuildFailure { source, .. } => Some(source.as_ref()),
             Self::TickGridProjectionFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
             Self::InvalidPathRecord { source, .. } => Some(source.as_ref()),
@@ -990,7 +996,7 @@ mod tests {
                 },
             )
             .expect("news process configuration should construct"),
-            vec![1.0; 24 * 7],
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             None,
             ExchangeCalendarRegistryArtifact {
                 schema_version: "calendar.registry.v1".to_string(),

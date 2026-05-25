@@ -426,8 +426,26 @@ class SufficientStatisticsRunRequest(ContractModel):
 class SufficientStatisticsIntervalStatistics(ContractModel):
     a_plus: float
     a_minus: float
+    baseline_a_plus: float
+    endogenous_a_plus: float
+    baseline_a_minus: float
+    endogenous_a_minus: float
     n_plus: int
     n_minus: int
+
+    def __post_init__(self) -> None:
+        _validate_activity_total(
+            total_field_path="sufficient_statistics.a_plus",
+            total=self.a_plus,
+            baseline=self.baseline_a_plus,
+            endogenous=self.endogenous_a_plus,
+        )
+        _validate_activity_total(
+            total_field_path="sufficient_statistics.a_minus",
+            total=self.a_minus,
+            baseline=self.baseline_a_minus,
+            endogenous=self.endogenous_a_minus,
+        )
 
     @staticmethod
     def from_mapping(
@@ -451,6 +469,30 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
                 f"{field_path}.a_minus",
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
+            baseline_a_plus=require_non_negative_finite_number(
+                raw_payload,
+                "baseline_a_plus",
+                f"{field_path}.baseline_a_plus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
+            endogenous_a_plus=require_non_negative_finite_number(
+                raw_payload,
+                "endogenous_a_plus",
+                f"{field_path}.endogenous_a_plus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
+            baseline_a_minus=require_non_negative_finite_number(
+                raw_payload,
+                "baseline_a_minus",
+                f"{field_path}.baseline_a_minus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
+            endogenous_a_minus=require_non_negative_finite_number(
+                raw_payload,
+                "endogenous_a_minus",
+                f"{field_path}.endogenous_a_minus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
             n_plus=require_non_negative_integer(
                 raw_payload,
                 "n_plus",
@@ -463,6 +505,20 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
                 f"{field_path}.n_minus",
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
+        )
+
+
+def _validate_activity_total(
+    *,
+    total_field_path: str,
+    total: float,
+    baseline: float,
+    endogenous: float,
+) -> None:
+    if total != baseline + endogenous:
+        raise _sufficient_statistics_error(
+            total_field_path,
+            f"must equal baseline plus endogenous activity ({baseline} + {endogenous})",
         )
 
 

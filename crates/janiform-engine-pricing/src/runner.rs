@@ -6,9 +6,10 @@ use rayon::join;
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformDVector, ExponentialAffineTransformEquationSpecification,
-    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformDVector,
+    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
+    ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
     solve_exponential_affine_transform_input_sensitivities,
     solve_exponential_affine_transform_with_terminal_loading,
@@ -31,6 +32,10 @@ use janiform_model_kernels::mean_reversion::{
 use janiform_model_kernels::nig::{
     NigBuySellDriverParameters, NigSharedPlusShiftConfigurationError,
 };
+use janiform_model_kernels::return_clock::{
+    IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
+    compute_effective_return_clocks,
+};
 
 use super::black_scholes::{intraday_discount_factor, intraday_forward_price};
 use super::characteristic::{
@@ -38,7 +43,7 @@ use super::characteristic::{
     build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator,
     build_pricing_equation_specification,
     compose_total_return_characteristic_function_from_oracle_output,
-    resolve_scaled_local_tilt_search_domain, should_retry_local_tilt_side_evaluation,
+    resolve_local_tilt_search_domain, should_retry_local_tilt_side_evaluation,
 };
 use super::constants::{
     FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
@@ -75,21 +80,14 @@ pub struct VanillaOptionPricingIntervalFactors {
     pub s_h: f64,
     pub nu_h_known: f64,
     pub nu_h_surprise: f64,
-    pub return_mark_scale: f64,
 }
 
 impl VanillaOptionPricingIntervalFactors {
-    pub const fn new(
-        s_h: f64,
-        nu_h_known: f64,
-        nu_h_surprise: f64,
-        return_mark_scale: f64,
-    ) -> Self {
+    pub const fn new(s_h: f64, nu_h_known: f64, nu_h_surprise: f64) -> Self {
         Self {
             s_h,
             nu_h_known,
             nu_h_surprise,
-            return_mark_scale,
         }
     }
 
@@ -97,9 +95,8 @@ impl VanillaOptionPricingIntervalFactors {
         s_h: f64,
         nu_h_known: f64,
         nu_h_surprise: f64,
-        return_mark_scale: f64,
     ) -> Result<Self, VanillaOptionPricingIntervalFactorsError> {
-        let factors = Self::new(s_h, nu_h_known, nu_h_surprise, return_mark_scale);
+        let factors = Self::new(s_h, nu_h_known, nu_h_surprise);
         factors.validate()?;
 
         Ok(factors)
@@ -118,14 +115,6 @@ impl VanillaOptionPricingIntervalFactors {
             .map_err(
                 |source| VanillaOptionPricingIntervalFactorsError::InvalidNewsIntensity { source },
             )?;
-
-        if !self.return_mark_scale.is_finite() || self.return_mark_scale <= 0.0 {
-            return Err(
-                VanillaOptionPricingIntervalFactorsError::InvalidReturnMarkScaleFactor {
-                    value: self.return_mark_scale,
-                },
-            );
-        }
 
         Ok(())
     }
@@ -155,9 +144,6 @@ pub enum VanillaOptionPricingIntervalFactorsError {
     InvalidNewsIntensity {
         source: ExponentialAffineTransformNewsIntensityInputError,
     },
-    InvalidReturnMarkScaleFactor {
-        value: f64,
-    },
 }
 
 impl Display for VanillaOptionPricingIntervalFactorsError {
@@ -173,10 +159,6 @@ impl Display for VanillaOptionPricingIntervalFactorsError {
                     "interval_factors news intensity is invalid: {source}"
                 )
             }
-            Self::InvalidReturnMarkScaleFactor { value } => write!(
-                formatter,
-                "interval_factors.return_mark_scale must be finite and strictly positive, found {value}"
-            ),
         }
     }
 }
@@ -544,15 +526,13 @@ impl LocalTransitionRequestContext {
 
     pub(crate) fn build_transform_input(
         &self,
-        u_plus: ComplexScalar,
-        u_minus: ComplexScalar,
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
     ) -> ExponentialAffineTransformInput {
         ExponentialAffineTransformInput::new(
             self.equation_specification,
-            u_plus,
-            u_minus,
+            activity_loadings,
             z_plus,
             z_minus,
             self.interval_factors.s_h,
@@ -579,6 +559,7 @@ impl LocalTransitionRequestContext {
                 message: source.to_string(),
             }
         })?;
+
         let local_martingale_deviation_adjustment = (self.deviation_decay_factor - 1.0) * deviation;
 
         Ok(LocalTransitionRowState {
@@ -607,6 +588,60 @@ impl LocalTransitionRequestContext {
                 message: format!("spectral interval deviation center is invalid: {source}"),
             },
         )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PricingActivityTransformInputs {
+    activity_loadings: ExponentialAffineTransformActivityLoadings,
+    z_plus: ComplexScalar,
+    z_minus: ComplexScalar,
+    buy_log_activity_premium_u_derivative: ComplexScalar,
+    buy_log_activity_premium_z_derivative: ComplexScalar,
+    sell_log_activity_premium_u_derivative: ComplexScalar,
+    sell_log_activity_premium_z_derivative: ComplexScalar,
+}
+
+fn build_pricing_activity_transform_inputs(
+    transition_context: &LocalTransitionRequestContext,
+    buy_side_characteristic_exponent: ComplexScalar,
+    sell_side_characteristic_exponent: ComplexScalar,
+) -> PricingActivityTransformInputs {
+    let exposure_parameters = transition_context
+        .model_parameters
+        .return_clock_exposure_parameters;
+
+    let buy_baseline_loading = buy_side_characteristic_exponent.scale(-1.0);
+    let buy_endogenous_loading = buy_side_characteristic_exponent
+        .scale(-exposure_parameters.buy_excitation_return_clock_scale);
+    let sell_baseline_loading = sell_side_characteristic_exponent.scale(-1.0);
+    let sell_endogenous_loading = sell_side_characteristic_exponent
+        .scale(-exposure_parameters.sell_excitation_return_clock_scale);
+
+    let pricing_kernel_parameters = transition_context
+        .model_parameters
+        .pricing_kernel_parameters;
+
+    let buy_kernel_inputs = pricing_kernel_parameters
+        .buy_transform_inputs(buy_endogenous_loading, ComplexScalar::new(1.0, 0.0));
+    let sell_kernel_inputs = pricing_kernel_parameters
+        .sell_transform_inputs(sell_endogenous_loading, ComplexScalar::new(1.0, 0.0));
+
+    PricingActivityTransformInputs {
+        activity_loadings: ExponentialAffineTransformActivityLoadings::new(
+            buy_baseline_loading,
+            buy_kernel_inputs.u_input,
+            sell_baseline_loading,
+            sell_kernel_inputs.u_input,
+        ),
+        z_plus: buy_kernel_inputs.z_input,
+        z_minus: sell_kernel_inputs.z_input,
+        buy_log_activity_premium_u_derivative: buy_kernel_inputs.log_activity_premium_u_derivative,
+        buy_log_activity_premium_z_derivative: buy_kernel_inputs.log_activity_premium_z_derivative,
+        sell_log_activity_premium_u_derivative: sell_kernel_inputs
+            .log_activity_premium_u_derivative,
+        sell_log_activity_premium_z_derivative: sell_kernel_inputs
+            .log_activity_premium_z_derivative,
     }
 }
 
@@ -656,17 +691,14 @@ impl<'a> IntervalTiltCurve<'a> {
         pricing_thread_pool: Option<&'a rayon::ThreadPool>,
         cpu_count: Option<usize>,
     ) -> Result<Self, VanillaOptionPricingRunError> {
-        let search_domain = resolve_scaled_local_tilt_search_domain(
-            driver_parameters,
-            transition_context.interval_factors.return_mark_scale,
-        )
-        .map_err(
-            |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-                interval_index: transition_context.interval_index,
-                deviation: 0.0,
-                source: Box::new(source),
-            },
-        )?;
+        let search_domain =
+            resolve_local_tilt_search_domain(driver_parameters).map_err(|source| {
+                VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
+                    interval_index: transition_context.interval_index,
+                    deviation: 0.0,
+                    source: Box::new(source),
+                }
+            })?;
 
         Ok(Self {
             transition_context,
@@ -739,6 +771,7 @@ pub fn run_vanilla_option_pricing_with_observer(
 
     let pricing_request = execution_input.request.clone();
     let output_selection = execution_input.optional_output_selection;
+
     let market_inputs_for_calibration_hooks = pricing_request.market_inputs.clone();
 
     let successful_result = super::spectral::run_single_option_pricing(&execution_input);
@@ -1657,8 +1690,10 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
     let core_expected_increment = tilted_core_expected_increment_from_statistics(
         driver_parameters,
         tilted_statistics,
+        transition_context
+            .model_parameters
+            .return_clock_exposure_parameters,
         theta,
-        transition_context.interval_factors.return_mark_scale,
     )?;
 
     Ok(LocalTiltedIntervalExpectations {
@@ -1690,20 +1725,26 @@ fn derive_local_tilted_expected_interval_statistics_for_row(
         solve_local_tilted_transform_sensitivities(transition_context, driver_parameters, theta)?;
 
     let effective_input_statistics =
-        derive_expected_interval_statistics_from_transform_sensitivities(context, sensitivities)
-            .map_err(|source| {
-                VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-                    message: source.to_string(),
-                }
-            })?;
+        derive_expected_interval_statistics_from_transform_sensitivities(
+            transition_context.equation_specification,
+            context,
+            sensitivities,
+        )
+        .map_err(|source| {
+            VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                message: source.to_string(),
+            }
+        })?;
 
     let pricing_kernel_parameters = transition_context
         .model_parameters
         .pricing_kernel_parameters;
 
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        effective_input_statistics.expected_a_plus,
-        effective_input_statistics.expected_a_minus,
+        effective_input_statistics.expected_baseline_a_plus,
+        effective_input_statistics.expected_endogenous_a_plus,
+        effective_input_statistics.expected_baseline_a_minus,
+        effective_input_statistics.expected_endogenous_a_minus,
         effective_input_statistics.expected_n_plus * pricing_kernel_parameters.buy_activity_premium,
         effective_input_statistics.expected_n_minus
             * pricing_kernel_parameters.sell_activity_premium,
@@ -1768,39 +1809,32 @@ fn solve_local_tilted_transform_sensitivities(
     VanillaOptionPricingRunError,
 > {
     let (buy_side_shift, sell_side_shift) =
-        local_tilted_transform_business_time_shifts(transition_context, driver_parameters, theta);
-    let pricing_kernel_parameters = transition_context
-        .model_parameters
-        .pricing_kernel_parameters;
-    let buy_kernel_inputs = pricing_kernel_parameters
-        .buy_transform_inputs(buy_side_shift, ComplexScalar::new(1.0, 0.0));
-    let sell_kernel_inputs = pricing_kernel_parameters
-        .sell_transform_inputs(sell_side_shift, ComplexScalar::new(1.0, 0.0));
+        local_tilted_transform_business_time_shifts(driver_parameters, theta);
+
+    let activity_transform_inputs = build_pricing_activity_transform_inputs(
+        transition_context,
+        buy_side_shift.scale(-1.0),
+        sell_side_shift.scale(-1.0),
+    );
 
     solve_affine_transform_value_input_sensitivities_for_context(
         transition_context,
-        buy_kernel_inputs.u_input,
-        sell_kernel_inputs.u_input,
-        buy_kernel_inputs.z_input,
-        sell_kernel_inputs.z_input,
+        activity_transform_inputs,
     )
 }
 
 fn local_tilted_transform_business_time_shifts(
-    transition_context: &LocalTransitionRequestContext,
     driver_parameters: NigBuySellDriverParameters,
     theta: f64,
 ) -> (ComplexScalar, ComplexScalar) {
     let shifted_argument = ComplexScalar::new(0.0, -theta);
-    let trading_time_shifted_argument =
-        scale_trading_time_return_argument(transition_context, shifted_argument);
 
     let buy_side_shift = driver_parameters
-        .buy_side_characteristic_exponent(trading_time_shifted_argument)
+        .buy_side_characteristic_exponent(shifted_argument)
         .scale(-1.0);
 
     let sell_side_shift = driver_parameters
-        .sell_side_characteristic_exponent_for_return_composition(trading_time_shifted_argument)
+        .sell_side_characteristic_exponent_for_return_composition(shifted_argument)
         .scale(-1.0);
 
     (buy_side_shift, sell_side_shift)
@@ -1809,22 +1843,39 @@ fn local_tilted_transform_business_time_shifts(
 pub(crate) fn tilted_core_expected_increment_from_statistics(
     driver_parameters: NigBuySellDriverParameters,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
     theta: f64,
-    return_mark_scale: f64,
 ) -> Result<f64, VanillaOptionPricingRunError> {
+    let effective_return_clocks = compute_effective_return_clocks(
+        return_clock_exposure_parameters,
+        IntegratedSideActivityDecomposition::new(
+            expected_statistics.expected_baseline_a_plus,
+            expected_statistics.expected_endogenous_a_plus,
+        ),
+        IntegratedSideActivityDecomposition::new(
+            expected_statistics.expected_baseline_a_minus,
+            expected_statistics.expected_endogenous_a_minus,
+        ),
+    )
+    .map_err(|source| {
+        VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+            message: source.to_string(),
+        }
+    })?;
+
     let tilted_buy_expected_increment = tilted_nig_expected_increment(
         driver_parameters.buy_side_parameters,
-        expected_statistics.expected_a_plus,
-        return_mark_scale * theta,
+        effective_return_clocks.buy_return_clock,
+        theta,
     )?;
 
     let tilted_sell_expected_increment = tilted_nig_expected_increment(
         driver_parameters.sell_side_parameters,
-        expected_statistics.expected_a_minus,
-        -return_mark_scale * theta,
+        effective_return_clocks.sell_return_clock,
+        -theta,
     )?;
 
-    Ok(return_mark_scale * (tilted_buy_expected_increment - tilted_sell_expected_increment))
+    Ok(tilted_buy_expected_increment - tilted_sell_expected_increment)
 }
 
 fn tilted_nig_expected_increment(
@@ -2195,32 +2246,22 @@ pub(crate) fn solve_pricing_log_return_transform_for_context(
     argument: ComplexScalar,
     terminal_loading: ExponentialAffineTransformDVector,
 ) -> Result<ExponentialAffineTransformIntegrationResult, VanillaOptionPricingRunError> {
-    let trading_time_argument = scale_trading_time_return_argument(transition_context, argument);
-
     let buy_side_characteristic_exponent =
-        driver_parameters.buy_side_characteristic_exponent(trading_time_argument);
+        driver_parameters.buy_side_characteristic_exponent(argument);
 
-    let sell_side_characteristic_exponent = driver_parameters
-        .sell_side_characteristic_exponent_for_return_composition(trading_time_argument);
+    let sell_side_characteristic_exponent =
+        driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
 
-    let pricing_kernel_parameters = transition_context
-        .model_parameters
-        .pricing_kernel_parameters;
-
-    let buy_kernel_inputs = pricing_kernel_parameters.buy_transform_inputs(
-        buy_side_characteristic_exponent.scale(-1.0),
-        ComplexScalar::new(1.0, 0.0),
-    );
-    let sell_kernel_inputs = pricing_kernel_parameters.sell_transform_inputs(
-        sell_side_characteristic_exponent.scale(-1.0),
-        ComplexScalar::new(1.0, 0.0),
+    let activity_transform_inputs = build_pricing_activity_transform_inputs(
+        transition_context,
+        buy_side_characteristic_exponent,
+        sell_side_characteristic_exponent,
     );
 
     let transform_input = transition_context.build_transform_input(
-        buy_kernel_inputs.u_input,
-        sell_kernel_inputs.u_input,
-        buy_kernel_inputs.z_input,
-        sell_kernel_inputs.z_input,
+        activity_transform_inputs.activity_loadings,
+        activity_transform_inputs.z_plus,
+        activity_transform_inputs.z_minus,
     );
 
     solve_exponential_affine_transform_with_terminal_loading(transform_input, terminal_loading)
@@ -2237,43 +2278,35 @@ fn missing_transform_output_context(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
 ) -> String {
-    let trading_time_argument = scale_trading_time_return_argument(transition_context, argument);
-
     let buy_side_characteristic_exponent = driver_parameters
-        .buy_side_characteristic_exponent(trading_time_argument)
+        .buy_side_characteristic_exponent(argument)
         .scale(-1.0);
 
     let sell_side_characteristic_exponent = driver_parameters
-        .sell_side_characteristic_exponent_for_return_composition(trading_time_argument)
+        .sell_side_characteristic_exponent_for_return_composition(argument)
         .scale(-1.0);
-    let pricing_kernel_parameters = transition_context
-        .model_parameters
-        .pricing_kernel_parameters;
-    let buy_kernel_inputs = pricing_kernel_parameters.buy_transform_inputs(
-        buy_side_characteristic_exponent,
-        ComplexScalar::new(1.0, 0.0),
-    );
-    let sell_kernel_inputs = pricing_kernel_parameters.sell_transform_inputs(
-        sell_side_characteristic_exponent,
-        ComplexScalar::new(1.0, 0.0),
+
+    let activity_transform_inputs = build_pricing_activity_transform_inputs(
+        transition_context,
+        buy_side_characteristic_exponent.scale(-1.0),
+        sell_side_characteristic_exponent.scale(-1.0),
     );
 
     format!(
-        "pricing_log_return_characteristic_function interval_index={} interval_delta={} u_plus={:?} u_minus={:?} z_plus={:?} z_minus={:?}",
+        "pricing_log_return_characteristic_function interval_index={} interval_delta={} u_plus_baseline={:?} u_plus_endogenous={:?} u_minus_baseline={:?} u_minus_endogenous={:?} z_plus={:?} z_minus={:?}",
         transition_context.interval_index,
         transition_context.interval_delta,
-        buy_kernel_inputs.u_input,
-        sell_kernel_inputs.u_input,
-        buy_kernel_inputs.z_input,
-        sell_kernel_inputs.z_input,
+        activity_transform_inputs.activity_loadings.u_plus_baseline,
+        activity_transform_inputs
+            .activity_loadings
+            .u_plus_endogenous,
+        activity_transform_inputs.activity_loadings.u_minus_baseline,
+        activity_transform_inputs
+            .activity_loadings
+            .u_minus_endogenous,
+        activity_transform_inputs.z_plus,
+        activity_transform_inputs.z_minus,
     )
-}
-
-pub(crate) fn scale_trading_time_return_argument(
-    transition_context: &LocalTransitionRequestContext,
-    argument: ComplexScalar,
-) -> ComplexScalar {
-    argument.scale(transition_context.interval_factors.return_mark_scale)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2291,19 +2324,15 @@ pub(crate) struct PricingCharacteristicFunctionSharedPlusShiftSensitivity {
 
 fn solve_affine_transform_value_input_sensitivities_for_context(
     transition_context: &LocalTransitionRequestContext,
-    buy_side_u_input: ComplexScalar,
-    sell_side_u_input: ComplexScalar,
-    buy_side_z_input: ComplexScalar,
-    sell_side_z_input: ComplexScalar,
+    activity_transform_inputs: PricingActivityTransformInputs,
 ) -> Result<
     janiform_affine_oracle::affine_oracle::ExponentialAffineTransformInputSensitivityOutput,
     VanillaOptionPricingRunError,
 > {
     let transform_input = transition_context.build_transform_input(
-        buy_side_u_input,
-        sell_side_u_input,
-        buy_side_z_input,
-        sell_side_z_input,
+        activity_transform_inputs.activity_loadings,
+        activity_transform_inputs.z_plus,
+        activity_transform_inputs.z_minus,
     );
 
     solve_exponential_affine_transform_input_sensitivities(transform_input).map_err(|source| {
@@ -2364,6 +2393,7 @@ fn log_characteristic_modulus_derivative(
                 denominator: characteristic_value,
             },
         )?;
+
     if !logarithmic_derivative.is_finite() {
         return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
             message: format!(
@@ -2381,155 +2411,193 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
     driver_parameters: NigBuySellDriverParameters,
     shifted_argument: ComplexScalar,
 ) -> Result<PricingCharacteristicFunctionSharedPlusShiftSensitivity, VanillaOptionPricingRunError> {
-    let return_mark_scale = transition_context.interval_factors.return_mark_scale;
-    let trading_time_shifted_argument =
-        scale_trading_time_return_argument(transition_context, shifted_argument);
-
     let buy_side_sensitivity = driver_parameters
         .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
-            trading_time_shifted_argument,
+            shifted_argument,
         )
         .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
             message: format!(
-                "buy-side characteristic-exponent sensitivity failed for shifted_argument={trading_time_shifted_argument:?}: {source}"
+                "buy-side characteristic-exponent sensitivity failed for shifted_argument={shifted_argument:?}: {source}"
             ),
         })?;
 
     let sell_side_sensitivity = driver_parameters
         .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
-            trading_time_shifted_argument,
+            shifted_argument,
         )
         .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
             message: format!(
-                "sell-side characteristic-exponent sensitivity failed for shifted_argument={trading_time_shifted_argument:?}: {source}"
+                "sell-side characteristic-exponent sensitivity failed for shifted_argument={shifted_argument:?}: {source}"
             ),
         })?;
 
-    let buy_side_shift = buy_side_sensitivity.exponent.scale(-1.0);
-    let sell_side_shift = sell_side_sensitivity.exponent.scale(-1.0);
-    let pricing_kernel_parameters = transition_context
-        .model_parameters
-        .pricing_kernel_parameters;
-
-    let buy_kernel_inputs = pricing_kernel_parameters
-        .buy_transform_inputs(buy_side_shift, ComplexScalar::new(1.0, 0.0));
-    let sell_kernel_inputs = pricing_kernel_parameters
-        .sell_transform_inputs(sell_side_shift, ComplexScalar::new(1.0, 0.0));
+    let activity_transform_inputs = build_pricing_activity_transform_inputs(
+        transition_context,
+        buy_side_sensitivity.exponent,
+        sell_side_sensitivity.exponent,
+    );
 
     let transform_sensitivities = solve_affine_transform_value_input_sensitivities_for_context(
         transition_context,
-        buy_kernel_inputs.u_input,
-        sell_kernel_inputs.u_input,
-        buy_kernel_inputs.z_input,
-        sell_kernel_inputs.z_input,
+        activity_transform_inputs,
     )?;
 
+    let exposure_parameters = transition_context
+        .model_parameters
+        .return_clock_exposure_parameters;
+
+    let buy_baseline_sensitivity = transform_sensitivities.u_plus_baseline_sensitivity;
+    let buy_endogenous_sensitivity = transform_sensitivities.u_plus_endogenous_sensitivity;
+
+    let sell_baseline_sensitivity = transform_sensitivities.u_minus_baseline_sensitivity;
+    let sell_endogenous_sensitivity = transform_sensitivities.u_minus_endogenous_sensitivity;
+
     let alpha_derivative = complex_multiply(
-        transform_sensitivities
-            .u_plus_sensitivity
-            .transform_value_derivative,
+        buy_baseline_sensitivity.transform_value_derivative,
         buy_side_sensitivity.alpha_derivative.scale(-1.0),
     )
     .plus(complex_multiply(
-        transform_sensitivities
-            .u_minus_sensitivity
-            .transform_value_derivative,
+        buy_endogenous_sensitivity.transform_value_derivative,
+        buy_side_sensitivity
+            .alpha_derivative
+            .scale(-exposure_parameters.buy_excitation_return_clock_scale),
+    ))
+    .plus(complex_multiply(
+        sell_baseline_sensitivity.transform_value_derivative,
         sell_side_sensitivity.alpha_derivative.scale(-1.0),
+    ))
+    .plus(complex_multiply(
+        sell_endogenous_sensitivity.transform_value_derivative,
+        sell_side_sensitivity
+            .alpha_derivative
+            .scale(-exposure_parameters.sell_excitation_return_clock_scale),
     ));
 
     let beta_0_derivative = complex_multiply(
-        transform_sensitivities
-            .u_plus_sensitivity
-            .transform_value_derivative,
+        buy_baseline_sensitivity.transform_value_derivative,
         buy_side_sensitivity.beta_0_derivative.scale(-1.0),
     )
     .plus(complex_multiply(
-        transform_sensitivities
-            .u_minus_sensitivity
-            .transform_value_derivative,
+        buy_endogenous_sensitivity.transform_value_derivative,
+        buy_side_sensitivity
+            .beta_0_derivative
+            .scale(-exposure_parameters.buy_excitation_return_clock_scale),
+    ))
+    .plus(complex_multiply(
+        sell_baseline_sensitivity.transform_value_derivative,
         sell_side_sensitivity.beta_0_derivative.scale(-1.0),
+    ))
+    .plus(complex_multiply(
+        sell_endogenous_sensitivity.transform_value_derivative,
+        sell_side_sensitivity
+            .beta_0_derivative
+            .scale(-exposure_parameters.sell_excitation_return_clock_scale),
     ));
 
     let delta_derivative = complex_multiply(
-        transform_sensitivities
-            .u_plus_sensitivity
-            .transform_value_derivative,
+        buy_baseline_sensitivity.transform_value_derivative,
         buy_side_sensitivity.delta_derivative.scale(-1.0),
     )
     .plus(complex_multiply(
-        transform_sensitivities
-            .u_minus_sensitivity
-            .transform_value_derivative,
+        buy_endogenous_sensitivity.transform_value_derivative,
+        buy_side_sensitivity
+            .delta_derivative
+            .scale(-exposure_parameters.buy_excitation_return_clock_scale),
+    ))
+    .plus(complex_multiply(
+        sell_baseline_sensitivity.transform_value_derivative,
         sell_side_sensitivity.delta_derivative.scale(-1.0),
+    ))
+    .plus(complex_multiply(
+        sell_endogenous_sensitivity.transform_value_derivative,
+        sell_side_sensitivity
+            .delta_derivative
+            .scale(-exposure_parameters.sell_excitation_return_clock_scale),
     ));
 
     let mu_derivative = complex_multiply(
-        transform_sensitivities
-            .u_plus_sensitivity
-            .transform_value_derivative,
+        buy_baseline_sensitivity.transform_value_derivative,
         buy_side_sensitivity.mu_derivative.scale(-1.0),
     )
     .plus(complex_multiply(
-        transform_sensitivities
-            .u_minus_sensitivity
-            .transform_value_derivative,
+        buy_endogenous_sensitivity.transform_value_derivative,
+        buy_side_sensitivity
+            .mu_derivative
+            .scale(-exposure_parameters.buy_excitation_return_clock_scale),
+    ))
+    .plus(complex_multiply(
+        sell_baseline_sensitivity.transform_value_derivative,
         sell_side_sensitivity.mu_derivative.scale(-1.0),
+    ))
+    .plus(complex_multiply(
+        sell_endogenous_sensitivity.transform_value_derivative,
+        sell_side_sensitivity
+            .mu_derivative
+            .scale(-exposure_parameters.sell_excitation_return_clock_scale),
     ));
 
     let delta_beta_derivative = complex_multiply(
-        transform_sensitivities
-            .u_plus_sensitivity
-            .transform_value_derivative,
+        buy_baseline_sensitivity.transform_value_derivative,
         buy_side_sensitivity.delta_beta_derivative.scale(-1.0),
     )
     .plus(complex_multiply(
-        transform_sensitivities
-            .u_minus_sensitivity
-            .transform_value_derivative,
+        buy_endogenous_sensitivity.transform_value_derivative,
+        buy_side_sensitivity
+            .delta_beta_derivative
+            .scale(-exposure_parameters.buy_excitation_return_clock_scale),
+    ))
+    .plus(complex_multiply(
+        sell_baseline_sensitivity.transform_value_derivative,
         sell_side_sensitivity.delta_beta_derivative.scale(-1.0),
+    ))
+    .plus(complex_multiply(
+        sell_endogenous_sensitivity.transform_value_derivative,
+        sell_side_sensitivity
+            .delta_beta_derivative
+            .scale(-exposure_parameters.sell_excitation_return_clock_scale),
     ));
 
     let theta_derivative = complex_multiply(
-        transform_sensitivities
-            .u_plus_sensitivity
-            .transform_value_derivative,
-        buy_side_sensitivity
-            .theta_shift_derivative
-            .scale(-return_mark_scale),
+        buy_baseline_sensitivity.transform_value_derivative,
+        buy_side_sensitivity.theta_shift_derivative.scale(-1.0),
     )
     .plus(complex_multiply(
-        transform_sensitivities
-            .u_minus_sensitivity
-            .transform_value_derivative,
+        buy_endogenous_sensitivity.transform_value_derivative,
+        buy_side_sensitivity
+            .theta_shift_derivative
+            .scale(-exposure_parameters.buy_excitation_return_clock_scale),
+    ))
+    .plus(complex_multiply(
+        sell_baseline_sensitivity.transform_value_derivative,
+        sell_side_sensitivity.theta_shift_derivative.scale(-1.0),
+    ))
+    .plus(complex_multiply(
+        sell_endogenous_sensitivity.transform_value_derivative,
         sell_side_sensitivity
             .theta_shift_derivative
-            .scale(-return_mark_scale),
+            .scale(-exposure_parameters.sell_excitation_return_clock_scale),
     ));
 
     let buy_activity_premium_derivative = complex_multiply(
-        transform_sensitivities
-            .u_plus_sensitivity
-            .transform_value_derivative,
-        buy_kernel_inputs.log_activity_premium_u_derivative,
+        buy_endogenous_sensitivity.transform_value_derivative,
+        activity_transform_inputs.buy_log_activity_premium_u_derivative,
     )
     .plus(complex_multiply(
         transform_sensitivities
             .z_plus_sensitivity
             .transform_value_derivative,
-        buy_kernel_inputs.log_activity_premium_z_derivative,
+        activity_transform_inputs.buy_log_activity_premium_z_derivative,
     ));
 
     let sell_activity_premium_derivative = complex_multiply(
-        transform_sensitivities
-            .u_minus_sensitivity
-            .transform_value_derivative,
-        sell_kernel_inputs.log_activity_premium_u_derivative,
+        sell_endogenous_sensitivity.transform_value_derivative,
+        activity_transform_inputs.sell_log_activity_premium_u_derivative,
     )
     .plus(complex_multiply(
         transform_sensitivities
             .z_minus_sensitivity
             .transform_value_derivative,
-        sell_kernel_inputs.log_activity_premium_z_derivative,
+        activity_transform_inputs.sell_log_activity_premium_z_derivative,
     ));
 
     validate_finite_characteristic_sensitivity("alpha", alpha_derivative)?;
@@ -2818,7 +2886,6 @@ struct VanillaOptionPricingIntervalFactorsPayload {
     s_h: f64,
     nu_h_known: f64,
     nu_h_surprise: f64,
-    return_mark_scale: f64,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
@@ -2828,13 +2895,8 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
     {
         let payload = VanillaOptionPricingIntervalFactorsPayload::deserialize(deserializer)?;
 
-        Self::try_new(
-            payload.s_h,
-            payload.nu_h_known,
-            payload.nu_h_surprise,
-            payload.return_mark_scale,
-        )
-        .map_err(serde::de::Error::custom)
+        Self::try_new(payload.s_h, payload.nu_h_known, payload.nu_h_surprise)
+            .map_err(serde::de::Error::custom)
     }
 }
 

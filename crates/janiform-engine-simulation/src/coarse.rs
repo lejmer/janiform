@@ -27,8 +27,8 @@ use janiform_market_time::calendar::{
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateValidationError;
 use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
-use janiform_model_kernels::return_marks::{
-    ReturnMarkHourOfWeekFactorsError, validate_return_mark_hour_of_week_factors,
+use janiform_model_kernels::return_clock::{
+    ReturnClockExposureParameters, ReturnClockExposureParametersError,
 };
 
 use super::runtime::{
@@ -130,7 +130,7 @@ const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 19] = [
 pub struct CoarseSimulationModelInputs {
     pub sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     pub news_process_configuration: NewsProcessConfiguration,
-    pub return_mark_hour_of_week_factors: Vec<f64>,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub observed_price_tick_size: Option<f64>,
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub exchange_code: String,
@@ -140,7 +140,7 @@ impl CoarseSimulationModelInputs {
     pub fn try_new(
         sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
         news_process_configuration: NewsProcessConfiguration,
-        return_mark_hour_of_week_factors: Vec<f64>,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
         observed_price_tick_size: Option<f64>,
         calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
         exchange_code: impl Into<String>,
@@ -148,7 +148,7 @@ impl CoarseSimulationModelInputs {
         let model_inputs = Self {
             sufficient_statistics_model_inputs,
             news_process_configuration,
-            return_mark_hour_of_week_factors,
+            return_clock_exposure_parameters,
             observed_price_tick_size,
             calendar_registry_artifact,
             exchange_code: exchange_code.into(),
@@ -172,8 +172,11 @@ impl CoarseSimulationModelInputs {
                 CoarseSimulationModelInputsError::InvalidNewsProcessConfiguration { source }
             })?;
 
-        validate_return_mark_hour_of_week_factors(self.return_mark_hour_of_week_factors.as_slice())
-            .map_err(coarse_simulation_return_mark_validation_error)?;
+        self.return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                CoarseSimulationModelInputsError::InvalidReturnClockExposureParameters { source }
+            })?;
 
         if let Some(tick_size) = self.observed_price_tick_size
             && !is_valid_observed_price_tick_size(tick_size)
@@ -212,27 +215,6 @@ impl CoarseSimulationModelInputs {
     }
 }
 
-fn coarse_simulation_return_mark_validation_error(
-    source: ReturnMarkHourOfWeekFactorsError,
-) -> CoarseSimulationModelInputsError {
-    match source {
-        ReturnMarkHourOfWeekFactorsError::FactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        } => CoarseSimulationModelInputsError::ReturnMarkHourOfWeekFactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        },
-        ReturnMarkHourOfWeekFactorsError::InvalidFactor {
-            factor_index,
-            value,
-        } => CoarseSimulationModelInputsError::InvalidReturnMarkHourOfWeekFactor {
-            factor_index,
-            value,
-        },
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoarseSimulationModelInputsError {
     InvalidSufficientStatisticsModelInputs {
@@ -241,13 +223,8 @@ pub enum CoarseSimulationModelInputsError {
     InvalidNewsProcessConfiguration {
         source: NewsProcessConfigurationError,
     },
-    ReturnMarkHourOfWeekFactorCountMismatch {
-        expected_factor_count: usize,
-        observed_factor_count: usize,
-    },
-    InvalidReturnMarkHourOfWeekFactor {
-        factor_index: usize,
-        value: f64,
+    InvalidReturnClockExposureParameters {
+        source: ReturnClockExposureParametersError,
     },
     InvalidObservedPriceTickSize {
         value: f64,
@@ -276,20 +253,12 @@ impl Display for CoarseSimulationModelInputsError {
             Self::InvalidNewsProcessConfiguration { source } => {
                 write!(formatter, "news_process_configuration is invalid: {source}")
             }
-            Self::ReturnMarkHourOfWeekFactorCountMismatch {
-                expected_factor_count,
-                observed_factor_count,
-            } => write!(
-                formatter,
-                "return_mark_hour_of_week_factors length must be {expected_factor_count}, found {observed_factor_count}"
-            ),
-            Self::InvalidReturnMarkHourOfWeekFactor {
-                factor_index,
-                value,
-            } => write!(
-                formatter,
-                "return_mark_hour_of_week_factors[{factor_index}] must be finite and strictly positive, found {value}"
-            ),
+            Self::InvalidReturnClockExposureParameters { source } => {
+                write!(
+                    formatter,
+                    "return_clock_exposure_parameters are invalid: {source}"
+                )
+            }
             Self::InvalidObservedPriceTickSize { value } => write!(
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
@@ -319,12 +288,10 @@ impl Error for CoarseSimulationModelInputsError {
         match self {
             Self::InvalidSufficientStatisticsModelInputs { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
+            Self::InvalidReturnClockExposureParameters { source } => Some(source),
             Self::InvalidCalendarRegistry { source } => Some(source),
             Self::ExchangeCodeMissingFromCalendarRegistry { source, .. } => Some(source),
-            Self::ReturnMarkHourOfWeekFactorCountMismatch { .. }
-            | Self::InvalidReturnMarkHourOfWeekFactor { .. }
-            | Self::InvalidObservedPriceTickSize { .. }
-            | Self::InvalidExchangeCode { .. } => None,
+            Self::InvalidObservedPriceTickSize { .. } | Self::InvalidExchangeCode { .. } => None,
         }
     }
 }
@@ -334,7 +301,7 @@ impl Error for CoarseSimulationModelInputsError {
 struct CoarseSimulationModelInputsPayload {
     sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     news_process_configuration: NewsProcessConfiguration,
-    return_mark_hour_of_week_factors: Vec<f64>,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
     observed_price_tick_size: Option<f64>,
     calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     exchange_code: String,
@@ -349,7 +316,7 @@ impl<'de> Deserialize<'de> for CoarseSimulationModelInputs {
         Self::try_new(
             payload.sufficient_statistics_model_inputs,
             payload.news_process_configuration,
-            payload.return_mark_hour_of_week_factors,
+            payload.return_clock_exposure_parameters,
             payload.observed_price_tick_size,
             payload.calendar_registry_artifact,
             payload.exchange_code,
@@ -2301,7 +2268,7 @@ mod tests {
             0,
             1_704_067_200_000_000_000,
             1_704_070_800_000_000_000,
-            SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
+            SufficientStatisticsIntervalStatistics::try_new(0.7, 0.0, 0.5, 0.0, 3, 2)
                 .expect("statistics should be valid"),
             SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
                 .expect("return components should be valid"),
@@ -2317,7 +2284,7 @@ mod tests {
             1,
             1_704_070_800_000_000_000,
             1_704_074_400_000_000_000,
-            SufficientStatisticsIntervalStatistics::try_new(0.6, 0.4, 1, 1)
+            SufficientStatisticsIntervalStatistics::try_new(0.6, 0.0, 0.4, 0.0, 1, 1)
                 .expect("statistics should be valid"),
             SufficientStatisticsReturnComponents::try_new(0.01, -0.01, 0.0, 0.01, 0.0, 0.01)
                 .expect("return components should be valid"),
@@ -2401,7 +2368,7 @@ mod tests {
         CoarseSimulationModelInputs::try_new(
             sufficient_statistics_model_inputs,
             build_news_process_configuration(),
-            vec![1.0; 24 * 7],
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             None,
             build_calendar_registry_artifact(),
             "XNYS",

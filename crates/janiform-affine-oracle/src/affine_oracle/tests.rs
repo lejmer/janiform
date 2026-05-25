@@ -14,7 +14,8 @@ use super::{
     EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_TELEMETRY_FIELDS,
     EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
     EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION,
-    EXPONENTIAL_AFFINE_TRANSFORM_NEWS_INTENSITY_USAGE_POLICY, ExponentialAffineTransformDVector,
+    EXPONENTIAL_AFFINE_TRANSFORM_NEWS_INTENSITY_USAGE_POLICY,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformDVector,
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformGuardFailureCode,
     ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
@@ -56,11 +57,17 @@ fn valid_equation_specification() -> ExponentialAffineTransformEquationSpecifica
     .expect("valid equation specification should construct")
 }
 
+fn total_activity_loadings(
+    u_plus: ComplexScalar,
+    u_minus: ComplexScalar,
+) -> ExponentialAffineTransformActivityLoadings {
+    ExponentialAffineTransformActivityLoadings::total_activity(u_plus, u_minus)
+}
+
 fn valid_input() -> ExponentialAffineTransformInput {
     ExponentialAffineTransformInput::try_new(
         valid_equation_specification(),
-        ComplexScalar::new(0.2, -0.1),
-        ComplexScalar::new(0.3, 0.05),
+        total_activity_loadings(ComplexScalar::new(0.2, -0.1), ComplexScalar::new(0.3, 0.05)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         1.1,
@@ -101,13 +108,23 @@ fn reference_transform_input_payload() -> Value {
                 "scale_theta": 0.9
             }
         },
-        "u_plus": {
-            "real": 0.2,
-            "imaginary": -0.1
-        },
-        "u_minus": {
-            "real": 0.3,
-            "imaginary": 0.05
+        "activity_loadings": {
+            "u_plus_baseline": {
+                "real": 0.2,
+                "imaginary": -0.1
+            },
+            "u_plus_endogenous": {
+                "real": 0.2,
+                "imaginary": -0.1
+            },
+            "u_minus_baseline": {
+                "real": 0.3,
+                "imaginary": 0.05
+            },
+            "u_minus_endogenous": {
+                "real": 0.3,
+                "imaginary": 0.05
+            }
         },
         "z_plus": {
             "real": 1.0,
@@ -171,8 +188,7 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
                 .expect("closed-form fixture gamma payload should construct"),
         )
         .expect("closed-form fixture equation specification should construct"),
-        ComplexScalar::new(0.2, 0.0),
-        ComplexScalar::new(0.3, 0.0),
+        total_activity_loadings(ComplexScalar::new(0.2, 0.0), ComplexScalar::new(0.3, 0.0)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
         1.1,
@@ -213,8 +229,10 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
                 .expect("domain violation fixture gamma payload should construct"),
         )
         .expect("domain violation fixture equation specification should construct"),
-        ComplexScalar::new(-10.0, 0.0),
-        ComplexScalar::new(-10.0, 0.0),
+        total_activity_loadings(
+            ComplexScalar::new(-10.0, 0.0),
+            ComplexScalar::new(-10.0, 0.0),
+        ),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
         2.0,
@@ -255,8 +273,7 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
                 .expect("blowup fixture gamma payload should construct"),
         )
         .expect("blowup fixture equation specification should construct"),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
+        total_activity_loadings(ComplexScalar::new(0.0, 0.0), ComplexScalar::new(0.0, 0.0)),
         ComplexScalar::new(1.0e308, 0.0),
         ComplexScalar::new(1.0e308, 0.0),
         1.0,
@@ -276,8 +293,9 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
 fn transform_value_overflow_fixture_input() -> ExponentialAffineTransformInput {
     let mut transform_input = linear_closed_form_fixture_input();
 
-    transform_input.u_plus = ComplexScalar::new(-0.2, 0.0);
-    transform_input.u_minus = ComplexScalar::new(-0.3, 0.0);
+    transform_input.activity_loadings =
+        total_activity_loadings(ComplexScalar::new(-0.2, 0.0), ComplexScalar::new(-0.3, 0.0));
+
     transform_input.initial_state = HawkesExcitationState {
         y_plus_plus: 1.0e308,
         y_plus_minus: 1.0e308,
@@ -312,8 +330,10 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
                 .expect("stiff fixture gamma payload should construct"),
         )
         .expect("stiff fixture equation specification should construct"),
-        ComplexScalar::new(-4.5e-10, 0.0),
-        ComplexScalar::new(-4.5e-10, 0.0),
+        total_activity_loadings(
+            ComplexScalar::new(-4.5e-10, 0.0),
+            ComplexScalar::new(-4.5e-10, 0.0),
+        ),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
         0.36,
@@ -333,8 +353,7 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
 fn exact_identity_query_input() -> ExponentialAffineTransformInput {
     ExponentialAffineTransformInput::try_new(
         valid_equation_specification(),
-        ComplexScalar::new(0.0, -0.0),
-        ComplexScalar::new(0.0, 0.0),
+        total_activity_loadings(ComplexScalar::new(0.0, -0.0), ComplexScalar::new(0.0, 0.0)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, -0.0),
         1.3,
@@ -552,13 +571,13 @@ fn hamiltonians_match_hand_checked_complex_fixture() {
         evaluate_exponential_affine_transform_hamiltonians(transform_input, d_vector);
 
     assert_complex_close(
-        hamiltonians.h_plus,
+        hamiltonians.h_plus_endogenous,
         ComplexScalar::new(-0.17265736764489886, 0.09280848411170442),
         1.0e-12,
         "H_plus",
     );
     assert_complex_close(
-        hamiltonians.h_minus,
+        hamiltonians.h_minus_endogenous,
         ComplexScalar::new(-0.32304086676111327, -0.028650512256511856),
         1.0e-12,
         "H_minus",
@@ -569,8 +588,7 @@ fn hamiltonians_match_hand_checked_complex_fixture() {
 fn ode_rhs_matches_hand_checked_real_fixture() {
     let transform_input = ExponentialAffineTransformInput::try_new(
         valid_equation_specification(),
-        ComplexScalar::new(0.2, 0.0),
-        ComplexScalar::new(0.3, 0.0),
+        total_activity_loadings(ComplexScalar::new(0.2, 0.0), ComplexScalar::new(0.3, 0.0)),
         ComplexScalar::new(0.9, 0.0),
         ComplexScalar::new(1.1, 0.0),
         1.1,
@@ -790,8 +808,8 @@ fn default_solver_executes_deterministic_closed_form_fixture() {
         * transform_input.delta)
         .exp();
 
-    let h_plus = -transform_input.u_plus.real;
-    let h_minus = -transform_input.u_minus.real;
+    let h_plus = -transform_input.activity_loadings.u_plus_endogenous.real;
+    let h_minus = -transform_input.activity_loadings.u_minus_endogenous.real;
 
     let expected_d_plus = h_plus * (1.0 - decay)
         / transform_input
@@ -868,7 +886,7 @@ fn input_sensitivity_tracks_event_count_marking_variables() {
     assert_complex_close(
         sensitivities.z_plus_sensitivity.c_at_delta_derivative,
         sensitivities
-            .u_plus_sensitivity
+            .u_plus_total_activity_sensitivity()
             .c_at_delta_derivative
             .scale(-1.0),
         1.0e-12,
@@ -880,7 +898,7 @@ fn input_sensitivity_tracks_event_count_marking_variables() {
             .d_at_delta_derivative
             .plus_plus,
         sensitivities
-            .u_plus_sensitivity
+            .u_plus_total_activity_sensitivity()
             .d_at_delta_derivative
             .plus_plus
             .scale(-1.0),
@@ -890,7 +908,7 @@ fn input_sensitivity_tracks_event_count_marking_variables() {
     assert_complex_close(
         sensitivities.z_plus_sensitivity.transform_value_derivative,
         sensitivities
-            .u_plus_sensitivity
+            .u_plus_total_activity_sensitivity()
             .transform_value_derivative
             .scale(-1.0),
         1.0e-12,
@@ -899,7 +917,7 @@ fn input_sensitivity_tracks_event_count_marking_variables() {
     assert_complex_close(
         sensitivities.z_minus_sensitivity.c_at_delta_derivative,
         sensitivities
-            .u_minus_sensitivity
+            .u_minus_total_activity_sensitivity()
             .c_at_delta_derivative
             .scale(-1.0),
         1.0e-12,
@@ -911,7 +929,7 @@ fn input_sensitivity_tracks_event_count_marking_variables() {
             .d_at_delta_derivative
             .minus_minus,
         sensitivities
-            .u_minus_sensitivity
+            .u_minus_total_activity_sensitivity()
             .d_at_delta_derivative
             .minus_minus
             .scale(-1.0),
@@ -921,7 +939,7 @@ fn input_sensitivity_tracks_event_count_marking_variables() {
     assert_complex_close(
         sensitivities.z_minus_sensitivity.transform_value_derivative,
         sensitivities
-            .u_minus_sensitivity
+            .u_minus_total_activity_sensitivity()
             .transform_value_derivative
             .scale(-1.0),
         1.0e-12,

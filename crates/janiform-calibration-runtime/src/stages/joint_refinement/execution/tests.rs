@@ -14,7 +14,7 @@ use super::super::setup::{
     restart_candidate_screening_max_parallelism_for_test,
 };
 use super::{
-    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
+    JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
     JointRefinementCandidateEvaluation, JointRefinementObservedData,
     JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
     JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
@@ -59,14 +59,17 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
     JointRefinementActiveParameterLayout {
         hawkes_block: vec![0, 1, 2, 3],
         nig_block: vec![4, 5, 6, 7],
-        option_pricing_kernel_block: vec![11, 12],
+        return_clock_block: vec![11, 12],
+        option_pricing_kernel_block: vec![13, 14],
         coupling_block: vec![8, 9, 10],
         log_stationary_event_rate_scale_index: 0,
         log_beta_scale_index: 1,
         log_self_excitation_scale_index: 2,
         log_cross_excitation_scale_index: 3,
-        option_pricing_log_buy_activity_premium_index: 11,
-        option_pricing_log_sell_activity_premium_index: 12,
+        log_buy_excitation_return_clock_scale_index: 11,
+        log_sell_excitation_return_clock_scale_index: 12,
+        option_pricing_log_buy_activity_premium_index: 13,
+        option_pricing_log_sell_activity_premium_index: 14,
         known_activity_scale_index: Some(8),
         surprise_activity_scale_index: Some(9),
         surprise_baseline_scale_index: Some(10),
@@ -426,7 +429,7 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
     assert_eq!(single_restart_schedule.restart_count, 1);
     assert_eq!(
         single_restart_schedule.outer_cycle_count,
-        super::JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT
+        super::JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT
     );
 
     let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15, None);
@@ -599,11 +602,11 @@ fn joint_refinement_bounds_allow_option_pricing_kernel_activity_premia() {
     for parameter_index in &active_parameter_layout.option_pricing_kernel_block {
         assert_eq!(
             lower_bounds[*parameter_index],
-            -JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND
+            -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND
         );
         assert_eq!(
             upper_bounds[*parameter_index],
-            JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND
+            JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND
         );
     }
 }

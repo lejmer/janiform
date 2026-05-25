@@ -15,22 +15,19 @@ use super::shared::{
     CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsSignalSourceWindow,
     CalibrationReturnComponentsStageCandidateGenerationInput,
-    CalibrationSharedNewsMarkLawConfiguration, CoupledGapMarkConfiguration, DateTime, Datelike,
+    CalibrationSharedNewsMarkLawConfiguration, CoupledGapMarkConfiguration,
     ExchangeCalendarDefinition, MarketDataTranslationReturnComponentsPreprocessingSettings,
-    OpenTickRecord, ResolvedKnownNewsRecord, Timelike, TradeSign, Tz, Utc, arithmetic_mean,
+    OpenTickRecord, ResolvedKnownNewsRecord, TradeSign, Tz, arithmetic_mean,
     fit_shared_news_mark_law_from_shock_samples, median_abs, round_to,
 };
-use janiform_calibration_artifacts::{ReturnMarkHourOfWeekScaleProfile, TickGridObservationModel};
+use janiform_calibration_artifacts::TickGridObservationModel;
 use janiform_foundations::time::duration_nanos_to_hours;
-use janiform_market_time::seasonality::HOURS_PER_WEEK;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
-const RETURN_MARK_SCALE_FIT_POLICY: &str =
-    "observed_open_session_mean_absolute_tick_return_by_local_hour_of_week.v1";
-const RETURN_MARK_SCALE_NORMALIZATION_POLICY: &str =
-    "global_mean_absolute_return_normalized_sparse_buckets_use_global_mean.v1";
 const TICK_GRID_OBSERVATION_POLICY: &str = "nearest_reference_price_normalized_cumulative_latent_price_rounding_preserves_sub_tick_residuals.v1";
 const TICK_SIZE_INFERENCE_POLICY: &str =
     "minimum_positive_same_session_adjacent_open_price_difference_reference_price_normalized.v1";
+
 const PROVIDED_TICK_SIZE_SOURCE: &str = "user_provided_reference_price_normalized";
 const INFERRED_TICK_SIZE_SOURCE: &str = "training_data_inferred_reference_price_normalized";
 const DISABLED_TICK_SIZE_SOURCE: &str = "unavailable";
@@ -80,11 +77,6 @@ pub(super) fn build_return_components_candidate_generation_input(
     let observed_open_session_returns = derive_observed_open_session_returns(
         open_price_ticks,
         open_price_tick_timestamps.as_slice(),
-    );
-
-    let return_mark_hour_of_week_scale_profile = estimate_return_mark_hour_of_week_scale_profile(
-        observed_open_session_returns.as_slice(),
-        timezone,
     );
 
     let tick_grid_observation_model = tick_grid_observation_model(
@@ -171,7 +163,7 @@ pub(super) fn build_return_components_candidate_generation_input(
         },
         open_session_sell_share_proxy: round_to(open_tick_sell_share, 6),
         shared_mark_law_template,
-        return_mark_hour_of_week_scale_profile,
+        return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
         tick_grid_observation_model,
         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
@@ -289,66 +281,6 @@ pub(super) fn same_session_open_returns(open_price_ticks: &[OpenTickRecord]) -> 
     }
 
     same_session_returns
-}
-
-fn estimate_return_mark_hour_of_week_scale_profile(
-    observed_returns: &[CalibrationReturnComponentsObservedOpenSessionReturn],
-    timezone: Tz,
-) -> ReturnMarkHourOfWeekScaleProfile {
-    let mut absolute_return_sum_by_hour = vec![0.0; HOURS_PER_WEEK];
-    let mut return_count_by_hour = vec![0usize; HOURS_PER_WEEK];
-    let mut global_absolute_return_sum = 0.0;
-    let mut global_return_count = 0usize;
-
-    for observed_return in observed_returns {
-        if !observed_return.log_return.is_finite() {
-            continue;
-        }
-
-        let timestamp_utc =
-            DateTime::<Utc>::from_timestamp_nanos(observed_return.return_timestamp_utc_nanos);
-
-        let local_timestamp = timestamp_utc.with_timezone(&timezone);
-
-        let hour_of_week = local_timestamp.weekday().num_days_from_monday() as usize * 24
-            + local_timestamp.hour() as usize;
-
-        let absolute_return = observed_return.log_return.abs();
-
-        absolute_return_sum_by_hour[hour_of_week] += absolute_return;
-        return_count_by_hour[hour_of_week] += 1;
-        global_absolute_return_sum += absolute_return;
-        global_return_count += 1;
-    }
-
-    let global_mean_absolute_return = if global_return_count == 0 {
-        0.0
-    } else {
-        global_absolute_return_sum / global_return_count as f64
-    };
-
-    let hour_of_week_factors = (0..HOURS_PER_WEEK)
-        .map(|hour_of_week| {
-            if global_mean_absolute_return <= 0.0 || return_count_by_hour[hour_of_week] == 0 {
-                return 1.0;
-            }
-
-            let bucket_mean = absolute_return_sum_by_hour[hour_of_week]
-                / return_count_by_hour[hour_of_week] as f64;
-            if bucket_mean > 0.0 {
-                bucket_mean / global_mean_absolute_return
-            } else {
-                1.0
-            }
-        })
-        .collect();
-
-    ReturnMarkHourOfWeekScaleProfile {
-        hour_of_week_factors,
-        profile_resolution_hours: 1,
-        fit_policy: RETURN_MARK_SCALE_FIT_POLICY.to_string(),
-        normalization_policy: RETURN_MARK_SCALE_NORMALIZATION_POLICY.to_string(),
-    }
 }
 
 fn tick_grid_observation_model(

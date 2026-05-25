@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "e6c87d8cbcd368b9fbc5270a7866279f762b6c858b516814fa691c78712d7c7c",
+  "approved_snapshot_sha256": "2bceb609277aebc6034e14f39336e0905322cec11c28dcd13b6728e6141756a2",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1453,6 +1453,24 @@
         "janiform.pricing.fitted",
         "janiform.pricing.fitted.market_snapshot",
         "janiform.pricing.fitted.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-05-25",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "design/janiform_compact_model_spec.tex"
+      ],
+      "rationale": "Return-size seasonality has been removed from the public runtime contracts. Simulation and pricing now carry explicit Hawkes-excitation return-clock exposure parameters so deterministic calendar seasonality remains an event-intensity input rather than a direct return-size scaler.",
+      "snapshot_sha256": "2bceb609277aebc6034e14f39336e0905322cec11c28dcd13b6728e6141756a2",
+      "summary": "Replace public return-mark runtime fields with return-clock exposure parameters.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.return_clock",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
       ]
     }
   ],

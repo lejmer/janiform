@@ -449,17 +449,17 @@ mod tests {
         resolve_solver_settings_by_stage, stage_geometry_complexity_units,
     };
     use crate::{
-        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-        CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
-        CalibrationIntradaySmoothingKernel, CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
+        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+        CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
+        CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsKnownNewsCalendarInput,
         CalibrationReturnComponentsObjectiveMetricWeights,
         CalibrationReturnComponentsObservedOpenSessionReturn,
         CalibrationReturnComponentsSignalSourceWindow,
         CalibrationReturnComponentsStageCandidateGenerationInput,
         CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
-        CalibrationTimestampEventSessionFilter, MarketDataLoadingOutput,
-        MarketDataSessionResolutionPayload, MarketDataSourceSummary,
+        CalibrationTimestampEventSessionFilter, HawkesStageObservedSourceRegime,
+        MarketDataLoadingOutput, MarketDataSessionResolutionPayload, MarketDataSourceSummary,
         MarketDataTranslationPreprocessingOutput,
     };
 
@@ -561,7 +561,7 @@ mod tests {
                     },
                     self_dominance_policy: None,
                     stability_numeric_tolerance: 0.0,
-                    source_regime: CalibrationHawkesObservedSourceRegime {
+                    source_regime: HawkesStageObservedSourceRegime {
                         observation_duration_hours: 6.5,
                         open_session_duration_hours: 6.5,
                         total_tick_count: 10,
@@ -630,13 +630,9 @@ mod tests {
                                         sigma_g: 0.5,
                                     },
                             },
-                        return_mark_hour_of_week_scale_profile:
-                            janiform_calibration_artifacts::ReturnMarkHourOfWeekScaleProfile {
-                                hour_of_week_factors: vec![1.0; 24 * 7],
-                                profile_resolution_hours: 1,
-                                fit_policy: "test".to_string(),
-                                normalization_policy: "test".to_string(),
-                            },
+                        return_clock_exposure_parameters:
+                            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
+                            ),
                         tick_grid_observation_model:
                             janiform_calibration_artifacts::TickGridObservationModel {
                                 tick_size: None,

@@ -40,8 +40,8 @@ use super::option_refinement::objective_gradient::{
 };
 use super::option_refinement::reduced_model::JointRefinementOptionReducedModelArtifact;
 
-pub(crate) const JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
-pub(crate) const JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT: usize = 3;
+pub(crate) const JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
+pub(crate) const JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT: usize = 5;
 pub(crate) const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 
 type JointRefinementSeedSummaryCache = Arc<
@@ -449,12 +449,15 @@ impl JointRefinementProfilingState {
 pub(crate) struct JointRefinementActiveParameterLayout {
     pub(crate) hawkes_block: Vec<usize>,
     pub(crate) nig_block: Vec<usize>,
+    pub(crate) return_clock_block: Vec<usize>,
     pub(crate) option_pricing_kernel_block: Vec<usize>,
     pub(crate) coupling_block: Vec<usize>,
     pub(crate) log_stationary_event_rate_scale_index: usize,
     pub(crate) log_beta_scale_index: usize,
     pub(crate) log_self_excitation_scale_index: usize,
     pub(crate) log_cross_excitation_scale_index: usize,
+    pub(crate) log_buy_excitation_return_clock_scale_index: usize,
+    pub(crate) log_sell_excitation_return_clock_scale_index: usize,
     pub(crate) option_pricing_log_buy_activity_premium_index: usize,
     pub(crate) option_pricing_log_sell_activity_premium_index: usize,
     pub(crate) known_activity_scale_index: Option<usize>,

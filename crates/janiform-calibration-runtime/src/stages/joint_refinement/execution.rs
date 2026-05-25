@@ -43,8 +43,9 @@ pub(crate) use optimization::joint_refinement_restart_full_vector_direct_search_
 pub(crate) use optimization::{
     SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
-    optimize_restart_seeds, precheck_seed_summary_workload,
-    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
+    joint_refinement_restart_full_vector_initial_mesh_divisor, optimize_restart_seeds,
+    precheck_seed_summary_workload, sensitivity_repair_screening_evaluation_budget,
+    sensitivity_repair_seed_candidates,
 };
 pub(crate) use option_refinement::{
     desired_joint_refinement_option_refinement_candidate_count,
@@ -84,7 +85,7 @@ pub(crate) use shared::{
     ordered_parameter_bits, planned_restart_work_item_labels, with_joint_refinement_thread_pool,
 };
 pub(crate) use state::{
-    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT,
+    JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT,
     JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR, JointRefinementActiveParameterLayout,
     JointRefinementAggregatedLikelihoodContextCacheKey,
     JointRefinementAggregatedLikelihoodContexts, JointRefinementCandidateEvaluation,

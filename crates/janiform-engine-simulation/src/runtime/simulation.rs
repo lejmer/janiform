@@ -45,8 +45,7 @@ use super::observed_state::SeededObservedState;
 use super::results::estimate_seeded_result_capacities;
 use super::trading_time::{
     TransitionTradingTimeReturnInput, build_interval_open_market_segments,
-    integrate_open_market_elapsed_hours, return_mark_scale_factor_for_timestamp,
-    sample_transition_trading_time_return,
+    integrate_open_market_elapsed_hours, sample_transition_trading_time_return,
 };
 use super::updates::{
     IntervalStochasticUpdate, is_public_seeded_fine_path_record, map_side_to_transition_kind,
@@ -216,7 +215,6 @@ struct IntervalSimulationInputs<'a> {
     interval_duration_nanos: i64,
     interval_duration_in_hours: f64,
     interval_seasonality_factor: f64,
-    interval_return_mark_scale_factor: f64,
     interval_news_intensity: f64,
     interval_end_anchor_value: f64,
     interval_end_pressure_state: f64,
@@ -294,12 +292,6 @@ fn build_interval_simulation_inputs<'a>(
 
     let interval_duration_nanos = interval_end_utc_nanos - interval_start_utc_nanos;
 
-    let interval_return_mark_scale_factor = return_mark_scale_factor_for_interval(
-        run_config,
-        interval_index,
-        interval_start_utc_nanos,
-    )?;
-
     Ok(IntervalSimulationInputs {
         interval_index,
         interval_start_utc_nanos,
@@ -308,7 +300,6 @@ fn build_interval_simulation_inputs<'a>(
         interval_duration_in_hours: duration_nanos_to_hours(interval_duration_nanos),
         interval_seasonality_factor: run_config.model_inputs.hourly_factor_contract.s_h
             [interval_index],
-        interval_return_mark_scale_factor,
         interval_news_intensity: run_config.model_inputs.hourly_factor_contract.nu_h
             [interval_index]
             .max(0.0),
@@ -497,7 +488,9 @@ where
             lambda_bar: fine_path_state.lambda_bar,
             beta: run_config.model_inputs.kernel_parameters.beta,
             seasonality_factor: interval_inputs.interval_seasonality_factor,
-            return_mark_scale_factor: interval_inputs.interval_return_mark_scale_factor,
+            return_clock_exposure_parameters: run_config
+                .model_inputs
+                .return_clock_exposure_parameters,
             interval_open_market_segments: interval_inputs.interval_open_market_segments,
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
@@ -635,52 +628,6 @@ where
     Ok(interval_update.timestamp_utc_nanos())
 }
 
-fn return_mark_scale_factor_for_interval(
-    run_config: &SeededTickSimulationRunConfig,
-    interval_index: usize,
-    interval_start_utc_nanos: i64,
-) -> Result<f64, SeededTickSimulationRunError> {
-    let exchange_timezone = run_config
-        .model_inputs
-        .hourly_factor_contract
-        .exchange_timezone_name
-        .parse()
-        .map_err(
-            |_| SeededTickSimulationRunError::InvalidExchangeTimezoneName {
-                timezone_name: run_config
-                    .model_inputs
-                    .hourly_factor_contract
-                    .exchange_timezone_name
-                    .clone(),
-            },
-        )?;
-
-    return_mark_scale_factor_for_timestamp(
-        run_config
-            .model_inputs
-            .return_mark_hour_of_week_factors
-            .as_slice(),
-        exchange_timezone,
-        interval_start_utc_nanos,
-    )
-    .map_err(|source| match source {
-        SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos { .. } => {
-            SeededTickSimulationRunError::InvalidHourlyFactorIntervalBounds {
-                interval_index,
-                interval_start_utc_nanos,
-                interval_end_utc_nanos: run_config
-                    .model_inputs
-                    .hourly_factor_contract
-                    .interval_end_utc_nanos
-                    .get(interval_index)
-                    .copied()
-                    .unwrap_or(interval_start_utc_nanos),
-            }
-        }
-        source => source,
-    })
-}
-
 struct IntervalBoundaryTransitionInput<'a, 'registry, 'interval, F, C> {
     run_config: &'a SeededTickSimulationRunConfig,
     randomness_factory: &'a F,
@@ -730,7 +677,9 @@ where
             lambda_bar: fine_path_state.lambda_bar,
             beta: run_config.model_inputs.kernel_parameters.beta,
             seasonality_factor: interval_inputs.interval_seasonality_factor,
-            return_mark_scale_factor: interval_inputs.interval_return_mark_scale_factor,
+            return_clock_exposure_parameters: run_config
+                .model_inputs
+                .return_clock_exposure_parameters,
             interval_open_market_segments: interval_inputs.interval_open_market_segments,
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,

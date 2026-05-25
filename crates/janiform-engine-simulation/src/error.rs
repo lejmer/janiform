@@ -15,8 +15,10 @@ use janiform_model_kernels::mean_reversion::{
 use janiform_model_kernels::news::NewsProcessConfigurationError;
 use janiform_model_kernels::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
+use janiform_model_kernels::return_clock::{
+    EffectiveReturnClocksBuildError, ReturnClockExposureParametersError,
+};
 use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
-use janiform_model_kernels::return_marks::ReturnMarkHourOfWeekFactorsError;
 
 /// Structured simulator run failure with explicit validation diagnostics.
 #[derive(Debug, Clone, PartialEq)]
@@ -65,19 +67,11 @@ pub enum SeededTickSimulationRunError {
         spectral_radius_alpha_over_beta: f64,
         effective_branching_ratio: f64,
     },
-    ReturnMarkHourOfWeekFactorCountMismatch {
-        expected_factor_count: usize,
-        observed_factor_count: usize,
-    },
-    InvalidReturnMarkHourOfWeekFactor {
-        factor_index: usize,
-        value: f64,
+    InvalidReturnClockExposureParameters {
+        source: Box<ReturnClockExposureParametersError>,
     },
     InvalidObservedPriceTickSize {
         value: f64,
-    },
-    InvalidExchangeTimezoneName {
-        timezone_name: String,
     },
     TickGridProjectionFailed {
         interval_index: usize,
@@ -165,6 +159,10 @@ pub enum SeededTickSimulationRunError {
     TradingTimeSamplingFailure {
         interval_index: usize,
         source: Box<janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError>,
+    },
+    EffectiveReturnClockBuildFailure {
+        interval_index: usize,
+        source: Box<EffectiveReturnClocksBuildError>,
     },
     InvalidReturnComponents {
         interval_index: usize,
@@ -254,27 +252,15 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "endogenous Hawkes branching must remain below 1.0, found spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
             ),
-            Self::ReturnMarkHourOfWeekFactorCountMismatch {
-                expected_factor_count,
-                observed_factor_count,
-            } => write!(
-                formatter,
-                "return_mark_hour_of_week_factors length must be {expected_factor_count}, found {observed_factor_count}"
-            ),
-            Self::InvalidReturnMarkHourOfWeekFactor {
-                factor_index,
-                value,
-            } => write!(
-                formatter,
-                "return_mark_hour_of_week_factors[{factor_index}] must be finite and strictly positive, found {value}"
-            ),
+            Self::InvalidReturnClockExposureParameters { source } => {
+                write!(
+                    formatter,
+                    "return_clock_exposure_parameters are invalid: {source}"
+                )
+            }
             Self::InvalidObservedPriceTickSize { value } => write!(
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
-            ),
-            Self::InvalidExchangeTimezoneName { timezone_name } => write!(
-                formatter,
-                "hourly_factor_contract.exchange_timezone_name must be a valid IANA timezone name, found `{timezone_name}`"
             ),
             Self::TickGridProjectionFailed {
                 interval_index,
@@ -408,6 +394,13 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "interval {interval_index} trading-time sampling failed: {source}"
             ),
+            Self::EffectiveReturnClockBuildFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} effective return-clock construction failed: {source}"
+            ),
             Self::InvalidReturnComponents {
                 interval_index,
                 source,
@@ -439,37 +432,18 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidMeanReversionBoundaryState { source } => Some(source.as_ref()),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source.as_ref()),
             Self::InvalidNewsProcessConfiguration { source } => Some(source.as_ref()),
+            Self::InvalidReturnClockExposureParameters { source } => Some(source.as_ref()),
             Self::NewsMarkSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
             Self::NewsMarketStateResolutionFailed { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
             Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::EffectiveReturnClockBuildFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
             Self::InvalidTransitionStep { source } => Some(source.as_ref()),
             Self::CalendarSessionBoundaryResolutionFailed { .. } => None,
             Self::InternalInvariantViolation { .. } => None,
             _ => None,
         }
-    }
-}
-
-pub(crate) fn seeded_tick_return_mark_validation_error(
-    source: ReturnMarkHourOfWeekFactorsError,
-) -> SeededTickSimulationRunError {
-    match source {
-        ReturnMarkHourOfWeekFactorsError::FactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        } => SeededTickSimulationRunError::ReturnMarkHourOfWeekFactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        },
-        ReturnMarkHourOfWeekFactorsError::InvalidFactor {
-            factor_index,
-            value,
-        } => SeededTickSimulationRunError::InvalidReturnMarkHourOfWeekFactor {
-            factor_index,
-            value,
-        },
     }
 }

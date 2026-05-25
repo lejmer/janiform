@@ -1,11 +1,14 @@
-use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Utc};
 use chrono_tz::Tz;
 use janiform_foundations::randomness::SimulationRandomnessStream;
 use janiform_foundations::time::{elapsed_utc_nanos_to_hours, utc_datetime_from_nanos};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
-use janiform_model_kernels::return_marks::validate_return_mark_hour_of_week_factors;
+use janiform_model_kernels::return_clock::{
+    IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
+    compute_effective_return_clocks,
+};
 
-use crate::error::{SeededTickSimulationRunError, seeded_tick_return_mark_validation_error};
+use crate::error::SeededTickSimulationRunError;
 use janiform_market_time::calendar::{CalendarDate, SessionTime, TradingWeekday};
 
 use super::market_state::SeededSimulationMarketStateResolver;
@@ -32,7 +35,7 @@ pub(crate) struct TransitionTradingTimeReturnInput<'a, R> {
     pub(crate) lambda_bar: f64,
     pub(crate) beta: f64,
     pub(crate) seasonality_factor: f64,
-    pub(crate) return_mark_scale_factor: f64,
+    pub(crate) return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub(crate) interval_open_market_segments: &'a [(i64, i64)],
     pub(crate) previous_timestamp_utc_nanos: i64,
     pub(crate) timestamp_utc_nanos: i64,
@@ -52,7 +55,7 @@ where
         lambda_bar,
         beta,
         seasonality_factor,
-        return_mark_scale_factor,
+        return_clock_exposure_parameters,
         interval_open_market_segments,
         previous_timestamp_utc_nanos,
         timestamp_utc_nanos,
@@ -66,14 +69,16 @@ where
         timestamp_utc_nanos,
         beta,
     );
-    let integrated_buy_intensity = integrate_side_intensity(
+
+    let integrated_buy_activity = integrate_side_activity(
         state,
         lambda_bar,
         seasonality_factor,
         open_market_elapsed_time_weights,
         true,
     );
-    let integrated_sell_intensity = integrate_side_intensity(
+
+    let integrated_sell_activity = integrate_side_activity(
         state,
         lambda_bar,
         seasonality_factor,
@@ -81,13 +86,46 @@ where
         false,
     );
 
-    validate_integrated_intensity("a_plus", integrated_buy_intensity, interval_index)?;
-    validate_integrated_intensity("a_minus", integrated_sell_intensity, interval_index)?;
+    validate_integrated_intensity(
+        "baseline_a_plus",
+        integrated_buy_activity.baseline_activity,
+        interval_index,
+    )?;
+
+    validate_integrated_intensity(
+        "endogenous_a_plus",
+        integrated_buy_activity.endogenous_activity,
+        interval_index,
+    )?;
+
+    validate_integrated_intensity(
+        "baseline_a_minus",
+        integrated_sell_activity.baseline_activity,
+        interval_index,
+    )?;
+
+    validate_integrated_intensity(
+        "endogenous_a_minus",
+        integrated_sell_activity.endogenous_activity,
+        interval_index,
+    )?;
+
+    let effective_return_clocks = compute_effective_return_clocks(
+        return_clock_exposure_parameters,
+        integrated_buy_activity,
+        integrated_sell_activity,
+    )
+    .map_err(
+        |source| SeededTickSimulationRunError::EffectiveReturnClockBuildFailure {
+            interval_index,
+            source: Box::new(source),
+        },
+    )?;
 
     let trading_time_contributions = driver_parameters
         .sample_trading_time_return_increment(
-            integrated_buy_intensity,
-            integrated_sell_intensity,
+            effective_return_clocks.buy_return_clock,
+            effective_return_clocks.sell_return_clock,
             &mut randomness_stream,
         )
         .map_err(
@@ -98,11 +136,9 @@ where
         )?;
 
     Ok(TradingTimeReturnComponents {
-        buy_side_return: return_mark_scale_factor * trading_time_contributions.buy_side_increment,
-        sell_side_return: -return_mark_scale_factor
-            * trading_time_contributions.sell_side_increment,
-        trading_time_return: return_mark_scale_factor
-            * trading_time_contributions.combined_increment,
+        buy_side_return: trading_time_contributions.buy_side_increment,
+        sell_side_return: -trading_time_contributions.sell_side_increment,
+        trading_time_return: trading_time_contributions.combined_increment,
     })
 }
 
@@ -125,6 +161,7 @@ fn integrate_open_market_elapsed_time_weights(
     for (open_timestamp_utc_nanos, close_timestamp_utc_nanos) in interval_open_market_segments {
         let overlap_start_utc_nanos = previous_timestamp_utc_nanos.max(*open_timestamp_utc_nanos);
         let overlap_end_utc_nanos = timestamp_utc_nanos.min(*close_timestamp_utc_nanos);
+
         if overlap_end_utc_nanos <= overlap_start_utc_nanos {
             continue;
         }
@@ -137,6 +174,7 @@ fn integrate_open_market_elapsed_time_weights(
         let overlap_open_hours = overlap_end_hours - overlap_start_hours;
 
         open_elapsed_hours += overlap_open_hours;
+
         open_decay_weight += if beta > 0.0 {
             ((-beta * overlap_start_hours).exp() - (-beta * overlap_end_hours).exp()) / beta
         } else {
@@ -164,29 +202,6 @@ pub(crate) fn integrate_open_market_elapsed_hours(
     .open_elapsed_hours
 }
 
-pub(crate) fn return_mark_scale_factor_for_timestamp(
-    return_mark_hour_of_week_factors: &[f64],
-    exchange_timezone: Tz,
-    timestamp_utc_nanos: i64,
-) -> Result<f64, SeededTickSimulationRunError> {
-    validate_return_mark_hour_of_week_factors(return_mark_hour_of_week_factors)
-        .map_err(seeded_tick_return_mark_validation_error)?;
-
-    let timestamp_utc = utc_datetime_from_nanos(timestamp_utc_nanos).ok_or(
-        SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
-            value: timestamp_utc_nanos,
-        },
-    )?;
-
-    let timestamp_local = timestamp_utc.with_timezone(&exchange_timezone);
-
-    let weekday_offset = timestamp_local.weekday().num_days_from_monday() as usize * 24;
-
-    let hour_of_week = weekday_offset + timestamp_local.hour() as usize;
-
-    Ok(return_mark_hour_of_week_factors[hour_of_week])
-}
-
 pub(crate) fn build_interval_open_market_segments(
     market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
     interval_start_utc_nanos: &[i64],
@@ -206,15 +221,15 @@ pub(crate) fn build_interval_open_market_segments(
         .collect()
 }
 
-fn integrate_side_intensity(
+fn integrate_side_activity(
     state: HawkesExcitationState,
     lambda_bar: f64,
     seasonality_factor: f64,
     open_market_elapsed_time_weights: OpenMarketElapsedTimeWeights,
     plus_side: bool,
-) -> f64 {
+) -> IntegratedSideActivityDecomposition {
     if open_market_elapsed_time_weights.open_elapsed_hours <= 0.0 {
-        return 0.0;
+        return IntegratedSideActivityDecomposition::new(0.0, 0.0);
     }
 
     let baseline = lambda_bar
@@ -227,7 +242,7 @@ fn integrate_side_intensity(
         state.target_minus_sum() * open_market_elapsed_time_weights.open_decay_weight
     };
 
-    (baseline + endogenous_component).max(0.0)
+    IntegratedSideActivityDecomposition::new(baseline.max(0.0), endogenous_component.max(0.0))
 }
 
 fn interval_open_market_segments_for_range(
@@ -295,6 +310,7 @@ fn interval_open_market_segments_for_range(
             month: current_date.month() as u8,
             day: current_date.day() as u8,
         };
+
         let local_weekday = TradingWeekday::from_chrono_weekday(current_date.weekday());
 
         for session_window in market_state_resolver
@@ -317,6 +333,7 @@ fn interval_open_market_segments_for_range(
 
             let overlap_start_utc_nanos = interval_start_utc_nanos.max(open_timestamp_utc_nanos);
             let overlap_end_utc_nanos = interval_end_utc_nanos.min(close_timestamp_utc_nanos);
+
             if overlap_end_utc_nanos > overlap_start_utc_nanos {
                 open_market_segments.push((overlap_start_utc_nanos, overlap_end_utc_nanos));
             }

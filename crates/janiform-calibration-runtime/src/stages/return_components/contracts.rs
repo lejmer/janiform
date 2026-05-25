@@ -15,8 +15,7 @@ use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
-    ReturnComponentsStageFittedParameters, ReturnMarkHourOfWeekScaleProfile,
-    TickGridObservationModel,
+    ReturnComponentsStageFittedParameters, TickGridObservationModel,
 };
 use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::news::{
@@ -25,9 +24,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use janiform_model_kernels::return_marks::{
-    ReturnMarkHourOfWeekFactorsError, validate_return_mark_hour_of_week_factors,
-};
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT,
@@ -644,7 +641,7 @@ pub struct ReturnComponentsStageCandidateGenerationInput {
     pub close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy,
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: SharedNewsMarkLawConfiguration,
-    pub return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights,
 }
@@ -694,51 +691,17 @@ impl ReturnComponentsStageCandidateGenerationInput {
             }
         })?;
 
-        validate_return_mark_hour_of_week_scale_profile(
-            &self.return_mark_hour_of_week_scale_profile,
-        )?;
+        self.return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                ReturnComponentsStageCandidateGenerationInputError::InvalidReturnClockExposureParameters {
+                    error_message: source.to_string(),
+                }
+            })?;
         validate_tick_grid_observation_model(&self.tick_grid_observation_model)?;
         self.objective_metric_weights.validate()?;
 
         Ok(())
-    }
-}
-
-fn validate_return_mark_hour_of_week_scale_profile(
-    profile: &ReturnMarkHourOfWeekScaleProfile,
-) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
-    validate_return_mark_hour_of_week_factors(profile.hour_of_week_factors.as_slice())
-        .map_err(return_components_return_mark_validation_error)?;
-
-    if profile.profile_resolution_hours != 1 {
-        return Err(
-            ReturnComponentsStageCandidateGenerationInputError::InvalidReturnMarkProfileResolution {
-                value: profile.profile_resolution_hours,
-            },
-        );
-    }
-
-    Ok(())
-}
-
-fn return_components_return_mark_validation_error(
-    source: ReturnMarkHourOfWeekFactorsError,
-) -> ReturnComponentsStageCandidateGenerationInputError {
-    match source {
-        ReturnMarkHourOfWeekFactorsError::FactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        } => ReturnComponentsStageCandidateGenerationInputError::ReturnMarkHourOfWeekFactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        },
-        ReturnMarkHourOfWeekFactorsError::InvalidFactor {
-            factor_index,
-            value,
-        } => ReturnComponentsStageCandidateGenerationInputError::InvalidReturnMarkHourOfWeekFactor {
-            factor_index,
-            value,
-        },
     }
 }
 
@@ -903,16 +866,8 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     InvalidSharedMarkLawTemplate {
         error_message: String,
     },
-    ReturnMarkHourOfWeekFactorCountMismatch {
-        expected_factor_count: usize,
-        observed_factor_count: usize,
-    },
-    InvalidReturnMarkHourOfWeekFactor {
-        factor_index: usize,
-        value: f64,
-    },
-    InvalidReturnMarkProfileResolution {
-        value: usize,
+    InvalidReturnClockExposureParameters {
+        error_message: String,
     },
     InvalidTickSize {
         value: f64,
@@ -1175,23 +1130,9 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
                 formatter,
                 "shared_mark_law_template is invalid for candidate generation: {error_message}"
             ),
-            Self::ReturnMarkHourOfWeekFactorCountMismatch {
-                expected_factor_count,
-                observed_factor_count,
-            } => write!(
+            Self::InvalidReturnClockExposureParameters { error_message } => write!(
                 formatter,
-                "return_mark_hour_of_week_scale_profile.hour_of_week_factors must contain {expected_factor_count} factors, found {observed_factor_count}"
-            ),
-            Self::InvalidReturnMarkHourOfWeekFactor {
-                factor_index,
-                value,
-            } => write!(
-                formatter,
-                "return_mark_hour_of_week_scale_profile.hour_of_week_factors[{factor_index}] must be finite and strictly positive, found {value}"
-            ),
-            Self::InvalidReturnMarkProfileResolution { value } => write!(
-                formatter,
-                "return_mark_hour_of_week_scale_profile.profile_resolution_hours must be 1, found {value}"
+                "return_clock_exposure_parameters are invalid for candidate generation: {error_message}"
             ),
             Self::InvalidTickSize { value } => write!(
                 formatter,
@@ -2040,7 +1981,7 @@ pub struct ReturnComponentsStageCandidateInput {
     pub objective_terms: Vec<ReturnComponentsStageObjectiveTermInput>,
     pub candidate_families: ReturnComponentsStageCandidateFamilies,
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
-    pub return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
 }
 

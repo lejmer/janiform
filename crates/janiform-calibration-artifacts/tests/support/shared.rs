@@ -111,13 +111,12 @@ pub(crate) use janiform_calibration_artifacts::{
     MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
     MeanReversionStageParameterPayload, ReturnComponentsStageFittedParameters,
     ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
-    ReturnMarkHourOfWeekScaleProfile, SeasonalityStageNormalizationMetadata,
-    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    build_calibration_stage_parameter_artifact, calibration_artifact_manifest_path,
-    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
-    calibration_committed_artifact_run_directory,
+    SeasonalityStageNormalizationMetadata, SeasonalityStageParameterArtifactInput,
+    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
+    TickGridObservationModel, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
+    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
+    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -156,6 +155,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 pub(crate) use serde_json::json;
 
 pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
@@ -783,12 +783,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
             normalization_policy: "exposure_weighted_mean_one_over_source_window.v1"
                 .to_string(),
         },
-        return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
-            hour_of_week_factors: vec![1.0; 168],
-            profile_resolution_hours: 1,
-            fit_policy: "test".to_string(),
-            normalization_policy: "test".to_string(),
-        },
+        return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
         tick_grid_observation_model: TickGridObservationModel {
             tick_size: None,
             tick_size_source: "test".to_string(),

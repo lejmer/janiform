@@ -13,6 +13,7 @@ from ....pricing import (
     NigSharedPlusShiftConfiguration,
     VanillaOptionPricingKernelParameters,
 )
+from ....return_clock import ReturnClockExposureParameters
 from ....simulation.coarse import NewsProcessConfiguration
 from ....simulation.shared import HawkesKernelParameters
 from ...errors import calibration_error
@@ -124,14 +125,14 @@ def prepare_model_runtime_factors_for_model(
             field_path="return_components.fitted_parameters.news_process_configuration.shared_mark_law.gamma_severity_marks",
         ),
         news_process_configuration=news_process_configuration,
-        return_mark_hour_of_week_factors=require_payload_numeric_sequence(
+        return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
             require_payload_mapping(
                 return_components_fitted_parameters,
-                "return_mark_hour_of_week_scale_profile",
-                "return_components.fitted_parameters.return_mark_hour_of_week_scale_profile",
+                "return_clock_exposure_parameters",
+                "return_components.fitted_parameters.return_clock_exposure_parameters",
             ),
-            "hour_of_week_factors",
-            "return_components.fitted_parameters.return_mark_hour_of_week_scale_profile.hour_of_week_factors",
+            field_path="return_components.fitted_parameters.return_clock_exposure_parameters",
+            error_factory=calibration_error,
         ),
     )
 
@@ -143,7 +144,6 @@ def require_runtime_ready_model(model: JaniformModel) -> None:
         )
 
     hawkes_fitted_parameters_payload(model)
-
     return_components_fitted_parameters_payload(model)
 
 

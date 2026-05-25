@@ -445,7 +445,7 @@ fn build_record(
     ) = record;
 
     let sufficient_statistics =
-        SufficientStatisticsIntervalStatistics::try_new(a_plus, a_minus, n_plus, n_minus)
+        SufficientStatisticsIntervalStatistics::try_new(a_plus, 0.0, a_minus, 0.0, n_plus, n_minus)
             .expect("interval statistics should validate");
     let return_components = SufficientStatisticsReturnComponents::try_new(
         buy_side_return,

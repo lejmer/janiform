@@ -1,7 +1,7 @@
 use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-    ExponentialAffineTransformInputError, ExponentialAffineTransformNewsIntensityInput,
-    ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformInputError,
+    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
 };
 use janiform_engine_pricing::internal::{
     FourierInversionContour, FourierInversionEngineSettings, FourierInversionEngineSettingsError,
@@ -160,17 +160,19 @@ pub fn build_oracle_transform_input(
 
     ExponentialAffineTransformInput::try_new(
         equation_specification,
-        ComplexScalar::new(
-            interpolate_range(solver_probes.u_probe_min, solver_probes.u_probe_max, noise),
-            0.0,
-        ),
-        ComplexScalar::new(
-            interpolate_range(
-                solver_probes.u_probe_min,
-                solver_probes.u_probe_max,
-                complementary_noise,
+        ExponentialAffineTransformActivityLoadings::total_activity(
+            ComplexScalar::new(
+                interpolate_range(solver_probes.u_probe_min, solver_probes.u_probe_max, noise),
+                0.0,
             ),
-            0.0,
+            ComplexScalar::new(
+                interpolate_range(
+                    solver_probes.u_probe_min,
+                    solver_probes.u_probe_max,
+                    complementary_noise,
+                ),
+                0.0,
+            ),
         ),
         ComplexScalar::new(
             interpolate_range(solver_probes.z_probe_min, solver_probes.z_probe_max, noise),

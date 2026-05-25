@@ -83,7 +83,6 @@ pub(super) fn emit_batched_restart_progress(
             current_restart_id: Some(current_state.restart_id.clone()),
             current_work_item_status: Some(restart_probe_state_status(current_state).to_string()),
             active_restart_count: Some(active_restart_count(states)),
-            current_parameter_block: None,
             current_evaluation_count: Some(current_state.evaluation_count),
             total_evaluation_budget: Some(current_state.max_evaluation_count),
             evaluation_progress_percent: Some(
@@ -96,7 +95,7 @@ pub(super) fn emit_batched_restart_progress(
             ),
             cumulative_local_evaluation_count: Some(completed_evaluation_count),
             current_global_loss: current_state.best_objective,
-            current_block_best_global_loss: current_state.best_objective,
+            current_restart_best_global_loss: current_state.best_objective,
             best_restart_id: best.as_ref().map(|(restart_id, _)| restart_id.clone()),
             best_global_loss: best.map(|(_, objective)| objective),
             exact_closed_form_buy_count: current_state
@@ -178,13 +177,12 @@ pub(super) fn emit_restart_finalization_progress(
             active_restart_count: Some(
                 total_restart_count.saturating_sub(completed_finalization_count),
             ),
-            current_parameter_block: None,
             current_evaluation_count: Some(outcome.local_evaluation_count),
             total_evaluation_budget: Some(completed_evaluation_count),
             evaluation_progress_percent: Some(100),
             cumulative_local_evaluation_count: Some(completed_search_evaluation_count),
             current_global_loss: Some(outcome.final_evaluation.breakdown.global_loss),
-            current_block_best_global_loss: Some(outcome.local_evaluation.breakdown.global_loss),
+            current_restart_best_global_loss: Some(outcome.local_evaluation.breakdown.global_loss),
             best_restart_id: best.as_ref().map(|(restart_id, _)| restart_id.clone()),
             best_global_loss: best.map(|(_, objective)| objective),
             exact_closed_form_buy_count: Some(
@@ -235,7 +233,6 @@ pub(super) fn emit_restart_finalization_started(
             current_restart_id: Some(state.restart_id.clone()),
             current_work_item_status: Some(RESTART_WORK_ITEM_STATUS_RUNNING.to_string()),
             active_restart_count: Some(total_restart_count),
-            current_parameter_block: None,
             current_evaluation_count: Some(state.evaluation_count),
             total_evaluation_budget: Some(state.max_evaluation_count),
             evaluation_progress_percent: Some(
@@ -248,7 +245,7 @@ pub(super) fn emit_restart_finalization_started(
             ),
             cumulative_local_evaluation_count: Some(completed_search_evaluation_count),
             current_global_loss: state.best_objective,
-            current_block_best_global_loss: state.best_objective,
+            current_restart_best_global_loss: state.best_objective,
             exact_closed_form_buy_count: state
                 .exact_likelihood_evaluator_counts
                 .map(|counts| counts.closed_form_buy),

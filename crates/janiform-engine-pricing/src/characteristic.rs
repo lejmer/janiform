@@ -2,9 +2,10 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-    ExponentialAffineTransformInputError, ExponentialAffineTransformNewsIntensityInput,
-    ExponentialAffineTransformOutput, ExponentialAffineTransformOutputError,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformInputError,
+    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
+    ExponentialAffineTransformOutputError,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::{complex_exponential, complex_multiply};
@@ -567,19 +568,6 @@ pub(crate) fn resolve_local_tilt_search_domain(
     let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
 
     local_tilt_search_domain_from_admissible_domain(admissible_domain)
-}
-
-pub(crate) fn resolve_scaled_local_tilt_search_domain(
-    driver_parameters: NigBuySellDriverParameters,
-    return_mark_scale: f64,
-) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
-    let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
-    let scaled_domain = NigEsscherTiltDomain::new(
-        admissible_domain.lower_theta_exclusive / return_mark_scale,
-        admissible_domain.upper_theta_exclusive / return_mark_scale,
-    );
-
-    local_tilt_search_domain_from_admissible_domain(scaled_domain)
 }
 
 fn local_tilt_search_domain_from_admissible_domain(
@@ -1167,8 +1155,7 @@ pub fn build_pricing_transform_input(
 
     ExponentialAffineTransformInput::try_new(
         build_pricing_equation_specification(pricing_request),
-        u_plus,
-        u_minus,
+        ExponentialAffineTransformActivityLoadings::total_activity(u_plus, u_minus),
         z_plus,
         z_minus,
         seasonality_factor,

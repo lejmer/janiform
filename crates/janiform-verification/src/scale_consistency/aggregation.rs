@@ -305,24 +305,35 @@ fn aggregate_fine_records_to_coarse_interval(
     coarse_interval_index: usize,
     fine_records: &[SufficientStatisticsPathRecord],
 ) -> Result<SufficientStatisticsPathRecord, SufficientStatisticsPathRecordError> {
-    let aggregated_statistics = SufficientStatisticsIntervalStatistics {
-        a_plus: fine_records
+    let aggregated_statistics = SufficientStatisticsIntervalStatistics::try_new(
+        fine_records
             .iter()
-            .map(|record| record.sufficient_statistics.a_plus)
+            .map(|record| record.sufficient_statistics.baseline_a_plus)
             .sum(),
-        a_minus: fine_records
+        fine_records
             .iter()
-            .map(|record| record.sufficient_statistics.a_minus)
+            .map(|record| record.sufficient_statistics.endogenous_a_plus)
             .sum(),
-        n_plus: fine_records
+        fine_records
+            .iter()
+            .map(|record| record.sufficient_statistics.baseline_a_minus)
+            .sum(),
+        fine_records
+            .iter()
+            .map(|record| record.sufficient_statistics.endogenous_a_minus)
+            .sum(),
+        fine_records
             .iter()
             .map(|record| record.sufficient_statistics.n_plus)
             .sum(),
-        n_minus: fine_records
+        fine_records
             .iter()
             .map(|record| record.sufficient_statistics.n_minus)
             .sum(),
-    };
+    )
+    .map_err(
+        |source| SufficientStatisticsPathRecordError::InvalidSufficientStatistics { source },
+    )?;
 
     let aggregated_return_components = SufficientStatisticsReturnComponents {
         buy_side_return: fine_records

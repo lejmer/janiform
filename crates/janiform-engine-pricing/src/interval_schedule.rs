@@ -2,15 +2,10 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use chrono::{DateTime, Datelike, FixedOffset, Timelike};
 use janiform_foundations::time::{
     NANOS_PER_HOUR, ceil_to_hour_utc_nanos, duration_nanos_to_hours, floor_to_hour_utc_nanos,
 };
 use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
-use janiform_model_kernels::return_marks::{
-    ReturnMarkHourOfWeekFactorsError,
-    validate_return_mark_hour_of_week_factors as validate_return_mark_factor_profile,
-};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
@@ -24,17 +19,17 @@ use crate::thread_pool::{
 const AUTO_ACTIVITY_COMPRESSED_POLICY_ID: &str = "auto_activity_compressed.v1";
 const AUTO_ACTIVITY_COMPRESSED_DERIVATION_POLICY: &str = "expiry_preserving_first_open_day_hourly_then_two_hour_open_compression_from_hourly_factor_coverage.v1";
 const AUTO_ACTIVITY_COMPRESSED_FACTOR_ASSIGNMENT_POLICY: &str =
-    "overlap_weighted_resampling_from_hourly_source_buckets_and_local_return_mark_profile.v1";
+    "overlap_weighted_resampling_from_hourly_source_buckets.v1";
 const AUTO_EXACT_SPARSE_POLICY_ID: &str = "auto_exact_sparse.v1";
 const AUTO_EXACT_SPARSE_DERIVATION_POLICY: &str =
     "valuation_time_and_unique_expiries_union_utc_hour_boundaries.v1";
 const AUTO_EXACT_SPARSE_FACTOR_ASSIGNMENT_POLICY: &str =
-    "assign_containing_utc_hour_bucket_and_local_return_mark_profile_without_overlap_weighting.v1";
+    "assign_containing_utc_hour_bucket_without_overlap_weighting.v1";
 const EXPLICIT_INTERVAL_ENDPOINT_POLICY_ID: &str = "explicit_interval_end_timestamps_utc.v1";
 const EXPLICIT_INTERVAL_ENDPOINT_DERIVATION_POLICY: &str =
     "explicit_user_supplied_interval_endpoints.v1";
 const EXPLICIT_INTERVAL_ENDPOINT_FACTOR_ASSIGNMENT_POLICY: &str =
-    "overlap_weighted_resampling_from_hourly_source_buckets_and_local_return_mark_profile.v1";
+    "overlap_weighted_resampling_from_hourly_source_buckets.v1";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "policy", rename_all = "snake_case")]
@@ -233,24 +228,15 @@ pub fn derive_activity_compressed_pricing_interval_schedule(
 pub fn materialize_schedule_interval_factors(
     schedule: &PricingIntervalSchedule,
     hourly_factor_contract: &HourlyFactorContractOutput,
-    return_mark_hour_of_week_factors: &[f64],
 ) -> Result<Vec<VanillaOptionPricingIntervalFactors>, PricingIntervalScheduleError> {
-    materialize_schedule_interval_factors_with_cpu_count(
-        schedule,
-        hourly_factor_contract,
-        return_mark_hour_of_week_factors,
-        None,
-    )
+    materialize_schedule_interval_factors_with_cpu_count(schedule, hourly_factor_contract, None)
 }
 
 pub fn materialize_schedule_interval_factors_with_cpu_count(
     schedule: &PricingIntervalSchedule,
     hourly_factor_contract: &HourlyFactorContractOutput,
-    return_mark_hour_of_week_factors: &[f64],
     cpu_count: Option<usize>,
 ) -> Result<Vec<VanillaOptionPricingIntervalFactors>, PricingIntervalScheduleError> {
-    validate_return_mark_hour_of_week_factors(return_mark_hour_of_week_factors)?;
-
     if hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR {
         return Err(
             PricingIntervalScheduleError::UnexpectedHourlyContractIntervalDuration {
@@ -280,19 +266,6 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
             },
         );
     }
-    if hourly_factor_contract.interval_start_utc_nanos.len()
-        != hourly_factor_contract.interval_start_exchange_local.len()
-    {
-        return Err(
-            PricingIntervalScheduleError::HourlyFactorContractExchangeLocalShapeMismatch {
-                interval_count: hourly_factor_contract.interval_start_utc_nanos.len(),
-                exchange_local_start_count: hourly_factor_contract
-                    .interval_start_exchange_local
-                    .len(),
-            },
-        );
-    }
-
     let first_contract_start_utc_nanos = hourly_factor_contract.interval_start_utc_nanos[0];
     let last_contract_end_utc_nanos = hourly_factor_contract.interval_end_utc_nanos
         [hourly_factor_contract.interval_end_utc_nanos.len() - 1];
@@ -348,7 +321,6 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
 
                 build_pricing_interval_factors_from_hour_index(
                     hourly_factor_contract,
-                    return_mark_hour_of_week_factors,
                     hour_bucket_index,
                 )
             })
@@ -380,7 +352,6 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
 
                             build_resampled_pricing_interval_factors(
                                 hourly_factor_contract,
-                                return_mark_hour_of_week_factors,
                                 interval_start_utc_nanos,
                                 interval_end_utc_nanos,
                             )
@@ -405,7 +376,6 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
 
                         build_resampled_pricing_interval_factors(
                             hourly_factor_contract,
-                            return_mark_hour_of_week_factors,
                             interval_start_utc_nanos,
                             interval_end_utc_nanos,
                         )
@@ -742,25 +712,18 @@ fn min_defined_boundary(
 
 fn build_pricing_interval_factors_from_hour_index(
     hourly_factor_contract: &HourlyFactorContractOutput,
-    return_mark_hour_of_week_factors: &[f64],
     hour_bucket_index: usize,
 ) -> Result<VanillaOptionPricingIntervalFactors, PricingIntervalScheduleError> {
     VanillaOptionPricingIntervalFactors::try_new(
         hourly_factor_contract.s_h[hour_bucket_index],
         hourly_factor_contract.known_component_nu_h[hour_bucket_index],
         hourly_factor_contract.surprise_component_nu_h[hour_bucket_index],
-        return_mark_scale_for_contract_hour(
-            hourly_factor_contract,
-            return_mark_hour_of_week_factors,
-            hour_bucket_index,
-        )?,
     )
     .map_err(|source| PricingIntervalScheduleError::InvalidIntervalFactors { source })
 }
 
 fn build_resampled_pricing_interval_factors(
     hourly_factor_contract: &HourlyFactorContractOutput,
-    return_mark_hour_of_week_factors: &[f64],
     interval_start_utc_nanos: i64,
     interval_end_utc_nanos: i64,
 ) -> Result<VanillaOptionPricingIntervalFactors, PricingIntervalScheduleError> {
@@ -782,7 +745,6 @@ fn build_resampled_pricing_interval_factors(
     let mut seasonality_factor = 0.0;
     let mut known_news_factor = 0.0;
     let mut surprise_news_factor = 0.0;
-    let mut return_mark_scale_factor = 0.0;
 
     for hour_index in first_hour_index..=last_hour_index {
         let overlap_start_utc_nanos = interval_start_utc_nanos
@@ -801,87 +763,14 @@ fn build_resampled_pricing_interval_factors(
             hourly_factor_contract.known_component_nu_h[hour_index] * overlap_weight;
         surprise_news_factor +=
             hourly_factor_contract.surprise_component_nu_h[hour_index] * overlap_weight;
-        return_mark_scale_factor += return_mark_scale_for_contract_hour(
-            hourly_factor_contract,
-            return_mark_hour_of_week_factors,
-            hour_index,
-        )? * overlap_weight;
     }
 
     VanillaOptionPricingIntervalFactors::try_new(
         seasonality_factor,
         known_news_factor,
         surprise_news_factor,
-        return_mark_scale_factor,
     )
     .map_err(|source| PricingIntervalScheduleError::InvalidIntervalFactors { source })
-}
-
-fn validate_return_mark_hour_of_week_factors(
-    return_mark_hour_of_week_factors: &[f64],
-) -> Result<(), PricingIntervalScheduleError> {
-    validate_return_mark_factor_profile(return_mark_hour_of_week_factors)
-        .map_err(pricing_interval_return_mark_error)
-}
-
-fn pricing_interval_return_mark_error(
-    source: ReturnMarkHourOfWeekFactorsError,
-) -> PricingIntervalScheduleError {
-    match source {
-        ReturnMarkHourOfWeekFactorsError::FactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        } => PricingIntervalScheduleError::ReturnMarkHourOfWeekFactorCountMismatch {
-            expected_factor_count,
-            observed_factor_count,
-        },
-        ReturnMarkHourOfWeekFactorsError::InvalidFactor {
-            factor_index,
-            value,
-        } => PricingIntervalScheduleError::InvalidReturnMarkHourOfWeekFactor {
-            factor_index,
-            value,
-        },
-    }
-}
-
-fn return_mark_scale_for_contract_hour(
-    hourly_factor_contract: &HourlyFactorContractOutput,
-    return_mark_hour_of_week_factors: &[f64],
-    hour_bucket_index: usize,
-) -> Result<f64, PricingIntervalScheduleError> {
-    let local_start = hourly_factor_contract
-        .interval_start_exchange_local
-        .get(hour_bucket_index)
-        .ok_or(
-            PricingIntervalScheduleError::HourlyFactorContractExchangeLocalShapeMismatch {
-                interval_count: hourly_factor_contract.interval_start_utc_nanos.len(),
-                exchange_local_start_count: hourly_factor_contract
-                    .interval_start_exchange_local
-                    .len(),
-            },
-        )?;
-
-    let hour_of_week = exchange_local_hour_of_week(local_start)?;
-
-    Ok(return_mark_hour_of_week_factors[hour_of_week])
-}
-
-fn exchange_local_hour_of_week(
-    exchange_local_timestamp: &str,
-) -> Result<usize, PricingIntervalScheduleError> {
-    let parsed_timestamp = DateTime::<FixedOffset>::parse_from_rfc3339(exchange_local_timestamp)
-        .map_err(
-            |source| PricingIntervalScheduleError::InvalidExchangeLocalTimestamp {
-                value: exchange_local_timestamp.to_string(),
-                message: source.to_string(),
-            },
-        )?;
-
-    let weekday_index = parsed_timestamp.weekday().num_days_from_monday() as usize;
-    let hour_index = parsed_timestamp.hour() as usize;
-
-    Ok(weekday_index * 24 + hour_index)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -921,22 +810,6 @@ pub enum PricingIntervalScheduleError {
         seasonality_factor_count: usize,
         known_news_factor_count: usize,
         surprise_news_factor_count: usize,
-    },
-    HourlyFactorContractExchangeLocalShapeMismatch {
-        interval_count: usize,
-        exchange_local_start_count: usize,
-    },
-    ReturnMarkHourOfWeekFactorCountMismatch {
-        expected_factor_count: usize,
-        observed_factor_count: usize,
-    },
-    InvalidReturnMarkHourOfWeekFactor {
-        factor_index: usize,
-        value: f64,
-    },
-    InvalidExchangeLocalTimestamp {
-        value: String,
-        message: String,
     },
     ScheduleStartsBeforeHourlyCoverage {
         schedule_start_utc_nanos: i64,
@@ -1035,31 +908,6 @@ impl Display for PricingIntervalScheduleError {
                 formatter,
                 "hourly factor contract arrays must have identical lengths, found intervals={interval_count} seasonality={seasonality_factor_count} known_news={known_news_factor_count} surprise_news={surprise_news_factor_count}"
             ),
-            Self::HourlyFactorContractExchangeLocalShapeMismatch {
-                interval_count,
-                exchange_local_start_count,
-            } => write!(
-                formatter,
-                "hourly factor contract interval_start_exchange_local length must match interval count {interval_count}, found {exchange_local_start_count}"
-            ),
-            Self::ReturnMarkHourOfWeekFactorCountMismatch {
-                expected_factor_count,
-                observed_factor_count,
-            } => write!(
-                formatter,
-                "return_mark_hour_of_week_factors length must be {expected_factor_count}, found {observed_factor_count}"
-            ),
-            Self::InvalidReturnMarkHourOfWeekFactor {
-                factor_index,
-                value,
-            } => write!(
-                formatter,
-                "return_mark_hour_of_week_factors[{factor_index}] must be finite and strictly positive, found {value}"
-            ),
-            Self::InvalidExchangeLocalTimestamp { value, message } => write!(
-                formatter,
-                "hourly factor contract interval_start_exchange_local value `{value}` must be an RFC3339 timestamp: {message}"
-            ),
             Self::ScheduleStartsBeforeHourlyCoverage {
                 schedule_start_utc_nanos,
                 hourly_coverage_start_utc_nanos,
@@ -1127,7 +975,6 @@ mod tests {
         HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
         HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
     };
-    use janiform_model_kernels::return_marks::RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT;
 
     use super::{
         PricingIntervalSchedule, PricingIntervalScheduleError, PricingIntervalSchedulePolicy,
@@ -1249,15 +1096,6 @@ mod tests {
         }
     }
 
-    fn return_mark_hour_of_week_factors() -> Vec<f64> {
-        let mut factors = vec![1.0; RETURN_MARK_HOUR_OF_WEEK_FACTOR_COUNT];
-        factors[14] = 1.0;
-        factors[15] = 2.0;
-        factors[16] = 3.0;
-        factors[17] = 4.0;
-        factors
-    }
-
     fn exchange_local_labels(timestamps_utc_nanos: &[i64]) -> Vec<String> {
         timestamps_utc_nanos
             .iter()
@@ -1326,22 +1164,17 @@ mod tests {
         )
         .expect("automatic schedule should resolve");
 
-        let interval_factors = materialize_schedule_interval_factors(
-            &derived.schedule,
-            &hourly_factor_contract,
-            return_mark_hour_of_week_factors().as_slice(),
-        )
-        .expect("automatic schedule factors should materialize");
+        let interval_factors =
+            materialize_schedule_interval_factors(&derived.schedule, &hourly_factor_contract)
+                .expect("automatic schedule factors should materialize");
 
         assert_eq!(interval_factors.len(), 2);
         assert_eq!(interval_factors[0].s_h, 1.0);
         assert_eq!(interval_factors[0].nu_h_known, 10.0);
         assert_eq!(interval_factors[0].nu_h_surprise, 100.0);
-        assert_eq!(interval_factors[0].return_mark_scale, 1.0);
         assert_eq!(interval_factors[1].s_h, 2.0);
         assert_eq!(interval_factors[1].nu_h_known, 20.0);
         assert_eq!(interval_factors[1].nu_h_surprise, 200.0);
-        assert_eq!(interval_factors[1].return_mark_scale, 2.0);
     }
 
     #[test]
@@ -1360,18 +1193,14 @@ mod tests {
         )
         .expect("explicit schedule should validate");
 
-        let interval_factors = materialize_schedule_interval_factors(
-            &schedule,
-            &hourly_factor_contract,
-            return_mark_hour_of_week_factors().as_slice(),
-        )
-        .expect("explicit schedule factors should materialize");
+        let interval_factors =
+            materialize_schedule_interval_factors(&schedule, &hourly_factor_contract)
+                .expect("explicit schedule factors should materialize");
 
         assert_eq!(interval_factors.len(), 1);
         assert_eq!(interval_factors[0].s_h, 2.0);
         assert_eq!(interval_factors[0].nu_h_known, 20.0);
         assert_eq!(interval_factors[0].nu_h_surprise, 200.0);
-        assert_eq!(interval_factors[0].return_mark_scale, 2.0);
     }
 
     #[test]

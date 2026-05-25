@@ -27,7 +27,6 @@ pub(super) struct VanillaOptionPricingExecutionInputPayload {
     pub(super) request: VanillaOptionPricingRequest,
     pub(super) runtime_interval_schedule: PricingIntervalSchedule,
     pub(super) hourly_factor_contract: PricingHourlyFactorContractPayload,
-    pub(super) return_mark_hour_of_week_factors: Vec<f64>,
     #[serde(default)]
     pub(super) optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
 }
@@ -41,7 +40,6 @@ struct VanillaOptionGridBatchPricingExecutionInputPayload {
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
     hourly_factor_contract: PricingHourlyFactorContractPayload,
-    return_mark_hour_of_week_factors: Vec<f64>,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default)]
@@ -58,7 +56,6 @@ struct VanillaOptionSurfacePricingExecutionInputPayload {
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
     hourly_factor_contract: PricingHourlyFactorContractPayload,
-    return_mark_hour_of_week_factors: Vec<f64>,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default)]
@@ -125,7 +122,6 @@ pub(super) fn vanilla_option_pricing_execution_input_from_py(
     let interval_factors = materialize_schedule_interval_factors(
         &execution_input.runtime_interval_schedule,
         &hourly_factor_contract,
-        execution_input.return_mark_hour_of_week_factors.as_slice(),
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
@@ -154,7 +150,6 @@ pub(super) fn grid_batch_execution_input_from_py(
     let interval_factors = materialize_schedule_interval_factors(
         &execution_input.runtime_interval_schedule,
         &hourly_factor_contract,
-        execution_input.return_mark_hour_of_week_factors.as_slice(),
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
@@ -189,7 +184,6 @@ pub(super) fn surface_execution_input_from_py(
     let interval_factors = materialize_schedule_interval_factors(
         &execution_input.runtime_interval_schedule,
         &hourly_factor_contract,
-        execution_input.return_mark_hour_of_week_factors.as_slice(),
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 

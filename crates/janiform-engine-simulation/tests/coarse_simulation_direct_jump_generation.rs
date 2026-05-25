@@ -438,7 +438,7 @@ fn build_model_inputs_with_components(
     CoarseSimulationModelInputs::try_new(
         sufficient_statistics_model_inputs,
         news_process_configuration,
-        vec![1.0; 24 * 7],
+        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         None,
         build_calendar_registry_artifact(),
         "XNYS",

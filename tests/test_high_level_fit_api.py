@@ -110,7 +110,7 @@ from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
     build_endogenous_mean_reversion_fitted_parameters_payload,
     build_nominal_tick_grid_observation_model_payload,
-    build_unit_return_mark_hour_of_week_scale_profile_payload,
+    build_neutral_return_clock_exposure_parameters_payload,
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
@@ -5122,8 +5122,8 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
-                        "return_mark_hour_of_week_scale_profile": (
-                            build_unit_return_mark_hour_of_week_scale_profile_payload()
+                        "return_clock_exposure_parameters": (
+                            build_neutral_return_clock_exposure_parameters_payload()
                         ),
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()
@@ -5297,8 +5297,8 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                     "exposure_weighted_mean_one_over_source_window.v1"
                                 ),
                             },
-                            "return_mark_hour_of_week_scale_profile": (
-                                build_unit_return_mark_hour_of_week_scale_profile_payload()
+                            "return_clock_exposure_parameters": (
+                                build_neutral_return_clock_exposure_parameters_payload()
                             ),
                             "tick_grid_observation_model": (
                                 build_nominal_tick_grid_observation_model_payload()
@@ -5394,8 +5394,8 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
-                        "return_mark_hour_of_week_scale_profile": (
-                            build_unit_return_mark_hour_of_week_scale_profile_payload()
+                        "return_clock_exposure_parameters": (
+                            build_neutral_return_clock_exposure_parameters_payload()
                         ),
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()

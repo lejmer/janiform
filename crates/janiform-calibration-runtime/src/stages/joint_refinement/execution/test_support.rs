@@ -1,7 +1,7 @@
 use janiform_calibration_artifacts::{
     HawkesStageFittedParameters, JointRefinementStageFittedParameters,
-    ReturnComponentsStageFittedParameters, ReturnMarkHourOfWeekScaleProfile,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
+    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
+    TickGridObservationModel,
 };
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
@@ -15,6 +15,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParameters {
     let hawkes_fitted_parameters = HawkesStageFittedParameters {
@@ -83,12 +84,7 @@ pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParame
             fit_policy: "test".to_string(),
             normalization_policy: "test".to_string(),
         },
-        return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
-            hour_of_week_factors: vec![1.0; 24 * 7],
-            profile_resolution_hours: 1,
-            fit_policy: "test".to_string(),
-            normalization_policy: "test".to_string(),
-        },
+        return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
         tick_grid_observation_model: TickGridObservationModel {
             tick_size: None,
             tick_size_source: "test".to_string(),

@@ -5032,11 +5032,10 @@
             "request",
             "runtime_interval_schedule",
             "hourly_factor_contract",
-            "return_mark_hour_of_week_factors",
             "optional_output_selection"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', return_mark_hour_of_week_factors: 'tuple[float, ...]', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingFailureDiagnostic": {
           "field_names": [
@@ -5143,10 +5142,11 @@
             "hawkes_kernel_parameters",
             "news_process_configuration",
             "nig_shared_plus_shift_configuration",
+            "return_clock_exposure_parameters",
             "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -5246,12 +5246,11 @@
             "request",
             "runtime_interval_schedule",
             "hourly_factor_contract",
-            "return_mark_hour_of_week_factors",
             "optional_output_selection",
             "cpu_count"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', return_mark_hour_of_week_factors: 'tuple[float, ...]', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
         },
         "VanillaOptionSurfacePricingNodeTable": {
           "field_names": [
@@ -5638,11 +5637,10 @@
             "request",
             "runtime_interval_schedule",
             "hourly_factor_contract",
-            "return_mark_hour_of_week_factors",
             "optional_output_selection"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', return_mark_hour_of_week_factors: 'tuple[float, ...]', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingFailureDiagnostic": {
           "field_names": [
@@ -5741,10 +5739,11 @@
             "hawkes_kernel_parameters",
             "news_process_configuration",
             "nig_shared_plus_shift_configuration",
+            "return_clock_exposure_parameters",
             "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -5832,12 +5831,11 @@
             "request",
             "runtime_interval_schedule",
             "hourly_factor_contract",
-            "return_mark_hour_of_week_factors",
             "optional_output_selection",
             "cpu_count"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', return_mark_hour_of_week_factors: 'tuple[float, ...]', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
         },
         "VanillaOptionSurfacePricingNodeTable": {
           "field_names": [
@@ -6438,6 +6436,33 @@
         }
       }
     },
+    "janiform.return_clock": {
+      "exports": [
+        "ReturnClockExposureParameters",
+        "validate_return_clock_exposure_parameters",
+        "validate_return_clock_exposure_scale"
+      ],
+      "module_name": "janiform.return_clock",
+      "schema_identifiers": [],
+      "symbols": {
+        "ReturnClockExposureParameters": {
+          "field_names": [
+            "buy_excitation_return_clock_scale",
+            "sell_excitation_return_clock_scale"
+          ],
+          "kind": "contract_model",
+          "signature": "(buy_excitation_return_clock_scale: 'float', sell_excitation_return_clock_scale: 'float') -> 'None'"
+        },
+        "validate_return_clock_exposure_parameters": {
+          "kind": "function",
+          "signature": "(return_clock_exposure_parameters: 'ReturnClockExposureParameters', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'None'"
+        },
+        "validate_return_clock_exposure_scale": {
+          "kind": "function",
+          "signature": "(value: 'float', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'None'"
+        }
+      }
+    },
     "janiform.seasonality": {
       "exports": [
         "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
@@ -7000,13 +7025,13 @@
           "field_names": [
             "sufficient_statistics_model_inputs",
             "news_process_configuration",
-            "return_mark_hour_of_week_factors",
+            "return_clock_exposure_parameters",
             "observed_price_tick_size",
             "calendar_registry_artifact",
             "exchange_code"
           ],
           "kind": "contract_model",
-          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
+          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -7184,7 +7209,7 @@
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state",
             "hourly_factor_summary",
-            "return_mark_hour_of_week_factors",
+            "return_clock_exposure_parameters",
             "observed_price_tick_size",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -7192,7 +7217,7 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -7386,13 +7411,13 @@
           "field_names": [
             "sufficient_statistics_model_inputs",
             "news_process_configuration",
-            "return_mark_hour_of_week_factors",
+            "return_clock_exposure_parameters",
             "observed_price_tick_size",
             "calendar_registry_artifact",
             "exchange_code"
           ],
           "kind": "contract_model",
-          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
+          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -7922,7 +7947,7 @@
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state",
             "hourly_factor_summary",
-            "return_mark_hour_of_week_factors",
+            "return_clock_exposure_parameters",
             "observed_price_tick_size",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -7930,7 +7955,7 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_mark_hour_of_week_factors: 'tuple[float, ...]', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -8819,11 +8844,15 @@
           "field_names": [
             "a_plus",
             "a_minus",
+            "baseline_a_plus",
+            "endogenous_a_plus",
+            "baseline_a_minus",
+            "endogenous_a_minus",
             "n_plus",
             "n_minus"
           ],
           "kind": "contract_model",
-          "signature": "(a_plus: 'float', a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
+          "signature": "(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
         },
         "SufficientStatisticsModelInputs": {
           "field_names": [
@@ -9062,11 +9091,15 @@
           "field_names": [
             "a_plus",
             "a_minus",
+            "baseline_a_plus",
+            "endogenous_a_plus",
+            "baseline_a_minus",
+            "endogenous_a_minus",
             "n_plus",
             "n_minus"
           ],
           "kind": "contract_model",
-          "signature": "(a_plus: 'float', a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
+          "signature": "(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
         },
         "SufficientStatisticsModelInputs": {
           "field_names": [

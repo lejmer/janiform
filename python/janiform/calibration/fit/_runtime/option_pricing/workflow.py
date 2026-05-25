@@ -342,9 +342,6 @@ def prepare_model_pricing_execution_input(
         ),
         runtime_interval_schedule=finalized_maturity_inputs.pricing_interval_schedule,
         hourly_factor_contract=runtime_input.hourly_factor_contract,
-        return_mark_hour_of_week_factors=(
-            runtime_input.runtime_factors.return_mark_hour_of_week_factors
-        ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
@@ -435,6 +432,7 @@ def prepare_model_pricing_runtime_input(
             hawkes_kernel_parameters=runtime_factors.kernel_parameters,
             news_process_configuration=runtime_factors.news_process_configuration,
             nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters=runtime_factors.return_clock_exposure_parameters,
             pricing_kernel_parameters=runtime_factors.pricing_kernel_parameters,
         ),
     )
@@ -518,9 +516,6 @@ def prepare_model_grid_batch_pricing_native_input(
         "runtime_interval_schedule": finalized_runtime_schedule_resolution.pricing_interval_schedule.to_payload(),
         "interval_delta": finalized_runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
         "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
-        "return_mark_hour_of_week_factors": list(
-            runtime_input.runtime_factors.return_mark_hour_of_week_factors
-        ),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
@@ -591,9 +586,6 @@ def prepare_model_surface_pricing_native_input(
         "runtime_interval_schedule": finalized_surface_maturity_inputs.pricing_interval_schedule.to_payload(),
         "interval_delta": finalized_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
         "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
-        "return_mark_hour_of_week_factors": list(
-            runtime_input.runtime_factors.return_mark_hour_of_week_factors
-        ),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,

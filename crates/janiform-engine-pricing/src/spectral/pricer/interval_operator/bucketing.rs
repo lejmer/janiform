@@ -320,7 +320,7 @@ struct IntervalBucketPartitionKey {
 pub(super) struct IntervalBucketFeature {
     interval_offset: usize,
     partition_key: IntervalBucketPartitionKey,
-    values: [f64; 10],
+    values: [f64; 9],
 }
 
 pub(super) fn interval_bucket_features(
@@ -373,7 +373,6 @@ pub(super) fn interval_bucket_features(
                     interval_factor.s_h,
                     interval_factor.nu_h_known,
                     interval_factor.nu_h_surprise,
-                    interval_factor.return_mark_scale,
                     hawkes_state_total(expected_hawkes_state_before),
                     hawkes_state_total(expected_hawkes_state_after),
                     current_pressure_state,
@@ -463,8 +462,8 @@ fn farthest_point_interval_representatives(
     selected
 }
 
-fn feature_ranges(features: &[&IntervalBucketFeature]) -> [(f64, f64); 10] {
-    let mut ranges = [(f64::INFINITY, f64::NEG_INFINITY); 10];
+fn feature_ranges(features: &[&IntervalBucketFeature]) -> [(f64, f64); 9] {
+    let mut ranges = [(f64::INFINITY, f64::NEG_INFINITY); 9];
 
     for feature in features {
         for (feature_index, value) in feature.values.iter().copied().enumerate() {
@@ -480,7 +479,7 @@ fn nearest_selected_distance(
     feature: &IntervalBucketFeature,
     selected_offsets: &[usize],
     features: &[&IntervalBucketFeature],
-    feature_ranges: &[(f64, f64); 10],
+    feature_ranges: &[(f64, f64); 9],
 ) -> f64 {
     selected_offsets
         .iter()
@@ -498,7 +497,7 @@ fn nearest_selected_distance(
 fn normalized_feature_distance(
     left: &IntervalBucketFeature,
     right: &IntervalBucketFeature,
-    feature_ranges: &[(f64, f64); 10],
+    feature_ranges: &[(f64, f64); 9],
 ) -> f64 {
     left.values
         .iter()
@@ -593,7 +592,7 @@ mod tests {
         partition_key: IntervalBucketPartitionKey,
         feature_position: f64,
     ) -> IntervalBucketFeature {
-        let mut values = [0.0; 10];
+        let mut values = [0.0; 9];
         values[0] = feature_position;
         values[1] = feature_position * feature_position;
 

@@ -178,7 +178,6 @@ def _surface_pricing_native_execution_input(
         "runtime_interval_schedule": execution_input.runtime_interval_schedule.to_payload(),
         "interval_delta": request.interval_delta,
         "hourly_factor_contract": execution_input.hourly_factor_contract.to_payload(),
-        "return_mark_hour_of_week_factors": list(execution_input.return_mark_hour_of_week_factors),
         "optional_output_selection": execution_input.optional_output_selection.to_payload(),
         "cpu_count": execution_input.cpu_count,
     }

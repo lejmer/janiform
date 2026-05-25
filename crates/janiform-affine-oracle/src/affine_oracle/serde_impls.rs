@@ -5,9 +5,9 @@ use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParamete
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::{
-    ExponentialAffineTransformDVector, ExponentialAffineTransformEquationSpecification,
-    ExponentialAffineTransformInput, ExponentialAffineTransformNewsIntensityInput,
-    ExponentialAffineTransformOutput,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformDVector,
+    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
+    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -67,10 +67,35 @@ impl From<HawkesExcitationStatePayload> for HawkesExcitationState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ExponentialAffineTransformActivityLoadingsPayload {
+    u_plus_baseline: ComplexScalarPayload,
+    u_plus_endogenous: ComplexScalarPayload,
+    u_minus_baseline: ComplexScalarPayload,
+    u_minus_endogenous: ComplexScalarPayload,
+}
+
+impl<'de> Deserialize<'de> for ExponentialAffineTransformActivityLoadings {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = ExponentialAffineTransformActivityLoadingsPayload::deserialize(deserializer)?;
+
+        Self::try_new(
+            payload.u_plus_baseline.into(),
+            payload.u_plus_endogenous.into(),
+            payload.u_minus_baseline.into(),
+            payload.u_minus_endogenous.into(),
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ExponentialAffineTransformInputPayload {
     equation_specification: ExponentialAffineTransformEquationSpecification,
-    u_plus: ComplexScalarPayload,
-    u_minus: ComplexScalarPayload,
+    activity_loadings: ExponentialAffineTransformActivityLoadings,
     z_plus: ComplexScalarPayload,
     z_minus: ComplexScalarPayload,
     s_h: f64,
@@ -85,10 +110,10 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformInput {
         D: serde::Deserializer<'de>,
     {
         let payload = ExponentialAffineTransformInputPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.equation_specification,
-            payload.u_plus.into(),
-            payload.u_minus.into(),
+            payload.activity_loadings,
             payload.z_plus.into(),
             payload.z_minus.into(),
             payload.s_h,
@@ -115,6 +140,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformDVector {
         D: serde::Deserializer<'de>,
     {
         let payload = ExponentialAffineTransformDVectorPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.plus_plus.into(),
             payload.plus_minus.into(),
@@ -139,6 +165,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformOutput {
         D: serde::Deserializer<'de>,
     {
         let payload = ExponentialAffineTransformOutputPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.c_at_delta.into(),
             payload.d_at_delta,

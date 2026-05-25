@@ -5,6 +5,7 @@ import pytest
 
 from janiform._native_api import native_module
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+from janiform.return_clock import ReturnClockExposureParameters
 from janiform.sufficient_statistics import (
     SufficientStatisticsEquationSpecification,
     SufficientStatisticsModelInputs,
@@ -215,7 +216,7 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                 return_jump_scale=1.0,
             ),
         ),
-        return_mark_hour_of_week_factors=(1.0,) * 168,
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",

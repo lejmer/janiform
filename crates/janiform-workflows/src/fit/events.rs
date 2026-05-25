@@ -675,7 +675,7 @@ fn work_item_table_columns(
         ));
     }
 
-    if uses_restart_optimization_columns || progress.current_block_best_global_loss.is_some() {
+    if uses_restart_optimization_columns || progress.current_restart_best_global_loss.is_some() {
         let best_objective_label = if uses_restart_optimization_columns {
             "Accepted loss"
         } else {
@@ -800,10 +800,10 @@ fn work_item_table_metrics(
         ));
     }
 
-    if let Some(current_block_best_global_loss) = progress.current_block_best_global_loss {
+    if let Some(current_restart_best_global_loss) = progress.current_restart_best_global_loss {
         metrics.push(ProgressWorkItemMetric::new(
             "best_objective",
-            format!("{current_block_best_global_loss:.6}"),
+            format!("{current_restart_best_global_loss:.6}"),
         ));
     }
 

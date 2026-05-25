@@ -751,7 +751,7 @@ mod tests {
         )
         .expect("pricing request should construct");
 
-        let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0, 1.0)
+        let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
             .expect("interval factors should construct");
 
         let base_context = LocalTransitionRequestContext::from_interval_state(

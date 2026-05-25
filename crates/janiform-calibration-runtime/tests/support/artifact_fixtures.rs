@@ -11,12 +11,12 @@ use janiform_calibration_artifacts::{
     JointRefinementStageRuntimeProfile, MeanReversionStageCalibrationGrid,
     MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    ReturnMarkHourOfWeekScaleProfile, SeasonalityStageParameterArtifactInput,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
-    build_calibration_stage_parameter_artifact,
+    SeasonalityStageParameterArtifactInput, SurpriseNewsDeterministicIntensityProfile,
+    TickGridObservationModel, build_calibration_stage_parameter_artifact,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::KnownNewsArrivalConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::shared::{
     CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
@@ -309,12 +309,7 @@ fn regression_return_components_fitted_parameters() -> ReturnComponentsStageFitt
             fit_policy: "artifact_regression_fixture.v1".to_string(),
             normalization_policy: "artifact_regression_fixture.v1".to_string(),
         },
-        return_mark_hour_of_week_scale_profile: ReturnMarkHourOfWeekScaleProfile {
-            hour_of_week_factors: vec![1.0; 24 * 7],
-            profile_resolution_hours: 1,
-            fit_policy: "artifact_regression_fixture.v1".to_string(),
-            normalization_policy: "artifact_regression_fixture.v1".to_string(),
-        },
+        return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
         tick_grid_observation_model: TickGridObservationModel {
             tick_size: None,
             tick_size_source: "not_applicable_for_artifact_regression_fixture".to_string(),

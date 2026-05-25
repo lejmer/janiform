@@ -1,5 +1,5 @@
 use janiform_calibration_artifacts::{
-    ReturnComponentsStageFittedParameters, ReturnMarkHourOfWeekScaleProfile,
+    ReturnComponentsStageFittedParameters,
     SurpriseNewsDeterministicIntensityProfile as SurpriseIntensityProfile,
     TickGridObservationModel,
 };
@@ -10,6 +10,8 @@ use janiform_foundations::numeric::{
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::{NewsProcessConfiguration, SharedNewsMarkLawConfiguration};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+#[cfg(test)]
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::super::constants::{
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
@@ -398,7 +400,6 @@ pub(crate) fn summarize_return_distribution(
 pub(super) fn collect_return_components_stage_constraint_violations(
     candidate_input: &ReturnComponentsStageCandidateInput,
 ) -> Vec<ReturnComponentsStageConstraintViolationDiagnostic> {
-    let return_mark_hour_of_week_scale_profile = default_return_mark_hour_of_week_scale_profile();
     let tick_grid_observation_model = default_tick_grid_observation_model();
 
     let mut violations = collect_return_components_exact_candidate_constraint_violations(
@@ -408,7 +409,7 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             news_process_configuration: candidate_input.news_process_configuration.clone(),
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
-            return_mark_hour_of_week_scale_profile,
+            return_clock_exposure_parameters: candidate_input.return_clock_exposure_parameters,
             tick_grid_observation_model,
             mean_reversion_fitted_parameters:
                 MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
@@ -604,13 +605,9 @@ pub(crate) fn default_surprise_deterministic_intensity_profile() -> SurpriseInte
     }
 }
 
-pub(crate) fn default_return_mark_hour_of_week_scale_profile() -> ReturnMarkHourOfWeekScaleProfile {
-    ReturnMarkHourOfWeekScaleProfile {
-        hour_of_week_factors: vec![1.0; janiform_market_time::seasonality::HOURS_PER_WEEK],
-        profile_resolution_hours: 1,
-        fit_policy: "neutral_return_mark_hour_of_week_scale.v1".to_string(),
-        normalization_policy: "neutral_unit_factors.v1".to_string(),
-    }
+#[cfg(test)]
+pub(crate) fn default_return_clock_exposure_parameters() -> ReturnClockExposureParameters {
+    ReturnClockExposureParameters::neutral()
 }
 
 pub(crate) fn default_tick_grid_observation_model() -> TickGridObservationModel {

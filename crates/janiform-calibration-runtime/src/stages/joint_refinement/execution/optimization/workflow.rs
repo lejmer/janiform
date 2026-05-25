@@ -24,7 +24,7 @@ use super::super::super::objective::{evaluate_joint_candidate, invalid_candidate
 use super::super::super::setup::parameter_vector_to_fitted_parameters;
 use super::super::selection::admissibility_threshold_from_sample_count;
 use super::super::{
-    JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementContext, JointRefinementFidelityTier,
+    JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT, JointRefinementContext, JointRefinementFidelityTier,
     JointRefinementRestartOutcome, JointRefinementResumeStore,
     joint_refinement_has_parallel_worker_capacity, option_pricing_execution_failure_message,
     planned_restart_work_item_labels, simulation_infrastructure_failure_message,
@@ -75,12 +75,12 @@ struct RestartCandidateProgress<'a> {
     total_evaluation_budget: usize,
     current_evaluation_count: usize,
     last_evaluation_progress_percent: Option<usize>,
-    current_block_best_global_loss: Option<f64>,
+    current_restart_best_global_loss: Option<f64>,
     finished: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct ParameterBlockObjectiveEvaluation {
+pub(super) struct RestartObjectiveEvaluation {
     pub(super) objective: f64,
     pub(super) admissibility_blocker_count: usize,
     pub(super) max_standardized_residual: Option<f64>,
@@ -308,7 +308,9 @@ pub(crate) fn joint_refinement_restart_full_vector_direct_search_settings(
     AdaptiveDirectSearchSettings {
         absolute_tolerance: solver_settings.absolute_tolerance,
         relative_tolerance: solver_settings.relative_tolerance,
-        initial_mesh_divisor: active_parameter_dimension.saturating_add(1).max(1),
+        initial_mesh_divisor: joint_refinement_restart_full_vector_initial_mesh_divisor(
+            active_parameter_dimension,
+        ),
         failed_poll_mesh_refinement_divisor:
             JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR,
         evaluation_budget: 1usize.saturating_add(
@@ -319,10 +321,16 @@ pub(crate) fn joint_refinement_restart_full_vector_direct_search_settings(
     }
 }
 
+pub(crate) fn joint_refinement_restart_full_vector_initial_mesh_divisor(
+    active_parameter_dimension: usize,
+) -> usize {
+    active_parameter_dimension.saturating_add(1).max(1)
+}
+
 fn joint_refinement_base_outer_cycle_count(
     _solver_settings: &CalibrationOptimizerSettings,
 ) -> usize {
-    JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT
+    JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT
 }
 
 struct OptimizeSingleRestartInput<'a> {
@@ -967,7 +975,7 @@ pub(super) fn evaluate_prechecked_full_parameter_vector_objective(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Option<ParameterBlockObjectiveEvaluation> {
+) -> Option<RestartObjectiveEvaluation> {
     if precheck_restart_seed(parameter_vector, context).is_err() {
         return None;
     }
@@ -979,7 +987,7 @@ fn evaluate_full_parameter_vector_objective(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Option<ParameterBlockObjectiveEvaluation> {
+) -> Option<RestartObjectiveEvaluation> {
     let candidate_evaluation = evaluate_joint_candidate(
         parameter_vector,
         context,
@@ -990,7 +998,7 @@ fn evaluate_full_parameter_vector_objective(
     candidate_evaluation
         .invalid_reason
         .is_none()
-        .then_some(ParameterBlockObjectiveEvaluation {
+        .then_some(RestartObjectiveEvaluation {
             objective: candidate_evaluation.breakdown.global_loss,
             admissibility_blocker_count: candidate_evaluation
                 .breakdown
@@ -1141,7 +1149,7 @@ impl<'a> RestartCandidateProgress<'a> {
             ),
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_block_best_global_loss: None,
+            current_restart_best_global_loss: None,
             finished: false,
         }
     }
@@ -1159,13 +1167,13 @@ impl<'a> RestartCandidateProgress<'a> {
     fn record_evaluation(
         &mut self,
         completed_outer_cycles: usize,
-        evaluation: Option<ParameterBlockObjectiveEvaluation>,
+        evaluation: Option<RestartObjectiveEvaluation>,
     ) {
         self.current_evaluation_count = self.current_evaluation_count.saturating_add(1);
 
         if let Some(global_loss) = evaluation.map(|evaluation| evaluation.objective) {
-            self.current_block_best_global_loss = Some(
-                self.current_block_best_global_loss
+            self.current_restart_best_global_loss = Some(
+                self.current_restart_best_global_loss
                     .map(|current_best| current_best.min(global_loss))
                     .unwrap_or(global_loss),
             );
@@ -1237,7 +1245,7 @@ impl<'a> RestartCandidateProgress<'a> {
         completed_outer_cycles: Option<usize>,
         evaluation_progress_percent: Option<usize>,
         active_restart_count: Option<usize>,
-        evaluation: Option<ParameterBlockObjectiveEvaluation>,
+        evaluation: Option<RestartObjectiveEvaluation>,
     ) {
         let current_global_loss = evaluation.map(|evaluation| evaluation.objective);
 
@@ -1260,7 +1268,6 @@ impl<'a> RestartCandidateProgress<'a> {
                 current_item_label: Some(self.restart_id.to_string()),
                 current_restart_id: Some(self.restart_id.to_string()),
                 active_restart_count,
-                current_parameter_block: None,
                 completed_outer_cycles,
                 total_outer_cycles: Some(self.total_outer_cycles),
                 current_evaluation_count: Some(self.current_evaluation_count),
@@ -1272,7 +1279,7 @@ impl<'a> RestartCandidateProgress<'a> {
                     |(_, cumulative_local_evaluation_count)| cumulative_local_evaluation_count,
                 ),
                 current_global_loss,
-                current_block_best_global_loss: self.current_block_best_global_loss,
+                current_restart_best_global_loss: self.current_restart_best_global_loss,
                 best_restart_id,
                 best_global_loss,
                 exact_closed_form_buy_count: exact_likelihood_evaluator_counts
@@ -1350,7 +1357,7 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
                 progress_state.cumulative_local_evaluation_count,
             ),
             current_global_loss: Some(final_display_objective),
-            current_block_best_global_loss: None,
+            current_restart_best_global_loss: None,
             current_candidate_assessment: None,
             best_restart_id,
             best_global_loss,
@@ -1460,7 +1467,7 @@ mod tests {
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
     use super::{
-        ParameterBlockObjectiveEvaluation, RestartCandidateProgress, RestartProgressCounters,
+        RestartCandidateProgress, RestartObjectiveEvaluation, RestartProgressCounters,
         RestartProgressState, full_vector_refresh_fidelity_tier, full_vector_search_fidelity_tier,
         joint_refinement_restart_full_vector_direct_search_settings,
         precheck_hawkes_structural_domain, precheck_nig_return_composition_domain,
@@ -1472,8 +1479,8 @@ mod tests {
         JointRefinementFidelityTier, test_joint_fitted_parameters,
     };
 
-    fn parameter_block_objective_for_test(objective: f64) -> ParameterBlockObjectiveEvaluation {
-        ParameterBlockObjectiveEvaluation {
+    fn restart_objective_for_test(objective: f64) -> RestartObjectiveEvaluation {
+        RestartObjectiveEvaluation {
             objective,
             admissibility_blocker_count: 0,
             max_standardized_residual: None,
@@ -1495,7 +1502,7 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 10,
             last_evaluation_progress_percent: None,
-            current_block_best_global_loss: None,
+            current_restart_best_global_loss: None,
             finished: false,
         };
 
@@ -1507,7 +1514,7 @@ mod tests {
     }
 
     #[test]
-    fn running_restart_progress_emits_current_block_accepted_merit() {
+    fn running_restart_progress_emits_current_restart_accepted_merit() {
         let (progress_sender, progress_receiver) = mpsc::channel();
         let progress_counters = RestartProgressCounters::default();
 
@@ -1520,20 +1527,20 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_block_best_global_loss: None,
+            current_restart_best_global_loss: None,
             finished: false,
         };
 
-        halton_progress.record_evaluation(1, Some(parameter_block_objective_for_test(10.0)));
+        halton_progress.record_evaluation(1, Some(restart_objective_for_test(10.0)));
         progress_receiver.recv().unwrap();
 
-        halton_progress.record_evaluation(1, Some(parameter_block_objective_for_test(4.0)));
+        halton_progress.record_evaluation(1, Some(restart_objective_for_test(4.0)));
 
         let progress_update = progress_receiver.recv().unwrap();
 
         assert_eq!(progress_update.best_restart_id, None);
         assert_eq!(progress_update.best_global_loss, None);
-        assert_eq!(progress_update.current_block_best_global_loss, Some(4.0));
+        assert_eq!(progress_update.current_restart_best_global_loss, Some(4.0));
         assert_eq!(progress_update.valid_completed_units, None);
     }
 
@@ -1559,11 +1566,11 @@ mod tests {
             total_evaluation_budget: 10,
             current_evaluation_count: 0,
             last_evaluation_progress_percent: None,
-            current_block_best_global_loss: None,
+            current_restart_best_global_loss: None,
             finished: false,
         };
 
-        restart_progress.record_evaluation(1, Some(parameter_block_objective_for_test(3.0)));
+        restart_progress.record_evaluation(1, Some(restart_objective_for_test(3.0)));
 
         let progress_update = progress_receiver.recv().unwrap();
 
@@ -1613,7 +1620,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_outer_cycle_continues_after_block_budget() {
+    fn restart_outer_cycle_continues_after_retryable_stop_reasons() {
         assert!(restart_stop_reason_allows_next_outer_cycle("budget"));
         assert!(restart_stop_reason_allows_next_outer_cycle("tolerance"));
         assert!(restart_stop_reason_allows_next_outer_cycle(

@@ -707,9 +707,8 @@ fn enumerate_candidate_inputs(
                     candidate_families,
                     candidate_provenance: candidate_provenance_template.clone(),
                     dominant_scale_driver,
-                    return_mark_hour_of_week_scale_profile: candidate_generation_input
-                        .return_mark_hour_of_week_scale_profile
-                        .clone(),
+                    return_clock_exposure_parameters: candidate_generation_input
+                        .return_clock_exposure_parameters,
                     tick_grid_observation_model: candidate_generation_input
                         .tick_grid_observation_model
                         .clone(),

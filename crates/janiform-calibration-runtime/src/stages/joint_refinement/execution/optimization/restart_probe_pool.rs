@@ -19,7 +19,7 @@ use super::super::{
 };
 use super::workflow::{
     JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR, JointRefinementBudgetSchedule,
-    JointRefinementRestartOptimizationOutput, ParameterBlockObjectiveEvaluation,
+    JointRefinementRestartOptimizationOutput, RestartObjectiveEvaluation,
     evaluate_prechecked_full_parameter_vector_objective,
     joint_refinement_has_fatal_execution_failure,
     joint_refinement_restart_full_vector_direct_search_settings,
@@ -85,7 +85,7 @@ struct RestartProbeResult {
     poll_direction_position: Option<usize>,
     poll_direction_label: String,
     elapsed_millis: u64,
-    evaluation: Option<ParameterBlockObjectiveEvaluation>,
+    evaluation: Option<RestartObjectiveEvaluation>,
 }
 
 struct RestartProbeFinalizationResult {
@@ -670,9 +670,8 @@ mod tests {
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
     use super::{
-        ParameterBlockObjectiveEvaluation, RESTART_PROBE_SCHEDULE_CATEGORY_POLL,
-        RestartProbeResult, RestartProbeState, record_restart_probe_result,
-        refresh_restart_probe_state,
+        RESTART_PROBE_SCHEDULE_CATEGORY_POLL, RestartObjectiveEvaluation, RestartProbeResult,
+        RestartProbeState, record_restart_probe_result, refresh_restart_probe_state,
     };
 
     fn test_solver_settings() -> CalibrationOptimizerSettings {
@@ -711,7 +710,7 @@ mod tests {
             poll_direction_position: Some(0),
             poll_direction_label: "positive.parameter_0".to_string(),
             elapsed_millis: 1,
-            evaluation: Some(ParameterBlockObjectiveEvaluation {
+            evaluation: Some(RestartObjectiveEvaluation {
                 objective,
                 admissibility_blocker_count: 0,
                 max_standardized_residual: Some(0.0),
