@@ -305,6 +305,10 @@ Disk execution writes a run directory with the fitted model, fit report, progres
     Resume from the mean-reversion stage.
   - `joint-refinement`:
     Resume from the joint-refinement stage.
+  - `option-refinement`:
+    Resume from the option-refinement stage.
+  - `finalization`:
+    Resume from the finalization stage.
 
 
 
@@ -612,6 +616,10 @@ This advanced command is useful when a separate process prepares calibration inp
     Resume from the mean-reversion stage.
   - `joint-refinement`:
     Resume from the joint-refinement stage.
+  - `option-refinement`:
+    Resume from the option-refinement stage.
+  - `finalization`:
+    Resume from the finalization stage.
 
 
 
@@ -774,6 +782,10 @@ This command runs a prepared calibration input file. Disk runs write the fitted 
     Resume from the mean-reversion stage.
   - `joint-refinement`:
     Resume from the joint-refinement stage.
+  - `option-refinement`:
+    Resume from the option-refinement stage.
+  - `finalization`:
+    Resume from the finalization stage.
 
 
 

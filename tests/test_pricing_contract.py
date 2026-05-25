@@ -23,6 +23,7 @@ from janiform.pricing import (
     VanillaOptionPricingDiagnostics,
     VanillaOptionPricingFailureStage,
     VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingKernelParameters,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -729,9 +730,9 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                 y_minus_plus=0.3,
                 y_minus_minus=0.4,
             ),
-            ),
-            model_parameters=VanillaOptionPricingModelParameters(
-                hawkes_kernel_parameters=HawkesKernelParameters(
+        ),
+        model_parameters=VanillaOptionPricingModelParameters(
+            hawkes_kernel_parameters=HawkesKernelParameters(
                 lambda_bar=0.8,
                 beta=1.6,
                 alpha=HawkesKernelLoadings(
@@ -745,16 +746,17 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                     plus_minus=0.05,
                     minus_plus=0.05,
                     minus_minus=0.1,
-                    ),
                 ),
-                news_process_configuration=_valid_news_process_configuration(),
-                nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
-                    alpha=2.3,
-                    beta_0=-0.8,
+            ),
+            news_process_configuration=_valid_news_process_configuration(),
+            nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+                alpha=2.3,
+                beta_0=-0.8,
                 delta=0.7,
                 mu=0.1,
                 delta_beta=-0.2,
             ),
+            pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
         ),
         interval_delta=1.0,
     )

@@ -74,17 +74,6 @@ pub(crate) fn nig_configuration_from_search_point(
     configuration_from_shape_search_point(&optimizer_context, search_point)
 }
 
-pub(crate) fn nig_configuration_search_point_mapping(
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    search_point: NigShapeSearchPoint,
-) -> Option<super::shape_mapping::NigSharedPlusShiftConfigurationSearchPointMapping> {
-    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
-    super::shape_mapping::exact_configuration_and_gradient_from_shape_search_point(
-        &optimizer_context,
-        search_point,
-    )
-}
-
 pub(crate) fn nig_search_bounds_for_calibration_sample(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     moment_candidate_count: usize,

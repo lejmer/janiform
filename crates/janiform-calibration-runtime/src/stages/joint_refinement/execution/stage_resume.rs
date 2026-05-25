@@ -49,7 +49,6 @@ pub(super) fn restart_search_artifacts_from_upstream_or_resume(
         CalibrationStage::JointRefinement => restart_search_artifacts_from_dynamics_resume_store(
             &upstream_resume_store,
             baseline_evaluation_artifacts,
-            bootstrap_context,
         ),
         CalibrationStage::OptionRefinement => restart_search_artifacts_from_option_resume_store(
             &upstream_resume_store,
@@ -97,7 +96,6 @@ fn restart_search_artifacts_from_runtime_handoff(
 fn restart_search_artifacts_from_dynamics_resume_store(
     resume_store: &JointRefinementResumeStore,
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
-    bootstrap_context: &JointRefinementContext,
 ) -> Result<RestartSearchArtifacts, JointRefinementStageExecutionFailure> {
     let restart_outcomes = resume_store.restart_outcomes();
     let restart_selection = resume_store.restart_selection().cloned().ok_or_else(|| {
@@ -110,20 +108,6 @@ fn restart_search_artifacts_from_dynamics_resume_store(
         restart_outcomes.as_slice(),
         &baseline_evaluation_artifacts.baseline_restart_outcome,
     );
-
-    let option_context_fingerprint = bootstrap_context
-        .option_pricing_context
-        .as_ref()
-        .map(super::option_pricing_context_fingerprint);
-    if restart_selection.option_pricing_context_fingerprint != option_context_fingerprint {
-        return Err(
-            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-                error_message:
-                    "joint refinement resume state option context does not match this run"
-                        .to_string(),
-            },
-        );
-    }
 
     let best_restart = restart_outcome_by_id(
         selectable_restart_outcomes.as_slice(),

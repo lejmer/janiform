@@ -4,9 +4,10 @@ use janiform_engine_pricing::{
     VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridRequest, VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingRunResult, VanillaOptionPricingStatus,
+    VanillaOptionPricingIntervalFactors, VanillaOptionPricingKernelParameters,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingRunResult, VanillaOptionPricingStatus,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
     run_vanilla_option_grid_batch_pricing, run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
@@ -621,6 +622,7 @@ fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
         .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
+        VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")
 }

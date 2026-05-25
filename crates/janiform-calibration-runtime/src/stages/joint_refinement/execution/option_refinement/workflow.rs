@@ -6,9 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
-use janiform_calibration_artifacts::{
-    CalibrationOptimizerSettings, JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
-};
+use janiform_calibration_artifacts::JointRefinementStageOptionSearchSelectionAgreementDiagnostics;
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 use janiform_foundations::numeric::pearson_correlation;
 use janiform_work_scheduler::{StaticWorkPoolInput, run_static_work_pool};
@@ -19,14 +17,15 @@ use crate::stages::joint_refinement::contracts::{
 };
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
 
-use super::super::super::setup::parameter_vector_to_fitted_parameters;
+use super::super::super::setup::{
+    apply_option_pricing_kernel_bounds, parameter_vector_to_fitted_parameters,
+};
 use super::super::{
-    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementContext,
-    JointRefinementOptionTierPricingArtifact, JointRefinementRestartOutcome,
-    JointRefinementResumeStore, OptionPricingProgressInput, OptionPricingProgressSnapshot,
-    OptionPricingProgressSnapshotSource, OptionSurfaceTierPricingArtifactResolutionInput,
-    elapsed_millis, ordered_parameter_bits, planned_restart_work_item_labels,
-    resolve_option_surface_tier_pricing_artifact,
+    JointRefinementContext, JointRefinementOptionTierPricingArtifact,
+    JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
+    OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
+    OptionSurfaceTierPricingArtifactResolutionInput, elapsed_millis, ordered_parameter_bits,
+    planned_restart_work_item_labels, resolve_option_surface_tier_pricing_artifact,
 };
 use super::candidate_parallelism::{
     option_refinement_candidate_parallelism, option_refinement_candidate_pricing_cpu_counts,
@@ -417,7 +416,6 @@ pub(crate) fn desired_joint_refinement_option_refinement_candidate_count(
 
 pub(crate) fn run_option_refinement(
     context: &JointRefinementContext,
-    _solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
     wall_clock_budget_millis: Option<u64>,
     option_context_fingerprint: &str,
@@ -748,6 +746,8 @@ fn refine_single_search_tier_candidate(
 
     let source_dynamics_parameter_bits =
         ordered_parameter_bits(dynamics_candidate.parameter_vector.as_slice());
+    let initial_pricing_vector =
+        option_pricing_baseline_parameter_vector(&refinement_context, dynamics_candidate);
 
     let mut theta_warm_start_state = SpectralThetaWarmStartState::new();
 
@@ -756,7 +756,7 @@ fn refine_single_search_tier_candidate(
     let initial_candidate = scored_pricing_vector(
         &refinement_context,
         dynamics_candidate,
-        dynamics_candidate.parameter_vector.as_slice(),
+        initial_pricing_vector.as_slice(),
         source_dynamics_parameter_bits.as_slice(),
         JointRefinementOptionSurfaceTierKind::Search,
         true,
@@ -783,6 +783,20 @@ fn refine_single_search_tier_candidate(
         progress_context,
         search_budget,
     )
+}
+
+fn option_pricing_baseline_parameter_vector(
+    refinement_context: &JointRefinementContext,
+    dynamics_candidate: &JointRefinementRestartOutcome,
+) -> Vec<f64> {
+    let mut parameter_vector = dynamics_candidate.parameter_vector.clone();
+
+    parameter_vector.resize(
+        refinement_context.active_parameter_layout.vector_length(),
+        0.0,
+    );
+
+    parameter_vector
 }
 
 pub(super) fn option_score_resolution(score: f64, effective_quote_count: usize) -> f64 {
@@ -1467,14 +1481,11 @@ fn pricing_block_refinement_context(
 
     refinement_context.option_pricing_refinement_enabled = true;
 
-    for parameter_index in &refinement_context
-        .active_parameter_layout
-        .option_pricing_hawkes_block
-    {
-        refinement_context.lower_bounds[*parameter_index] =
-            -JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
-        refinement_context.upper_bounds[*parameter_index] = JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
-    }
+    apply_option_pricing_kernel_bounds(
+        &refinement_context.active_parameter_layout,
+        refinement_context.lower_bounds.as_mut_slice(),
+        refinement_context.upper_bounds.as_mut_slice(),
+    );
 
     refinement_context
 }
@@ -1520,14 +1531,8 @@ fn pricing_block_parameter_bits(
 ) -> Vec<u64> {
     context
         .active_parameter_layout
-        .nig_block
+        .option_pricing_kernel_block
         .iter()
-        .chain(
-            context
-                .active_parameter_layout
-                .option_pricing_hawkes_block
-                .iter(),
-        )
         .map(|parameter_index| parameter_vector[*parameter_index].to_bits())
         .collect()
 }

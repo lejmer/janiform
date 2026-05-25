@@ -22,8 +22,7 @@ mod tilted_mixed;
 mod types;
 
 pub(crate) use bounds::{
-    nig_configuration_from_search_point, nig_configuration_search_point_mapping,
-    nig_log_alpha_bounds_for_calibration_sample,
+    nig_configuration_from_search_point, nig_log_alpha_bounds_for_calibration_sample,
     nig_search_bounds_for_calibration_sample_with_solver_settings,
     nig_search_point_from_configuration,
 };
@@ -50,7 +49,6 @@ pub(crate) use sample::{
     rescale_continuous_return_optimizer_context_business_time_scales,
     sample_continuous_return_calibration_sample_by_equal_stride,
 };
-pub(crate) use shape_mapping::NigSharedPlusShiftConfigurationSearchPointMapping;
 pub(crate) use types::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,

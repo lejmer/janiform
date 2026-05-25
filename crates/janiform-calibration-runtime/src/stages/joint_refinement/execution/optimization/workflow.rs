@@ -572,15 +572,7 @@ fn precheck_hawkes_structural_domain(
 fn precheck_nig_return_composition_domain(
     fitted_parameters: &JointRefinementStageFittedParameters,
 ) -> Result<(), String> {
-    let nig_configuration = fitted_parameters
-        .pricing_block_fitted_parameters
-        .as_ref()
-        .map(|pricing_block| pricing_block.nig_shared_plus_shift_configuration)
-        .unwrap_or(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-        );
+    let nig_configuration = fitted_parameters.pricing_nig_shared_plus_shift_configuration();
 
     let driver_parameters = nig_configuration
         .derive_driver_parameters()

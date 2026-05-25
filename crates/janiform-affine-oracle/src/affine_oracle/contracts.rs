@@ -390,6 +390,16 @@ pub struct ExponentialAffineTransformDVector {
 }
 
 impl ExponentialAffineTransformDVector {
+    /// Return the additive identity in model order `[++, +-, -+, --]`.
+    pub fn zero() -> Self {
+        Self::new(
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+        )
+    }
+
     pub fn new(
         plus_plus: ComplexScalar,
         plus_minus: ComplexScalar,
@@ -427,6 +437,16 @@ impl ExponentialAffineTransformDVector {
     /// Componentwise addition in model order `[++, +-, -+, --]`.
     pub fn plus(self, other: Self) -> Self {
         self + other
+    }
+
+    /// Componentwise subtraction in model order `[++, +-, -+, --]`.
+    pub fn subtract(self, other: Self) -> Self {
+        Self::new(
+            self.plus_plus.subtract(other.plus_plus),
+            self.plus_minus.subtract(other.plus_minus),
+            self.minus_plus.subtract(other.minus_plus),
+            self.minus_minus.subtract(other.minus_minus),
+        )
     }
 
     /// Uniform scalar multiplication across all components.

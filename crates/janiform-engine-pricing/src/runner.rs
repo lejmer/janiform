@@ -2,25 +2,23 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::join;
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-    ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
-    ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformDVector, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationResult,
+    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
-    ExponentialAffineTransformSolverSettings, solve_exponential_affine_transform,
-    solve_exponential_affine_transform_input_sensitivities_with_settings,
+    solve_exponential_affine_transform_input_sensitivities,
+    solve_exponential_affine_transform_with_terminal_loading,
 };
 use janiform_affine_oracle::endogenous_anchor::{
     EndogenousAnchorIntervalFactors, derive_expected_interval_projection_from_first_moment_dynamics,
 };
 use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsTransformSliceContext,
-    SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
-    derive_expected_interval_statistics_from_transform_slices,
+    derive_expected_interval_statistics_from_transform_sensitivities,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::complex_multiply;
@@ -398,6 +396,7 @@ pub(crate) struct PricingCharacteristicFunctionEvaluation {
 pub(crate) struct RiskNeutralAnchorMaterialization {
     pub(crate) runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     pub(crate) expected_hawkes_state_path: Vec<HawkesExcitationState>,
+    pub(crate) local_transition_theta_path: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -421,6 +420,8 @@ pub(crate) struct CorePureImaginaryLogMomentSharedPlusShiftSensitivity {
     pub(crate) delta_derivative: f64,
     pub(crate) mu_derivative: f64,
     pub(crate) delta_beta_derivative: f64,
+    pub(crate) buy_activity_premium_derivative: f64,
+    pub(crate) sell_activity_premium_derivative: f64,
     pub(crate) theta_derivative: f64,
 }
 
@@ -430,6 +431,8 @@ pub(crate) struct CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
     pub(crate) beta_0_derivative: f64,
     pub(crate) delta_derivative: f64,
     pub(crate) delta_beta_derivative: f64,
+    pub(crate) buy_activity_premium_derivative: f64,
+    pub(crate) sell_activity_premium_derivative: f64,
 }
 
 impl CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
@@ -439,6 +442,8 @@ impl CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
             beta_0_derivative: 0.0,
             delta_derivative: 0.0,
             delta_beta_derivative: 0.0,
+            buy_activity_premium_derivative: 0.0,
+            sell_activity_premium_derivative: 0.0,
         }
     }
 }
@@ -537,7 +542,7 @@ impl LocalTransitionRequestContext {
         })
     }
 
-    fn build_transform_input(
+    pub(crate) fn build_transform_input(
         &self,
         u_plus: ComplexScalar,
         u_minus: ComplexScalar,
@@ -1015,6 +1020,26 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
         )?,
     )?;
 
+    let buy_activity_premium_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.buy_activity_premium_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.buy_activity_premium_derivative,
+        )?,
+    )?;
+
+    let sell_activity_premium_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.sell_activity_premium_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.sell_activity_premium_derivative,
+        )?,
+    )?;
+
     let theta_derivative = log_characteristic_modulus_derivative(
         risk_neutral_value,
         pricing_ratio_derivative(
@@ -1032,6 +1057,8 @@ pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
         delta_derivative,
         mu_derivative,
         delta_beta_derivative,
+        buy_activity_premium_derivative,
+        sell_activity_premium_derivative,
         theta_derivative,
     })
 }
@@ -1051,6 +1078,8 @@ pub(crate) fn differentiate_core_local_tilt_theta_for_tilt(
         && sensitivity.beta_0_derivative == 0.0
         && sensitivity.delta_derivative == 0.0
         && sensitivity.delta_beta_derivative == 0.0
+        && sensitivity.buy_activity_premium_derivative == 0.0
+        && sensitivity.sell_activity_premium_derivative == 0.0
     {
         // A flat residual with no shared-plus-shift parameter exposure leaves the
         // canonical solved theta locally unchanged.
@@ -1073,6 +1102,10 @@ pub(crate) fn differentiate_core_local_tilt_theta_for_tilt(
         beta_0_derivative: sensitivity.beta_0_derivative * inverse_theta_derivative,
         delta_derivative: sensitivity.delta_derivative * inverse_theta_derivative,
         delta_beta_derivative: sensitivity.delta_beta_derivative * inverse_theta_derivative,
+        buy_activity_premium_derivative: sensitivity.buy_activity_premium_derivative
+            * inverse_theta_derivative,
+        sell_activity_premium_derivative: sensitivity.sell_activity_premium_derivative
+            * inverse_theta_derivative,
     })
 }
 
@@ -1421,6 +1454,7 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
     let mut end_pressure_states = Vec::with_capacity(interval_factors.len());
     let mut interval_deltas = Vec::with_capacity(interval_factors.len());
     let mut expected_hawkes_state_path = Vec::with_capacity(interval_factors.len() + 1);
+    let mut local_transition_theta_path = Vec::with_capacity(interval_factors.len());
     let mut previous_local_transition_theta = None;
 
     expected_hawkes_state_path.push(current_hawkes_state);
@@ -1469,6 +1503,7 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
         )?;
 
         previous_local_transition_theta = Some(local_transition_theta);
+        local_transition_theta_path.push(local_transition_theta);
 
         let local_expectations = derive_local_tilted_interval_expectations_with_parallelism(
             &local_request,
@@ -1541,6 +1576,7 @@ pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization
     Ok(RiskNeutralAnchorMaterialization {
         runtime_interval_anchors,
         expected_hawkes_state_path,
+        local_transition_theta_path,
     })
 }
 
@@ -1594,8 +1630,8 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
     transition_row: &LocalTransitionRowState,
     driver_parameters: NigBuySellDriverParameters,
     theta: f64,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
-    cpu_count: Option<usize>,
+    _pricing_thread_pool: Option<&rayon::ThreadPool>,
+    _cpu_count: Option<usize>,
 ) -> Result<LocalTiltedIntervalExpectations, VanillaOptionPricingRunError> {
     let untilted_projection = if transition_row.has_row_independent_local_tilt_target()
         && theta == 0.0
@@ -1612,11 +1648,8 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
         ),
         None => derive_local_tilted_expected_interval_statistics_for_row(
             transition_context,
-            transition_row,
             driver_parameters,
             theta,
-            pricing_thread_pool,
-            cpu_count,
         )
         .map(|expected_statistics| (expected_statistics, None))?,
     };
@@ -1635,90 +1668,11 @@ pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TransformSliceKind {
-    Baseline,
-    APlus,
-    AMinus,
-    NPlus,
-    NMinus,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct TransformSliceRequest {
-    kind: TransformSliceKind,
-    extra_u_plus: ComplexScalar,
-    extra_u_minus: ComplexScalar,
-    z_plus: ComplexScalar,
-    z_minus: ComplexScalar,
-}
-
-impl TransformSliceRequest {
-    fn baseline() -> Self {
-        Self {
-            kind: TransformSliceKind::Baseline,
-            extra_u_plus: ComplexScalar::new(0.0, 0.0),
-            extra_u_minus: ComplexScalar::new(0.0, 0.0),
-            z_plus: ComplexScalar::new(1.0, 0.0),
-            z_minus: ComplexScalar::new(1.0, 0.0),
-        }
-    }
-
-    fn a_plus(a_plus_u: f64) -> Self {
-        Self {
-            kind: TransformSliceKind::APlus,
-            extra_u_plus: ComplexScalar::new(a_plus_u, 0.0),
-            extra_u_minus: ComplexScalar::new(0.0, 0.0),
-            z_plus: ComplexScalar::new(1.0, 0.0),
-            z_minus: ComplexScalar::new(1.0, 0.0),
-        }
-    }
-
-    fn a_minus(a_minus_u: f64) -> Self {
-        Self {
-            kind: TransformSliceKind::AMinus,
-            extra_u_plus: ComplexScalar::new(0.0, 0.0),
-            extra_u_minus: ComplexScalar::new(a_minus_u, 0.0),
-            z_plus: ComplexScalar::new(1.0, 0.0),
-            z_minus: ComplexScalar::new(1.0, 0.0),
-        }
-    }
-
-    fn n_plus(n_plus_z: f64) -> Self {
-        Self {
-            kind: TransformSliceKind::NPlus,
-            extra_u_plus: ComplexScalar::new(0.0, 0.0),
-            extra_u_minus: ComplexScalar::new(0.0, 0.0),
-            z_plus: ComplexScalar::new(n_plus_z, 0.0),
-            z_minus: ComplexScalar::new(1.0, 0.0),
-        }
-    }
-
-    fn n_minus(n_minus_z: f64) -> Self {
-        Self {
-            kind: TransformSliceKind::NMinus,
-            extra_u_plus: ComplexScalar::new(0.0, 0.0),
-            extra_u_minus: ComplexScalar::new(0.0, 0.0),
-            z_plus: ComplexScalar::new(1.0, 0.0),
-            z_minus: ComplexScalar::new(n_minus_z, 0.0),
-        }
-    }
-}
-
 fn derive_local_tilted_expected_interval_statistics_for_row(
     transition_context: &LocalTransitionRequestContext,
-    transition_row: &LocalTransitionRowState,
     driver_parameters: NigBuySellDriverParameters,
     theta: f64,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
-    cpu_count: Option<usize>,
 ) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
-    if transition_row.has_row_independent_local_tilt_target() && theta == 0.0 {
-        return derive_untilted_local_expected_interval_statistics_from_context(transition_context);
-    }
-
-    let settings = SufficientStatisticsTransformSliceSettings::default();
-
     let context = SufficientStatisticsTransformSliceContext::try_new(
         transition_context.interval_index,
         transition_context.interval_factors.s_h,
@@ -1732,109 +1686,33 @@ fn derive_local_tilted_expected_interval_statistics_for_row(
         }
     })?;
 
-    let slice_requests = [
-        TransformSliceRequest::baseline(),
-        TransformSliceRequest::a_plus(settings.a_plus_u),
-        TransformSliceRequest::a_minus(settings.a_minus_u),
-        TransformSliceRequest::n_plus(settings.n_plus_z),
-        TransformSliceRequest::n_minus(settings.n_minus_z),
-    ];
+    let sensitivities =
+        solve_local_tilted_transform_sensitivities(transition_context, driver_parameters, theta)?;
 
-    let slice_results = if resolved_pricing_cpu_count(cpu_count) > 1 {
-        install_pricing_parallelism(pricing_thread_pool, || {
-            slice_requests
-                .into_par_iter()
-                .map(|request| {
-                    Ok::<_, VanillaOptionPricingRunError>((
-                        request.kind,
-                        solve_local_tilted_transform_slice_value(
-                            transition_context,
-                            driver_parameters,
-                            theta,
-                            request.extra_u_plus,
-                            request.extra_u_minus,
-                            request.z_plus,
-                            request.z_minus,
-                        )?,
-                    ))
-                })
-                .collect::<Result<Vec<_>, _>>()
-        })?
-    } else {
-        slice_requests
-            .into_iter()
-            .map(|request| {
-                Ok::<_, VanillaOptionPricingRunError>((
-                    request.kind,
-                    solve_local_tilted_transform_slice_value(
-                        transition_context,
-                        driver_parameters,
-                        theta,
-                        request.extra_u_plus,
-                        request.extra_u_minus,
-                        request.z_plus,
-                        request.z_minus,
-                    )?,
-                ))
-            })
-            .collect::<Result<Vec<_>, _>>()?
-    };
+    let effective_input_statistics =
+        derive_expected_interval_statistics_from_transform_sensitivities(context, sensitivities)
+            .map_err(|source| {
+                VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                    message: source.to_string(),
+                }
+            })?;
 
-    let mut baseline_transform = None;
-    let mut a_plus_transform = None;
-    let mut a_minus_transform = None;
-    let mut n_plus_transform = None;
-    let mut n_minus_transform = None;
+    let pricing_kernel_parameters = transition_context
+        .model_parameters
+        .pricing_kernel_parameters;
 
-    for (kind, value) in slice_results {
-        match kind {
-            TransformSliceKind::Baseline => baseline_transform = Some(value),
-            TransformSliceKind::APlus => a_plus_transform = Some(value),
-            TransformSliceKind::AMinus => a_minus_transform = Some(value),
-            TransformSliceKind::NPlus => n_plus_transform = Some(value),
-            TransformSliceKind::NMinus => n_minus_transform = Some(value),
-        }
-    }
-
-    let slices = SufficientStatisticsTransformSlices::try_new(
-        context,
-        settings,
-        baseline_transform.ok_or_else(|| {
-            VanillaOptionPricingRunError::InternalNumericsFailure {
-                message: "missing baseline transform slice".to_string(),
-            }
-        })?,
-        a_plus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: "missing a_plus transform slice".to_string(),
-        })?,
-        a_minus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: "missing a_minus transform slice".to_string(),
-        })?,
-        n_plus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: "missing n_plus transform slice".to_string(),
-        })?,
-        n_minus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: "missing n_minus transform slice".to_string(),
-        })?,
+    SufficientStatisticsExpectedIntervalStatistics::try_new(
+        effective_input_statistics.expected_a_plus,
+        effective_input_statistics.expected_a_minus,
+        effective_input_statistics.expected_n_plus * pricing_kernel_parameters.buy_activity_premium,
+        effective_input_statistics.expected_n_minus
+            * pricing_kernel_parameters.sell_activity_premium,
     )
-    .map_err(|source| {
-        VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+    .map_err(
+        |source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
             message: source.to_string(),
-        }
-    })?;
-
-    derive_expected_interval_statistics_from_transform_slices(slices).map_err(|source| {
-        VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-            message: source.to_string(),
-        }
-    })
-}
-
-fn derive_untilted_local_expected_interval_statistics_from_context(
-    transition_context: &LocalTransitionRequestContext,
-) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
-    derive_untilted_local_expected_interval_projection_from_context(transition_context)
-        .map(|projection| projection.expected_statistics)
+        },
+    )
 }
 
 fn derive_untilted_local_expected_interval_projection_from_context(
@@ -1881,58 +1759,51 @@ fn derive_untilted_local_expected_interval_projection_from_context(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-fn solve_local_tilted_transform_slice_value(
+fn solve_local_tilted_transform_sensitivities(
     transition_context: &LocalTransitionRequestContext,
     driver_parameters: NigBuySellDriverParameters,
     theta: f64,
-    extra_u_plus: ComplexScalar,
-    extra_u_minus: ComplexScalar,
-    z_plus: ComplexScalar,
-    z_minus: ComplexScalar,
-) -> Result<ComplexScalar, VanillaOptionPricingRunError> {
+) -> Result<
+    janiform_affine_oracle::affine_oracle::ExponentialAffineTransformInputSensitivityOutput,
+    VanillaOptionPricingRunError,
+> {
+    let (buy_side_shift, sell_side_shift) =
+        local_tilted_transform_business_time_shifts(transition_context, driver_parameters, theta);
+    let pricing_kernel_parameters = transition_context
+        .model_parameters
+        .pricing_kernel_parameters;
+    let buy_kernel_inputs = pricing_kernel_parameters
+        .buy_transform_inputs(buy_side_shift, ComplexScalar::new(1.0, 0.0));
+    let sell_kernel_inputs = pricing_kernel_parameters
+        .sell_transform_inputs(sell_side_shift, ComplexScalar::new(1.0, 0.0));
+
+    solve_affine_transform_value_input_sensitivities_for_context(
+        transition_context,
+        buy_kernel_inputs.u_input,
+        sell_kernel_inputs.u_input,
+        buy_kernel_inputs.z_input,
+        sell_kernel_inputs.z_input,
+    )
+}
+
+fn local_tilted_transform_business_time_shifts(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    theta: f64,
+) -> (ComplexScalar, ComplexScalar) {
     let shifted_argument = ComplexScalar::new(0.0, -theta);
     let trading_time_shifted_argument =
         scale_trading_time_return_argument(transition_context, shifted_argument);
 
     let buy_side_shift = driver_parameters
         .buy_side_characteristic_exponent(trading_time_shifted_argument)
-        .scale(-1.0)
-        .plus(extra_u_plus);
+        .scale(-1.0);
 
     let sell_side_shift = driver_parameters
         .sell_side_characteristic_exponent_for_return_composition(trading_time_shifted_argument)
-        .scale(-1.0)
-        .plus(extra_u_minus);
+        .scale(-1.0);
 
-    let transform_input =
-        transition_context.build_transform_input(buy_side_shift, sell_side_shift, z_plus, z_minus);
-
-    let transform_diagnostics =
-        solve_exponential_affine_transform(transform_input).map_err(|source| {
-            VanillaOptionPricingRunError::TransformSolveFailure {
-                argument: shifted_argument,
-                source: Box::new(source),
-            }
-        })?;
-
-    let transform_output = transform_diagnostics.output.ok_or(
-        VanillaOptionPricingRunError::MissingTransformOutput {
-            argument: shifted_argument,
-            status: transform_diagnostics.status,
-            context: format!(
-                "local_tilted_transform_slice interval_index={} interval_delta={} u_plus={buy_side_shift:?} u_minus={sell_side_shift:?} z_plus={z_plus:?} z_minus={z_minus:?} guard_failure_code={:?}",
-                transition_context.interval_index,
-                transition_context.interval_delta,
-                transform_diagnostics
-                    .metadata
-                    .guard_failure
-                    .map(|guard_failure| guard_failure.code),
-            ),
-        },
-    )?;
-
-    Ok(transform_output.transform_value)
+    (buy_side_shift, sell_side_shift)
 }
 
 pub(crate) fn tilted_core_expected_increment_from_statistics(
@@ -2281,45 +2152,21 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
 ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
-    let trading_time_argument = scale_trading_time_return_argument(transition_context, argument);
-
-    let buy_side_characteristic_exponent =
-        driver_parameters.buy_side_characteristic_exponent(trading_time_argument);
-
-    let sell_side_characteristic_exponent = driver_parameters
-        .sell_side_characteristic_exponent_for_return_composition(trading_time_argument);
-
-    let transform_input = transition_context.build_transform_input(
-        buy_side_characteristic_exponent.scale(-1.0),
-        sell_side_characteristic_exponent.scale(-1.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    );
-
-    let transform_diagnostics =
-        solve_exponential_affine_transform(transform_input).map_err(|source| {
-            VanillaOptionPricingRunError::TransformSolveFailure {
-                argument,
-                source: Box::new(source),
-            }
-        })?;
+    let transform_diagnostics = solve_pricing_log_return_transform_for_context(
+        transition_context,
+        driver_parameters,
+        argument,
+        ExponentialAffineTransformDVector::zero(),
+    )?;
 
     let transform_output = transform_diagnostics.output.ok_or(
         VanillaOptionPricingRunError::MissingTransformOutput {
             argument,
             status: transform_diagnostics.status,
-            context: format!(
-                "pricing_log_return_characteristic_function interval_index={} interval_delta={} u_plus={:?} u_minus={:?} z_plus={:?} z_minus={:?} guard_failure_code={:?}",
-                transition_context.interval_index,
-                transition_context.interval_delta,
-                buy_side_characteristic_exponent.scale(-1.0),
-                sell_side_characteristic_exponent.scale(-1.0),
-                ComplexScalar::new(1.0, 0.0),
-                ComplexScalar::new(1.0, 0.0),
-                transform_diagnostics
-                    .metadata
-                    .guard_failure
-                    .map(|guard_failure| guard_failure.code),
+            context: missing_transform_output_context(
+                transition_context,
+                driver_parameters,
+                argument,
             ),
         },
     )?;
@@ -2342,7 +2189,87 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
     })
 }
 
-fn scale_trading_time_return_argument(
+pub(crate) fn solve_pricing_log_return_transform_for_context(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    argument: ComplexScalar,
+    terminal_loading: ExponentialAffineTransformDVector,
+) -> Result<ExponentialAffineTransformIntegrationResult, VanillaOptionPricingRunError> {
+    let trading_time_argument = scale_trading_time_return_argument(transition_context, argument);
+
+    let buy_side_characteristic_exponent =
+        driver_parameters.buy_side_characteristic_exponent(trading_time_argument);
+
+    let sell_side_characteristic_exponent = driver_parameters
+        .sell_side_characteristic_exponent_for_return_composition(trading_time_argument);
+
+    let pricing_kernel_parameters = transition_context
+        .model_parameters
+        .pricing_kernel_parameters;
+
+    let buy_kernel_inputs = pricing_kernel_parameters.buy_transform_inputs(
+        buy_side_characteristic_exponent.scale(-1.0),
+        ComplexScalar::new(1.0, 0.0),
+    );
+    let sell_kernel_inputs = pricing_kernel_parameters.sell_transform_inputs(
+        sell_side_characteristic_exponent.scale(-1.0),
+        ComplexScalar::new(1.0, 0.0),
+    );
+
+    let transform_input = transition_context.build_transform_input(
+        buy_kernel_inputs.u_input,
+        sell_kernel_inputs.u_input,
+        buy_kernel_inputs.z_input,
+        sell_kernel_inputs.z_input,
+    );
+
+    solve_exponential_affine_transform_with_terminal_loading(transform_input, terminal_loading)
+        .map_err(
+            |source| VanillaOptionPricingRunError::TransformSolveFailure {
+                argument,
+                source: Box::new(source),
+            },
+        )
+}
+
+fn missing_transform_output_context(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    argument: ComplexScalar,
+) -> String {
+    let trading_time_argument = scale_trading_time_return_argument(transition_context, argument);
+
+    let buy_side_characteristic_exponent = driver_parameters
+        .buy_side_characteristic_exponent(trading_time_argument)
+        .scale(-1.0);
+
+    let sell_side_characteristic_exponent = driver_parameters
+        .sell_side_characteristic_exponent_for_return_composition(trading_time_argument)
+        .scale(-1.0);
+    let pricing_kernel_parameters = transition_context
+        .model_parameters
+        .pricing_kernel_parameters;
+    let buy_kernel_inputs = pricing_kernel_parameters.buy_transform_inputs(
+        buy_side_characteristic_exponent,
+        ComplexScalar::new(1.0, 0.0),
+    );
+    let sell_kernel_inputs = pricing_kernel_parameters.sell_transform_inputs(
+        sell_side_characteristic_exponent,
+        ComplexScalar::new(1.0, 0.0),
+    );
+
+    format!(
+        "pricing_log_return_characteristic_function interval_index={} interval_delta={} u_plus={:?} u_minus={:?} z_plus={:?} z_minus={:?}",
+        transition_context.interval_index,
+        transition_context.interval_delta,
+        buy_kernel_inputs.u_input,
+        sell_kernel_inputs.u_input,
+        buy_kernel_inputs.z_input,
+        sell_kernel_inputs.z_input,
+    )
+}
+
+pub(crate) fn scale_trading_time_return_argument(
     transition_context: &LocalTransitionRequestContext,
     argument: ComplexScalar,
 ) -> ComplexScalar {
@@ -2357,51 +2284,33 @@ pub(crate) struct PricingCharacteristicFunctionSharedPlusShiftSensitivity {
     pub(crate) delta_derivative: ComplexScalar,
     pub(crate) mu_derivative: ComplexScalar,
     pub(crate) delta_beta_derivative: ComplexScalar,
+    pub(crate) buy_activity_premium_derivative: ComplexScalar,
+    pub(crate) sell_activity_premium_derivative: ComplexScalar,
     pub(crate) theta_derivative: ComplexScalar,
 }
 
 fn solve_affine_transform_value_input_sensitivities_for_context(
     transition_context: &LocalTransitionRequestContext,
-    buy_side_shift: ComplexScalar,
-    sell_side_shift: ComplexScalar,
+    buy_side_u_input: ComplexScalar,
+    sell_side_u_input: ComplexScalar,
+    buy_side_z_input: ComplexScalar,
+    sell_side_z_input: ComplexScalar,
 ) -> Result<
     janiform_affine_oracle::affine_oracle::ExponentialAffineTransformInputSensitivityOutput,
     VanillaOptionPricingRunError,
 > {
     let transform_input = transition_context.build_transform_input(
-        buy_side_shift,
-        sell_side_shift,
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
+        buy_side_u_input,
+        sell_side_u_input,
+        buy_side_z_input,
+        sell_side_z_input,
     );
 
-    let transform_diagnostics =
-        solve_exponential_affine_transform(transform_input).map_err(|source| {
-            VanillaOptionPricingRunError::TransformSolveFailure {
-                argument: ComplexScalar::new(0.0, 0.0),
-                source: Box::new(source),
-            }
-        })?;
-
-    let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
-        transform_diagnostics.metadata.integrator_method,
-        transform_diagnostics.metadata.configured_step_count,
-    )
-    .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
-        message: format!(
-            "failed to reconstruct affine transform solver settings for sensitivity solve: {source}"
-        ),
-    })?;
-
-    solve_exponential_affine_transform_input_sensitivities_with_settings(
-        transform_input,
-        solver_settings,
-    )
-    .map_err(
-        |source| VanillaOptionPricingRunError::InternalNumericsFailure {
+    solve_exponential_affine_transform_input_sensitivities(transform_input).map_err(|source| {
+        VanillaOptionPricingRunError::InternalNumericsFailure {
             message: format!("affine transform input sensitivity solve failed: {source}"),
-        },
-    )
+        }
+    })
 }
 
 fn validate_finite_characteristic_sensitivity(
@@ -2498,11 +2407,21 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
 
     let buy_side_shift = buy_side_sensitivity.exponent.scale(-1.0);
     let sell_side_shift = sell_side_sensitivity.exponent.scale(-1.0);
+    let pricing_kernel_parameters = transition_context
+        .model_parameters
+        .pricing_kernel_parameters;
+
+    let buy_kernel_inputs = pricing_kernel_parameters
+        .buy_transform_inputs(buy_side_shift, ComplexScalar::new(1.0, 0.0));
+    let sell_kernel_inputs = pricing_kernel_parameters
+        .sell_transform_inputs(sell_side_shift, ComplexScalar::new(1.0, 0.0));
 
     let transform_sensitivities = solve_affine_transform_value_input_sensitivities_for_context(
         transition_context,
-        buy_side_shift,
-        sell_side_shift,
+        buy_kernel_inputs.u_input,
+        sell_kernel_inputs.u_input,
+        buy_kernel_inputs.z_input,
+        sell_kernel_inputs.z_input,
     )?;
 
     let alpha_derivative = complex_multiply(
@@ -2587,11 +2506,45 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
             .scale(-return_mark_scale),
     ));
 
+    let buy_activity_premium_derivative = complex_multiply(
+        transform_sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative,
+        buy_kernel_inputs.log_activity_premium_u_derivative,
+    )
+    .plus(complex_multiply(
+        transform_sensitivities
+            .z_plus_sensitivity
+            .transform_value_derivative,
+        buy_kernel_inputs.log_activity_premium_z_derivative,
+    ));
+
+    let sell_activity_premium_derivative = complex_multiply(
+        transform_sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative,
+        sell_kernel_inputs.log_activity_premium_u_derivative,
+    )
+    .plus(complex_multiply(
+        transform_sensitivities
+            .z_minus_sensitivity
+            .transform_value_derivative,
+        sell_kernel_inputs.log_activity_premium_z_derivative,
+    ));
+
     validate_finite_characteristic_sensitivity("alpha", alpha_derivative)?;
     validate_finite_characteristic_sensitivity("beta_0", beta_0_derivative)?;
     validate_finite_characteristic_sensitivity("delta", delta_derivative)?;
     validate_finite_characteristic_sensitivity("mu", mu_derivative)?;
     validate_finite_characteristic_sensitivity("delta_beta", delta_beta_derivative)?;
+    validate_finite_characteristic_sensitivity(
+        "buy_activity_premium",
+        buy_activity_premium_derivative,
+    )?;
+    validate_finite_characteristic_sensitivity(
+        "sell_activity_premium",
+        sell_activity_premium_derivative,
+    )?;
     validate_finite_characteristic_sensitivity("theta", theta_derivative)?;
 
     Ok(PricingCharacteristicFunctionSharedPlusShiftSensitivity {
@@ -2601,6 +2554,8 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_sh
         delta_derivative,
         mu_derivative,
         delta_beta_derivative,
+        buy_activity_premium_derivative,
+        sell_activity_premium_derivative,
         theta_derivative,
     })
 }

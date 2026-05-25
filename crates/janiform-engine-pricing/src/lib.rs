@@ -10,6 +10,7 @@ mod grids;
 mod implied_volatility;
 mod interval_schedule;
 mod maturity_inputs;
+mod pricing_kernel;
 mod progress;
 mod runner;
 mod spectral;
@@ -105,6 +106,9 @@ pub use interval_schedule::{
 pub use maturity_inputs::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,
     HighLevelPricingMaturityResolutionRequest, resolve_high_level_pricing_maturity_inputs,
+};
+pub use pricing_kernel::{
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingKernelParametersError,
 };
 pub use progress::{
     PricingNodeProgress, PricingNodeProgressPhase, PricingProgressEvent, PricingProgressPhase,

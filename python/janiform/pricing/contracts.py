@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from math import exp
+from math import exp, isfinite
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -516,12 +516,63 @@ class VanillaOptionPricingMarketInputs(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class VanillaOptionPricingKernelParameters(ContractModel):
+    buy_activity_premium: float
+    sell_activity_premium: float
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(
+            self.buy_activity_premium,
+            "model_parameters.pricing_kernel_parameters.buy_activity_premium",
+            PRICING_ERROR_FACTORY,
+        )
+
+        require_positive_finite_scalar(
+            self.sell_activity_premium,
+            "model_parameters.pricing_kernel_parameters.sell_activity_premium",
+            PRICING_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def identity() -> VanillaOptionPricingKernelParameters:
+        return VanillaOptionPricingKernelParameters(
+            buy_activity_premium=1.0,
+            sell_activity_premium=1.0,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> VanillaOptionPricingKernelParameters:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return VanillaOptionPricingKernelParameters(
+            buy_activity_premium=require_positive_finite_number(
+                raw_payload,
+                "buy_activity_premium",
+                f"{field_path}.buy_activity_premium",
+                PRICING_ERROR_FACTORY,
+            ),
+            sell_activity_premium=require_positive_finite_number(
+                raw_payload,
+                "sell_activity_premium",
+                f"{field_path}.sell_activity_premium",
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class VanillaOptionPricingModelParameters(ContractModel):
     """Model-side pricing inputs across Hawkes, news, and NIG layers."""
 
     hawkes_kernel_parameters: HawkesKernelParameters
     news_process_configuration: NewsProcessConfiguration
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+    pricing_kernel_parameters: VanillaOptionPricingKernelParameters
 
     def __post_init__(self) -> None:
         from ..simulation import HawkesKernelParameters
@@ -546,6 +597,15 @@ class VanillaOptionPricingModelParameters(ContractModel):
             raise _pricing_error(
                 "model_parameters.nig_shared_plus_shift_configuration",
                 "must be a NigSharedPlusShiftConfiguration",
+            )
+
+        if not isinstance(
+            self.pricing_kernel_parameters,
+            VanillaOptionPricingKernelParameters,
+        ):
+            raise _pricing_error(
+                "model_parameters.pricing_kernel_parameters",
+                "must be a VanillaOptionPricingKernelParameters",
             )
 
     @staticmethod
@@ -585,6 +645,15 @@ class VanillaOptionPricingModelParameters(ContractModel):
                         PRICING_ERROR_FACTORY,
                     ),
                     field_path=f"{field_path}.nig_shared_plus_shift_configuration",
+                ),
+                pricing_kernel_parameters=VanillaOptionPricingKernelParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "pricing_kernel_parameters",
+                        f"{field_path}.pricing_kernel_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.pricing_kernel_parameters",
                 ),
             )
         except JaniformValidationError as e:

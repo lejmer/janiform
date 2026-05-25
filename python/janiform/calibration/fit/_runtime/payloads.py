@@ -8,7 +8,11 @@ from ...._timestamps import nanoseconds_to_hours
 from ....calendar import CalendarRegistry
 from ....hourly_factors.workflow import _parse_interval_duration_nanos
 from ....mean_reversion import MeanReversionFittedParameters
-from ....pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+from ....pricing import (
+    GammaSeverityMarkConfiguration,
+    NigSharedPlusShiftConfiguration,
+    VanillaOptionPricingKernelParameters,
+)
 from ....simulation.coarse import NewsProcessConfiguration
 from ....simulation.shared import HawkesKernelParameters
 from ...errors import calibration_error
@@ -24,7 +28,9 @@ if TYPE_CHECKING:
     from ....model import JaniformModel
 
 
-def mean_reversion_fitted_parameters_for_model(model: JaniformModel) -> MeanReversionFittedParameters:
+def mean_reversion_fitted_parameters_for_model(
+    model: JaniformModel,
+) -> MeanReversionFittedParameters:
     return MeanReversionFittedParameters.from_mapping(
         dict(
             require_payload_mapping(
@@ -61,14 +67,17 @@ def prepare_model_runtime_factors_for_model(
 
     return_components_fitted_parameters = return_components_fitted_parameters_payload(model)
 
-    nig_configuration_payload = (
-        pricing_nig_shared_plus_shift_configuration_payload(model)
+    nig_configuration_payload = require_payload_mapping(
+        return_components_fitted_parameters,
+        "nig_shared_plus_shift_configuration",
+        "return_components.fitted_parameters.nig_shared_plus_shift_configuration",
+    )
+
+    kernel_parameters_payload = hawkes_kernel_parameters_payload(model)
+    pricing_kernel_parameters_payload = (
+        pricing_kernel_parameters_payload_for_model(model)
         if prefer_joint_pricing_block
-        else require_payload_mapping(
-            return_components_fitted_parameters,
-            "nig_shared_plus_shift_configuration",
-            "return_components.fitted_parameters.nig_shared_plus_shift_configuration",
-        )
+        else VanillaOptionPricingKernelParameters.identity().to_payload()
     )
 
     news_process_configuration = NewsProcessConfiguration.from_mapping(
@@ -91,10 +100,20 @@ def prepare_model_runtime_factors_for_model(
         interval_duration_nanos=interval_duration_nanos,
         interval_delta=nanoseconds_to_hours(interval_duration_nanos),
         range_end_utc=range_end_utc,
-        kernel_parameters=hawkes_kernel_parameters_for_model(model),
+        kernel_parameters=HawkesKernelParameters.from_mapping(
+            kernel_parameters_payload,
+            field_path="hawkes.fitted_parameters.kernel_parameters",
+        ),
         nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration.from_mapping(
             nig_configuration_payload,
             field_path="return_components.fitted_parameters.nig_shared_plus_shift_configuration",
+        ),
+        pricing_kernel_parameters=VanillaOptionPricingKernelParameters.from_mapping(
+            pricing_kernel_parameters_payload,
+            field_path=(
+                "finalization.fitted_parameters.pricing_block_fitted_parameters."
+                "pricing_kernel_parameters"
+            ),
         ),
         gamma_severity_mark_configuration=GammaSeverityMarkConfiguration.from_mapping(
             require_payload_mapping(
@@ -130,13 +149,34 @@ def require_runtime_ready_model(model: JaniformModel) -> None:
 
 def hawkes_kernel_parameters_for_model(model: JaniformModel) -> HawkesKernelParameters:
     return HawkesKernelParameters.from_mapping(
-        require_payload_mapping(
-            hawkes_fitted_parameters_payload(model),
-            "kernel_parameters",
-            "hawkes.fitted_parameters.kernel_parameters",
-        ),
+        hawkes_kernel_parameters_payload(model),
         field_path="hawkes.fitted_parameters.kernel_parameters",
     )
+
+
+def hawkes_kernel_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
+    return require_payload_mapping(
+        hawkes_fitted_parameters_payload(model),
+        "kernel_parameters",
+        "hawkes.fitted_parameters.kernel_parameters",
+    )
+
+
+def pricing_kernel_parameters_payload_for_model(model: JaniformModel) -> Mapping[str, Any]:
+    pricing_block = finalization_fitted_parameters_payload(model).get(
+        "pricing_block_fitted_parameters"
+    )
+    if isinstance(pricing_block, Mapping):
+        return require_payload_mapping(
+            pricing_block,
+            "pricing_kernel_parameters",
+            (
+                "finalization.fitted_parameters.pricing_block_fitted_parameters."
+                "pricing_kernel_parameters"
+            ),
+        )
+
+    return VanillaOptionPricingKernelParameters.identity().to_payload()
 
 
 def current_state_tick_data_column_mapping_for_model(
@@ -206,22 +246,6 @@ def return_components_fitted_parameters_payload(model: JaniformModel) -> Mapping
         finalization_fitted_parameters_payload(model),
         "return_components_fitted_parameters",
         "finalization.fitted_parameters.return_components_fitted_parameters",
-    )
-
-
-def pricing_nig_shared_plus_shift_configuration_payload(model: JaniformModel) -> Mapping[str, Any]:
-    pricing_block = finalization_fitted_parameters_payload(model).get(
-        "pricing_block_fitted_parameters"
-    )
-    if isinstance(pricing_block, Mapping):
-        nig_configuration = pricing_block.get("nig_shared_plus_shift_configuration")
-        if isinstance(nig_configuration, Mapping):
-            return nig_configuration
-
-    return require_payload_mapping(
-        return_components_fitted_parameters_payload(model),
-        "nig_shared_plus_shift_configuration",
-        "return_components.fitted_parameters.nig_shared_plus_shift_configuration",
     )
 
 

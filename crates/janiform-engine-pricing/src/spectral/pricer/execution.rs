@@ -28,6 +28,7 @@ use super::domain::SpectralDomain;
 use super::domain::{build_maturity_summary, build_spectral_domain};
 use super::interval_operator::{
     CachedIntervalOperatorBuildInput, SolvedMaturityLaw, build_cached_interval_operators,
+    can_solve_maturity_laws_with_direct_affine_composition, solve_direct_affine_maturity_law,
     solve_maturity_law,
 };
 #[cfg(test)]
@@ -435,8 +436,18 @@ fn prepare_pricing_group_contexts(
 
         let maturity_counts = unique_maturity_counts.iter().copied().collect::<Vec<_>>();
 
-        let cached_interval_operator_build =
-            build_cached_interval_operators(CachedIntervalOperatorBuildInput {
+        let use_direct_affine_maturity_laws =
+            can_solve_maturity_laws_with_direct_affine_composition(
+                &base_request,
+                execution_input
+                    .optional_output_selection
+                    .include_node_price_sensitivities,
+            );
+
+        let cached_interval_operator_build = if use_direct_affine_maturity_laws {
+            None
+        } else {
+            let build = build_cached_interval_operators(CachedIntervalOperatorBuildInput {
                 pricing_request: &base_request,
                 include_node_price_sensitivities: execution_input
                     .optional_output_selection
@@ -456,10 +467,16 @@ fn prepare_pricing_group_contexts(
             })
             .map_err(|source| format!("spectral interval-operator assembly failed: {source}"))?;
 
-        operator_approximation_diagnostics = merge_operator_approximation_diagnostics(
-            operator_approximation_diagnostics,
-            cached_interval_operator_build.approximation_diagnostics,
-        );
+            // Intentional copy because the build output owns operators used below.
+            let approximation_diagnostics = build.approximation_diagnostics.clone();
+
+            operator_approximation_diagnostics = merge_operator_approximation_diagnostics(
+                operator_approximation_diagnostics,
+                approximation_diagnostics,
+            );
+
+            Some(build)
+        };
 
         let mut maturity_laws = BTreeMap::new();
 
@@ -477,14 +494,31 @@ fn prepare_pricing_group_contexts(
         }
 
         for (maturity_position, maturity_count) in unique_maturity_counts.into_iter().enumerate() {
-            let solved_maturity_law = solve_maturity_law(
-                &base_request,
-                &materialization,
-                maturity_count,
-                spectral_domain,
-                cached_interval_operator_build.operators.as_slice(),
-            )
-            .map_err(|source| format!("spectral maturity solve failed: {source}"))?;
+            let solved_maturity_law = if use_direct_affine_maturity_laws {
+                solve_direct_affine_maturity_law(
+                    &base_request,
+                    &materialization,
+                    maturity_count,
+                    spectral_domain,
+                    execution_input.interval_factors.as_slice(),
+                    driver_parameters,
+                    pricing_thread_pool,
+                )
+                .map_err(|source| format!("direct affine maturity solve failed: {source}"))?
+            } else {
+                let cached_interval_operator_build = cached_interval_operator_build
+                    .as_ref()
+                    .ok_or_else(|| "missing spectral interval-operator build output".to_string())?;
+
+                solve_maturity_law(
+                    &base_request,
+                    &materialization,
+                    maturity_count,
+                    spectral_domain,
+                    cached_interval_operator_build.operators.as_slice(),
+                )
+                .map_err(|source| format!("spectral maturity solve failed: {source}"))?
+            };
 
             maturity_laws.insert(maturity_count, solved_maturity_law);
 

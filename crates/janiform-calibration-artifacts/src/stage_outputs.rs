@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::contracts::CalibrationLossEvaluation;
-use janiform_engine_pricing::PricingIntervalSchedule;
+use janiform_engine_pricing::{PricingIntervalSchedule, VanillaOptionPricingKernelParameters};
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
@@ -218,28 +218,27 @@ pub struct JointRefinementStageFittedParameters {
 impl JointRefinementStageFittedParameters {
     /// Return the Hawkes kernel that option-pricing workflows should use.
     pub fn pricing_hawkes_kernel_parameters(&self) -> HawkesKernelParameters {
-        self.pricing_block_fitted_parameters
-            .as_ref()
-            .map(|pricing_block| pricing_block.hawkes_kernel_parameters)
-            .unwrap_or(self.hawkes_fitted_parameters.kernel_parameters)
+        self.hawkes_fitted_parameters.kernel_parameters
     }
 
     /// Return the NIG configuration that option-pricing workflows should use.
     pub fn pricing_nig_shared_plus_shift_configuration(&self) -> NigSharedPlusShiftConfiguration {
+        self.return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration
+    }
+
+    /// Return the pricing kernel that option-pricing workflows should use.
+    pub fn pricing_kernel_parameters(&self) -> VanillaOptionPricingKernelParameters {
         self.pricing_block_fitted_parameters
             .as_ref()
-            .map(|pricing_block| pricing_block.nig_shared_plus_shift_configuration)
-            .unwrap_or(
-                self.return_components_fitted_parameters
-                    .nig_shared_plus_shift_configuration,
-            )
+            .map(|pricing_block| pricing_block.pricing_kernel_parameters)
+            .unwrap_or_else(VanillaOptionPricingKernelParameters::identity)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStagePricingBlockFittedParameters {
-    pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
-    pub hawkes_kernel_parameters: HawkesKernelParameters,
+    pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

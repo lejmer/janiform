@@ -2,12 +2,15 @@ use std::fs;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use janiform::calibration::market_data::MarketDataTranslationTickRecord;
+use janiform::calibration::market_data::{
+    MarketDataNormalizedOptionSurfaceRecord, MarketDataTranslationTickRecord,
+};
 use janiform::model::hawkes::HawkesEventSide;
 use janiform::pricing::{
     PricingProgressEvent, VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffType,
 };
 use janiform_engine_pricing::VanillaOptionPricingStatus;
+use janiform_foundations::time::NANOS_PER_HOUR;
 use serde_json::json;
 
 use crate::progress::{
@@ -22,6 +25,7 @@ use super::physical_distribution::{
     ObservedOptionsPhysicalDistributionDiagnosticsReport,
     ObservedOptionsPhysicalDistributionDiagnosticsRequest,
 };
+use super::pricing_spot::resolve_snapshot_pricing_spots;
 use super::state::observed_tick_state_columns;
 use super::surface_progress::{
     SurfaceTaskProgressPlan, SurfaceWorkerState, surface_task_progress_totals,
@@ -29,7 +33,7 @@ use super::surface_progress::{
 };
 use super::types::{
     ObservedOptionsPricingNode, ObservedOptionsPricingScope, ObservedOptionsSnapshotResult,
-    PreparedSnapshotNode,
+    PreparedSnapshotGroup, PreparedSnapshotNode,
 };
 
 #[test]
@@ -70,6 +74,54 @@ fn selected_expiry_snapshot_specs_reuse_incremental_latest_quotes() {
         snapshot_specs[2].1[0].nodes[1].observed_mid_price,
         Some(4.0)
     );
+}
+
+#[test]
+fn snapshot_pricing_spots_use_put_call_parity_when_available() {
+    let expiry_timestamp_utc_nanos = 24 * NANOS_PER_HOUR;
+    let snapshot_specs = vec![(
+        0,
+        vec![PreparedSnapshotGroup {
+            payoff_type: VanillaOptionPayoffType::Call,
+            expiry_timestamp_utc_nanos,
+            nodes: vec![snapshot_node(0, expiry_timestamp_utc_nanos, 100.0, 7.0)],
+        }],
+    )];
+    let option_records = vec![
+        option_surface_record(0, expiry_timestamp_utc_nanos, 100.0, "call", 7.0, 0),
+        option_surface_record(0, expiry_timestamp_utc_nanos, 100.0, "put", 2.0, 1),
+        option_surface_record(0, expiry_timestamp_utc_nanos, 110.0, "call", 2.0, 2),
+        option_surface_record(0, expiry_timestamp_utc_nanos, 110.0, "put", 7.0, 3),
+    ];
+
+    let pricing_spots =
+        resolve_snapshot_pricing_spots(&option_records, snapshot_specs.as_slice(), 0.0, 0.0)
+            .expect("pricing spot should resolve");
+
+    assert_eq!(pricing_spots, vec![Some(105.0)]);
+}
+
+#[test]
+fn snapshot_pricing_spots_return_none_without_put_call_pairs() {
+    let expiry_timestamp_utc_nanos = 24 * NANOS_PER_HOUR;
+    let snapshot_specs = vec![(
+        0,
+        vec![PreparedSnapshotGroup {
+            payoff_type: VanillaOptionPayoffType::Call,
+            expiry_timestamp_utc_nanos,
+            nodes: vec![snapshot_node(0, expiry_timestamp_utc_nanos, 100.0, 7.0)],
+        }],
+    )];
+    let option_records = vec![
+        option_surface_record(0, expiry_timestamp_utc_nanos, 100.0, "call", 7.0, 0),
+        option_surface_record(0, expiry_timestamp_utc_nanos, 110.0, "call", 2.0, 1),
+    ];
+
+    let pricing_spots =
+        resolve_snapshot_pricing_spots(&option_records, snapshot_specs.as_slice(), 0.0, 0.0)
+            .expect("pricing spot should resolve");
+
+    assert_eq!(pricing_spots, vec![None]);
 }
 
 #[test]
@@ -376,6 +428,28 @@ fn snapshot_node(
         observed_bid_price: None,
         observed_ask_price: None,
         observed_mid_price: Some(observed_mid_price),
+    }
+}
+
+fn option_surface_record(
+    quote_timestamp_utc_nanos: i64,
+    expiry_timestamp_utc_nanos: i64,
+    strike: f64,
+    option_type: &str,
+    observed_mid_price: f64,
+    source_row_number: usize,
+) -> MarketDataNormalizedOptionSurfaceRecord {
+    MarketDataNormalizedOptionSurfaceRecord {
+        quote_timestamp_utc_nanos,
+        expiry_timestamp_utc_nanos,
+        strike,
+        option_type: option_type.to_string(),
+        quote_value: observed_mid_price,
+        mid_price: Some(observed_mid_price),
+        bid_price: None,
+        ask_price: None,
+        implied_volatility: None,
+        source_row_number,
     }
 }
 

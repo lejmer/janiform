@@ -162,6 +162,26 @@ impl CosineTransform {
             .map(|value| value.delta_beta_derivative.imaginary)
             .collect::<Vec<_>>();
 
+        let mut buy_activity_premium_real = values
+            .iter()
+            .map(|value| value.buy_activity_premium_derivative.real)
+            .collect::<Vec<_>>();
+
+        let mut buy_activity_premium_imaginary = values
+            .iter()
+            .map(|value| value.buy_activity_premium_derivative.imaginary)
+            .collect::<Vec<_>>();
+
+        let mut sell_activity_premium_real = values
+            .iter()
+            .map(|value| value.sell_activity_premium_derivative.real)
+            .collect::<Vec<_>>();
+
+        let mut sell_activity_premium_imaginary = values
+            .iter()
+            .map(|value| value.sell_activity_premium_derivative.imaginary)
+            .collect::<Vec<_>>();
+
         self.apply_dct(&mut alpha_real);
         self.apply_dct(&mut alpha_imaginary);
         self.apply_dct(&mut beta_0_real);
@@ -170,6 +190,10 @@ impl CosineTransform {
         self.apply_dct(&mut delta_imaginary);
         self.apply_dct(&mut delta_beta_real);
         self.apply_dct(&mut delta_beta_imaginary);
+        self.apply_dct(&mut buy_activity_premium_real);
+        self.apply_dct(&mut buy_activity_premium_imaginary);
+        self.apply_dct(&mut sell_activity_premium_real);
+        self.apply_dct(&mut sell_activity_premium_imaginary);
 
         alpha_real
             .into_iter()
@@ -177,16 +201,35 @@ impl CosineTransform {
             .zip(beta_0_real.into_iter().zip(beta_0_imaginary))
             .zip(delta_real.into_iter().zip(delta_imaginary))
             .zip(delta_beta_real.into_iter().zip(delta_beta_imaginary))
+            .zip(
+                buy_activity_premium_real
+                    .into_iter()
+                    .zip(buy_activity_premium_imaginary),
+            )
+            .zip(
+                sell_activity_premium_real
+                    .into_iter()
+                    .zip(sell_activity_premium_imaginary),
+            )
             .enumerate()
             .map(
                 |(
                     basis_index,
                     (
                         (
-                            ((alpha_real, alpha_imaginary), (beta_0_real, beta_0_imaginary)),
-                            (delta_real, delta_imaginary),
+                            (
+                                (
+                                    (
+                                        (alpha_real, alpha_imaginary),
+                                        (beta_0_real, beta_0_imaginary),
+                                    ),
+                                    (delta_real, delta_imaginary),
+                                ),
+                                (delta_beta_real, delta_beta_imaginary),
+                            ),
+                            (buy_activity_premium_real, buy_activity_premium_imaginary),
                         ),
-                        (delta_beta_real, delta_beta_imaginary),
+                        (sell_activity_premium_real, sell_activity_premium_imaginary),
                     ),
                 )| {
                     let scale = coefficient_scale(basis_index, self.node_count);
@@ -201,6 +244,16 @@ impl CosineTransform {
                         delta_beta_derivative: ComplexScalar::new(
                             delta_beta_real,
                             delta_beta_imaginary,
+                        )
+                        .scale(scale),
+                        buy_activity_premium_derivative: ComplexScalar::new(
+                            buy_activity_premium_real,
+                            buy_activity_premium_imaginary,
+                        )
+                        .scale(scale),
+                        sell_activity_premium_derivative: ComplexScalar::new(
+                            sell_activity_premium_real,
+                            sell_activity_premium_imaginary,
                         )
                         .scale(scale),
                     }
@@ -234,10 +287,22 @@ impl CosineTransform {
             .map(|coefficient| coefficient.delta_beta_derivative)
             .collect::<Vec<_>>();
 
+        let mut buy_activity_premium = coefficients
+            .iter()
+            .map(|coefficient| coefficient.buy_activity_premium_derivative)
+            .collect::<Vec<_>>();
+
+        let mut sell_activity_premium = coefficients
+            .iter()
+            .map(|coefficient| coefficient.sell_activity_premium_derivative)
+            .collect::<Vec<_>>();
+
         self.apply_dct3(&mut alpha);
         self.apply_dct3(&mut beta_0);
         self.apply_dct3(&mut delta);
         self.apply_dct3(&mut delta_beta);
+        self.apply_dct3(&mut buy_activity_premium);
+        self.apply_dct3(&mut sell_activity_premium);
 
         let scale = inverse_series_scale(self.node_count);
 
@@ -246,16 +311,26 @@ impl CosineTransform {
             .zip(beta_0)
             .zip(delta)
             .zip(delta_beta)
+            .zip(buy_activity_premium)
+            .zip(sell_activity_premium)
             .map(
                 |(
-                    ((alpha_derivative, beta_0_derivative), delta_derivative),
-                    delta_beta_derivative,
+                    (
+                        (
+                            ((alpha_derivative, beta_0_derivative), delta_derivative),
+                            delta_beta_derivative,
+                        ),
+                        buy_activity_premium_derivative,
+                    ),
+                    sell_activity_premium_derivative,
                 )| {
                     NodePriceSharedPlusShiftSensitivity {
                         alpha_derivative: scale * alpha_derivative,
                         beta_0_derivative: scale * beta_0_derivative,
                         delta_derivative: scale * delta_derivative,
                         delta_beta_derivative: scale * delta_beta_derivative,
+                        buy_activity_premium_derivative: scale * buy_activity_premium_derivative,
+                        sell_activity_premium_derivative: scale * sell_activity_premium_derivative,
                     }
                 },
             )
@@ -324,18 +399,24 @@ mod tests {
                 beta_0_derivative: ComplexScalar::new(-1.0, 0.25),
                 delta_derivative: ComplexScalar::new(0.25, -0.5),
                 delta_beta_derivative: ComplexScalar::new(1.5, 0.75),
+                buy_activity_premium_derivative: ComplexScalar::new(0.3, -0.2),
+                sell_activity_premium_derivative: ComplexScalar::new(-0.4, 0.1),
             },
             NodePriceSharedPlusShiftComplexSensitivity {
                 alpha_derivative: ComplexScalar::new(-0.25, 1.25),
                 beta_0_derivative: ComplexScalar::new(0.5, -1.25),
                 delta_derivative: ComplexScalar::new(0.75, 0.5),
                 delta_beta_derivative: ComplexScalar::new(-1.0, 1.0),
+                buy_activity_premium_derivative: ComplexScalar::new(0.7, 0.4),
+                sell_activity_premium_derivative: ComplexScalar::new(0.2, -0.6),
             },
             NodePriceSharedPlusShiftComplexSensitivity {
                 alpha_derivative: ComplexScalar::new(0.75, -0.5),
                 beta_0_derivative: ComplexScalar::new(1.25, 0.0),
                 delta_derivative: ComplexScalar::new(-0.5, -0.25),
                 delta_beta_derivative: ComplexScalar::new(0.0, 0.5),
+                buy_activity_premium_derivative: ComplexScalar::new(-0.1, 0.8),
+                sell_activity_premium_derivative: ComplexScalar::new(0.5, 0.3),
             },
         ];
 
@@ -364,18 +445,24 @@ mod tests {
                 beta_0_derivative: -1.0,
                 delta_derivative: 0.25,
                 delta_beta_derivative: 1.5,
+                buy_activity_premium_derivative: 0.3,
+                sell_activity_premium_derivative: -0.4,
             },
             NodePriceSharedPlusShiftSensitivity {
                 alpha_derivative: -0.25,
                 beta_0_derivative: 0.5,
                 delta_derivative: 0.75,
                 delta_beta_derivative: -1.0,
+                buy_activity_premium_derivative: 0.7,
+                sell_activity_premium_derivative: 0.2,
             },
             NodePriceSharedPlusShiftSensitivity {
                 alpha_derivative: 0.75,
                 beta_0_derivative: 1.25,
                 delta_derivative: -0.5,
                 delta_beta_derivative: 0.0,
+                buy_activity_premium_derivative: -0.1,
+                sell_activity_premium_derivative: 0.5,
             },
         ];
 
@@ -511,22 +598,46 @@ mod tests {
                 .collect::<Vec<_>>()
                 .as_slice(),
         );
+        let buy_activity_premium = direct_real_values(
+            coefficients
+                .iter()
+                .map(|coefficient| coefficient.buy_activity_premium_derivative)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+        let sell_activity_premium = direct_real_values(
+            coefficients
+                .iter()
+                .map(|coefficient| coefficient.sell_activity_premium_derivative)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
 
         alpha
             .into_iter()
             .zip(beta_0)
             .zip(delta)
             .zip(delta_beta)
+            .zip(buy_activity_premium)
+            .zip(sell_activity_premium)
             .map(
                 |(
-                    ((alpha_derivative, beta_0_derivative), delta_derivative),
-                    delta_beta_derivative,
+                    (
+                        (
+                            ((alpha_derivative, beta_0_derivative), delta_derivative),
+                            delta_beta_derivative,
+                        ),
+                        buy_activity_premium_derivative,
+                    ),
+                    sell_activity_premium_derivative,
                 )| {
                     NodePriceSharedPlusShiftSensitivity {
                         alpha_derivative,
                         beta_0_derivative,
                         delta_derivative,
                         delta_beta_derivative,
+                        buy_activity_premium_derivative,
+                        sell_activity_premium_derivative,
                     }
                 },
             )
@@ -633,6 +744,30 @@ mod tests {
             expected
                 .iter()
                 .map(|value| value.delta_beta_derivative)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+        assert_complex_rows_close(
+            actual
+                .iter()
+                .map(|value| value.buy_activity_premium_derivative)
+                .collect::<Vec<_>>()
+                .as_slice(),
+            expected
+                .iter()
+                .map(|value| value.buy_activity_premium_derivative)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+        assert_complex_rows_close(
+            actual
+                .iter()
+                .map(|value| value.sell_activity_premium_derivative)
+                .collect::<Vec<_>>()
+                .as_slice(),
+            expected
+                .iter()
+                .map(|value| value.sell_activity_premium_derivative)
                 .collect::<Vec<_>>()
                 .as_slice(),
         );

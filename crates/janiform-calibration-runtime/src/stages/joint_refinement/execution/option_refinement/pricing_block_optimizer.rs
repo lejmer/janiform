@@ -2,15 +2,8 @@ use janiform_foundations::linear_algebra::mean_diagonal_damped_least_squares_ste
 
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 
-use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
-use crate::stages::return_components::{
-    NigSharedPlusShiftConfigurationSearchPointMapping, nig_configuration_search_point_mapping,
-};
 
-use super::super::super::setup::{
-    parameter_vector_to_fitted_parameters, parameter_vector_to_nig_search_point,
-};
 use super::super::{JointRefinementContext, JointRefinementRestartOutcome, elapsed_millis};
 use super::residual_jacobian::weighted_option_residual_jacobian_rows;
 use super::workflow::{
@@ -21,7 +14,6 @@ use super::workflow::{
 
 // The Levenberg term is one mean diagonal of the local normal matrix.
 const OPTION_PRICING_BLOCK_NORMAL_EQUATION_DAMPING_MEAN_DIAGONAL_MULTIPLIER: f64 = 1.0;
-
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OptionRefinementCandidateSearchBudget {
     pub(super) total_evaluation_budget: usize,
@@ -80,25 +72,88 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
         initial_candidate.search_tier_score,
         option_refinement_effective_search_sample_count(&initial_candidate),
     );
-    let proposals =
-        pricing_block_proposals(refinement_context, &initial_candidate, score_resolution)?;
+    let proposals = pricing_block_sensitivity_proposals(
+        refinement_context,
+        &initial_candidate,
+        score_resolution,
+    )?;
 
     let mut best_candidate = initial_candidate;
     let mut budget_limited = false;
     let mut prediction_rejected = false;
     let mut used_evaluation_count = 1usize;
 
+    evaluate_pricing_block_proposals(
+        refinement_context,
+        dynamics_candidate,
+        source_dynamics_parameter_bits,
+        theta_warm_start_state,
+        progress_context,
+        search_budget,
+        &mut used_evaluation_count,
+        &mut best_candidate,
+        proposals,
+        &mut budget_limited,
+        &mut prediction_rejected,
+    )?;
+
+    let bound_proposals =
+        pricing_block_bound_exploration_proposals(refinement_context, &best_candidate);
+
+    evaluate_pricing_block_proposals(
+        refinement_context,
+        dynamics_candidate,
+        source_dynamics_parameter_bits,
+        theta_warm_start_state,
+        progress_context,
+        search_budget,
+        &mut used_evaluation_count,
+        &mut best_candidate,
+        bound_proposals,
+        &mut budget_limited,
+        &mut prediction_rejected,
+    )?;
+
+    if budget_limited {
+        best_candidate.restart_outcome.stop_reason =
+            "option_pricing_block_budget_limited".to_string();
+    } else if prediction_rejected {
+        best_candidate.restart_outcome.stop_reason =
+            "option_pricing_block_reduced_model_prediction_rejected".to_string();
+    }
+
+    Ok(best_candidate)
+}
+
+fn evaluate_pricing_block_proposals(
+    refinement_context: &JointRefinementContext,
+    dynamics_candidate: &JointRefinementRestartOutcome,
+    source_dynamics_parameter_bits: &[u64],
+    theta_warm_start_state: &mut SpectralThetaWarmStartState,
+    progress_context: Option<&OptionRefinementProgressContext<'_>>,
+    search_budget: OptionRefinementCandidateSearchBudget,
+    used_evaluation_count: &mut usize,
+    best_candidate: &mut SearchTierCandidate,
+    proposals: Vec<PricingBlockProposal>,
+    budget_limited: &mut bool,
+    prediction_rejected: &mut bool,
+) -> Result<(), String> {
+    let score_resolution = option_score_resolution(
+        best_candidate.search_tier_score,
+        option_refinement_effective_search_sample_count(best_candidate),
+    );
+
     for proposal in proposals {
         if proposal
             .predicted_score
             .is_some_and(|predicted_score| predicted_score >= best_candidate.search_tier_score)
         {
-            prediction_rejected = true;
+            *prediction_rejected = true;
             continue;
         }
 
-        if !search_budget.can_start_proposal_evaluation(used_evaluation_count) {
-            budget_limited = true;
+        if !search_budget.can_start_proposal_evaluation(*used_evaluation_count) {
+            *budget_limited = true;
             break;
         }
 
@@ -114,13 +169,13 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
             progress_context,
         )?;
 
-        used_evaluation_count = used_evaluation_count.saturating_add(1);
+        *used_evaluation_count = (*used_evaluation_count).saturating_add(1);
 
         if evaluated_candidate.search_tier_score < best_candidate.search_tier_score {
             let validated_improvement =
                 best_candidate.search_tier_score - evaluated_candidate.search_tier_score;
 
-            best_candidate = evaluated_candidate;
+            *best_candidate = evaluated_candidate;
 
             if validated_improvement <= score_resolution {
                 best_candidate.restart_outcome.stop_reason =
@@ -132,21 +187,13 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
             continue;
         }
 
-        prediction_rejected = true;
+        *prediction_rejected = true;
     }
 
-    if budget_limited {
-        best_candidate.restart_outcome.stop_reason =
-            "option_pricing_block_budget_limited".to_string();
-    } else if prediction_rejected {
-        best_candidate.restart_outcome.stop_reason =
-            "option_pricing_block_reduced_model_prediction_rejected".to_string();
-    }
-
-    Ok(best_candidate)
+    Ok(())
 }
 
-fn pricing_block_proposals(
+fn pricing_block_sensitivity_proposals(
     refinement_context: &JointRefinementContext,
     initial_candidate: &SearchTierCandidate,
     score_resolution: f64,
@@ -169,11 +216,6 @@ fn pricing_block_proposals(
             score_resolution,
         )?);
     }
-
-    proposals.extend(pricing_block_bound_exploration_proposals(
-        refinement_context,
-        initial_candidate,
-    ));
 
     Ok(proposals)
 }
@@ -200,16 +242,6 @@ fn pricing_block_least_squares_proposals(
         .parameter_vector
         .as_slice();
 
-    let current_search_point = parameter_vector_to_nig_search_point(
-        current_vector,
-        &refinement_context.active_parameter_layout,
-    );
-
-    let calibration_sample = pricing_block_calibration_sample(current_vector, refinement_context)?;
-
-    let mapping = nig_configuration_search_point_mapping(&calibration_sample, current_search_point)
-        .ok_or_else(|| "option pricing NIG search-point Jacobian mapping failed".to_string())?;
-
     let weighted_rows = weighted_option_residual_jacobian_rows(node_sensitivities.as_slice())?;
 
     let mut search_coordinate_rows = Vec::with_capacity(weighted_rows.len());
@@ -227,10 +259,7 @@ fn pricing_block_least_squares_proposals(
 
         search_coordinate_rows.push(PricingBlockWeightedResidualJacobianRow {
             residual: weighted_row.residual,
-            gradient: search_coordinate_gradient_from_raw_nig_gradient(
-                weighted_row.gradient.as_slice(),
-                &mapping,
-            ),
+            gradient: weighted_row.gradient,
         });
     }
 
@@ -295,18 +324,7 @@ fn pricing_block_gradient_proposals(
         .parameter_vector
         .as_slice();
 
-    let current_search_point = parameter_vector_to_nig_search_point(
-        current_vector,
-        &refinement_context.active_parameter_layout,
-    );
-
-    let calibration_sample = pricing_block_calibration_sample(current_vector, refinement_context)?;
-
-    let mapping = nig_configuration_search_point_mapping(&calibration_sample, current_search_point)
-        .ok_or_else(|| "option pricing NIG search-point gradient mapping failed".to_string())?;
-
-    let search_gradient =
-        search_coordinate_gradient_from_raw_nig_gradient(raw_gradient.as_slice(), &mapping);
+    let search_gradient = raw_gradient.clone();
 
     let direction = search_gradient
         .iter()
@@ -489,56 +507,6 @@ fn pricing_block_proposal_vector(
     (proposal_vector, applied_delta)
 }
 
-fn pricing_block_calibration_sample(
-    parameter_vector: &[f64],
-    refinement_context: &JointRefinementContext,
-) -> Result<
-    crate::stages::return_components::ReturnComponentsStageContinuousReturnCalibrationSample,
-    String,
-> {
-    let fitted_parameters =
-        parameter_vector_to_fitted_parameters(parameter_vector, refinement_context)
-            .ok_or_else(|| "option pricing parameter vector failed to decode".to_string())?;
-
-    let modeled_open_event_rate_per_hour =
-        crate::stages::hawkes::stationary_open_event_rate_per_hour(
-            &fitted_parameters.hawkes_fitted_parameters,
-        )
-        .ok_or_else(|| "option pricing modeled open event rate is unavailable".to_string())?;
-
-    Ok(
-        build_continuous_calibration_sample_from_aggregated_intervals(
-            refinement_context
-                .observed_data
-                .observed_15m_intervals
-                .as_slice(),
-            modeled_open_event_rate_per_hour,
-            refinement_context
-                .observed_data
-                .observed_open_event_rate_per_hour,
-            refinement_context.observed_data.fallback_sell_share_proxy,
-        ),
-    )
-}
-
-fn search_coordinate_gradient_from_raw_nig_gradient(
-    raw_gradient: &[f64],
-    mapping: &NigSharedPlusShiftConfigurationSearchPointMapping,
-) -> Vec<f64> {
-    let mut gradient = (0..4)
-        .map(|coordinate_index| {
-            raw_gradient[0] * mapping.gradient.alpha_gradient[coordinate_index]
-                + raw_gradient[1] * mapping.gradient.beta_0_gradient[coordinate_index]
-                + raw_gradient[2] * mapping.gradient.delta_gradient[coordinate_index]
-                + raw_gradient[3] * mapping.gradient.delta_beta_gradient[coordinate_index]
-        })
-        .collect::<Vec<_>>();
-
-    gradient.resize(pricing_block_search_coordinate_count(), 0.0);
-
-    gradient
-}
-
 fn maximum_bounded_line_step(
     current_vector: &[f64],
     direction: &[f64],
@@ -612,14 +580,8 @@ fn pricing_block_bound_exploration_proposals(
 fn pricing_block_parameter_indices(refinement_context: &JointRefinementContext) -> Vec<usize> {
     refinement_context
         .active_parameter_layout
-        .nig_block
+        .option_pricing_kernel_block
         .iter()
-        .chain(
-            refinement_context
-                .active_parameter_layout
-                .option_pricing_hawkes_block
-                .iter(),
-        )
         .copied()
         .collect()
 }

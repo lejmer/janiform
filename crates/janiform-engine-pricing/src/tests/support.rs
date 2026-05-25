@@ -7,9 +7,9 @@ use crate::fourier::{
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    build_pricing_transform_input,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingKernelParameters,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
@@ -182,6 +182,7 @@ pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
         .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig shared-plus-shift configuration should construct"),
+        VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")
 }

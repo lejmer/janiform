@@ -834,6 +834,7 @@ fn run_option_grid_batch_pricing(
                 .news_process_configuration
                 .clone(),
             fitted_parameters.pricing_nig_shared_plus_shift_configuration(),
+            fitted_parameters.pricing_kernel_parameters(),
         ),
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
         interval_delta: tier_inputs.runtime_interval_schedule.interval_deltas_hours[0],
@@ -1954,10 +1955,8 @@ fn spread_normalized_residual_gradient(
             .unwrap_or(quote_scale_floor);
 
     let mut gradient = vec![
-        model_price_sensitivity.alpha_derivative * spread_inverse,
-        model_price_sensitivity.beta_0_derivative * spread_inverse,
-        model_price_sensitivity.delta_derivative * spread_inverse,
-        model_price_sensitivity.delta_beta_derivative * spread_inverse,
+        model_price_sensitivity.buy_activity_premium_derivative * spread_inverse,
+        model_price_sensitivity.sell_activity_premium_derivative * spread_inverse,
     ];
 
     gradient.resize(pricing_block_search_coordinate_count(), 0.0);
@@ -3124,6 +3123,7 @@ mod tests {
                     .news_process_configuration
                     .clone(),
                 return_components_fitted_parameters.nig_shared_plus_shift_configuration,
+                janiform_engine_pricing::VanillaOptionPricingKernelParameters::identity(),
             ),
             runtime_interval_schedule: horizon,
             interval_delta: boundary_input.interval_delta,

@@ -44,6 +44,14 @@ pub(super) fn complex_scale_sensitivity(
         beta_0_derivative: complex_multiply(value, sensitivity.beta_0_derivative),
         delta_derivative: complex_multiply(value, sensitivity.delta_derivative),
         delta_beta_derivative: complex_multiply(value, sensitivity.delta_beta_derivative),
+        buy_activity_premium_derivative: complex_multiply(
+            value,
+            sensitivity.buy_activity_premium_derivative,
+        ),
+        sell_activity_premium_derivative: complex_multiply(
+            value,
+            sensitivity.sell_activity_premium_derivative,
+        ),
     }
 }
 

@@ -414,33 +414,46 @@ pub(in crate::spectral::pricer::interval_operator) fn interval_transition_contex
     job: &CachedIntervalOperatorJob,
     solve_context: CachedIntervalOperatorSolveContext<'_>,
 ) -> Result<IntervalTransitionContext, VanillaOptionPricingRunError> {
-    let runtime_anchors = &solve_context.materialization.runtime_interval_anchors;
+    interval_transition_context_from_parts(
+        solve_context.pricing_request,
+        solve_context.materialization,
+        job.interval_factor,
+        job.interval_offset,
+    )
+}
 
-    let current_anchor_value = if job.interval_offset == 0 {
+pub(in crate::spectral::pricer::interval_operator) fn interval_transition_context_from_parts(
+    pricing_request: &VanillaOptionPricingRequest,
+    materialization: &RiskNeutralAnchorMaterialization,
+    interval_factor: VanillaOptionPricingIntervalFactors,
+    interval_offset: usize,
+) -> Result<IntervalTransitionContext, VanillaOptionPricingRunError> {
+    let runtime_anchors = &materialization.runtime_interval_anchors;
+
+    let current_anchor_value = if interval_offset == 0 {
         runtime_anchors.start_anchor_value
     } else {
-        runtime_anchors.end_anchor_values[job.interval_offset - 1]
+        runtime_anchors.end_anchor_values[interval_offset - 1]
     };
 
-    let current_pressure_state = if job.interval_offset == 0 {
+    let current_pressure_state = if interval_offset == 0 {
         runtime_anchors.start_pressure_state
     } else {
-        runtime_anchors.end_pressure_states[job.interval_offset - 1]
+        runtime_anchors.end_pressure_states[interval_offset - 1]
     };
 
-    let interval_delta = runtime_anchors.interval_deltas[job.interval_offset];
+    let interval_delta = runtime_anchors.interval_deltas[interval_offset];
 
-    let expected_hawkes_state_before =
-        solve_context.materialization.expected_hawkes_state_path[job.interval_offset];
+    let expected_hawkes_state_before = materialization.expected_hawkes_state_path[interval_offset];
     let expected_hawkes_state_after =
-        solve_context.materialization.expected_hawkes_state_path[job.interval_offset + 1];
+        materialization.expected_hawkes_state_path[interval_offset + 1];
 
-    let next_anchor_value = runtime_anchors.end_anchor_values[job.interval_offset];
+    let next_anchor_value = runtime_anchors.end_anchor_values[interval_offset];
 
     let base_context = LocalTransitionRequestContext::from_interval_state(
-        solve_context.pricing_request,
-        job.interval_factor,
-        solve_context.pricing_request.boundary_input.interval_index + job.interval_offset,
+        pricing_request,
+        interval_factor,
+        pricing_request.boundary_input.interval_index + interval_offset,
         expected_hawkes_state_before,
         current_anchor_value,
         current_pressure_state,

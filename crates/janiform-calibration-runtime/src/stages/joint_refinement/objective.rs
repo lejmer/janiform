@@ -2171,15 +2171,7 @@ fn add_domain_margin_priors(
         );
     }
 
-    let nig_configuration = fitted_parameters
-        .pricing_block_fitted_parameters
-        .as_ref()
-        .map(|pricing_block| pricing_block.nig_shared_plus_shift_configuration)
-        .unwrap_or(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-        );
+    let nig_configuration = fitted_parameters.pricing_nig_shared_plus_shift_configuration();
 
     if let Ok(driver_parameters) = nig_configuration.derive_driver_parameters() {
         let buy_report = driver_parameters

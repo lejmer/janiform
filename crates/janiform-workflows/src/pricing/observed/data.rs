@@ -52,18 +52,7 @@ pub(super) fn prepare_snapshot_groups(
             continue;
         }
 
-        let Some(node) = prepared_snapshot_node_from_record(record, option_type)? else {
-            continue;
-        };
-
-        latest_by_node.insert(
-            option_record_key(
-                node.option_type,
-                node.expiry_timestamp_utc_nanos,
-                node.strike,
-            ),
-            node,
-        );
+        insert_latest_snapshot_node_from_record(&mut latest_by_node, record, option_type)?;
     }
 
     if latest_by_node.is_empty() {
@@ -284,6 +273,27 @@ fn prepared_snapshot_node_from_record(
     }))
 }
 
+pub(super) fn insert_latest_snapshot_node_from_record(
+    latest_by_node: &mut BTreeMap<OptionRecordKey, PreparedSnapshotNode>,
+    record: &MarketDataNormalizedOptionSurfaceRecord,
+    option_type: Option<ObservedOptionTypeFilter>,
+) -> Result<(), WorkflowError> {
+    let Some(node) = prepared_snapshot_node_from_record(record, option_type)? else {
+        return Ok(());
+    };
+
+    latest_by_node.insert(
+        option_record_key(
+            node.option_type,
+            node.expiry_timestamp_utc_nanos,
+            node.strike,
+        ),
+        node,
+    );
+
+    Ok(())
+}
+
 fn normalized_option_payoff_type(
     raw_value: &str,
     field_path: &'static str,
@@ -309,10 +319,10 @@ fn validate_strike(strike: f64) -> Result<(), WorkflowError> {
     Ok(())
 }
 
-type OptionRecordKey = (OptionTypeSortKey, i64, u64);
+pub(super) type OptionRecordKey = (OptionTypeSortKey, i64, u64);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-enum OptionTypeSortKey {
+pub(super) enum OptionTypeSortKey {
     Call,
     Put,
 }

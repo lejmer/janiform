@@ -7,6 +7,7 @@ use std::sync::mpsc::Sender;
 use std::time::Instant;
 
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use janiform_engine_pricing::VanillaOptionPricingKernelParameters;
 use janiform_foundations::numeric::clamp_point_in_place as clamp_in_place;
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
@@ -203,14 +204,13 @@ pub(super) fn parameter_vector_to_fitted_parameters(
 
     let (return_components_fitted_parameters, pricing_block_fitted_parameters) =
         if option_pricing_only {
-            let pricing_hawkes_kernel_parameters =
-                pricing_hawkes_kernel_parameters_from_option_vector(parameter_vector, context)?;
+            let pricing_kernel_parameters =
+                pricing_kernel_parameters_from_option_vector(parameter_vector, context)?;
 
             (
                 context.baseline_return_components_fitted_parameters.clone(),
                 Some(JointRefinementStagePricingBlockFittedParameters {
-                    nig_shared_plus_shift_configuration,
-                    hawkes_kernel_parameters: pricing_hawkes_kernel_parameters,
+                    pricing_kernel_parameters,
                 }),
             )
         } else {
@@ -277,46 +277,15 @@ pub(super) fn parameter_vector_to_fitted_parameters(
     })
 }
 
-fn pricing_hawkes_kernel_parameters_from_option_vector(
+fn pricing_kernel_parameters_from_option_vector(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
-) -> Option<HawkesKernelParameters> {
+) -> Option<VanillaOptionPricingKernelParameters> {
     let layout = &context.active_parameter_layout;
 
-    let baseline_kernel_parameters = context.baseline_hawkes_fitted_parameters.kernel_parameters;
-
-    let stationary_event_rate_scale =
-        parameter_vector[layout.option_pricing_log_stationary_event_rate_scale_index].exp();
-
-    let beta_scale = parameter_vector[layout.option_pricing_log_beta_scale_index].exp();
-
-    let alpha_loadings = HawkesKernelLoadings {
-        plus_plus: baseline_kernel_parameters.alpha.plus_plus
-            * parameter_vector[layout.option_pricing_log_alpha_plus_plus_scale_index].exp(),
-        plus_minus: baseline_kernel_parameters.alpha.plus_minus
-            * parameter_vector[layout.option_pricing_log_alpha_plus_minus_scale_index].exp(),
-        minus_plus: baseline_kernel_parameters.alpha.minus_plus
-            * parameter_vector[layout.option_pricing_log_alpha_minus_plus_scale_index].exp(),
-        minus_minus: baseline_kernel_parameters.alpha.minus_minus
-            * parameter_vector[layout.option_pricing_log_alpha_minus_minus_scale_index].exp(),
-    };
-
-    let beta = baseline_kernel_parameters.beta * beta_scale;
-
-    let stationary_open_event_rate_per_hour =
-        context.baseline_modeled_open_event_rate_per_hour * stationary_event_rate_scale;
-
-    let lambda_bar = baseline_intensity_for_stationary_total_intensity(
-        stationary_open_event_rate_per_hour,
-        alpha_loadings,
-        beta,
-    )?;
-
-    HawkesKernelParameters::try_new(
-        lambda_bar,
-        beta,
-        alpha_loadings,
-        baseline_kernel_parameters.rho,
+    VanillaOptionPricingKernelParameters::try_new(
+        parameter_vector[layout.option_pricing_log_buy_activity_premium_index].exp(),
+        parameter_vector[layout.option_pricing_log_sell_activity_premium_index].exp(),
     )
     .ok()
 }
@@ -447,47 +416,27 @@ pub(super) fn build_active_parameter_layout(
         coupling_block.push(index);
     }
 
-    let option_pricing_log_stationary_event_rate_scale_index = next_index;
+    let option_pricing_log_buy_activity_premium_index = next_index;
     next_index += 1;
 
-    let option_pricing_log_beta_scale_index = next_index;
-    next_index += 1;
+    let option_pricing_log_sell_activity_premium_index = next_index;
 
-    let option_pricing_log_alpha_plus_plus_scale_index = next_index;
-    next_index += 1;
-
-    let option_pricing_log_alpha_plus_minus_scale_index = next_index;
-    next_index += 1;
-
-    let option_pricing_log_alpha_minus_plus_scale_index = next_index;
-    next_index += 1;
-
-    let option_pricing_log_alpha_minus_minus_scale_index = next_index;
-
-    let option_pricing_hawkes_block = vec![
-        option_pricing_log_stationary_event_rate_scale_index,
-        option_pricing_log_beta_scale_index,
-        option_pricing_log_alpha_plus_plus_scale_index,
-        option_pricing_log_alpha_plus_minus_scale_index,
-        option_pricing_log_alpha_minus_plus_scale_index,
-        option_pricing_log_alpha_minus_minus_scale_index,
+    let option_pricing_kernel_block = vec![
+        option_pricing_log_buy_activity_premium_index,
+        option_pricing_log_sell_activity_premium_index,
     ];
 
     JointRefinementActiveParameterLayout {
         hawkes_block,
         nig_block,
-        option_pricing_hawkes_block,
+        option_pricing_kernel_block,
         coupling_block,
         log_stationary_event_rate_scale_index,
         log_beta_scale_index,
         log_self_excitation_scale_index,
         log_cross_excitation_scale_index,
-        option_pricing_log_stationary_event_rate_scale_index,
-        option_pricing_log_beta_scale_index,
-        option_pricing_log_alpha_plus_plus_scale_index,
-        option_pricing_log_alpha_plus_minus_scale_index,
-        option_pricing_log_alpha_minus_plus_scale_index,
-        option_pricing_log_alpha_minus_minus_scale_index,
+        option_pricing_log_buy_activity_premium_index,
+        option_pricing_log_sell_activity_premium_index,
         known_activity_scale_index,
         surprise_activity_scale_index,
         surprise_baseline_scale_index,
@@ -501,7 +450,7 @@ impl JointRefinementActiveParameterLayout {
             .copied()
             .chain(self.nig_block.iter().copied())
             .chain(self.hawkes_block.iter().copied())
-            .chain(self.option_pricing_hawkes_block.iter().copied())
+            .chain(self.option_pricing_kernel_block.iter().copied())
             .max()
             .map(|index| index + 1)
             .unwrap_or(0)
@@ -547,6 +496,12 @@ pub(super) fn build_parameter_bounds(
         upper_bounds[*index] = JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
     }
 
+    apply_option_pricing_kernel_bounds(
+        active_parameter_layout,
+        &mut lower_bounds,
+        &mut upper_bounds,
+    );
+
     ensure_parameter_vector_inside_bounds(
         baseline_parameter_vector,
         lower_bounds.as_slice(),
@@ -554,6 +509,17 @@ pub(super) fn build_parameter_bounds(
     )?;
 
     Ok((lower_bounds, upper_bounds))
+}
+
+pub(super) fn apply_option_pricing_kernel_bounds(
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    lower_bounds: &mut [f64],
+    upper_bounds: &mut [f64],
+) {
+    for index in &active_parameter_layout.option_pricing_kernel_block {
+        lower_bounds[*index] = -JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
+        upper_bounds[*index] = JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
+    }
 }
 
 fn joint_nig_search_bounds_from_feasible_sources(

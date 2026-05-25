@@ -38,6 +38,9 @@ use super::constants::{
 use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::{PricingIntervalSchedule, PricingIntervalScheduleError};
+use super::pricing_kernel::{
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingKernelParametersError,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -384,6 +387,7 @@ pub struct VanillaOptionPricingModelParameters {
     pub hawkes_kernel_parameters: HawkesKernelParameters,
     pub news_process_configuration: NewsProcessConfiguration,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
 impl VanillaOptionPricingModelParameters {
@@ -391,11 +395,13 @@ impl VanillaOptionPricingModelParameters {
         hawkes_kernel_parameters: HawkesKernelParameters,
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Self {
         Self {
             hawkes_kernel_parameters,
             news_process_configuration,
             nig_shared_plus_shift_configuration,
+            pricing_kernel_parameters,
         }
     }
 
@@ -403,11 +409,13 @@ impl VanillaOptionPricingModelParameters {
         hawkes_kernel_parameters: HawkesKernelParameters,
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Result<Self, VanillaOptionPricingModelParametersError> {
         let model_parameters = Self::new(
             hawkes_kernel_parameters,
             news_process_configuration,
             nig_shared_plus_shift_configuration,
+            pricing_kernel_parameters,
         );
 
         model_parameters.validate()?;
@@ -440,6 +448,12 @@ impl VanillaOptionPricingModelParameters {
                 }
             })?;
 
+        self.pricing_kernel_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidPricingKernelParameters { source }
+            })?;
+
         Ok(())
     }
 }
@@ -455,6 +469,9 @@ pub enum VanillaOptionPricingModelParametersError {
     },
     InvalidNigSharedPlusShiftConfiguration {
         source: NigSharedPlusShiftConfigurationError,
+    },
+    InvalidPricingKernelParameters {
+        source: VanillaOptionPricingKernelParametersError,
     },
 }
 
@@ -473,6 +490,10 @@ impl Display for VanillaOptionPricingModelParametersError {
                 formatter,
                 "model_parameters.nig_shared_plus_shift_configuration is invalid: {source}"
             ),
+            Self::InvalidPricingKernelParameters { source } => write!(
+                formatter,
+                "model_parameters.pricing_kernel_parameters is invalid: {source}"
+            ),
         }
     }
 }
@@ -483,6 +504,7 @@ impl Error for VanillaOptionPricingModelParametersError {
             Self::InvalidHawkesKernelParameters { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
+            Self::InvalidPricingKernelParameters { source } => Some(source),
         }
     }
 }
@@ -2241,6 +2263,7 @@ struct VanillaOptionPricingModelParametersPayload {
     hawkes_kernel_parameters: HawkesKernelParameters,
     news_process_configuration: NewsProcessConfiguration,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
@@ -2254,6 +2277,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
             payload.hawkes_kernel_parameters,
             payload.news_process_configuration,
             payload.nig_shared_plus_shift_configuration,
+            payload.pricing_kernel_parameters,
         )
         .map_err(serde::de::Error::custom)
     }

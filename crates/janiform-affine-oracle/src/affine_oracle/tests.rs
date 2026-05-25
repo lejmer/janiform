@@ -22,6 +22,7 @@ use super::{
     ExponentialAffineTransformSolverSettings, ExponentialAffineTransformTelemetryMode,
     evaluate_exponential_affine_transform_hamiltonians,
     evaluate_exponential_affine_transform_ode_rhs, solve_exponential_affine_transform,
+    solve_exponential_affine_transform_input_sensitivities,
     solve_exponential_affine_transform_with_settings,
 };
 use janiform_foundations::complex_math::ComplexScalar;
@@ -74,6 +75,61 @@ fn valid_input() -> ExponentialAffineTransformInput {
         },
     )
     .expect("valid transform input should construct")
+}
+
+fn reference_transform_input_payload() -> Value {
+    json!({
+        "equation_specification": {
+            "hawkes_kernel_parameters": {
+                "lambda_bar": 0.8,
+                "beta": 1.2,
+                "alpha": {
+                    "plus_plus": 0.20,
+                    "plus_minus": 0.08,
+                    "minus_plus": 0.10,
+                    "minus_minus": 0.24
+                },
+                "rho": {
+                    "plus_plus": 0.03,
+                    "plus_minus": 0.02,
+                    "minus_plus": 0.01,
+                    "minus_minus": 0.04
+                }
+            },
+            "gamma_severity_mark_configuration": {
+                "shape_k": 1.8,
+                "scale_theta": 0.9
+            }
+        },
+        "u_plus": {
+            "real": 0.2,
+            "imaginary": -0.1
+        },
+        "u_minus": {
+            "real": 0.3,
+            "imaginary": 0.05
+        },
+        "z_plus": {
+            "real": 1.0,
+            "imaginary": 0.0
+        },
+        "z_minus": {
+            "real": 0.95,
+            "imaginary": 0.02
+        },
+        "s_h": 1.1,
+        "news_intensity": {
+            "known_nu_h": 0.03,
+            "surprise_nu_h": 0.05
+        },
+        "delta": 1.0,
+        "initial_state": {
+            "y_plus_plus": 0.4,
+            "y_plus_minus": 0.2,
+            "y_minus_plus": 0.3,
+            "y_minus_minus": 0.5
+        }
+    })
 }
 
 fn valid_output() -> ExponentialAffineTransformOutput {
@@ -219,6 +275,7 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
 
 fn transform_value_overflow_fixture_input() -> ExponentialAffineTransformInput {
     let mut transform_input = linear_closed_form_fixture_input();
+
     transform_input.u_plus = ComplexScalar::new(-0.2, 0.0);
     transform_input.u_minus = ComplexScalar::new(-0.3, 0.0);
     transform_input.initial_state = HawkesExcitationState {
@@ -227,6 +284,7 @@ fn transform_value_overflow_fixture_input() -> ExponentialAffineTransformInput {
         y_minus_plus: 1.0e308,
         y_minus_minus: 1.0e308,
     };
+
     transform_input
 }
 
@@ -331,6 +389,7 @@ fn exact_identity_query_short_circuits_to_exact_identity_output() {
     let output = result
         .output
         .expect("identity query should produce an exact output");
+
     assert_eq!(output.c_at_delta, ComplexScalar::new(0.0, 0.0));
     assert_eq!(
         output.d_at_delta,
@@ -346,61 +405,11 @@ fn exact_identity_query_short_circuits_to_exact_identity_output() {
 
 #[test]
 fn transform_input_constructs_from_reference_payload() {
-    let payload = json!({
-        "equation_specification": {
-            "hawkes_kernel_parameters": {
-                "lambda_bar": 0.8,
-                "beta": 1.2,
-                "alpha": {
-                    "plus_plus": 0.20,
-                    "plus_minus": 0.08,
-                    "minus_plus": 0.10,
-                    "minus_minus": 0.24
-                },
-                "rho": {
-                    "plus_plus": 0.03,
-                    "plus_minus": 0.02,
-                    "minus_plus": 0.01,
-                    "minus_minus": 0.04
-                }
-            },
-            "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.9
-            }
-        },
-        "u_plus": {
-            "real": 0.2,
-            "imaginary": -0.1
-        },
-        "u_minus": {
-            "real": 0.3,
-            "imaginary": 0.05
-        },
-        "z_plus": {
-            "real": 1.0,
-            "imaginary": 0.0
-        },
-        "z_minus": {
-            "real": 0.95,
-            "imaginary": 0.02
-        },
-        "s_h": 1.1,
-        "news_intensity": {
-            "known_nu_h": 0.03,
-            "surprise_nu_h": 0.05
-        },
-        "delta": 1.0,
-        "initial_state": {
-            "y_plus_plus": 0.4,
-            "y_plus_minus": 0.2,
-            "y_minus_plus": 0.3,
-            "y_minus_minus": 0.5
-        }
-    });
+    let payload = reference_transform_input_payload();
 
     let parsed: ExponentialAffineTransformInput =
         serde_json::from_value(payload).expect("reference payload should deserialize");
+
     assert_eq!(parsed, valid_input());
 }
 
@@ -410,79 +419,40 @@ fn transform_models_round_trip_through_json() {
     let output = valid_output();
 
     let serialized_input = serde_json::to_string(&input).expect("input payload should serialize");
+
     assert!(
         serialized_input.contains("\"news_intensity\""),
         "serialized input should include component-aware news_intensity payload"
     );
+
     let parsed_input: ExponentialAffineTransformInput =
         serde_json::from_str(&serialized_input).expect("input payload should deserialize");
+
     assert_eq!(parsed_input, input);
 
     let serialized_output =
         serde_json::to_string(&output).expect("output payload should serialize");
+
     let parsed_output: ExponentialAffineTransformOutput =
         serde_json::from_str(&serialized_output).expect("output payload should deserialize");
+
     assert_eq!(parsed_output, output);
 }
 
 #[test]
 fn transform_input_deserialization_reports_missing_required_field() {
-    let payload = json!({
-        "equation_specification": {
-            "hawkes_kernel_parameters": {
-                "lambda_bar": 0.8,
-                "beta": 1.2,
-                "alpha": {
-                    "plus_plus": 0.20,
-                    "plus_minus": 0.08,
-                    "minus_plus": 0.10,
-                    "minus_minus": 0.24
-                },
-                "rho": {
-                    "plus_plus": 0.03,
-                    "plus_minus": 0.02,
-                    "minus_plus": 0.01,
-                    "minus_minus": 0.04
-                }
-            },
-            "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.9
-            }
-        },
-        "u_plus": {
-            "real": 0.2,
-            "imaginary": -0.1
-        },
-        "u_minus": {
-            "real": 0.3,
-            "imaginary": 0.05
-        },
-        "z_plus": {
-            "real": 1.0,
-            "imaginary": 0.0
-        },
-        "z_minus": {
-            "real": 0.95,
-            "imaginary": 0.02
-        },
-        "s_h": 1.1,
-        "news_intensity": {
-            "known_nu_h": 0.03,
-            "surprise_nu_h": 0.05
-        },
-        "initial_state": {
-            "y_plus_plus": 0.4,
-            "y_plus_minus": 0.2,
-            "y_minus_plus": 0.3,
-            "y_minus_minus": 0.5
-        }
-    });
+    let mut payload = reference_transform_input_payload();
+
+    payload
+        .as_object_mut()
+        .expect("reference payload should be a JSON object")
+        .remove("delta");
 
     let parse_result = serde_json::from_value::<ExponentialAffineTransformInput>(payload);
     let error_text = parse_result
         .expect_err("missing delta field must fail")
         .to_string();
+
     assert!(
         error_text.contains("missing field `delta`"),
         "unexpected error message: {error_text}"
@@ -491,63 +461,15 @@ fn transform_input_deserialization_reports_missing_required_field() {
 
 #[test]
 fn transform_input_deserialization_reports_malformed_field_type() {
-    let payload = json!({
-        "equation_specification": {
-            "hawkes_kernel_parameters": {
-                "lambda_bar": 0.8,
-                "beta": 1.2,
-                "alpha": {
-                    "plus_plus": 0.20,
-                    "plus_minus": 0.08,
-                    "minus_plus": 0.10,
-                    "minus_minus": 0.24
-                },
-                "rho": {
-                    "plus_plus": 0.03,
-                    "plus_minus": 0.02,
-                    "minus_plus": 0.01,
-                    "minus_minus": 0.04
-                }
-            },
-            "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.9
-            }
-        },
-        "u_plus": {
-            "real": 0.2,
-            "imaginary": -0.1
-        },
-        "u_minus": {
-            "real": 0.3,
-            "imaginary": 0.05
-        },
-        "z_plus": {
-            "real": 1.0,
-            "imaginary": 0.0
-        },
-        "z_minus": {
-            "real": 0.95,
-            "imaginary": 0.02
-        },
-        "s_h": "high",
-        "news_intensity": {
-            "known_nu_h": 0.03,
-            "surprise_nu_h": 0.05
-        },
-        "delta": 1.0,
-        "initial_state": {
-            "y_plus_plus": 0.4,
-            "y_plus_minus": 0.2,
-            "y_minus_plus": 0.3,
-            "y_minus_minus": 0.5
-        }
-    });
+    let mut payload = reference_transform_input_payload();
+    payload["s_h"] = json!("high");
 
     let parse_result = serde_json::from_value::<ExponentialAffineTransformInput>(payload);
+
     let error_text = parse_result
         .expect_err("malformed s_h field type must fail")
         .to_string();
+
     assert!(
         error_text.contains("invalid type"),
         "unexpected error message: {error_text}"
@@ -556,63 +478,15 @@ fn transform_input_deserialization_reports_malformed_field_type() {
 
 #[test]
 fn transform_input_deserialization_reports_invalid_delta_value() {
-    let payload = json!({
-        "equation_specification": {
-            "hawkes_kernel_parameters": {
-                "lambda_bar": 0.8,
-                "beta": 1.2,
-                "alpha": {
-                    "plus_plus": 0.20,
-                    "plus_minus": 0.08,
-                    "minus_plus": 0.10,
-                    "minus_minus": 0.24
-                },
-                "rho": {
-                    "plus_plus": 0.03,
-                    "plus_minus": 0.02,
-                    "minus_plus": 0.01,
-                    "minus_minus": 0.04
-                }
-            },
-            "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.9
-            }
-        },
-        "u_plus": {
-            "real": 0.2,
-            "imaginary": -0.1
-        },
-        "u_minus": {
-            "real": 0.3,
-            "imaginary": 0.05
-        },
-        "z_plus": {
-            "real": 1.0,
-            "imaginary": 0.0
-        },
-        "z_minus": {
-            "real": 0.95,
-            "imaginary": 0.02
-        },
-        "s_h": 1.1,
-        "news_intensity": {
-            "known_nu_h": 0.03,
-            "surprise_nu_h": 0.05
-        },
-        "delta": 0.0,
-        "initial_state": {
-            "y_plus_plus": 0.4,
-            "y_plus_minus": 0.2,
-            "y_minus_plus": 0.3,
-            "y_minus_minus": 0.5
-        }
-    });
+    let mut payload = reference_transform_input_payload();
+    payload["delta"] = json!(0.0);
 
     let parse_result = serde_json::from_value::<ExponentialAffineTransformInput>(payload);
+
     let error_text = parse_result
         .expect_err("invalid delta value must fail")
         .to_string();
+
     assert!(
         error_text.contains("delta must be finite and strictly positive"),
         "unexpected error message: {error_text}"
@@ -666,6 +540,7 @@ fn equation_mapping_policy_constant_is_stable() {
 #[test]
 fn hamiltonians_match_hand_checked_complex_fixture() {
     let transform_input = valid_input();
+
     let d_vector = ExponentialAffineTransformDVector::new(
         ComplexScalar::new(0.10, -0.02),
         ComplexScalar::new(0.08, 0.01),
@@ -710,6 +585,7 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
         },
     )
     .expect("fixture input should construct");
+
     let d_vector = ExponentialAffineTransformDVector::new(
         ComplexScalar::new(0.4, 0.0),
         ComplexScalar::new(0.2, 0.0),
@@ -754,6 +630,7 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
 #[test]
 fn ode_rhs_is_deterministic_for_identical_inputs() {
     let transform_input = valid_input();
+
     let d_vector = ExponentialAffineTransformDVector::new(
         ComplexScalar::new(0.14, -0.02),
         ComplexScalar::new(0.05, 0.04),
@@ -794,6 +671,7 @@ fn solver_settings_validation_rejects_zero_step_count() {
         0,
     )
     .expect_err("zero step_count must be rejected during settings construction");
+
     assert!(
         settings_error
             .to_string()
@@ -810,6 +688,7 @@ fn solver_settings_validation_rejects_zero_step_count() {
         },
     )
     .expect_err("solver execution must reject invalid settings before runtime");
+
     assert!(
         matches!(
             solver_error,
@@ -822,11 +701,13 @@ fn solver_settings_validation_rejects_zero_step_count() {
 #[test]
 fn solver_integrator_selection_wiring_uses_requested_method() {
     let transform_input = linear_closed_form_fixture_input();
+
     let euler_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::ForwardEuler,
         1,
     )
     .expect("valid Euler settings should construct");
+
     let runge_kutta_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
         1,
@@ -836,6 +717,7 @@ fn solver_integrator_selection_wiring_uses_requested_method() {
     let euler_result =
         solve_exponential_affine_transform_with_settings(transform_input, euler_settings)
             .expect("Euler integration should succeed");
+
     let runge_kutta_result =
         solve_exponential_affine_transform_with_settings(transform_input, runge_kutta_settings)
             .expect("Runge-Kutta integration should succeed");
@@ -866,8 +748,10 @@ fn solver_integrator_selection_wiring_uses_requested_method() {
 #[test]
 fn default_solver_executes_deterministic_closed_form_fixture() {
     let transform_input = linear_closed_form_fixture_input();
+
     let solve_result =
         solve_exponential_affine_transform(transform_input).expect("default solver should succeed");
+
     let output = solve_result
         .output
         .expect("default solver should emit output when status is completed");
@@ -905,6 +789,7 @@ fn default_solver_executes_deterministic_closed_form_fixture() {
         .beta
         * transform_input.delta)
         .exp();
+
     let h_plus = -transform_input.u_plus.real;
     let h_minus = -transform_input.u_minus.real;
 
@@ -913,11 +798,13 @@ fn default_solver_executes_deterministic_closed_form_fixture() {
             .equation_specification
             .hawkes_kernel_parameters
             .beta;
+
     let expected_d_minus = h_minus * (1.0 - decay)
         / transform_input
             .equation_specification
             .hawkes_kernel_parameters
             .beta;
+
     let expected_c = transform_input.s_h
         * transform_input
             .equation_specification
@@ -925,6 +812,7 @@ fn default_solver_executes_deterministic_closed_form_fixture() {
             .lambda_bar
         * (h_plus + h_minus)
         * transform_input.delta;
+
     let expected_exponent = expected_c
         + expected_d_plus
             * (transform_input.initial_state.y_plus_plus
@@ -972,8 +860,79 @@ fn default_solver_executes_deterministic_closed_form_fixture() {
 }
 
 #[test]
+fn input_sensitivity_tracks_event_count_marking_variables() {
+    let sensitivities =
+        solve_exponential_affine_transform_input_sensitivities(linear_closed_form_fixture_input())
+            .expect("linear transform sensitivity solve should succeed");
+
+    assert_complex_close(
+        sensitivities.z_plus_sensitivity.c_at_delta_derivative,
+        sensitivities
+            .u_plus_sensitivity
+            .c_at_delta_derivative
+            .scale(-1.0),
+        1.0e-12,
+        "z_plus C sensitivity",
+    );
+    assert_complex_close(
+        sensitivities
+            .z_plus_sensitivity
+            .d_at_delta_derivative
+            .plus_plus,
+        sensitivities
+            .u_plus_sensitivity
+            .d_at_delta_derivative
+            .plus_plus
+            .scale(-1.0),
+        1.0e-12,
+        "z_plus D_++ sensitivity",
+    );
+    assert_complex_close(
+        sensitivities.z_plus_sensitivity.transform_value_derivative,
+        sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative
+            .scale(-1.0),
+        1.0e-12,
+        "z_plus transform sensitivity",
+    );
+    assert_complex_close(
+        sensitivities.z_minus_sensitivity.c_at_delta_derivative,
+        sensitivities
+            .u_minus_sensitivity
+            .c_at_delta_derivative
+            .scale(-1.0),
+        1.0e-12,
+        "z_minus C sensitivity",
+    );
+    assert_complex_close(
+        sensitivities
+            .z_minus_sensitivity
+            .d_at_delta_derivative
+            .minus_minus,
+        sensitivities
+            .u_minus_sensitivity
+            .d_at_delta_derivative
+            .minus_minus
+            .scale(-1.0),
+        1.0e-12,
+        "z_minus D_-- sensitivity",
+    );
+    assert_complex_close(
+        sensitivities.z_minus_sensitivity.transform_value_derivative,
+        sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative
+            .scale(-1.0),
+        1.0e-12,
+        "z_minus transform sensitivity",
+    );
+}
+
+#[test]
 fn solver_domain_guard_violation_terminates_with_deterministic_metadata() {
     let transform_input = domain_violation_fixture_input();
+
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::ForwardEuler,
         2,
@@ -983,6 +942,7 @@ fn solver_domain_guard_violation_terminates_with_deterministic_metadata() {
     let solve_result =
         solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
             .expect("domain-violation run should return guarded termination result");
+
     assert_eq!(
         solve_result.status,
         ExponentialAffineTransformIntegrationStatus::DomainGuardViolation
@@ -993,6 +953,7 @@ fn solver_domain_guard_violation_terminates_with_deterministic_metadata() {
         .metadata
         .guard_failure
         .expect("guarded run should include guard failure metadata");
+
     assert_eq!(
         guard_failure.code,
         ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation
@@ -1021,6 +982,7 @@ fn solver_domain_guard_violation_terminates_with_deterministic_metadata() {
 #[test]
 fn solver_blowup_detection_terminates_without_output() {
     let transform_input = blowup_fixture_input();
+
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::ForwardEuler,
         1,
@@ -1030,6 +992,7 @@ fn solver_blowup_detection_terminates_without_output() {
     let solve_result =
         solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
             .expect("blowup run should return guarded termination result");
+
     assert_eq!(
         solve_result.status,
         ExponentialAffineTransformIntegrationStatus::BlowupTerminated
@@ -1040,6 +1003,7 @@ fn solver_blowup_detection_terminates_without_output() {
         .metadata
         .guard_failure
         .expect("blowup run should include guard failure metadata");
+
     assert_eq!(
         guard_failure.code,
         ExponentialAffineTransformGuardFailureCode::NonFiniteState
@@ -1059,6 +1023,7 @@ fn solver_blowup_detection_terminates_without_output() {
 #[test]
 fn solver_transform_value_overflow_terminates_without_output() {
     let transform_input = transform_value_overflow_fixture_input();
+
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
         8,
@@ -1068,6 +1033,7 @@ fn solver_transform_value_overflow_terminates_without_output() {
     let solve_result =
         solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
             .expect("overflow run should return guarded termination result");
+
     assert_eq!(
         solve_result.status,
         ExponentialAffineTransformIntegrationStatus::BlowupTerminated
@@ -1078,6 +1044,7 @@ fn solver_transform_value_overflow_terminates_without_output() {
         .metadata
         .guard_failure
         .expect("overflow run should include guard failure metadata");
+
     assert_eq!(
         guard_failure.code,
         ExponentialAffineTransformGuardFailureCode::TransformValueOverflow
@@ -1154,6 +1121,7 @@ fn diagnostics_payload_schema_contains_required_fields() {
 
     let serialized_payload =
         serde_json::to_value(solve_result).expect("solver payload should serialize");
+
     let serialized_payload_object = serialized_payload
         .as_object()
         .expect("serialized payload should be an object");
@@ -1223,6 +1191,7 @@ fn diagnostics_payload_schema_contains_required_fields() {
 #[test]
 fn telemetry_payload_reports_guarded_failure_context() {
     let transform_input = domain_violation_fixture_input();
+
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::ForwardEuler,
         2,
@@ -1233,6 +1202,7 @@ fn telemetry_payload_reports_guarded_failure_context() {
     let solve_result =
         solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
             .expect("guarded-failure solve should return deterministic result");
+
     assert_eq!(
         solve_result.status,
         ExponentialAffineTransformIntegrationStatus::DomainGuardViolation
@@ -1242,6 +1212,7 @@ fn telemetry_payload_reports_guarded_failure_context() {
         .metadata
         .guard_failure
         .expect("guarded-failure solve should include guard metadata");
+
     let telemetry = solve_result
         .telemetry
         .expect("guarded-failure solve should emit telemetry when enabled");
@@ -1266,6 +1237,7 @@ fn telemetry_payload_reports_guarded_failure_context() {
 
     let serialized_guard_failure =
         serde_json::to_value(guard_failure).expect("guard failure payload should serialize");
+
     for required_guard_failure_field in
         EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS
     {

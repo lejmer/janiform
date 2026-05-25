@@ -52,6 +52,22 @@ pub(crate) fn vanilla_payoff_price_from_discounted_projection(
     price.is_finite().then_some(price)
 }
 
+pub(crate) fn otm_vanilla_projection_payoff_type(
+    payoff_type: VanillaOptionPayoffType,
+    forward_price: f64,
+    strike: f64,
+) -> Option<VanillaOptionPayoffType> {
+    if !forward_price.is_finite() || forward_price <= 0.0 || !strike.is_finite() || strike <= 0.0 {
+        return None;
+    }
+
+    Some(match payoff_type {
+        VanillaOptionPayoffType::Call if strike < forward_price => VanillaOptionPayoffType::Put,
+        VanillaOptionPayoffType::Put if strike > forward_price => VanillaOptionPayoffType::Call,
+        _ => payoff_type,
+    })
+}
+
 pub(crate) fn unvalidated_vanilla_payoff_price_from_discounted_projection(
     payoff_type: VanillaOptionPayoffType,
     projection_payoff_type: VanillaOptionPayoffType,
@@ -76,8 +92,8 @@ pub(crate) fn unvalidated_vanilla_payoff_price_from_discounted_projection(
 #[cfg(test)]
 mod tests {
     use super::{
-        VanillaOptionPayoffType, vanilla_payoff_price_from_discounted_call,
-        vanilla_payoff_price_from_discounted_projection,
+        VanillaOptionPayoffType, otm_vanilla_projection_payoff_type,
+        vanilla_payoff_price_from_discounted_call, vanilla_payoff_price_from_discounted_projection,
     };
 
     #[test]
@@ -116,5 +132,21 @@ mod tests {
         );
 
         assert_eq!(put_price, Some(3.0));
+    }
+
+    #[test]
+    fn otm_projection_selects_put_for_itm_call() {
+        let projection_payoff_type =
+            otm_vanilla_projection_payoff_type(VanillaOptionPayoffType::Call, 101.0, 99.0);
+
+        assert_eq!(projection_payoff_type, Some(VanillaOptionPayoffType::Put));
+    }
+
+    #[test]
+    fn otm_projection_selects_call_for_itm_put() {
+        let projection_payoff_type =
+            otm_vanilla_projection_payoff_type(VanillaOptionPayoffType::Put, 99.0, 101.0);
+
+        assert_eq!(projection_payoff_type, Some(VanillaOptionPayoffType::Call));
     }
 }

@@ -1329,7 +1329,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
 
     summary = model.summary()
 
-    assert set(summary["fitted_parameters"]) == {"seasonality", "joint_refinement"}
+    assert set(summary["fitted_parameters"]) == {"seasonality", "finalization"}
     assert (
         summary["preset_provenance"]["known_news"]["selected_preset"]["preset_name"]
         == "none"
@@ -1345,6 +1345,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
         "hawkes",
         "return_components",
         "joint_refinement",
+        "finalization",
     ]
 
 
@@ -3823,6 +3824,86 @@ def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hou
         HourlySeasonalityProviderExplicitSource,
     )
     assert tuple(seasonality_source.hourly_factors) == (1.0, 1.0)
+
+
+def test_runtime_pricing_factors_use_pricing_kernel_when_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-block-hawkes-runtime",
+    )
+
+    raw_fitted_parameters = cast(
+        dict[str, Any],
+        model.parameters["finalization"]["fitted_parameters"],
+    )
+    raw_hawkes_parameters = cast(
+        dict[str, Any],
+        raw_fitted_parameters["hawkes_fitted_parameters"]["kernel_parameters"],
+    )
+
+    raw_fitted_parameters["pricing_block_fitted_parameters"] = {
+        "pricing_kernel_parameters": {
+            "buy_activity_premium": 1.2,
+            "sell_activity_premium": 0.8,
+        },
+    }
+
+    valuation_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
+
+    physical_runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
+        start_time_utc=valuation_time_utc,
+        horizon_interval_count=2,
+        interval="1h",
+    )
+
+    pricing_runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
+        start_time_utc=valuation_time_utc,
+        horizon_interval_count=2,
+        interval="1h",
+        prefer_joint_pricing_block=True,
+    )
+
+    assert physical_runtime_factors.kernel_parameters.lambda_bar == raw_hawkes_parameters[
+        "lambda_bar"
+    ]
+    assert pricing_runtime_factors.kernel_parameters.lambda_bar == raw_hawkes_parameters[
+        "lambda_bar"
+    ]
+    assert physical_runtime_factors.pricing_kernel_parameters.buy_activity_premium == 1.0
+    assert pricing_runtime_factors.pricing_kernel_parameters.buy_activity_premium == 1.2
+    assert pricing_runtime_factors.pricing_kernel_parameters.sell_activity_premium == 0.8
+
+
+def test_runtime_pricing_factors_reject_incomplete_pricing_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-invalid-pricing-block-runtime",
+    )
+
+    raw_fitted_parameters = cast(
+        dict[str, Any],
+        model.parameters["finalization"]["fitted_parameters"],
+    )
+    raw_fitted_parameters["pricing_block_fitted_parameters"] = {}
+
+    with pytest.raises(RuntimeError, match="pricing_kernel_parameters"):
+        fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+            model,
+            start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+            horizon_interval_count=2,
+            interval="1h",
+            prefer_joint_pricing_block=True,
+        )
 
 
 def test_high_level_fit_routes_through_prepared_staged_runner(

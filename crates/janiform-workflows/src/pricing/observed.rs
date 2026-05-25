@@ -4,6 +4,7 @@ mod loading;
 mod normalization;
 mod physical_distribution;
 mod pricing;
+mod pricing_spot;
 mod progress;
 mod state;
 mod surface;

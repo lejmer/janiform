@@ -57,47 +57,59 @@ pub(crate) fn evolve_expected_hawkes_state_from_expected_counts(
     validate_expected_news_loading_rate(expected_news_loading_rate)?;
     validate_interval_delta(interval_delta)?;
 
-    let target_plus_before = state_before_update.target_plus_sum();
-    let target_minus_before = state_before_update.target_minus_sum();
-
     let expected_event_rate_plus = expected_statistics.expected_n_plus / interval_delta;
     let expected_event_rate_minus = expected_statistics.expected_n_minus / interval_delta;
 
     validate_source_rate("expected_event_rate_plus", expected_event_rate_plus)?;
     validate_source_rate("expected_event_rate_minus", expected_event_rate_minus)?;
 
-    let source_plus = kernel_parameters.alpha.plus_plus.mul_add(
-        expected_event_rate_plus,
-        kernel_parameters.alpha.plus_minus * expected_event_rate_minus,
-    ) + expected_news_loading_rate
-        * (kernel_parameters.rho.plus_plus + kernel_parameters.rho.plus_minus);
+    let source_plus_plus = kernel_parameters.alpha.plus_plus * expected_event_rate_plus
+        + kernel_parameters.rho.plus_plus * expected_news_loading_rate;
+    let source_plus_minus = kernel_parameters.alpha.plus_minus * expected_event_rate_minus
+        + kernel_parameters.rho.plus_minus * expected_news_loading_rate;
+    let source_minus_plus = kernel_parameters.alpha.minus_plus * expected_event_rate_plus
+        + kernel_parameters.rho.minus_plus * expected_news_loading_rate;
+    let source_minus_minus = kernel_parameters.alpha.minus_minus * expected_event_rate_minus
+        + kernel_parameters.rho.minus_minus * expected_news_loading_rate;
 
-    let source_minus = kernel_parameters.alpha.minus_plus.mul_add(
-        expected_event_rate_plus,
-        kernel_parameters.alpha.minus_minus * expected_event_rate_minus,
-    ) + expected_news_loading_rate
-        * (kernel_parameters.rho.minus_plus + kernel_parameters.rho.minus_minus);
-
-    validate_source_rate("source_plus", source_plus)?;
-    validate_source_rate("source_minus", source_minus)?;
+    validate_source_rate("source_plus_plus", source_plus_plus)?;
+    validate_source_rate("source_plus_minus", source_plus_minus)?;
+    validate_source_rate("source_minus_plus", source_minus_plus)?;
+    validate_source_rate("source_minus_minus", source_minus_minus)?;
 
     let system_matrix = Matrix2::new(-kernel_parameters.beta, 0.0, 0.0, -kernel_parameters.beta);
-    let initial_state = Vector2::new(target_plus_before, target_minus_before);
 
-    let (target_after, _) = solve_two_by_two_linear_source_system(
+    let (plus_target_components_after, _) = solve_two_by_two_linear_source_system(
         system_matrix,
-        initial_state,
-        Vector2::new(source_plus, source_minus),
+        Vector2::new(
+            state_before_update.y_plus_plus,
+            state_before_update.y_plus_minus,
+        ),
+        Vector2::new(source_plus_plus, source_plus_minus),
         interval_delta,
     );
 
-    validate_expected_state_component("target_plus_after", target_after[0])?;
-    validate_expected_state_component("target_minus_after", target_after[1])?;
+    let (minus_target_components_after, _) = solve_two_by_two_linear_source_system(
+        system_matrix,
+        Vector2::new(
+            state_before_update.y_minus_plus,
+            state_before_update.y_minus_minus,
+        ),
+        Vector2::new(source_minus_plus, source_minus_minus),
+        interval_delta,
+    );
 
-    Ok(HawkesExcitationState::from_target_sums(
-        target_after[0],
-        target_after[1],
-    ))
+    validate_expected_state_component("y_plus_plus_after", plus_target_components_after[0])?;
+    validate_expected_state_component("y_plus_minus_after", plus_target_components_after[1])?;
+    validate_expected_state_component("y_minus_plus_after", minus_target_components_after[0])?;
+    validate_expected_state_component("y_minus_minus_after", minus_target_components_after[1])?;
+
+    Ok(HawkesExcitationState {
+        y_plus_plus: plus_target_components_after[0],
+        y_plus_minus: plus_target_components_after[1],
+        y_minus_plus: minus_target_components_after[0],
+        y_minus_minus: minus_target_components_after[1],
+    })
 }
 
 fn validate_expected_count_moment(
@@ -157,7 +169,14 @@ mod tests {
     #[test]
     fn expected_count_update_accepts_activity_below_physical_baseline() {
         let kernel_parameters = test_kernel_parameters();
-        let state_before_update = HawkesExcitationState::from_target_sums(2.0, 3.0);
+
+        let state_before_update = HawkesExcitationState {
+            y_plus_plus: 2.0,
+            y_plus_minus: 3.0,
+            y_minus_plus: 5.0,
+            y_minus_minus: 7.0,
+        };
+
         let expected_statistics =
             SufficientStatisticsExpectedIntervalStatistics::try_new(1.0, 1.5, 5.0, 7.0)
                 .expect("expected statistics should construct");
@@ -171,21 +190,35 @@ mod tests {
         )
         .expect("count-driven expected state update should succeed");
 
-        let expected_source_plus = kernel_parameters.alpha.plus_plus * 2.5
-            + kernel_parameters.alpha.plus_minus * 3.5
-            + 0.4 * (kernel_parameters.rho.plus_plus + kernel_parameters.rho.plus_minus);
-
-        let expected_source_minus = kernel_parameters.alpha.minus_plus * 2.5
-            + kernel_parameters.alpha.minus_minus * 3.5
-            + 0.4 * (kernel_parameters.rho.minus_plus + kernel_parameters.rho.minus_minus);
-
         let decay = (-kernel_parameters.beta * 2.0).exp();
         let source_weight = (1.0 - decay) / kernel_parameters.beta;
 
-        let expected = HawkesExcitationState::from_target_sums(
-            decay.mul_add(2.0, source_weight * expected_source_plus),
-            decay.mul_add(3.0, source_weight * expected_source_minus),
-        );
+        let expected = HawkesExcitationState {
+            y_plus_plus: decay.mul_add(
+                2.0,
+                source_weight
+                    * (kernel_parameters.alpha.plus_plus * 2.5
+                        + kernel_parameters.rho.plus_plus * 0.4),
+            ),
+            y_plus_minus: decay.mul_add(
+                3.0,
+                source_weight
+                    * (kernel_parameters.alpha.plus_minus * 3.5
+                        + kernel_parameters.rho.plus_minus * 0.4),
+            ),
+            y_minus_plus: decay.mul_add(
+                5.0,
+                source_weight
+                    * (kernel_parameters.alpha.minus_plus * 2.5
+                        + kernel_parameters.rho.minus_plus * 0.4),
+            ),
+            y_minus_minus: decay.mul_add(
+                7.0,
+                source_weight
+                    * (kernel_parameters.alpha.minus_minus * 3.5
+                        + kernel_parameters.rho.minus_minus * 0.4),
+            ),
+        };
 
         assert_state_close(observed, expected);
     }

@@ -463,7 +463,6 @@ fn run_joint_refinement_pipeline_stage_internal(
     if should_run_option_pricing_stage(pipeline_stage) {
         if let Err(failure) = run_option_refinement_if_enabled(
             &stage_input,
-            &resolved_stage_payloads,
             &prepared_bootstrap.bootstrap_context,
             &mut restart_search_artifacts,
             progress_sender.as_ref(),
@@ -1620,7 +1619,6 @@ fn should_run_option_pricing_stage(pipeline_stage: JointRefinementPipelineStage)
 
 fn run_option_refinement_if_enabled(
     stage_input: &JointRefinementStageExecutionInput,
-    resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     bootstrap_context: &JointRefinementContext,
     restart_search_artifacts: &mut RestartSearchArtifacts,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
@@ -1656,7 +1654,6 @@ fn run_option_refinement_if_enabled(
 
     let option_refinement_result = run_option_refinement(
         bootstrap_context,
-        &resolved_stage_payloads.stage_solver_settings,
         restart_search_artifacts
             .option_refinement_candidate_frontier
             .as_slice(),

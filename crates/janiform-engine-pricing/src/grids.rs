@@ -41,6 +41,8 @@ pub struct VanillaOptionNodePriceSensitivity {
     pub beta_0_derivative: f64,
     pub delta_derivative: f64,
     pub delta_beta_derivative: f64,
+    pub buy_activity_premium_derivative: f64,
+    pub sell_activity_premium_derivative: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

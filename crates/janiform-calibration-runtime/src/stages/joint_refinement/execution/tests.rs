@@ -14,12 +14,13 @@ use super::super::setup::{
     restart_candidate_screening_max_parallelism_for_test,
 };
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementCandidateEvaluation,
-    JointRefinementObservedData, JointRefinementRawAdmissibilityMetrics,
-    JointRefinementRestartOutcome, JointRefinementSeedSummary,
-    admissibility_threshold_from_sample_count, desired_joint_refinement_restart_candidate_budget,
-    ensure_valid_selected_restart_outcome, extend_joint_coarse_tick_consistency_metrics_for_seed,
-    joint_refinement_budget_schedule, joint_refinement_restart_full_vector_direct_search_settings,
+    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
+    JointRefinementCandidateEvaluation, JointRefinementObservedData,
+    JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
+    JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
+    desired_joint_refinement_restart_candidate_budget, ensure_valid_selected_restart_outcome,
+    extend_joint_coarse_tick_consistency_metrics_for_seed, joint_refinement_budget_schedule,
+    joint_refinement_restart_full_vector_direct_search_settings,
     option_refinement_candidate_frontier_from_selected_outcomes, sampled_observed_tick_returns,
     test_joint_fitted_parameters, tick_shape_sample_target_count,
 };
@@ -58,18 +59,14 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
     JointRefinementActiveParameterLayout {
         hawkes_block: vec![0, 1, 2, 3],
         nig_block: vec![4, 5, 6, 7],
-        option_pricing_hawkes_block: vec![11, 12, 13, 14, 15, 16],
+        option_pricing_kernel_block: vec![11, 12],
         coupling_block: vec![8, 9, 10],
         log_stationary_event_rate_scale_index: 0,
         log_beta_scale_index: 1,
         log_self_excitation_scale_index: 2,
         log_cross_excitation_scale_index: 3,
-        option_pricing_log_stationary_event_rate_scale_index: 11,
-        option_pricing_log_beta_scale_index: 12,
-        option_pricing_log_alpha_plus_plus_scale_index: 13,
-        option_pricing_log_alpha_plus_minus_scale_index: 14,
-        option_pricing_log_alpha_minus_plus_scale_index: 15,
-        option_pricing_log_alpha_minus_minus_scale_index: 16,
+        option_pricing_log_buy_activity_premium_index: 11,
+        option_pricing_log_sell_activity_premium_index: 12,
         known_activity_scale_index: Some(8),
         surprise_activity_scale_index: Some(9),
         surprise_baseline_scale_index: Some(10),
@@ -570,6 +567,45 @@ fn joint_refinement_nig_bounds_include_selected_return_nig_outside_theoretical_r
 
     assert!(lower_bounds[active_parameter_layout.nig_block[0]] < theoretical_lower_bounds[0]);
     assert!(upper_bounds[active_parameter_layout.nig_block[3]] > theoretical_upper_bounds[3]);
+}
+
+#[test]
+fn joint_refinement_bounds_allow_option_pricing_kernel_activity_premia() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+    let selected_nig = test_joint_fitted_parameters()
+        .return_components_fitted_parameters
+        .nig_shared_plus_shift_configuration;
+    let baseline_parameter_vector = build_baseline_parameter_vector(
+        &active_parameter_layout,
+        &test_joint_fitted_parameters().hawkes_fitted_parameters,
+        &test_joint_fitted_parameters().return_components_fitted_parameters,
+        &baseline_15m_calibration_sample,
+    )
+    .expect("baseline vector should build");
+
+    let (lower_bounds, upper_bounds) = build_parameter_bounds(
+        &active_parameter_layout,
+        baseline_parameter_vector.as_slice(),
+        &baseline_15m_calibration_sample,
+        selected_nig,
+        &[],
+        &build_test_observed_data(),
+        1.0,
+        &build_test_solver_settings(1),
+    )
+    .expect("bounds should build");
+
+    for parameter_index in &active_parameter_layout.option_pricing_kernel_block {
+        assert_eq!(
+            lower_bounds[*parameter_index],
+            -JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND
+        );
+        assert_eq!(
+            upper_bounds[*parameter_index],
+            JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND
+        );
+    }
 }
 
 fn restart_seed_ids(restart_seeds: &[(String, Vec<f64>)]) -> Vec<&str> {

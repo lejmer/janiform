@@ -4774,6 +4774,7 @@
         "VanillaOptionPricingExecutionInput",
         "VanillaOptionPricingFailureDiagnostic",
         "VanillaOptionPricingFailureStage",
+        "VanillaOptionPricingKernelParameters",
         "VanillaOptionPricingMarketInputs",
         "VanillaOptionPricingModelParameters",
         "VanillaOptionPricingOptionalOutputSelection",
@@ -5118,6 +5119,14 @@
             }
           ]
         },
+        "VanillaOptionPricingKernelParameters": {
+          "field_names": [
+            "buy_activity_premium",
+            "sell_activity_premium"
+          ],
+          "kind": "contract_model",
+          "signature": "(buy_activity_premium: 'float', sell_activity_premium: 'float') -> 'None'"
+        },
         "VanillaOptionPricingMarketInputs": {
           "field_names": [
             "spot",
@@ -5133,10 +5142,11 @@
           "field_names": [
             "hawkes_kernel_parameters",
             "news_process_configuration",
-            "nig_shared_plus_shift_configuration"
+            "nig_shared_plus_shift_configuration",
+            "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -5730,10 +5740,11 @@
           "field_names": [
             "hawkes_kernel_parameters",
             "news_process_configuration",
-            "nig_shared_plus_shift_configuration"
+            "nig_shared_plus_shift_configuration",
+            "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [

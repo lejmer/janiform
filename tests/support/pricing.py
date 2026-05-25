@@ -12,6 +12,7 @@ from janiform.pricing import (
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingKernelParameters,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -208,6 +209,7 @@ def _build_model_parameters() -> VanillaOptionPricingModelParameters:
             mu=0.1,
             delta_beta=-0.2,
         ),
+        pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
     )
 
 

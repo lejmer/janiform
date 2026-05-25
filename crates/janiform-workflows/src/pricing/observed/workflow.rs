@@ -109,6 +109,7 @@ pub fn run_observed_options_pricing_with_observer(
             &request,
             valuation_time_utc_nanos,
             snapshot_groups,
+            option_records.as_slice(),
             tick_records.as_slice(),
             &mut observer.progress_adapter,
         )?,
@@ -289,6 +290,7 @@ fn price_surface_groups(
             request,
             valuation_time_utc_nanos,
             snapshot_groups,
+            option_records,
             tick_records,
             progress_adapter,
         );
@@ -328,8 +330,13 @@ fn price_surface_groups(
         valuation_times.as_slice(),
     )?;
 
-    let prepared_snapshots =
-        prepare_observed_snapshots(request, snapshot_specs, tick_records, progress_adapter)?;
+    let prepared_snapshots = prepare_observed_snapshots(
+        request,
+        snapshot_specs,
+        option_records,
+        tick_records,
+        progress_adapter,
+    )?;
 
     complete_observed_pricing_stage(
         progress_adapter,
@@ -357,6 +364,7 @@ fn price_snapshot_groups(
     request: &ObservedOptionsPricingRequest,
     valuation_time_utc_nanos: i64,
     snapshot_groups: Vec<PreparedSnapshotGroup>,
+    option_records: &[MarketDataNormalizedOptionSurfaceRecord],
     tick_records: &[MarketDataTranslationTickRecord],
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
@@ -372,6 +380,7 @@ fn price_snapshot_groups(
     let mut prepared_snapshots = prepare_observed_snapshots(
         request,
         vec![(valuation_time_utc_nanos, snapshot_groups)],
+        option_records,
         tick_records,
         progress_adapter,
     )?;

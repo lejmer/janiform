@@ -9,6 +9,8 @@ pub(crate) struct NodePriceSharedPlusShiftSensitivity {
     pub(crate) beta_0_derivative: f64,
     pub(crate) delta_derivative: f64,
     pub(crate) delta_beta_derivative: f64,
+    pub(crate) buy_activity_premium_derivative: f64,
+    pub(crate) sell_activity_premium_derivative: f64,
 }
 
 impl NodePriceSharedPlusShiftSensitivity {
@@ -26,6 +28,8 @@ impl NodePriceSharedPlusShiftSensitivity {
             beta_0_derivative: self.beta_0_derivative,
             delta_derivative: self.delta_derivative,
             delta_beta_derivative: self.delta_beta_derivative,
+            buy_activity_premium_derivative: self.buy_activity_premium_derivative,
+            sell_activity_premium_derivative: self.sell_activity_premium_derivative,
         }
     }
 }
@@ -39,6 +43,10 @@ impl Add for NodePriceSharedPlusShiftSensitivity {
             beta_0_derivative: self.beta_0_derivative + other.beta_0_derivative,
             delta_derivative: self.delta_derivative + other.delta_derivative,
             delta_beta_derivative: self.delta_beta_derivative + other.delta_beta_derivative,
+            buy_activity_premium_derivative: self.buy_activity_premium_derivative
+                + other.buy_activity_premium_derivative,
+            sell_activity_premium_derivative: self.sell_activity_premium_derivative
+                + other.sell_activity_premium_derivative,
         }
     }
 }
@@ -49,6 +57,8 @@ pub(crate) struct NodePriceSharedPlusShiftComplexSensitivity {
     pub(crate) beta_0_derivative: ComplexScalar,
     pub(crate) delta_derivative: ComplexScalar,
     pub(crate) delta_beta_derivative: ComplexScalar,
+    pub(crate) buy_activity_premium_derivative: ComplexScalar,
+    pub(crate) sell_activity_premium_derivative: ComplexScalar,
 }
 
 impl NodePriceSharedPlusShiftComplexSensitivity {
@@ -58,6 +68,8 @@ impl NodePriceSharedPlusShiftComplexSensitivity {
             beta_0_derivative: ComplexScalar::new(0.0, 0.0),
             delta_derivative: ComplexScalar::new(0.0, 0.0),
             delta_beta_derivative: ComplexScalar::new(0.0, 0.0),
+            buy_activity_premium_derivative: ComplexScalar::new(0.0, 0.0),
+            sell_activity_premium_derivative: ComplexScalar::new(0.0, 0.0),
         }
     }
 
@@ -67,6 +79,8 @@ impl NodePriceSharedPlusShiftComplexSensitivity {
             beta_0_derivative: self.beta_0_derivative.scale(factor),
             delta_derivative: self.delta_derivative.scale(factor),
             delta_beta_derivative: self.delta_beta_derivative.scale(factor),
+            buy_activity_premium_derivative: self.buy_activity_premium_derivative.scale(factor),
+            sell_activity_premium_derivative: self.sell_activity_premium_derivative.scale(factor),
         }
     }
 
@@ -80,6 +94,8 @@ impl NodePriceSharedPlusShiftComplexSensitivity {
             beta_0_derivative: self.beta_0_derivative.conjugate(),
             delta_derivative: self.delta_derivative.conjugate(),
             delta_beta_derivative: self.delta_beta_derivative.conjugate(),
+            buy_activity_premium_derivative: self.buy_activity_premium_derivative.conjugate(),
+            sell_activity_premium_derivative: self.sell_activity_premium_derivative.conjugate(),
         }
     }
 }
@@ -93,6 +109,10 @@ impl Add for NodePriceSharedPlusShiftComplexSensitivity {
             beta_0_derivative: self.beta_0_derivative + other.beta_0_derivative,
             delta_derivative: self.delta_derivative + other.delta_derivative,
             delta_beta_derivative: self.delta_beta_derivative + other.delta_beta_derivative,
+            buy_activity_premium_derivative: self.buy_activity_premium_derivative
+                + other.buy_activity_premium_derivative,
+            sell_activity_premium_derivative: self.sell_activity_premium_derivative
+                + other.sell_activity_premium_derivative,
         }
     }
 }

@@ -6,18 +6,8 @@ use janiform_calibration_artifacts::JointRefinementStageOptionReducedModelDiagno
 use super::objective_gradient::JointRefinementOptionNodeResidualSensitivity;
 use super::residual_jacobian::weighted_option_residual_jacobian_rows;
 
-const OPTION_REDUCED_MODEL_PARAMETER_LABELS: &[&str] = &[
-    "alpha",
-    "beta_0",
-    "delta",
-    "delta_beta",
-    "log_stationary_event_rate_scale",
-    "log_beta_scale",
-    "log_alpha_plus_plus_scale",
-    "log_alpha_plus_minus_scale",
-    "log_alpha_minus_plus_scale",
-    "log_alpha_minus_minus_scale",
-];
+const OPTION_REDUCED_MODEL_PARAMETER_LABELS: &[&str] =
+    &["log_buy_activity_premium", "log_sell_activity_premium"];
 
 pub(crate) fn option_reduced_model_parameter_count() -> usize {
     OPTION_REDUCED_MODEL_PARAMETER_LABELS.len()
@@ -182,4 +172,38 @@ fn effective_rank_for_energy(cumulative_rank_energy: &[f64], threshold: f64) -> 
         .position(|energy| *energy >= threshold)
         .map(|position| position + 1)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_option_reduced_model_artifact, option_reduced_model_parameter_count};
+    use crate::stages::joint_refinement::execution::option_refinement::objective_gradient::JointRefinementOptionNodeResidualSensitivity;
+
+    #[test]
+    fn option_reduced_model_labels_activity_premium_coordinates() {
+        let artifact = build_option_reduced_model_artifact(&[
+            JointRefinementOptionNodeResidualSensitivity {
+                expiry_timestamp_utc_nanos: 10,
+                maturity_weight: 1,
+                spread_normalized_residual: 1.0,
+                spread_normalized_residual_gradient: vec![0.5, -0.25],
+            },
+            JointRefinementOptionNodeResidualSensitivity {
+                expiry_timestamp_utc_nanos: 10,
+                maturity_weight: 1,
+                spread_normalized_residual: -1.0,
+                spread_normalized_residual_gradient: vec![0.25, 0.5],
+            },
+        ])
+        .expect("reduced model artifact should construct");
+
+        assert_eq!(option_reduced_model_parameter_count(), 2);
+        assert_eq!(
+            artifact.local_parameter_labels,
+            vec![
+                "log_buy_activity_premium".to_string(),
+                "log_sell_activity_premium".to_string(),
+            ]
+        );
+    }
 }

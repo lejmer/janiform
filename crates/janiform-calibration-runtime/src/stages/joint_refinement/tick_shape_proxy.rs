@@ -32,15 +32,7 @@ pub(crate) fn coarse_search_tick_shape_proxy_returns(
         context.observed_data.observed_tick_shape_returns.len(),
     );
 
-    let nig_configuration = fitted_parameters
-        .pricing_block_fitted_parameters
-        .as_ref()
-        .map(|pricing_block| pricing_block.nig_shared_plus_shift_configuration)
-        .unwrap_or(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-        );
+    let nig_configuration = fitted_parameters.pricing_nig_shared_plus_shift_configuration();
 
     simulate_matched_scale_returns_with_seed(
         nig_configuration,

@@ -331,6 +331,8 @@ pub(in crate::spectral::pricer) fn node_price_shared_plus_shift_theta_sensitivit
         beta_0_derivative: theta_sensitivity.beta_0_derivative,
         delta_derivative: theta_sensitivity.delta_derivative,
         delta_beta_derivative: theta_sensitivity.delta_beta_derivative,
+        buy_activity_premium_derivative: theta_sensitivity.buy_activity_premium_derivative,
+        sell_activity_premium_derivative: theta_sensitivity.sell_activity_premium_derivative,
     }
 }
 
@@ -358,6 +360,16 @@ pub(in crate::spectral::pricer) fn node_price_shared_plus_shift_sensitivity_from
             sensitivity
                 .theta_derivative
                 .scale(theta_sensitivity.delta_beta_derivative),
+        ),
+        buy_activity_premium_derivative: sensitivity.buy_activity_premium_derivative.plus(
+            sensitivity
+                .theta_derivative
+                .scale(theta_sensitivity.buy_activity_premium_derivative),
+        ),
+        sell_activity_premium_derivative: sensitivity.sell_activity_premium_derivative.plus(
+            sensitivity
+                .theta_derivative
+                .scale(theta_sensitivity.sell_activity_premium_derivative),
         ),
     }
 }
@@ -453,6 +465,34 @@ pub(in crate::spectral::pricer) fn build_shared_row_frequency_batch_kernel_sensi
                             denominator_sensitivity
                                 .theta_derivative
                                 .scale(theta_sensitivity.delta_beta_derivative),
+                        ),
+                    )?,
+                    buy_activity_premium_derivative: pricing_ratio_derivative(
+                        sensitivity.value,
+                        sensitivity.buy_activity_premium_derivative.plus(
+                            sensitivity.theta_derivative.scale(
+                                theta_sensitivity.buy_activity_premium_derivative,
+                            ),
+                        ),
+                        denominator_sensitivity.value,
+                        denominator_sensitivity.buy_activity_premium_derivative.plus(
+                            denominator_sensitivity.theta_derivative.scale(
+                                theta_sensitivity.buy_activity_premium_derivative,
+                            ),
+                        ),
+                    )?,
+                    sell_activity_premium_derivative: pricing_ratio_derivative(
+                        sensitivity.value,
+                        sensitivity.sell_activity_premium_derivative.plus(
+                            sensitivity.theta_derivative.scale(
+                                theta_sensitivity.sell_activity_premium_derivative,
+                            ),
+                        ),
+                        denominator_sensitivity.value,
+                        denominator_sensitivity.sell_activity_premium_derivative.plus(
+                            denominator_sensitivity.theta_derivative.scale(
+                                theta_sensitivity.sell_activity_premium_derivative,
+                            ),
                         ),
                     )?,
                     theta_derivative: ComplexScalar::new(0.0, 0.0),

@@ -15,11 +15,12 @@ use janiform_engine_pricing::internal::{
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingStatus,
-    build_pricing_transform_input, build_vanilla_option_pricing_run_result,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingKernelParameters,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingResponse, VanillaOptionPricingRunResultBuildInput,
+    VanillaOptionPricingStatus, build_pricing_transform_input,
+    build_vanilla_option_pricing_run_result,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -146,6 +147,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
+        VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing model parameters should construct");
 

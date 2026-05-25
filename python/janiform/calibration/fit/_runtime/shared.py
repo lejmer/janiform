@@ -13,6 +13,7 @@ from ....mean_reversion import (
 from ....pricing import (
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
+    VanillaOptionPricingKernelParameters,
     VanillaOptionPricingModelParameters,
 )
 from ....simulation.coarse import NewsProcessConfiguration
@@ -32,6 +33,7 @@ class PreparedModelRuntimeFactors:
     range_end_utc: datetime
     kernel_parameters: HawkesKernelParameters
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+    pricing_kernel_parameters: VanillaOptionPricingKernelParameters
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
     return_mark_hour_of_week_factors: tuple[float, ...]

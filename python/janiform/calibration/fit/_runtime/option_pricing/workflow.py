@@ -435,6 +435,7 @@ def prepare_model_pricing_runtime_input(
             hawkes_kernel_parameters=runtime_factors.kernel_parameters,
             news_process_configuration=runtime_factors.news_process_configuration,
             nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
+            pricing_kernel_parameters=runtime_factors.pricing_kernel_parameters,
         ),
     )
 

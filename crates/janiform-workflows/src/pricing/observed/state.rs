@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use janiform::calibration::current_state::CurrentStateEstimationBatchProgressEvent;
-use janiform::calibration::market_data::MarketDataTranslationTickRecord;
+use janiform::calibration::market_data::{
+    MarketDataNormalizedOptionSurfaceRecord, MarketDataTranslationTickRecord,
+};
 use janiform::model::hawkes::HawkesEventSide;
 use janiform_calibration_runtime::{
     CurrentStateEstimationBatchInput, estimate_current_states_from_observed_data_with_observer,
@@ -11,6 +13,7 @@ use crate::error::WorkflowError;
 use crate::model::{fitted_model_context, model_reference_price};
 
 use super::super::validation::pricing_validation_error;
+use super::pricing_spot::resolve_snapshot_pricing_spots;
 use super::progress::emit_valuation_state_progress;
 use super::types::{
     DEFAULT_PRICING_INTERVAL_DURATION_NANOS, ObservedOptionsPricingRequest,
@@ -20,6 +23,7 @@ use super::types::{
 pub(super) fn prepare_observed_snapshots(
     request: &ObservedOptionsPricingRequest,
     snapshot_specs: Vec<(i64, Vec<PreparedSnapshotGroup>)>,
+    option_records: &[MarketDataNormalizedOptionSurfaceRecord],
     tick_records: &[MarketDataTranslationTickRecord],
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<Vec<PreparedObservedSnapshot>, WorkflowError> {
@@ -34,6 +38,13 @@ pub(super) fn prepare_observed_snapshots(
         .iter()
         .map(|(valuation_time_utc_nanos, _)| *valuation_time_utc_nanos)
         .collect::<Vec<_>>();
+    let pricing_spots = resolve_snapshot_pricing_spots(
+        option_records,
+        snapshot_specs.as_slice(),
+        request.risk_free_rate,
+        request.dividend_yield,
+    )?;
+
     let final_valuation_time_utc_nanos = valuation_times[valuation_times.len() - 1];
     let final_valuation_time_utc =
         DateTime::<Utc>::from_timestamp_nanos(final_valuation_time_utc_nanos);
@@ -89,8 +100,9 @@ pub(super) fn prepare_observed_snapshots(
     snapshot_specs
         .into_iter()
         .zip(state_items)
+        .zip(pricing_spots)
         .map(
-            |((valuation_time_utc_nanos, snapshot_groups), state_item)| {
+            |(((valuation_time_utc_nanos, snapshot_groups), state_item), pricing_spot)| {
                 if valuation_time_utc_nanos != state_item.state_time_utc_nanos {
                     return Err(pricing_validation_error(
                         "valuation_time_utc",
@@ -100,7 +112,7 @@ pub(super) fn prepare_observed_snapshots(
 
                 Ok(PreparedObservedSnapshot {
                     valuation_time_utc_nanos,
-                    spot: state_item.observed_price,
+                    spot: pricing_spot.unwrap_or(state_item.observed_price),
                     estimated_state: state_item.state,
                     snapshot_groups,
                 })

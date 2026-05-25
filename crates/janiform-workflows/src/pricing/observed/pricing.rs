@@ -168,7 +168,7 @@ fn build_grid_batch_execution_input(
     )?;
 
     let reference_price = model_reference_price(&context.model)?;
-    let observed_log_return = spot.ln() - reference_price.ln();
+    let pricing_spot_log_return = spot.ln() - reference_price.ln();
 
     let interval_delta = maturity_resolution
         .pricing_interval_schedule
@@ -194,9 +194,9 @@ fn build_grid_batch_execution_input(
     )
     .map_err(|source| pricing_validation_error("boundary_input", source.to_string()))?;
 
-    if !observed_log_return.is_finite() {
+    if !pricing_spot_log_return.is_finite() {
         return Err(pricing_validation_error(
-            "tick_data.last_price",
+            "pricing_spot",
             "must produce a finite observed log return",
         ));
     }

@@ -14,6 +14,9 @@ use super::{
     intraday_black_scholes_no_arbitrage_price_bounds, invert_vanilla_option_implied_volatility,
     resolved_pricing_cpu_count,
 };
+use crate::vanilla_payoff::{
+    otm_vanilla_projection_payoff_type, vanilla_payoff_price_from_discounted_projection,
+};
 use crate::{intraday_discount_factor, intraday_forward_price};
 
 pub(super) struct PricedStrikeRow {
@@ -206,14 +209,6 @@ fn build_priced_strike_row(
 }
 
 fn price_strike_node(context: &StrikeNodePricingContext<'_>, strike: f64) -> PricedStrikeNode {
-    let model_price = cos_price_from_terminal_characteristic_function(
-        context.spot,
-        strike,
-        context.grid.payoff_type,
-        context.grid.risk_free_rate,
-        context.solved_maturity,
-    );
-
     let market_inputs = VanillaOptionPricingMarketInputs::new_single_node(
         context.spot,
         strike,
@@ -222,16 +217,26 @@ fn price_strike_node(context: &StrikeNodePricingContext<'_>, strike: f64) -> Pri
         context.grid.dividend_yield,
     );
 
+    let model_price = stable_cos_price_from_terminal_characteristic_function(context, strike);
+
     match model_price {
-        Some(price) if price.is_finite() => {
+        Some(stable_price) if stable_price.price.is_finite() => {
             let (lower_bound, upper_bound) = intraday_black_scholes_no_arbitrage_price_bounds(
                 &market_inputs,
                 context.grid.payoff_type,
             );
 
+            let price = stable_price.price;
+
             let bounded_price = price.clamp(lower_bound, upper_bound);
-            let bounded_price_sensitivity =
-                bounded_node_price_sensitivity(context, strike, price, bounded_price);
+
+            let bounded_price_sensitivity = bounded_node_price_sensitivity(
+                context,
+                strike,
+                stable_price.projection_payoff_type,
+                price,
+                bounded_price,
+            );
 
             let iv_outcome = invert_spectral_implied_volatility(
                 &market_inputs,
@@ -265,9 +270,60 @@ fn price_strike_node(context: &StrikeNodePricingContext<'_>, strike: f64) -> Pri
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StableCosPrice {
+    price: f64,
+    projection_payoff_type: VanillaOptionPayoffType,
+}
+
+fn stable_cos_price_from_terminal_characteristic_function(
+    context: &StrikeNodePricingContext<'_>,
+    strike: f64,
+) -> Option<StableCosPrice> {
+    let forward_price = intraday_forward_price(
+        context.spot,
+        context.grid.risk_free_rate,
+        context.grid.dividend_yield,
+        context.solved_maturity.maturity_interval,
+    )?;
+
+    let discount_factor = intraday_discount_factor(
+        context.grid.risk_free_rate,
+        context.solved_maturity.maturity_interval,
+    )?;
+
+    let projection_payoff_type =
+        otm_vanilla_projection_payoff_type(context.grid.payoff_type, forward_price, strike)?;
+
+    let projection_price = cos_price_from_terminal_characteristic_function(
+        context.spot,
+        strike,
+        projection_payoff_type,
+        context.grid.risk_free_rate,
+        context.solved_maturity,
+    )?;
+
+    let discounted_forward = discount_factor * forward_price;
+    let discounted_strike = discount_factor * strike;
+
+    let price = vanilla_payoff_price_from_discounted_projection(
+        context.grid.payoff_type,
+        projection_payoff_type,
+        projection_price,
+        discounted_forward,
+        discounted_strike,
+    )?;
+
+    Some(StableCosPrice {
+        price,
+        projection_payoff_type,
+    })
+}
+
 fn bounded_node_price_sensitivity(
     context: &StrikeNodePricingContext<'_>,
     strike: f64,
+    projection_payoff_type: VanillaOptionPayoffType,
     price: f64,
     bounded_price: f64,
 ) -> Option<VanillaOptionNodePriceSensitivity> {
@@ -279,7 +335,7 @@ fn bounded_node_price_sensitivity(
     match cos_price_sensitivity_from_terminal_characteristic_function(
         context.spot,
         strike,
-        context.grid.payoff_type,
+        projection_payoff_type,
         context.grid.risk_free_rate,
         context.solved_maturity,
     ) {

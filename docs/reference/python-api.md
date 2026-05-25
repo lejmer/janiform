@@ -2846,8 +2846,9 @@
 | [`VanillaOptionPricingExecutionInput`](#python-api-symbol-janiform-pricing-vanillaoptionpricingexecutioninput) | contract_model | 5 fields |
 | [`VanillaOptionPricingFailureDiagnostic`](#python-api-symbol-janiform-pricing-vanillaoptionpricingfailurediagnostic) | contract_model | 2 fields |
 | [`VanillaOptionPricingFailureStage`](#python-api-symbol-janiform-pricing-vanillaoptionpricingfailurestage) | enum | 17 members |
+| [`VanillaOptionPricingKernelParameters`](#python-api-symbol-janiform-pricing-vanillaoptionpricingkernelparameters) | contract_model | 2 fields |
 | [`VanillaOptionPricingMarketInputs`](#python-api-symbol-janiform-pricing-vanillaoptionpricingmarketinputs) | contract_model | 5 fields |
-| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-vanillaoptionpricingmodelparameters) | contract_model | 3 fields |
+| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-vanillaoptionpricingmodelparameters) | contract_model | 4 fields |
 | [`VanillaOptionPricingOptionalOutputSelection`](#python-api-symbol-janiform-pricing-vanillaoptionpricingoptionaloutputselection) | contract_model | 3 fields |
 | [`VanillaOptionPricingRequest`](#python-api-symbol-janiform-pricing-vanillaoptionpricingrequest) | contract_model | 5 fields |
 | [`VanillaOptionPricingResponse`](#python-api-symbol-janiform-pricing-vanillaoptionpricingresponse) | contract_model | 6 fields |
@@ -3066,6 +3067,13 @@
 | `RUN_RESULT_ASSEMBLY` | `run_result_assembly` |
 | `WORKER_EXECUTION` | `worker_execution` |
 
+<a id="python-api-symbol-janiform-pricing-vanillaoptionpricingkernelparameters"></a>
+### `VanillaOptionPricingKernelParameters`
+
+- Kind: `contract_model`
+- Signature: `(buy_activity_premium: 'float', sell_activity_premium: 'float') -> 'None'`
+- Fields: `buy_activity_premium`, `sell_activity_premium`
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingmarketinputs"></a>
 ### `VanillaOptionPricingMarketInputs`
 
@@ -3077,8 +3085,8 @@
 ### `VanillaOptionPricingModelParameters`
 
 - Kind: `contract_model`
-- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'`
-- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`
+- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
+- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `pricing_kernel_parameters`
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingoptionaloutputselection"></a>
 ### `VanillaOptionPricingOptionalOutputSelection`
@@ -3240,7 +3248,7 @@
 | [`VanillaOptionPricingFailureDiagnostic`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingfailurediagnostic) | contract_model | 2 fields |
 | [`VanillaOptionPricingFailureStage`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingfailurestage) | enum | 17 members |
 | [`VanillaOptionPricingMarketInputs`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingmarketinputs) | contract_model | 5 fields |
-| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingmodelparameters) | contract_model | 3 fields |
+| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingmodelparameters) | contract_model | 4 fields |
 | [`VanillaOptionPricingOptionalOutputSelection`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingoptionaloutputselection) | contract_model | 3 fields |
 | [`VanillaOptionPricingRequest`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingrequest) | contract_model | 5 fields |
 | [`VanillaOptionPricingResponse`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingresponse) | contract_model | 6 fields |
@@ -3467,8 +3475,8 @@
 ### `VanillaOptionPricingModelParameters`
 
 - Kind: `contract_model`
-- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'`
-- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`
+- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
+- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `pricing_kernel_parameters`
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingoptionaloutputselection"></a>
 ### `VanillaOptionPricingOptionalOutputSelection`
@@ -3575,9 +3583,9 @@
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`JaniformObservedOptionSnapshotNode`](#python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsnapshotnode) | contract_model | 19 fields |
-| [`JaniformObservedOptionSnapshotPricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsnapshotpricingresult) | contract_model | 4 fields |
+| [`JaniformObservedOptionSnapshotPricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsnapshotpricingresult) | contract_model | 5 fields |
 | [`JaniformObservedOptionSurfaceNode`](#python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsurfacenode) | contract_model | 20 fields |
-| [`JaniformObservedOptionSurfacePricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsurfacepricingresult) | contract_model | 3 fields |
+| [`JaniformObservedOptionSurfacePricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsurfacepricingresult) | contract_model | 4 fields |
 | [`JaniformVanillaOptionGrid`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongrid) | contract_model | 7 fields |
 | [`JaniformVanillaOptionGridBatch`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongridbatch) | contract_model | 2 fields |
 | [`JaniformVanillaOptionGridBatchPricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongridbatchpricingresult) | contract_model | 3 fields |
@@ -3586,6 +3594,10 @@
 | [`JaniformVanillaOptionMaturitySummary`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionmaturitysummary) | contract_model | 9 fields |
 | [`JaniformVanillaOptionSurface`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionsurface) | contract_model | 8 fields |
 | [`JaniformVanillaOptionSurfacePricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionsurfacepricingresult) | contract_model | 18 fields |
+| [`ObservedOptionsPhysicalDistributionDiagnosticsNode`](#python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsnode) | contract_model | 20 fields |
+| [`ObservedOptionsPhysicalDistributionDiagnosticsOutput`](#python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsoutput) | contract_model | 4 fields |
+| [`ObservedOptionsPhysicalDistributionDiagnosticsReport`](#python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsreport) | contract_model | 7 fields |
+| [`ObservedOptionsPhysicalDistributionDiagnosticsRequest`](#python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsrequest) | contract_model | 2 fields |
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsnapshotnode"></a>
 ### `JaniformObservedOptionSnapshotNode`
@@ -3598,8 +3610,8 @@
 ### `JaniformObservedOptionSnapshotPricingResult`
 
 - Kind: `contract_model`
-- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'`
-- Fields: `valuation_time_utc`, `spot`, `nodes`, `raw_result`
+- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]' = None) -> 'None'`
+- Fields: `valuation_time_utc`, `spot`, `nodes`, `physical_distribution`, `raw_result`
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsurfacenode"></a>
 ### `JaniformObservedOptionSurfaceNode`
@@ -3612,8 +3624,8 @@
 ### `JaniformObservedOptionSurfacePricingResult`
 
 - Kind: `contract_model`
-- Signature: `(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]') -> 'None'`
-- Fields: `valuation_time_utc`, `nodes`, `raw_results`
+- Signature: `(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]' = ()) -> 'None'`
+- Fields: `valuation_time_utc`, `nodes`, `physical_distribution`, `raw_results`
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongrid"></a>
 ### `JaniformVanillaOptionGrid`
@@ -3671,6 +3683,34 @@
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'`
 - Fields: `spot`, `strikes`, `maturity_intervals`, `payoff_type`, `risk_free_rate`, `dividend_yield`, `price_grid`, `implied_volatility_grid`, `implied_volatility_inversion_status_grid`, `pricing_status_grid`, `pricing_failure_stage_grid`, `pricing_failure_reason_grid`, `forward_price_grid`, `discount_factor_grid`, `boundary_state_norm_grid`, `maturity_summaries`, `runtime_interval_schedule`, `maturity_terminal_interval_indices`
 
+<a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsnode"></a>
+### `ObservedOptionsPhysicalDistributionDiagnosticsNode`
+
+- Kind: `contract_model`
+- Signature: `(valuation_time_utc: 'datetime', quote_timestamp_utc: 'datetime', expiry_timestamp_utc: 'datetime', strike: 'float', option_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', maturity_interval: 'float', q_forward_price: 'float', p_simulated_forward_price: 'float', model_q_implied_volatility: 'Optional[float]', observed_q_implied_volatility: 'Optional[float]', observed_q_implied_volatility_inversion_status: 'Optional[VanillaOptionImpliedVolatilityInversionStatus]', sample_count: 'int', physical_forward_normalized_price: 'float', physical_forward_normalized_implied_volatility: 'Optional[float]', physical_forward_normalized_implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus', market_forward_physical_price: 'float', market_forward_physical_implied_volatility: 'Optional[float]', market_forward_physical_implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus') -> 'None'`
+- Fields: `valuation_time_utc`, `quote_timestamp_utc`, `expiry_timestamp_utc`, `strike`, `option_type`, `risk_free_rate`, `dividend_yield`, `maturity_interval`, `q_forward_price`, `p_simulated_forward_price`, `model_q_implied_volatility`, `observed_q_implied_volatility`, `observed_q_implied_volatility_inversion_status`, `sample_count`, `physical_forward_normalized_price`, `physical_forward_normalized_implied_volatility`, `physical_forward_normalized_implied_volatility_inversion_status`, `market_forward_physical_price`, `market_forward_physical_implied_volatility`, `market_forward_physical_implied_volatility_inversion_status`
+
+<a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsoutput"></a>
+### `ObservedOptionsPhysicalDistributionDiagnosticsOutput`
+
+- Kind: `contract_model`
+- Signature: `(schema_version: 'str', request: 'ObservedOptionsPhysicalDistributionDiagnosticsRequest', report: 'ObservedOptionsPhysicalDistributionDiagnosticsReport', nodes: 'tuple[ObservedOptionsPhysicalDistributionDiagnosticsNode, ...]') -> 'None'`
+- Fields: `schema_version`, `request`, `report`, `nodes`
+
+<a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsreport"></a>
+### `ObservedOptionsPhysicalDistributionDiagnosticsReport`
+
+- Kind: `contract_model`
+- Signature: `(schema_version: 'str', valuation_count: 'int', node_count: 'int', path_count_per_valuation: 'int', path_partition_count: 'int', worker_count: 'int', maximum_horizon_interval_count: 'int') -> 'None'`
+- Fields: `schema_version`, `valuation_count`, `node_count`, `path_count_per_valuation`, `path_partition_count`, `worker_count`, `maximum_horizon_interval_count`
+
+<a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsrequest"></a>
+### `ObservedOptionsPhysicalDistributionDiagnosticsRequest`
+
+- Kind: `contract_model`
+- Signature: `(path_count: 'int' = 1024, seed: 'int' = 0) -> 'None'`
+- Fields: `path_count`, `seed`
+
 <a id="python-api-module-janiform-pricing-fitted-grids"></a>
 ## `janiform.pricing.fitted.grids`
 
@@ -3715,7 +3755,7 @@
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`JaniformObservedOptionSnapshotNode`](#python-api-symbol-janiform-pricing-fitted-market-snapshot-janiformobservedoptionsnapshotnode) | contract_model | 19 fields |
-| [`JaniformObservedOptionSnapshotPricingResult`](#python-api-symbol-janiform-pricing-fitted-market-snapshot-janiformobservedoptionsnapshotpricingresult) | contract_model | 4 fields |
+| [`JaniformObservedOptionSnapshotPricingResult`](#python-api-symbol-janiform-pricing-fitted-market-snapshot-janiformobservedoptionsnapshotpricingresult) | contract_model | 5 fields |
 
 <a id="python-api-symbol-janiform-pricing-fitted-market-snapshot-janiformobservedoptionsnapshotnode"></a>
 ### `JaniformObservedOptionSnapshotNode`
@@ -3728,8 +3768,8 @@
 ### `JaniformObservedOptionSnapshotPricingResult`
 
 - Kind: `contract_model`
-- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]') -> 'None'`
-- Fields: `valuation_time_utc`, `spot`, `nodes`, `raw_result`
+- Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]' = None) -> 'None'`
+- Fields: `valuation_time_utc`, `spot`, `nodes`, `physical_distribution`, `raw_result`
 
 <a id="python-api-module-janiform-pricing-fitted-market-snapshot-inputs"></a>
 ## `janiform.pricing.fitted.market_snapshot.inputs`
@@ -3750,7 +3790,7 @@
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`JaniformObservedOptionSurfaceNode`](#python-api-symbol-janiform-pricing-fitted-market-surface-janiformobservedoptionsurfacenode) | contract_model | 20 fields |
-| [`JaniformObservedOptionSurfacePricingResult`](#python-api-symbol-janiform-pricing-fitted-market-surface-janiformobservedoptionsurfacepricingresult) | contract_model | 3 fields |
+| [`JaniformObservedOptionSurfacePricingResult`](#python-api-symbol-janiform-pricing-fitted-market-surface-janiformobservedoptionsurfacepricingresult) | contract_model | 4 fields |
 
 <a id="python-api-symbol-janiform-pricing-fitted-market-surface-janiformobservedoptionsurfacenode"></a>
 ### `JaniformObservedOptionSurfaceNode`
@@ -3763,8 +3803,8 @@
 ### `JaniformObservedOptionSurfacePricingResult`
 
 - Kind: `contract_model`
-- Signature: `(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]') -> 'None'`
-- Fields: `valuation_time_utc`, `nodes`, `raw_results`
+- Signature: `(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]' = ()) -> 'None'`
+- Fields: `valuation_time_utc`, `nodes`, `physical_distribution`, `raw_results`
 
 <a id="python-api-module-janiform-pricing-fitted-summaries"></a>
 ## `janiform.pricing.fitted.summaries`

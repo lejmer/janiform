@@ -7,7 +7,8 @@ use janiform_affine_oracle::affine_oracle::{
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
     build_pricing_transform_input,
 };
@@ -255,6 +256,7 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
             2.3, -0.8, 0.7, 0.1, -0.2,
         )
         .expect("pricing fixture NIG configuration should construct"),
+        VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing fixture model parameters should construct");
 

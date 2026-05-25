@@ -56,6 +56,7 @@ pub use rhs::{
 pub use sensitivities::{
     ExponentialAffineTransformInputSensitivityError,
     ExponentialAffineTransformInputSensitivityOutput, ExponentialAffineTransformOutputSensitivity,
+    solve_exponential_affine_transform_input_sensitivities,
     solve_exponential_affine_transform_input_sensitivities_with_settings,
 };
 pub use solver::{
@@ -70,4 +71,5 @@ pub use solver::{
     ExponentialAffineTransformSolverSettingsError, ExponentialAffineTransformTelemetryMode,
     solve_exponential_affine_transform, solve_exponential_affine_transform_with_optional_settings,
     solve_exponential_affine_transform_with_settings,
+    solve_exponential_affine_transform_with_terminal_loading,
 };
