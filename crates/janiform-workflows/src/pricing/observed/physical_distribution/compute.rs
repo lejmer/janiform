@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use janiform::simulation::CoarseSimulationRunRequest;
 use janiform_foundations::parallelism::resolved_cpu_count;
-use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
+use janiform_terminal_ui::ProgressAdapter;
 use janiform_work_scheduler::{
     StreamingWorkContext, StreamingWorkOutput, StreamingWorkPoolInput, StreamingWorkProgress,
     run_streaming_work_pool,
@@ -15,6 +15,7 @@ use crate::model::{
     build_sufficient_statistics_interval_factors, build_sufficient_statistics_model_inputs,
     fitted_model_context, materialize_mean_reversion_runtime_inputs, validation_error,
 };
+use crate::progress::bounded_progress_measure;
 
 use super::super::super::validation::pricing_validation_error;
 use super::super::progress::{ObservedWorkItemUpdate, emit_observed_stage_progress};
@@ -74,11 +75,10 @@ pub(in crate::pricing::observed) fn compute_physical_distribution_diagnostics_if
     emit_observed_stage_progress(
         progress_adapter,
         "physical distribution diagnostics",
-        ProgressMeasure::bounded(
+        bounded_progress_measure(
             diagnostics_request.path_count * prepared.len(),
             diagnostics_request.path_count * prepared.len(),
-        )
-        .map_err(|source| WorkflowError::OutputProgress { source })?,
+        )?,
         Some(format!(
             "computed {} physical distribution rows",
             nodes.len()
@@ -124,8 +124,7 @@ fn run_physical_distribution_jobs(
     emit_observed_stage_progress(
         progress_adapter,
         "physical distribution diagnostics",
-        ProgressMeasure::bounded(0, diagnostics_request.path_count * prepared.len())
-            .map_err(|source| WorkflowError::OutputProgress { source })?,
+        bounded_progress_measure(0, diagnostics_request.path_count * prepared.len())?,
         Some(format!(
             "simulating {} P paths for {} valuation states on {} CPUs",
             diagnostics_request.path_count,

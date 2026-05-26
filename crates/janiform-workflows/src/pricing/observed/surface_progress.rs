@@ -6,8 +6,8 @@ use janiform_terminal_ui::{
 
 use crate::error::WorkflowError;
 use crate::progress::{
-    ProgressUnitTracker, completed_tracked_progress_units, format_cpu_count, progress_count_label,
-    progress_percent, progress_scaled_units, total_tracked_progress_units,
+    bounded_progress_measure, format_cpu_count, progress_count_label, progress_percent,
+    progress_scaled_units,
 };
 
 use super::super::progress::pricing_progress_phase_label;
@@ -91,16 +91,18 @@ pub(super) struct SurfaceWorkerState {
     pub(super) task_position: usize,
     pub(super) valuation_time_utc_nanos: i64,
     pub(super) node_count: usize,
-    pub(super) progress_plan: SurfaceTaskProgressPlan,
-    pub(super) completed_pricing_units: usize,
-    pub(super) completed_progress_units: usize,
-    pub(super) total_progress_units: usize,
+    progress_plan: SurfaceTaskProgressPlan,
+    completed_pricing_units: usize,
+    completed_progress_units: usize,
+    total_progress_units: usize,
     pub(super) progress_percent: usize,
     pub(super) pass_units: String,
+    pub(super) sweep_units: String,
     pub(super) interval_units: String,
     pub(super) phase: String,
     completed_interval_pass_units: usize,
     completed_interval_pass_count: usize,
+    completed_interval_sweep_count: usize,
     current_interval_pass_completed_units: usize,
     current_interval_pass_total_units: usize,
     has_interval_pass_progress: bool,
@@ -124,10 +126,12 @@ impl SurfaceWorkerState {
             total_progress_units: progress_plan.total_units(),
             progress_percent: 0,
             pass_units: "-".to_string(),
+            sweep_units: "-".to_string(),
             interval_units: "-".to_string(),
             phase: "starting".to_string(),
             completed_interval_pass_units: 0,
             completed_interval_pass_count: 0,
+            completed_interval_sweep_count: 0,
             current_interval_pass_completed_units: 0,
             current_interval_pass_total_units: 0,
             has_interval_pass_progress: false,
@@ -155,6 +159,12 @@ impl SurfaceWorkerState {
         );
 
         self.interval_units = surface_worker_interval_units(event);
+        
+        let current_sweep_number = self
+            .has_interval_pass_progress
+            .then_some(self.completed_interval_sweep_count.saturating_add(1));
+        
+        self.sweep_units = surface_worker_sweep_units(event.phase, current_sweep_number);
         self.phase = pricing_progress_phase_label(event.phase).to_string();
     }
 
@@ -172,6 +182,7 @@ impl SurfaceWorkerState {
         );
 
         self.interval_units = "-".to_string();
+        self.sweep_units = "-".to_string();
         self.phase = "done".to_string();
     }
 
@@ -283,6 +294,9 @@ impl SurfaceWorkerState {
             && completed_units < self.current_interval_pass_completed_units;
 
         if interval_progress_reset {
+            self.completed_interval_sweep_count =
+                self.completed_interval_sweep_count.saturating_add(1);
+
             self.completed_interval_pass_units = self
                 .completed_interval_pass_units
                 .saturating_add(self.current_interval_pass_total_units)
@@ -310,8 +324,7 @@ pub(super) struct SurfaceWorkerProgressInput {
     pub(super) worker_index: usize,
     pub(super) task_position: usize,
     pub(super) task_count: usize,
-    pub(super) completed_progress_units: usize,
-    pub(super) total_progress_units: usize,
+    pub(super) completed_task_count: usize,
     pub(super) worker_count: usize,
     pub(super) valuation_time_utc_nanos: i64,
     pub(super) node_count: usize,
@@ -321,8 +334,7 @@ pub(super) struct SurfaceWorkerProgressInput {
 pub(super) struct SurfaceWorkerPricingProgressInput {
     pub(super) worker_index: usize,
     pub(super) task_count: usize,
-    pub(super) completed_progress_units: usize,
-    pub(super) total_progress_units: usize,
+    pub(super) completed_task_count: usize,
     pub(super) worker_count: usize,
     pub(super) worker_state: SurfaceWorkerState,
 }
@@ -331,8 +343,6 @@ pub(super) struct SurfaceWorkerCompletedInput {
     pub(super) worker_index: usize,
     pub(super) task_count: usize,
     pub(super) completed_task_count: usize,
-    pub(super) completed_progress_units: usize,
-    pub(super) total_progress_units: usize,
     pub(super) worker_count: usize,
     pub(super) worker_state: SurfaceWorkerState,
 }
@@ -340,37 +350,25 @@ pub(super) struct SurfaceWorkerCompletedInput {
 pub(super) struct SurfacePricingResultCollector<'collector, 'adapter> {
     progress_adapter: &'collector mut Option<&'adapter mut ProgressAdapter>,
     worker_states: Vec<Option<SurfaceWorkerState>>,
-    task_progress_units: Vec<ProgressUnitTracker>,
     completed_task_count: usize,
     results: Vec<Option<ObservedOptionsSnapshotResult>>,
     task_count: usize,
     worker_count: usize,
-    total_progress_units: usize,
 }
 
 impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
     pub(super) fn new(
         task_count: usize,
         worker_count: usize,
-        task_progress_plans: &[SurfaceTaskProgressPlan],
         progress_adapter: &'collector mut Option<&'adapter mut ProgressAdapter>,
     ) -> Self {
-        let task_progress_totals = surface_task_progress_totals(task_progress_plans);
-
-        let task_progress_units =
-            ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
-
-        let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
-
         Self {
             progress_adapter,
             worker_states: (0..worker_count).map(|_| None).collect(),
-            task_progress_units,
             completed_task_count: 0,
             results: (0..task_count).map(|_| None).collect(),
             task_count,
             worker_count,
-            total_progress_units,
         }
     }
 
@@ -406,10 +404,7 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
                         worker_index,
                         task_position,
                         task_count: self.task_count,
-                        completed_progress_units: completed_tracked_progress_units(
-                            self.task_progress_units.as_slice(),
-                        ),
-                        total_progress_units: self.total_progress_units,
+                        completed_task_count: self.completed_task_count,
                         worker_count: self.worker_count,
                         valuation_time_utc_nanos,
                         node_count,
@@ -434,26 +429,12 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
 
                 worker_state.apply_pricing_event(&event);
 
-                let Some(task_progress) =
-                    self.task_progress_units.get_mut(worker_state.task_position)
-                else {
-                    return Err(pricing_validation_error(
-                        "pricing_progress.task_position",
-                        "referenced an unknown valuation task",
-                    ));
-                };
-
-                task_progress.record(worker_state.completed_progress_units);
-
                 emit_surface_worker_progress(
                     self.progress_adapter,
                     SurfaceWorkerPricingProgressInput {
                         worker_index,
                         task_count: self.task_count,
-                        completed_progress_units: completed_tracked_progress_units(
-                            self.task_progress_units.as_slice(),
-                        ),
-                        total_progress_units: self.total_progress_units,
+                        completed_task_count: self.completed_task_count,
                         worker_count: self.worker_count,
                         // Intentional copy because progress events carry a point-in-time
                         // worker snapshot while the worker keeps advancing.
@@ -485,15 +466,6 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
 
         worker_state.complete();
 
-        let Some(task_progress) = self.task_progress_units.get_mut(task_position) else {
-            return Err(pricing_validation_error(
-                "pricing_progress.task_position",
-                "referenced an unknown valuation task",
-            ));
-        };
-
-        task_progress.complete();
-
         // Intentional copy because the completion event needs a stable worker
         // snapshot after the mutable worker-state borrow ends.
         let worker_state = worker_state.clone();
@@ -517,10 +489,6 @@ impl<'collector, 'adapter> SurfacePricingResultCollector<'collector, 'adapter> {
                 worker_index,
                 task_count: self.task_count,
                 completed_task_count: self.completed_task_count,
-                completed_progress_units: completed_tracked_progress_units(
-                    self.task_progress_units.as_slice(),
-                ),
-                total_progress_units: self.total_progress_units,
                 worker_count: self.worker_count,
                 worker_state,
             },
@@ -553,19 +521,11 @@ pub(super) fn emit_surface_pricing_plan(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     task_count: usize,
     worker_count: usize,
-    task_progress_plans: &[SurfaceTaskProgressPlan],
 ) -> Result<(), WorkflowError> {
-    let task_progress_totals = surface_task_progress_totals(task_progress_plans);
-
-    let task_progress_units =
-        ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
-
-    let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
-
     emit_observed_stage_progress(
         progress_adapter,
         "price valuation surface",
-        surface_progress_measure(0, total_progress_units),
+        surface_task_progress_measure(0, task_count)?,
         Some(format!(
             "pricing {task_count} valuation times on {}",
             format_cpu_count(worker_count)
@@ -606,7 +566,7 @@ pub(super) fn emit_surface_worker_started(
     emit_observed_stage_progress(
         progress_adapter,
         "price valuation surface",
-        surface_progress_measure(input.completed_progress_units, input.total_progress_units),
+        surface_task_progress_measure(input.completed_task_count, input.task_count)?,
         Some(format!(
             "pricing task {}/{} with {} intervals on {}",
             input.task_position + 1,
@@ -630,7 +590,7 @@ pub(super) fn emit_surface_worker_progress(
     emit_observed_stage_progress(
         progress_adapter,
         "price valuation surface",
-        surface_progress_measure(input.completed_progress_units, input.total_progress_units),
+        surface_task_progress_measure(input.completed_task_count, input.task_count)?,
         Some(format!(
             "{} on {}",
             input.worker_state.phase,
@@ -652,7 +612,7 @@ pub(super) fn emit_surface_worker_completed(
     emit_observed_stage_progress(
         progress_adapter,
         "price valuation surface",
-        surface_progress_measure(input.completed_progress_units, input.total_progress_units),
+        surface_task_progress_measure(input.completed_task_count, input.task_count)?,
         Some(format!(
             "priced {}/{} valuation times on {}",
             input.completed_task_count,
@@ -674,6 +634,7 @@ fn surface_worker_columns() -> Vec<ProgressWorkItemColumn> {
         ProgressWorkItemColumn::new("time", "Time"),
         ProgressWorkItemColumn::new("nodes", "Nodes"),
         ProgressWorkItemColumn::new("pass", "Pass"),
+        ProgressWorkItemColumn::new("sweep", "Sweep"),
         ProgressWorkItemColumn::new("interval", "Interval"),
         ProgressWorkItemColumn::new("phase", "Phase"),
     ]
@@ -695,6 +656,7 @@ fn surface_worker_metrics(
         ),
         ProgressWorkItemMetric::new("nodes", worker_state.node_count.to_string()),
         ProgressWorkItemMetric::new("pass", worker_state.pass_units.clone()),
+        ProgressWorkItemMetric::new("sweep", worker_state.sweep_units.clone()),
         ProgressWorkItemMetric::new("interval", worker_state.interval_units.clone()),
         ProgressWorkItemMetric::new("phase", worker_state.phase.clone()),
     ]
@@ -704,18 +666,11 @@ pub(super) fn surface_worker_labels(worker_count: usize) -> Vec<String> {
     (0..worker_count).map(worker_label).collect()
 }
 
-pub(super) fn surface_task_progress_totals(
-    task_progress_plans: &[SurfaceTaskProgressPlan],
-) -> Vec<usize> {
-    task_progress_plans
-        .iter()
-        .copied()
-        .map(SurfaceTaskProgressPlan::total_units)
-        .collect()
-}
-
-fn surface_progress_measure(completed_units: usize, total_units: usize) -> ProgressMeasure {
-    ProgressMeasure::percent(progress_percent(completed_units, total_units))
+fn surface_task_progress_measure(
+    completed_task_count: usize,
+    task_count: usize,
+) -> Result<ProgressMeasure, WorkflowError> {
+    bounded_progress_measure(completed_task_count.min(task_count), task_count)
 }
 
 fn worker_label(worker_index: usize) -> String {
@@ -733,6 +688,22 @@ fn surface_worker_pass_units(completed_pass_count: usize, total_pass_count: usiz
     )
     .map(|label| format!("{label} done"))
     .unwrap_or_else(|| "-".to_string())
+}
+
+fn surface_worker_sweep_units(
+    phase: PricingProgressPhase,
+    current_sweep_number: Option<usize>,
+) -> String {
+    if matches!(
+        phase,
+        PricingProgressPhase::IntervalProgress | PricingProgressPhase::TransitionRowProgress
+    ) {
+        return current_sweep_number
+            .map(|sweep_number| sweep_number.to_string())
+            .unwrap_or_else(|| "-".to_string());
+    }
+
+    "-".to_string()
 }
 
 fn surface_worker_interval_units(event: &PricingProgressEvent) -> String {

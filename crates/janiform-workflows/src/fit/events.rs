@@ -5,19 +5,11 @@ use janiform_calibration_artifacts::{
     calibration_stage_token,
 };
 use janiform_calibration_runtime::{
-    CalibrationStageExecutionStatus, CalibrationStageProgressPhase, CalibrationStagedRunFailure,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
-    CalibrationStagedRunStageProgressEvent, JointRefinementProgressCandidateAssessment,
-    JointRefinementStageProgressPhase, ReturnComponentsStageProgressPhase,
+    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent,
+    JointRefinementProgressCandidateAssessment, JointRefinementStageProgressPhase,
+    ReturnComponentsStageProgressPhase,
 };
-
-const fn terminal_progress_status(status: CalibrationStageExecutionStatus) -> &'static str {
-    match status {
-        CalibrationStageExecutionStatus::Success => "completed",
-        CalibrationStageExecutionStatus::SuccessWithWarnings => "completed with warnings",
-        CalibrationStageExecutionStatus::Failure => "failed",
-    }
-}
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
     RunErrorEvent, RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent,
@@ -31,7 +23,7 @@ use janiform_terminal_ui::{
 use crate::error::WorkflowError;
 use crate::progress::{progress_count_label, progress_position_label};
 
-use super::labels::stage_label;
+use super::labels::{stage_execution_status_label, stage_label};
 
 /// Convert a staged runtime observer event into durable run events.
 pub fn run_events_from_staged_event(
@@ -248,7 +240,7 @@ pub fn progress_event_from_staged_event(
             ..
         } => Some(ProgressEvent::StageCompleted {
             stage: stage_label(*stage).to_string(),
-            status: terminal_progress_status(stage_report.status()).to_string(),
+            status: stage_execution_status_label(stage_report.status()).to_string(),
             runtime_seconds: *runtime_seconds,
         }),
         CalibrationStagedRunObserverEvent::RunCompleted { .. } => None,
@@ -409,7 +401,11 @@ pub fn failed_stage_label(report: &CalibrationStagedRunReport) -> String {
             ..
         })
         | Some(CalibrationStagedRunFailure::StageExecutionFailed { stage, .. })
-        | Some(CalibrationStagedRunFailure::StageParameterArtifactIoFailed { stage, .. })
+        | Some(CalibrationStagedRunFailure::StageParameterArtifactLoadFailed { stage, .. })
+        | Some(CalibrationStagedRunFailure::StageParameterArtifactBuildFailed { stage, .. })
+        | Some(CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
+            stage, ..
+        })
         | Some(CalibrationStagedRunFailure::MissingCheckpointMetadataForSuccessfulStage {
             stage,
         }) => stage_label(*stage).to_string(),
@@ -450,7 +446,23 @@ fn terminal_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
             artifact_reference,
             error_message,
         } => format!("failed to persist dataset snapshot `{artifact_reference}`: {error_message}"),
-        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+        CalibrationStagedRunFailure::StageParameterArtifactLoadFailed {
+            stage,
+            artifact_reference,
+            error_message,
+        } => format!(
+            "failed to load {} artifact `{artifact_reference}`: {error_message}",
+            stage_label(*stage)
+        ),
+        CalibrationStagedRunFailure::StageParameterArtifactBuildFailed {
+            stage,
+            artifact_reference,
+            error_message,
+        } => format!(
+            "failed to build {} artifact `{artifact_reference}`: {error_message}",
+            stage_label(*stage)
+        ),
+        CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
             stage,
             artifact_reference,
             error_message,

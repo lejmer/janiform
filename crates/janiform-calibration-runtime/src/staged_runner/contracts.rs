@@ -278,7 +278,17 @@ pub enum CalibrationStagedRunFailure {
         artifact_reference: String,
         error_message: String,
     },
-    StageParameterArtifactIoFailed {
+    StageParameterArtifactLoadFailed {
+        stage: CalibrationStage,
+        artifact_reference: String,
+        error_message: String,
+    },
+    StageParameterArtifactBuildFailed {
+        stage: CalibrationStage,
+        artifact_reference: String,
+        error_message: String,
+    },
+    StageParameterArtifactPersistFailed {
         stage: CalibrationStage,
         artifact_reference: String,
         error_message: String,

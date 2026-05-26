@@ -5,10 +5,11 @@ use crate::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingRequest,
     characteristic::{
-        LocalTiltResidualEvaluation, build_local_tilt_bracket_with_residual_evaluator,
+        LocalTiltResidualEvaluation, MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+        build_local_tilt_bracket_with_residual_evaluator,
         build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator,
         differentiate_local_tilt_root_for_shared_plus_shift_configuration,
-        resolve_local_tilt_search_domain,
+        resolve_local_martingale_tilt_search_domain,
     },
     compose_nig_trading_time_exponent, compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
@@ -840,28 +841,35 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
 }
 
 #[test]
-fn anchored_local_tilt_search_domain_uses_return_composition_domain() {
+fn anchored_local_tilt_search_domain_requires_martingale_first_moment_domain() {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
         .expect("valid shared-plus-shift payload should derive drivers");
 
-    let search_domain =
-        resolve_local_tilt_search_domain(driver_parameters).expect("search domain should resolve");
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters)
+        .expect("search domain should resolve");
 
     let return_composition_domain = driver_parameters.derive_return_composition_log_moment_domain();
 
+    let martingale_domain = return_composition_domain.intersect(
+        janiform_model_kernels::risk_neutral::NigEsscherTiltDomain::new(
+            return_composition_domain.lower_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+            return_composition_domain.upper_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+        ),
+    );
+
     assert_eq!(
         search_domain.lower_theta,
-        return_composition_domain
+        martingale_domain
             .interior_lower_bound()
-            .expect("return-composition domain should have an interior lower bound")
+            .expect("martingale domain should have an interior lower bound")
     );
     assert_eq!(
         search_domain.upper_theta,
-        return_composition_domain
+        martingale_domain
             .interior_upper_bound()
-            .expect("return-composition domain should have an interior upper bound")
+            .expect("martingale domain should have an interior upper bound")
     );
 }
 
@@ -1114,7 +1122,7 @@ fn anchored_local_tilt_bracket_search_does_not_probe_admissibility_edge_first() 
         .derive_driver_parameters()
         .expect("valid shared-plus-shift payload should derive drivers");
 
-    let search_domain = resolve_local_tilt_search_domain(driver_parameters)
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters)
         .expect("valid driver parameters should produce a search domain");
     let mut evaluated_left_edge = false;
     let mut evaluated_right_edge = false;
@@ -1148,7 +1156,7 @@ fn anchored_local_tilt_bracket_search_uses_preferred_candidate_before_wide_midpo
         .derive_driver_parameters()
         .expect("valid shared-plus-shift payload should derive drivers");
 
-    let search_domain = resolve_local_tilt_search_domain(driver_parameters)
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters)
         .expect("valid driver parameters should produce a search domain");
 
     let mut evaluated_wide_point = false;
@@ -1173,6 +1181,39 @@ fn anchored_local_tilt_bracket_search_uses_preferred_candidate_before_wide_midpo
     assert!((theta + 0.5).abs() <= 1.0e-8);
     assert!(evaluation.residual.abs() <= 1.0e-8);
     assert!(!evaluated_wide_point);
+}
+
+#[test]
+fn anchored_local_tilt_bracket_search_recovers_from_retryable_invalid_reference() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        -0.5,
+        1.0e-8,
+        |theta| {
+            if theta > -0.25 {
+                return Err(
+                    AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent {
+                        theta,
+                        value: ComplexScalar::new(0.0, 1.0),
+                    },
+                );
+            }
+
+            Ok(LocalTiltResidualEvaluation {
+                observed_log_moment_exponent: theta,
+                residual: theta + 0.5,
+            })
+        },
+    )
+    .expect("solver should locate a valid reference before bracketing the root");
+
+    assert!((theta + 0.5).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
 }
 
 #[test]

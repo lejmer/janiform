@@ -202,12 +202,9 @@ def grid_of_optional_failure_stages(
                 _pricing_error,
                 enum_type=VanillaOptionPricingFailureStage,
                 allowed_values_message=(
-                    "must be one of: node_setup, transform_input_build, transform_solve, "
-                    "transform_output, characteristic_function_assembly, fourier_pricing, "
-                    "risk_neutral_characteristic_function, endogenous_anchor_materialization, "
-                    "expected_hawkes_state_update, anchored_local_tilt_solve, "
-                    "spectral_observed_boundary_state, "
-                    "spectral_diagnostics, spectral_operator_assembly, "
+                    "must be one of: node_setup, fourier_pricing, "
+                    "risk_neutral_characteristic_function, terminal_affine_measure_change, "
+                    "spectral_diagnostics, "
                     "response_diagnostics, response_assembly, run_result_assembly, "
                     "worker_execution"
                 ),

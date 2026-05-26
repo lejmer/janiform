@@ -1,5 +1,4 @@
 mod coordinates;
-mod cosine_transform;
 mod pricer;
 mod sensitivity;
 

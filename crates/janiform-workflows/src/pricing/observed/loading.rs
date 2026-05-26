@@ -5,6 +5,7 @@ use janiform::calibration::market_data::{
 use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
 
 use crate::error::WorkflowError;
+use crate::progress::bounded_progress_measure;
 
 use super::super::validation::pricing_validation_error;
 use super::data::{prepare_snapshot_groups, resolve_effective_valuation_time_utc_nanos};
@@ -68,8 +69,7 @@ pub(super) fn load_observed_pricing_inputs(
     emit_observed_stage_progress(
         progress_adapter,
         "load observed data",
-        ProgressMeasure::bounded(1, 1)
-            .map_err(|source| WorkflowError::OutputProgress { source })?,
+        bounded_progress_measure(1, 1)?,
         Some(format!(
             "loaded {} ticks and {} option quotes",
             tick_output.tick_records.len(),

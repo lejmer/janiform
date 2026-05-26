@@ -7,9 +7,6 @@ use janiform_work_scheduler::{
 };
 
 use crate::error::WorkflowError;
-use crate::progress::{
-    ProgressUnitTracker, completed_tracked_progress_units, total_tracked_progress_units,
-};
 
 use super::super::validation::pricing_validation_error;
 use super::pricing::{
@@ -24,7 +21,6 @@ use super::surface_progress::{
     SurfaceWorkerCompletedInput, SurfaceWorkerPricingProgressInput, SurfaceWorkerProgressInput,
     SurfaceWorkerState, emit_surface_interval_planning, emit_surface_pricing_plan,
     emit_surface_worker_completed, emit_surface_worker_progress, emit_surface_worker_started,
-    surface_task_progress_totals,
 };
 use super::types::{
     ObservedOptionsPricingRequest, ObservedOptionsSnapshotResult, PRICE_VALUATION_SURFACE_STAGE,
@@ -45,6 +41,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
 
     let stage_count =
         observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+
     let pricing_stage_started_at = start_observed_pricing_stage(
         progress_adapter,
         3,
@@ -56,6 +53,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
         let prepared_snapshot = prepared_snapshots.into_iter().next().ok_or_else(|| {
             pricing_validation_error("valuation_time_utc", "snapshot was not prepared")
         })?;
+
         let result = price_prepared_snapshot_with_terminal_progress(
             request,
             prepared_snapshot,
@@ -75,6 +73,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
     if worker_count <= 1 {
         let task_progress_plans =
             resolve_surface_task_progress_plans(request, prepared_snapshots.as_slice())?;
+
         let results = price_prepared_surface_snapshots_serial(
             request,
             prepared_snapshots,
@@ -93,25 +92,19 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
     }
 
     emit_surface_interval_planning(progress_adapter, task_count)?;
+
     let task_progress_plans =
         resolve_surface_task_progress_plans(request, prepared_snapshots.as_slice())?;
 
-    emit_surface_pricing_plan(
-        progress_adapter,
-        task_count,
-        worker_count,
-        &task_progress_plans,
-    )?;
+    emit_surface_pricing_plan(progress_adapter, task_count, worker_count)?;
+
     let jobs = prepared_snapshots
         .into_iter()
         .enumerate()
         .collect::<Vec<_>>();
-    let mut collector = SurfacePricingResultCollector::new(
-        task_count,
-        worker_count,
-        task_progress_plans.as_slice(),
-        progress_adapter,
-    );
+
+    let mut collector =
+        SurfacePricingResultCollector::new(task_count, worker_count, progress_adapter);
 
     run_streaming_work_pool(StreamingWorkPoolInput::new(
         &mut collector,
@@ -123,8 +116,11 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
             Result<ObservedOptionsSnapshotResult, WorkflowError>,
         >| {
             let worker_index = context.worker_index();
+
             let node_count = prepared_snapshot_node_count(&prepared_snapshot);
+
             let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
+
             let progress_plan = task_progress_plans
                 .get(task_position)
                 .copied()
@@ -194,22 +190,16 @@ fn price_prepared_surface_snapshots_serial(
     worker_count: usize,
 ) -> Result<Vec<ObservedOptionsSnapshotResult>, WorkflowError> {
     let task_count = prepared_snapshots.len();
-    let mut results = Vec::with_capacity(task_count);
-    let task_progress_totals = surface_task_progress_totals(task_progress_plans.as_slice());
-    let mut task_progress_units =
-        ProgressUnitTracker::planned_for_totals(task_progress_totals.as_slice());
-    let total_progress_units = total_tracked_progress_units(task_progress_units.as_slice());
 
-    emit_surface_pricing_plan(
-        progress_adapter,
-        task_count,
-        worker_count.max(1),
-        task_progress_plans.as_slice(),
-    )?;
+    let mut results = Vec::with_capacity(task_count);
+
+    emit_surface_pricing_plan(progress_adapter, task_count, worker_count.max(1))?;
 
     for (task_position, prepared_snapshot) in prepared_snapshots.into_iter().enumerate() {
         let node_count = prepared_snapshot_node_count(&prepared_snapshot);
+
         let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
+
         let progress_plan = task_progress_plans
             .get(task_position)
             .copied()
@@ -219,6 +209,7 @@ fn price_prepared_surface_snapshots_serial(
                     "referenced an unknown valuation task",
                 )
             })?;
+
         let mut worker_state = SurfaceWorkerState::started(
             task_position,
             valuation_time_utc_nanos,
@@ -232,10 +223,7 @@ fn price_prepared_surface_snapshots_serial(
                 worker_index: 0,
                 task_position,
                 task_count,
-                completed_progress_units: completed_tracked_progress_units(
-                    task_progress_units.as_slice(),
-                ),
-                total_progress_units,
+                completed_task_count: results.len(),
                 worker_count: worker_count.max(1),
                 valuation_time_utc_nanos,
                 node_count,
@@ -244,6 +232,7 @@ fn price_prepared_surface_snapshots_serial(
         )?;
 
         let mut progress_error = None::<WorkflowError>;
+
         let mut progress_observer = |event: PricingProgressEvent| {
             if progress_error.is_some() {
                 return;
@@ -251,19 +240,12 @@ fn price_prepared_surface_snapshots_serial(
 
             worker_state.apply_pricing_event(&event);
 
-            if let Some(task_progress) = task_progress_units.get_mut(task_position) {
-                task_progress.record(worker_state.completed_progress_units);
-            }
-
             if let Err(source) = emit_surface_worker_progress(
                 progress_adapter,
                 SurfaceWorkerPricingProgressInput {
                     worker_index: 0,
                     task_count,
-                    completed_progress_units: completed_tracked_progress_units(
-                        task_progress_units.as_slice(),
-                    ),
-                    total_progress_units,
+                    completed_task_count: results.len(),
                     worker_count: worker_count.max(1),
                     // Intentional copy because progress events carry a point-in-time
                     // worker snapshot while the worker keeps advancing.
@@ -290,20 +272,12 @@ fn price_prepared_surface_snapshots_serial(
         results.push(result);
         worker_state.complete();
 
-        if let Some(task_progress) = task_progress_units.get_mut(task_position) {
-            task_progress.complete();
-        }
-
         emit_surface_worker_completed(
             progress_adapter,
             SurfaceWorkerCompletedInput {
                 worker_index: 0,
                 task_count,
                 completed_task_count: results.len(),
-                completed_progress_units: completed_tracked_progress_units(
-                    task_progress_units.as_slice(),
-                ),
-                total_progress_units,
                 worker_count: worker_count.max(1),
                 worker_state,
             },

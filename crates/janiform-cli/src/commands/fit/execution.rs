@@ -292,6 +292,7 @@ fn run_execution_input(
     if !output.report.status.is_successful() {
         return Err(CliError::FitExecutionFailed {
             message: failure_reason(&output.report)?,
+            workflow_summary_rendered: true,
         });
     }
 

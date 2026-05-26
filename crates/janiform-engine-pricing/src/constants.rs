@@ -12,10 +12,8 @@ pub const INTRADAY_PRICING_CONTINUOUS_RATE_TIME_SCALING_POLICY: &str = "continuo
 pub const SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY: &str = "terminal_deviation_domain_from_observed_log_price_strike_boundaries_runtime_anchor_envelope_and_payoff_side_observed_strike_wing_tail.v1";
 pub const SPECTRAL_PRICING_COLLOCATION_POLICY: &str = "uniform_cosine_collocation_with_default_node_count_derived_from_distinct_domain_envelope_points.v1";
 pub const SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY: &str = "compatibility_integration_diagnostics_are_reported_from_spectral_collocation_residual_metadata.v1";
-pub const SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY: &str = "backward_interval_operator_application_over_cosine_coefficients_with_state_dependent_local_tilt_and_batched_frequency_characteristic_function_sampling.v1";
-pub const SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY: &str = "deterministic_interval_expected_state_path_from_tilted_expected_counts_with_uniform_interval_source_rate.v1";
-/// Constant cosine mode plus one positive frequency mode.
-pub(crate) const MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT: usize = 2;
+pub const SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY: &str =
+    "terminal_affine_schedule_cumulant_measure_change_with_shared_maturity_characteristic_grid.v1";
 pub const FOURIER_INVERSION_ENGINE_POLICY: &str =
     "carr_madan_damped_call_inversion_with_put_call_parity_extension.v1";
 pub const FOURIER_INVERSION_CONTOUR_POLICY: &str =
@@ -43,6 +41,9 @@ pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION: &str =
 pub const VANILLA_OPTION_CALIBRATION_HOOK_POLICY: &str =
     "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1";
 pub(crate) const INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY: &str = "dyadic_contour_probe_and_midpoint_refinement_until_quadrature_and_tail_error_estimates_fall_below_cuberoot_machine_epsilon_call_bound.v1";
+
+/// Constant cosine mode plus one positive frequency mode.
+pub(crate) const MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT: usize = 2;
 /// Public default pricing interval in hours, overrideable on the pricing request contract.
 pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
 /// Annualization convention for continuous rates in pricing, not a fitted model heuristic.

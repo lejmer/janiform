@@ -17,9 +17,14 @@
 mod constants;
 mod contracts;
 mod rhs;
+mod runge_kutta;
+mod schedule;
 mod sensitivities;
 mod serde_impls;
 mod solver;
+
+#[cfg(test)]
+mod test_support;
 
 #[cfg(test)]
 mod tests;
@@ -53,6 +58,13 @@ pub use rhs::{
     ExponentialAffineTransformHamiltonians, ExponentialAffineTransformOdeRhs,
     evaluate_exponential_affine_transform_hamiltonians,
     evaluate_exponential_affine_transform_ode_rhs,
+};
+pub use schedule::{
+    ExponentialAffineScheduleCumulantError, ExponentialAffineScheduleCumulantOutput,
+    ExponentialAffineScheduleCumulantProgress, ExponentialAffineScheduleCumulantRequest,
+    ExponentialAffineScheduleIntervalInput, ExponentialAffineTransformInputTangent,
+    ExponentialAffineTransformInputTangentError, solve_exponential_affine_schedule_cumulant,
+    solve_exponential_affine_schedule_cumulant_with_progress,
 };
 pub use sensitivities::{
     ExponentialAffineTransformInputSensitivityError,

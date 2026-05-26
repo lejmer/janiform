@@ -1,5 +1,3 @@
-use std::io;
-
 use janiform_terminal_ui::{
     CompletionSummary, ProgressAdapter, ProgressEvent, StartSummary, TerminalRenderer,
     TerminalSummaryPolicy,
@@ -57,12 +55,12 @@ pub fn terminal_summary_policy(
     }
 }
 
-/// Mark terminal progress as completed and keep the final view visible.
-pub fn complete_terminal_progress(progress_adapter: &mut ProgressAdapter) -> io::Result<()> {
+/// Mark terminal progress as completed and clear the live view.
+pub fn complete_terminal_progress(progress_adapter: &mut ProgressAdapter, status: &str) {
     progress_adapter.observe(ProgressEvent::RunCompleted {
-        status: "completed".to_string(),
+        status: status.to_string(),
     });
-    progress_adapter.finish_and_keep()
+    progress_adapter.finish_and_clear();
 }
 
 pub(crate) fn emit_terminal_start_summary(

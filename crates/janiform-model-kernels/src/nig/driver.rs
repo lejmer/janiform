@@ -11,6 +11,7 @@ use super::errors::{NigSharedPlusShiftConfigurationError, NigTradingTimeIncremen
 use super::parameters::NigParameters;
 use crate::risk_neutral::{
     EsscherTransformError, NigEsscherTiltDomain, differentiate_nig_characteristic_exponent,
+    differentiate_nig_characteristic_exponent_wrt_argument,
     differentiate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument,
     differentiate_shifted_characteristic_exponent_wrt_theta,
 };
@@ -177,6 +178,21 @@ impl NigBuySellDriverParameters {
         compensated_buy_side_characteristic_exponent(self.buy_side_parameters, argument)
     }
 
+    pub fn differentiate_buy_side_characteristic_exponent_wrt_argument(
+        self,
+        argument: ComplexScalar,
+    ) -> Result<ComplexScalar, EsscherTransformError> {
+        let derivative = differentiate_nig_characteristic_exponent_wrt_argument(
+            self.buy_side_parameters,
+            argument,
+        )?;
+
+        Ok(derivative.plus(ComplexScalar::new(
+            0.0,
+            -self.buy_side_parameters.mean_per_unit_time(),
+        )))
+    }
+
     pub fn differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
         self,
         argument: ComplexScalar,
@@ -248,6 +264,21 @@ impl NigBuySellDriverParameters {
         argument: ComplexScalar,
     ) -> ComplexScalar {
         compensated_sell_side_characteristic_exponent(self.sell_side_parameters, argument)
+    }
+
+    pub fn differentiate_sell_side_characteristic_exponent_for_return_composition_wrt_argument(
+        self,
+        argument: ComplexScalar,
+    ) -> Result<ComplexScalar, EsscherTransformError> {
+        let physical_derivative = differentiate_nig_characteristic_exponent_wrt_argument(
+            self.sell_side_parameters,
+            argument.scale(-1.0),
+        )?;
+
+        Ok(physical_derivative.scale(-1.0).plus(ComplexScalar::new(
+            0.0,
+            self.sell_side_parameters.mean_per_unit_time(),
+        )))
     }
 
     pub fn differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(

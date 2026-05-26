@@ -314,6 +314,8 @@ pub(crate) struct LocalTiltSearchDomain {
     pub(crate) reference_theta: f64,
 }
 
+pub(crate) const MARTINGALE_FIRST_LOG_MOMENT_SHIFT: f64 = 1.0;
+
 impl LocalTiltSearchDomain {
     pub(crate) fn contains(self, theta: f64) -> bool {
         NigEsscherTiltDomain::new(self.lower_theta, self.upper_theta).contains(theta)
@@ -562,12 +564,17 @@ fn anchored_local_tilt_domain(
     Ok(domain)
 }
 
-pub(crate) fn resolve_local_tilt_search_domain(
+pub(crate) fn resolve_local_martingale_tilt_search_domain(
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
     let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
 
-    local_tilt_search_domain_from_admissible_domain(admissible_domain)
+    let first_moment_domain = admissible_domain.intersect(NigEsscherTiltDomain::new(
+        admissible_domain.lower_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+        admissible_domain.upper_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+    ));
+
+    local_tilt_search_domain_from_admissible_domain(first_moment_domain)
 }
 
 fn local_tilt_search_domain_from_admissible_domain(
@@ -679,8 +686,8 @@ pub(crate) fn build_local_tilt_bracket_with_residual_evaluator<F>(
 where
     F: FnMut(f64) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError>,
 {
-    let search_domain =
-        resolve_local_tilt_search_domain(driver_parameters).map_err(|error| match error {
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters).map_err(
+        |error| match error {
             AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
                 lower_theta,
                 upper_theta,
@@ -695,7 +702,8 @@ where
                 upper_residual,
             },
             other => other,
-        })?;
+        },
+    )?;
 
     build_local_tilt_bracket_with_search_domain_and_residual_evaluator(
         search_domain,
@@ -739,7 +747,25 @@ where
     let upper_theta = search_domain.upper_theta;
 
     let reference_theta = search_domain.reference_theta;
-    let reference_evaluation = evaluate_residual(reference_theta)?;
+
+    let (reference_theta, reference_evaluation) = match evaluate_residual(reference_theta) {
+        Ok(reference_evaluation) => (reference_theta, reference_evaluation),
+        Err(error) if should_retry_local_tilt_side_evaluation(&error) => {
+            locate_nearest_valid_reference_evaluation(
+                search_domain,
+                reference_theta,
+                &mut evaluate_residual,
+            )?
+            .ok_or(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+                target_log_moment_exponent,
+                lower_theta,
+                upper_theta,
+                lower_residual: f64::NAN,
+                upper_residual: f64::NAN,
+            })?
+        }
+        Err(error) => return Err(error),
+    };
 
     if reference_evaluation.residual.abs() <= tolerance {
         return Ok((reference_theta, reference_evaluation));
@@ -855,6 +881,120 @@ fn nearest_zero_theta_in_domain(admissible_domain: NigEsscherTiltDomain) -> Opti
     }
 
     None
+}
+
+fn locate_nearest_valid_reference_evaluation(
+    search_domain: LocalTiltSearchDomain,
+    reference_theta: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let left_candidate = if search_domain.lower_theta < reference_theta {
+        locate_nearest_valid_reference_evaluation_on_side(
+            reference_theta,
+            search_domain.lower_theta,
+            evaluate_residual,
+        )?
+    } else {
+        None
+    };
+
+    let right_candidate = if search_domain.upper_theta > reference_theta {
+        locate_nearest_valid_reference_evaluation_on_side(
+            reference_theta,
+            search_domain.upper_theta,
+            evaluate_residual,
+        )?
+    } else {
+        None
+    };
+
+    Ok(select_nearest_reference_candidate(
+        reference_theta,
+        left_candidate,
+        right_candidate,
+    ))
+}
+
+fn locate_nearest_valid_reference_evaluation_on_side(
+    reference_theta: f64,
+    side_boundary_theta: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let Some((valid_theta, valid_evaluation)) =
+        locate_valid_side_evaluation(reference_theta, side_boundary_theta, evaluate_residual)?
+    else {
+        return Ok(None);
+    };
+
+    refine_nearest_valid_reference_evaluation(
+        reference_theta,
+        valid_theta,
+        valid_evaluation,
+        evaluate_residual,
+    )
+}
+
+fn refine_nearest_valid_reference_evaluation(
+    reference_theta: f64,
+    mut valid_theta: f64,
+    mut valid_evaluation: LocalTiltResidualEvaluation,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let mut invalid_theta = reference_theta;
+
+    loop {
+        let midpoint = (invalid_theta + valid_theta) * 0.5;
+        if midpoint == invalid_theta || midpoint == valid_theta {
+            return Ok(Some((valid_theta, valid_evaluation)));
+        }
+
+        match evaluate_residual(midpoint) {
+            Ok(midpoint_evaluation) => {
+                valid_theta = midpoint;
+                valid_evaluation = midpoint_evaluation;
+            }
+            Err(error) if should_retry_local_tilt_side_evaluation(&error) => {
+                invalid_theta = midpoint;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn select_nearest_reference_candidate(
+    reference_theta: f64,
+    left_candidate: Option<(f64, LocalTiltResidualEvaluation)>,
+    right_candidate: Option<(f64, LocalTiltResidualEvaluation)>,
+) -> Option<(f64, LocalTiltResidualEvaluation)> {
+    match (left_candidate, right_candidate) {
+        (Some(left_candidate), Some(right_candidate)) => {
+            let left_distance = (left_candidate.0 - reference_theta).abs();
+            let right_distance = (right_candidate.0 - reference_theta).abs();
+
+            if left_distance <= right_distance {
+                Some(left_candidate)
+            } else {
+                Some(right_candidate)
+            }
+        }
+        (Some(candidate), None) | (None, Some(candidate)) => Some(candidate),
+        (None, None) => None,
+    }
 }
 
 fn locate_nearest_root_on_side(

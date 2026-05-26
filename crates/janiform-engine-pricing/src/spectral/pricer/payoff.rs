@@ -1,4 +1,4 @@
-use super::interval_operator::SolvedMaturityLaw;
+use super::maturity_law::SolvedMaturityLaw;
 use super::{
     ComplexScalar, NodePriceSharedPlusShiftSensitivity, VanillaOptionPayoffType,
     VanillaOptionPricingRunError, asset_reference_log_price_from_observed_spot,

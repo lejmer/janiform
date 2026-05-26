@@ -1,6 +1,7 @@
-use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
+use janiform_terminal_ui::ProgressAdapter;
 
 use crate::error::WorkflowError;
+use crate::progress::bounded_progress_measure;
 
 use super::super::super::validation::pricing_validation_error;
 use super::super::progress::{ObservedWorkItemUpdate, emit_observed_stage_progress};
@@ -39,8 +40,7 @@ impl<'adapter, 'progress> PhysicalDistributionCollector<'adapter, 'progress> {
         emit_observed_stage_progress(
             self.progress_adapter,
             "physical distribution diagnostics",
-            ProgressMeasure::bounded(self.completed_path_count, self.total_path_count)
-                .map_err(|source| WorkflowError::OutputProgress { source })?,
+            bounded_progress_measure(self.completed_path_count, self.total_path_count)?,
             Some(format!(
                 "simulated {}/{} P paths",
                 self.completed_path_count, self.total_path_count

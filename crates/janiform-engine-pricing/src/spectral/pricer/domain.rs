@@ -1,10 +1,9 @@
-use super::interval_operator::SolvedMaturityLaw;
+use super::maturity_law::SolvedMaturityLaw;
 use super::payoff::strike_log_boundary_from_reference_log;
 use super::{
     MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT, NodePriceSharedPlusShiftSensitivity,
-    RiskNeutralAnchorMaterialization, SpectralPricingDiagnostics,
-    VanillaOptionGridBatchPricingRunError, VanillaOptionMaturitySummary,
-    VanillaOptionNodePriceSensitivity, VanillaOptionPayoffType,
+    SpectralPricingDiagnostics, VanillaOptionGridBatchPricingRunError,
+    VanillaOptionMaturitySummary, VanillaOptionNodePriceSensitivity, VanillaOptionPayoffType,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionPricingRunError, asset_reference_log_price_from_observed_spot,
     build_spectral_compatibility_integration_diagnostics,
@@ -38,11 +37,10 @@ impl SpectralDomain {
     }
 }
 
-pub(super) fn build_spectral_domain(
+pub(super) fn build_spectral_domain_from_anchor_span(
     pricing_request: &VanillaOptionPricingRequest,
-    materialization: &RiskNeutralAnchorMaterialization,
-    maturity_count: usize,
-    _maturity_interval: f64,
+    terminal_anchor: f64,
+    anchor_span: f64,
     strikes: &[f64],
     payoff_types: &[VanillaOptionPayoffType],
     collocation_node_count_override: Option<usize>,
@@ -53,37 +51,10 @@ pub(super) fn build_spectral_domain(
         });
     }
 
-    let terminal_anchor =
-        materialization.runtime_interval_anchors.end_anchor_values[maturity_count - 1];
-
     let current_observed_log_price = pricing_request
         .boundary_input
         .observed_boundary_state
         .observed_log_price;
-
-    let current_anchor = pricing_request
-        .boundary_input
-        .current_anchor_value()
-        .map_err(
-            |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                source: Box::new(crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
-                    source:
-                        crate::contracts::VanillaOptionPricingRequestError::InvalidBoundaryInput {
-                            source,
-                        },
-                }),
-            },
-        )?;
-
-    let mut anchor_min = current_anchor;
-    let mut anchor_max = current_anchor;
-
-    for anchor_value in
-        &materialization.runtime_interval_anchors.end_anchor_values[..maturity_count]
-    {
-        anchor_min = anchor_min.min(*anchor_value);
-        anchor_max = anchor_max.max(*anchor_value);
-    }
 
     let asset_reference_log_price = asset_reference_log_price_from_observed_spot(
         pricing_request.market_inputs.spot,
@@ -93,8 +64,6 @@ pub(super) fn build_spectral_domain(
         message: "COS domain construction requires a positive finite asset reference price"
             .to_string(),
     })?;
-
-    let anchor_span = anchor_max - anchor_min;
 
     let mut domain_points = vec![
         current_observed_log_price,
@@ -363,13 +332,6 @@ pub(super) fn build_maturity_summary(
         }
         .collocation_nodes(),
         interval_summaries: solved_maturity.interval_summaries.clone(),
-        representative_transform: if optional_output_selection.include_transform_diagnostics
-            || optional_output_selection.include_calibration_hooks
-        {
-            solved_maturity.representative_transform
-        } else {
-            None
-        },
         integration_quality,
     })
 }

@@ -72,47 +72,4 @@ impl NodePriceSharedPlusShiftComplexSensitivity {
             sell_activity_premium_derivative: ComplexScalar::new(0.0, 0.0),
         }
     }
-
-    pub(crate) fn scale(self, factor: f64) -> Self {
-        Self {
-            alpha_derivative: self.alpha_derivative.scale(factor),
-            beta_0_derivative: self.beta_0_derivative.scale(factor),
-            delta_derivative: self.delta_derivative.scale(factor),
-            delta_beta_derivative: self.delta_beta_derivative.scale(factor),
-            buy_activity_premium_derivative: self.buy_activity_premium_derivative.scale(factor),
-            sell_activity_premium_derivative: self.sell_activity_premium_derivative.scale(factor),
-        }
-    }
-
-    pub(crate) fn plus(self, other: Self) -> Self {
-        self + other
-    }
-
-    pub(crate) fn conjugate(self) -> Self {
-        Self {
-            alpha_derivative: self.alpha_derivative.conjugate(),
-            beta_0_derivative: self.beta_0_derivative.conjugate(),
-            delta_derivative: self.delta_derivative.conjugate(),
-            delta_beta_derivative: self.delta_beta_derivative.conjugate(),
-            buy_activity_premium_derivative: self.buy_activity_premium_derivative.conjugate(),
-            sell_activity_premium_derivative: self.sell_activity_premium_derivative.conjugate(),
-        }
-    }
-}
-
-impl Add for NodePriceSharedPlusShiftComplexSensitivity {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self::Output {
-        Self {
-            alpha_derivative: self.alpha_derivative + other.alpha_derivative,
-            beta_0_derivative: self.beta_0_derivative + other.beta_0_derivative,
-            delta_derivative: self.delta_derivative + other.delta_derivative,
-            delta_beta_derivative: self.delta_beta_derivative + other.delta_beta_derivative,
-            buy_activity_premium_derivative: self.buy_activity_premium_derivative
-                + other.buy_activity_premium_derivative,
-            sell_activity_premium_derivative: self.sell_activity_premium_derivative
-                + other.sell_activity_premium_derivative,
-        }
-    }
 }

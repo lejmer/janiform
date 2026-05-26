@@ -7,6 +7,7 @@ use janiform_terminal_ui::{
 };
 
 use crate::error::WorkflowError;
+use crate::progress::bounded_progress_measure;
 
 use super::super::progress::pricing_progress_phase_label;
 use super::types::{
@@ -191,8 +192,7 @@ pub(super) fn emit_valuation_state_progress(
     emit_observed_stage_progress(
         progress_adapter,
         "prepare valuation states",
-        ProgressMeasure::bounded(completed_units, total_units)
-            .map_err(|source| WorkflowError::OutputProgress { source })?,
+        bounded_progress_measure(completed_units, total_units)?,
         Some(format!(
             "replayed {}/{} ticks, prepared {}/{} valuation states",
             event.consumed_observation_count,
@@ -211,8 +211,7 @@ pub(super) fn emit_single_snapshot_pricing_progress(
     emit_observed_stage_progress(
         progress_adapter,
         pricing_progress_phase_label(event.phase),
-        ProgressMeasure::bounded(event.completed_units, event.total_units)
-            .map_err(|source| WorkflowError::OutputProgress { source })?,
+        bounded_progress_measure(event.completed_units, event.total_units)?,
         Some(format!(
             "{} {}",
             pricing_progress_phase_label(event.phase),

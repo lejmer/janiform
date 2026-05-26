@@ -75,6 +75,7 @@ pub use stage_parameter::{
     MeanReversionStageParameterPayload, ReturnComponentsStageParameterArtifactInput,
     ReturnComponentsStageParameterPayload, SeasonalityStageParameterArtifactInput,
     SeasonalityStageParameterPayload, build_calibration_stage_parameter_artifact,
+    calibration_stage_parameter_artifact_load_error_message,
     calibration_stage_parameter_artifact_path,
     calibration_stage_parameter_artifact_path_in_run_directory,
     load_calibration_stage_parameter_artifact_from_disk,

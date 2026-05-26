@@ -1,9 +1,9 @@
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalScheduleMetadata, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingOperatorApproximation, VanillaOptionGridBatchPricingRequest,
-    VanillaOptionGridRequest, VanillaOptionImpliedVolatilityInversionStatus,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    VanillaOptionGridBatchPricingRequest, VanillaOptionGridRequest,
+    VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingKernelParameters,
     VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
@@ -60,7 +60,7 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
             VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                 .expect("interval factors should construct"),
         ],
-        VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+        VanillaOptionPricingOptionalOutputSelection::new(false, true, true),
     )
     .expect("execution input should construct");
 
@@ -91,7 +91,7 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
     let run_diagnostics = run_result
         .run_diagnostics
         .expect("run diagnostics should be present");
-    assert!(run_diagnostics.transform.is_some());
+    assert!(run_diagnostics.transform.is_none());
     assert!(run_diagnostics.integration_quality.is_some());
 
     let calibration_hooks = run_result
@@ -128,7 +128,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
     ];
 
     let optional_output_selection =
-        VanillaOptionPricingOptionalOutputSelection::new(true, true, true);
+        VanillaOptionPricingOptionalOutputSelection::new(false, true, true);
 
     let zero_anchor_request = VanillaOptionPricingRequest::try_new(
         market_inputs.clone(),
@@ -261,7 +261,6 @@ fn vanilla_option_grid_batch_pricing_populates_shared_grids() {
             ],
             optional_output_selection,
             spectral_collocation_node_count_override: None,
-            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");
@@ -337,7 +336,6 @@ fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids(
             ],
             optional_output_selection,
             spectral_collocation_node_count_override: None,
-            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");
@@ -414,7 +412,6 @@ fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
             ],
             optional_output_selection,
             spectral_collocation_node_count_override: Some(257),
-            operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");
@@ -456,7 +453,7 @@ fn vanilla_option_surface_pricing_populates_shared_grid() {
     let model_parameters = valid_model_parameters();
 
     let optional_output_selection =
-        VanillaOptionPricingOptionalOutputSelection::new(true, true, true);
+        VanillaOptionPricingOptionalOutputSelection::new(false, true, true);
 
     let surface_result =
         run_vanilla_option_surface_pricing(VanillaOptionSurfacePricingExecutionInput {

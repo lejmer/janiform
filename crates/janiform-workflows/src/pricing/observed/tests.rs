@@ -13,10 +13,6 @@ use janiform_engine_pricing::VanillaOptionPricingStatus;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use serde_json::json;
 
-use crate::progress::{
-    ProgressUnitTracker, completed_tracked_progress_units, total_tracked_progress_units,
-};
-
 use super::artifacts::write_observed_artifacts_if_requested;
 use super::data::prepare_selected_expiry_snapshot_specs_by_valuation_times;
 use super::physical_distribution::{
@@ -27,10 +23,7 @@ use super::physical_distribution::{
 };
 use super::pricing_spot::resolve_snapshot_pricing_spots;
 use super::state::observed_tick_state_columns;
-use super::surface_progress::{
-    SurfaceTaskProgressPlan, SurfaceWorkerState, surface_task_progress_totals,
-    surface_worker_labels,
-};
+use super::surface_progress::{SurfaceTaskProgressPlan, SurfaceWorkerState, surface_worker_labels};
 use super::types::{
     ObservedOptionsPricingNode, ObservedOptionsPricingScope, ObservedOptionsSnapshotResult,
     PreparedSnapshotGroup, PreparedSnapshotNode,
@@ -156,24 +149,6 @@ fn surface_worker_labels_are_stable_worker_lanes() {
 }
 
 #[test]
-fn surface_global_progress_sums_real_task_progress() {
-    let task_progress_totals = surface_task_progress_totals(&[
-        SurfaceTaskProgressPlan::new(100, 1, 2),
-        SurfaceTaskProgressPlan::new(200, 2, 3),
-        SurfaceTaskProgressPlan::new(300, 3, 4),
-    ]);
-
-    let mut task_progress = ProgressUnitTracker::planned_for_totals(&task_progress_totals);
-
-    task_progress[0].record(25);
-    task_progress[1].record(50);
-    task_progress[2].complete();
-
-    assert_eq!(total_tracked_progress_units(&task_progress), 1218);
-    assert_eq!(completed_tracked_progress_units(&task_progress), 683);
-}
-
-#[test]
 fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
     let mut worker_state =
         SurfaceWorkerState::started(0, 1, 10, SurfaceTaskProgressPlan::new(10, 1, 1));
@@ -181,6 +156,7 @@ fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(5, 10, Some(5), 10));
 
     assert_eq!(worker_state.pass_units, "0/3 done");
+    assert_eq!(worker_state.sweep_units, "1");
     assert_eq!(worker_state.interval_units, "5/10");
 
     worker_state.apply_pricing_event(&PricingProgressEvent::transition_row_progress(
@@ -192,6 +168,7 @@ fn surface_worker_transition_row_progress_does_not_reset_interval_progress() {
 
     assert_eq!(worker_state.progress_percent, 21);
     assert_eq!(worker_state.pass_units, "0/3 done");
+    assert_eq!(worker_state.sweep_units, "1");
     assert_eq!(worker_state.interval_units, "5/10");
 }
 
@@ -209,12 +186,14 @@ fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
 
     assert_eq!(worker_state.progress_percent, 43);
     assert_eq!(worker_state.pass_units, "1/3 done");
+    assert_eq!(worker_state.sweep_units, "1");
     assert_eq!(worker_state.phase, "pricing intervals");
 
     worker_state.complete();
 
     assert_eq!(worker_state.progress_percent, 100);
     assert_eq!(worker_state.pass_units, "3/3 done");
+    assert_eq!(worker_state.sweep_units, "-");
     assert_eq!(worker_state.phase, "done");
 }
 
@@ -264,6 +243,7 @@ fn surface_worker_repeated_interval_pass_keeps_progress_bounded() {
 
     assert_eq!(worker_state.progress_percent, 31);
     assert_eq!(worker_state.pass_units, "1/3 done");
+    assert_eq!(worker_state.sweep_units, "1");
     assert_eq!(worker_state.interval_units, "751/751");
 
     worker_state.apply_pricing_event(&PricingProgressEvent::interval_progress(
@@ -275,6 +255,7 @@ fn surface_worker_repeated_interval_pass_keeps_progress_bounded() {
 
     assert_eq!(worker_state.progress_percent, 33);
     assert_eq!(worker_state.pass_units, "1/3 done");
+    assert_eq!(worker_state.sweep_units, "2");
     assert_eq!(worker_state.interval_units, "56/751");
 }
 

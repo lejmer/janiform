@@ -6,41 +6,19 @@ use crate::contracts::{
 };
 use crate::grids::{
     SpectralThetaWarmStartKey, SpectralThetaWarmStartState,
-    VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingOperatorApproximation,
-    VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
-    VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
-    VanillaOptionGridPricingResult, VanillaOptionGridRequest,
-    spectral_theta_warm_start_payoff_type_mask,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRunError,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
+    VanillaOptionGridRequest,
 };
 use crate::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
-use crate::progress::{PricingNodeProgress, PricingProgressEvent};
-use crate::runner::{
-    VanillaOptionPricingExecutionInput, VanillaOptionPricingRunError,
-    build_pricing_sufficient_statistics_neutral_anchor_materialization,
-};
+use crate::progress::PricingProgressEvent;
+use crate::runner::{VanillaOptionPricingExecutionInput, VanillaOptionPricingRunError};
 use crate::thread_pool::build_pricing_thread_pool;
 
-#[cfg(test)]
-use super::asset_reference_log_price_from_observed_spot;
-#[cfg(test)]
-use super::domain::SpectralDomain;
-use super::domain::{build_maturity_summary, build_spectral_domain};
-use super::interval_operator::{
-    CachedIntervalOperatorBuildInput, SolvedMaturityLaw, build_cached_interval_operators,
-    can_solve_maturity_laws_with_direct_affine_composition, solve_direct_affine_maturity_law,
-    solve_maturity_law,
-};
-#[cfg(test)]
-use super::payoff::{
-    cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
-    strike_log_boundary_from_reference_log,
-};
-#[cfg(test)]
-use super::row_frequency::{
-    IntervalRowFrequencyBatchAdaptiveSolveInput, solve_interval_row_frequency_batches_adaptively,
-};
+use super::domain::build_maturity_summary;
+use super::maturity_law::SolvedMaturityLaw;
 use super::strike::{StrikeRowPricingInput, price_strike_row};
+use super::terminal_affine::solve_terminal_affine_maturity_law;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::spectral::pricer) struct PricingGroupKey {
@@ -58,12 +36,12 @@ impl PricingGroupKey {
 
     pub(in crate::spectral::pricer) const fn theta_warm_start_key(
         self,
-        payoff_type_mask: u8,
+        maturity_count: usize,
     ) -> SpectralThetaWarmStartKey {
         SpectralThetaWarmStartKey::new(
-            payoff_type_mask,
             self.risk_free_rate_bits,
             self.dividend_yield_bits,
+            maturity_count,
         )
     }
 }
@@ -84,8 +62,6 @@ pub(crate) struct SingleOptionSpectralOutcome {
     pub(crate) price: f64,
     pub(crate) implied_volatility: Option<f64>,
     pub(crate) implied_volatility_inversion_status: VanillaOptionImpliedVolatilityInversionStatus,
-    pub(crate) representative_transform:
-        Option<janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult>,
     pub(crate) spectral_diagnostics: SpectralPricingDiagnostics,
 }
 
@@ -102,7 +78,7 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_
 
     let pricing_thread_pool = build_pricing_thread_pool(execution_input.cpu_count);
 
-    let (mut pricing_groups, operator_approximation_diagnostics) = prepare_pricing_group_contexts(
+    let mut pricing_groups = prepare_pricing_group_contexts(
         &execution_input,
         pricing_thread_pool.as_ref(),
         execution_input.cpu_count,
@@ -154,7 +130,6 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_
         spot: execution_input.request.spot,
         grids: grid_results,
         runtime_interval_schedule: execution_input.runtime_interval_schedule,
-        operator_approximation_diagnostics,
     })
 }
 
@@ -208,7 +183,6 @@ pub(crate) fn run_single_option_pricing(
         interval_factors: execution_input.interval_factors.clone(),
         optional_output_selection: execution_input.optional_output_selection,
         spectral_collocation_node_count_override: None,
-        operator_approximation: VanillaOptionGridBatchPricingOperatorApproximation::Exact,
         cpu_count: None,
     };
 
@@ -288,7 +262,6 @@ pub(crate) fn run_single_option_pricing(
         price,
         implied_volatility,
         implied_volatility_inversion_status,
-        representative_transform: maturity_summary.representative_transform,
         spectral_diagnostics,
     })
 }
@@ -296,16 +269,10 @@ pub(crate) fn run_single_option_pricing(
 fn prepare_pricing_group_contexts(
     execution_input: &VanillaOptionGridBatchPricingExecutionInput,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
-    cpu_count: Option<usize>,
+    _cpu_count: Option<usize>,
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
     mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
-) -> Result<
-    (
-        BTreeMap<PricingGroupKey, PricingGroupSolveContext>,
-        Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics>,
-    ),
-    String,
-> {
+) -> Result<BTreeMap<PricingGroupKey, PricingGroupSolveContext>, String> {
     let mut grouped_members = BTreeMap::<PricingGroupKey, PricingGroupMembers>::new();
 
     for grid in &execution_input.request.grids {
@@ -320,7 +287,6 @@ fn prepare_pricing_group_contexts(
     }
 
     let mut pricing_groups = BTreeMap::new();
-    let mut operator_approximation_diagnostics = None;
 
     for (pricing_group_key, members) in grouped_members {
         let union_strikes = members
@@ -330,7 +296,6 @@ fn prepare_pricing_group_contexts(
             .collect::<Vec<_>>();
 
         let payoff_types = members.payoff_types.into_iter().collect::<Vec<_>>();
-        let payoff_type_mask = spectral_theta_warm_start_payoff_type_mask(payoff_types.as_slice());
 
         let first_grid = execution_input
             .request
@@ -378,166 +343,21 @@ fn prepare_pricing_group_contexts(
             .derive_driver_parameters()
             .map_err(|source| format!("failed to derive pricing driver parameters: {source}"))?;
 
-        let materialization = {
-            let mut materialization_progress_observer = |event: PricingNodeProgress| {
-                if let Some(pricing_event) =
-                    PricingProgressEvent::from_risk_neutral_anchor_materialization_progress(event)
-                {
-                    emit_pricing_progress(observer, pricing_event);
-                }
-            };
-            let mut materialization_observer =
-                Some(&mut materialization_progress_observer as &mut dyn FnMut(PricingNodeProgress));
+        let unique_maturity_counts =
+            resolve_unique_maturity_counts(execution_input, pricing_group_key)?;
 
-            build_pricing_sufficient_statistics_neutral_anchor_materialization(
-                &base_request,
-                &execution_input.runtime_interval_schedule,
-                execution_input.interval_factors.as_slice(),
-                driver_parameters,
-                &mut materialization_observer,
-                pricing_thread_pool,
-                cpu_count,
-            )
-            .map_err(|source| format!("failed to materialize spectral pricing anchors: {source}"))?
-        };
-
-        let unique_maturity_counts = execution_input
-            .request
-            .grids
-            .iter()
-            .filter(|grid| PricingGroupKey::from_grid(grid) == pricing_group_key)
-            .flat_map(|grid| {
-                grid.maturity_intervals.iter().map(|maturity_interval| {
-                    execution_input
-                        .runtime_interval_schedule
-                        .terminal_interval_index_for_maturity_interval(*maturity_interval)
-                        .map(|terminal_index| terminal_index + 1)
-                        .map_err(|source| source.to_string())
-                })
-            })
-            .collect::<Result<BTreeSet<_>, _>>()?;
-
-        let maximum_maturity_count = unique_maturity_counts
-            .iter()
-            .next_back()
-            .copied()
-            .ok_or_else(|| "pricing group requires at least one resolved maturity".to_string())?;
-
-        let spectral_domain = build_spectral_domain(
+        let maturity_laws = solve_terminal_affine_maturity_laws(
+            execution_input,
             &base_request,
-            &materialization,
-            maximum_maturity_count,
-            max_maturity_interval,
+            unique_maturity_counts,
             union_strikes.as_slice(),
             payoff_types.as_slice(),
-            execution_input.spectral_collocation_node_count_override,
-        )
-        .map_err(|source| format!("failed to construct spectral domain: {source}"))?;
-
-        let maturity_counts = unique_maturity_counts.iter().copied().collect::<Vec<_>>();
-
-        let use_direct_affine_maturity_laws =
-            can_solve_maturity_laws_with_direct_affine_composition(
-                &base_request,
-                execution_input
-                    .optional_output_selection
-                    .include_node_price_sensitivities,
-            );
-
-        let cached_interval_operator_build = if use_direct_affine_maturity_laws {
-            None
-        } else {
-            let build = build_cached_interval_operators(CachedIntervalOperatorBuildInput {
-                pricing_request: &base_request,
-                include_node_price_sensitivities: execution_input
-                    .optional_output_selection
-                    .include_node_price_sensitivities,
-                interval_factors: execution_input.interval_factors.as_slice(),
-                materialization: &materialization,
-                maximum_maturity_count,
-                maturity_counts: maturity_counts.as_slice(),
-                spectral_domain,
-                driver_parameters,
-                operator_approximation: execution_input.operator_approximation,
-                theta_warm_start_key: pricing_group_key.theta_warm_start_key(payoff_type_mask),
-                pricing_thread_pool,
-                cpu_count,
-                observer,
-                theta_warm_start_state: theta_warm_start_state.as_deref_mut(),
-            })
-            .map_err(|source| format!("spectral interval-operator assembly failed: {source}"))?;
-
-            // Intentional copy because the build output owns operators used below.
-            let approximation_diagnostics = build.approximation_diagnostics.clone();
-
-            operator_approximation_diagnostics = merge_operator_approximation_diagnostics(
-                operator_approximation_diagnostics,
-                approximation_diagnostics,
-            );
-
-            Some(build)
-        };
-
-        let mut maturity_laws = BTreeMap::new();
-
-        let total_maturity_solves = unique_maturity_counts.len();
-        if total_maturity_solves > 0 {
-            emit_pricing_progress(
-                observer,
-                PricingProgressEvent::maturity_progress(
-                    0,
-                    total_maturity_solves,
-                    Some(0),
-                    total_maturity_solves,
-                ),
-            );
-        }
-
-        for (maturity_position, maturity_count) in unique_maturity_counts.into_iter().enumerate() {
-            let solved_maturity_law = if use_direct_affine_maturity_laws {
-                solve_direct_affine_maturity_law(
-                    &base_request,
-                    &materialization,
-                    maturity_count,
-                    spectral_domain,
-                    execution_input.interval_factors.as_slice(),
-                    driver_parameters,
-                    pricing_thread_pool,
-                )
-                .map_err(|source| format!("direct affine maturity solve failed: {source}"))?
-            } else {
-                let cached_interval_operator_build = cached_interval_operator_build
-                    .as_ref()
-                    .ok_or_else(|| "missing spectral interval-operator build output".to_string())?;
-
-                solve_maturity_law(
-                    &base_request,
-                    &materialization,
-                    maturity_count,
-                    spectral_domain,
-                    cached_interval_operator_build.operators.as_slice(),
-                )
-                .map_err(|source| format!("spectral maturity solve failed: {source}"))?
-            };
-
-            maturity_laws.insert(maturity_count, solved_maturity_law);
-
-            let next_maturity_index = if maturity_position + 1 < total_maturity_solves {
-                Some(maturity_position + 1)
-            } else {
-                None
-            };
-
-            emit_pricing_progress(
-                observer,
-                PricingProgressEvent::maturity_progress(
-                    maturity_position + 1,
-                    total_maturity_solves,
-                    next_maturity_index,
-                    total_maturity_solves,
-                ),
-            );
-        }
+            driver_parameters,
+            pricing_thread_pool,
+            observer,
+            theta_warm_start_state.as_deref_mut(),
+            pricing_group_key,
+        )?;
 
         pricing_groups.insert(
             pricing_group_key,
@@ -545,39 +365,106 @@ fn prepare_pricing_group_contexts(
         );
     }
 
-    Ok((pricing_groups, operator_approximation_diagnostics))
+    Ok(pricing_groups)
 }
 
-fn merge_operator_approximation_diagnostics(
-    left: Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics>,
-    right: Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics>,
-) -> Option<VanillaOptionGridBatchPricingOperatorApproximationDiagnostics> {
-    match (left, right) {
-        (None, None) => None,
-        (Some(diagnostics), None) | (None, Some(diagnostics)) => Some(diagnostics),
-        (Some(left), Some(right)) => {
-            let exact_interval_count = left.exact_interval_count + right.exact_interval_count;
-            let representative_kernel_count =
-                left.representative_kernel_count + right.representative_kernel_count;
-            let compression_ratio = if representative_kernel_count > 0 {
-                exact_interval_count as f64 / representative_kernel_count as f64
-            } else {
-                0.0
-            };
+fn resolve_unique_maturity_counts(
+    execution_input: &VanillaOptionGridBatchPricingExecutionInput,
+    pricing_group_key: PricingGroupKey,
+) -> Result<BTreeSet<usize>, String> {
+    execution_input
+        .request
+        .grids
+        .iter()
+        .filter(|grid| PricingGroupKey::from_grid(grid) == pricing_group_key)
+        .flat_map(|grid| {
+            grid.maturity_intervals.iter().map(|maturity_interval| {
+                execution_input
+                    .runtime_interval_schedule
+                    .terminal_interval_index_for_maturity_interval(*maturity_interval)
+                    .map(|terminal_index| terminal_index + 1)
+                    .map_err(|source| source.to_string())
+            })
+        })
+        .collect::<Result<BTreeSet<_>, _>>()
+}
 
-            Some(
-                VanillaOptionGridBatchPricingOperatorApproximationDiagnostics {
-                    exact_interval_count,
-                    representative_kernel_count,
-                    reused_interval_count: left.reused_interval_count + right.reused_interval_count,
-                    compression_ratio,
-                    exact_pricing_forced_by_sensitivities: left
-                        .exact_pricing_forced_by_sensitivities
-                        || right.exact_pricing_forced_by_sensitivities,
-                },
-            )
-        }
+fn solve_terminal_affine_maturity_laws(
+    execution_input: &VanillaOptionGridBatchPricingExecutionInput,
+    base_request: &VanillaOptionPricingRequest,
+    unique_maturity_counts: BTreeSet<usize>,
+    strikes: &[f64],
+    payoff_types: &[VanillaOptionPayoffType],
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
+    pricing_group_key: PricingGroupKey,
+) -> Result<BTreeMap<usize, SolvedMaturityLaw>, String> {
+    let total_maturity_solves = unique_maturity_counts.len();
+    if total_maturity_solves > 0 {
+        emit_pricing_progress(
+            observer,
+            PricingProgressEvent::maturity_progress(
+                0,
+                total_maturity_solves,
+                Some(0),
+                total_maturity_solves,
+            ),
+        );
     }
+
+    let mut maturity_laws = BTreeMap::new();
+
+    for (maturity_position, maturity_count) in unique_maturity_counts.into_iter().enumerate() {
+        let maturity_interval = execution_input
+            .runtime_interval_schedule
+            .maturity_interval_hours(maturity_count - 1)
+            .map_err(|source| source.to_string())?;
+
+        let solved_maturity_law = solve_terminal_affine_maturity_law(
+            base_request,
+            maturity_count,
+            maturity_interval,
+            strikes,
+            payoff_types,
+            execution_input.spectral_collocation_node_count_override,
+            execution_input
+                .runtime_interval_schedule
+                .interval_deltas_hours
+                .as_slice(),
+            execution_input.interval_factors.as_slice(),
+            driver_parameters,
+            execution_input
+                .optional_output_selection
+                .include_node_price_sensitivities,
+            pricing_thread_pool,
+            theta_warm_start_state.as_deref_mut(),
+            pricing_group_key.theta_warm_start_key(maturity_count),
+            observer,
+        )
+        .map_err(|source| format!("terminal affine maturity solve failed: {source}"))?;
+
+        maturity_laws.insert(maturity_count, solved_maturity_law);
+
+        let next_maturity_index = if maturity_position + 1 < total_maturity_solves {
+            Some(maturity_position + 1)
+        } else {
+            None
+        };
+
+        emit_pricing_progress(
+            observer,
+            PricingProgressEvent::maturity_progress(
+                maturity_position + 1,
+                total_maturity_solves,
+                next_maturity_index,
+                total_maturity_solves,
+            ),
+        );
+    }
+
+    Ok(maturity_laws)
 }
 
 fn build_grid_result(
@@ -726,28 +613,16 @@ pub(in crate::spectral::pricer) fn emit_pricing_progress(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        IntervalRowFrequencyBatchAdaptiveSolveInput, PricingGroupKey, SolvedMaturityLaw,
-        SpectralDomain, asset_reference_log_price_from_observed_spot, build_spectral_domain,
+    use super::super::asset_reference_log_price_from_observed_spot;
+    use super::super::domain::SpectralDomain;
+    use super::super::payoff::{
         cos_price_from_terminal_characteristic_function, payoff_cos_coefficient,
-        solve_interval_row_frequency_batches_adaptively,
-        spectral_theta_warm_start_payoff_type_mask, strike_log_boundary_from_reference_log,
+        strike_log_boundary_from_reference_log,
     };
-    use crate::contracts::{
-        AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
-        VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
-    };
-    use crate::runner::{
-        LocalTransitionRequestContext, VanillaOptionPricingIntervalFactors,
-        build_pricing_sufficient_statistics_neutral_anchor_materialization,
-        certify_local_transition_theta_for_row_with_parallelism,
-    };
-    use crate::tests::support::{build_uniform_runtime_interval_schedule, valid_model_parameters};
+    use super::{PricingGroupKey, SolvedMaturityLaw};
+    use crate::contracts::VanillaOptionPayoffType;
     use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
-    use janiform_model_kernels::hawkes::HawkesExcitationState;
-    use janiform_model_kernels::mean_reversion::{
-        MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    };
+    use janiform_foundations::numeric::square_root_machine_epsilon;
 
     #[test]
     fn cos_payoff_coefficients_use_reference_price_scale() {
@@ -766,7 +641,7 @@ mod tests {
 
         let log_shift = shifted_strike.ln() - base_strike.ln();
 
-        let reference_price_tolerance = f64::EPSILON.sqrt() * base_reference_price;
+        let reference_price_tolerance = square_root_machine_epsilon() * base_reference_price;
         assert!(
             (shifted_reference_price - base_reference_price).abs() <= reference_price_tolerance,
             "shifted reference price {shifted_reference_price} should resolve to base reference price {base_reference_price}",
@@ -807,7 +682,7 @@ mod tests {
 
             let expected_shifted_coefficient = 2.0 * base_coefficient;
 
-            let tolerance = f64::EPSILON.sqrt()
+            let tolerance = square_root_machine_epsilon()
                 * expected_shifted_coefficient
                     .abs()
                     .max(shifted_coefficient.abs())
@@ -848,7 +723,6 @@ mod tests {
             deviation_upper_bound: spectral_domain.deviation_upper_bound,
             node_count: spectral_domain.node_count,
             observed_log_price,
-            representative_transform: None,
             characteristic_function_values,
             characteristic_function_sensitivities: None,
             interval_summaries: Vec::new(),
@@ -892,164 +766,9 @@ mod tests {
 
         assert_eq!(call_key, put_key);
 
-        let mixed_payoff_types = vec![VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put];
         assert_eq!(
-            call_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(
-                mixed_payoff_types.as_slice()
-            )),
-            put_key.theta_warm_start_key(spectral_theta_warm_start_payoff_type_mask(
-                mixed_payoff_types.as_slice()
-            )),
+            call_key.theta_warm_start_key(7),
+            put_key.theta_warm_start_key(7),
         );
-    }
-
-    #[test]
-    fn adaptive_interval_row_solver_returns_certified_thetas_for_nonzero_kappa_interval() {
-        let pricing_request = VanillaOptionPricingRequest::try_new(
-            VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 0.02, 0.01)
-                .expect("market inputs should construct"),
-            VanillaOptionPayoffConfiguration {
-                payoff_type: VanillaOptionPayoffType::Call,
-            },
-            AnchoredVanillaOptionPricingBoundaryInput::try_new(
-                0,
-                HawkesExcitationState {
-                    y_plus_plus: 0.2,
-                    y_plus_minus: 0.1,
-                    y_minus_plus: 0.3,
-                    y_minus_minus: 0.4,
-                },
-                MeanReversionFittedParameters::try_new(
-                    0.5,
-                    MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
-                )
-                .expect("mean-reversion fitted parameters should construct"),
-                1.0,
-                MeanReversionBoundaryState::try_new(0.2, 0.0, 0.0, 0.2)
-                    .expect("observed boundary state should construct"),
-            )
-            .expect("boundary input should construct"),
-            valid_model_parameters(),
-            1.0,
-        )
-        .expect("pricing request should construct");
-
-        let interval_factors = vec![
-            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                .expect("interval factors should construct"),
-        ];
-
-        let runtime_interval_schedule = build_uniform_runtime_interval_schedule(1, 1.0);
-
-        let driver_parameters = pricing_request
-            .model_parameters
-            .nig_shared_plus_shift_configuration
-            .derive_driver_parameters()
-            .expect("driver parameters should derive");
-
-        let mut no_observer = None;
-
-        let materialization = build_pricing_sufficient_statistics_neutral_anchor_materialization(
-            &pricing_request,
-            &runtime_interval_schedule,
-            interval_factors.as_slice(),
-            driver_parameters,
-            &mut no_observer,
-            None,
-            None,
-        )
-        .expect("risk-neutral anchor materialization should succeed");
-
-        let spectral_domain = build_spectral_domain(
-            &pricing_request,
-            &materialization,
-            1,
-            1.0,
-            &[100.0],
-            &[pricing_request.payoff.payoff_type],
-            None,
-        )
-        .expect("spectral domain should construct");
-
-        let collocation_nodes = spectral_domain.collocation_nodes();
-
-        let base_context = LocalTransitionRequestContext::from_interval_state(
-            &pricing_request,
-            interval_factors[0],
-            0,
-            materialization.expected_hawkes_state_path[0],
-            materialization.runtime_interval_anchors.start_anchor_value,
-            materialization
-                .runtime_interval_anchors
-                .start_pressure_state,
-            materialization.runtime_interval_anchors.interval_deltas[0],
-        )
-        .expect("transition context should construct");
-
-        let row_states = collocation_nodes
-            .iter()
-            .copied()
-            .map(|deviation| base_context.build_row_state(deviation))
-            .collect::<Result<Vec<_>, _>>()
-            .expect("row states should construct");
-
-        assert!(
-            row_states
-                .iter()
-                .any(|row_state| !row_state.has_row_independent_local_tilt_target()),
-            "test fixture should require true adaptive midpoint certification"
-        );
-
-        let theta_hints = vec![None; collocation_nodes.len()];
-
-        let mut row_progress_counts = Vec::new();
-
-        let (solved_rows, _) = {
-            let mut row_progress_observer = |completed_row_count| {
-                row_progress_counts.push(completed_row_count);
-            };
-
-            solve_interval_row_frequency_batches_adaptively(
-                IntervalRowFrequencyBatchAdaptiveSolveInput {
-                    base_context: &base_context,
-                    collocation_nodes: collocation_nodes.as_slice(),
-                    row_states: row_states.as_slice(),
-                    theta_hints: theta_hints.as_slice(),
-                    next_anchor_value: materialization.runtime_interval_anchors.end_anchor_values
-                        [0],
-                    spectral_domain,
-                    driver_parameters,
-                    collect_theta_warm_start_sensitivities: false,
-                    pricing_thread_pool: None,
-                    cpu_count: Some(1),
-                    progress_observer: Some(&mut row_progress_observer),
-                },
-            )
-            .expect("adaptive interval operator solve should succeed")
-        };
-
-        assert_eq!(solved_rows.len(), collocation_nodes.len());
-        assert_eq!(row_progress_counts.last(), Some(&collocation_nodes.len()));
-        assert!(
-            row_progress_counts
-                .windows(2)
-                .all(|window| window[0] <= window[1]),
-            "row progress should never move backwards"
-        );
-
-        for (row_state, solved_row) in row_states.iter().zip(solved_rows.iter()) {
-            assert!(
-                certify_local_transition_theta_for_row_with_parallelism(
-                    &base_context,
-                    row_state,
-                    driver_parameters,
-                    solved_row.theta,
-                    None,
-                    Some(1),
-                )
-                .expect("solved row theta should certify"),
-                "adaptive row theta should satisfy the local tilt equation"
-            );
-        }
     }
 }

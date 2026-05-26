@@ -26,9 +26,8 @@ use janiform_model_kernels::return_clock::{
 
 use super::constants::{
     MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT, SPECTRAL_PRICING_COLLOCATION_POLICY,
-    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY,
-    SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
-    VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY,
+    VANILLA_OPTION_CALIBRATION_HOOK_POLICY, VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS,
@@ -56,18 +55,10 @@ pub enum VanillaOptionPricingStatus {
 #[serde(rename_all = "snake_case")]
 pub enum VanillaOptionPricingFailureStage {
     NodeSetup,
-    TransformInputBuild,
-    TransformSolve,
-    TransformOutput,
-    CharacteristicFunctionAssembly,
     FourierPricing,
     RiskNeutralCharacteristicFunction,
-    EndogenousAnchorMaterialization,
-    ExpectedHawkesStateUpdate,
-    AnchoredLocalTiltSolve,
-    SpectralObservedBoundaryState,
+    TerminalAffineMeasureChange,
     SpectralDiagnostics,
-    SpectralOperatorAssembly,
     ResponseDiagnostics,
     ResponseAssembly,
     RunResultAssembly,
@@ -825,8 +816,7 @@ impl SpectralPricingIntervalDiagnostics {
 pub struct SpectralPricingDiagnostics {
     pub deviation_domain_policy: String,
     pub collocation_policy: String,
-    pub interval_operator_policy: String,
-    pub expected_hawkes_state_update_policy: String,
+    pub terminal_affine_policy: String,
     pub deviation_domain_lower_bound: f64,
     pub deviation_domain_upper_bound: f64,
     pub collocation_node_count: usize,
@@ -843,9 +833,7 @@ impl SpectralPricingDiagnostics {
         let diagnostics = Self {
             deviation_domain_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY.to_string(),
             collocation_policy: SPECTRAL_PRICING_COLLOCATION_POLICY.to_string(),
-            interval_operator_policy: SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY.to_string(),
-            expected_hawkes_state_update_policy:
-                SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY.to_string(),
+            terminal_affine_policy: SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY.to_string(),
             deviation_domain_lower_bound,
             deviation_domain_upper_bound,
             collocation_node_count,
@@ -865,12 +853,8 @@ impl SpectralPricingDiagnostics {
             ),
             ("collocation_policy", self.collocation_policy.as_str()),
             (
-                "interval_operator_policy",
-                self.interval_operator_policy.as_str(),
-            ),
-            (
-                "expected_hawkes_state_update_policy",
-                self.expected_hawkes_state_update_policy.as_str(),
+                "terminal_affine_policy",
+                self.terminal_affine_policy.as_str(),
             ),
         ] {
             if field.1.trim().is_empty() {

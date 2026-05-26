@@ -855,6 +855,92 @@ fn staged_runner_disk_resume_replaces_committed_artifacts_after_success() {
 }
 
 #[test]
+fn staged_runner_disk_resume_reports_incompatible_upstream_stage_artifact() {
+    let calendar_registry = calibration_stage_test_registry();
+    let checkpoint_directory = temporary_checkpoint_directory("disk-resume-stale-stage-artifact");
+    let run_id = "run-disk-resume-stale-stage-artifact";
+
+    let initial_run_contract = build_through_mean_reversion_run_contract_with_mode_and_resume(
+        run_id,
+        CalibrationExecutionMode::Disk,
+        None,
+    );
+    let initial_report = run_staged_calibration_with_checkpointing(
+        &initial_run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        None,
+        Some(checkpoint_directory.as_path()),
+    );
+    assert_eq!(
+        initial_report.status,
+        CalibrationStageExecutionStatus::Success
+    );
+
+    let return_components_artifact_path = calibration_stage_parameter_artifact_path(
+        checkpoint_directory.as_path(),
+        run_id,
+        CalibrationStage::ReturnComponents,
+    );
+    let mut artifact_json: Value = serde_json::from_str(
+        fs::read_to_string(return_components_artifact_path.as_path())
+            .expect("return-components artifact should be readable")
+            .as_str(),
+    )
+    .expect("return-components artifact should parse as JSON");
+
+    artifact_json
+        .get_mut("stage_parameters")
+        .and_then(|stage_parameters| stage_parameters.get_mut("payload"))
+        .and_then(|payload| payload.get_mut("fitted_parameters"))
+        .and_then(Value::as_object_mut)
+        .expect("return-components fitted parameters should be an object")
+        .remove("return_clock_exposure_parameters");
+
+    fs::write(
+        return_components_artifact_path.as_path(),
+        serde_json::to_string_pretty(&artifact_json)
+            .expect("corrupted return-components artifact should serialize"),
+    )
+    .expect("corrupted return-components artifact should be writable");
+
+    let resume_run_contract = build_run_contract_with_mode_and_resume(
+        run_id,
+        CalibrationExecutionMode::Disk,
+        Some(CalibrationResumeSettings::persisted_checkpoint_reference(
+            calibration_stage_checkpoint_reference(run_id, CalibrationStage::MeanReversion),
+            Some(CalibrationStage::JointRefinement),
+        )),
+    );
+    let resume_report = run_staged_calibration_with_checkpointing(
+        &resume_run_contract,
+        &calendar_registry,
+        staged_run_inputs(false, false, true),
+        None,
+        Some(checkpoint_directory.as_path()),
+    );
+
+    assert_eq!(
+        resume_report.status,
+        CalibrationStageExecutionStatus::Failure
+    );
+    match resume_report.failure {
+        Some(CalibrationStagedRunFailure::StageParameterArtifactLoadFailed {
+            stage,
+            error_message,
+            ..
+        }) => {
+            assert_eq!(stage, CalibrationStage::ReturnComponents);
+            assert!(error_message.contains("current calibration artifact contract"));
+            assert!(error_message.contains("return_clock_exposure_parameters"));
+        }
+        failure => panic!("expected stage artifact load failure, found {failure:#?}"),
+    }
+
+    let _ = fs::remove_dir_all(checkpoint_directory);
+}
+
+#[test]
 fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
     let calendar_registry = calibration_stage_test_registry();
 

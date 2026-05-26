@@ -14,6 +14,7 @@ use janiform_calibration_artifacts::{
     CalibrationRunContract, build_calibration_artifact_manifest,
     build_calibration_dataset_snapshot_artifact, calibration_dataset_snapshot_artifact_reference,
     calibration_last_success_checkpoint_reference,
+    calibration_stage_parameter_artifact_load_error_message,
     calibration_stage_parameter_artifact_path_in_run_directory,
     load_calibration_stage_parameter_artifact_from_disk, load_stage_checkpoint_from_disk,
     persist_calibration_artifact_manifest_to_run_directory,
@@ -396,10 +397,12 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                         resumed_from_checkpoint_reference,
                         resumed_from_last_successful_stage,
                         None,
-                        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                        CalibrationStagedRunFailure::StageParameterArtifactLoadFailed {
                             stage,
                             artifact_reference,
-                            error_message: source.to_string(),
+                            error_message: calibration_stage_parameter_artifact_load_error_message(
+                                stage, &source,
+                            ),
                         },
                     );
                 }
@@ -617,7 +620,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                         resumed_from_checkpoint_reference,
                         resumed_from_last_successful_stage,
                         started_from_stage,
-                        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                        CalibrationStagedRunFailure::StageParameterArtifactBuildFailed {
                             stage,
                             artifact_reference: expected_stage_output_artifact_reference(
                                 run_spec, stage,
@@ -642,7 +645,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                             resumed_from_checkpoint_reference,
                             resumed_from_last_successful_stage,
                             started_from_stage,
-                            CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                            CalibrationStagedRunFailure::StageParameterArtifactBuildFailed {
                                 stage,
                                 artifact_reference: expected_stage_output_artifact_reference(
                                     run_spec, stage,
@@ -664,7 +667,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                     resumed_from_checkpoint_reference,
                     resumed_from_last_successful_stage,
                     started_from_stage,
-                    CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                    CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
                         stage,
                         artifact_reference: stage_parameter_artifact.artifact_reference.clone(),
                         error_message: source.to_string(),
@@ -683,7 +686,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                     resumed_from_checkpoint_reference,
                     resumed_from_last_successful_stage,
                     started_from_stage,
-                    CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                    CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
                         stage,
                         artifact_reference: format!(
                             "artifact://stage_report/{}/{}",

@@ -8,6 +8,7 @@ use janiform::calibration::market_data::{
 use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
 
 use crate::error::WorkflowError;
+use crate::progress::bounded_progress_measure;
 use crate::terminal::{TerminalProgressMode, stderr_progress_adapter, terminal_summary_policy};
 
 use super::super::progress::{
@@ -85,6 +86,7 @@ pub fn run_observed_options_pricing_with_observer(
 
     let include_physical_distribution_diagnostics =
         request.physical_distribution_diagnostics.is_some();
+
     let stage_count = observed_pricing_stage_count(include_physical_distribution_diagnostics);
 
     start_observed_pricing_progress(
@@ -130,6 +132,7 @@ pub fn run_observed_options_pricing_with_observer(
             stage_count,
             PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
         )?;
+
         let physical_distribution = compute_physical_distribution_diagnostics_if_requested(
             &request,
             pricing_execution.prepared_snapshots.as_slice(),
@@ -161,12 +164,14 @@ pub fn run_observed_options_pricing_with_observer(
     } else {
         4
     };
+
     let write_stage_started_at = start_observed_pricing_stage(
         &mut observer.progress_adapter,
         write_stage_number,
         stage_count,
         WRITE_ARTIFACTS_STAGE,
     )?;
+
     emit_observed_stage_progress(
         &mut observer.progress_adapter,
         "write artifacts",
@@ -192,14 +197,14 @@ pub fn run_observed_options_pricing_with_observer(
     emit_observed_stage_progress(
         &mut observer.progress_adapter,
         "write artifacts",
-        ProgressMeasure::bounded(1, 1)
-            .map_err(|source| WorkflowError::OutputProgress { source })?,
+        bounded_progress_measure(1, 1)?,
         Some(match artifact_paths.as_ref() {
             Some(_) => "wrote pricing artifacts".to_string(),
             None => "no pricing artifact output requested".to_string(),
         }),
         ObservedWorkItemUpdate::none(),
     )?;
+
     complete_observed_pricing_stage(
         &mut observer.progress_adapter,
         WRITE_ARTIFACTS_STAGE,
@@ -318,6 +323,7 @@ fn price_surface_groups(
 
     let stage_count =
         observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+
     let prepare_stage_started_at = start_observed_pricing_stage(
         progress_adapter,
         2,
@@ -351,6 +357,7 @@ fn price_surface_groups(
     } else {
         Vec::new()
     };
+
     let snapshot_results =
         price_prepared_surface_snapshots_parallel(request, prepared_snapshots, progress_adapter)?;
 
@@ -370,6 +377,7 @@ fn price_snapshot_groups(
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
     let stage_count =
         observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+
     let prepare_stage_started_at = start_observed_pricing_stage(
         progress_adapter,
         2,
@@ -409,6 +417,7 @@ fn price_snapshot_groups(
     let prepared_snapshot = prepared_snapshots.pop().ok_or_else(|| {
         pricing_validation_error("valuation_time_utc", "snapshot was not prepared")
     })?;
+
     let result = price_prepared_snapshot_with_terminal_progress(
         request,
         prepared_snapshot,

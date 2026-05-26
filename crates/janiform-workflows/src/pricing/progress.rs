@@ -1,10 +1,10 @@
 use janiform::pricing::{PricingProgressEvent, PricingProgressPhase};
 use janiform_terminal_ui::{
-    CompletionSummary, ProgressAdapter, ProgressEvent, ProgressMeasure, StartSummary,
-    TerminalSummaryPolicy,
+    CompletionSummary, ProgressAdapter, ProgressEvent, StartSummary, TerminalSummaryPolicy,
 };
 
 use crate::error::WorkflowError;
+use crate::progress::bounded_progress_measure;
 use crate::terminal::{
     complete_terminal_progress, emit_terminal_completion_summary, emit_terminal_start_summary,
 };
@@ -38,8 +38,7 @@ pub(super) fn observe_pricing_terminal_event(
     progress_adapter: &mut ProgressAdapter,
     event: &PricingProgressEvent,
 ) -> Result<(), WorkflowError> {
-    let measure = ProgressMeasure::bounded(event.completed_units, event.total_units)
-        .map_err(|source| WorkflowError::OutputProgress { source })?;
+    let measure = bounded_progress_measure(event.completed_units, event.total_units)?;
 
     progress_adapter.observe(ProgressEvent::RunProgress {
         phase: pricing_progress_phase_label(event.phase).to_string(),
@@ -73,8 +72,9 @@ pub(super) fn complete_pricing_progress(
         return Ok(());
     };
 
-    complete_terminal_progress(progress_adapter)
-        .map_err(|source| WorkflowError::OutputWrite { source })
+    complete_terminal_progress(progress_adapter, "completed");
+
+    Ok(())
 }
 
 pub(super) fn pricing_progress_phase_label(phase: PricingProgressPhase) -> &'static str {

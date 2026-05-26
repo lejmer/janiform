@@ -8,7 +8,7 @@ mod ordering;
 mod samples;
 
 pub use bounds::{clamp_point, clamp_point_in_place};
-pub use constants::{GOLDEN_RATIO, GOLDEN_RATIO_RECIPROCAL};
+pub use constants::{GOLDEN_RATIO, GOLDEN_RATIO_RECIPROCAL, square_root_machine_epsilon};
 pub use domain::{
     FiniteNumberValidationError, NegativeNumberValidationError, NonNegativeNumberValidationError,
     PositiveNumberValidationError, ceil_integer_square_root, clamp_to_open_unit_interval,

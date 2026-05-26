@@ -10,6 +10,7 @@ use super::contracts::{
     ExponentialAffineTransformOutput, ExponentialAffineTransformOutputError,
 };
 use super::rhs::evaluate_exponential_affine_transform_ode_rhs;
+use super::runge_kutta::{combine_complex_runge_kutta, combine_d_vector_runge_kutta};
 use super::solver::{
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformSolverSettings,
     internally_selected_default_solver_settings,
@@ -335,30 +336,6 @@ fn combine_parameter_runge_kutta(
         d_vector: combine_d_vector_runge_kutta(k1.d_vector, k2.d_vector, k3.d_vector, k4.d_vector),
         c_value: combine_complex_runge_kutta(k1.c_value, k2.c_value, k3.c_value, k4.c_value),
     }
-}
-
-fn combine_d_vector_runge_kutta(
-    k1: ExponentialAffineTransformDVector,
-    k2: ExponentialAffineTransformDVector,
-    k3: ExponentialAffineTransformDVector,
-    k4: ExponentialAffineTransformDVector,
-) -> ExponentialAffineTransformDVector {
-    k1.plus(k2.scale(2.0))
-        .plus(k3.scale(2.0))
-        .plus(k4)
-        .scale(1.0 / 6.0)
-}
-
-fn combine_complex_runge_kutta(
-    k1: ComplexScalar,
-    k2: ComplexScalar,
-    k3: ComplexScalar,
-    k4: ComplexScalar,
-) -> ComplexScalar {
-    k1.plus(k2.scale(2.0))
-        .plus(k3.scale(2.0))
-        .plus(k4)
-        .scale(1.0 / 6.0)
 }
 
 fn evaluate_transform_sensitivity_ode_rhs(

@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use super::test_support::{standard_initial_state, valid_equation_specification};
 use super::{
     EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
     EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
@@ -32,31 +33,6 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
-fn valid_equation_specification() -> ExponentialAffineTransformEquationSpecification {
-    ExponentialAffineTransformEquationSpecification::try_new(
-        HawkesKernelParameters::try_new(
-            0.8,
-            1.2,
-            HawkesKernelLoadings {
-                plus_plus: 0.20,
-                plus_minus: 0.08,
-                minus_plus: 0.10,
-                minus_minus: 0.24,
-            },
-            HawkesKernelLoadings {
-                plus_plus: 0.03,
-                plus_minus: 0.02,
-                minus_plus: 0.01,
-                minus_minus: 0.04,
-            },
-        )
-        .expect("valid kernel payload should construct"),
-        GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
-            .expect("valid gamma configuration should construct"),
-    )
-    .expect("valid equation specification should construct")
-}
-
 fn total_activity_loadings(
     u_plus: ComplexScalar,
     u_minus: ComplexScalar,
@@ -74,12 +50,7 @@ fn valid_input() -> ExponentialAffineTransformInput {
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("news intensity components should construct"),
         1.0,
-        HawkesExcitationState {
-            y_plus_plus: 0.4,
-            y_plus_minus: 0.2,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.5,
-        },
+        standard_initial_state(),
     )
     .expect("valid transform input should construct")
 }
@@ -195,12 +166,7 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("closed-form fixture news-intensity payload should construct"),
         1.0,
-        HawkesExcitationState {
-            y_plus_plus: 0.4,
-            y_plus_minus: 0.2,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.5,
-        },
+        standard_initial_state(),
     )
     .expect("closed-form fixture input should construct")
 }
@@ -239,12 +205,7 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("domain violation fixture news-intensity payload should construct"),
         0.5,
-        HawkesExcitationState {
-            y_plus_plus: 0.4,
-            y_plus_minus: 0.2,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.5,
-        },
+        standard_initial_state(),
     )
     .expect("domain violation fixture input should construct")
 }
@@ -280,12 +241,7 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("blowup fixture news-intensity payload should construct"),
         2.0,
-        HawkesExcitationState {
-            y_plus_plus: 0.4,
-            y_plus_minus: 0.2,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.5,
-        },
+        standard_initial_state(),
     )
     .expect("blowup fixture input should construct")
 }
@@ -360,12 +316,7 @@ fn exact_identity_query_input() -> ExponentialAffineTransformInput {
         ExponentialAffineTransformNewsIntensityInput::try_new(0.17, 0.29)
             .expect("identity-query news-intensity payload should construct"),
         0.5,
-        HawkesExcitationState {
-            y_plus_plus: 0.4,
-            y_plus_minus: 0.2,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.5,
-        },
+        standard_initial_state(),
     )
     .expect("identity-query transform input should construct")
 }
@@ -595,12 +546,7 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("fixture news intensity should construct"),
         1.0,
-        HawkesExcitationState {
-            y_plus_plus: 0.4,
-            y_plus_minus: 0.2,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.5,
-        },
+        standard_initial_state(),
     )
     .expect("fixture input should construct");
 

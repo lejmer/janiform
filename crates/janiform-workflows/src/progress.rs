@@ -1,6 +1,10 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use janiform_terminal_ui::ProgressMeasure;
+
+use crate::error::WorkflowError;
+
 const VOLATILE_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug)]
@@ -57,6 +61,14 @@ pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> us
         .saturating_mul(100)
         .checked_div(total_units)
         .unwrap_or(0)
+}
+
+pub(crate) fn bounded_progress_measure(
+    completed_units: usize,
+    total_units: usize,
+) -> Result<ProgressMeasure, WorkflowError> {
+    ProgressMeasure::bounded(completed_units, total_units)
+        .map_err(|source| WorkflowError::OutputProgress { source })
 }
 
 pub(crate) fn progress_scaled_units(
@@ -122,16 +134,8 @@ impl ProgressUnitTracker {
         }
     }
 
-    pub(crate) fn planned_for_totals(total_units: &[usize]) -> Vec<Self> {
-        total_units.iter().copied().map(Self::new).collect()
-    }
-
     pub(crate) const fn completed_units(&self) -> usize {
         self.completed_units
-    }
-
-    pub(crate) const fn total_units(&self) -> usize {
-        self.total_units
     }
 
     pub(crate) fn record(&mut self, completed_units: usize) -> usize {
@@ -149,29 +153,14 @@ impl ProgressUnitTracker {
     }
 }
 
-pub(crate) fn total_tracked_progress_units(trackers: &[ProgressUnitTracker]) -> usize {
-    trackers
-        .iter()
-        .map(ProgressUnitTracker::total_units)
-        .fold(0usize, usize::saturating_add)
-}
-
-pub(crate) fn completed_tracked_progress_units(trackers: &[ProgressUnitTracker]) -> usize {
-    trackers
-        .iter()
-        .map(ProgressUnitTracker::completed_units)
-        .fold(0usize, usize::saturating_add)
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
     use super::{
-        ProgressUnitTracker, VolatileProgressGate, completed_tracked_progress_units,
-        format_cpu_count, progress_count_label, progress_percent, progress_position_label,
-        progress_scaled_units, total_tracked_progress_units,
+        ProgressUnitTracker, VolatileProgressGate, format_cpu_count, progress_count_label,
+        progress_percent, progress_position_label, progress_scaled_units,
     };
 
     #[test]
@@ -252,13 +241,11 @@ mod tests {
 
     #[test]
     fn progress_unit_tracker_records_monotonic_bounded_progress() {
-        let mut trackers = ProgressUnitTracker::planned_for_totals(&[100, 200]);
+        let mut tracker = ProgressUnitTracker::new(100);
 
-        assert_eq!(trackers[0].record(25), 25);
-        assert_eq!(trackers[0].record(20), 0);
-        assert_eq!(trackers[1].record(250), 200);
-
-        assert_eq!(completed_tracked_progress_units(&trackers), 225);
-        assert_eq!(total_tracked_progress_units(&trackers), 300);
+        assert_eq!(tracker.record(25), 25);
+        assert_eq!(tracker.record(20), 0);
+        assert_eq!(tracker.record(250), 75);
+        assert_eq!(tracker.completed_units(), 100);
     }
 }

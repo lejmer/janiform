@@ -157,19 +157,25 @@ fn evaluate_pricing_block_proposals(
             break;
         }
 
-        let evaluated_candidate = scored_pricing_vector(
-            refinement_context,
-            dynamics_candidate,
-            proposal.parameter_vector.as_slice(),
-            source_dynamics_parameter_bits,
-            JointRefinementOptionSurfaceTierKind::Search,
-            false,
-            "option_pricing_block_refined",
-            Some(theta_warm_start_state),
-            progress_context,
-        )?;
+        let evaluated_candidate = accept_or_reject_pricing_block_proposal(
+            scored_pricing_vector(
+                refinement_context,
+                dynamics_candidate,
+                proposal.parameter_vector.as_slice(),
+                source_dynamics_parameter_bits,
+                JointRefinementOptionSurfaceTierKind::Search,
+                false,
+                "option_pricing_block_refined",
+                Some(theta_warm_start_state),
+                progress_context,
+            ),
+            used_evaluation_count,
+            prediction_rejected,
+        );
 
-        *used_evaluation_count = (*used_evaluation_count).saturating_add(1);
+        let Some(evaluated_candidate) = evaluated_candidate else {
+            continue;
+        };
 
         if evaluated_candidate.search_tier_score < best_candidate.search_tier_score {
             let validated_improvement =
@@ -191,6 +197,22 @@ fn evaluate_pricing_block_proposals(
     }
 
     Ok(())
+}
+
+fn accept_or_reject_pricing_block_proposal(
+    evaluation_result: Result<SearchTierCandidate, String>,
+    used_evaluation_count: &mut usize,
+    prediction_rejected: &mut bool,
+) -> Option<SearchTierCandidate> {
+    *used_evaluation_count = (*used_evaluation_count).saturating_add(1);
+
+    match evaluation_result {
+        Ok(evaluated_candidate) => Some(evaluated_candidate),
+        Err(_) => {
+            *prediction_rejected = true;
+            None
+        }
+    }
 }
 
 fn pricing_block_sensitivity_proposals(
@@ -591,7 +613,10 @@ mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
-    use super::{OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard};
+    use super::{
+        OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard,
+        accept_or_reject_pricing_block_proposal,
+    };
 
     #[test]
     fn candidate_search_budget_allows_proposals_until_evaluation_budget_is_used() {
@@ -621,5 +646,21 @@ mod tests {
         };
 
         assert!(!search_budget.can_start_proposal_evaluation(1));
+    }
+
+    #[test]
+    fn failed_pricing_block_proposal_consumes_budget_without_failing_candidate_search() {
+        let mut used_evaluation_count = 1;
+        let mut prediction_rejected = false;
+
+        let evaluated_candidate = accept_or_reject_pricing_block_proposal(
+            Err("proposal is outside pricing domain".to_string()),
+            &mut used_evaluation_count,
+            &mut prediction_rejected,
+        );
+
+        assert!(evaluated_candidate.is_none());
+        assert_eq!(used_evaluation_count, 2);
+        assert!(prediction_rejected);
     }
 }

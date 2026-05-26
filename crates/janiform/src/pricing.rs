@@ -11,8 +11,6 @@ pub use janiform_engine_pricing::{
     PricingProgressPhase, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     SpectralPricingDiagnostics, SpectralPricingIntervalDiagnostics,
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingExecutionInputError,
-    VanillaOptionGridBatchPricingOperatorApproximation,
-    VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
     VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRequestError,
     VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
     VanillaOptionGridPricingResult, VanillaOptionGridRequest,

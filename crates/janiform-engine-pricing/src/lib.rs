@@ -4,7 +4,6 @@ mod black_scholes;
 mod characteristic;
 mod constants;
 mod contracts;
-mod expected_hawkes_state;
 mod fourier;
 mod grids;
 mod implied_volatility;
@@ -45,9 +44,9 @@ pub use constants::{
     PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, SPECTRAL_PRICING_COLLOCATION_POLICY,
-    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY,
-    SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY, SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY,
-    VANILLA_OPTION_CALIBRATION_HOOK_POLICY, VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+    SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
@@ -80,18 +79,15 @@ pub use fourier::{
 };
 pub use grids::{
     SpectralThetaWarmStartState, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingExecutionInputError,
-    VanillaOptionGridBatchPricingOperatorApproximation,
-    VanillaOptionGridBatchPricingOperatorApproximationDiagnostics,
-    VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRequestError,
-    VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
-    VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionMaturitySummary,
-    VanillaOptionNodePriceSensitivity, VanillaOptionSurfacePricingExecutionInput,
-    VanillaOptionSurfacePricingExecutionInputError, VanillaOptionSurfacePricingRequest,
-    VanillaOptionSurfacePricingResponse, VanillaOptionSurfacePricingRunError,
-    VanillaOptionSurfacePricingRunResult, run_vanilla_option_grid_batch_pricing,
-    run_vanilla_option_grid_batch_pricing_with_observer, run_vanilla_option_surface_pricing,
-    run_vanilla_option_surface_pricing_with_observer,
+    VanillaOptionGridBatchPricingExecutionInputError, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingRequestError, VanillaOptionGridBatchPricingRunError,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
+    VanillaOptionGridRequest, VanillaOptionMaturitySummary, VanillaOptionNodePriceSensitivity,
+    VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingExecutionInputError,
+    VanillaOptionSurfacePricingRequest, VanillaOptionSurfacePricingResponse,
+    VanillaOptionSurfacePricingRunError, VanillaOptionSurfacePricingRunResult,
+    run_vanilla_option_grid_batch_pricing, run_vanilla_option_grid_batch_pricing_with_observer,
+    run_vanilla_option_surface_pricing, run_vanilla_option_surface_pricing_with_observer,
 };
 pub use implied_volatility::{
     VanillaOptionImpliedVolatilityInversionOutcome, VanillaOptionImpliedVolatilityInversionStatus,

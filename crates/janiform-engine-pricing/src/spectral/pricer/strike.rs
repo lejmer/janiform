@@ -1,7 +1,7 @@
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::domain::resolve_bounded_node_price_sensitivity;
-use super::interval_operator::SolvedMaturityLaw;
+use super::maturity_law::SolvedMaturityLaw;
 use super::payoff::{
     cos_price_from_terminal_characteristic_function,
     cos_price_sensitivity_from_terminal_characteristic_function,

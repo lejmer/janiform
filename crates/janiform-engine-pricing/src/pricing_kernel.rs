@@ -50,20 +50,20 @@ impl VanillaOptionPricingKernelParameters {
         Ok(())
     }
 
-    pub(crate) fn buy_transform_inputs(
+    pub(crate) fn buy_terminal_density_transform_inputs(
         self,
         u_input: ComplexScalar,
         z_input: ComplexScalar,
     ) -> PricingKernelAffineInputs {
-        activity_premium_transform_inputs(self.buy_activity_premium, u_input, z_input)
+        terminal_density_transform_inputs(self.buy_activity_premium, u_input, z_input)
     }
 
-    pub(crate) fn sell_transform_inputs(
+    pub(crate) fn sell_terminal_density_transform_inputs(
         self,
         u_input: ComplexScalar,
         z_input: ComplexScalar,
     ) -> PricingKernelAffineInputs {
-        activity_premium_transform_inputs(self.sell_activity_premium, u_input, z_input)
+        terminal_density_transform_inputs(self.sell_activity_premium, u_input, z_input)
     }
 }
 
@@ -75,17 +75,15 @@ pub(crate) struct PricingKernelAffineInputs {
     pub(crate) log_activity_premium_z_derivative: ComplexScalar,
 }
 
-fn activity_premium_transform_inputs(
+fn terminal_density_transform_inputs(
     activity_premium: f64,
     u_input: ComplexScalar,
     z_input: ComplexScalar,
 ) -> PricingKernelAffineInputs {
-    // A deterministic intensity multiplier L contributes exp((1 - L) A) L^N.
-    // The affine oracle stores the integrated-intensity loading with opposite sign.
     PricingKernelAffineInputs {
-        u_input: u_input.plus(ComplexScalar::new(activity_premium - 1.0, 0.0)),
+        u_input,
         z_input: z_input.scale(activity_premium),
-        log_activity_premium_u_derivative: ComplexScalar::new(activity_premium, 0.0),
+        log_activity_premium_u_derivative: ComplexScalar::new(0.0, 0.0),
         log_activity_premium_z_derivative: z_input.scale(activity_premium),
     }
 }
@@ -128,31 +126,19 @@ mod tests {
     use janiform_foundations::complex_math::ComplexScalar;
 
     #[test]
-    fn identity_pricing_kernel_preserves_affine_inputs() {
-        let kernel = VanillaOptionPricingKernelParameters::identity();
-        let u_input = ComplexScalar::new(0.25, -0.75);
-        let z_input = ComplexScalar::new(1.5, 0.5);
-
-        let transformed_inputs = kernel.buy_transform_inputs(u_input, z_input);
-
-        assert_eq!(transformed_inputs.u_input, u_input);
-        assert_eq!(transformed_inputs.z_input, z_input);
-    }
-
-    #[test]
-    fn activity_premium_applies_likelihood_ratio_compensator() {
+    fn terminal_density_activity_premium_tilts_counts_without_intensity_compensator() {
         let kernel = VanillaOptionPricingKernelParameters::try_new(1.25, 0.75)
             .expect("pricing kernel parameters should construct");
         let u_input = ComplexScalar::new(0.2, -0.3);
         let z_input = ComplexScalar::new(0.8, 0.4);
 
-        let transformed_inputs = kernel.buy_transform_inputs(u_input, z_input);
+        let transformed_inputs = kernel.buy_terminal_density_transform_inputs(u_input, z_input);
 
-        assert_eq!(transformed_inputs.u_input, ComplexScalar::new(0.45, -0.3));
+        assert_eq!(transformed_inputs.u_input, u_input);
         assert_eq!(transformed_inputs.z_input, ComplexScalar::new(1.0, 0.5));
         assert_eq!(
             transformed_inputs.log_activity_premium_u_derivative,
-            ComplexScalar::new(1.25, 0.0)
+            ComplexScalar::new(0.0, 0.0)
         );
         assert_eq!(
             transformed_inputs.log_activity_premium_z_derivative,

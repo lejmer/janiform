@@ -1293,7 +1293,7 @@ mod tests {
         let slices = SufficientStatisticsTransformSlices::try_new(
             ExponentialAffineTransformEquationSpecification::try_new(
                 HawkesKernelParameters::try_new(
-                    0.0,
+                    1.0,
                     1.0,
                     HawkesKernelLoadings {
                         plus_plus: 0.0,

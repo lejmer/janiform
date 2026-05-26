@@ -47,7 +47,9 @@ pub(super) struct OptionRefinementProgressContext<'a> {
     current_restart_id: &'a str,
     shared_progress_state: Arc<OptionRefinementSharedProgressState>,
     current_evaluation_count: Cell<usize>,
+    current_evaluation_progress_percent: Cell<usize>,
     current_weighted_objective: Cell<Option<f64>>,
+    current_best_weighted_objective: Cell<Option<f64>>,
     total_evaluation_budget: Option<usize>,
 }
 
@@ -55,6 +57,7 @@ impl OptionRefinementProgressContext<'_> {
     fn record_evaluation_started(&self) {
         self.current_evaluation_count
             .set(self.current_evaluation_count.get().saturating_add(1));
+        self.current_evaluation_progress_percent.set(0);
     }
 
     pub(super) fn current_evaluation_count(&self) -> usize {
@@ -64,6 +67,14 @@ impl OptionRefinementProgressContext<'_> {
     fn record_weighted_objective(&self, weighted_objective: f64) {
         self.current_weighted_objective
             .set(Some(weighted_objective));
+
+        self.current_best_weighted_objective.set(Some(
+            self.current_best_weighted_objective
+                .get()
+                .map(|best_weighted_objective| best_weighted_objective.min(weighted_objective))
+                .unwrap_or(weighted_objective),
+        ));
+
         self.shared_progress_state
             .record_candidate_score(self.current_restart_id, weighted_objective);
     }
@@ -89,7 +100,14 @@ impl OptionRefinementProgressContext<'_> {
         pricing_event_progress_percent: Option<usize>,
     ) -> Option<usize> {
         let completed_evaluation_count = self.current_evaluation_count().saturating_sub(1);
-        let current_evaluation_progress_percent = pricing_event_progress_percent.unwrap_or(0);
+
+        let current_evaluation_progress_percent = self
+            .current_evaluation_progress_percent
+            .get()
+            .max(pricing_event_progress_percent.unwrap_or(0).min(100));
+
+        self.current_evaluation_progress_percent
+            .set(current_evaluation_progress_percent);
 
         self.total_evaluation_budget.map(|total_evaluation_budget| {
             completed_evaluation_count
@@ -134,6 +152,7 @@ impl OptionPricingProgressSnapshotSource for OptionRefinementProgressContext<'_>
                 self.running_pricing_progress_percent(pricing_event_progress_percent),
             ),
             current_weighted_objective: self.current_weighted_objective(),
+            current_best_weighted_objective: self.current_best_weighted_objective.get(),
             best_restart_id: shared_snapshot.best_restart_id,
             best_weighted_objective: shared_snapshot.best_weighted_objective,
         }
@@ -169,6 +188,7 @@ impl OptionPricingProgressSnapshotSource for SelectionTierPricingProgressSnapsho
             total_evaluation_budget: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
             evaluation_progress_percent,
             current_weighted_objective: None,
+            current_best_weighted_objective: None,
             best_restart_id: shared_snapshot.best_restart_id,
             best_weighted_objective: shared_snapshot.best_weighted_objective,
         }
@@ -196,6 +216,7 @@ impl OptionRefinementSharedProgressState {
         let best_candidate = self
             .candidate_score_snapshot(&self.best_completed_candidate)
             .or_else(|| self.candidate_score_snapshot(&self.best_scored_candidate));
+
         let (best_restart_id, best_weighted_objective) = best_candidate
             .map(|(restart_id, weighted_objective)| (Some(restart_id), Some(weighted_objective)))
             .unwrap_or((None, None));
@@ -221,6 +242,7 @@ impl OptionRefinementSharedProgressState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         candidate_progress_guard.insert(restart_id.to_string(), 0);
+
         drop(candidate_progress_guard);
 
         self.snapshot(total_units)
@@ -255,6 +277,7 @@ impl OptionRefinementSharedProgressState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         candidate_progress_guard.remove(restart_id);
+
         drop(candidate_progress_guard);
 
         self.completed_units.fetch_add(1, Ordering::Relaxed);
@@ -549,23 +572,6 @@ fn context_with_option_pricing_cpu_count(
     updated_context
 }
 
-fn option_tier_pricing_interval_count(
-    context: &JointRefinementContext,
-    tier_kind: JointRefinementOptionSurfaceTierKind,
-) -> Option<usize> {
-    context
-        .option_pricing_context
-        .as_ref()
-        .map(|option_pricing_context| {
-            option_pricing_context
-                .tier_pricing_inputs
-                .tier(tier_kind)
-                .runtime_interval_schedule
-                .interval_deltas_hours
-                .len()
-        })
-}
-
 fn refine_search_tier_candidates(
     context: &JointRefinementContext,
     dynamics_candidates: &[JointRefinementRestartOutcome],
@@ -575,8 +581,6 @@ fn refine_search_tier_candidates(
     mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> SearchTierRefinementOutput {
     let total_units = dynamics_candidates.len();
-    let search_interval_count =
-        option_tier_pricing_interval_count(context, JointRefinementOptionSurfaceTierKind::Search);
 
     let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
 
@@ -624,8 +628,6 @@ fn refine_search_tier_candidates(
                 best_restart_id: progress_snapshot.best_restart_id.as_deref(),
                 best_weighted_objective: progress_snapshot.best_weighted_objective,
                 active_restart_count: None,
-                current_pricing_interval_index: search_interval_count,
-                total_pricing_interval_count: search_interval_count,
                 aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
                 evaluation_progress_percent: Some(100),
                 ..OptionRefinementProgressEmissionInput::new(
@@ -877,8 +879,6 @@ fn refine_parallel_search_tier_candidate(
 
     let started_snapshot = shared_progress_state
         .record_candidate_started(dynamics_candidate.restart_id.as_str(), total_units);
-    let search_interval_count =
-        option_tier_pricing_interval_count(context, JointRefinementOptionSurfaceTierKind::Search);
 
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
@@ -889,8 +889,6 @@ fn refine_parallel_search_tier_candidate(
         current_evaluation_count: Some(0),
         total_evaluation_budget: Some(option_pricing_block_evaluation_budget()),
         evaluation_progress_percent: Some(0),
-        current_pricing_interval_index: Some(0),
-        total_pricing_interval_count: search_interval_count,
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -906,7 +904,9 @@ fn refine_parallel_search_tier_candidate(
         current_restart_id: dynamics_candidate.restart_id.as_str(),
         shared_progress_state: Arc::clone(&shared_progress_state),
         current_evaluation_count: Cell::new(0),
+        current_evaluation_progress_percent: Cell::new(0),
         current_weighted_objective: Cell::new(None),
+        current_best_weighted_objective: Cell::new(None),
         total_evaluation_budget: Some(option_pricing_block_evaluation_budget()),
     };
 
@@ -955,8 +955,6 @@ fn refine_parallel_search_tier_candidate(
         current_evaluation_count: Some(progress_context.current_evaluation_count()),
         total_evaluation_budget: progress_context.total_evaluation_budget(),
         evaluation_progress_percent: Some(100),
-        current_pricing_interval_index: search_interval_count,
-        total_pricing_interval_count: search_interval_count,
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -976,11 +974,6 @@ fn evaluate_selection_tier_candidates(
     mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> Vec<OptionRefinedCandidate> {
     let total_units = search_candidates.len();
-
-    let selection_interval_count = option_tier_pricing_interval_count(
-        context,
-        JointRefinementOptionSurfaceTierKind::Selection,
-    );
 
     let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
 
@@ -1029,8 +1022,6 @@ fn evaluate_selection_tier_candidates(
                 active_restart_count: None,
                 current_evaluation_count: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
                 total_evaluation_budget: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
-                current_pricing_interval_index: selection_interval_count,
-                total_pricing_interval_count: selection_interval_count,
                 aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
                 evaluation_progress_percent: Some(100),
                 ..OptionRefinementProgressEmissionInput::new(
@@ -1202,11 +1193,6 @@ fn evaluate_parallel_selection_tier_candidate(
 
     let started_snapshot = shared_progress_state.record_candidate_started(restart_id, total_units);
 
-    let selection_interval_count = option_tier_pricing_interval_count(
-        context,
-        JointRefinementOptionSurfaceTierKind::Selection,
-    );
-
     emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
         current_restart_id: Some(restart_id),
         current_item_label: Some(restart_id),
@@ -1216,8 +1202,6 @@ fn evaluate_parallel_selection_tier_candidate(
         current_evaluation_count: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         total_evaluation_budget: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         evaluation_progress_percent: Some(0),
-        current_pricing_interval_index: Some(0),
-        total_pricing_interval_count: selection_interval_count,
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
@@ -1296,8 +1280,6 @@ fn evaluate_parallel_selection_tier_candidate(
         current_evaluation_count: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         total_evaluation_budget: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         evaluation_progress_percent: Some(100),
-        current_pricing_interval_index: selection_interval_count,
-        total_pricing_interval_count: selection_interval_count,
         ..OptionRefinementProgressEmissionInput::new(
             progress_sender,
             JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
@@ -1780,7 +1762,9 @@ mod tests {
             current_restart_id: "baseline",
             shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
             current_evaluation_count: Cell::new(0),
+            current_evaluation_progress_percent: Cell::new(0),
             current_weighted_objective: Cell::new(None),
+            current_best_weighted_objective: Cell::new(None),
             total_evaluation_budget: None,
         };
 
@@ -1803,7 +1787,9 @@ mod tests {
             current_restart_id: "baseline",
             shared_progress_state,
             current_evaluation_count: Cell::new(0),
+            current_evaluation_progress_percent: Cell::new(0),
             current_weighted_objective: Cell::new(None),
+            current_best_weighted_objective: Cell::new(None),
             total_evaluation_budget: None,
         };
 
@@ -1828,7 +1814,9 @@ mod tests {
             current_restart_id: "halton_01",
             shared_progress_state,
             current_evaluation_count: Cell::new(0),
+            current_evaluation_progress_percent: Cell::new(0),
             current_weighted_objective: Cell::new(None),
+            current_best_weighted_objective: Cell::new(None),
             total_evaluation_budget: None,
         };
 
@@ -1863,7 +1851,9 @@ mod tests {
             current_restart_id: "baseline",
             shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
             current_evaluation_count: Cell::new(0),
+            current_evaluation_progress_percent: Cell::new(0),
             current_weighted_objective: Cell::new(None),
+            current_best_weighted_objective: Cell::new(None),
             total_evaluation_budget: Some(5),
         };
 
@@ -1872,6 +1862,33 @@ mod tests {
         let snapshot = progress_context.option_pricing_progress_snapshot(Some(25));
 
         assert_eq!(snapshot.evaluation_progress_percent, Some(5));
+    }
+
+    #[test]
+    fn option_refinement_progress_context_keeps_evaluation_progress_monotone() {
+        let progress_context = OptionRefinementProgressContext {
+            progress_sender: None,
+            phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            total_units: 5,
+            current_restart_id: "baseline",
+            shared_progress_state: Arc::new(OptionRefinementSharedProgressState::default()),
+            current_evaluation_count: Cell::new(0),
+            current_evaluation_progress_percent: Cell::new(0),
+            current_weighted_objective: Cell::new(None),
+            current_best_weighted_objective: Cell::new(None),
+            total_evaluation_budget: Some(5),
+        };
+
+        progress_context.record_evaluation_started();
+
+        let advanced_snapshot = progress_context.option_pricing_progress_snapshot(Some(80));
+        let restarted_internal_pass_snapshot =
+            progress_context.option_pricing_progress_snapshot(Some(10));
+
+        assert_eq!(
+            advanced_snapshot.evaluation_progress_percent,
+            restarted_internal_pass_snapshot.evaluation_progress_percent
+        );
     }
 
     #[test]
@@ -1886,7 +1903,9 @@ mod tests {
             current_restart_id: "baseline",
             shared_progress_state,
             current_evaluation_count: Cell::new(0),
+            current_evaluation_progress_percent: Cell::new(0),
             current_weighted_objective: Cell::new(None),
+            current_best_weighted_objective: Cell::new(None),
             total_evaluation_budget: None,
         };
 

@@ -878,6 +878,20 @@ pub fn load_calibration_stage_parameter_artifact_from_disk(
     )
 }
 
+/// Build a user-facing load error for a stage parameter artifact.
+pub fn calibration_stage_parameter_artifact_load_error_message(
+    stage: CalibrationStage,
+    source: &CalibrationArtifactIoError,
+) -> String {
+    match source {
+        CalibrationArtifactIoError::DeserializationFailed { error_message, .. } => format!(
+            "persisted `{}` stage parameter artifact cannot be read by the current calibration artifact contract: {error_message}. Recompute this stage before resuming from a later stage.",
+            calibration_stage_token(stage)
+        ),
+        _ => source.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CalibrationStageParameterArtifactBuildError {
     UnsupportedExecutionMode {

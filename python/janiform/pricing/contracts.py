@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from math import exp, isfinite
+from math import exp
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -171,18 +171,10 @@ class VanillaOptionPricingStatus(StrEnum):
 
 class VanillaOptionPricingFailureStage(StrEnum):
     NODE_SETUP = "node_setup"
-    TRANSFORM_INPUT_BUILD = "transform_input_build"
-    TRANSFORM_SOLVE = "transform_solve"
-    TRANSFORM_OUTPUT = "transform_output"
-    CHARACTERISTIC_FUNCTION_ASSEMBLY = "characteristic_function_assembly"
     FOURIER_PRICING = "fourier_pricing"
     RISK_NEUTRAL_CHARACTERISTIC_FUNCTION = "risk_neutral_characteristic_function"
-    ENDOGENOUS_ANCHOR_MATERIALIZATION = "endogenous_anchor_materialization"
-    EXPECTED_HAWKES_STATE_UPDATE = "expected_hawkes_state_update"
-    ANCHORED_LOCAL_TILT_SOLVE = "anchored_local_tilt_solve"
-    SPECTRAL_OBSERVED_BOUNDARY_STATE = "spectral_observed_boundary_state"
+    TERMINAL_AFFINE_MEASURE_CHANGE = "terminal_affine_measure_change"
     SPECTRAL_DIAGNOSTICS = "spectral_diagnostics"
-    SPECTRAL_OPERATOR_ASSEMBLY = "spectral_operator_assembly"
     RESPONSE_DIAGNOSTICS = "response_diagnostics"
     RESPONSE_ASSEMBLY = "response_assembly"
     RUN_RESULT_ASSEMBLY = "run_result_assembly"
@@ -1524,14 +1516,9 @@ class VanillaOptionPricingFailureDiagnostic(ContractModel):
                 PRICING_ERROR_FACTORY,
                 enum_type=VanillaOptionPricingFailureStage,
                 allowed_values_message=(
-                    "must be one of: node_setup, transform_input_build, "
-                    "transform_solve, transform_output, "
-                    "characteristic_function_assembly, fourier_pricing, "
-                    "risk_neutral_characteristic_function, "
-                    "endogenous_anchor_materialization, "
-                    "expected_hawkes_state_update, anchored_local_tilt_solve, "
-                    "spectral_observed_boundary_state, "
-                    "spectral_diagnostics, spectral_operator_assembly, "
+                    "must be one of: node_setup, fourier_pricing, "
+                    "risk_neutral_characteristic_function, terminal_affine_measure_change, "
+                    "spectral_diagnostics, "
                     "response_diagnostics, response_assembly, "
                     "run_result_assembly, worker_execution"
                 ),

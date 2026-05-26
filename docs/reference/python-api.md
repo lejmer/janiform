@@ -3079,18 +3079,10 @@
 | Member | Value |
 |--------|-------|
 | `NODE_SETUP` | `node_setup` |
-| `TRANSFORM_INPUT_BUILD` | `transform_input_build` |
-| `TRANSFORM_SOLVE` | `transform_solve` |
-| `TRANSFORM_OUTPUT` | `transform_output` |
-| `CHARACTERISTIC_FUNCTION_ASSEMBLY` | `characteristic_function_assembly` |
 | `FOURIER_PRICING` | `fourier_pricing` |
 | `RISK_NEUTRAL_CHARACTERISTIC_FUNCTION` | `risk_neutral_characteristic_function` |
-| `ENDOGENOUS_ANCHOR_MATERIALIZATION` | `endogenous_anchor_materialization` |
-| `EXPECTED_HAWKES_STATE_UPDATE` | `expected_hawkes_state_update` |
-| `ANCHORED_LOCAL_TILT_SOLVE` | `anchored_local_tilt_solve` |
-| `SPECTRAL_OBSERVED_BOUNDARY_STATE` | `spectral_observed_boundary_state` |
+| `TERMINAL_AFFINE_MEASURE_CHANGE` | `terminal_affine_measure_change` |
 | `SPECTRAL_DIAGNOSTICS` | `spectral_diagnostics` |
-| `SPECTRAL_OPERATOR_ASSEMBLY` | `spectral_operator_assembly` |
 | `RESPONSE_DIAGNOSTICS` | `response_diagnostics` |
 | `RESPONSE_ASSEMBLY` | `response_assembly` |
 | `RUN_RESULT_ASSEMBLY` | `run_result_assembly` |
@@ -3476,18 +3468,10 @@
 | Member | Value |
 |--------|-------|
 | `NODE_SETUP` | `node_setup` |
-| `TRANSFORM_INPUT_BUILD` | `transform_input_build` |
-| `TRANSFORM_SOLVE` | `transform_solve` |
-| `TRANSFORM_OUTPUT` | `transform_output` |
-| `CHARACTERISTIC_FUNCTION_ASSEMBLY` | `characteristic_function_assembly` |
 | `FOURIER_PRICING` | `fourier_pricing` |
 | `RISK_NEUTRAL_CHARACTERISTIC_FUNCTION` | `risk_neutral_characteristic_function` |
-| `ENDOGENOUS_ANCHOR_MATERIALIZATION` | `endogenous_anchor_materialization` |
-| `EXPECTED_HAWKES_STATE_UPDATE` | `expected_hawkes_state_update` |
-| `ANCHORED_LOCAL_TILT_SOLVE` | `anchored_local_tilt_solve` |
-| `SPECTRAL_OBSERVED_BOUNDARY_STATE` | `spectral_observed_boundary_state` |
+| `TERMINAL_AFFINE_MEASURE_CHANGE` | `terminal_affine_measure_change` |
 | `SPECTRAL_DIAGNOSTICS` | `spectral_diagnostics` |
-| `SPECTRAL_OPERATOR_ASSEMBLY` | `spectral_operator_assembly` |
 | `RESPONSE_DIAGNOSTICS` | `response_diagnostics` |
 | `RESPONSE_ASSEMBLY` | `response_assembly` |
 | `RUN_RESULT_ASSEMBLY` | `run_result_assembly` |
@@ -3695,8 +3679,8 @@
 ### `JaniformVanillaOptionMaturitySummary`
 
 - Kind: `contract_model`
-- Signature: `(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'`
-- Fields: `maturity_interval`, `terminal_anchor_value`, `deviation_domain_lower_bound`, `deviation_domain_upper_bound`, `collocation_node_count`, `collocation_nodes`, `interval_summaries`, `representative_transform`, `integration_quality`
+- Signature: `(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'`
+- Fields: `maturity_interval`, `terminal_anchor_value`, `deviation_domain_lower_bound`, `deviation_domain_upper_bound`, `collocation_node_count`, `collocation_nodes`, `interval_summaries`, `integration_quality`
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionsurface"></a>
 ### `JaniformVanillaOptionSurface`
@@ -3854,8 +3838,8 @@
 ### `JaniformVanillaOptionMaturitySummary`
 
 - Kind: `contract_model`
-- Signature: `(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'`
-- Fields: `maturity_interval`, `terminal_anchor_value`, `deviation_domain_lower_bound`, `deviation_domain_upper_bound`, `collocation_node_count`, `collocation_nodes`, `interval_summaries`, `representative_transform`, `integration_quality`
+- Signature: `(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'`
+- Fields: `maturity_interval`, `terminal_anchor_value`, `deviation_domain_lower_bound`, `deviation_domain_upper_bound`, `collocation_node_count`, `collocation_nodes`, `interval_summaries`, `integration_quality`
 
 <a id="python-api-module-janiform-pricing-fitted-surface"></a>
 ## `janiform.pricing.fitted.surface`
@@ -7685,4 +7669,3 @@
 - Kind: `contract_model`
 - Signature: `(empirical_interval_half_width: 'Optional[float]', simulated_interval_half_width: 'Optional[float]', pooled_interval_half_width: 'Optional[float]', standardized_delta: 'Optional[float]') -> 'None'`
 - Fields: `empirical_interval_half_width`, `simulated_interval_half_width`, `pooled_interval_half_width`, `standardized_delta`
-

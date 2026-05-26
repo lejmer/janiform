@@ -9,6 +9,7 @@ use janiform_calibration_artifacts::{
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationStage, CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
+    calibration_stage_parameter_artifact_load_error_message,
     calibration_stage_parameter_artifact_path, load_calibration_stage_parameter_artifact_from_disk,
 };
 use janiform_calibration_runtime::{
@@ -420,8 +421,9 @@ fn apply_resumed_disk_stage_parameter_artifacts(
             .map_err(|source| WorkflowError::ModelValidationFailed {
                 field: "model_payload.parameters",
                 message: format!(
-                    "failed to load resumed stage parameter artifact `{}`: {source}",
-                    artifact_path.display()
+                    "failed to load resumed stage parameter artifact `{}`: {}",
+                    artifact_path.display(),
+                    calibration_stage_parameter_artifact_load_error_message(stage, &source)
                 ),
             })?;
 

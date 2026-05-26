@@ -22,12 +22,15 @@ use serde_json::Value;
 
 use crate::error::WorkflowError;
 use crate::progress::VolatileProgressGate;
-use crate::terminal::{emit_terminal_completion_view, emit_terminal_start_view};
+use crate::terminal::{
+    complete_terminal_progress, emit_terminal_completion_view, emit_terminal_start_view,
+};
 
 use super::artifacts::{build_fit_report_payload, build_model_payload, write_pretty_json};
 use super::events::{
     append_artifact_event, progress_event_from_staged_event, run_events_from_staged_event,
 };
+use super::labels::stage_execution_status_label;
 use super::output::FitWorkflowOutput;
 use super::output::{FitCompletionView, fit_completion_view, fit_start_summary};
 use super::request::{FitWorkflowPaths, StagedFitExecutionWorkflowRequest};
@@ -144,8 +147,7 @@ pub fn run_staged_fit_execution_workflow(
         execution_duration,
     };
 
-    complete_progress(&mut observer.progress_adapter, output.report.status)?;
-    finish_progress(&mut observer.progress_adapter)?;
+    complete_progress_before_summary(&mut observer.progress_adapter, output.report.status);
     emit_completion_summary(&observer, &request.paths, &output)?;
 
     Ok(output)
@@ -400,41 +402,15 @@ fn observe_output_materialization_progress(
         .map_err(|source| WorkflowError::OutputProgress { source })
 }
 
-fn finish_progress(
-    progress_adapter: &mut Option<&mut ProgressAdapter>,
-) -> Result<(), WorkflowError> {
-    if let Some(progress_adapter) = progress_adapter.as_deref_mut() {
-        progress_adapter
-            .finish_and_keep()
-            .map_err(|source| WorkflowError::OutputWrite { source })?;
-    }
-
-    Ok(())
-}
-
-fn complete_progress(
+fn complete_progress_before_summary(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     status: CalibrationStageExecutionStatus,
-) -> Result<(), WorkflowError> {
+) {
     let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
-        return Ok(());
+        return;
     };
 
-    progress_adapter.observe(ProgressEvent::RunCompleted {
-        status: terminal_progress_status(status).to_string(),
-    });
-
-    progress_adapter
-        .draw_latest()
-        .map_err(|source| WorkflowError::OutputProgress { source })
-}
-
-const fn terminal_progress_status(status: CalibrationStageExecutionStatus) -> &'static str {
-    match status {
-        CalibrationStageExecutionStatus::Success => "completed",
-        CalibrationStageExecutionStatus::SuccessWithWarnings => "completed with warnings",
-        CalibrationStageExecutionStatus::Failure => "failed",
-    }
+    complete_terminal_progress(progress_adapter, stage_execution_status_label(status));
 }
 
 fn observe_run_events(input: RunEventObservationInput<'_, '_>) -> Result<(), WorkflowError> {

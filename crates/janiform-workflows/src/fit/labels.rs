@@ -1,6 +1,7 @@
 use janiform_calibration_artifacts::CalibrationStage;
 use janiform_calibration_runtime::{
-    CalibrationMarketDataWorkflowScope, MarketDataInputFileFormat, MarketDataTickPriceInputPolicy,
+    CalibrationMarketDataWorkflowScope, CalibrationStageExecutionStatus, MarketDataInputFileFormat,
+    MarketDataTickPriceInputPolicy,
 };
 use janiform_terminal_ui::format_token_as_words;
 
@@ -56,6 +57,15 @@ pub const fn stage_label(stage: CalibrationStage) -> &'static str {
         CalibrationStage::JointRefinement => "Refine dynamics",
         CalibrationStage::OptionRefinement => "Fit option surface",
         CalibrationStage::Finalization => "Finalize model",
+    }
+}
+
+/// Render a staged calibration execution status for terminal and event payloads.
+pub const fn stage_execution_status_label(status: CalibrationStageExecutionStatus) -> &'static str {
+    match status {
+        CalibrationStageExecutionStatus::Success => "completed",
+        CalibrationStageExecutionStatus::SuccessWithWarnings => "completed with warnings",
+        CalibrationStageExecutionStatus::Failure => "failed",
     }
 }
 

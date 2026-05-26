@@ -3,12 +3,10 @@ use std::time::Duration;
 use std::time::Instant;
 
 use janiform::simulation::{SimulationProgressEvent, SimulationProgressPhase};
-use janiform_terminal_ui::{
-    ProgressAdapter, ProgressEvent, ProgressMeasure, TerminalSummaryPolicy,
-};
+use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, TerminalSummaryPolicy};
 
 use crate::error::WorkflowError;
-use crate::progress::VolatileProgressGate;
+use crate::progress::{VolatileProgressGate, bounded_progress_measure};
 use crate::terminal::{
     complete_terminal_progress, emit_terminal_completion_view, emit_terminal_start_view,
 };
@@ -74,8 +72,7 @@ pub(super) fn observe_simulation_terminal_event(
     progress_adapter: &mut ProgressAdapter,
     event: &SimulationProgressEvent,
 ) -> Result<(), WorkflowError> {
-    let measure = ProgressMeasure::bounded(event.completed_units, event.total_units)
-        .map_err(|source| WorkflowError::OutputProgress { source })?;
+    let measure = bounded_progress_measure(event.completed_units, event.total_units)?;
 
     progress_adapter.observe(ProgressEvent::RunProgress {
         phase: simulation_progress_phase_label(event.phase).to_string(),
@@ -100,8 +97,9 @@ pub(super) fn complete_simulation_progress(
         return Ok(());
     };
 
-    complete_terminal_progress(progress_adapter)
-        .map_err(|source| WorkflowError::OutputWrite { source })
+    complete_terminal_progress(progress_adapter, "completed");
+
+    Ok(())
 }
 
 pub(super) fn emit_start_summary(

@@ -49,6 +49,10 @@ fn write_terminal_error(
     error: CliError,
     renderer: janiform_terminal_ui::TerminalRenderer,
 ) -> io::Result<()> {
+    if error.terminal_error_block_is_redundant() {
+        return Ok(());
+    }
+
     let report = miette::Report::new(error);
 
     let block = janiform_terminal_ui::FailureBlock {
