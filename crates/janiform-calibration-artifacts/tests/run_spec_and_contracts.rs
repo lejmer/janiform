@@ -52,6 +52,7 @@ fn calibration_run_spec_round_trip_serialization_preserves_contract_fields() {
         [
             "data_inputs",
             "execution_mode",
+            "objective_policy",
             "optimizer_settings_by_stage",
             "run_id",
             "seed_settings",

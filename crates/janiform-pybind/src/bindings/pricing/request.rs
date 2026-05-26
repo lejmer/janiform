@@ -10,7 +10,9 @@ use janiform::pricing::{
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
     materialize_schedule_interval_factors,
 };
-use janiform_workflows::pricing::FittedModelSingleOptionPricingRequest;
+use janiform_workflows::pricing::{
+    FittedModelSingleOptionPricingRequest, ObservedOptionsPricingRequest,
+};
 use janiform_workflows::terminal::TerminalProgressMode;
 use pyo3::prelude::{Bound, PyResult};
 use pyo3::types::PyAny;
@@ -62,9 +64,16 @@ struct VanillaOptionSurfacePricingExecutionInputPayload {
 
 #[derive(serde::Deserialize)]
 pub(super) struct PricingHourlyFactorContractPayload {
+    exchange_code: String,
+    exchange_timezone_name: String,
+    request_start_utc_nanos: i64,
+    request_end_utc_nanos: i64,
     interval_duration_nanos: i64,
+    interval_indices: Vec<u64>,
     interval_start_utc_nanos: Vec<i64>,
     interval_end_utc_nanos: Vec<i64>,
+    interval_start_exchange_local: Vec<String>,
+    interval_end_exchange_local: Vec<String>,
     s_h: Vec<f64>,
     known_component_nu_h: Vec<f64>,
     surprise_component_nu_h: Vec<f64>,
@@ -83,6 +92,15 @@ pub(super) struct PricingActivityCompressedScheduleRequestPayload {
 pub(super) struct FittedModelSingleOptionPricingWorkflowPayload {
     #[serde(flatten)]
     pub(super) request: FittedModelSingleOptionPricingRequest,
+    #[serde(default)]
+    pub(super) progress_mode: TerminalProgressMode,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ObservedOptionsPricingWorkflowPayload {
+    #[serde(flatten)]
+    pub(super) request: ObservedOptionsPricingRequest,
     #[serde(default)]
     pub(super) progress_mode: TerminalProgressMode,
 }
@@ -200,16 +218,16 @@ pub(super) fn hourly_factor_contract_output_from_payload(
 
     HourlyFactorContractOutput {
         schema_version: "",
-        exchange_code: String::new(),
-        exchange_timezone_name: String::new(),
-        request_start_utc_nanos: first_interval_start_utc_nanos,
-        request_end_utc_nanos: last_interval_end_utc_nanos,
+        exchange_code: payload.exchange_code,
+        exchange_timezone_name: payload.exchange_timezone_name,
+        request_start_utc_nanos: payload.request_start_utc_nanos,
+        request_end_utc_nanos: payload.request_end_utc_nanos,
         interval_duration_nanos: payload.interval_duration_nanos,
-        interval_indices: (0..interval_count).map(|index| index as u64).collect(),
+        interval_indices: payload.interval_indices,
         interval_start_utc_nanos: payload.interval_start_utc_nanos,
         interval_end_utc_nanos: payload.interval_end_utc_nanos,
-        interval_start_exchange_local: vec![String::new(); interval_count],
-        interval_end_exchange_local: vec![String::new(); interval_count],
+        interval_start_exchange_local: payload.interval_start_exchange_local,
+        interval_end_exchange_local: payload.interval_end_exchange_local,
         nu_h: payload
             .known_component_nu_h
             .iter()

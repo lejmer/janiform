@@ -6,6 +6,7 @@ use janiform::model::factors::hourly::{
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
     HourlySeasonalityFactorSource, NANOS_PER_HOUR,
 };
+use janiform_calibration_runtime::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use janiform_foundations::time::parse_utc_datetime;
 use serde_json::Value;
 
@@ -15,8 +16,6 @@ use super::context::{
     FittedModelContext, PersistedModelPayload, interval_span_nanos, validation_error,
 };
 
-const RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: &str =
-    "runtime_compact_seasonality_parameters_mean_renormalized.v1";
 const SURPRISE_MULTIPLIER_HOURS_PER_WEEK: usize = 168;
 const MINUTES_PER_DAY: usize = 1_440;
 
@@ -47,6 +46,7 @@ pub(crate) fn build_hourly_factor_contract(
         range_end_utc,
         interval_duration_nanos,
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .surprise_deterministic_intensity_profile
             .weekly_hour_utc_multipliers
@@ -54,6 +54,7 @@ pub(crate) fn build_hourly_factor_contract(
     )?;
 
     let surprise_baseline_intensity = context
+        .fitted_parameters
         .return_components_fitted_parameters
         .news_process_configuration
         .arrivals
@@ -142,12 +143,12 @@ fn materialize_runtime_seasonality_grid(
     Ok((output.interval_start_utc_nanos, output.seasonality_factors))
 }
 
-fn hourly_seasonality_source<'a>(
+fn hourly_seasonality_source(
     range_start_utc: DateTime<Utc>,
     range_end_utc: DateTime<Utc>,
     interval_duration_nanos: i64,
-    seasonality_grid: &'a (Vec<i64>, Vec<f64>),
-) -> HourlySeasonalityFactorSource<'a> {
+    seasonality_grid: &'_ (Vec<i64>, Vec<f64>),
+) -> HourlySeasonalityFactorSource<'_> {
     if seasonality_grid.1.is_empty() {
         return HourlySeasonalityFactorSource::Explicit {
             hourly_factors: seasonality_grid.1.as_slice(),

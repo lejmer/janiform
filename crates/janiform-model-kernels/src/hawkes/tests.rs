@@ -7,8 +7,8 @@ use crate::hawkes::{
     HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesStructuredAlphaParameterError,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterError,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
-    HawkesTransitionError, HawkesTransitionStep, spectral_radius_alpha_over_beta,
-    stationary_intensity_multipliers,
+    HawkesTransitionError, HawkesTransitionStep, baseline_intensity_for_stationary_total_intensity,
+    spectral_radius_alpha_over_beta, stationary_intensity_multipliers,
 };
 use serde_json::json;
 
@@ -74,7 +74,26 @@ fn excitation_state_from_target_components_preserves_component_mapping() {
     assert_eq!(state.y_minus_minus, 4.0);
     assert_eq!(state.target_plus_components(), target_plus);
     assert_eq!(state.target_minus_components(), target_minus);
+    assert_eq!(state.target_plus_sum(), 3.0);
+    assert_eq!(state.target_minus_sum(), 7.0);
     assert_eq!(state.as_model_ordered_array(), [1.0, 2.0, 3.0, 4.0]);
+}
+
+#[test]
+fn excitation_state_from_target_sums_uses_canonical_first_moment_components() {
+    let state = HawkesExcitationState::from_target_sums(3.0, 7.0);
+
+    assert_eq!(
+        state,
+        HawkesExcitationState {
+            y_plus_plus: 3.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 7.0,
+            y_minus_minus: 0.0,
+        }
+    );
+    assert_eq!(state.target_plus_sum(), 3.0);
+    assert_eq!(state.target_minus_sum(), 7.0);
 }
 
 #[test]
@@ -948,6 +967,31 @@ fn stationary_intensity_multipliers_match_closed_form_bivariate_inverse() {
         2.666_666_666_666_666_5,
         1.0e-12,
         "total_intensity_multiplier",
+    );
+}
+
+#[test]
+fn baseline_intensity_for_stationary_total_intensity_inverts_total_multiplier() {
+    let alpha = HawkesKernelLoadings {
+        plus_plus: 0.35,
+        plus_minus: 0.05,
+        minus_plus: 0.07,
+        minus_minus: 0.35,
+    };
+    let beta = 1.4;
+    let target_total_intensity = 12.5;
+
+    let lambda_bar =
+        baseline_intensity_for_stationary_total_intensity(target_total_intensity, alpha, beta)
+            .expect("stable Hawkes parameters should imply a baseline intensity");
+    let stationary_multipliers = stationary_intensity_multipliers(alpha, beta)
+        .expect("stable positive beta kernel should admit stationary multipliers");
+
+    assert_within_tolerance(
+        lambda_bar * stationary_multipliers.total_intensity_multiplier(),
+        target_total_intensity,
+        DECAY_TOLERANCE,
+        "stationary_total_intensity",
     );
 }
 

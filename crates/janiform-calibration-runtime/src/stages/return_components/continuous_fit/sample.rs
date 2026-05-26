@@ -14,10 +14,13 @@ use super::super::execution::{
     summarize_return_distribution,
 };
 use super::profile::{build_distribution_profile, build_scale_bucket_profiles};
+use super::proxy_em_sample::build_proxy_em_fitting_sample;
+use super::stratified_representatives::representative_member_indices_from_sorted_strata;
 use super::types::{
     ContinuousLikelihoodFidelityTier, ContinuousReturnOptimizerContext,
     ReturnComponentsStageContinuousReturnCalibrationSample,
 };
+use crate::stages::joint_metrics::equal_stride_sample_indices;
 
 pub(crate) fn build_continuous_return_calibration_sample(
     sorted_signals: &ReturnComponentsStageSortedSignalInputs,
@@ -85,6 +88,38 @@ pub(crate) fn continuous_return_calibration_sample_business_time_scales(
     calibration_sample.business_time_scales.as_slice()
 }
 
+pub(crate) fn sample_continuous_return_calibration_sample_by_equal_stride(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    target_count: usize,
+) -> ReturnComponentsStageContinuousReturnCalibrationSample {
+    let aligned_count = calibration_sample
+        .observed_returns
+        .len()
+        .min(calibration_sample.business_time_scales.len())
+        .min(calibration_sample.sell_share_proxies.len());
+
+    let sample_indices = equal_stride_sample_indices(aligned_count, target_count);
+
+    build_continuous_return_calibration_sample_from_components(
+        sample_indices
+            .iter()
+            .filter_map(|sample_index| calibration_sample.observed_returns.get(*sample_index))
+            .copied()
+            .collect(),
+        sample_indices
+            .iter()
+            .filter_map(|sample_index| calibration_sample.business_time_scales.get(*sample_index))
+            .copied()
+            .collect(),
+        sample_indices
+            .iter()
+            .filter_map(|sample_index| calibration_sample.sell_share_proxies.get(*sample_index))
+            .copied()
+            .collect(),
+        calibration_sample.open_session_sell_share_proxy,
+    )
+}
+
 pub(crate) fn build_continuous_return_calibration_sample_from_components(
     observed_returns: Vec<f64>,
     business_time_scales: Vec<f64>,
@@ -92,6 +127,7 @@ pub(crate) fn build_continuous_return_calibration_sample_from_components(
     open_session_sell_share_proxy: f64,
 ) -> ReturnComponentsStageContinuousReturnCalibrationSample {
     let observed_profile = build_distribution_profile(observed_returns.as_slice());
+
     let scale_bucket_profiles =
         build_scale_bucket_profiles(observed_returns.as_slice(), business_time_scales.as_slice());
 
@@ -128,6 +164,7 @@ pub(crate) fn build_continuous_return_optimizer_context(
 ) -> ContinuousReturnOptimizerContext {
     let business_time_floor =
         positive_business_time_floor(calibration_sample.business_time_scales.as_slice());
+
     let integrated_buy_intensities: Vec<f64> = calibration_sample
         .business_time_scales
         .iter()
@@ -136,6 +173,7 @@ pub(crate) fn build_continuous_return_optimizer_context(
             business_time_scale * (1.0 - sell_share_proxy.clamp(0.0, 1.0))
         })
         .collect();
+
     let integrated_sell_intensities: Vec<f64> = calibration_sample
         .business_time_scales
         .iter()
@@ -153,6 +191,7 @@ pub(crate) fn build_continuous_return_optimizer_context(
         )
         .max(business_time_floor),
         sell_share_proxies: calibration_sample.sell_share_proxies.clone(),
+        member_weights: vec![1.0; calibration_sample.observed_returns.len()],
         integrated_buy_intensities,
         integrated_sell_intensities,
         scale_bucket_profiles: calibration_sample.scale_bucket_profiles.clone(),
@@ -179,6 +218,89 @@ pub(crate) fn build_continuous_return_optimizer_context(
             calibration_sample.scale_bucket_profiles.as_slice(),
             ContinuousLikelihoodFidelityTier::Full,
         ),
+        cache: Arc::new(Mutex::new(BTreeMap::new())),
+    }
+}
+
+pub(crate) fn build_weighted_continuous_return_optimizer_context(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+) -> ContinuousReturnOptimizerContext {
+    let representative_sample = build_proxy_em_fitting_sample(calibration_sample);
+    if representative_sample.sample_count() == calibration_sample.observed_returns.len() {
+        return build_continuous_return_optimizer_context(calibration_sample);
+    }
+
+    let sell_share_proxies = representative_sample
+        .member_indices()
+        .iter()
+        .map(|member_index| calibration_sample.sell_share_proxies[*member_index])
+        .collect();
+
+    let weighted_calibration_sample = build_continuous_return_calibration_sample_from_components(
+        representative_sample.observed_returns().to_vec(),
+        representative_sample.business_time_scales().to_vec(),
+        sell_share_proxies,
+        calibration_sample.open_session_sell_share_proxy,
+    );
+
+    let mut optimizer_context =
+        build_continuous_return_optimizer_context(&weighted_calibration_sample);
+
+    optimizer_context.member_weights = representative_sample.weights().to_vec();
+
+    optimizer_context
+}
+
+pub(crate) fn rescale_continuous_return_optimizer_context_business_time_scales(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    scale_multiplier: f64,
+) -> ContinuousReturnOptimizerContext {
+    let resolved_scale_multiplier = scale_multiplier.max(strictly_positive_machine_value());
+
+    let business_time_scales = optimizer_context
+        .business_time_scales
+        .iter()
+        .map(|business_time_scale| business_time_scale * resolved_scale_multiplier)
+        .collect::<Vec<_>>();
+
+    let business_time_floor = positive_business_time_floor(business_time_scales.as_slice());
+
+    let mean_business_time_scale =
+        arithmetic_mean(business_time_scales.as_slice()).max(business_time_floor);
+
+    let integrated_buy_intensities = business_time_scales
+        .iter()
+        .zip(optimizer_context.sell_share_proxies.iter())
+        .map(|(business_time_scale, sell_share_proxy)| {
+            business_time_scale * (1.0 - sell_share_proxy.clamp(0.0, 1.0))
+        })
+        .collect();
+
+    let integrated_sell_intensities = business_time_scales
+        .iter()
+        .zip(optimizer_context.sell_share_proxies.iter())
+        .map(|(business_time_scale, sell_share_proxy)| {
+            business_time_scale * sell_share_proxy.clamp(0.0, 1.0)
+        })
+        .collect();
+
+    // Cached optimizer contexts own their vectors so callers can share them
+    // without borrowing the source context across objective evaluations.
+    ContinuousReturnOptimizerContext {
+        observed_returns: optimizer_context.observed_returns.clone(),
+        business_time_scales,
+        mean_business_time_scale,
+        sell_share_proxies: optimizer_context.sell_share_proxies.clone(),
+        member_weights: optimizer_context.member_weights.clone(),
+        integrated_buy_intensities,
+        integrated_sell_intensities,
+        scale_bucket_profiles: optimizer_context.scale_bucket_profiles.clone(),
+        observed_return_volatility: optimizer_context.observed_return_volatility,
+        log_likelihood_shift: optimizer_context.log_likelihood_shift,
+        open_session_sell_share_proxy: optimizer_context.open_session_sell_share_proxy,
+        seed_member_indices: optimizer_context.seed_member_indices.clone(),
+        local_member_indices: optimizer_context.local_member_indices.clone(),
+        full_member_indices: optimizer_context.full_member_indices.clone(),
         cache: Arc::new(Mutex::new(BTreeMap::new())),
     }
 }
@@ -229,6 +351,11 @@ pub(super) fn build_equal_business_time_blocks(
             .map(|(observation, _)| observation.log_return)
             .sum::<f64>();
 
+        let total_elapsed_same_session_hours = aligned_pairs
+            .iter()
+            .map(|(observation, _)| observation.elapsed_same_session_hours)
+            .sum::<f64>();
+
         let weighted_activity_lift = weighted_average(
             aligned_pairs
                 .iter()
@@ -238,6 +365,7 @@ pub(super) fn build_equal_business_time_blocks(
                 .collect::<Vec<_>>()
                 .as_slice(),
         );
+
         let weighted_sell_share = weighted_average(
             aligned_pairs
                 .iter()
@@ -256,6 +384,7 @@ pub(super) fn build_equal_business_time_blocks(
         return vec![(
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: last_observation.return_timestamp_utc_nanos,
+                elapsed_same_session_hours: total_elapsed_same_session_hours,
                 log_return: total_log_return,
                 post_shock_activity_lift: weighted_activity_lift,
                 sell_share_proxy: weighted_sell_share,
@@ -266,12 +395,16 @@ pub(super) fn build_equal_business_time_blocks(
 
     let mut aggregated_blocks: Vec<(ReturnComponentsObservedOpenSessionReturn, f64)> =
         Vec::with_capacity(target_block_count);
+
     let mut running_log_return = 0.0;
+    let mut running_elapsed_same_session_hours = 0.0;
     let mut running_business_time = 0.0;
     let mut running_weighted_activity_lift = 0.0;
     let mut running_weighted_sell_share = 0.0;
     let mut running_weight_sum = 0.0;
+
     let mut emitted_block_count = 0usize;
+
     let mut cumulative_business_time = 0.0;
 
     for (aligned_index, (observation, business_time_scale)) in aligned_pairs.iter().enumerate() {
@@ -283,6 +416,7 @@ pub(super) fn build_equal_business_time_blocks(
             };
 
         running_log_return += observation.log_return;
+        running_elapsed_same_session_hours += observation.elapsed_same_session_hours;
         running_business_time += positive_business_time;
         running_weighted_activity_lift +=
             observation.post_shock_activity_lift * positive_business_time;
@@ -292,6 +426,7 @@ pub(super) fn build_equal_business_time_blocks(
 
         let remaining_observation_count = aligned_pairs.len().saturating_sub(aligned_index + 1);
         let remaining_block_count = target_block_count.saturating_sub(emitted_block_count + 1);
+
         let should_emit = aligned_index + 1 == aligned_pairs.len()
             || remaining_observation_count == remaining_block_count
             || cumulative_business_time
@@ -307,6 +442,7 @@ pub(super) fn build_equal_business_time_blocks(
         aggregated_blocks.push((
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: observation.return_timestamp_utc_nanos,
+                elapsed_same_session_hours: running_elapsed_same_session_hours,
                 log_return: running_log_return,
                 post_shock_activity_lift: running_weighted_activity_lift / weight_denominator,
                 sell_share_proxy: (running_weighted_sell_share / weight_denominator)
@@ -318,6 +454,7 @@ pub(super) fn build_equal_business_time_blocks(
         emitted_block_count += 1;
 
         running_log_return = 0.0;
+        running_elapsed_same_session_hours = 0.0;
         running_business_time = 0.0;
         running_weighted_activity_lift = 0.0;
         running_weighted_sell_share = 0.0;
@@ -391,6 +528,7 @@ fn fidelity_member_indices(
 
     let sell_share_stratum_count = match fidelity_tier {
         ContinuousLikelihoodFidelityTier::Seed => 1,
+        ContinuousLikelihoodFidelityTier::Representative => return (0..total_count).collect(),
         ContinuousLikelihoodFidelityTier::Local => scale_bucket_profiles.len(),
         ContinuousLikelihoodFidelityTier::Full => unreachable!("full tier handled above"),
     };
@@ -419,27 +557,4 @@ fn fidelity_member_indices(
     }
 
     selected_member_indices
-}
-
-fn representative_member_indices_from_sorted_strata(
-    sorted_member_indices: &[usize],
-    target_stratum_count: usize,
-) -> Vec<usize> {
-    if sorted_member_indices.is_empty() || target_stratum_count == 0 {
-        return Vec::new();
-    }
-
-    let resolved_stratum_count = target_stratum_count.min(sorted_member_indices.len());
-
-    (0..resolved_stratum_count)
-        .filter_map(|stratum_index| {
-            let start_offset = stratum_index * sorted_member_indices.len() / resolved_stratum_count;
-            let end_offset = ((stratum_index + 1) * sorted_member_indices.len()
-                / resolved_stratum_count)
-                .max(start_offset + 1);
-            let median_offset = start_offset + (end_offset - start_offset - 1) / 2;
-
-            sorted_member_indices.get(median_offset).copied()
-        })
-        .collect()
 }

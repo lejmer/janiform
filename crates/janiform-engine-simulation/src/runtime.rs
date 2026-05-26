@@ -8,7 +8,6 @@ mod news;
 mod observed_state;
 mod results;
 mod simulation;
-mod time;
 mod trading_time;
 mod updates;
 mod validation;
@@ -34,10 +33,11 @@ pub(crate) use news::{
     sample_count_from_expectation, sample_interval_timestamp_utc_nanos,
     validate_known_scheduled_news_timestamps,
 };
+pub(crate) use observed_state::SeededObservedState;
 pub(crate) use trading_time::{
     build_interval_open_market_segments, integrate_open_market_elapsed_hours,
 };
 pub(crate) use validation::{
-    compute_max_effective_endogenous_branching_ratio, validate_hourly_factor_field_length,
-    validate_hourly_factor_interval_coverage,
+    compute_max_effective_endogenous_branching_ratio, is_valid_observed_price_tick_size,
+    validate_hourly_factor_field_length, validate_hourly_factor_interval_coverage,
 };

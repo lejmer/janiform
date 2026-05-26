@@ -1,4 +1,7 @@
-use super::dispatch::calibration_stage_token;
+use janiform_calibration_artifacts::{
+    CalibrationEffortOptions, JointRefinementStageRestartEvaluationTimingDiagnostic,
+};
+
 use super::{
     CalibrationDiagnosticArtifactBundle, CalibrationDiagnosticArtifactReference,
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
@@ -23,10 +26,13 @@ pub struct CalibrationStagedRunInputs {
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
+    pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
     pub joint_refinement_restart_candidate_budget_override: Option<usize>,
-    pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
-    pub joint_refinement_audit_option_pricing_enabled: bool,
-    pub joint_refinement_option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
+    pub treat_inadmissible_calibration_warning_as_error: bool,
+    pub option_refinement_candidate_count_override: Option<usize>,
+    pub option_refinement_wall_clock_budget_millis: Option<u64>,
+    pub audit_option_pricing_enabled: bool,
+    pub option_refinement_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -41,6 +47,8 @@ pub enum CalibrationStagedRunStageReport {
     ReturnComponents(Box<ReturnComponentsStageExecutionReport>),
     MeanReversion(Box<MeanReversionStageExecutionReport>),
     JointRefinement(Box<JointRefinementStageExecutionReport>),
+    OptionRefinement(Box<JointRefinementStageExecutionReport>),
+    Finalization(Box<JointRefinementStageExecutionReport>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -213,16 +221,20 @@ impl CalibrationStagedRunStageReport {
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
+            Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
+            Self::Finalization(_) => CalibrationStage::Finalization,
         }
     }
 
-    pub(super) const fn status(&self) -> CalibrationStageExecutionStatus {
+    pub const fn status(&self) -> CalibrationStageExecutionStatus {
         match self {
             Self::Seasonality(report) => report.status,
             Self::Hawkes(report) => report.status,
             Self::ReturnComponents(report) => report.status,
             Self::MeanReversion(report) => report.status,
             Self::JointRefinement(report) => report.status,
+            Self::OptionRefinement(report) => report.status,
+            Self::Finalization(report) => report.status,
         }
     }
 
@@ -239,6 +251,12 @@ impl CalibrationStagedRunStageReport {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::JointRefinement(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::OptionRefinement(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::Finalization(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
         }
@@ -260,7 +278,17 @@ pub enum CalibrationStagedRunFailure {
         artifact_reference: String,
         error_message: String,
     },
-    StageParameterArtifactIoFailed {
+    StageParameterArtifactLoadFailed {
+        stage: CalibrationStage,
+        artifact_reference: String,
+        error_message: String,
+    },
+    StageParameterArtifactBuildFailed {
+        stage: CalibrationStage,
+        artifact_reference: String,
+        error_message: String,
+    },
+    StageParameterArtifactPersistFailed {
         stage: CalibrationStage,
         artifact_reference: String,
         error_message: String,
@@ -419,12 +447,12 @@ pub struct CalibrationStagedRunStageProgressEvent {
     pub current_item_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_restart_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_work_item_status: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub planned_work_item_labels: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_restart_count: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_parameter_block: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_outer_cycles: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -436,19 +464,27 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evaluation_progress_percent: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_pricing_interval_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_pricing_interval_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_pricing_row_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_pricing_row_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub valid_completed_units: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cumulative_local_evaluation_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_weighted_objective: Option<f64>,
+    pub current_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_restart_best_weighted_objective: Option<f64>,
+    pub current_restart_best_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_restart_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub best_weighted_objective: Option<f64>,
+    pub best_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_coarse_consistency_fit: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -460,13 +496,8 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exact_tilted_mixed_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_evaluation_timing_diagnostic:
+        Option<JointRefinementStageRestartEvaluationTimingDiagnostic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub current_convergence_ratio: Option<f64>,
-}
-
-pub fn calibration_checkpoint_reference_for_stage(run_id: &str, stage: CalibrationStage) -> String {
-    format!("checkpoint://{run_id}/{}", calibration_stage_token(stage))
-}
-
-pub fn calibration_last_success_checkpoint_reference(run_id: &str) -> String {
-    format!("checkpoint://{run_id}/last-success")
 }

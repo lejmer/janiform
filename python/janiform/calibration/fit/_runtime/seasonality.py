@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, Final, TYPE_CHECKING, cast
 
 from ...._native_api import native_module
 from ...._timestamps import NANOS_PER_HOUR, datetime_to_utc_nanos
@@ -25,6 +25,11 @@ from .shared import RuntimeStructuralSeasonalityGrid
 
 if TYPE_CHECKING:
     from ....model import JaniformModel
+
+
+RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: Final = (
+    "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1"
+)
 
 
 def build_runtime_hourly_seasonality_source_from_model(
@@ -78,7 +83,7 @@ def build_runtime_hourly_seasonality_source_from_model(
     if not seasonality_grid.seasonality_factors:
         return HourlySeasonalityProviderExplicitSource(
             hourly_factors=(),
-            materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
+            materialization_method=RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
         )
 
     if interval_duration_nanos < NANOS_PER_HOUR or not runtime_interval_grid_is_hour_aligned(
@@ -99,7 +104,7 @@ def build_runtime_hourly_seasonality_source_from_model(
 
     return HourlySeasonalityProviderExplicitSource(
         hourly_factors=seasonality_grid.seasonality_factors,
-        materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
+        materialization_method=RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
     )
 
 

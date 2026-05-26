@@ -14,6 +14,7 @@ pub(super) fn joint_refinement_seasonality_factors_from_payload(
         intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
         intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
         day_of_week_factor: payload.day_of_week_factor.clone(),
+        hour_of_week_factor: payload.hour_of_week_factor.clone(),
         day_of_year_factor: payload.day_of_year_factor.clone(),
     }
 }
@@ -30,6 +31,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
+                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
                 },
             );
@@ -38,6 +40,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
+                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
                 });
         }
@@ -102,24 +105,17 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
         }
         CalibrationStageParameterPayload::JointRefinement(payload) => {
             payload_state.joint_refinement_stage_payload =
-                Some(crate::stages::joint_refinement::JointRefinementStageFittedPayload {
-                    schema_version:
-                        janiform_calibration_artifacts::CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
-                    selected_candidate_id: payload.selected_candidate_id.clone(),
-                    fitted_parameters: payload.fitted_parameters.clone(),
-                    baseline_hawkes_fitted_parameters: payload
-                        .baseline_hawkes_fitted_parameters
-                        .clone(),
-                    baseline_return_components_fitted_parameters: payload
-                        .baseline_return_components_fitted_parameters
-                        .clone(),
-                    objective_breakdown: payload.objective_breakdown.clone(),
-                    optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
-                    candidate_frontier: Vec::new(),
-                    simulation_summaries: Vec::new(),
-                    coarse_tick_consistency: Vec::new(),
-                    option_calibration_diagnostics: None,
-                });
+                Some(joint_refinement_payload_from_parameter_payload(payload));
+            payload_state.joint_refinement_runtime_handoff = None;
+        }
+        CalibrationStageParameterPayload::OptionRefinement(payload) => {
+            payload_state.option_refinement_stage_payload =
+                Some(joint_refinement_payload_from_parameter_payload(payload));
+            payload_state.option_refinement_runtime_handoff = None;
+        }
+        CalibrationStageParameterPayload::Finalization(payload) => {
+            payload_state.finalization_stage_payload =
+                Some(joint_refinement_payload_from_parameter_payload(payload));
         }
     }
 }
@@ -154,6 +150,35 @@ pub(super) fn update_in_memory_payload_state(
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             payload_state.joint_refinement_stage_payload = report.fitted_stage_payload.clone();
+            payload_state.joint_refinement_runtime_handoff = report.runtime_handoff.clone();
         }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            payload_state.option_refinement_stage_payload = report.fitted_stage_payload.clone();
+            payload_state.option_refinement_runtime_handoff = report.runtime_handoff.clone();
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
+            payload_state.finalization_stage_payload = report.fitted_stage_payload.clone();
+        }
+    }
+}
+
+fn joint_refinement_payload_from_parameter_payload(
+    payload: &janiform_calibration_artifacts::JointRefinementStageParameterPayload,
+) -> crate::stages::joint_refinement::JointRefinementStageFittedPayload {
+    crate::stages::joint_refinement::JointRefinementStageFittedPayload {
+        schema_version:
+            janiform_calibration_artifacts::CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
+        selected_candidate_id: payload.selected_candidate_id.clone(),
+        fitted_parameters: payload.fitted_parameters.clone(),
+        baseline_hawkes_fitted_parameters: payload.baseline_hawkes_fitted_parameters.clone(),
+        baseline_return_components_fitted_parameters: payload
+            .baseline_return_components_fitted_parameters
+            .clone(),
+        objective_breakdown: payload.objective_breakdown.clone(),
+        optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
+        candidate_frontier: Vec::new(),
+        simulation_summaries: Vec::new(),
+        coarse_tick_consistency: Vec::new(),
+        option_calibration_diagnostics: None,
     }
 }

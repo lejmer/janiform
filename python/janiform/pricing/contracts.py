@@ -35,6 +35,7 @@ from .._pricing_field_names import (
 )
 from ._moneyness import calculate_log_forward_moneyness
 from .errors import PRICING_ERROR_FACTORY, _pricing_error
+from ..return_clock import ReturnClockExposureParameters
 from ..contracts.base import (
     require_boolean,
     require_optional_finite_number,
@@ -67,7 +68,7 @@ from ..contracts.base import (
 )
 from ..errors import JaniformValidationError
 from ..hourly_factors import HourlyFactorContract
-from .._timestamps import NANOS_PER_HOUR
+from .._timestamps import NANOS_PER_HOUR, hours_to_exact_nanoseconds
 
 if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
@@ -78,6 +79,8 @@ DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION = "pricing.vanilla_option.run_result.v1"
 VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION = "pricing.vanilla_option.run_diagnostics.v1"
 VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION = "pricing.vanilla_option.calibration_hooks.v1"
+
+
 VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION = (
     "pricing.vanilla_option.run_output_schema_metadata.v1"
 )
@@ -114,7 +117,6 @@ VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: tuple[str, ...] = (
 PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY = (
     "solve_state_dependent_local_tilt_against_endogenous_q_martingale_target.v1"
 )
-_PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
 
 def _parse_hawkes_kernel_parameters(
@@ -169,18 +171,10 @@ class VanillaOptionPricingStatus(StrEnum):
 
 class VanillaOptionPricingFailureStage(StrEnum):
     NODE_SETUP = "node_setup"
-    TRANSFORM_INPUT_BUILD = "transform_input_build"
-    TRANSFORM_SOLVE = "transform_solve"
-    TRANSFORM_OUTPUT = "transform_output"
-    CHARACTERISTIC_FUNCTION_ASSEMBLY = "characteristic_function_assembly"
     FOURIER_PRICING = "fourier_pricing"
     RISK_NEUTRAL_CHARACTERISTIC_FUNCTION = "risk_neutral_characteristic_function"
-    ENDOGENOUS_ANCHOR_MATERIALIZATION = "endogenous_anchor_materialization"
-    EXPECTED_HAWKES_STATE_UPDATE = "expected_hawkes_state_update"
-    ANCHORED_LOCAL_TILT_SOLVE = "anchored_local_tilt_solve"
-    SPECTRAL_OBSERVED_BOUNDARY_STATE = "spectral_observed_boundary_state"
+    TERMINAL_AFFINE_MEASURE_CHANGE = "terminal_affine_measure_change"
     SPECTRAL_DIAGNOSTICS = "spectral_diagnostics"
-    SPECTRAL_OPERATOR_ASSEMBLY = "spectral_operator_assembly"
     RESPONSE_DIAGNOSTICS = "response_diagnostics"
     RESPONSE_ASSEMBLY = "response_assembly"
     RUN_RESULT_ASSEMBLY = "run_result_assembly"
@@ -514,12 +508,64 @@ class VanillaOptionPricingMarketInputs(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class VanillaOptionPricingKernelParameters(ContractModel):
+    buy_activity_premium: float
+    sell_activity_premium: float
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(
+            self.buy_activity_premium,
+            "model_parameters.pricing_kernel_parameters.buy_activity_premium",
+            PRICING_ERROR_FACTORY,
+        )
+
+        require_positive_finite_scalar(
+            self.sell_activity_premium,
+            "model_parameters.pricing_kernel_parameters.sell_activity_premium",
+            PRICING_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def identity() -> VanillaOptionPricingKernelParameters:
+        return VanillaOptionPricingKernelParameters(
+            buy_activity_premium=1.0,
+            sell_activity_premium=1.0,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> VanillaOptionPricingKernelParameters:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return VanillaOptionPricingKernelParameters(
+            buy_activity_premium=require_positive_finite_number(
+                raw_payload,
+                "buy_activity_premium",
+                f"{field_path}.buy_activity_premium",
+                PRICING_ERROR_FACTORY,
+            ),
+            sell_activity_premium=require_positive_finite_number(
+                raw_payload,
+                "sell_activity_premium",
+                f"{field_path}.sell_activity_premium",
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class VanillaOptionPricingModelParameters(ContractModel):
     """Model-side pricing inputs across Hawkes, news, and NIG layers."""
 
     hawkes_kernel_parameters: HawkesKernelParameters
     news_process_configuration: NewsProcessConfiguration
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+    return_clock_exposure_parameters: ReturnClockExposureParameters
+    pricing_kernel_parameters: VanillaOptionPricingKernelParameters
 
     def __post_init__(self) -> None:
         from ..simulation import HawkesKernelParameters
@@ -544,6 +590,24 @@ class VanillaOptionPricingModelParameters(ContractModel):
             raise _pricing_error(
                 "model_parameters.nig_shared_plus_shift_configuration",
                 "must be a NigSharedPlusShiftConfiguration",
+            )
+
+        if not isinstance(
+            self.return_clock_exposure_parameters,
+            ReturnClockExposureParameters,
+        ):
+            raise _pricing_error(
+                "model_parameters.return_clock_exposure_parameters",
+                "must be a ReturnClockExposureParameters",
+            )
+
+        if not isinstance(
+            self.pricing_kernel_parameters,
+            VanillaOptionPricingKernelParameters,
+        ):
+            raise _pricing_error(
+                "model_parameters.pricing_kernel_parameters",
+                "must be a VanillaOptionPricingKernelParameters",
             )
 
     @staticmethod
@@ -583,6 +647,25 @@ class VanillaOptionPricingModelParameters(ContractModel):
                         PRICING_ERROR_FACTORY,
                     ),
                     field_path=f"{field_path}.nig_shared_plus_shift_configuration",
+                ),
+                return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "return_clock_exposure_parameters",
+                        f"{field_path}.return_clock_exposure_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.return_clock_exposure_parameters",
+                    error_factory=PRICING_ERROR_FACTORY,
+                ),
+                pricing_kernel_parameters=VanillaOptionPricingKernelParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "pricing_kernel_parameters",
+                        f"{field_path}.pricing_kernel_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.pricing_kernel_parameters",
                 ),
             )
         except JaniformValidationError as e:
@@ -916,10 +999,15 @@ class VanillaOptionPricingRequest(ContractModel):
                 "must be an AnchoredVanillaOptionPricingBoundaryInput",
             )
 
-        if (
-            abs(self.boundary_input.interval_delta - self.interval_delta)
-            > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        ):
+        try:
+            interval_duration_nanos = hours_to_exact_nanoseconds(self.interval_delta)
+            boundary_interval_duration_nanos = hours_to_exact_nanoseconds(
+                self.boundary_input.interval_delta
+            )
+        except ValueError as e:
+            raise _pricing_error("interval_delta", str(e)) from e
+
+        if boundary_interval_duration_nanos != interval_duration_nanos:
             raise _pricing_error(
                 "interval_delta",
                 (
@@ -1428,14 +1516,9 @@ class VanillaOptionPricingFailureDiagnostic(ContractModel):
                 PRICING_ERROR_FACTORY,
                 enum_type=VanillaOptionPricingFailureStage,
                 allowed_values_message=(
-                    "must be one of: node_setup, transform_input_build, "
-                    "transform_solve, transform_output, "
-                    "characteristic_function_assembly, fourier_pricing, "
-                    "risk_neutral_characteristic_function, "
-                    "endogenous_anchor_materialization, "
-                    "expected_hawkes_state_update, anchored_local_tilt_solve, "
-                    "spectral_observed_boundary_state, "
-                    "spectral_diagnostics, spectral_operator_assembly, "
+                    "must be one of: node_setup, fourier_pricing, "
+                    "risk_neutral_characteristic_function, terminal_affine_measure_change, "
+                    "spectral_diagnostics, "
                     "response_diagnostics, response_assembly, "
                     "run_result_assembly, worker_execution"
                 ),

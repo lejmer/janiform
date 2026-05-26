@@ -122,6 +122,7 @@ pub(crate) use janiform_calibration_artifacts::{
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
+    calibration_last_success_checkpoint_reference, calibration_stage_checkpoint_reference,
     calibration_stage_parameter_artifact_path,
     calibration_stage_parameter_artifact_path_in_run_directory, calibration_stage_token,
     calibration_validation_metric_artifact_path, calibration_validation_metric_artifact_reference,
@@ -155,9 +156,9 @@ pub(crate) use janiform_calibration_runtime::{
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
     CalibrationDayOfYearSeasonalityEstimatorSettings,
     CalibrationDirectionalLabelDiagnosticsPayload, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesObservedSourceRegime, CalibrationHawkesStageCandidateInput,
-    CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
-    CalibrationJointRefinementCarryInput, CalibrationJointRefinementCurrentStateEstimationInput,
+    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
+    CalibrationIntradaySmoothingKernel, CalibrationJointRefinementCarryInput,
+    CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
     CalibrationMemoryCheckpointStore, CalibrationObjectiveCompositionError,
@@ -269,7 +270,6 @@ pub(crate) use janiform_calibration_runtime::{
     SeasonalityStageHandoffOutput, SeasonalityStageNormalizedPayload,
     SeasonalityStageOverlayMetadata,
     build_option_surface_calibration_observation_from_pricing_hooks,
-    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
     compose_calibration_weighted_objective, current_process_resident_bytes,
     estimate_current_state_from_observed_data,
     evaluate_calibration_martingale_condition_under_esscher_tilt,
@@ -340,11 +340,29 @@ pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
     runtime_profile.deterministic_cache_miss_count = 0;
     runtime_profile.seed_summary_cache_hit_count = 0;
     runtime_profile.seed_summary_cache_miss_count = 0;
+    runtime_profile.aggregated_likelihood_context_cache_hit_count = 0;
+    runtime_profile.aggregated_likelihood_context_cache_miss_count = 0;
     runtime_profile.option_pricing_cache_hit_count = 0;
     runtime_profile.option_pricing_cache_miss_count = 0;
     runtime_profile.option_pricing_run_count = 0;
     runtime_profile.cumulative_deterministic_evaluation_millis = 0;
+    runtime_profile.cumulative_modeled_rate_millis = 0;
+    runtime_profile.cumulative_likelihood_context_resolution_millis = 0;
+    runtime_profile.cumulative_likelihood_context_5m_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_15m_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_tick_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_tick_optimizer_millis = 0;
+    runtime_profile.cumulative_likelihood_context_5m_optimizer_millis = 0;
+    runtime_profile.cumulative_likelihood_context_15m_optimizer_millis = 0;
+    runtime_profile.cumulative_tick_likelihood_millis = 0;
+    runtime_profile.cumulative_5m_likelihood_millis = 0;
+    runtime_profile.cumulative_15m_likelihood_millis = 0;
+    runtime_profile.cumulative_expected_activity_counts_millis = 0;
+    runtime_profile.cumulative_deterministic_activity_shape_millis = 0;
+    runtime_profile.cumulative_deterministic_activity_level_millis = 0;
     runtime_profile.cumulative_seed_summary_simulation_millis = 0;
+    runtime_profile.cumulative_raw_seed_metrics_millis = 0;
+    runtime_profile.cumulative_loss_build_millis = 0;
     runtime_profile.cumulative_option_pricing_millis = 0;
 }
 
@@ -353,75 +371,64 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
     expected_breakdown: &JointRefinementStageObjectiveBreakdown,
     context: &str,
 ) {
-    assert_f64_within_one_ulp(
-        actual_breakdown.aggregated_likelihood_fit,
-        expected_breakdown.aggregated_likelihood_fit,
-        &format!("{context} aggregated_likelihood_fit"),
+    assert_eq!(
+        actual_breakdown.policy, expected_breakdown.policy,
+        "{context} objective policy"
     );
     assert_f64_within_one_ulp(
-        actual_breakdown.aggregated_return_shape_fit,
-        expected_breakdown.aggregated_return_shape_fit,
-        &format!("{context} aggregated_return_shape_fit"),
+        actual_breakdown.global_loss,
+        expected_breakdown.global_loss,
+        &format!("{context} global_loss"),
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.return_asymmetry_fit,
-        expected_breakdown.return_asymmetry_fit,
-        &format!("{context} return_asymmetry_fit"),
+
+    assert_eq!(
+        actual_breakdown.family_losses.len(),
+        expected_breakdown.family_losses.len(),
+        "{context} family loss count"
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.tick_return_asymmetry_fit,
-        expected_breakdown.tick_return_asymmetry_fit,
-        &format!("{context} tick_return_asymmetry_fit"),
+
+    for (family_index, (actual_family, expected_family)) in actual_breakdown
+        .family_losses
+        .iter()
+        .zip(expected_breakdown.family_losses.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            actual_family.family_id, expected_family.family_id,
+            "{context} family id at {family_index}"
+        );
+        assert_eq!(
+            actual_family.term_count, expected_family.term_count,
+            "{context} family term count at {family_index}"
+        );
+        assert_f64_within_one_ulp(
+            actual_family.loss,
+            expected_family.loss,
+            &format!("{context} family loss at {family_index}"),
+        );
+        assert_f64_within_one_ulp(
+            actual_family.max_standardized_residual,
+            expected_family.max_standardized_residual,
+            &format!("{context} family max z at {family_index}"),
+        );
+        assert_eq!(
+            actual_family.worst_term_id, expected_family.worst_term_id,
+            "{context} family worst term at {family_index}"
+        );
+    }
+
+    assert_eq!(
+        actual_breakdown.term_diagnostics, expected_breakdown.term_diagnostics,
+        "{context} term diagnostics"
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.aggregated_return_scale_fit,
-        expected_breakdown.aggregated_return_scale_fit,
-        &format!("{context} aggregated_return_scale_fit"),
+    assert_eq!(
+        actual_breakdown.hard_constraint_diagnostics,
+        expected_breakdown.hard_constraint_diagnostics,
+        "{context} hard constraints"
     );
-    assert_f64_within_one_ulp(
-        actual_breakdown.tick_return_scale_fit,
-        expected_breakdown.tick_return_scale_fit,
-        &format!("{context} tick_return_scale_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.business_time_return_scale_fit,
-        expected_breakdown.business_time_return_scale_fit,
-        &format!("{context} business_time_return_scale_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.intraday_return_level_fit,
-        expected_breakdown.intraday_return_level_fit,
-        &format!("{context} intraday_return_level_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.activity_shape_fit,
-        expected_breakdown.activity_shape_fit,
-        &format!("{context} activity_shape_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.activity_level_fit,
-        expected_breakdown.activity_level_fit,
-        &format!("{context} activity_level_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.rv_activity_coupling_fit,
-        expected_breakdown.rv_activity_coupling_fit,
-        &format!("{context} rv_activity_coupling_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.price_span_sanity_fit,
-        expected_breakdown.price_span_sanity_fit,
-        &format!("{context} price_span_sanity_fit"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.weighted_objective,
-        expected_breakdown.weighted_objective,
-        &format!("{context} weighted_objective"),
-    );
-    assert_f64_within_one_ulp(
-        actual_breakdown.hard_constraint_penalty,
-        expected_breakdown.hard_constraint_penalty,
-        &format!("{context} hard_constraint_penalty"),
+    assert_eq!(
+        actual_breakdown.admissibility, expected_breakdown.admissibility,
+        "{context} admissibility"
     );
 }
 
@@ -559,6 +566,16 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} seed_summary_cache_miss_count drifted"
     );
     assert_eq!(
+        actual_profile.aggregated_likelihood_context_cache_hit_count,
+        expected_profile.aggregated_likelihood_context_cache_hit_count,
+        "{context} aggregated_likelihood_context_cache_hit_count drifted"
+    );
+    assert_eq!(
+        actual_profile.aggregated_likelihood_context_cache_miss_count,
+        expected_profile.aggregated_likelihood_context_cache_miss_count,
+        "{context} aggregated_likelihood_context_cache_miss_count drifted"
+    );
+    assert_eq!(
         actual_profile.option_pricing_cache_hit_count,
         expected_profile.option_pricing_cache_hit_count,
         "{context} option_pricing_cache_hit_count drifted"
@@ -583,9 +600,88 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} cumulative_deterministic_evaluation_millis drifted"
     );
     assert_eq!(
+        actual_profile.cumulative_modeled_rate_millis,
+        expected_profile.cumulative_modeled_rate_millis,
+        "{context} cumulative_modeled_rate_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_resolution_millis,
+        expected_profile.cumulative_likelihood_context_resolution_millis,
+        "{context} cumulative_likelihood_context_resolution_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_5m_sample_millis,
+        expected_profile.cumulative_likelihood_context_5m_sample_millis,
+        "{context} cumulative_likelihood_context_5m_sample_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_15m_sample_millis,
+        expected_profile.cumulative_likelihood_context_15m_sample_millis,
+        "{context} cumulative_likelihood_context_15m_sample_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_tick_sample_millis,
+        expected_profile.cumulative_likelihood_context_tick_sample_millis,
+        "{context} cumulative_likelihood_context_tick_sample_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_tick_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_tick_optimizer_millis,
+        "{context} cumulative_likelihood_context_tick_optimizer_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_5m_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_5m_optimizer_millis,
+        "{context} cumulative_likelihood_context_5m_optimizer_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_likelihood_context_15m_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_15m_optimizer_millis,
+        "{context} cumulative_likelihood_context_15m_optimizer_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_tick_likelihood_millis,
+        expected_profile.cumulative_tick_likelihood_millis,
+        "{context} cumulative_tick_likelihood_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_5m_likelihood_millis,
+        expected_profile.cumulative_5m_likelihood_millis,
+        "{context} cumulative_5m_likelihood_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_15m_likelihood_millis,
+        expected_profile.cumulative_15m_likelihood_millis,
+        "{context} cumulative_15m_likelihood_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_expected_activity_counts_millis,
+        expected_profile.cumulative_expected_activity_counts_millis,
+        "{context} cumulative_expected_activity_counts_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_deterministic_activity_shape_millis,
+        expected_profile.cumulative_deterministic_activity_shape_millis,
+        "{context} cumulative_deterministic_activity_shape_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_deterministic_activity_level_millis,
+        expected_profile.cumulative_deterministic_activity_level_millis,
+        "{context} cumulative_deterministic_activity_level_millis drifted"
+    );
+    assert_eq!(
         actual_profile.cumulative_seed_summary_simulation_millis,
         expected_profile.cumulative_seed_summary_simulation_millis,
         "{context} cumulative_seed_summary_simulation_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_raw_seed_metrics_millis,
+        expected_profile.cumulative_raw_seed_metrics_millis,
+        "{context} cumulative_raw_seed_metrics_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_loss_build_millis, expected_profile.cumulative_loss_build_millis,
+        "{context} cumulative_loss_build_millis drifted"
     );
     assert_eq!(
         actual_profile.cumulative_option_pricing_millis,
@@ -1132,6 +1228,10 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             stage: CalibrationStage::JointRefinement,
             optimizer_settings: build_joint_refinement_solver_settings(),
         },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::Finalization,
+            optimizer_settings: build_joint_refinement_solver_settings(),
+        },
     ]
 }
 
@@ -1236,6 +1336,8 @@ pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
                 joint_refinement_stage_output_schema_version: Some(
                     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
                 ),
+                option_refinement_stage_output_schema_version: None,
+                finalization_stage_output_schema_version: None,
                 seasonality_estimator_version: Some(
                     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string(),
                 ),
@@ -1512,6 +1614,7 @@ fn stage_parameter_artifact_input(
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
+                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
                     normalization_metadata: payload.normalization_metadata.clone(),
                 }),
@@ -1649,71 +1752,27 @@ fn stage_parameter_artifact_input(
             ))
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
-            let payload = report.fitted_stage_payload.as_ref().ok_or(
-                CalibrationStageParameterArtifactBuildError::ValidationFailed {
-                    stage: CalibrationStage::JointRefinement,
-                    error_message: "successful joint-refinement stage is missing its payload"
-                        .to_string(),
-                },
-            )?;
-            let metadata = report.metadata.as_ref().ok_or(
-                CalibrationStageParameterArtifactBuildError::ValidationFailed {
-                    stage: CalibrationStage::JointRefinement,
-                    error_message: "successful joint-refinement stage is missing metadata"
-                        .to_string(),
-                },
-            )?;
-
             Ok(CalibrationStageParameterArtifactInput::JointRefinement(
-                Box::new(JointRefinementStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    optimizer_state: CalibrationStageParameterOptimizerStateInput {
-                        backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
-                        random_seed: metadata.optimizer_adapter_metadata.random_seed,
-                        selection_policy: metadata
-                            .optimizer_adapter_metadata
-                            .selection_policy
-                            .to_string(),
-                        penalty_policy: metadata
-                            .optimizer_adapter_metadata
-                            .penalty_policy
-                            .to_string(),
-                        bounds_policy: metadata
-                            .optimizer_adapter_metadata
-                            .bounds_policy
-                            .to_string(),
-                        solver_settings: metadata
-                            .optimizer_adapter_metadata
-                            .solver_settings
-                            .clone(),
-                        input_candidate_count: metadata.input_candidate_count,
-                        valid_candidate_count: metadata.valid_candidate_count,
-                        selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
-                        selected_candidate_penalized_objective: metadata
-                            .selected_candidate_penalized_objective,
-                    },
-                    selected_candidate_id: payload.selected_candidate_id.clone(),
-                    fitted_parameters: payload.fitted_parameters.clone(),
-                    baseline_hawkes_fitted_parameters: payload
-                        .baseline_hawkes_fitted_parameters
-                        .clone(),
-                    baseline_return_components_fitted_parameters: payload
-                        .baseline_return_components_fitted_parameters
-                        .clone(),
-                    objective_breakdown: payload.objective_breakdown.clone(),
-                    optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
-                }),
+                Box::new(joint_refinement_like_stage_parameter_artifact_input(
+                    CalibrationStage::JointRefinement,
+                    report,
+                )?),
+            ))
+        }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            Ok(CalibrationStageParameterArtifactInput::OptionRefinement(
+                Box::new(joint_refinement_like_stage_parameter_artifact_input(
+                    CalibrationStage::OptionRefinement,
+                    report,
+                )?),
+            ))
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
+            Ok(CalibrationStageParameterArtifactInput::Finalization(
+                Box::new(joint_refinement_like_stage_parameter_artifact_input(
+                    CalibrationStage::Finalization,
+                    report,
+                )?),
             ))
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
@@ -1761,6 +1820,71 @@ fn stage_parameter_artifact_input(
     }
 }
 
+fn joint_refinement_like_stage_parameter_artifact_input(
+    stage: CalibrationStage,
+    report: &JointRefinementStageExecutionReport,
+) -> Result<JointRefinementStageParameterArtifactInput, CalibrationStageParameterArtifactBuildError>
+{
+    let payload = report.fitted_stage_payload.as_ref().ok_or(
+        CalibrationStageParameterArtifactBuildError::ValidationFailed {
+            stage,
+            error_message: format!(
+                "successful {} stage is missing its payload",
+                calibration_stage_token(stage)
+            ),
+        },
+    )?;
+    let metadata = report.metadata.as_ref().ok_or(
+        CalibrationStageParameterArtifactBuildError::ValidationFailed {
+            stage,
+            error_message: format!(
+                "successful {} stage is missing metadata",
+                calibration_stage_token(stage)
+            ),
+        },
+    )?;
+
+    Ok(JointRefinementStageParameterArtifactInput {
+        metadata: CalibrationStageParameterBuildMetadata {
+            stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+            run_global_seed: metadata.run_global_seed,
+            stage_seed: metadata.stage_seed,
+            stage_seed_source: metadata.stage_seed_source,
+            stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+            solver_settings: metadata.solver_settings.clone(),
+        },
+        optimizer_state: CalibrationStageParameterOptimizerStateInput {
+            backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
+            random_seed: metadata.optimizer_adapter_metadata.random_seed,
+            selection_policy: metadata
+                .optimizer_adapter_metadata
+                .selection_policy
+                .to_string(),
+            penalty_policy: metadata
+                .optimizer_adapter_metadata
+                .penalty_policy
+                .to_string(),
+            bounds_policy: metadata
+                .optimizer_adapter_metadata
+                .bounds_policy
+                .to_string(),
+            solver_settings: metadata.optimizer_adapter_metadata.solver_settings.clone(),
+            input_candidate_count: metadata.input_candidate_count,
+            valid_candidate_count: metadata.valid_candidate_count,
+            selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
+            selected_candidate_penalized_objective: metadata.selected_candidate_penalized_objective,
+        },
+        selected_candidate_id: payload.selected_candidate_id.clone(),
+        fitted_parameters: payload.fitted_parameters.clone(),
+        baseline_hawkes_fitted_parameters: payload.baseline_hawkes_fitted_parameters.clone(),
+        baseline_return_components_fitted_parameters: payload
+            .baseline_return_components_fitted_parameters
+            .clone(),
+        objective_breakdown: payload.objective_breakdown.clone(),
+        optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
+    })
+}
+
 pub(crate) fn build_run_contract_with_mode_and_resume(
     run_id: &str,
     execution_mode: CalibrationExecutionMode,
@@ -1775,6 +1899,7 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
             CalibrationStage::ReturnComponents,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
+            CalibrationStage::Finalization,
         ],
         build_solver_settings_for_all_stages(),
         resume_settings,
@@ -1868,6 +1993,7 @@ pub(crate) fn build_run_contract_for_caller_surface(
             CalibrationStage::ReturnComponents,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
+            CalibrationStage::Finalization,
         ],
         build_solver_settings_for_all_stages(),
     )
@@ -1939,16 +2065,16 @@ fn build_run_contract_for_caller_surface_with_stages(
 }
 
 fn configure_joint_refinement_test_backend() {
-    if std::env::var_os(JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV).is_none() {
-        // SAFETY: Test helpers in this module set a single deterministic backend policy for the
-        // current process before invoking the staged runner. All callers use the same value.
-        unsafe {
-            std::env::set_var(
-                JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV,
-                JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS,
-            );
-        }
+    // SAFETY: Test helpers in this module force a deterministic backend policy for the current
+    // process before invoking the staged runner. Tests that exercise the process-worker backend
+    // scope that override around the backend call itself.
+    unsafe {
+        std::env::set_var(
+            JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV,
+            JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS,
+        );
     }
+
     if std::env::var_os(JOINT_REFINEMENT_RESTART_POLICY_ENV).is_none() {
         // SAFETY: Test helpers in this module set a single deterministic restart policy for the
         // current process before invoking the staged runner. All callers use the same value.
@@ -1985,6 +2111,7 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
         CalibrationStage::ReturnComponents,
         CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
+        CalibrationStage::Finalization,
     ])
 }
 
@@ -2041,9 +2168,24 @@ pub(crate) fn stage_graph_for_selected_stages(
                 stage: CalibrationStage::JointRefinement,
                 depends_on: CalibrationStage::MeanReversion,
             },
+            CalibrationStageDependency {
+                stage: CalibrationStage::OptionRefinement,
+                depends_on: CalibrationStage::JointRefinement,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::Finalization,
+                depends_on: CalibrationStage::JointRefinement,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::Finalization,
+                depends_on: CalibrationStage::OptionRefinement,
+            },
         ]
         .into_iter()
-        .filter(|dependency| selected_stage_set.contains(&dependency.stage))
+        .filter(|dependency| {
+            selected_stage_set.contains(&dependency.stage)
+                && selected_stage_set.contains(&dependency.depends_on)
+        })
         .collect(),
     )
 }
@@ -2097,10 +2239,13 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
+        joint_refinement_calibration_effort: None,
         joint_refinement_restart_candidate_budget_override: Some(1),
-        joint_refinement_option_refinement_candidate_count_override: Some(1),
-        joint_refinement_audit_option_pricing_enabled: false,
-        joint_refinement_option_pricing_input: None,
+        treat_inadmissible_calibration_warning_as_error: false,
+        option_refinement_candidate_count_override: Some(1),
+        option_refinement_wall_clock_budget_millis: None,
+        audit_option_pricing_enabled: false,
+        option_refinement_pricing_input: None,
     }
 }
 
@@ -2119,7 +2264,7 @@ pub(crate) fn joint_refinement_stage_option_pricing_input_fixture()
         current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
             state_time_utc_nanos: valuation_time_utc_nanos,
             observed_spot: 100.0,
-            observed_log_price: 100.0_f64.ln(),
+            observed_log_return: 100.0_f64.ln(),
             observation_timestamp_utc_nanos: vec![valuation_time_utc_nanos],
             observation_trade_prices: vec![100.0],
             observation_trade_sides: vec![HawkesEventSide::Buy],
@@ -2512,6 +2657,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                         intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                         day_of_week_factor: seasonality_payload.day_of_week_factor,
                         day_of_year_factor: seasonality_payload.day_of_year_factor,
                     },
@@ -2527,8 +2673,11 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
+                    treat_inadmissible_calibration_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
+                    option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
                     option_pricing_input: None,
                 },
@@ -2657,30 +2806,35 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
         observed_open_session_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.004,
                 post_shock_activity_lift: 1.00,
                 sell_share_proxy: 0.48,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.018,
                 post_shock_activity_lift: 1.35,
                 sell_share_proxy: 0.62,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: -0.014,
                 post_shock_activity_lift: 1.10,
                 sell_share_proxy: 0.58,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 19, 15, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.010,
                 post_shock_activity_lift: 0.95,
                 sell_share_proxy: 0.41,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 20, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: -0.003,
                 post_shock_activity_lift: 0.92,
                 sell_share_proxy: 0.55,
@@ -2729,6 +2883,14 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
             )
             .expect("double-exponential base-shock configuration should validate"),
             coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
+        },
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
+            tick_size: None,
+            tick_size_source: "test".to_string(),
+            inference_policy: "test".to_string(),
+            observation_policy: "test".to_string(),
         },
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,

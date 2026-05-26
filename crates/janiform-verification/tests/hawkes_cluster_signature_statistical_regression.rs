@@ -1360,6 +1360,9 @@ fn build_run_config(
             )
             .expect("disabled mean-reversion boundary state should construct"),
             hourly_factor_contract,
+            return_clock_exposure_parameters:
+                janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            observed_price_tick_size: None,
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(),

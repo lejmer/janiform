@@ -16,6 +16,7 @@ use super::super::contracts::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ContinuousLikelihoodFidelityTier {
     Seed,
+    Representative,
     Local,
     Full,
 }
@@ -53,7 +54,27 @@ pub(crate) struct ContinuousReturnOptimizerDiagnostic {
     pub final_objective_score: f64,
     pub local_evaluation_count: usize,
     pub stop_reason: &'static str,
+    pub proxy_em_diagnostic: ContinuousReturnProxyEmDiagnostic,
     pub basin_diagnostics: Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct ContinuousReturnProxyEmDiagnostic {
+    pub(crate) best_objective: Option<f64>,
+    pub(crate) final_convergence_ratio: Option<f64>,
+    pub(crate) evaluation_count: usize,
+    pub(crate) completed_seed_count: usize,
+    pub(crate) refined_seed_count: usize,
+    pub(crate) requested_seed_count: usize,
+    pub(crate) iteration_budget_per_seed: usize,
+    pub(crate) fitting_sample_count: usize,
+    pub(crate) fitting_sample_weight_sum: f64,
+    pub(crate) converged_seed_count: usize,
+    pub(crate) non_improving_seed_count: usize,
+    pub(crate) numerical_failure_seed_count: usize,
+    pub(crate) iteration_budget_exhausted_seed_count: usize,
+    pub(crate) projection_failure_seed_count: usize,
+    pub(crate) invalid_initial_seed_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -102,12 +123,44 @@ pub(super) struct ContinuousReturnScaleBucketProfile {
     pub(super) member_indices: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct NigShapeSearchPoint {
     pub(crate) log_alpha: f64,
     pub(crate) buy_skew_coordinate: f64,
     pub(crate) sell_relative_coordinate: f64,
     pub(crate) log_delta_offset: f64,
+}
+
+impl NigShapeSearchPoint {
+    pub(crate) fn from_slice(point: &[f64]) -> Option<Self> {
+        let [
+            log_alpha,
+            buy_skew_coordinate,
+            sell_relative_coordinate,
+            log_delta_offset,
+        ] = point
+        else {
+            return None;
+        };
+
+        Some(Self {
+            log_alpha: *log_alpha,
+            buy_skew_coordinate: *buy_skew_coordinate,
+            sell_relative_coordinate: *sell_relative_coordinate,
+            log_delta_offset: *log_delta_offset,
+        })
+    }
+
+    pub(crate) fn to_vector(self) -> [f64; Self::DIMENSION] {
+        [
+            self.log_alpha,
+            self.buy_skew_coordinate,
+            self.sell_relative_coordinate,
+            self.log_delta_offset,
+        ]
+    }
+
+    pub(crate) const DIMENSION: usize = 4;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -124,8 +177,6 @@ pub(super) struct NigSearchRegime {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ContinuousMomentTargets {
-    pub(super) sample_count: usize,
-    pub(super) mean_return: f64,
     pub(super) return_volatility: f64,
     pub(super) adjusted_skewness: f64,
     pub(super) adjusted_excess_kurtosis: f64,
@@ -146,8 +197,6 @@ impl ContinuousReturnDistributionProfile {
 impl ContinuousMomentTargets {
     pub(super) fn from_profile(observed_profile: ContinuousReturnDistributionProfile) -> Self {
         Self {
-            sample_count: observed_profile.sample_count,
-            mean_return: observed_profile.mean_return,
             return_volatility: observed_profile.return_volatility,
             adjusted_skewness: observed_profile.adjusted_skewness,
             adjusted_excess_kurtosis: observed_profile.adjusted_excess_kurtosis.max(0.0),
@@ -277,6 +326,7 @@ pub(crate) struct ContinuousReturnOptimizerContext {
     pub(super) business_time_scales: Vec<f64>,
     pub(super) mean_business_time_scale: f64,
     pub(super) sell_share_proxies: Vec<f64>,
+    pub(super) member_weights: Vec<f64>,
     pub(super) integrated_buy_intensities: Vec<f64>,
     pub(super) integrated_sell_intensities: Vec<f64>,
     pub(super) scale_bucket_profiles: Vec<ContinuousReturnScaleBucketProfile>,

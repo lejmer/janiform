@@ -79,6 +79,7 @@ jobs:
             package_args: >-
               -p janiform-calibration-artifacts
               -p janiform-calibration-runtime
+              -p janiform-work-scheduler
               -p janiform-workflows
               -p janiform-joint-refinement-worker
           - name: verification

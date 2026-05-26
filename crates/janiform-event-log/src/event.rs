@@ -18,7 +18,7 @@ pub const RUN_STATE_SNAPSHOT_FILE_NAME: &str = "latest-state.json";
 pub const EVENT_CHANNEL_DELIVERY_POLICY_ID: &str =
     "janiform.event_channel.delivery.required-or-droppable-v1";
 
-/// Stable workflow identifier plus an optional human label.
+/// Stable workflow identifier plus an optional display label.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorkflowRef {
     pub workflow_id: String,
@@ -44,7 +44,7 @@ impl WorkflowRef {
     }
 }
 
-/// Stable stage identifier plus an optional human label.
+/// Stable stage identifier plus an optional display label.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RunStageRef {
     pub stage_id: String,
@@ -70,7 +70,7 @@ impl RunStageRef {
     }
 }
 
-/// Stable phase or subphase identifier plus an optional human label.
+/// Stable phase or subphase identifier plus an optional display label.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RunPhaseRef {
     pub phase_id: String,

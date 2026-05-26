@@ -1,9 +1,9 @@
-use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use janiform_foundations::json::document::{JsonDocumentWriteError, write_pretty_json_document};
 use serde::Serialize;
 
 use crate::error::CliError;
@@ -30,18 +30,12 @@ where
     T: Serialize + ?Sized,
     F: Fn(PathBuf, io::Error) -> CliError,
 {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| map_io_error(parent.to_path_buf(), source))?;
-    }
-
-    let mut file =
-        fs::File::create(path).map_err(|source| map_io_error(path.to_path_buf(), source))?;
-
-    serde_json::to_writer_pretty(&mut file, payload).map_err(|source| {
-        CliError::OutputSerialize {
+    write_pretty_json_document(path, payload).map_err(|source| match source {
+        JsonDocumentWriteError::CreateDirectory { path, source }
+        | JsonDocumentWriteError::Create { path, source }
+        | JsonDocumentWriteError::Write { path, source } => map_io_error(path, source),
+        JsonDocumentWriteError::Serialize { source } => CliError::OutputSerialize {
             source: Box::new(source),
-        }
-    })?;
-
-    writeln!(file).map_err(|source| map_io_error(path.to_path_buf(), source))
+        },
+    })
 }

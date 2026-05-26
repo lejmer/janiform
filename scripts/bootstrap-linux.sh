@@ -12,16 +12,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_build-helpers-linux.sh"
 
 usage() {
-    echo "Usage: $0 [--release-wheel] [venv_dir]"
+    echo "Usage: $0 [--release-wheel|--release-wheel-dev] [venv_dir]"
 }
 
 RELEASE_WHEEL=false
+RELEASE_WHEEL_DEV=false
+SKIP_WHEEL_DEPENDENCY_INSTALL=false
 USE_UV_PACKAGE_INSTALLER=false
 VENV_DIR=".venv-linux"
 VENV_DIR_SET=false
 
 for ARGUMENT in "$@"; do
     case "${ARGUMENT}" in
+        --release-wheel-dev)
+            RELEASE_WHEEL=true
+            RELEASE_WHEEL_DEV=true
+            ;;
         --release-wheel)
             RELEASE_WHEEL=true
             ;;
@@ -47,7 +53,9 @@ for ARGUMENT in "$@"; do
 done
 
 echo "Using virtual environment: ${VENV_DIR}"
-if [ "${RELEASE_WHEEL}" = true ]; then
+if [ "${RELEASE_WHEEL_DEV}" = true ]; then
+    echo "Using package build mode: release wheel with dev dependencies"
+elif [ "${RELEASE_WHEEL}" = true ]; then
     echo "Using package build mode: release wheel"
 else
     echo "Using package build mode: editable"
@@ -63,10 +71,15 @@ if have_cmd uv; then
     uv venv "${VENV_DIR}"
     activate_venv
 
-    if [ "${RELEASE_WHEEL}" = true ]; then
+    if [ "${RELEASE_WHEEL_DEV}" = true ]; then
+        SKIP_WHEEL_DEPENDENCY_INSTALL=true
+        uv sync --extra dev --no-install-project
+    elif [ "${RELEASE_WHEEL}" = true ]; then
+        SKIP_WHEEL_DEPENDENCY_INSTALL=true
+        uv sync --no-install-project
         uv pip install "maturin>=1.9,<2.0"
     else
-        # Install project and dev extra into the chosen local venv
+        # Install project and dev extra into the chosen local venv.
         uv sync --extra dev
     fi
 
@@ -76,10 +89,13 @@ elif have_cmd python3; then
     python3 -m venv "${VENV_DIR}"
     activate_venv
 
-    if [ "${RELEASE_WHEEL}" = true ]; then
+    if [ "${RELEASE_WHEEL_DEV}" = true ]; then
+        SKIP_WHEEL_DEPENDENCY_INSTALL=true
+        install_editable_with_pip
+    elif [ "${RELEASE_WHEEL}" = true ]; then
         install_release_build_tool_with_pip
     else
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         install_editable_with_pip
     fi
 
@@ -89,10 +105,13 @@ elif have_cmd python; then
     python -m venv "${VENV_DIR}"
     activate_venv
 
-    if [ "${RELEASE_WHEEL}" = true ]; then
+    if [ "${RELEASE_WHEEL_DEV}" = true ]; then
+        SKIP_WHEEL_DEPENDENCY_INSTALL=true
+        install_editable_with_pip
+    elif [ "${RELEASE_WHEEL}" = true ]; then
         install_release_build_tool_with_pip
     else
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         install_editable_with_pip
     fi
 

@@ -1,14 +1,17 @@
 use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
-    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
+    solve_exponential_affine_transform_with_settings,
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
-    build_pricing_transform_input, solve_exponential_affine_transform,
+    build_pricing_transform_input,
 };
 use janiform_engine_sufficient_statistics::{
     solve_exponential_affine_transform_for_sufficient_statistics_sampling,
@@ -27,6 +30,7 @@ use janiform_model_kernels::news::{
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 };
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 #[test]
 fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_consumers() {
@@ -37,8 +41,9 @@ fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_co
     )
     .expect("pricing integration settings should construct");
 
-    let pricing_result = solve_exponential_affine_transform(transform_input, solver_settings)
-        .expect("pricing consumer solve should succeed");
+    let pricing_result =
+        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+            .expect("pricing consumer solve should succeed");
     let sufficient_statistics_result =
         solve_exponential_affine_transform_for_sufficient_statistics_sampling(transform_input)
             .expect("sufficient-statistics consumer solve should succeed");
@@ -55,7 +60,7 @@ fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_co
 }
 
 #[test]
-fn pricing_consumer_calls_shared_solver_entrypoint() {
+fn explicit_settings_solver_entrypoint_matches_optional_settings_entrypoint() {
     let transform_input = build_transform_input(1.0);
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::ForwardEuler,
@@ -63,8 +68,9 @@ fn pricing_consumer_calls_shared_solver_entrypoint() {
     )
     .expect("pricing integration settings should construct");
 
-    let pricing_result = solve_exponential_affine_transform(transform_input, solver_settings)
-        .expect("pricing solve with explicit settings should succeed");
+    let pricing_result =
+        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+            .expect("pricing solve with explicit settings should succeed");
     let shared_result = solve_exponential_affine_transform_with_optional_settings(
         transform_input,
         Some(solver_settings),
@@ -178,8 +184,10 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
                 .expect("fixture gamma mark configuration should construct"),
         )
         .expect("fixture equation specification should construct"),
-        ComplexScalar::new(0.2, -0.1),
-        ComplexScalar::new(0.3, 0.05),
+        ExponentialAffineTransformActivityLoadings::total_activity(
+            ComplexScalar::new(0.2, -0.1),
+            ComplexScalar::new(0.3, 0.05),
+        ),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         1.1,
@@ -252,6 +260,8 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
             2.3, -0.8, 0.7, 0.1, -0.2,
         )
         .expect("pricing fixture NIG configuration should construct"),
+        ReturnClockExposureParameters::neutral(),
+        VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing fixture model parameters should construct");
 

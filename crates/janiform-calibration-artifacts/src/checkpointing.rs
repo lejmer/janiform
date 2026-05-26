@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::artifact_registry::calibration_checkpoint_run_directory;
+use super::artifact_registry::{
+    calibration_checkpoint_run_directory, calibration_stage_from_token, calibration_stage_token,
+};
 use super::contracts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
@@ -618,6 +620,16 @@ pub fn load_stage_checkpoint_from_disk(
     })
 }
 
+/// Return the canonical checkpoint reference for a completed calibration stage.
+pub fn calibration_stage_checkpoint_reference(run_id: &str, stage: CalibrationStage) -> String {
+    format!("checkpoint://{run_id}/{}", calibration_stage_token(stage))
+}
+
+/// Return the canonical checkpoint reference for the latest successful stage.
+pub fn calibration_last_success_checkpoint_reference(run_id: &str) -> String {
+    format!("checkpoint://{run_id}/last-success")
+}
+
 fn write_checkpoint_file_atomically(
     target_path: &Path,
     checkpoint_metadata: &CalibrationStageCheckpointMetadata,
@@ -688,25 +700,4 @@ fn calibration_stage_checkpoint_path_in_run_directory(
 
 fn calibration_last_success_checkpoint_path_in_run_directory(run_directory: &Path) -> PathBuf {
     run_directory.join("last-success.checkpoint.json")
-}
-
-fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
-    match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-        CalibrationStage::MeanReversion => "mean_reversion",
-        CalibrationStage::JointRefinement => "joint_refinement",
-    }
-}
-
-pub(crate) fn calibration_stage_from_token(token: &str) -> Option<CalibrationStage> {
-    match token {
-        "seasonality" => Some(CalibrationStage::Seasonality),
-        "hawkes" => Some(CalibrationStage::Hawkes),
-        "return_components" => Some(CalibrationStage::ReturnComponents),
-        "mean_reversion" => Some(CalibrationStage::MeanReversion),
-        "joint_refinement" => Some(CalibrationStage::JointRefinement),
-        _ => None,
-    }
 }

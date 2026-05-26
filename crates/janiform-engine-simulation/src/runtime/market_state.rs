@@ -2,11 +2,11 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
+use janiform_foundations::time::utc_datetime_from_nanos;
 use janiform_model_kernels::news::{
     SharedNewsEventMarketStateResolutionError, SharedNewsEventMarketStateResolver,
 };
 
-use crate::constants::ONE_SECOND_NANOS;
 use crate::error::SeededTickSimulationRunError;
 use janiform_market_time::calendar::{
     ExchangeCalendarDefinition, ExchangeCalendarRegistry, MarketState,
@@ -62,10 +62,7 @@ impl<'a> SeededSimulationMarketStateResolver<'a> {
         &self,
         timestamp_utc_nanos: i64,
     ) -> Result<MarketState, SeededTickSimulationRunError> {
-        let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
-        let nanoseconds = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
-
-        let timestamp_utc = DateTime::<Utc>::from_timestamp(seconds, nanoseconds).ok_or(
+        let timestamp_utc = utc_datetime_from_nanos(timestamp_utc_nanos).ok_or(
             SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
                 value: timestamp_utc_nanos,
             },

@@ -5,7 +5,7 @@ use super::super::progress::{
     StylizedFactsValidationProgressEvent, StylizedFactsValidationProgressPhase,
 };
 use super::super::workflow::StylizedFactsValidationWorkflowObserver;
-use crate::progress::progress_percent;
+use crate::progress::{format_cpu_count, progress_percent};
 
 pub(super) fn emit_simulation_plan(
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
@@ -202,13 +202,6 @@ fn format_path_count(path_count: usize) -> String {
     match path_count {
         1 => "1 path".to_string(),
         _ => format!("{path_count} paths"),
-    }
-}
-
-fn format_cpu_count(cpu_count: usize) -> String {
-    match cpu_count {
-        1 => "1 CPU".to_string(),
-        _ => format!("{cpu_count} CPUs"),
     }
 }
 

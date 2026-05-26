@@ -64,8 +64,9 @@ pub fn black_scholes_price(
         };
     }
 
-    let log_forward_moneyness = (market_inputs.spot / strike).ln()
+    let log_forward_moneyness = market_inputs.spot.ln() - strike.ln()
         + (market_inputs.risk_free_rate - market_inputs.dividend_yield) * maturity_interval;
+
     let d1 = (log_forward_moneyness + 0.5 * total_standard_deviation * total_standard_deviation)
         / total_standard_deviation;
     let d2 = d1 - total_standard_deviation;
@@ -93,6 +94,27 @@ pub fn intraday_black_scholes_price(
         payoff_type,
         volatility,
     )
+}
+
+/// Compute the forward price for hourly intraday maturities and annualized rates.
+pub fn intraday_forward_price(
+    spot: f64,
+    risk_free_rate: f64,
+    dividend_yield: f64,
+    maturity_interval: f64,
+) -> Option<f64> {
+    let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+    let forward_price = spot * ((risk_free_rate - dividend_yield) * maturity_year_fraction).exp();
+
+    (forward_price.is_finite() && forward_price > 0.0).then_some(forward_price)
+}
+
+/// Compute the discount factor for hourly intraday maturities and annualized rates.
+pub fn intraday_discount_factor(risk_free_rate: f64, maturity_interval: f64) -> Option<f64> {
+    let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+    let discount_factor = (-risk_free_rate * maturity_year_fraction).exp();
+
+    (discount_factor.is_finite() && discount_factor > 0.0).then_some(discount_factor)
 }
 
 /// Compute the Black-Scholes finite no-arbitrage price bounds under the raw market-input time unit.
@@ -158,4 +180,21 @@ fn single_maturity_interval_or_nan(market_inputs: &VanillaOptionPricingMarketInp
 
 fn standard_normal_cdf(value: f64) -> f64 {
     0.5 * erfc(-value / std::f64::consts::SQRT_2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{intraday_discount_factor, intraday_forward_price};
+
+    #[test]
+    fn intraday_forward_and_discount_helpers_resolve_flat_rates() {
+        assert_eq!(intraday_forward_price(100.0, 0.0, 0.0, 1.0), Some(100.0));
+        assert_eq!(intraday_discount_factor(0.0, 1.0), Some(1.0));
+    }
+
+    #[test]
+    fn intraday_forward_and_discount_helpers_reject_non_finite_inputs() {
+        assert_eq!(intraday_forward_price(f64::NAN, 0.0, 0.0, 1.0), None);
+        assert_eq!(intraday_discount_factor(f64::NAN, 1.0), None);
+    }
 }

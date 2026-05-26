@@ -15,7 +15,7 @@ use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
-    ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageFittedParameters, TickGridObservationModel,
 };
 use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::news::{
@@ -24,6 +24,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT,
@@ -265,6 +266,7 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnComponentsObservedOpenSessionReturn {
     pub return_timestamp_utc_nanos: i64,
+    pub elapsed_same_session_hours: f64,
     pub log_return: f64,
     pub post_shock_activity_lift: f64,
     pub sell_share_proxy: f64,
@@ -292,6 +294,15 @@ impl ReturnComponentsObservedOpenSessionReturn {
                 ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
                     value: self.log_return,
+                },
+            );
+        }
+
+        if !self.elapsed_same_session_hours.is_finite() || self.elapsed_same_session_hours <= 0.0 {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionReturnElapsedTime {
+                    return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
+                    value: self.elapsed_same_session_hours,
                 },
             );
         }
@@ -630,6 +641,8 @@ pub struct ReturnComponentsStageCandidateGenerationInput {
     pub close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy,
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: SharedNewsMarkLawConfiguration,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub tick_grid_observation_model: TickGridObservationModel,
     pub objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights,
 }
 
@@ -678,10 +691,34 @@ impl ReturnComponentsStageCandidateGenerationInput {
             }
         })?;
 
+        self.return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                ReturnComponentsStageCandidateGenerationInputError::InvalidReturnClockExposureParameters {
+                    error_message: source.to_string(),
+                }
+            })?;
+        validate_tick_grid_observation_model(&self.tick_grid_observation_model)?;
         self.objective_metric_weights.validate()?;
 
         Ok(())
     }
+}
+
+fn validate_tick_grid_observation_model(
+    model: &TickGridObservationModel,
+) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+    if let Some(tick_size) = model.tick_size
+        && (!tick_size.is_finite() || tick_size <= 0.0)
+    {
+        return Err(
+            ReturnComponentsStageCandidateGenerationInputError::InvalidTickSize {
+                value: tick_size,
+            },
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -732,6 +769,10 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         window_end_utc_nanos: i64,
     },
     InvalidObservedOpenSessionReturn {
+        return_timestamp_utc_nanos: i64,
+        value: f64,
+    },
+    InvalidObservedOpenSessionReturnElapsedTime {
         return_timestamp_utc_nanos: i64,
         value: f64,
     },
@@ -824,6 +865,12 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     },
     InvalidSharedMarkLawTemplate {
         error_message: String,
+    },
+    InvalidReturnClockExposureParameters {
+        error_message: String,
+    },
+    InvalidTickSize {
+        value: f64,
     },
     InvalidContinuousDistributionFitWeight {
         value: f64,
@@ -931,6 +978,13 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             } => write!(
                 formatter,
                 "observed open-session return at {return_timestamp_utc_nanos} must be finite, found {value}"
+            ),
+            Self::InvalidObservedOpenSessionReturnElapsedTime {
+                return_timestamp_utc_nanos,
+                value,
+            } => write!(
+                formatter,
+                "observed open-session return elapsed time at {return_timestamp_utc_nanos} must be finite and positive, found {value}"
             ),
             Self::InvalidObservedOpenSessionActivityLift {
                 return_timestamp_utc_nanos,
@@ -1075,6 +1129,14 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             Self::InvalidSharedMarkLawTemplate { error_message } => write!(
                 formatter,
                 "shared_mark_law_template is invalid for candidate generation: {error_message}"
+            ),
+            Self::InvalidReturnClockExposureParameters { error_message } => write!(
+                formatter,
+                "return_clock_exposure_parameters are invalid for candidate generation: {error_message}"
+            ),
+            Self::InvalidTickSize { value } => write!(
+                formatter,
+                "tick_grid_observation_model.tick_size must be finite and strictly positive when provided, found {value}"
             ),
             Self::InvalidContinuousDistributionFitWeight { value } => write!(
                 formatter,
@@ -1850,6 +1912,21 @@ pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub optimizer_final_objective: f64,
     pub optimizer_local_evaluation_count: usize,
     pub optimizer_stop_reason: String,
+    pub proxy_em_best_objective: Option<f64>,
+    pub proxy_em_final_convergence_ratio: Option<f64>,
+    pub proxy_em_evaluation_count: usize,
+    pub proxy_em_completed_seed_count: usize,
+    pub proxy_em_refined_seed_count: usize,
+    pub proxy_em_requested_seed_count: usize,
+    pub proxy_em_iteration_budget_per_seed: usize,
+    pub proxy_em_fitting_sample_count: usize,
+    pub proxy_em_fitting_sample_weight_sum: f64,
+    pub proxy_em_converged_seed_count: usize,
+    pub proxy_em_non_improving_seed_count: usize,
+    pub proxy_em_numerical_failure_seed_count: usize,
+    pub proxy_em_iteration_budget_exhausted_seed_count: usize,
+    pub proxy_em_projection_failure_seed_count: usize,
+    pub proxy_em_invalid_initial_seed_count: usize,
     pub optimizer_basin_diagnostics: Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic>,
     pub exact_likelihood_failures: Vec<ReturnComponentsStageExactLikelihoodFailureDiagnostic>,
     pub exact_closed_form_single_side_buy_block_count: usize,
@@ -1904,6 +1981,8 @@ pub struct ReturnComponentsStageCandidateInput {
     pub objective_terms: Vec<ReturnComponentsStageObjectiveTermInput>,
     pub candidate_families: ReturnComponentsStageCandidateFamilies,
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub tick_grid_observation_model: TickGridObservationModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]

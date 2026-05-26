@@ -2,10 +2,10 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
+use janiform_foundations::time::utc_datetime_from_nanos;
 
 use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLookupError};
 
-use super::constants::ONE_SECOND_NANOS;
 use super::error::HourlyFactorContractError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,8 +103,16 @@ pub(super) fn build_fixed_interval_indexing(
         let interval_start_nanos = range_start_utc_nanos + interval_offset_nanos;
         let interval_end_nanos = interval_start_nanos + interval_duration_nanos;
 
-        let start_utc = utc_timestamp_from_nanos(interval_start_nanos, "range_start_utc")?;
-        let end_utc = utc_timestamp_from_nanos(interval_end_nanos, "range_end_utc")?;
+        let start_utc = utc_datetime_from_nanos(interval_start_nanos).ok_or(
+            HourlyFactorContractError::TimestampOutOfRange {
+                field: "range_start_utc",
+            },
+        )?;
+        let end_utc = utc_datetime_from_nanos(interval_end_nanos).ok_or(
+            HourlyFactorContractError::TimestampOutOfRange {
+                field: "range_end_utc",
+            },
+        )?;
         let local_boundary_projection = project_interval_boundaries_to_exchange_local(
             start_utc,
             end_utc,
@@ -192,16 +200,5 @@ fn timestamp_to_utc_nanos(
 ) -> Result<i64, HourlyFactorContractError> {
     timestamp_utc
         .timestamp_nanos_opt()
-        .ok_or(HourlyFactorContractError::TimestampOutOfRange { field })
-}
-
-fn utc_timestamp_from_nanos(
-    timestamp_utc_nanos: i64,
-    field: &'static str,
-) -> Result<DateTime<Utc>, HourlyFactorContractError> {
-    let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
-    let subsecond_nanos = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
-
-    DateTime::from_timestamp(seconds, subsecond_nanos)
         .ok_or(HourlyFactorContractError::TimestampOutOfRange { field })
 }

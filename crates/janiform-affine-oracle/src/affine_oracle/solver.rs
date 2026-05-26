@@ -26,6 +26,12 @@ use super::{
 
 // Public default ODE step count for one-interval solves, overrideable on solver settings.
 const DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT: usize = 64;
+// For the linear Hawkes decay subproblem D' = -beta D, RK4 has stability
+// polynomial R(-x) = 1 - x + x^2/2 - x^3/6 + x^4/24. The positive
+// stability boundary solves R(-x) = 1, or x^3 - 4x^2 + 12x - 24 = 0.
+const FOURTH_ORDER_RUNGE_KUTTA_NEGATIVE_REAL_STABILITY_LIMIT: f64 = 2.7852935634052816;
+// Forward Euler has R(-x) = 1 - x and remains stable for 0 <= x <= 2.
+const FORWARD_EULER_NEGATIVE_REAL_STABILITY_LIMIT: f64 = 2.0;
 
 /// Supported one-step numerical integration methods for affine transform ODE solving.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -321,16 +327,49 @@ pub fn solve_exponential_affine_transform_with_optional_settings(
     transform_input: ExponentialAffineTransformInput,
     solver_settings: Option<ExponentialAffineTransformSolverSettings>,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
-    let effective_solver_settings = solver_settings.unwrap_or_default();
+    solve_exponential_affine_transform_with_optional_settings_and_terminal_loading(
+        transform_input,
+        solver_settings,
+        ExponentialAffineTransformDVector::zero(),
+    )
+}
 
+/// Solve one-interval affine transform ODE system with terminal state loading.
+pub fn solve_exponential_affine_transform_with_terminal_loading(
+    transform_input: ExponentialAffineTransformInput,
+    terminal_loading: ExponentialAffineTransformDVector,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    solve_exponential_affine_transform_with_optional_settings_and_terminal_loading(
+        transform_input,
+        None,
+        terminal_loading,
+    )
+}
+
+fn solve_exponential_affine_transform_with_optional_settings_and_terminal_loading(
+    transform_input: ExponentialAffineTransformInput,
+    solver_settings: Option<ExponentialAffineTransformSolverSettings>,
+    terminal_loading: ExponentialAffineTransformDVector,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
     transform_input
         .validate()
         .map_err(|source| ExponentialAffineTransformSolverError::InvalidInput { source })?;
+    terminal_loading.validate().map_err(|source| {
+        ExponentialAffineTransformSolverError::InvalidOutput {
+            source: ExponentialAffineTransformOutputError::InvalidDAtDelta { source },
+        }
+    })?;
+
+    let effective_solver_settings = solver_settings
+        .unwrap_or_else(|| internally_selected_default_solver_settings(transform_input));
+
     effective_solver_settings.validate().map_err(|source| {
         ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
     })?;
 
-    if transform_input.is_exact_identity_query() {
+    if transform_input.is_exact_identity_query()
+        && terminal_loading == ExponentialAffineTransformDVector::zero()
+    {
         return Ok(exact_identity_result(
             transform_input,
             effective_solver_settings,
@@ -342,6 +381,7 @@ pub fn solve_exponential_affine_transform_with_optional_settings(
             run_affine_transform_integration_with_integrator(
                 transform_input,
                 effective_solver_settings,
+                terminal_loading,
                 FourthOrderRungeKuttaIntegrator,
             )
         }
@@ -349,10 +389,58 @@ pub fn solve_exponential_affine_transform_with_optional_settings(
             run_affine_transform_integration_with_integrator(
                 transform_input,
                 effective_solver_settings,
+                terminal_loading,
                 ForwardEulerIntegrator,
             )
         }
     }
+}
+
+pub(super) fn internally_selected_default_solver_settings(
+    transform_input: ExponentialAffineTransformInput,
+) -> ExponentialAffineTransformSolverSettings {
+    let mut solver_settings = ExponentialAffineTransformSolverSettings::default();
+
+    solver_settings.step_count =
+        solver_settings
+            .step_count
+            .max(minimum_stable_hawkes_decay_step_count(
+                transform_input
+                    .equation_specification
+                    .hawkes_kernel_parameters
+                    .beta,
+                transform_input.delta,
+                solver_settings.integrator_method,
+            ));
+
+    solver_settings
+}
+
+fn minimum_stable_hawkes_decay_step_count(
+    beta: f64,
+    delta: f64,
+    integrator_method: ExponentialAffineTransformIntegratorMethod,
+) -> usize {
+    let stability_limit = match integrator_method {
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta => {
+            FOURTH_ORDER_RUNGE_KUTTA_NEGATIVE_REAL_STABILITY_LIMIT
+        }
+        ExponentialAffineTransformIntegratorMethod::ForwardEuler => {
+            FORWARD_EULER_NEGATIVE_REAL_STABILITY_LIMIT
+        }
+    };
+
+    let stiffness_horizon = beta * delta;
+    if stiffness_horizon <= 0.0 {
+        return 1;
+    }
+
+    let required_step_count = (stiffness_horizon / stability_limit).ceil();
+    if required_step_count >= usize::MAX as f64 {
+        return usize::MAX;
+    }
+
+    required_step_count.max(1.0) as usize
 }
 
 fn exact_identity_result(
@@ -397,14 +485,9 @@ struct ExponentialAffineTransformIntegrationState {
 }
 
 impl ExponentialAffineTransformIntegrationState {
-    fn initial() -> Self {
+    fn from_terminal_loading(terminal_loading: ExponentialAffineTransformDVector) -> Self {
         Self {
-            d_vector: ExponentialAffineTransformDVector::new(
-                ComplexScalar::new(0.0, 0.0),
-                ComplexScalar::new(0.0, 0.0),
-                ComplexScalar::new(0.0, 0.0),
-                ComplexScalar::new(0.0, 0.0),
-            ),
+            d_vector: terminal_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         }
     }
@@ -478,14 +561,17 @@ impl ExponentialAffineTransformIntegrator for FourthOrderRungeKuttaIntegrator {
         rhs_evaluator: ExponentialAffineTransformOdeRhsEvaluator,
     ) -> ExponentialAffineTransformIntegrationState {
         let k1 = rhs_evaluator(transform_input, state.d_vector);
+
         let k2 = rhs_evaluator(
             transform_input,
             state.add_scaled_rhs(k1, 0.5 * step_size).d_vector,
         );
+
         let k3 = rhs_evaluator(
             transform_input,
             state.add_scaled_rhs(k2, 0.5 * step_size).d_vector,
         );
+
         let k4 = rhs_evaluator(
             transform_input,
             state.add_scaled_rhs(k3, step_size).d_vector,
@@ -497,6 +583,7 @@ impl ExponentialAffineTransformIntegrator for FourthOrderRungeKuttaIntegrator {
             .plus(k3.d_derivative.scale(2.0))
             .plus(k4.d_derivative)
             .scale(step_size / 6.0);
+
         let c_increment = k1
             .c_derivative
             .plus(k2.c_derivative.scale(2.0))
@@ -514,17 +601,30 @@ impl ExponentialAffineTransformIntegrator for FourthOrderRungeKuttaIntegrator {
 fn run_affine_transform_integration_with_integrator<TIntegrator>(
     transform_input: ExponentialAffineTransformInput,
     solver_settings: ExponentialAffineTransformSolverSettings,
+    terminal_loading: ExponentialAffineTransformDVector,
     integrator: TIntegrator,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError>
 where
     TIntegrator: ExponentialAffineTransformIntegrator,
 {
     let step_size = transform_input.delta / solver_settings.step_count as f64;
-    let mut integration_state = ExponentialAffineTransformIntegrationState::initial();
+    let integrator_method = integrator.method();
+
+    let mut integration_state =
+        ExponentialAffineTransformIntegrationState::from_terminal_loading(terminal_loading);
+
     let mut completed_step_count = 0_usize;
     let mut rhs_evaluation_count = 0_usize;
+
     let mut telemetry_accumulator =
         ExponentialAffineTransformTelemetryAccumulator::enabled_or_none(solver_settings);
+
+    let termination_context = ExponentialAffineTransformTerminationContext {
+        solver_settings,
+        integrator_method,
+        step_size,
+        news_intensity: transform_input.news_intensity,
+    };
 
     let initial_checkpoint = evaluate_integration_guard_checkpoint(
         transform_input,
@@ -538,20 +638,11 @@ where
     }
 
     if let Some(guard_failure) = initial_checkpoint.guard_failure {
-        let telemetry = telemetry_accumulator
-            .map(|accumulator| accumulator.to_payload(transform_input.news_intensity));
-
-        return Ok(terminated_result_from_guard_failure(
-            ExponentialAffineTransformTerminatedResultInput {
-                solver_settings,
-                integrator_method: integrator.method(),
-                completed_step_count,
-                rhs_evaluation_count,
-                step_size,
-                news_intensity: transform_input.news_intensity,
-                guard_failure,
-                telemetry,
-            },
+        return Ok(termination_context.terminated_result_from_guard_failure(
+            completed_step_count,
+            rhs_evaluation_count,
+            guard_failure,
+            telemetry_accumulator,
         ));
     }
 
@@ -562,7 +653,9 @@ where
             integration_state,
             evaluate_exponential_affine_transform_ode_rhs,
         );
+
         completed_step_count += 1;
+
         rhs_evaluation_count =
             rhs_evaluation_count.saturating_add(integrator.rhs_evaluations_per_step());
 
@@ -578,20 +671,11 @@ where
         }
 
         if let Some(guard_failure) = checkpoint.guard_failure {
-            let telemetry = telemetry_accumulator
-                .map(|accumulator| accumulator.to_payload(transform_input.news_intensity));
-
-            return Ok(terminated_result_from_guard_failure(
-                ExponentialAffineTransformTerminatedResultInput {
-                    solver_settings,
-                    integrator_method: integrator.method(),
-                    completed_step_count,
-                    rhs_evaluation_count,
-                    step_size,
-                    news_intensity: transform_input.news_intensity,
-                    guard_failure,
-                    telemetry,
-                },
+            return Ok(termination_context.terminated_result_from_guard_failure(
+                completed_step_count,
+                rhs_evaluation_count,
+                guard_failure,
+                telemetry_accumulator,
             ));
         }
     }
@@ -610,81 +694,56 @@ where
             .scale_theta;
 
     if !transform_exponent.is_finite() {
-        let telemetry = telemetry_accumulator
-            .map(|accumulator| accumulator.to_payload(transform_input.news_intensity));
-
-        return Ok(terminated_result_from_guard_failure(
-            ExponentialAffineTransformTerminatedResultInput {
-                solver_settings,
-                integrator_method: integrator.method(),
+        return Ok(termination_context.terminated_result_from_guard_failure(
+            completed_step_count,
+            rhs_evaluation_count,
+            build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::NonFiniteTransformExponent,
                 completed_step_count,
-                rhs_evaluation_count,
-                step_size,
-                news_intensity: transform_input.news_intensity,
-                guard_failure: build_guard_failure(
-                    ExponentialAffineTransformGuardFailureCode::NonFiniteTransformExponent,
-                    completed_step_count,
-                    checkpoint_time,
-                    d_dot_r,
-                    d_dot_r_upper_bound,
-                ),
-                telemetry,
-            },
+                checkpoint_time,
+                d_dot_r,
+                d_dot_r_upper_bound,
+            ),
+            telemetry_accumulator,
         ));
     }
 
     if transform_exponent.real > f64::MAX.ln() {
-        let telemetry = telemetry_accumulator
-            .map(|accumulator| accumulator.to_payload(transform_input.news_intensity));
-
-        return Ok(terminated_result_from_guard_failure(
-            ExponentialAffineTransformTerminatedResultInput {
-                solver_settings,
-                integrator_method: integrator.method(),
+        return Ok(termination_context.terminated_result_from_guard_failure(
+            completed_step_count,
+            rhs_evaluation_count,
+            build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::TransformValueOverflow,
                 completed_step_count,
-                rhs_evaluation_count,
-                step_size,
-                news_intensity: transform_input.news_intensity,
-                guard_failure: build_guard_failure(
-                    ExponentialAffineTransformGuardFailureCode::TransformValueOverflow,
-                    completed_step_count,
-                    checkpoint_time,
-                    d_dot_r,
-                    d_dot_r_upper_bound,
-                ),
-                telemetry,
-            },
+                checkpoint_time,
+                d_dot_r,
+                d_dot_r_upper_bound,
+            ),
+            telemetry_accumulator,
         ));
     }
 
     let transform_value = complex_exponential(transform_exponent);
     if !transform_value.is_finite() {
-        let telemetry = telemetry_accumulator
-            .map(|accumulator| accumulator.to_payload(transform_input.news_intensity));
-
-        return Ok(terminated_result_from_guard_failure(
-            ExponentialAffineTransformTerminatedResultInput {
-                solver_settings,
-                integrator_method: integrator.method(),
+        return Ok(termination_context.terminated_result_from_guard_failure(
+            completed_step_count,
+            rhs_evaluation_count,
+            build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::TransformValueOverflow,
                 completed_step_count,
-                rhs_evaluation_count,
-                step_size,
-                news_intensity: transform_input.news_intensity,
-                guard_failure: build_guard_failure(
-                    ExponentialAffineTransformGuardFailureCode::TransformValueOverflow,
-                    completed_step_count,
-                    checkpoint_time,
-                    d_dot_r,
-                    d_dot_r_upper_bound,
-                ),
-                telemetry,
-            },
+                checkpoint_time,
+                d_dot_r,
+                d_dot_r_upper_bound,
+            ),
+            telemetry_accumulator,
         ));
     }
 
     let output = ExponentialAffineTransformOutput::try_new(c_at_delta, d_at_delta, transform_value)
         .map_err(|source| ExponentialAffineTransformSolverError::InvalidOutput { source })?;
+
     let status = ExponentialAffineTransformIntegrationStatus::Completed;
+
     let telemetry = telemetry_accumulator
         .map(|accumulator| accumulator.to_payload(transform_input.news_intensity));
 
@@ -694,7 +753,7 @@ where
         status,
         metadata: build_integration_metadata(ExponentialAffineTransformIntegrationMetadataInput {
             solver_settings,
-            integrator_method: integrator.method(),
+            integrator_method,
             status,
             news_intensity: transform_input.news_intensity,
             completed_step_count,
@@ -714,15 +773,46 @@ struct ExponentialAffineTransformGuardCheckpointEvaluation {
     d_dot_r_upper_bound: f64,
 }
 
-struct ExponentialAffineTransformTerminatedResultInput {
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ExponentialAffineTransformTerminationContext {
     solver_settings: ExponentialAffineTransformSolverSettings,
     integrator_method: ExponentialAffineTransformIntegratorMethod,
-    completed_step_count: usize,
-    rhs_evaluation_count: usize,
     step_size: f64,
     news_intensity: ExponentialAffineTransformNewsIntensityInput,
-    guard_failure: ExponentialAffineTransformGuardFailure,
-    telemetry: Option<ExponentialAffineTransformIntegrationTelemetry>,
+}
+
+impl ExponentialAffineTransformTerminationContext {
+    fn terminated_result_from_guard_failure(
+        self,
+        completed_step_count: usize,
+        rhs_evaluation_count: usize,
+        guard_failure: ExponentialAffineTransformGuardFailure,
+        telemetry_accumulator: Option<ExponentialAffineTransformTelemetryAccumulator>,
+    ) -> ExponentialAffineTransformIntegrationResult {
+        let status = status_from_guard_failure_code(guard_failure.code);
+        let telemetry =
+            telemetry_accumulator.map(|accumulator| accumulator.to_payload(self.news_intensity));
+
+        ExponentialAffineTransformIntegrationResult {
+            schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
+            output_schema_metadata: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA,
+            status,
+            metadata: build_integration_metadata(
+                ExponentialAffineTransformIntegrationMetadataInput {
+                    solver_settings: self.solver_settings,
+                    integrator_method: self.integrator_method,
+                    status,
+                    news_intensity: self.news_intensity,
+                    completed_step_count,
+                    step_size: self.step_size,
+                    rhs_evaluation_count,
+                    guard_failure: Some(guard_failure),
+                },
+            ),
+            output: None,
+            telemetry,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -783,6 +873,7 @@ impl ExponentialAffineTransformTelemetryAccumulator {
         if checkpoint.d_dot_r.is_finite() {
             self.max_d_dot_r_real =
                 update_optional_max(self.max_d_dot_r_real, checkpoint.d_dot_r.real);
+
             self.min_domain_margin = update_optional_min(
                 self.min_domain_margin,
                 checkpoint.d_dot_r_upper_bound - checkpoint.d_dot_r.real,
@@ -874,30 +965,6 @@ fn evaluate_integration_guard_checkpoint(
         guard_failure: None,
         d_dot_r,
         d_dot_r_upper_bound,
-    }
-}
-
-fn terminated_result_from_guard_failure(
-    input: ExponentialAffineTransformTerminatedResultInput,
-) -> ExponentialAffineTransformIntegrationResult {
-    let status = status_from_guard_failure_code(input.guard_failure.code);
-
-    ExponentialAffineTransformIntegrationResult {
-        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
-        output_schema_metadata: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA,
-        status,
-        metadata: build_integration_metadata(ExponentialAffineTransformIntegrationMetadataInput {
-            solver_settings: input.solver_settings,
-            integrator_method: input.integrator_method,
-            status,
-            news_intensity: input.news_intensity,
-            completed_step_count: input.completed_step_count,
-            step_size: input.step_size,
-            rhs_evaluation_count: input.rhs_evaluation_count,
-            guard_failure: Some(input.guard_failure),
-        }),
-        output: None,
-        telemetry: input.telemetry,
     }
 }
 

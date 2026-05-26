@@ -8,15 +8,21 @@ use janiform::pricing::{
 use janiform_foundations::time::parse_utc_datetime;
 use janiform_workflows::pricing::{
     FittedModelSingleOptionPricingOutput, FittedModelSingleOptionPricingRequest,
-    FittedModelSingleOptionPricingWorkflowRequest, PricingWorkflowObserver,
-    run_fitted_model_single_option_pricing_workflow,
+    FittedModelSingleOptionPricingWorkflowRequest, ObservedOptionTypeFilter,
+    ObservedOptionsPhysicalDistributionDiagnosticsDefaults,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest, ObservedOptionsPricingOutput,
+    ObservedOptionsPricingRequest, ObservedOptionsPricingScope, PricingWorkflowObserver,
+    run_fitted_model_single_option_pricing_workflow, run_observed_options_pricing_with_observer,
 };
 use serde_json::Value;
 
 use super::{
-    FittedModelPricingCommand, PriceCommand, PricePayoffType, VanillaOptionPricingOptions,
+    FittedModelPricingCommand, ObservedOptionPricingCommand, PriceCommand, PricePayoffType,
+    VanillaOptionPricingOptions,
 };
+use crate::commands::options::TickDataOptions;
 use crate::commands::shared::artifacts::load_json_artifact;
+use crate::commands::shared::market_data::prepare_market_data_command_inputs;
 use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::output_paths::default_run_output_directory;
 use crate::commands::shared::terminal::{
@@ -47,6 +53,89 @@ pub(crate) fn run_price_fitted_model_command(
         command.option,
         command.output_path.output_path,
     )
+}
+
+pub(crate) fn run_price_observed_options_command(
+    context: &CommandContext,
+    mut command: ObservedOptionPricingCommand,
+) -> Result<(), CliError> {
+    let physical_distribution_diagnostics =
+        observed_physical_distribution_diagnostics_request(&command)?;
+    let model_path = required_model_path(context, command.model.model_path)?;
+
+    let model_payload = load_json_artifact(&model_path, "model")?;
+
+    let model_run_id = model_run_id(&model_payload)?;
+
+    let run_id = pricing_run_id(model_run_id);
+
+    inject_model_exchange_code_if_missing(&model_payload, &mut command.market_data)?;
+
+    let prepared_market_data = prepare_market_data_command_inputs(
+        context,
+        &command.market_data,
+        janiform::calibration::staged::CalibrationMarketDataWorkflowScope::FullWithOptionSurface,
+    )?;
+
+    let option_surface_source =
+        prepared_market_data
+            .option_surface_source
+            .ok_or(CliError::MissingRequiredArgument {
+                argument_name: "--option-surface-path",
+            })?;
+
+    let option_surface_column_mapping = prepared_market_data.column_mapping.option_surface.ok_or(
+        CliError::MissingRequiredArgument {
+            argument_name: "--option-surface-path",
+        },
+    )?;
+
+    let valuation_time_utc = optional_valuation_time(
+        command.valuation_time_utc.as_deref().or(command
+            .market_data
+            .option_surface_valuation_time_utc
+            .as_deref()),
+    )?;
+
+    let output_path =
+        resolve_pricing_output_path(context, command.output_path.output_path, &run_id);
+    let workflow_request = ObservedOptionsPricingRequest {
+        model_payload,
+        run_id: Some(run_id),
+        tick_data_source: prepared_market_data.tick_data_source,
+        tick_data_column_mapping: prepared_market_data.column_mapping.tick_data,
+        option_surface_source,
+        option_surface_column_mapping,
+        normalization_policy: prepared_market_data.normalization_policy,
+        valuation_time_utc,
+        option_type: command.option_type.map(observed_option_type_filter),
+        scope: if command.surface {
+            ObservedOptionsPricingScope::Surface
+        } else {
+            ObservedOptionsPricingScope::Snapshot
+        },
+        risk_free_rate: command.risk_free_rate,
+        dividend_yield: command.dividend_yield,
+        valuation_count: command.valuation_count,
+        use_all_valuation_times: command.use_all_valuation_times,
+        cpu_count: command.cpu_count,
+        optional_output_selection: VanillaOptionPricingOptionalOutputSelection::default(),
+        pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::default(),
+        physical_distribution_diagnostics,
+        output_path: Some(output_path),
+    };
+
+    let mut progress_adapter = terminal_progress_adapter_for_context(context);
+
+    let output = run_observed_options_pricing_with_observer(
+        workflow_request,
+        PricingWorkflowObserver {
+            progress_adapter: progress_adapter.as_mut(),
+            terminal_output: terminal_output_for_context(context),
+        },
+    )?;
+
+    emit_observed_completion(context, &model_path, &output)
 }
 
 fn run_fitted_model_pricing(
@@ -127,8 +216,41 @@ fn required_valuation_time(value: Option<&str>) -> Result<DateTime<Utc>, CliErro
     })
 }
 
+fn optional_valuation_time(value: Option<&str>) -> Result<Option<DateTime<Utc>>, CliError> {
+    value
+        .map(|value| {
+            parse_utc_datetime(value).map_err(|source| CliError::InvalidCommandArgument {
+                argument_name: "--valuation-time-utc",
+                message: format!("must be an RFC 3339 timestamp: {source}"),
+            })
+        })
+        .transpose()
+}
+
 fn required_f64(argument_name: &'static str, value: Option<f64>) -> Result<f64, CliError> {
     value.ok_or(CliError::MissingRequiredArgument { argument_name })
+}
+
+fn inject_model_exchange_code_if_missing(
+    model_payload: &Value,
+    market_data: &mut TickDataOptions,
+) -> Result<(), CliError> {
+    if market_data.exchange_code.is_some() {
+        return Ok(());
+    }
+
+    let exchange_code = model_payload
+        .pointer("/session_resolution/exchange_code")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CliError::ArtifactMalformed {
+            artifact_name: "model",
+            path: PathBuf::from("model_payload"),
+            message: "missing string field `session_resolution.exchange_code`".to_string(),
+        })?;
+
+    market_data.exchange_code = Some(exchange_code.to_string());
+
+    Ok(())
 }
 
 fn model_run_id(model_payload: &Value) -> Result<&str, CliError> {
@@ -166,7 +288,18 @@ fn emit_completion(
 ) -> Result<(), CliError> {
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&output.completion_payload(model_path)?),
-        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => Ok(()),
+    }
+}
+
+fn emit_observed_completion(
+    context: &CommandContext,
+    model_path: &std::path::Path,
+    output: &ObservedOptionsPricingOutput,
+) -> Result<(), CliError> {
+    match context.output_mode() {
+        OutputMode::Json => write_json_payload(&output.completion_payload(model_path)?),
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }
 
@@ -175,6 +308,43 @@ fn payoff_type(payoff_type: PricePayoffType) -> VanillaOptionPayoffType {
         PricePayoffType::Call => VanillaOptionPayoffType::Call,
         PricePayoffType::Put => VanillaOptionPayoffType::Put,
     }
+}
+
+fn observed_option_type_filter(payoff_type: PricePayoffType) -> ObservedOptionTypeFilter {
+    match payoff_type {
+        PricePayoffType::Call => ObservedOptionTypeFilter::Call,
+        PricePayoffType::Put => ObservedOptionTypeFilter::Put,
+    }
+}
+
+fn observed_physical_distribution_diagnostics_request(
+    command: &ObservedOptionPricingCommand,
+) -> Result<Option<ObservedOptionsPhysicalDistributionDiagnosticsRequest>, CliError> {
+    let diagnostics_requested = command.physical_distribution_diagnostics
+        || command.physical_distribution_path_count.is_some()
+        || command.physical_distribution_seed.is_some();
+    if !diagnostics_requested {
+        return Ok(None);
+    }
+
+    let path_count = command
+        .physical_distribution_path_count
+        .unwrap_or(ObservedOptionsPhysicalDistributionDiagnosticsDefaults::PATH_COUNT);
+    if path_count == 0 {
+        return Err(CliError::InvalidCommandArgument {
+            argument_name: "--physical-distribution-path-count",
+            message: "must be strictly positive".to_string(),
+        });
+    }
+
+    Ok(Some(
+        ObservedOptionsPhysicalDistributionDiagnosticsRequest {
+            path_count,
+            seed: command
+                .physical_distribution_seed
+                .unwrap_or(ObservedOptionsPhysicalDistributionDiagnosticsDefaults::SEED),
+        },
+    ))
 }
 
 fn pricing_run_id(model_run_id: &str) -> String {

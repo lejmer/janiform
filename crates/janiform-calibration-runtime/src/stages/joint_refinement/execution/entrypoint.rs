@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::mpsc;
 
+use super::JointRefinementStageRuntimeHandoff;
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageExecutionInput,
     JointRefinementStageExecutionReport, JointRefinementStageProgressUpdate,
@@ -19,6 +20,7 @@ pub fn run_joint_refinement_calibration_stage(
         stage_input,
         None,
         None,
+        true,
     )
 }
 
@@ -28,14 +30,119 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_
     stage_input: JointRefinementStageExecutionInput,
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
+    run_pipeline_stage_with_progress_observer_and_persistence(
+        run_spec,
+        calendar_registry,
+        stage_input,
+        progress_observer,
+        disk_checkpoint_directory,
+        load_current_stage_resume_state,
+        super::pipeline::run_joint_refinement_calibration_stage_internal,
+    )
+}
+
+pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and_persistence(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: JointRefinementStageExecutionInput,
+    upstream_joint_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
+    progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
+    disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
+) -> JointRefinementStageExecutionReport {
+    run_pipeline_stage_with_progress_observer_and_persistence(
+        run_spec,
+        calendar_registry,
+        stage_input,
+        progress_observer,
+        disk_checkpoint_directory,
+        load_current_stage_resume_state,
+        move |run_spec,
+              calendar_registry,
+              stage_input,
+              progress_sender,
+              disk_checkpoint_directory,
+              load_current_stage_resume_state| {
+            super::pipeline::run_option_refinement_calibration_stage_internal(
+                run_spec,
+                calendar_registry,
+                stage_input,
+                upstream_joint_refinement_handoff,
+                progress_sender,
+                disk_checkpoint_directory,
+                load_current_stage_resume_state,
+            )
+        },
+    )
+}
+
+pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_persistence(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: JointRefinementStageExecutionInput,
+    upstream_joint_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
+    upstream_option_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
+    progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
+    disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
+) -> JointRefinementStageExecutionReport {
+    run_pipeline_stage_with_progress_observer_and_persistence(
+        run_spec,
+        calendar_registry,
+        stage_input,
+        progress_observer,
+        disk_checkpoint_directory,
+        load_current_stage_resume_state,
+        move |run_spec,
+              calendar_registry,
+              stage_input,
+              progress_sender,
+              disk_checkpoint_directory,
+              load_current_stage_resume_state| {
+            super::pipeline::run_finalization_calibration_stage_internal(
+                run_spec,
+                calendar_registry,
+                stage_input,
+                upstream_joint_refinement_handoff,
+                upstream_option_refinement_handoff,
+                progress_sender,
+                disk_checkpoint_directory,
+                load_current_stage_resume_state,
+            )
+        },
+    )
+}
+
+fn run_pipeline_stage_with_progress_observer_and_persistence<RunStage>(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: JointRefinementStageExecutionInput,
+    progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
+    disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
+    run_stage: RunStage,
+) -> JointRefinementStageExecutionReport
+where
+    RunStage: FnOnce(
+            &CalibrationRunSpec,
+            &ExchangeCalendarRegistry,
+            JointRefinementStageExecutionInput,
+            Option<mpsc::Sender<JointRefinementStageProgressUpdate>>,
+            Option<&Path>,
+            bool,
+        ) -> JointRefinementStageExecutionReport
+        + Send,
+{
     let Some(progress_observer) = progress_observer else {
-        return super::pipeline::run_joint_refinement_calibration_stage_internal(
+        return run_stage(
             run_spec,
             calendar_registry,
             stage_input,
             None,
             disk_checkpoint_directory,
+            load_current_stage_resume_state,
         );
     };
 
@@ -44,12 +151,13 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_
 
     std::thread::scope(|scope| {
         let worker = scope.spawn(|| {
-            super::pipeline::run_joint_refinement_calibration_stage_internal(
+            run_stage(
                 run_spec,
                 calendar_registry,
                 stage_input,
                 Some(progress_sender),
                 disk_checkpoint_directory,
+                load_current_stage_resume_state,
             )
         });
 

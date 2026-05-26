@@ -113,14 +113,14 @@ pub(crate) use janiform_calibration_artifacts::{
     ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
     SeasonalityStageNormalizationMetadata, SeasonalityStageParameterArtifactInput,
     SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    build_calibration_stage_parameter_artifact, calibration_artifact_manifest_path,
-    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
-    calibration_committed_artifact_run_directory,
+    TickGridObservationModel, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
+    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
+    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
-    calibration_stage_parameter_artifact_path,
+    calibration_stage_checkpoint_reference, calibration_stage_parameter_artifact_path,
     calibration_stage_parameter_artifact_path_in_run_directory, calibration_stage_token,
     calibration_validation_metric_artifact_path, calibration_validation_metric_artifact_reference,
     default_calibration_execution_mode_for_surface, derive_calibration_stage_seed_from_global_seed,
@@ -155,6 +155,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 pub(crate) use serde_json::json;
 
 pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
@@ -288,7 +289,7 @@ pub(crate) fn build_valid_run_spec_with_mode(
 pub(crate) fn build_endogenous_mean_reversion_parameters() -> MeanReversionFittedParameters {
     MeanReversionFittedParameters::try_new(
         0.25,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 1.25),
+        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),
     )
     .expect("mean reversion fitted parameters should validate")
 }
@@ -352,6 +353,8 @@ pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
                 joint_refinement_stage_output_schema_version: Some(
                     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
                 ),
+                option_refinement_stage_output_schema_version: None,
+                finalization_stage_output_schema_version: None,
                 seasonality_estimator_version: Some(
                     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string(),
                 ),
@@ -699,6 +702,7 @@ pub(crate) fn build_seasonality_stage_parameter_artifact_fixture(
                 intraday_minutes_per_bin: 60,
                 intraday_factor_by_bin: vec![0.9, 1.1],
                 day_of_week_factor: vec![1.0, 0.98, 1.01, 1.02, 0.99],
+                hour_of_week_factor: vec![1.0; 168],
                 day_of_year_factor: vec![0.97, 1.03],
                 normalization_metadata: SeasonalityStageNormalizationMetadata {
                     normalization_policy: "unit_mean_rescaling_with_log_offset_guard.v1"
@@ -779,6 +783,13 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
             normalization_policy: "exposure_weighted_mean_one_over_source_window.v1"
                 .to_string(),
         },
+        return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
+        tick_grid_observation_model: TickGridObservationModel {
+            tick_size: None,
+            tick_size_source: "test".to_string(),
+            inference_policy: "test".to_string(),
+            observation_policy: "test".to_string(),
+        },
         mean_reversion_fitted_parameters:
             build_endogenous_mean_reversion_parameters(),
     };
@@ -850,7 +861,7 @@ pub(crate) fn build_stage_checkpoint_metadata_fixture(
         checkpoint_reference_policy: CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY.to_string(),
         disk_write_policy: CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY.to_string(),
         artifact_manifest_schema_version: CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION.to_string(),
-        checkpoint_reference: checkpoint_reference(
+        checkpoint_reference: calibration_stage_checkpoint_reference(
             run_contract.run_spec.run_id.as_str(),
             completed_stage,
         ),
@@ -887,16 +898,4 @@ pub(crate) fn temporary_checkpoint_directory(test_name: &str) -> PathBuf {
         .expect("temporary checkpoint directory should be created");
 
     checkpoint_directory
-}
-
-fn checkpoint_reference(run_id: &str, stage: CalibrationStage) -> String {
-    let stage_token = match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-        CalibrationStage::MeanReversion => "mean_reversion",
-        CalibrationStage::JointRefinement => "joint_refinement",
-    };
-
-    format!("checkpoint://{run_id}/{stage_token}")
 }

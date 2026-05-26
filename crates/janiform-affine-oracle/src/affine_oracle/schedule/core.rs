@@ -1,0 +1,796 @@
+use janiform_foundations::complex_math::{
+    ComplexScalar, complex_exponential, complex_multiply, complex_pow_real_exponent_principal,
+};
+use janiform_model_kernels::hawkes::HawkesExcitationState;
+
+use super::super::EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION;
+use super::super::contracts::{
+    ExponentialAffineTransformDVector, ExponentialAffineTransformInput,
+    ExponentialAffineTransformOutputError,
+};
+use super::super::rhs::evaluate_exponential_affine_transform_ode_rhs;
+use super::super::runge_kutta::{combine_complex_runge_kutta, combine_d_vector_runge_kutta};
+use super::super::solver::{
+    ExponentialAffineTransformGuardFailure, ExponentialAffineTransformGuardFailureCode,
+    ExponentialAffineTransformIntegratorMethod, internally_selected_default_solver_settings,
+};
+use super::types::{
+    ExponentialAffineScheduleCumulantError, ExponentialAffineScheduleCumulantOutput,
+    ExponentialAffineScheduleCumulantProgress, ExponentialAffineScheduleCumulantRequest,
+    ExponentialAffineScheduleIntervalInput, ExponentialAffineTransformInputTangent,
+    validate_finite_output_derivative,
+};
+
+/// Evaluates the affine cumulant and tangent derivatives over a full interval schedule.
+pub fn solve_exponential_affine_schedule_cumulant(
+    request: &ExponentialAffineScheduleCumulantRequest,
+) -> Result<ExponentialAffineScheduleCumulantOutput, ExponentialAffineScheduleCumulantError> {
+    solve_exponential_affine_schedule_cumulant_with_progress(request, None)
+}
+
+/// Evaluates the affine cumulant while reporting schedule interval progress.
+pub fn solve_exponential_affine_schedule_cumulant_with_progress(
+    request: &ExponentialAffineScheduleCumulantRequest,
+    mut progress_observer: Option<&mut dyn FnMut(ExponentialAffineScheduleCumulantProgress)>,
+) -> Result<ExponentialAffineScheduleCumulantOutput, ExponentialAffineScheduleCumulantError> {
+    request.validate()?;
+
+    let mut exponent = ScheduleExponent::zero();
+    let mut completed_step_count = 0_usize;
+    let mut rhs_evaluation_count = 0_usize;
+    let mut completed_interval_count = 0_usize;
+
+    let total_interval_count = request.intervals.len();
+
+    emit_schedule_cumulant_progress(&mut progress_observer, 0, total_interval_count, None);
+
+    for (interval_position, interval) in request.intervals.iter().enumerate().rev() {
+        let interval_output = integrate_schedule_interval(*interval, exponent, interval_position)?;
+
+        exponent = exponent.compose(interval_output.exponent);
+
+        completed_step_count =
+            completed_step_count.saturating_add(interval_output.completed_step_count);
+        rhs_evaluation_count =
+            rhs_evaluation_count.saturating_add(interval_output.rhs_evaluation_count);
+
+        completed_interval_count = completed_interval_count.saturating_add(1);
+
+        emit_schedule_cumulant_progress(
+            &mut progress_observer,
+            completed_interval_count,
+            total_interval_count,
+            Some(interval_position),
+        );
+    }
+
+    let output = ExponentialAffineScheduleCumulantOutput {
+        exponent: exponent.base.evaluated_at(request.initial_state),
+        argument_derivative: exponent
+            .argument_tangent
+            .evaluated_at(request.initial_state),
+        buy_activity_premium_derivative: exponent
+            .buy_activity_premium_tangent
+            .evaluated_at(request.initial_state),
+        sell_activity_premium_derivative: exponent
+            .sell_activity_premium_tangent
+            .evaluated_at(request.initial_state),
+        interval_count: request.intervals.len(),
+        completed_step_count,
+        rhs_evaluation_count,
+    };
+
+    validate_finite_output_derivative("argument", output.argument_derivative)?;
+    validate_finite_output_derivative(
+        "buy_activity_premium",
+        output.buy_activity_premium_derivative,
+    )?;
+    validate_finite_output_derivative(
+        "sell_activity_premium",
+        output.sell_activity_premium_derivative,
+    )?;
+
+    Ok(output)
+}
+
+fn emit_schedule_cumulant_progress(
+    progress_observer: &mut Option<&mut dyn FnMut(ExponentialAffineScheduleCumulantProgress)>,
+    completed_interval_count: usize,
+    total_interval_count: usize,
+    current_interval_position: Option<usize>,
+) {
+    if let Some(progress_observer) = progress_observer.as_deref_mut() {
+        progress_observer(ExponentialAffineScheduleCumulantProgress {
+            completed_interval_count,
+            total_interval_count,
+            current_interval_position,
+        });
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct AffineState {
+    d_vector: ExponentialAffineTransformDVector,
+    c_value: ComplexScalar,
+}
+
+impl AffineState {
+    fn zero() -> Self {
+        Self {
+            d_vector: ExponentialAffineTransformDVector::zero(),
+            c_value: ComplexScalar::new(0.0, 0.0),
+        }
+    }
+
+    fn add_scaled_rhs(self, rhs: AffineState, scale: f64) -> Self {
+        Self {
+            d_vector: self.d_vector.plus(rhs.d_vector.scale(scale)),
+            c_value: self.c_value.plus(rhs.c_value.scale(scale)),
+        }
+    }
+
+    fn evaluated_at(self, state: HawkesExcitationState) -> ComplexScalar {
+        self.c_value.plus(self.d_vector.dot_state(state))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ScheduleExponent {
+    base: AffineState,
+    argument_tangent: AffineState,
+    buy_activity_premium_tangent: AffineState,
+    sell_activity_premium_tangent: AffineState,
+}
+
+impl ScheduleExponent {
+    fn zero() -> Self {
+        Self {
+            base: AffineState::zero(),
+            argument_tangent: AffineState::zero(),
+            buy_activity_premium_tangent: AffineState::zero(),
+            sell_activity_premium_tangent: AffineState::zero(),
+        }
+    }
+
+    fn compose(self, interval_output: Self) -> Self {
+        Self {
+            base: AffineState {
+                d_vector: interval_output.base.d_vector,
+                c_value: self.base.c_value.plus(interval_output.base.c_value),
+            },
+            argument_tangent: AffineState {
+                d_vector: interval_output.argument_tangent.d_vector,
+                c_value: self
+                    .argument_tangent
+                    .c_value
+                    .plus(interval_output.argument_tangent.c_value),
+            },
+            buy_activity_premium_tangent: AffineState {
+                d_vector: interval_output.buy_activity_premium_tangent.d_vector,
+                c_value: self
+                    .buy_activity_premium_tangent
+                    .c_value
+                    .plus(interval_output.buy_activity_premium_tangent.c_value),
+            },
+            sell_activity_premium_tangent: AffineState {
+                d_vector: interval_output.sell_activity_premium_tangent.d_vector,
+                c_value: self
+                    .sell_activity_premium_tangent
+                    .c_value
+                    .plus(interval_output.sell_activity_premium_tangent.c_value),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ScheduleIntervalOutput {
+    exponent: ScheduleExponent,
+    completed_step_count: usize,
+    rhs_evaluation_count: usize,
+}
+
+fn integrate_schedule_interval(
+    interval: ExponentialAffineScheduleIntervalInput,
+    terminal_exponent: ScheduleExponent,
+    interval_position: usize,
+) -> Result<ScheduleIntervalOutput, ExponentialAffineScheduleCumulantError> {
+    terminal_exponent
+        .base
+        .d_vector
+        .validate()
+        .map_err(
+            |source| ExponentialAffineScheduleCumulantError::InvalidTerminalLoading {
+                source: ExponentialAffineTransformOutputError::InvalidDAtDelta { source },
+            },
+        )?;
+
+    let solver_settings = internally_selected_default_solver_settings(interval.transform_input);
+
+    solver_settings.validate().map_err(|source| {
+        ExponentialAffineScheduleCumulantError::InvalidSolverSettings { source }
+    })?;
+
+    let step_size = interval.transform_input.delta / solver_settings.step_count as f64;
+    let mut state = ScheduleExponent {
+        base: AffineState {
+            d_vector: terminal_exponent.base.d_vector,
+            c_value: ComplexScalar::new(0.0, 0.0),
+        },
+        argument_tangent: AffineState {
+            d_vector: terminal_exponent.argument_tangent.d_vector,
+            c_value: ComplexScalar::new(0.0, 0.0),
+        },
+        buy_activity_premium_tangent: AffineState {
+            d_vector: terminal_exponent.buy_activity_premium_tangent.d_vector,
+            c_value: ComplexScalar::new(0.0, 0.0),
+        },
+        sell_activity_premium_tangent: AffineState {
+            d_vector: terminal_exponent.sell_activity_premium_tangent.d_vector,
+            c_value: ComplexScalar::new(0.0, 0.0),
+        },
+    };
+
+    let initial_guard =
+        evaluate_schedule_guard_checkpoint(interval.transform_input, state.base, 0, step_size);
+    if let Some(guard_failure) = initial_guard {
+        return Err(ExponentialAffineScheduleCumulantError::GuardFailure {
+            interval_position,
+            guard_failure,
+        });
+    }
+
+    let mut completed_step_count = 0_usize;
+    let mut rhs_evaluation_count = 0_usize;
+
+    for _ in 0..solver_settings.step_count {
+        state = advance_schedule_state(
+            interval,
+            state,
+            step_size,
+            solver_settings.integrator_method,
+        );
+
+        completed_step_count = completed_step_count.saturating_add(1);
+        rhs_evaluation_count =
+            rhs_evaluation_count.saturating_add(match solver_settings.integrator_method {
+                ExponentialAffineTransformIntegratorMethod::ForwardEuler => 1,
+                ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta => 4,
+            });
+
+        let guard = evaluate_schedule_guard_checkpoint(
+            interval.transform_input,
+            state.base,
+            completed_step_count,
+            step_size,
+        );
+        if let Some(guard_failure) = guard {
+            return Err(ExponentialAffineScheduleCumulantError::GuardFailure {
+                interval_position,
+                guard_failure,
+            });
+        }
+    }
+
+    state.base.d_vector.validate().map_err(|source| {
+        ExponentialAffineScheduleCumulantError::InvalidOutput {
+            source: ExponentialAffineTransformOutputError::InvalidDAtDelta { source },
+        }
+    })?;
+
+    if !state.base.c_value.is_finite() {
+        return Err(ExponentialAffineScheduleCumulantError::InvalidOutput {
+            source: ExponentialAffineTransformOutputError::InvalidCAtDelta {
+                value: state.base.c_value,
+            },
+        });
+    }
+
+    Ok(ScheduleIntervalOutput {
+        exponent: ScheduleExponent {
+            base: state.base,
+            argument_tangent: state.argument_tangent,
+            buy_activity_premium_tangent: state.buy_activity_premium_tangent,
+            sell_activity_premium_tangent: state.sell_activity_premium_tangent,
+        },
+        completed_step_count,
+        rhs_evaluation_count,
+    })
+}
+
+fn advance_schedule_state(
+    interval: ExponentialAffineScheduleIntervalInput,
+    state: ScheduleExponent,
+    step_size: f64,
+    integrator_method: ExponentialAffineTransformIntegratorMethod,
+) -> ScheduleExponent {
+    match integrator_method {
+        ExponentialAffineTransformIntegratorMethod::ForwardEuler => {
+            state.add_scaled_rhs(evaluate_schedule_rhs(interval, state), step_size)
+        }
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta => {
+            let k1 = evaluate_schedule_rhs(interval, state);
+            let k2 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k1, 0.5 * step_size));
+            let k3 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k2, 0.5 * step_size));
+            let k4 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k3, step_size));
+
+            state.add_scaled_rhs(combine_schedule_runge_kutta_rhs(k1, k2, k3, k4), step_size)
+        }
+    }
+}
+
+impl ScheduleExponent {
+    fn add_scaled_rhs(self, rhs: Self, scale: f64) -> Self {
+        Self {
+            base: self.base.add_scaled_rhs(rhs.base, scale),
+            argument_tangent: self
+                .argument_tangent
+                .add_scaled_rhs(rhs.argument_tangent, scale),
+            buy_activity_premium_tangent: self
+                .buy_activity_premium_tangent
+                .add_scaled_rhs(rhs.buy_activity_premium_tangent, scale),
+            sell_activity_premium_tangent: self
+                .sell_activity_premium_tangent
+                .add_scaled_rhs(rhs.sell_activity_premium_tangent, scale),
+        }
+    }
+}
+
+fn combine_schedule_runge_kutta_rhs(
+    k1: ScheduleExponent,
+    k2: ScheduleExponent,
+    k3: ScheduleExponent,
+    k4: ScheduleExponent,
+) -> ScheduleExponent {
+    ScheduleExponent {
+        base: combine_affine_runge_kutta(k1.base, k2.base, k3.base, k4.base),
+        argument_tangent: combine_affine_runge_kutta(
+            k1.argument_tangent,
+            k2.argument_tangent,
+            k3.argument_tangent,
+            k4.argument_tangent,
+        ),
+        buy_activity_premium_tangent: combine_affine_runge_kutta(
+            k1.buy_activity_premium_tangent,
+            k2.buy_activity_premium_tangent,
+            k3.buy_activity_premium_tangent,
+            k4.buy_activity_premium_tangent,
+        ),
+        sell_activity_premium_tangent: combine_affine_runge_kutta(
+            k1.sell_activity_premium_tangent,
+            k2.sell_activity_premium_tangent,
+            k3.sell_activity_premium_tangent,
+            k4.sell_activity_premium_tangent,
+        ),
+    }
+}
+
+fn combine_affine_runge_kutta(
+    k1: AffineState,
+    k2: AffineState,
+    k3: AffineState,
+    k4: AffineState,
+) -> AffineState {
+    AffineState {
+        d_vector: combine_d_vector_runge_kutta(k1.d_vector, k2.d_vector, k3.d_vector, k4.d_vector),
+        c_value: combine_complex_runge_kutta(k1.c_value, k2.c_value, k3.c_value, k4.c_value),
+    }
+}
+
+fn evaluate_schedule_rhs(
+    interval: ExponentialAffineScheduleIntervalInput,
+    state: ScheduleExponent,
+) -> ScheduleExponent {
+    let base_rhs = evaluate_exponential_affine_transform_ode_rhs(
+        interval.transform_input,
+        state.base.d_vector,
+    );
+
+    ScheduleExponent {
+        base: AffineState {
+            d_vector: base_rhs.d_derivative,
+            c_value: base_rhs.c_derivative,
+        },
+        argument_tangent: evaluate_schedule_tangent_rhs(
+            interval.transform_input,
+            state.base.d_vector,
+            state.argument_tangent,
+            interval.argument_tangent,
+        ),
+        buy_activity_premium_tangent: evaluate_schedule_tangent_rhs(
+            interval.transform_input,
+            state.base.d_vector,
+            state.buy_activity_premium_tangent,
+            interval.buy_activity_premium_tangent,
+        ),
+        sell_activity_premium_tangent: evaluate_schedule_tangent_rhs(
+            interval.transform_input,
+            state.base.d_vector,
+            state.sell_activity_premium_tangent,
+            interval.sell_activity_premium_tangent,
+        ),
+    }
+}
+
+fn evaluate_schedule_tangent_rhs(
+    transform_input: ExponentialAffineTransformInput,
+    base_d_vector: ExponentialAffineTransformDVector,
+    tangent_state: AffineState,
+    direct_tangent: ExponentialAffineTransformInputTangent,
+) -> AffineState {
+    let equation_specification = transform_input.equation_specification;
+    let beta = equation_specification.hawkes_kernel_parameters.beta;
+
+    let k_plus = equation_specification.k_plus();
+    let k_minus = equation_specification.k_minus();
+
+    let exp_d_dot_k_plus =
+        complex_exponential(base_d_vector.dot_loadings(equation_specification.k_plus()));
+
+    let exp_d_dot_k_minus =
+        complex_exponential(base_d_vector.dot_loadings(equation_specification.k_minus()));
+
+    let plus_factor = complex_multiply(transform_input.z_plus, exp_d_dot_k_plus);
+    let minus_factor = complex_multiply(transform_input.z_minus, exp_d_dot_k_minus);
+
+    let plus_state_derivative =
+        complex_multiply(plus_factor, tangent_state.d_vector.dot_loadings(k_plus));
+
+    let minus_state_derivative =
+        complex_multiply(minus_factor, tangent_state.d_vector.dot_loadings(k_minus));
+
+    let direct = direct_tangent.activity_loadings;
+
+    let h_plus_baseline_derivative = plus_state_derivative
+        .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
+        .subtract(direct.u_plus_baseline);
+
+    let h_plus_endogenous_derivative = plus_state_derivative
+        .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
+        .subtract(direct.u_plus_endogenous);
+
+    let h_minus_baseline_derivative = minus_state_derivative
+        .plus(complex_multiply(direct_tangent.z_minus, exp_d_dot_k_minus))
+        .subtract(direct.u_minus_baseline);
+
+    let h_minus_endogenous_derivative = minus_state_derivative
+        .plus(complex_multiply(direct_tangent.z_minus, exp_d_dot_k_minus))
+        .subtract(direct.u_minus_endogenous);
+
+    let news_derivative =
+        evaluate_news_tangent_rhs(transform_input, base_d_vector, tangent_state.d_vector);
+
+    AffineState {
+        d_vector: ExponentialAffineTransformDVector::new(
+            tangent_state
+                .d_vector
+                .plus_plus
+                .scale(-beta)
+                .plus(h_plus_endogenous_derivative),
+            tangent_state
+                .d_vector
+                .plus_minus
+                .scale(-beta)
+                .plus(h_plus_endogenous_derivative),
+            tangent_state
+                .d_vector
+                .minus_plus
+                .scale(-beta)
+                .plus(h_minus_endogenous_derivative),
+            tangent_state
+                .d_vector
+                .minus_minus
+                .scale(-beta)
+                .plus(h_minus_endogenous_derivative),
+        ),
+        c_value: h_plus_baseline_derivative
+            .plus(h_minus_baseline_derivative)
+            .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar)
+            .plus(news_derivative),
+    }
+}
+
+fn evaluate_news_tangent_rhs(
+    transform_input: ExponentialAffineTransformInput,
+    base_d_vector: ExponentialAffineTransformDVector,
+    tangent_d_vector: ExponentialAffineTransformDVector,
+) -> ComplexScalar {
+    let equation_specification = transform_input.equation_specification;
+    let gamma_configuration = equation_specification.gamma_severity_mark_configuration;
+
+    let one_minus_theta_d_dot_r = ComplexScalar::new(1.0, 0.0).subtract(
+        base_d_vector
+            .dot_loadings(equation_specification.r())
+            .scale(gamma_configuration.scale_theta),
+    );
+
+    let gamma_power = complex_pow_real_exponent_principal(
+        one_minus_theta_d_dot_r,
+        -(gamma_configuration.shape_k + 1.0),
+    );
+
+    let gamma_prefactor = transform_input.news_intensity.total_nu_h()
+        * gamma_configuration.shape_k
+        * gamma_configuration.scale_theta;
+
+    complex_multiply(
+        gamma_power.scale(gamma_prefactor),
+        tangent_d_vector.dot_loadings(equation_specification.r()),
+    )
+}
+
+fn evaluate_schedule_guard_checkpoint(
+    transform_input: ExponentialAffineTransformInput,
+    state: AffineState,
+    completed_step_count: usize,
+    step_size: f64,
+) -> Option<ExponentialAffineTransformGuardFailure> {
+    let checkpoint_time = completed_step_count as f64 * step_size;
+
+    let d_dot_r = state
+        .d_vector
+        .dot_loadings(transform_input.equation_specification.r());
+
+    let d_dot_r_upper_bound = 1.0
+        / transform_input
+            .equation_specification
+            .gamma_severity_mark_configuration
+            .scale_theta;
+
+    if !state.c_value.is_finite() || !d_vector_is_finite(state.d_vector) {
+        return Some(build_schedule_guard_failure(
+            ExponentialAffineTransformGuardFailureCode::NonFiniteState,
+            completed_step_count,
+            checkpoint_time,
+            d_dot_r,
+            d_dot_r_upper_bound,
+        ));
+    }
+
+    if !d_dot_r.is_finite() || !d_dot_r_upper_bound.is_finite() {
+        return Some(build_schedule_guard_failure(
+            ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric,
+            completed_step_count,
+            checkpoint_time,
+            d_dot_r,
+            d_dot_r_upper_bound,
+        ));
+    }
+
+    if d_dot_r.real >= d_dot_r_upper_bound {
+        return Some(build_schedule_guard_failure(
+            ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation,
+            completed_step_count,
+            checkpoint_time,
+            d_dot_r,
+            d_dot_r_upper_bound,
+        ));
+    }
+
+    None
+}
+
+fn build_schedule_guard_failure(
+    code: ExponentialAffineTransformGuardFailureCode,
+    step_index: usize,
+    time: f64,
+    d_dot_r: ComplexScalar,
+    d_dot_r_upper_bound: f64,
+) -> ExponentialAffineTransformGuardFailure {
+    ExponentialAffineTransformGuardFailure {
+        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION,
+        code,
+        step_index,
+        time,
+        d_dot_r,
+        d_dot_r_upper_bound,
+    }
+}
+
+fn d_vector_is_finite(value: ExponentialAffineTransformDVector) -> bool {
+    value.plus_plus.is_finite()
+        && value.plus_minus.is_finite()
+        && value.minus_plus.is_finite()
+        && value.minus_minus.is_finite()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ExponentialAffineScheduleCumulantRequest, ExponentialAffineScheduleIntervalInput,
+        ExponentialAffineTransformInput, ExponentialAffineTransformInputTangent,
+        solve_exponential_affine_schedule_cumulant,
+        solve_exponential_affine_schedule_cumulant_with_progress,
+    };
+    use crate::affine_oracle::ExponentialAffineTransformDVector;
+    use crate::affine_oracle::contracts::{
+        ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformNewsIntensityInput,
+    };
+    use crate::affine_oracle::solver::solve_exponential_affine_transform_with_terminal_loading;
+    use crate::affine_oracle::test_support::{
+        standard_initial_state, valid_equation_specification,
+    };
+    use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
+
+    fn transform_input(
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
+    ) -> ExponentialAffineTransformInput {
+        ExponentialAffineTransformInput::try_new(
+            valid_equation_specification(),
+            activity_loadings,
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(0.95, 0.02),
+            1.1,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
+                .expect("news intensity components should construct"),
+            1.0,
+            standard_initial_state(),
+        )
+        .expect("valid transform input should construct")
+    }
+
+    fn base_loadings() -> ExponentialAffineTransformActivityLoadings {
+        ExponentialAffineTransformActivityLoadings::new(
+            ComplexScalar::new(0.2, -0.1),
+            ComplexScalar::new(0.2, -0.1),
+            ComplexScalar::new(0.3, 0.05),
+            ComplexScalar::new(0.3, 0.05),
+        )
+    }
+
+    fn interval_input(
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
+        argument_tangent: ExponentialAffineTransformInputTangent,
+    ) -> ExponentialAffineScheduleIntervalInput {
+        ExponentialAffineScheduleIntervalInput {
+            transform_input: transform_input(activity_loadings),
+            argument_tangent,
+            buy_activity_premium_tangent: ExponentialAffineTransformInputTangent::zero(),
+            sell_activity_premium_tangent: ExponentialAffineTransformInputTangent::zero(),
+        }
+    }
+
+    fn schedule_output_for_loadings(
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
+        argument_tangent: ExponentialAffineTransformInputTangent,
+    ) -> ComplexScalar {
+        solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
+            initial_state: standard_initial_state(),
+            intervals: vec![interval_input(activity_loadings, argument_tangent)],
+        })
+        .expect("schedule cumulant should solve")
+        .exponent
+    }
+
+    #[test]
+    fn schedule_cumulant_matches_one_interval_transform_value() {
+        let schedule_output =
+            solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
+                initial_state: standard_initial_state(),
+                intervals: vec![interval_input(
+                    base_loadings(),
+                    ExponentialAffineTransformInputTangent::zero(),
+                )],
+            })
+            .expect("schedule cumulant should solve");
+
+        let one_interval_output = solve_exponential_affine_transform_with_terminal_loading(
+            transform_input(base_loadings()),
+            ExponentialAffineTransformDVector::zero(),
+        )
+        .expect("one-interval transform should solve")
+        .output
+        .expect("one-interval transform should produce output");
+
+        let schedule_transform_value = complex_exponential(schedule_output.exponent);
+        assert_complex_close(
+            schedule_transform_value,
+            one_interval_output.transform_value,
+        );
+    }
+
+    #[test]
+    fn schedule_cumulant_argument_tangent_matches_finite_difference() {
+        let tangent_scale = ComplexScalar::new(0.7, -0.2);
+        let tangent = ExponentialAffineTransformInputTangent {
+            activity_loadings: ExponentialAffineTransformActivityLoadings::new(
+                tangent_scale,
+                tangent_scale,
+                ComplexScalar::new(0.0, 0.0),
+                ComplexScalar::new(0.0, 0.0),
+            ),
+            z_plus: ComplexScalar::new(0.0, 0.0),
+            z_minus: ComplexScalar::new(0.0, 0.0),
+        };
+
+        let analytic =
+            solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
+                initial_state: standard_initial_state(),
+                intervals: vec![interval_input(base_loadings(), tangent)],
+            })
+            .expect("schedule cumulant should solve")
+            .argument_derivative;
+
+        let perturbation = 1.0e-6;
+        let positive = schedule_output_for_loadings(
+            perturb_loadings(base_loadings(), tangent_scale, perturbation),
+            ExponentialAffineTransformInputTangent::zero(),
+        );
+        let negative = schedule_output_for_loadings(
+            perturb_loadings(base_loadings(), tangent_scale, -perturbation),
+            ExponentialAffineTransformInputTangent::zero(),
+        );
+        let finite_difference = positive
+            .subtract(negative)
+            .scale(1.0 / (2.0 * perturbation));
+
+        assert_complex_close(analytic, finite_difference);
+    }
+
+    #[test]
+    fn schedule_cumulant_reports_completed_interval_counts() {
+        let mut progress_updates = Vec::new();
+        let mut progress_observer = |progress| progress_updates.push(progress);
+
+        solve_exponential_affine_schedule_cumulant_with_progress(
+            &ExponentialAffineScheduleCumulantRequest {
+                initial_state: standard_initial_state(),
+                intervals: vec![
+                    interval_input(
+                        base_loadings(),
+                        ExponentialAffineTransformInputTangent::zero(),
+                    ),
+                    interval_input(
+                        base_loadings(),
+                        ExponentialAffineTransformInputTangent::zero(),
+                    ),
+                ],
+            },
+            Some(&mut progress_observer),
+        )
+        .expect("schedule cumulant should solve");
+
+        assert_eq!(progress_updates.len(), 3);
+        assert_eq!(progress_updates[0].completed_interval_count, 0);
+        assert_eq!(progress_updates[0].total_interval_count, 2);
+        assert_eq!(progress_updates[0].current_interval_position, None);
+        assert_eq!(progress_updates[1].completed_interval_count, 1);
+        assert_eq!(progress_updates[1].current_interval_position, Some(1));
+        assert_eq!(progress_updates[2].completed_interval_count, 2);
+        assert_eq!(progress_updates[2].current_interval_position, Some(0));
+    }
+
+    fn perturb_loadings(
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
+        tangent_scale: ComplexScalar,
+        perturbation: f64,
+    ) -> ExponentialAffineTransformActivityLoadings {
+        ExponentialAffineTransformActivityLoadings::new(
+            activity_loadings
+                .u_plus_baseline
+                .plus(tangent_scale.scale(perturbation)),
+            activity_loadings
+                .u_plus_endogenous
+                .plus(tangent_scale.scale(perturbation)),
+            activity_loadings.u_minus_baseline,
+            activity_loadings.u_minus_endogenous,
+        )
+    }
+
+    fn assert_complex_close(observed: ComplexScalar, expected: ComplexScalar) {
+        let tolerance = 1.0e-6;
+
+        assert!(
+            (observed.real - expected.real).abs() <= tolerance,
+            "observed real {} expected real {}",
+            observed.real,
+            expected.real,
+        );
+        assert!(
+            (observed.imaginary - expected.imaginary).abs() <= tolerance,
+            "observed imaginary {} expected imaginary {}",
+            observed.imaginary,
+            expected.imaginary,
+        );
+    }
+}

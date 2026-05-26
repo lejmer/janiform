@@ -25,6 +25,7 @@ janiform-event-log = { path = "../janiform-event-log" }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-market-time = { path = "../janiform-market-time" }
 janiform-terminal-ui = { path = "../janiform-terminal-ui" }
+janiform-work-scheduler = { path = "../janiform-work-scheduler" }
 parquet = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }

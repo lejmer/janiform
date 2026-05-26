@@ -131,6 +131,7 @@ impl TerminalCommandProgress {
             measure,
             work_item_label: update.work_item_label,
             work_item_progress_percent: update.work_item_progress_percent,
+            work_item_status: None,
             planned_work_item_labels: update.planned_work_item_labels,
             work_item_columns: update.work_item_columns,
             work_item_metrics: update.work_item_metrics,
@@ -174,9 +175,9 @@ impl TerminalCommandProgress {
             status: "completed".to_string(),
         });
 
-        adapter
-            .finish_and_keep()
-            .map_err(|source| CliError::OutputWrite { source })
+        adapter.finish_and_clear();
+
+        Ok(())
     }
 
     fn start_stage(&mut self, phase: &str, stage_number: usize) {
@@ -210,6 +211,7 @@ impl TerminalCommandProgress {
 
         adapter.observe(ProgressEvent::StageCompleted {
             stage: active_stage.name,
+            status: "completed".to_string(),
             runtime_seconds: active_stage.started_at.elapsed().as_secs_f64(),
         });
 

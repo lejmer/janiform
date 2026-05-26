@@ -37,6 +37,10 @@ pub(crate) fn run_fit_plan(
                 mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
                 dynamics_search_restart_candidate_budget: command
                     .dynamics_search_restart_candidate_budget,
+                treat_calibration_warnings_as_errors: command.treat_calibration_warnings_as_errors,
+                stylized_fact_huber_cutoff: command.stylized_fact_huber_cutoff,
+                stylized_fact_admissibility_z_threshold: command
+                    .stylized_fact_admissibility_z_threshold,
             },
             no_persist: false,
         },
@@ -109,7 +113,7 @@ fn emit_plan_output(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&plan_json(prepared, staged_artifact_path)),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_plan_human(prepared, staged_artifact_path, context);
 
             context
@@ -127,7 +131,7 @@ fn emit_inspect_output(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&inspect_json(prepared)),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_inspect_human(prepared, context);
 
             context
@@ -146,7 +150,7 @@ fn emit_staged_plan_output(
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&staged_plan_json(prepared, staged_artifact_path)),
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_staged_plan_human(prepared, staged_artifact_path, context);
 
             context
@@ -159,7 +163,7 @@ fn emit_staged_plan_output(
 
 fn emit_progress(context: &CommandContext, message: &str) -> Result<(), CliError> {
     match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => context
+        OutputMode::Terminal | OutputMode::Quiet => context
             .stderr_renderer()
             .write_stderr(message)
             .map_err(|source| CliError::OutputWrite { source }),

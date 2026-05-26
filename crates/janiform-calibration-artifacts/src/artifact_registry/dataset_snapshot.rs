@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
+use janiform_foundations::hashing::fnv1a_64_hex_lowercase;
 use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
@@ -15,9 +16,10 @@ use super::super::contracts::{
 use super::shared::{
     CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
     calibration_committed_artifact_run_directory, calibration_execution_mode_token,
-    calibration_stage_token, compute_reference_checksum_hex, load_validated_json_artifact,
-    persist_validated_json_artifact, validate_checksum_hex,
+    compute_reference_checksum_hex, load_validated_json_artifact, persist_validated_json_artifact,
+    validate_checksum_hex,
 };
+use super::stage_references::calibration_stage_token;
 
 pub const CALIBRATION_DATASET_SNAPSHOT_ARTIFACT_SCHEMA_VERSION: &str =
     "calibration.artifact_registry.dataset_snapshot.v1";
@@ -358,7 +360,7 @@ impl CalibrationDatasetSnapshotArtifact {
 
     pub fn compute_snapshot_checksum_hex(&self) -> String {
         let payload = self.snapshot_checksum_payload();
-        format!("{:016x}", fnv1a_64(payload.as_bytes()))
+        fnv1a_64_hex_lowercase(payload.as_bytes())
     }
 
     fn snapshot_checksum_payload(&self) -> String {
@@ -434,18 +436,6 @@ impl CalibrationDatasetSnapshotArtifact {
 
         segments.join("\n")
     }
-}
-
-fn fnv1a_64(payload: &[u8]) -> u64 {
-    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-    let mut hash = FNV_OFFSET;
-    for byte in payload {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 pub fn build_calibration_dataset_snapshot_artifact(

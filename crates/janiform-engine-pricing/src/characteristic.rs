@@ -2,13 +2,10 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-    ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformInputError,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
-    ExponentialAffineTransformOutputError, ExponentialAffineTransformSolverError,
-    ExponentialAffineTransformSolverSettings,
-    solve_exponential_affine_transform_with_settings as solve_exponential_affine_transform_core,
+    ExponentialAffineTransformOutputError,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::{complex_exponential, complex_multiply};
@@ -18,21 +15,15 @@ use janiform_model_kernels::hawkes::{
     HawkesSeasonalityIntervalError,
 };
 use janiform_model_kernels::nig::{
-    NigBuySellDriverParameters, NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
-    NigTradingTimeCharacteristicExponentContributions,
+    NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
 };
 use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
 };
-use janiform_model_kernels::risk_neutral::{
-    EsscherTransformError, NigEsscherTiltDomain,
-    derive_nig_esscher_tilt_domain_for_pure_imaginary_argument,
-    evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument,
-};
+use janiform_model_kernels::risk_neutral::{EsscherTransformError, NigEsscherTiltDomain};
 
 use super::constants::{
-    INTERNAL_AFFINE_TRANSFORM_STEP_SELECTION_POLICY, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY,
-    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
 };
 use super::contracts::{
@@ -293,7 +284,7 @@ pub(crate) struct LocalTiltResidualEvaluation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) struct LocalTiltResidualSharedPlusShiftSensitivity {
     pub(crate) observed_log_moment_exponent: f64,
     pub(crate) residual: f64,
@@ -306,7 +297,7 @@ pub(crate) struct LocalTiltResidualSharedPlusShiftSensitivity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) struct LocalTiltImplicitThetaSharedPlusShiftSensitivity {
     pub(crate) theta: f64,
     pub(crate) alpha_derivative: f64,
@@ -323,8 +314,31 @@ pub(crate) struct LocalTiltSearchDomain {
     pub(crate) reference_theta: f64,
 }
 
-const BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
-const SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = 1.0;
+pub(crate) const MARTINGALE_FIRST_LOG_MOMENT_SHIFT: f64 = 1.0;
+
+impl LocalTiltSearchDomain {
+    pub(crate) fn contains(self, theta: f64) -> bool {
+        NigEsscherTiltDomain::new(self.lower_theta, self.upper_theta).contains(theta)
+    }
+
+    fn side_for_theta(self, theta: f64) -> Option<LocalTiltSearchSide> {
+        if !self.contains(theta) || theta == self.reference_theta {
+            return None;
+        }
+
+        if theta < self.reference_theta {
+            Some(LocalTiltSearchSide::Lower)
+        } else {
+            Some(LocalTiltSearchSide::Upper)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LocalTiltSearchSide {
+    Lower,
+    Upper,
+}
 
 /// Resolve interval-aligned hourly factors for the pricing path.
 pub use janiform_market_time::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
@@ -410,40 +424,13 @@ fn evaluate_local_tilt_residual(
     target_log_moment_exponent: f64,
     theta: f64,
 ) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError> {
-    let buy_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.buy_side_parameters,
-            BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
+    let observed_log_moment_exponent = driver_parameters
+        .evaluate_return_composition_log_moment(
+            return_decomposition.a_plus,
+            return_decomposition.a_minus,
             theta,
         )
-        .map_err(|source| {
-            map_local_tilt_axis_evaluation_error(
-                theta,
-                BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-                source,
-                true,
-            )
-        })?;
-
-    let sell_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.sell_side_parameters,
-            SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-            theta,
-        )
-        .map_err(|source| {
-            map_local_tilt_axis_evaluation_error(
-                theta,
-                SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-                source,
-                false,
-            )
-        })?;
-
-    let observed_log_moment_exponent = return_decomposition.a_plus.mul_add(
-        buy_side_log_moment_exponent,
-        return_decomposition.a_minus * sell_side_log_moment_exponent,
-    );
+        .map_err(|source| map_local_tilt_evaluation_error(theta, source))?;
     if !observed_log_moment_exponent.is_finite() {
         return Err(AnchoredLocalTiltSolveError::NonFiniteTransformInput {
             theta,
@@ -457,82 +444,70 @@ fn evaluate_local_tilt_residual(
     })
 }
 
-#[allow(dead_code)]
-fn combine_shared_plus_shift_log_moment_sensitivities(
-    return_decomposition: ReturnDecomposition,
-    buy_side_sensitivity: NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
-    sell_side_sensitivity: NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
-    target_log_moment_exponent: f64,
-) -> LocalTiltResidualSharedPlusShiftSensitivity {
-    let observed_log_moment_exponent = return_decomposition.a_plus.mul_add(
-        buy_side_sensitivity.observed_log_moment_exponent,
-        return_decomposition.a_minus * sell_side_sensitivity.observed_log_moment_exponent,
-    );
-
-    LocalTiltResidualSharedPlusShiftSensitivity {
-        observed_log_moment_exponent,
-        residual: observed_log_moment_exponent - target_log_moment_exponent,
-        alpha_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.alpha_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.alpha_derivative,
-        ),
-        beta_0_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.beta_0_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.beta_0_derivative,
-        ),
-        delta_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.delta_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.delta_derivative,
-        ),
-        mu_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.mu_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.mu_derivative,
-        ),
-        delta_beta_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.delta_beta_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.delta_beta_derivative,
-        ),
-        theta_derivative: return_decomposition.a_plus.mul_add(
-            buy_side_sensitivity.theta_derivative,
-            return_decomposition.a_minus * sell_side_sensitivity.theta_derivative,
-        ),
-    }
-}
-
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn differentiate_local_tilt_residual_for_shared_plus_shift_configuration(
     driver_parameters: NigBuySellDriverParameters,
     return_decomposition: ReturnDecomposition,
     target_log_moment_exponent: f64,
     theta: f64,
 ) -> Result<LocalTiltResidualSharedPlusShiftSensitivity, AnchoredLocalTiltSolveError> {
+    let log_moment_argument = ComplexScalar::new(0.0, -theta);
+
     let buy_side_sensitivity = driver_parameters
-        .differentiate_buy_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
-            BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-            theta,
+        .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
+            log_moment_argument,
         )
-        .map_err(
-            |source| AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure { theta, source },
-        )?;
-
+        .map_err(|source| map_local_tilt_side_evaluation_error(theta, source, true))?;
     let sell_side_sensitivity = driver_parameters
-        .differentiate_sell_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
-            SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
+        .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
+            log_moment_argument,
+        )
+        .map_err(|source| map_local_tilt_side_evaluation_error(theta, source, false))?;
+
+    let observed_log_moment_exponent = driver_parameters
+        .evaluate_return_composition_log_moment(
+            return_decomposition.a_plus,
+            return_decomposition.a_minus,
             theta,
         )
-        .map_err(
-            |source| AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure { theta, source },
-        )?;
+        .map_err(|source| map_local_tilt_evaluation_error(theta, source))?;
 
-    Ok(combine_shared_plus_shift_log_moment_sensitivities(
-        return_decomposition,
-        buy_side_sensitivity,
-        sell_side_sensitivity,
-        target_log_moment_exponent,
-    ))
+    let theta_derivative = driver_parameters
+        .differentiate_return_composition_log_moment(
+            return_decomposition.a_plus,
+            return_decomposition.a_minus,
+            theta,
+        )
+        .map_err(|source| map_local_tilt_evaluation_error(theta, source))?;
+
+    Ok(LocalTiltResidualSharedPlusShiftSensitivity {
+        observed_log_moment_exponent,
+        residual: observed_log_moment_exponent - target_log_moment_exponent,
+        alpha_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.alpha_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.alpha_derivative.real,
+        ),
+        beta_0_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.beta_0_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.beta_0_derivative.real,
+        ),
+        delta_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.delta_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.delta_derivative.real,
+        ),
+        mu_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.mu_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.mu_derivative.real,
+        ),
+        delta_beta_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.delta_beta_derivative.real,
+            return_decomposition.a_minus * sell_side_sensitivity.delta_beta_derivative.real,
+        ),
+        theta_derivative,
+    })
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn differentiate_local_tilt_root_for_shared_plus_shift_configuration(
     driver_parameters: NigBuySellDriverParameters,
     return_decomposition: ReturnDecomposition,
@@ -575,36 +550,36 @@ pub(crate) fn differentiate_local_tilt_root_for_shared_plus_shift_configuration(
 fn anchored_local_tilt_domain(
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<NigEsscherTiltDomain, AnchoredLocalTiltSolveError> {
-    let buy_side_domain = derive_nig_esscher_tilt_domain_for_pure_imaginary_argument(
-        driver_parameters.buy_side_parameters,
-        BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-    )
-    .map_err(
-        |source| AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure {
-            theta: f64::NAN,
-            source,
-        },
-    )?;
+    let domain = driver_parameters.derive_return_composition_log_moment_domain();
+    if domain.is_empty() {
+        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+            target_log_moment_exponent: f64::NAN,
+            lower_theta: domain.lower_theta_exclusive,
+            upper_theta: domain.upper_theta_exclusive,
+            lower_residual: f64::NAN,
+            upper_residual: f64::NAN,
+        });
+    }
 
-    let sell_side_domain = derive_nig_esscher_tilt_domain_for_pure_imaginary_argument(
-        driver_parameters.sell_side_parameters,
-        SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
-    )
-    .map_err(
-        |source| AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure {
-            theta: f64::NAN,
-            source,
-        },
-    )?;
-
-    Ok(buy_side_domain.intersect(sell_side_domain))
+    Ok(domain)
 }
 
-pub(crate) fn resolve_local_tilt_search_domain(
+pub(crate) fn resolve_local_martingale_tilt_search_domain(
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
     let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
 
+    let first_moment_domain = admissible_domain.intersect(NigEsscherTiltDomain::new(
+        admissible_domain.lower_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+        admissible_domain.upper_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+    ));
+
+    local_tilt_search_domain_from_admissible_domain(first_moment_domain)
+}
+
+fn local_tilt_search_domain_from_admissible_domain(
+    admissible_domain: NigEsscherTiltDomain,
+) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
     let Some(lower_theta) = admissible_domain.interior_lower_bound() else {
         return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
             target_log_moment_exponent: f64::NAN,
@@ -642,9 +617,36 @@ pub(crate) fn resolve_local_tilt_search_domain(
     })
 }
 
-fn map_local_tilt_axis_evaluation_error(
+fn map_local_tilt_evaluation_error(
     theta: f64,
-    argument_imaginary: f64,
+    source: EsscherTransformError,
+) -> AnchoredLocalTiltSolveError {
+    match source {
+        EsscherTransformError::PureImaginaryArgumentOutOfDomain {
+            lower_theta_exclusive,
+            upper_theta_exclusive,
+            ..
+        } => AnchoredLocalTiltSolveError::OutOfDomainStateRequest {
+            theta,
+            argument_imaginary: 0.0,
+            lower_theta_exclusive,
+            upper_theta_exclusive,
+        },
+        EsscherTransformError::NonFinitePhysicalExponentAtShiftedArgument { value }
+        | EsscherTransformError::NonFinitePhysicalExponentAtAnchorArgument { value }
+        | EsscherTransformError::NonFiniteTransformedExponent { value } => {
+            AnchoredLocalTiltSolveError::NonFiniteTransformInput { theta, value }
+        }
+        other => AnchoredLocalTiltSolveError::TransformEvaluationFailure {
+            theta,
+            message: other.to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+fn map_local_tilt_side_evaluation_error(
+    theta: f64,
     source: EsscherTransformError,
     is_buy_side: bool,
 ) -> AnchoredLocalTiltSolveError {
@@ -655,7 +657,7 @@ fn map_local_tilt_axis_evaluation_error(
             ..
         } => AnchoredLocalTiltSolveError::OutOfDomainStateRequest {
             theta,
-            argument_imaginary,
+            argument_imaginary: 0.0,
             lower_theta_exclusive,
             upper_theta_exclusive,
         },
@@ -684,8 +686,8 @@ pub(crate) fn build_local_tilt_bracket_with_residual_evaluator<F>(
 where
     F: FnMut(f64) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError>,
 {
-    let search_domain =
-        resolve_local_tilt_search_domain(driver_parameters).map_err(|error| match error {
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters).map_err(
+        |error| match error {
             AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
                 lower_theta,
                 upper_theta,
@@ -700,7 +702,8 @@ where
                 upper_residual,
             },
             other => other,
-        })?;
+        },
+    )?;
 
     build_local_tilt_bracket_with_search_domain_and_residual_evaluator(
         search_domain,
@@ -714,6 +717,27 @@ pub(crate) fn build_local_tilt_bracket_with_search_domain_and_residual_evaluator
     search_domain: LocalTiltSearchDomain,
     target_log_moment_exponent: f64,
     tolerance: f64,
+    evaluate_residual: F,
+) -> Result<(f64, LocalTiltResidualEvaluation), AnchoredLocalTiltSolveError>
+where
+    F: FnMut(f64) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError>,
+{
+    build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator(
+        search_domain,
+        target_log_moment_exponent,
+        tolerance,
+        None,
+        evaluate_residual,
+    )
+}
+
+pub(crate) fn build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator<
+    F,
+>(
+    search_domain: LocalTiltSearchDomain,
+    target_log_moment_exponent: f64,
+    tolerance: f64,
+    preferred_theta: Option<f64>,
     mut evaluate_residual: F,
 ) -> Result<(f64, LocalTiltResidualEvaluation), AnchoredLocalTiltSolveError>
 where
@@ -721,46 +745,105 @@ where
 {
     let lower_theta = search_domain.lower_theta;
     let upper_theta = search_domain.upper_theta;
+
     let reference_theta = search_domain.reference_theta;
-    let reference_evaluation = evaluate_residual(reference_theta)?;
+
+    let (reference_theta, reference_evaluation) = match evaluate_residual(reference_theta) {
+        Ok(reference_evaluation) => (reference_theta, reference_evaluation),
+        Err(error) if should_retry_local_tilt_side_evaluation(&error) => {
+            locate_nearest_valid_reference_evaluation(
+                search_domain,
+                reference_theta,
+                &mut evaluate_residual,
+            )?
+            .ok_or(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+                target_log_moment_exponent,
+                lower_theta,
+                upper_theta,
+                lower_residual: f64::NAN,
+                upper_residual: f64::NAN,
+            })?
+        }
+        Err(error) => return Err(error),
+    };
+
     if reference_evaluation.residual.abs() <= tolerance {
         return Ok((reference_theta, reference_evaluation));
     }
 
-    let left_candidate = if lower_theta < reference_theta {
+    let preferred_side = preferred_theta.and_then(|theta| search_domain.side_for_theta(theta));
+
+    let left_candidate =
+        if lower_theta < reference_theta && preferred_side != Some(LocalTiltSearchSide::Upper) {
+            locate_nearest_root_on_side(
+                reference_theta,
+                reference_evaluation,
+                lower_theta,
+                preferred_theta.filter(|_| preferred_side == Some(LocalTiltSearchSide::Lower)),
+                tolerance,
+                &mut evaluate_residual,
+            )?
+        } else {
+            None
+        };
+
+    let right_candidate =
+        if upper_theta > reference_theta && preferred_side != Some(LocalTiltSearchSide::Lower) {
+            locate_nearest_root_on_side(
+                reference_theta,
+                reference_evaluation,
+                upper_theta,
+                preferred_theta.filter(|_| preferred_side == Some(LocalTiltSearchSide::Upper)),
+                tolerance,
+                &mut evaluate_residual,
+            )?
+        } else {
+            None
+        };
+
+    let left_candidate = if left_candidate.is_none()
+        && lower_theta < reference_theta
+        && preferred_side == Some(LocalTiltSearchSide::Upper)
+        && right_candidate.is_none()
+    {
         locate_nearest_root_on_side(
             reference_theta,
             reference_evaluation,
             lower_theta,
+            None,
             tolerance,
             &mut evaluate_residual,
         )?
     } else {
-        None
+        left_candidate
     };
 
-    let right_candidate = if upper_theta > reference_theta {
+    let right_candidate = if right_candidate.is_none()
+        && upper_theta > reference_theta
+        && preferred_side == Some(LocalTiltSearchSide::Lower)
+        && left_candidate.is_none()
+    {
         locate_nearest_root_on_side(
             reference_theta,
             reference_evaluation,
             upper_theta,
+            None,
             tolerance,
             &mut evaluate_residual,
         )?
     } else {
-        None
+        right_candidate
     };
 
-    match select_preferred_root_candidate(left_candidate, right_candidate) {
-        Some(candidate) => Ok(candidate),
-        None => Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+    select_preferred_root_candidate(left_candidate, right_candidate).ok_or(
+        AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
             target_log_moment_exponent,
             lower_theta,
             upper_theta,
             lower_residual: f64::NAN,
             upper_residual: f64::NAN,
-        }),
-    }
+        },
+    )
 }
 
 fn build_local_tilt_bracket(
@@ -792,6 +875,7 @@ fn nearest_zero_theta_in_domain(admissible_domain: NigEsscherTiltDomain) -> Opti
     if admissible_domain.upper_theta_exclusive <= 0.0 {
         return admissible_domain.interior_upper_bound();
     }
+
     if admissible_domain.lower_theta_exclusive >= 0.0 {
         return admissible_domain.interior_lower_bound();
     }
@@ -799,10 +883,125 @@ fn nearest_zero_theta_in_domain(admissible_domain: NigEsscherTiltDomain) -> Opti
     None
 }
 
+fn locate_nearest_valid_reference_evaluation(
+    search_domain: LocalTiltSearchDomain,
+    reference_theta: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let left_candidate = if search_domain.lower_theta < reference_theta {
+        locate_nearest_valid_reference_evaluation_on_side(
+            reference_theta,
+            search_domain.lower_theta,
+            evaluate_residual,
+        )?
+    } else {
+        None
+    };
+
+    let right_candidate = if search_domain.upper_theta > reference_theta {
+        locate_nearest_valid_reference_evaluation_on_side(
+            reference_theta,
+            search_domain.upper_theta,
+            evaluate_residual,
+        )?
+    } else {
+        None
+    };
+
+    Ok(select_nearest_reference_candidate(
+        reference_theta,
+        left_candidate,
+        right_candidate,
+    ))
+}
+
+fn locate_nearest_valid_reference_evaluation_on_side(
+    reference_theta: f64,
+    side_boundary_theta: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let Some((valid_theta, valid_evaluation)) =
+        locate_valid_side_evaluation(reference_theta, side_boundary_theta, evaluate_residual)?
+    else {
+        return Ok(None);
+    };
+
+    refine_nearest_valid_reference_evaluation(
+        reference_theta,
+        valid_theta,
+        valid_evaluation,
+        evaluate_residual,
+    )
+}
+
+fn refine_nearest_valid_reference_evaluation(
+    reference_theta: f64,
+    mut valid_theta: f64,
+    mut valid_evaluation: LocalTiltResidualEvaluation,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let mut invalid_theta = reference_theta;
+
+    loop {
+        let midpoint = (invalid_theta + valid_theta) * 0.5;
+        if midpoint == invalid_theta || midpoint == valid_theta {
+            return Ok(Some((valid_theta, valid_evaluation)));
+        }
+
+        match evaluate_residual(midpoint) {
+            Ok(midpoint_evaluation) => {
+                valid_theta = midpoint;
+                valid_evaluation = midpoint_evaluation;
+            }
+            Err(error) if should_retry_local_tilt_side_evaluation(&error) => {
+                invalid_theta = midpoint;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn select_nearest_reference_candidate(
+    reference_theta: f64,
+    left_candidate: Option<(f64, LocalTiltResidualEvaluation)>,
+    right_candidate: Option<(f64, LocalTiltResidualEvaluation)>,
+) -> Option<(f64, LocalTiltResidualEvaluation)> {
+    match (left_candidate, right_candidate) {
+        (Some(left_candidate), Some(right_candidate)) => {
+            let left_distance = (left_candidate.0 - reference_theta).abs();
+            let right_distance = (right_candidate.0 - reference_theta).abs();
+
+            if left_distance <= right_distance {
+                Some(left_candidate)
+            } else {
+                Some(right_candidate)
+            }
+        }
+        (Some(candidate), None) | (None, Some(candidate)) => Some(candidate),
+        (None, None) => None,
+    }
+}
+
 fn locate_nearest_root_on_side(
     reference_theta: f64,
     reference_evaluation: LocalTiltResidualEvaluation,
     side_boundary_theta: f64,
+    initial_theta: Option<f64>,
     tolerance: f64,
     evaluate_residual: &mut impl FnMut(
         f64,
@@ -811,47 +1010,120 @@ fn locate_nearest_root_on_side(
         AnchoredLocalTiltSolveError,
     >,
 ) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
-    let Some((mut opposite_theta, mut opposite_evaluation)) =
-        locate_valid_side_evaluation(reference_theta, side_boundary_theta, evaluate_residual)?
+    let Some(bracket) = locate_side_sign_change_from_interior(
+        reference_theta,
+        reference_evaluation,
+        side_boundary_theta,
+        initial_theta,
+        tolerance,
+        evaluate_residual,
+    )?
     else {
         return Ok(None);
     };
 
-    while opposite_evaluation.residual.signum() == reference_evaluation.residual.signum() {
-        let midpoint = (reference_theta + opposite_theta) * 0.5;
-        if midpoint == reference_theta || midpoint == opposite_theta {
+    if bracket.opposite_evaluation.residual.abs() <= tolerance {
+        return Ok(Some((bracket.opposite_theta, bracket.opposite_evaluation)));
+    }
+
+    bisect_local_tilt_root_between_sign_change(
+        reference_theta,
+        bracket,
+        reference_evaluation,
+        tolerance,
+        evaluate_residual,
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct LocalTiltSideBracket {
+    same_sign_theta: f64,
+    same_sign_evaluation: LocalTiltResidualEvaluation,
+    opposite_theta: f64,
+    opposite_evaluation: LocalTiltResidualEvaluation,
+}
+
+fn locate_side_sign_change_from_interior(
+    reference_theta: f64,
+    reference_evaluation: LocalTiltResidualEvaluation,
+    side_boundary_theta: f64,
+    initial_theta: Option<f64>,
+    tolerance: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<LocalTiltSideBracket>, AnchoredLocalTiltSolveError> {
+    let mut same_sign_theta = reference_theta;
+    let mut same_sign_evaluation = reference_evaluation;
+    let mut next_candidate_theta = initial_theta;
+
+    loop {
+        let candidate_boundary_theta =
+            next_candidate_theta.unwrap_or((same_sign_theta + side_boundary_theta) * 0.5);
+
+        next_candidate_theta = None;
+
+        if candidate_boundary_theta == same_sign_theta
+            || candidate_boundary_theta == side_boundary_theta
+        {
             return Ok(None);
         }
 
-        let Some((midpoint_theta, midpoint_evaluation)) =
-            locate_valid_side_evaluation(reference_theta, midpoint, evaluate_residual)?
+        let Some((candidate_theta, candidate_evaluation)) = locate_valid_side_evaluation(
+            same_sign_theta,
+            candidate_boundary_theta,
+            evaluate_residual,
+        )?
         else {
             return Ok(None);
         };
 
-        opposite_theta = midpoint_theta;
-        opposite_evaluation = midpoint_evaluation;
-
-        if opposite_evaluation.residual.abs() <= tolerance {
-            return Ok(Some((opposite_theta, opposite_evaluation)));
+        if candidate_evaluation.residual.abs() <= tolerance
+            || candidate_evaluation.residual.signum() != reference_evaluation.residual.signum()
+        {
+            return Ok(Some(LocalTiltSideBracket {
+                same_sign_theta,
+                same_sign_evaluation,
+                opposite_theta: candidate_theta,
+                opposite_evaluation: candidate_evaluation,
+            }));
         }
+
+        same_sign_theta = candidate_theta;
+        same_sign_evaluation = candidate_evaluation;
+    }
+}
+
+fn bisect_local_tilt_root_between_sign_change(
+    reference_theta: f64,
+    bracket: LocalTiltSideBracket,
+    reference_evaluation: LocalTiltResidualEvaluation,
+    tolerance: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let mut same_sign_theta = bracket.same_sign_theta;
+    let mut opposite_theta = bracket.opposite_theta;
+
+    let mut best_theta = bracket.same_sign_theta;
+    let mut best_evaluation = bracket.same_sign_evaluation;
+
+    if reference_evaluation.residual.abs() < best_evaluation.residual.abs() {
+        best_theta = reference_theta;
+        best_evaluation = reference_evaluation;
     }
 
-    let mut same_sign_theta = reference_theta;
-
-    let mut best_theta = if opposite_evaluation.residual.abs() < reference_evaluation.residual.abs()
-    {
-        opposite_theta
-    } else {
-        reference_theta
-    };
-
-    let mut best_evaluation =
-        if opposite_evaluation.residual.abs() < reference_evaluation.residual.abs() {
-            opposite_evaluation
-        } else {
-            reference_evaluation
-        };
+    if bracket.opposite_evaluation.residual.abs() < best_evaluation.residual.abs() {
+        best_theta = bracket.opposite_theta;
+        best_evaluation = bracket.opposite_evaluation;
+    }
 
     loop {
         let midpoint = (same_sign_theta + opposite_theta) * 0.5;
@@ -869,6 +1141,7 @@ fn locate_nearest_root_on_side(
             best_theta = midpoint_theta;
             best_evaluation = midpoint_evaluation;
         }
+
         if midpoint_evaluation.residual.abs() <= tolerance {
             return Ok(Some((midpoint_theta, midpoint_evaluation)));
         }
@@ -988,137 +1261,6 @@ pub fn solve_anchored_local_pricing_tilt(
     })
 }
 
-/// Solve one-interval exponential-affine transform for pricing workflows.
-pub fn solve_exponential_affine_transform(
-    transform_input: ExponentialAffineTransformInput,
-    solver_settings: ExponentialAffineTransformSolverSettings,
-) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
-    solve_exponential_affine_transform_core(transform_input, solver_settings)
-}
-
-pub(crate) fn solve_exponential_affine_transform_with_internal_selection(
-    transform_input: ExponentialAffineTransformInput,
-) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
-    debug_assert!(!INTERNAL_AFFINE_TRANSFORM_STEP_SELECTION_POLICY.is_empty());
-
-    let mut step_count = 1usize;
-    let mut previous_completed_result: Option<ExponentialAffineTransformIntegrationResult> = None;
-    let mut last_incomplete_result: Option<ExponentialAffineTransformIntegrationResult> = None;
-
-    loop {
-        let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
-            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
-            step_count,
-        )
-        .map_err(|source| {
-            ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
-        })?;
-
-        let current_result =
-            solve_exponential_affine_transform_core(transform_input, solver_settings)?;
-
-        if current_result.status != ExponentialAffineTransformIntegrationStatus::Completed {
-            last_incomplete_result = Some(current_result);
-        } else if let Some(previous_result) = previous_completed_result {
-            if affine_transform_results_agree_with_internal_budget(previous_result, current_result)
-            {
-                return Ok(current_result);
-            }
-
-            previous_completed_result = Some(current_result);
-        } else {
-            previous_completed_result = Some(current_result);
-        }
-
-        step_count = match step_count.checked_mul(2) {
-            Some(next_step_count) => next_step_count,
-            None => {
-                if let Some(best_completed_result) = previous_completed_result {
-                    return Ok(best_completed_result);
-                }
-                if let Some(best_incomplete_result) = last_incomplete_result {
-                    return Ok(best_incomplete_result);
-                }
-                return Err(ExponentialAffineTransformSolverError::InvalidOutput {
-                    source: ExponentialAffineTransformOutputError::InvalidTransformValue {
-                        value: ComplexScalar::new(f64::NAN, f64::NAN),
-                    },
-                });
-            }
-        };
-    }
-}
-
-fn affine_transform_results_agree_with_internal_budget(
-    coarse_result: ExponentialAffineTransformIntegrationResult,
-    fine_result: ExponentialAffineTransformIntegrationResult,
-) -> bool {
-    let Some(coarse_output) = coarse_result.output else {
-        return false;
-    };
-    let Some(fine_output) = fine_result.output else {
-        return false;
-    };
-
-    let truncation_error_estimate =
-        affine_transform_output_max_difference_norm(coarse_output, fine_output) / 15.0;
-    let output_scale = affine_transform_output_max_norm(fine_output).max(f64::MIN_POSITIVE);
-    let roundoff_budget = f64::EPSILON.cbrt() * output_scale;
-
-    truncation_error_estimate <= roundoff_budget
-}
-
-fn affine_transform_output_max_difference_norm(
-    coarse_output: ExponentialAffineTransformOutput,
-    fine_output: ExponentialAffineTransformOutput,
-) -> f64 {
-    [
-        fine_output
-            .c_at_delta
-            .subtract(coarse_output.c_at_delta)
-            .norm(),
-        fine_output
-            .d_at_delta
-            .plus_plus
-            .subtract(coarse_output.d_at_delta.plus_plus)
-            .norm(),
-        fine_output
-            .d_at_delta
-            .plus_minus
-            .subtract(coarse_output.d_at_delta.plus_minus)
-            .norm(),
-        fine_output
-            .d_at_delta
-            .minus_plus
-            .subtract(coarse_output.d_at_delta.minus_plus)
-            .norm(),
-        fine_output
-            .d_at_delta
-            .minus_minus
-            .subtract(coarse_output.d_at_delta.minus_minus)
-            .norm(),
-        fine_output
-            .transform_value
-            .subtract(coarse_output.transform_value)
-            .norm(),
-    ]
-    .into_iter()
-    .fold(0.0_f64, f64::max)
-}
-
-fn affine_transform_output_max_norm(output: ExponentialAffineTransformOutput) -> f64 {
-    [
-        output.c_at_delta.norm(),
-        output.d_at_delta.plus_plus.norm(),
-        output.d_at_delta.plus_minus.norm(),
-        output.d_at_delta.minus_plus.norm(),
-        output.d_at_delta.minus_minus.norm(),
-        output.transform_value.norm(),
-    ]
-    .into_iter()
-    .fold(0.0_f64, f64::max)
-}
-
 /// Build the shared affine-oracle equation specification from pricing inputs.
 pub(crate) fn build_pricing_equation_specification(
     pricing_request: &VanillaOptionPricingRequest,
@@ -1153,8 +1295,7 @@ pub fn build_pricing_transform_input(
 
     ExponentialAffineTransformInput::try_new(
         build_pricing_equation_specification(pricing_request),
-        u_plus,
-        u_minus,
+        ExponentialAffineTransformActivityLoadings::total_activity(u_plus, u_minus),
         z_plus,
         z_minus,
         seasonality_factor,
@@ -1263,11 +1404,13 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
     }
 
     let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
+
     let effective_open_jump_characteristic_factor = if edge_mode.open_jump_component_enabled() {
         open_jump_characteristic_factor
     } else {
         ComplexScalar::new(1.0, 0.0)
     };
+
     let effective_closed_gap_characteristic_factor = if edge_mode.closed_gap_component_enabled() {
         closed_gap_characteristic_factor
     } else {
@@ -1280,6 +1423,7 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
 
     let trading_time_exponent_contributions =
         effective_decomposition.compose_nig_trading_time_exponent(driver_parameters, argument);
+
     let combined_weighted_exponent = trading_time_exponent_contributions.combined_weighted_exponent;
     if !combined_weighted_exponent.is_finite() {
         return Err(
@@ -1290,6 +1434,7 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
     }
 
     let trading_time_characteristic_factor = complex_exponential(combined_weighted_exponent);
+
     let factor_composition = compose_return_characteristic_factor_shared(
         trading_time_characteristic_factor,
         effective_open_jump_characteristic_factor,

@@ -38,10 +38,17 @@ class CalibrationStage(StrEnum):
     RETURN_COMPONENTS = "return_components"
     MEAN_REVERSION = "mean_reversion"
     JOINT_REFINEMENT = "joint_refinement"
+    OPTION_REFINEMENT = "option_refinement"
+    FINALIZATION = "finalization"
+
+
+def _calibration_stage_values_message() -> str:
+    return "must be one of: " + ", ".join(stage.value for stage in CalibrationStage)
 
 
 class CalibrationStageExecutionStatus(StrEnum):
     SUCCESS = "success"
+    SUCCESS_WITH_WARNINGS = "success_with_warnings"
     FAILURE = "failure"
 
 
@@ -121,7 +128,7 @@ class CalibrationStageSeedOverride(ContractModel):
         except ValueError as e:
             raise calibration_error(
                 f"{field_path}.stage",
-                "must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
+                _calibration_stage_values_message(),
             ) from e
 
         return CalibrationStageSeedOverride(
@@ -263,7 +270,7 @@ class CalibrationStageSolverSettings(ContractModel):
         except ValueError as e:
             raise calibration_error(
                 f"{field_path}.stage",
-                "must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
+                _calibration_stage_values_message(),
             ) from e
 
         return CalibrationStageSolverSettings(

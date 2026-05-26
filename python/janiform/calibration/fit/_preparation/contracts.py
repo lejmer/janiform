@@ -25,6 +25,7 @@ from ...presets.registry import PresetRegistry
 from ...presets.resolution import ResolvedPresetWorkflowConfiguration
 from ...staged import CalibrationStageSolverSettings
 from ....pricing import PricingIntervalSchedulePolicy
+from ...effort import CalibrationEffortOptions
 from .._inference import FitInference
 
 
@@ -58,8 +59,13 @@ class FitPreparationConfiguration:
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     dynamics_search_restart_candidate_budget: Optional[int]
+    calibration_effort: CalibrationEffortOptions
+    treat_calibration_warnings_as_errors: bool
     joint_refinement_option_refinement_candidate_count_override: Optional[int]
+    joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     joint_refinement_audit_option_pricing_enabled: bool
+    stylized_fact_huber_cutoff: Optional[float]
+    stylized_fact_admissibility_z_threshold: Optional[float]
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration
     market_profile_reference: Optional[MarketProfileReference]
     known_news_reference: Optional[KnownNewsPresetReference]

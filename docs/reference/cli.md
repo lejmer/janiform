@@ -53,8 +53,8 @@ Janiform is a high-frequency return model for hyperrealistic simulation of marke
 This command-line interface fits the model from market data, then uses fitted models for simulation, derivative valuation, reporting, and validation. Use command help for details on each task.
 
 Output modes:
-  default human output writes summaries to stdout and progress to stderr
-  --quiet limits human output to final status and output paths
+  default terminal output writes summaries to stdout and progress to stderr
+  --quiet limits terminal output to final status and output paths
   --silent suppresses normal output while preserving warnings and errors
   --json writes one final JSON object to stdout
   --events jsonl writes machine events to stderr
@@ -88,11 +88,11 @@ See also:
 * `--config <PATH>` — Load CLI defaults from a TOML document.
 
    Configuration can set output and diagnostic defaults such as color, verbosity, JSON mode, quiet mode, silent mode, and event streaming. Model choices, numerical settings, and command-specific inputs stay explicit on each command.
-* `--color <WHEN>` — Control ANSI color for human output.
+* `--color <WHEN>` — Control ANSI color for terminal output.
 
    Values:
      auto    use color when the stream supports it and NO_COLOR is not set
-     always  force color for human output
+     always  force color for terminal output
      never   disable color
 
    JSON and JSONL output never include ANSI color.
@@ -101,25 +101,25 @@ See also:
   - `auto`:
     Use color when the output stream supports it. Respects NO_COLOR.
   - `always`:
-    Use color for human output even when terminal detection is inconclusive.
+    Use color for terminal output even when terminal detection is inconclusive.
   - `never`:
-    Disable color in human output.
+    Disable color in terminal output.
 
-* `--silent` — Suppress normal human output while preserving warnings and errors.
+* `--silent` — Suppress normal terminal output while preserving warnings and errors.
 
    Use --silent when automation only needs the exit code and failure diagnostics. It conflicts with --quiet, --verbose, and --json because those options define different output modes.
 * `--quiet` — Print final status and output paths only.
 
    Use --quiet for logs and CI jobs that should keep a concise human-readable record without live progress tables. It conflicts with --silent, --verbose, and --json.
-* `-v`, `--verbose` — Increase human diagnostic verbosity.
+* `-v`, `--verbose` — Increase terminal diagnostic verbosity.
 
    Use -v for INFO diagnostics and -vv for DEBUG diagnostics. Verbose output affects terminal diagnostics, not the final JSON result. It conflicts with --silent and --quiet.
 * `--json` — Write one final JSON object to stdout.
 
-   JSON mode is for machine consumption. Human progress and summary output are suppressed so stdout remains a single JSON document. Warnings and errors are written as JSON diagnostics when possible. Use --events jsonl for a streaming machine event log.
+   JSON mode is for machine consumption. Terminal progress and summary output are suppressed so stdout remains a single JSON document. Warnings and errors are written as JSON diagnostics when possible. Use --events jsonl for a streaming machine event log.
 * `--events <FORMAT>` — Write machine events to stderr in the selected format.
 
-   Use --events jsonl for one JSON event object per line. Event streams are separate from the final stdout output, so they can be used with human output, quiet output, or --json.
+   Use --events jsonl for one JSON event object per line. Event streams are separate from the final stdout output, so they can be used with terminal output, quiet output, or --json.
 
   Possible values:
   - `jsonl`:
@@ -286,6 +286,9 @@ Disk execution writes a run directory with the fitted model, fit report, progres
 * `--cpu-count <COUNT>` — CPU count available to calibration preparation.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--treat-calibration-warnings-as-errors` — Treat calibration warning outcomes as fit failures for automation.
+* `--stylized-fact-huber-cutoff <Z>` — Stylized-fact Huber cutoff for the calibration objective.
+* `--stylized-fact-admissibility-z-threshold <Z>` — Stylized-fact admissibility z-threshold for the calibration objective.
 * `--resume-checkpoint-reference <REFERENCE>` — Resume disk execution from a checkpoint reference.
 
    Checkpoint references identify a saved checkpoint, for example checkpoint://RUN_ID/last-success or checkpoint://RUN_ID/STAGE_TOKEN. Resume is only valid for disk execution.
@@ -302,6 +305,10 @@ Disk execution writes a run directory with the fitted model, fit report, progres
     Resume from the mean-reversion stage.
   - `joint-refinement`:
     Resume from the joint-refinement stage.
+  - `option-refinement`:
+    Resume from the option-refinement stage.
+  - `finalization`:
+    Resume from the finalization stage.
 
 
 
@@ -556,6 +563,9 @@ This command prepares the same calibration plan used by the default fit command,
 * `--cpu-count <COUNT>` — CPU count available to calibration planning.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--treat-calibration-warnings-as-errors` — Treat calibration warning outcomes as fit failures for automation.
+* `--stylized-fact-huber-cutoff <Z>` — Stylized-fact Huber cutoff for the calibration objective.
+* `--stylized-fact-admissibility-z-threshold <Z>` — Stylized-fact admissibility z-threshold for the calibration objective.
 * `--workflow-scope <WORKFLOW_SCOPE>` — Select which calibration workflow to plan.
 
   Possible values:
@@ -606,6 +616,10 @@ This advanced command is useful when a separate process prepares calibration inp
     Resume from the mean-reversion stage.
   - `joint-refinement`:
     Resume from the joint-refinement stage.
+  - `option-refinement`:
+    Resume from the option-refinement stage.
+  - `finalization`:
+    Resume from the finalization stage.
 
 
 
@@ -768,6 +782,10 @@ This command runs a prepared calibration input file. Disk runs write the fitted 
     Resume from the mean-reversion stage.
   - `joint-refinement`:
     Resume from the joint-refinement stage.
+  - `option-refinement`:
+    Resume from the option-refinement stage.
+  - `finalization`:
+    Resume from the finalization stage.
 
 
 
@@ -966,7 +984,125 @@ This command reads a saved Janiform model and an observed option snapshot, then 
 * `--model-path <PATH>` — Saved Janiform model path.
 
    Most commands read the model.jf file written by janiform fit.
-* `--option-surface-path <PATH>` — Observed option snapshot input file.
+* `--tick-data-path <PATH>` — Tick data input file.
+* `--market-profile <NAME>` — Market profile preset name.
+
+   When omitted, Janiform may infer a bundled market profile from the tick-data file name if no explicit session hints are supplied.
+* `--market-profile-scope <MARKET_PROFILE_SCOPE>` — Registry scope for --market-profile. Defaults to built-in.
+
+  Possible values:
+  - `built_in`:
+    Resolve from built-in presets.
+  - `user_registered`:
+    Resolve from user-registered presets.
+
+* `--preset-registry <PATH>` — User preset registry manifest path.
+* `--user-preset <PATH>` — User preset file path.
+* `--tick-data-format <TICK_DATA_FORMAT>` — Tick data file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--tick-provenance-label <LABEL>` — Tick data provenance label.
+* `--tick-timestamp-column <COLUMN>` — Tick timestamp column.
+* `--tick-price-column <COLUMN>` — Tick price column.
+* `--tick-trade-sign-column <COLUMN>` — Tick trade sign column.
+* `--tick-bid-column <COLUMN>` — Tick bid column.
+* `--tick-ask-column <COLUMN>` — Tick ask column.
+* `--tick-price-input-policy <TICK_PRICE_INPUT_POLICY>` — Tick price input policy.
+
+  Possible values:
+  - `explicit-price-column`:
+    Use the explicit tick price column.
+  - `bid-ask-midpoint`:
+    Use the midpoint of tick bid and ask columns.
+
+* `--timestamp-timezone <TZ>` — Timezone for naive tick timestamps.
+* `--duplicate-record-policy <DUPLICATE_RECORD_POLICY>` — Duplicate tick record policy.
+
+  Possible values:
+  - `keep-first`:
+    Keep the first record for each duplicate key.
+  - `keep-last`:
+    Keep the last record for each duplicate key.
+
+* `--keep-tick-source-order` — Keep tick source order instead of sorting by timestamp.
+* `--option-surface-path <PATH>` — Observed option surface input file.
+* `--option-surface-format <OPTION_SURFACE_FORMAT>` — Option surface file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--option-surface-provenance-label <LABEL>` — Option surface provenance label.
+* `--option-quote-timestamp-column <COLUMN>` — Option quote timestamp column.
+* `--option-expiry-timestamp-column <COLUMN>` — Option expiry timestamp column.
+* `--option-strike-column <COLUMN>` — Option strike column.
+* `--option-type-column <COLUMN>` — Option type column.
+* `--option-mid-price-column <COLUMN>` — Option mid price column.
+* `--option-bid-column <COLUMN>` — Option bid column.
+* `--option-ask-column <COLUMN>` — Option ask column.
+* `--option-implied-volatility-column <COLUMN>` — Option implied-volatility column.
+* `--option-quote-input-policy <OPTION_QUOTE_INPUT_POLICY>` — Option quote input policy.
+
+  Possible values:
+  - `mid-price-column`:
+    Use the explicit option mid-price column.
+  - `bid-ask-midpoint`:
+    Use the midpoint of option bid and ask columns.
+  - `implied-volatility-column`:
+    Use the explicit option implied-volatility column.
+
+* `--option-surface-valuation-time-utc <UTC>` — Option valuation time as an RFC 3339 UTC timestamp.
+* `--known-news-path <PATH>` — Known-news input path.
+* `--known-news-format <KNOWN_NEWS_FORMAT>` — Known-news file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--known-news-provenance-label <LABEL>` — Known-news provenance label.
+* `--known-news-timestamp-column <COLUMN>` — Known-news timestamp column.
+* `--known-news-identifier-column <COLUMN>` — Known-news identifier column.
+* `--known-news-timezone <TZ>` — Known-news calendar timezone.
+* `--exchange-code <CODE>` — Market exchange code.
+* `--session-timezone <TZ>` — Market session timezone.
+* `--session-definition-path <PATH>` — Session definition JSON path.
+* `--valuation-time-utc <UTC>` — Observed option valuation timestamp as RFC 3339 UTC.
+* `--option-type <OPTION_TYPE>` — Observed option type filter.
+
+  Possible values:
+  - `call`:
+    Call payoff.
+  - `put`:
+    Put payoff.
+
+* `--risk-free-rate <RATE>` — Continuously compounded risk-free rate.
+
+  Default value: `0`
+* `--dividend-yield <RATE>` — Continuously compounded dividend yield.
+
+  Default value: `0`
+* `--surface` — Price a single-expiry surface panel instead of one snapshot.
+* `--valuation-count <COUNT>` — Number of surface valuation times to retain.
+* `--use-all-valuation-times` — Use every retained quote timestamp for single-expiry surface pricing.
+* `--cpu-count <COUNT>` — CPU count for native pricing.
+* `--physical-distribution-diagnostics` — Compute model-P terminal distribution diagnostics for observed option nodes.
+* `--physical-distribution-path-count <COUNT>` — Physical distribution diagnostic path count.
+* `--physical-distribution-seed <SEED>` — Physical distribution diagnostic root seed.
 * `--output-path <PATH>` — Primary output path.
 
    When omitted, Janiform chooses a default output path for the command.
@@ -1136,7 +1272,7 @@ Use --category or --scope to narrow discovery. Add --preset-registry or --user-p
 
 Show a resolved preset document.
 
-The command resolves the selected preset through the requested registry scope. Session and known-news presets support --expanded for category-specific detail tables in human output.
+The command resolves the selected preset through the requested registry scope. Session and known-news presets support --expanded for category-specific detail tables in terminal output.
 
 **Usage:** `janiform presets show <COMMAND>`
 
@@ -1199,7 +1335,7 @@ Show a session preset.
 
 * `--preset-registry <PATH>` — User preset registry manifest path.
 * `--user-preset <PATH>` — User preset file path.
-* `--expanded` — Show expanded category-specific detail tables in human output.
+* `--expanded` — Show expanded category-specific detail tables in terminal output.
 
 
 
@@ -1227,7 +1363,7 @@ Show a known-news preset.
 
 * `--preset-registry <PATH>` — User preset registry manifest path.
 * `--user-preset <PATH>` — User preset file path.
-* `--expanded` — Show expanded category-specific detail tables in human output.
+* `--expanded` — Show expanded category-specific detail tables in terminal output.
 
 
 
@@ -1625,7 +1761,7 @@ Standardized delta is a scale-normalized comparison against available confidence
 
 * `--keep-empirical-source-order` — Keep empirical source order instead of sorting by timestamp.
 * `--fail-on-failed-checks` — Return a nonzero process exit when any metric check fails.
-* `--show-checks <SHOW_CHECKS>` — Control human check detail.
+* `--show-checks <SHOW_CHECKS>` — Control terminal check detail.
 
   Default value: `summary`
 
@@ -1639,7 +1775,7 @@ Standardized delta is a scale-normalized comparison against available confidence
   - `all`:
     Show all checks up to --max-checks.
 
-* `--max-checks <N>` — Maximum number of checks to show in human output.
+* `--max-checks <N>` — Maximum number of checks to show in terminal output.
 
   Default value: `10`
 
@@ -1722,7 +1858,7 @@ The plan command resolves model, empirical data, intervals, output paths, cache 
 
 * `--keep-empirical-source-order` — Keep empirical source order instead of sorting by timestamp.
 * `--fail-on-failed-checks` — Return a nonzero process exit when any metric check fails.
-* `--show-checks <SHOW_CHECKS>` — Control human check detail.
+* `--show-checks <SHOW_CHECKS>` — Control terminal check detail.
 
   Default value: `summary`
 
@@ -1736,7 +1872,7 @@ The plan command resolves model, empirical data, intervals, output paths, cache 
   - `all`:
     Show all checks up to --max-checks.
 
-* `--max-checks <N>` — Maximum number of checks to show in human output.
+* `--max-checks <N>` — Maximum number of checks to show in terminal output.
 
   Default value: `10`
 

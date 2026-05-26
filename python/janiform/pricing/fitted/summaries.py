@@ -116,7 +116,6 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
     collocation_node_count: int
     collocation_nodes: tuple[float, ...]
     interval_summaries: tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]
-    representative_transform: Optional[dict[str, Any]]
     integration_quality: Optional[dict[str, Any]]
 
     def __post_init__(self) -> None:
@@ -216,11 +215,6 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
                     field_path=f"{field_path}.interval_summaries[{interval_index}]",
                 )
                 for interval_index, raw_interval_summary in enumerate(raw_interval_summaries)
-            ),
-            representative_transform=require_optional_mapping_value(
-                raw_payload.get("representative_transform"),
-                f"{field_path}.representative_transform",
-                _pricing_error,
             ),
             integration_quality=require_optional_mapping_value(
                 raw_payload.get("integration_quality"),

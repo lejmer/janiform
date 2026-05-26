@@ -42,7 +42,9 @@ from janiform.pricing import (
 )
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
+from ..internal.common import native_datetime
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
+from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +90,72 @@ class JaniformObservedOptionSurfaceNode:
 class JaniformObservedOptionSurfacePricingResult:
     valuation_time_utc: datetime
     nodes: tuple[JaniformObservedOptionSurfaceNode, ...]
-    raw_results: tuple[JaniformObservedOptionSnapshotPricingResult, ...] = field(repr=False)
+    physical_distribution: Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput] = None
+    raw_results: tuple[JaniformObservedOptionSnapshotPricingResult, ...] = field(
+        default=(),
+        repr=False,
+    )
+
+    @staticmethod
+    def from_native_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str = "observed_options_pricing_result",
+    ) -> JaniformObservedOptionSurfacePricingResult:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        raw_snapshot_results = raw_payload.get("snapshot_results")
+        if not isinstance(raw_snapshot_results, list):
+            raise _pricing_error(f"{field_path}.snapshot_results", "must be an array")
+
+        snapshot_results = tuple(
+            JaniformObservedOptionSnapshotPricingResult.from_native_snapshot_mapping(
+                raw_snapshot_result,
+                field_path=f"{field_path}.snapshot_results[{snapshot_index}]",
+            )
+            for snapshot_index, raw_snapshot_result in enumerate(raw_snapshot_results)
+        )
+
+        return JaniformObservedOptionSurfacePricingResult(
+            valuation_time_utc=native_datetime(
+                raw_payload.get("valuation_time_utc"),
+                field_path=f"{field_path}.valuation_time_utc",
+            ),
+            nodes=tuple(
+                JaniformObservedOptionSurfaceNode(
+                    valuation_time_utc=snapshot_result.valuation_time_utc,
+                    quote_timestamp_utc=snapshot_node.quote_timestamp_utc,
+                    expiry_timestamp_utc=snapshot_node.expiry_timestamp_utc,
+                    strike=snapshot_node.strike,
+                    option_type=snapshot_node.option_type,
+                    risk_free_rate=snapshot_node.risk_free_rate,
+                    dividend_yield=snapshot_node.dividend_yield,
+                    maturity_interval=snapshot_node.maturity_interval,
+                    observed_bid_price=snapshot_node.observed_bid_price,
+                    observed_ask_price=snapshot_node.observed_ask_price,
+                    observed_mid_price=snapshot_node.observed_mid_price,
+                    model_price=snapshot_node.model_price,
+                    model_implied_volatility=snapshot_node.model_implied_volatility,
+                    implied_volatility_inversion_status=snapshot_node.implied_volatility_inversion_status,
+                    pricing_status=snapshot_node.pricing_status,
+                    pricing_failure_stage=snapshot_node.pricing_failure_stage,
+                    pricing_failure_reason=snapshot_node.pricing_failure_reason,
+                    forward_price=snapshot_node.forward_price,
+                    discount_factor=snapshot_node.discount_factor,
+                    boundary_state_norm=snapshot_node.boundary_state_norm,
+                )
+                for snapshot_result in snapshot_results
+                for snapshot_node in snapshot_result.nodes
+            ),
+            physical_distribution=(
+                ObservedOptionsPhysicalDistributionDiagnosticsOutput.from_native_mapping(
+                    raw_payload.get("physical_distribution"),
+                    field_path=f"{field_path}.physical_distribution",
+                )
+            ),
+            raw_results=snapshot_results,
+        )
 
     @property
     def valuation_times_utc(self) -> tuple[datetime, ...]:

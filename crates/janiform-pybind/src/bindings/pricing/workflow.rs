@@ -11,6 +11,7 @@ use janiform::pricing::{
 };
 use janiform_workflows::pricing::{
     run_fitted_model_single_option_pricing_with_terminal_progress,
+    run_observed_options_pricing_with_terminal_progress,
     run_vanilla_option_grid_batch_pricing_with_terminal_progress as run_grid_batch_pricing_with_terminal_progress,
     run_vanilla_option_surface_pricing_with_terminal_progress as run_surface_pricing_with_terminal_progress,
 };
@@ -26,9 +27,10 @@ use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use super::events::run_pricing_workflow_with_events;
 use super::output::{pricing_result_to_py_object, workflow_error_to_pricing_error};
 use super::request::{
-    FittedModelSingleOptionPricingWorkflowPayload, PricingActivityCompressedScheduleRequestPayload,
-    grid_batch_execution_input_from_py, hourly_factor_contract_output_from_payload,
-    surface_execution_input_from_py, vanilla_option_pricing_execution_input_from_py,
+    FittedModelSingleOptionPricingWorkflowPayload, ObservedOptionsPricingWorkflowPayload,
+    PricingActivityCompressedScheduleRequestPayload, grid_batch_execution_input_from_py,
+    hourly_factor_contract_output_from_payload, surface_execution_input_from_py,
+    vanilla_option_pricing_execution_input_from_py,
 };
 
 fn parse_pricing_progress_mode(value: &str) -> PyResult<TerminalProgressMode> {
@@ -62,6 +64,30 @@ fn run_fitted_model_single_option_pricing_workflow(
         &output.run_result,
         "fitted-model single-option pricing result",
     )
+}
+
+#[pyfunction]
+fn run_observed_options_pricing_workflow(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let payload: ObservedOptionsPricingWorkflowPayload =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize observed-options pricing request: {source}"
+            ))
+        })?;
+
+    let output = py
+        .detach(move || {
+            run_observed_options_pricing_with_terminal_progress(
+                payload.request,
+                payload.progress_mode,
+            )
+        })
+        .map_err(workflow_error_to_pricing_error)?;
+
+    pricing_result_to_py_object(py, &output, "observed-options pricing result")
 }
 
 #[pyfunction]
@@ -286,6 +312,10 @@ fn run_vanilla_option_surface_pricing_with_events(
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(
         run_fitted_model_single_option_pricing_workflow,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        run_observed_options_pricing_workflow,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(

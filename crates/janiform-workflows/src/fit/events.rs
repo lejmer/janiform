@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use janiform_calibration_artifacts::CalibrationStage;
+use janiform_calibration_artifacts::{
+    CalibrationStage, JointRefinementStageRestartEvaluationTimingDiagnostic,
+    calibration_stage_token,
+};
 use janiform_calibration_runtime::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent,
@@ -9,8 +12,8 @@ use janiform_calibration_runtime::{
 };
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
-    RunErrorEvent, RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent, RunPhaseRef,
-    RunProgressEvent, RunStageRef, WorkflowRef,
+    RunErrorEvent, RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent,
+    RunMetricUpdateEvent, RunPhaseRef, RunProgressEvent, RunStageRef, WorkflowRef,
 };
 use janiform_terminal_ui::{
     ProgressEvent, ProgressMeasure as UiProgressMeasure, ProgressWorkItemColumn,
@@ -18,8 +21,9 @@ use janiform_terminal_ui::{
 };
 
 use crate::error::WorkflowError;
+use crate::progress::{progress_count_label, progress_position_label};
 
-use super::labels::stage_label;
+use super::labels::{stage_execution_status_label, stage_label};
 
 /// Convert a staged runtime observer event into durable run events.
 pub fn run_events_from_staged_event(
@@ -80,25 +84,46 @@ pub fn run_events_from_staged_event(
                 runtime_seconds: *runtime_seconds,
             }),
         )],
-        CalibrationStagedRunObserverEvent::StageProgress(progress) => vec![RunEvent::new(
-            progress.run_id.clone(),
-            workflow,
-            EventDeliveryPriority::DroppableVolatile,
-            RunEventPayload::Progress(RunProgressEvent {
-                stage: Some(stage_ref(progress.stage)),
-                phase: Some(phase_ref(
-                    phase_token(&progress.progress_phase),
-                    phase_label(&progress.progress_phase),
-                )),
-                subphase: None,
-                measures: vec![EventProgressMeasure::BoundedCount {
-                    metric_id: "stage_units".to_string(),
-                    label: Some("stage units".to_string()),
-                    completed_units: progress.completed_units,
-                    total_units: progress.total_units,
-                }],
-            }),
-        )],
+        CalibrationStagedRunObserverEvent::StageProgress(progress) => {
+            let stage = stage_ref(progress.stage);
+
+            let phase = phase_ref(
+                phase_token(&progress.progress_phase),
+                phase_label(&progress.progress_phase),
+            );
+
+            let mut events = vec![RunEvent::new(
+                progress.run_id.clone(),
+                workflow.clone(),
+                EventDeliveryPriority::DroppableVolatile,
+                RunEventPayload::Progress(RunProgressEvent {
+                    stage: Some(stage.clone()),
+                    phase: Some(phase.clone()),
+                    subphase: None,
+                    measures: vec![EventProgressMeasure::BoundedCount {
+                        metric_id: "stage_units".to_string(),
+                        label: Some("stage units".to_string()),
+                        completed_units: progress.completed_units,
+                        total_units: progress.total_units,
+                    }],
+                }),
+            )];
+
+            if let Some(timing_diagnostic) = &progress.restart_evaluation_timing_diagnostic {
+                events.push(RunEvent::new(
+                    progress.run_id.clone(),
+                    workflow,
+                    EventDeliveryPriority::Required,
+                    RunEventPayload::MetricUpdate(RunMetricUpdateEvent {
+                        stage: Some(stage),
+                        phase: Some(phase),
+                        measures: restart_evaluation_timing_measures(timing_diagnostic),
+                    }),
+                ));
+            }
+
+            events
+        }
         CalibrationStagedRunObserverEvent::RunCompleted {
             run_id,
             total_runtime_seconds,
@@ -187,32 +212,41 @@ pub fn progress_event_from_staged_event(
             stage_count: *stage_count,
         }),
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
+            let work_item_metrics = work_item_table_metrics(progress);
+            let work_item_label = progress_work_item_label(progress, work_item_metrics.as_slice());
+            let planned_work_item_labels = progress.planned_work_item_labels.clone();
+            let work_item_columns = work_item_columns(progress, &work_item_label);
+            let work_item_metrics = display_work_item_metrics(work_item_metrics, &work_item_label);
+
+            let latest_signal =
+                stage_progress_signal_with_metrics(progress, work_item_metrics.as_slice());
+
             Some(ProgressEvent::StageProgress {
                 phase: phase_label(&progress.progress_phase).to_string(),
                 measure: stage_progress_measure(progress)?,
-                work_item_label: progress_work_item_label(
-                    &progress.progress_phase,
-                    progress.current_item_label.as_deref(),
-                ),
+                work_item_label,
                 work_item_progress_percent: progress.evaluation_progress_percent,
-                planned_work_item_labels: progress.planned_work_item_labels.clone(),
-                work_item_columns: work_item_table_columns(progress),
-                work_item_metrics: work_item_table_metrics(progress),
-                latest_signal: stage_progress_signal(progress),
+                work_item_status: progress.current_work_item_status.clone(),
+                planned_work_item_labels,
+                work_item_columns,
+                work_item_metrics,
+                latest_signal,
             })
         }
         CalibrationStagedRunObserverEvent::StageCompleted {
             stage,
+            stage_report,
             runtime_seconds,
             ..
         } => Some(ProgressEvent::StageCompleted {
             stage: stage_label(*stage).to_string(),
+            status: stage_execution_status_label(stage_report.status()).to_string(),
             runtime_seconds: *runtime_seconds,
         }),
         CalibrationStagedRunObserverEvent::RunCompleted { .. } => None,
         CalibrationStagedRunObserverEvent::RunFailed { failure, .. } => {
             Some(ProgressEvent::RunFailed {
-                reason: human_failure_reason(failure),
+                reason: terminal_failure_reason(failure),
             })
         }
     };
@@ -223,6 +257,10 @@ pub fn progress_event_from_staged_event(
 fn stage_progress_measure(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Result<UiProgressMeasure, WorkflowError> {
+    if let Some(aggregate_progress_percent) = progress.aggregate_progress_percent {
+        return Ok(UiProgressMeasure::percent(aggregate_progress_percent));
+    }
+
     if progress.total_units == 0 {
         return Ok(UiProgressMeasure::Unbounded);
     }
@@ -255,10 +293,101 @@ pub(crate) fn append_artifact_event(
         .map_err(|source| WorkflowError::FitEventLog { source })
 }
 
+fn restart_evaluation_timing_measures(
+    diagnostic: &JointRefinementStageRestartEvaluationTimingDiagnostic,
+) -> Vec<EventProgressMeasure> {
+    let mut measures = vec![
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.restart_id".to_string(),
+            label: Some("restart id".to_string()),
+            value: diagnostic.restart_id.clone(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.schedule_category".to_string(),
+            label: Some("schedule category".to_string()),
+            value: diagnostic.schedule_category.clone(),
+        },
+        EventProgressMeasure::EvaluationCount {
+            metric_id: "joint_refinement.restart_eval.candidate_evaluation_count".to_string(),
+            label: Some("candidate evals".to_string()),
+            completed_evaluations: diagnostic.candidate_evaluation_count,
+            evaluation_budget: None,
+        },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.poll_direction_label".to_string(),
+            label: Some("poll direction".to_string()),
+            value: diagnostic.poll_direction_label.clone(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.elapsed_millis".to_string(),
+            label: Some("elapsed millis".to_string()),
+            value: diagnostic.elapsed_millis.to_string(),
+        },
+    ];
+
+    if let Some(poll_direction_position) = diagnostic.poll_direction_position {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.poll_direction_position".to_string(),
+            label: Some("poll direction position".to_string()),
+            value: poll_direction_position.to_string(),
+        });
+    }
+
+    if let Some(objective) = diagnostic.objective {
+        measures.push(EventProgressMeasure::ObjectiveValue {
+            metric_id: "joint_refinement.restart_eval.objective".to_string(),
+            label: Some("objective".to_string()),
+            value: objective,
+        });
+    }
+
+    if let Some(admissibility_blocker_count) = diagnostic.admissibility_blocker_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.admissibility_blocker_count".to_string(),
+            label: Some("admissibility blockers".to_string()),
+            value: admissibility_blocker_count.to_string(),
+        });
+    }
+
+    if let Some(max_standardized_residual) = diagnostic.max_standardized_residual {
+        measures.push(EventProgressMeasure::Scalar {
+            metric_id: "joint_refinement.restart_eval.max_standardized_residual".to_string(),
+            label: Some("max standardized residual".to_string()),
+            value: max_standardized_residual,
+        });
+    }
+
+    if let Some(exact_closed_form_buy_count) = diagnostic.exact_closed_form_buy_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.exact_closed_form_buy_count".to_string(),
+            label: Some("CF buy count".to_string()),
+            value: exact_closed_form_buy_count.to_string(),
+        });
+    }
+
+    if let Some(exact_closed_form_sell_count) = diagnostic.exact_closed_form_sell_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.exact_closed_form_sell_count".to_string(),
+            label: Some("CF sell count".to_string()),
+            value: exact_closed_form_sell_count.to_string(),
+        });
+    }
+
+    if let Some(exact_tilted_mixed_count) = diagnostic.exact_tilted_mixed_count {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "joint_refinement.restart_eval.exact_tilted_mixed_count".to_string(),
+            label: Some("mixed count".to_string()),
+            value: exact_tilted_mixed_count.to_string(),
+        });
+    }
+
+    measures
+}
+
 /// Resolve a user-facing failure reason from a staged run report.
 pub fn failure_reason(report: &CalibrationStagedRunReport) -> Result<String, WorkflowError> {
     match report.failure.as_ref() {
-        Some(failure) => Ok(human_failure_reason(failure)),
+        Some(failure) => Ok(terminal_failure_reason(failure)),
         None => Ok("staged calibration did not complete successfully".to_string()),
     }
 }
@@ -272,7 +401,11 @@ pub fn failed_stage_label(report: &CalibrationStagedRunReport) -> String {
             ..
         })
         | Some(CalibrationStagedRunFailure::StageExecutionFailed { stage, .. })
-        | Some(CalibrationStagedRunFailure::StageParameterArtifactIoFailed { stage, .. })
+        | Some(CalibrationStagedRunFailure::StageParameterArtifactLoadFailed { stage, .. })
+        | Some(CalibrationStagedRunFailure::StageParameterArtifactBuildFailed { stage, .. })
+        | Some(CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
+            stage, ..
+        })
         | Some(CalibrationStagedRunFailure::MissingCheckpointMetadataForSuccessfulStage {
             stage,
         }) => stage_label(*stage).to_string(),
@@ -295,7 +428,7 @@ fn serialized_failure_reason(
     serde_json::to_string(failure).map_err(|source| WorkflowError::OutputSerialize { source })
 }
 
-fn human_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
+fn terminal_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
     match failure {
         CalibrationStagedRunFailure::InvalidRunContract { error_message } => {
             format!("invalid run contract: {error_message}")
@@ -313,7 +446,23 @@ fn human_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
             artifact_reference,
             error_message,
         } => format!("failed to persist dataset snapshot `{artifact_reference}`: {error_message}"),
-        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+        CalibrationStagedRunFailure::StageParameterArtifactLoadFailed {
+            stage,
+            artifact_reference,
+            error_message,
+        } => format!(
+            "failed to load {} artifact `{artifact_reference}`: {error_message}",
+            stage_label(*stage)
+        ),
+        CalibrationStagedRunFailure::StageParameterArtifactBuildFailed {
+            stage,
+            artifact_reference,
+            error_message,
+        } => format!(
+            "failed to build {} artifact `{artifact_reference}`: {error_message}",
+            stage_label(*stage)
+        ),
+        CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
             stage,
             artifact_reference,
             error_message,
@@ -367,26 +516,33 @@ fn human_failure_reason(failure: &CalibrationStagedRunFailure) -> String {
     }
 }
 
-fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> Option<String> {
-    if progress_work_item_label(
-        &progress.progress_phase,
-        progress.current_item_label.as_deref(),
-    )
-    .is_some()
+fn stage_progress_signal_with_metrics(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_metrics: &[ProgressWorkItemMetric],
+) -> Option<String> {
+    if progress_work_item_label(progress, work_item_metrics).is_some()
         && let Some(signal) = parallel_stage_progress_signal(
             progress.active_restart_count,
             progress.valid_completed_units,
             progress.cumulative_local_evaluation_count,
-            progress.best_weighted_objective,
+            progress.best_global_loss,
             progress.best_coarse_consistency_fit,
         )
     {
         return Some(signal);
     }
 
+    if work_item_phase_uses_row_scoped_evaluations(&progress.progress_phase)
+        && progress_work_item_label(progress, work_item_metrics).is_some()
+    {
+        return None;
+    }
+
     let mut parts = Vec::new();
 
-    if let Some(current_item_label) = progress.current_item_label.as_deref() {
+    if progress_signal_includes_current_item_label(&progress.progress_phase)
+        && let Some(current_item_label) = progress.current_item_label.as_deref()
+    {
         parts.push(current_item_label.to_string());
     }
 
@@ -396,18 +552,29 @@ fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> O
         progress.total_evaluation_budget,
     );
 
-    if let Some(current_weighted_objective) = progress.current_weighted_objective {
-        parts.push(format!("objective {current_weighted_objective:.6}"));
+    if let Some(current_global_loss) = progress.current_global_loss {
+        let score_label =
+            if work_item_table_uses_restart_optimization_columns(&progress.progress_phase) {
+                "loss"
+            } else {
+                "global loss"
+            };
+
+        parts.push(format!("{score_label} {current_global_loss:.6}"));
     }
-    if let Some(best_weighted_objective) = progress.best_weighted_objective {
-        parts.push(format!("best {best_weighted_objective:.6}"));
+
+    if let Some(best_global_loss) = progress.best_global_loss {
+        parts.push(format!("best {best_global_loss:.6}"));
     }
+
     if let Some(current_coarse_consistency_fit) = progress.current_coarse_consistency_fit {
         parts.push(format!("coarse fit {current_coarse_consistency_fit:.6}"));
     }
+
     if let Some(best_coarse_consistency_fit) = progress.best_coarse_consistency_fit {
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
     }
+
     if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
         parts.push(format!("conv. {current_convergence_ratio:.6}"));
     }
@@ -415,11 +582,33 @@ fn stage_progress_signal(progress: &CalibrationStagedRunStageProgressEvent) -> O
     (!parts.is_empty()).then(|| parts.join(", "))
 }
 
+fn progress_signal_includes_current_item_label(phase: &CalibrationStageProgressPhase) -> bool {
+    !matches!(
+        phase,
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::OptionSearchTierRefinement
+                | JointRefinementStageProgressPhase::OptionSelectionTierEvaluation
+                | JointRefinementStageProgressPhase::OptionAuditTierEvaluation
+        )
+    )
+}
+
+fn work_item_phase_uses_row_scoped_evaluations(phase: &CalibrationStageProgressPhase) -> bool {
+    matches!(
+        phase,
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::OptionSearchTierRefinement
+                | JointRefinementStageProgressPhase::OptionSelectionTierEvaluation
+                | JointRefinementStageProgressPhase::OptionAuditTierEvaluation
+        )
+    )
+}
+
 fn parallel_stage_progress_signal(
     active_restart_count: Option<usize>,
     valid_completed_units: Option<usize>,
     cumulative_local_evaluation_count: Option<usize>,
-    best_weighted_objective: Option<f64>,
+    best_global_loss: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
 ) -> Option<String> {
     let mut parts = Vec::new();
@@ -427,17 +616,21 @@ fn parallel_stage_progress_signal(
     if let Some(active_restart_count) = active_restart_count {
         parts.push(format!("active restarts {active_restart_count}"));
     }
+
     if let Some(valid_completed_units) = valid_completed_units {
         parts.push(format!("valid {valid_completed_units}"));
     }
+
     if let Some(cumulative_local_evaluation_count) = cumulative_local_evaluation_count {
         parts.push(format!(
             "cumulative evals {cumulative_local_evaluation_count}"
         ));
     }
-    if let Some(best_weighted_objective) = best_weighted_objective {
-        parts.push(format!("best objective {best_weighted_objective:.6}"));
+
+    if let Some(best_global_loss) = best_global_loss {
+        parts.push(format!("best loss {best_global_loss:.6}"));
     }
+
     if let Some(best_coarse_consistency_fit) = best_coarse_consistency_fit {
         parts.push(format!("best coarse {best_coarse_consistency_fit:.6}"));
     }
@@ -459,6 +652,7 @@ fn work_item_table_columns(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Vec<ProgressWorkItemColumn> {
     let mut columns = Vec::new();
+
     let uses_restart_optimization_columns =
         work_item_table_uses_restart_optimization_columns(&progress.progress_phase);
 
@@ -468,43 +662,104 @@ fn work_item_table_columns(
     {
         columns.push(ProgressWorkItemColumn::new("eval", "Evals"));
     }
-    if uses_restart_optimization_columns || progress.current_parameter_block.is_some() {
-        columns.push(ProgressWorkItemColumn::new("block", "Blk"));
+
+    if progress.current_pricing_interval_index.is_some()
+        || progress.total_pricing_interval_count.is_some()
+    {
+        columns.push(ProgressWorkItemColumn::new("pricing_interval", "Interval"));
     }
-    if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
+
+    if progress.completed_pricing_row_count.is_some() || progress.total_pricing_row_count.is_some()
+    {
+        columns.push(ProgressWorkItemColumn::new("pricing_rows", "Rows"));
+    }
+
+    if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
+        let current_objective_label = if uses_restart_optimization_columns {
+            "Trial loss"
+        } else {
+            "Cur. loss"
+        };
+
         columns.push(ProgressWorkItemColumn::new(
             "current_objective",
-            "Cur. obj.",
+            current_objective_label,
         ));
     }
-    if uses_restart_optimization_columns
-        || progress.current_restart_best_weighted_objective.is_some()
-    {
-        columns.push(ProgressWorkItemColumn::new("best_objective", "Best obj."));
+
+    if uses_restart_optimization_columns || progress.current_restart_best_global_loss.is_some() {
+        let best_objective_label = if uses_restart_optimization_columns {
+            "Accepted loss"
+        } else {
+            "Best loss"
+        };
+
+        columns.push(ProgressWorkItemColumn::new(
+            "best_objective",
+            best_objective_label,
+        ));
     }
-    if uses_restart_optimization_columns || progress.current_weighted_objective.is_some() {
-        columns.push(ProgressWorkItemColumn::new("final_objective", "Final obj."));
+
+    if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
+        let final_objective_label = if uses_restart_optimization_columns {
+            "Final loss"
+        } else {
+            "Final loss"
+        };
+
+        columns.push(ProgressWorkItemColumn::new(
+            "final_objective",
+            final_objective_label,
+        ));
     }
+
     if progress.current_candidate_assessment.is_some() {
         columns.push(ProgressWorkItemColumn::new("assessment", "Assessment"));
     }
+
     if progress.current_coarse_consistency_fit.is_some() {
         columns.push(ProgressWorkItemColumn::new("coarse_fit", "Coarse fit"));
     }
+
     if progress.current_convergence_ratio.is_some() {
         columns.push(ProgressWorkItemColumn::new("convergence", "Conv."));
     }
+
     if progress.exact_closed_form_buy_count.is_some() {
-        columns.push(ProgressWorkItemColumn::new("exact_buy", "CF-B"));
+        columns.push(ProgressWorkItemColumn::new("exact_buy", "CF-Buy"));
     }
+
     if progress.exact_closed_form_sell_count.is_some() {
-        columns.push(ProgressWorkItemColumn::new("exact_sell", "CF-S"));
+        columns.push(ProgressWorkItemColumn::new("exact_sell", "CF-Sell"));
     }
+
     if progress.exact_tilted_mixed_count.is_some() {
         columns.push(ProgressWorkItemColumn::new("exact_mixed", "Mix"));
     }
 
     columns
+}
+
+fn work_item_columns(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_label: &Option<String>,
+) -> Vec<ProgressWorkItemColumn> {
+    if work_item_label.is_none() && progress.planned_work_item_labels.is_empty() {
+        return Vec::new();
+    }
+
+    work_item_table_columns(progress)
+}
+
+fn display_work_item_metrics(
+    work_item_metrics: Vec<ProgressWorkItemMetric>,
+    work_item_label: &Option<String>,
+) -> Vec<ProgressWorkItemMetric> {
+    if work_item_label.is_none() {
+        return Vec::new();
+    }
+
+    work_item_metrics
 }
 
 fn work_item_table_uses_restart_optimization_columns(
@@ -529,14 +784,22 @@ fn work_item_table_metrics(
     ) {
         metrics.push(ProgressWorkItemMetric::new("eval", evaluation_label));
     }
-    if let Some(current_parameter_block) = progress.current_parameter_block.as_deref() {
+
+    if let Some(interval_label) = pricing_interval_label(progress) {
         metrics.push(ProgressWorkItemMetric::new(
-            "block",
-            current_parameter_block.to_string(),
+            "pricing_interval",
+            interval_label,
         ));
     }
 
-    if let Some(current_weighted_objective) = progress.current_weighted_objective {
+    if let Some(row_label) = progress_count_label(
+        progress.completed_pricing_row_count,
+        progress.total_pricing_row_count,
+    ) {
+        metrics.push(ProgressWorkItemMetric::new("pricing_rows", row_label));
+    }
+
+    if let Some(current_global_loss) = progress.current_global_loss {
         let metric_key = if progress.evaluation_progress_percent == Some(100) {
             "final_objective"
         } else {
@@ -545,47 +808,52 @@ fn work_item_table_metrics(
 
         metrics.push(ProgressWorkItemMetric::new(
             metric_key,
-            format!("{current_weighted_objective:.6}"),
+            format!("{current_global_loss:.6}"),
         ));
     }
-    if let Some(current_restart_best_weighted_objective) =
-        progress.current_restart_best_weighted_objective
-    {
+
+    if let Some(current_restart_best_global_loss) = progress.current_restart_best_global_loss {
         metrics.push(ProgressWorkItemMetric::new(
             "best_objective",
-            format!("{current_restart_best_weighted_objective:.6}"),
+            format!("{current_restart_best_global_loss:.6}"),
         ));
     }
+
     if let Some(current_candidate_assessment) = progress.current_candidate_assessment {
         metrics.push(ProgressWorkItemMetric::new(
             "assessment",
             candidate_assessment_label(&current_candidate_assessment),
         ));
     }
+
     if let Some(current_coarse_consistency_fit) = progress.current_coarse_consistency_fit {
         metrics.push(ProgressWorkItemMetric::new(
             "coarse_fit",
             format!("{current_coarse_consistency_fit:.6}"),
         ));
     }
+
     if let Some(current_convergence_ratio) = progress.current_convergence_ratio {
         metrics.push(ProgressWorkItemMetric::new(
             "convergence",
             format!("{current_convergence_ratio:.6}"),
         ));
     }
+
     if let Some(exact_closed_form_buy_count) = progress.exact_closed_form_buy_count {
         metrics.push(ProgressWorkItemMetric::new(
             "exact_buy",
             exact_closed_form_buy_count.to_string(),
         ));
     }
+
     if let Some(exact_closed_form_sell_count) = progress.exact_closed_form_sell_count {
         metrics.push(ProgressWorkItemMetric::new(
             "exact_sell",
             exact_closed_form_sell_count.to_string(),
         ));
     }
+
     if let Some(exact_tilted_mixed_count) = progress.exact_tilted_mixed_count {
         metrics.push(ProgressWorkItemMetric::new(
             "exact_mixed",
@@ -625,16 +893,34 @@ fn evaluation_label(
     })
 }
 
-fn progress_work_item_label(
-    progress_phase: &CalibrationStageProgressPhase,
-    current_item_label: Option<&str>,
-) -> Option<String> {
-    let current_item_label = current_item_label?;
+fn pricing_interval_label(progress: &CalibrationStagedRunStageProgressEvent) -> Option<String> {
+    if progress.completed_pricing_row_count.is_some() || progress.total_pricing_row_count.is_some()
+    {
+        return progress_position_label(
+            progress.current_pricing_interval_index,
+            progress.total_pricing_interval_count,
+        );
+    }
 
-    match progress_phase {
+    progress_count_label(
+        progress.current_pricing_interval_index,
+        progress.total_pricing_interval_count,
+    )
+}
+
+fn progress_work_item_label(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_metrics: &[ProgressWorkItemMetric],
+) -> Option<String> {
+    let current_item_label = progress.current_item_label.as_deref()?;
+
+    if progress.evaluation_progress_percent.is_none() && work_item_metrics.is_empty() {
+        return None;
+    }
+
+    match &progress.progress_phase {
         CalibrationStageProgressPhase::ReturnComponents(
-            ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring
-            | ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
+            ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         )
         | CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::RestartOptimization
@@ -649,21 +935,11 @@ fn progress_work_item_label(
 }
 
 fn stage_ref(stage: CalibrationStage) -> RunStageRef {
-    RunStageRef::labeled(stage_token(stage), stage_label(stage))
+    RunStageRef::labeled(calibration_stage_token(stage), stage_label(stage))
 }
 
 fn phase_ref(token: &str, label: &str) -> RunPhaseRef {
     RunPhaseRef::labeled(token, label)
-}
-
-fn stage_token(stage: CalibrationStage) -> &'static str {
-    match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-        CalibrationStage::MeanReversion => "mean_reversion",
-        CalibrationStage::JointRefinement => "joint_refinement",
-    }
 }
 
 fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {

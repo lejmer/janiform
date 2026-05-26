@@ -13,11 +13,22 @@ def main() -> int:
 
     parser.add_argument("--wheel", type=Path)
     parser.add_argument("--expected-version")
+    parser.add_argument(
+        "--no-deps",
+        action="store_true",
+        help="Install the wheel without resolving dependencies.",
+    )
 
     args = parser.parse_args()
 
     if args.wheel is not None:
-        _run([sys.executable, "-m", "pip", "install", "--force-reinstall", str(args.wheel)])
+        install_command = [sys.executable, "-m", "pip", "install", "--force-reinstall"]
+        if args.no_deps:
+            install_command.append("--no-deps")
+
+        install_command.append(str(args.wheel))
+
+        _run(install_command)
 
     observed_version = _run_python("import janiform; print(janiform.__version__)").strip()
     if args.expected_version is not None and observed_version != args.expected_version:

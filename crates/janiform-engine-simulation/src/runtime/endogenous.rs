@@ -1,4 +1,5 @@
 use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_foundations::time::elapsed_utc_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelParameters, HawkesTransitionError, HawkesTransitionStep,
     evolve_hawkes_state,
@@ -11,7 +12,6 @@ use janiform_market_time::calendar::MarketState;
 
 use super::buffers::{push_simulation_buffer_value, try_reserve_simulation_buffer};
 use super::market_state::SeededSimulationMarketStateResolver;
-use super::time::derive_elapsed_hours;
 use super::updates::{IntervalStochasticUpdate, map_seeded_tick_side_to_hawkes_side};
 use super::validation::map_transition_error_to_seeded_simulation_run_error;
 
@@ -52,7 +52,7 @@ where
     } = input;
 
     let interval_duration_in_hours =
-        (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / NANOS_PER_HOUR as f64;
+        elapsed_utc_nanos_to_hours(interval_start_utc_nanos, interval_end_utc_nanos);
 
     let estimated_endogenous_capacity = estimate_endogenous_interval_event_capacity(
         kernel_parameters.lambda_bar,
@@ -371,7 +371,8 @@ fn apply_hawkes_drift(
     previous_timestamp_utc_nanos: i64,
     timestamp_utc_nanos: i64,
 ) -> Result<HawkesExcitationState, HawkesTransitionError> {
-    let elapsed_hours = derive_elapsed_hours(previous_timestamp_utc_nanos, timestamp_utc_nanos);
+    let elapsed_hours =
+        elapsed_utc_nanos_to_hours(previous_timestamp_utc_nanos, timestamp_utc_nanos);
 
     evolve_hawkes_state(
         state,
@@ -385,12 +386,11 @@ fn project_non_negative_intensities(
     lambda_bar: f64,
     seasonality_factor: f64,
 ) -> (f64, f64, f64) {
-    let projected_intensities = state
-        .project_intensities(lambda_bar, seasonality_factor)
-        .seasonality_scaled;
+    let projected_intensities = state.project_deseasonalized_intensities(lambda_bar);
+    let baseline = lambda_bar * seasonality_factor.max(0.0);
 
-    let lambda_plus = projected_intensities.lambda_plus.max(0.0);
-    let lambda_minus = projected_intensities.lambda_minus.max(0.0);
+    let lambda_plus = (baseline + projected_intensities.lambda_plus - lambda_bar).max(0.0);
+    let lambda_minus = (baseline + projected_intensities.lambda_minus - lambda_bar).max(0.0);
 
     let lambda_plus = if lambda_plus.is_finite() {
         lambda_plus

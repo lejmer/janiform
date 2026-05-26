@@ -3,6 +3,7 @@ mod support;
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformSolverSettings, ExponentialAffineTransformTelemetryMode,
+    solve_exponential_affine_transform_with_settings,
 };
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
 use janiform_engine_pricing::internal::{
@@ -14,12 +15,12 @@ use janiform_engine_pricing::internal::{
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingStatus,
-    build_pricing_transform_input, build_vanilla_option_pricing_run_result,
-    solve_exponential_affine_transform,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingKernelParameters,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingResponse, VanillaOptionPricingRunResultBuildInput,
+    VanillaOptionPricingStatus, build_pricing_transform_input,
+    build_vanilla_option_pricing_run_result,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -146,6 +147,8 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
+        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing model parameters should construct");
 
@@ -186,7 +189,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     )
     .expect("pricing transform input should construct");
 
-    let transform_diagnostics = solve_exponential_affine_transform(
+    let transform_diagnostics = solve_exponential_affine_transform_with_settings(
         transform_input,
         reference_affine_transform_solver_settings(),
     )

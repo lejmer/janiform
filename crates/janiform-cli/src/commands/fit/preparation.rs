@@ -34,6 +34,9 @@ const FIT_PREPARATION_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.re
 pub(crate) struct FitPreparationOverrides {
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+    pub(crate) treat_calibration_warnings_as_errors: bool,
+    pub(crate) stylized_fact_huber_cutoff: Option<f64>,
+    pub(crate) stylized_fact_admissibility_z_threshold: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -162,8 +165,17 @@ pub(crate) fn prepare_fit_preview(
         dynamics_search_restart_candidate_budget: preview_options
             .overrides
             .dynamics_search_restart_candidate_budget,
+        calibration_effort: None,
+        treat_calibration_warnings_as_errors: preview_options
+            .overrides
+            .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: None,
+        joint_refinement_option_refinement_wall_clock_budget_millis: None,
         joint_refinement_audit_option_pricing_enabled: false,
+        stylized_fact_huber_cutoff: preview_options.overrides.stylized_fact_huber_cutoff,
+        stylized_fact_admissibility_z_threshold: preview_options
+            .overrides
+            .stylized_fact_admissibility_z_threshold,
         known_news_inputs: prepared_inputs.known_news_inputs,
         mean_reversion: preview_options
             .overrides

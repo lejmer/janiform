@@ -8,6 +8,7 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
 };
 use janiform_foundations::numeric::{validate_finite_number, validate_positive_number};
+use janiform_foundations::time::duration_hours_to_nanos;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelParameterError, HawkesKernelParameters,
 };
@@ -19,12 +20,14 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigur
 use janiform_model_kernels::nig::{
     NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
 };
+use janiform_model_kernels::return_clock::{
+    ReturnClockExposureParameters, ReturnClockExposureParametersError,
+};
 
 use super::constants::{
-    SPECTRAL_PRICING_COLLOCATION_POLICY, SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
-    SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY,
-    SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
-    VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
+    MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT, SPECTRAL_PRICING_COLLOCATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY,
+    VANILLA_OPTION_CALIBRATION_HOOK_POLICY, VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS,
@@ -37,8 +40,9 @@ use super::constants::{
 use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::{PricingIntervalSchedule, PricingIntervalScheduleError};
-
-const PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
+use super::pricing_kernel::{
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingKernelParametersError,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -51,18 +55,10 @@ pub enum VanillaOptionPricingStatus {
 #[serde(rename_all = "snake_case")]
 pub enum VanillaOptionPricingFailureStage {
     NodeSetup,
-    TransformInputBuild,
-    TransformSolve,
-    TransformOutput,
-    CharacteristicFunctionAssembly,
     FourierPricing,
     RiskNeutralCharacteristicFunction,
-    EndogenousAnchorMaterialization,
-    ExpectedHawkesStateUpdate,
-    AnchoredLocalTiltSolve,
-    SpectralObservedBoundaryState,
+    TerminalAffineMeasureChange,
     SpectralDiagnostics,
-    SpectralOperatorAssembly,
     ResponseDiagnostics,
     ResponseAssembly,
     RunResultAssembly,
@@ -123,7 +119,7 @@ impl Display for VanillaOptionPricingFailureDiagnosticError {
 }
 
 impl Error for VanillaOptionPricingFailureDiagnosticError {}
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VanillaOptionPayoffType {
     Call,
@@ -385,6 +381,8 @@ pub struct VanillaOptionPricingModelParameters {
     pub hawkes_kernel_parameters: HawkesKernelParameters,
     pub news_process_configuration: NewsProcessConfiguration,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
 impl VanillaOptionPricingModelParameters {
@@ -392,11 +390,15 @@ impl VanillaOptionPricingModelParameters {
         hawkes_kernel_parameters: HawkesKernelParameters,
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+        pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Self {
         Self {
             hawkes_kernel_parameters,
             news_process_configuration,
             nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters,
+            pricing_kernel_parameters,
         }
     }
 
@@ -404,11 +406,15 @@ impl VanillaOptionPricingModelParameters {
         hawkes_kernel_parameters: HawkesKernelParameters,
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+        pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Result<Self, VanillaOptionPricingModelParametersError> {
         let model_parameters = Self::new(
             hawkes_kernel_parameters,
             news_process_configuration,
             nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters,
+            pricing_kernel_parameters,
         );
 
         model_parameters.validate()?;
@@ -441,6 +447,20 @@ impl VanillaOptionPricingModelParameters {
                 }
             })?;
 
+        self.return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidReturnClockExposureParameters {
+                    source,
+                }
+            })?;
+
+        self.pricing_kernel_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidPricingKernelParameters { source }
+            })?;
+
         Ok(())
     }
 }
@@ -456,6 +476,12 @@ pub enum VanillaOptionPricingModelParametersError {
     },
     InvalidNigSharedPlusShiftConfiguration {
         source: NigSharedPlusShiftConfigurationError,
+    },
+    InvalidReturnClockExposureParameters {
+        source: ReturnClockExposureParametersError,
+    },
+    InvalidPricingKernelParameters {
+        source: VanillaOptionPricingKernelParametersError,
     },
 }
 
@@ -474,6 +500,14 @@ impl Display for VanillaOptionPricingModelParametersError {
                 formatter,
                 "model_parameters.nig_shared_plus_shift_configuration is invalid: {source}"
             ),
+            Self::InvalidReturnClockExposureParameters { source } => write!(
+                formatter,
+                "model_parameters.return_clock_exposure_parameters are invalid: {source}"
+            ),
+            Self::InvalidPricingKernelParameters { source } => write!(
+                formatter,
+                "model_parameters.pricing_kernel_parameters is invalid: {source}"
+            ),
         }
     }
 }
@@ -484,6 +518,8 @@ impl Error for VanillaOptionPricingModelParametersError {
             Self::InvalidHawkesKernelParameters { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
+            Self::InvalidReturnClockExposureParameters { source } => Some(source),
+            Self::InvalidPricingKernelParameters { source } => Some(source),
         }
     }
 }
@@ -555,7 +591,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
             AnchoredVanillaOptionPricingBoundaryInputError::InvalidObservedBoundaryState { source }
         })?;
 
-        if !self.interval_delta.is_finite() || self.interval_delta <= 0.0 {
+        if duration_hours_to_nanos(self.interval_delta).is_err() {
             return Err(
                 AnchoredVanillaOptionPricingBoundaryInputError::InvalidIntervalDelta {
                     value: self.interval_delta,
@@ -639,7 +675,7 @@ impl Display for AnchoredVanillaOptionPricingBoundaryInputError {
             ),
             Self::InvalidIntervalDelta { value } => write!(
                 formatter,
-                "boundary_input.interval_delta must be finite and strictly positive, found {value}"
+                "boundary_input.interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration, found {value}"
             ),
         }
     }
@@ -780,8 +816,7 @@ impl SpectralPricingIntervalDiagnostics {
 pub struct SpectralPricingDiagnostics {
     pub deviation_domain_policy: String,
     pub collocation_policy: String,
-    pub interval_operator_policy: String,
-    pub expected_hawkes_state_update_policy: String,
+    pub terminal_affine_policy: String,
     pub deviation_domain_lower_bound: f64,
     pub deviation_domain_upper_bound: f64,
     pub collocation_node_count: usize,
@@ -798,9 +833,7 @@ impl SpectralPricingDiagnostics {
         let diagnostics = Self {
             deviation_domain_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY.to_string(),
             collocation_policy: SPECTRAL_PRICING_COLLOCATION_POLICY.to_string(),
-            interval_operator_policy: SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY.to_string(),
-            expected_hawkes_state_update_policy:
-                SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY.to_string(),
+            terminal_affine_policy: SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY.to_string(),
             deviation_domain_lower_bound,
             deviation_domain_upper_bound,
             collocation_node_count,
@@ -820,12 +853,8 @@ impl SpectralPricingDiagnostics {
             ),
             ("collocation_policy", self.collocation_policy.as_str()),
             (
-                "interval_operator_policy",
-                self.interval_operator_policy.as_str(),
-            ),
-            (
-                "expected_hawkes_state_update_policy",
-                self.expected_hawkes_state_update_policy.as_str(),
+                "terminal_affine_policy",
+                self.terminal_affine_policy.as_str(),
             ),
         ] {
             if field.1.trim().is_empty() {
@@ -849,7 +878,7 @@ impl SpectralPricingDiagnostics {
             });
         }
 
-        if self.collocation_node_count == 0 {
+        if self.collocation_node_count < MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT {
             return Err(
                 SpectralPricingDiagnosticsError::InvalidCollocationNodeCount {
                     value: self.collocation_node_count,
@@ -943,7 +972,7 @@ impl Display for SpectralPricingDiagnosticsError {
             ),
             Self::InvalidCollocationNodeCount { value } => write!(
                 formatter,
-                "collocation_node_count must be at least 1, found {value}"
+                "collocation_node_count must be at least {MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT}, found {value}"
             ),
             Self::EmptyIntervalDiagnostics => write!(
                 formatter,
@@ -1010,7 +1039,7 @@ impl VanillaOptionPricingRequest {
             .validate_single_node_shape()
             .map_err(|source| VanillaOptionPricingRequestError::InvalidMarketInputs { source })?;
 
-        validate_interval_delta(self.interval_delta)?;
+        let interval_delta_nanos = validate_interval_delta(self.interval_delta)?;
 
         self.boundary_input
             .validate()
@@ -1020,9 +1049,7 @@ impl VanillaOptionPricingRequest {
             .boundary_input
             .interval_delta()
             .map_err(|source| VanillaOptionPricingRequestError::InvalidBoundaryInput { source })?;
-        if (anchored_interval_delta - self.interval_delta).abs()
-            > PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        {
+        if duration_hours_to_nanos(anchored_interval_delta) != Ok(interval_delta_nanos) {
             return Err(
                 VanillaOptionPricingRequestError::BoundaryIntervalDeltaMismatch {
                     requested_interval_delta: self.interval_delta,
@@ -1075,7 +1102,7 @@ impl Display for VanillaOptionPricingRequestError {
             Self::InvalidIntervalDelta { value } => {
                 write!(
                     formatter,
-                    "interval_delta must be finite and strictly positive, found {value}"
+                    "interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration, found {value}"
                 )
             }
             Self::InvalidBoundaryInput { source } => {
@@ -1719,7 +1746,7 @@ impl VanillaOptionPricingCalibrationHooks {
             .price
             .ok_or(VanillaOptionPricingCalibrationHooksError::MissingResponsePrice)?;
 
-        let log_moneyness = (strike / market_inputs.spot).ln();
+        let log_moneyness = strike.ln() - market_inputs.spot.ln();
         let forward_moneyness = diagnostics.forward_price / strike;
 
         let integration_quality_diagnostics =
@@ -2174,14 +2201,12 @@ fn validate_positive_field(
     })
 }
 
-fn validate_interval_delta(interval_delta: f64) -> Result<(), VanillaOptionPricingRequestError> {
-    if !interval_delta.is_finite() || interval_delta <= 0.0 {
-        return Err(VanillaOptionPricingRequestError::InvalidIntervalDelta {
+fn validate_interval_delta(interval_delta: f64) -> Result<i64, VanillaOptionPricingRequestError> {
+    duration_hours_to_nanos(interval_delta).map_err(|_| {
+        VanillaOptionPricingRequestError::InvalidIntervalDelta {
             value: interval_delta,
-        });
-    }
-
-    Ok(())
+        }
+    })
 }
 
 fn validate_hawkes_boundary_state(
@@ -2246,6 +2271,8 @@ struct VanillaOptionPricingModelParametersPayload {
     hawkes_kernel_parameters: HawkesKernelParameters,
     news_process_configuration: NewsProcessConfiguration,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
@@ -2259,6 +2286,8 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
             payload.hawkes_kernel_parameters,
             payload.news_process_configuration,
             payload.nig_shared_plus_shift_configuration,
+            payload.return_clock_exposure_parameters,
+            payload.pricing_kernel_parameters,
         )
         .map_err(serde::de::Error::custom)
     }

@@ -1,6 +1,10 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use janiform_terminal_ui::ProgressMeasure;
+
+use crate::error::WorkflowError;
+
 const VOLATILE_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug)]
@@ -59,12 +63,105 @@ pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> us
         .unwrap_or(0)
 }
 
+pub(crate) fn bounded_progress_measure(
+    completed_units: usize,
+    total_units: usize,
+) -> Result<ProgressMeasure, WorkflowError> {
+    ProgressMeasure::bounded(completed_units, total_units)
+        .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+pub(crate) fn progress_scaled_units(
+    completed_units: usize,
+    total_units: usize,
+    target_total_units: usize,
+) -> usize {
+    completed_units
+        .saturating_mul(target_total_units)
+        .checked_div(total_units)
+        .unwrap_or(0)
+        .min(target_total_units)
+}
+
+pub(crate) fn format_cpu_count(cpu_count: usize) -> String {
+    match cpu_count {
+        1 => "1 CPU".to_string(),
+        _ => format!("{cpu_count} CPUs"),
+    }
+}
+
+pub(crate) fn progress_count_label(
+    completed_count: Option<usize>,
+    total_count: Option<usize>,
+) -> Option<String> {
+    match (completed_count, total_count) {
+        (Some(completed_count), Some(total_count)) => {
+            Some(format!("{completed_count}/{total_count}"))
+        }
+        (Some(completed_count), None) => Some(completed_count.to_string()),
+        (None, Some(total_count)) => Some(format!("-/{total_count}")),
+        (None, None) => None,
+    }
+}
+
+pub(crate) fn progress_position_label(
+    current_index: Option<usize>,
+    total_count: Option<usize>,
+) -> Option<String> {
+    match (current_index, total_count) {
+        (Some(current_index), Some(total_count)) => Some(format!(
+            "{}/{}",
+            current_index.saturating_add(1),
+            total_count
+        )),
+        (Some(current_index), None) => Some(current_index.saturating_add(1).to_string()),
+        (None, Some(total_count)) => Some(format!("-/{total_count}")),
+        (None, None) => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProgressUnitTracker {
+    completed_units: usize,
+    total_units: usize,
+}
+
+impl ProgressUnitTracker {
+    pub(crate) const fn new(total_units: usize) -> Self {
+        Self {
+            completed_units: 0,
+            total_units,
+        }
+    }
+
+    pub(crate) const fn completed_units(&self) -> usize {
+        self.completed_units
+    }
+
+    pub(crate) fn record(&mut self, completed_units: usize) -> usize {
+        let previous_completed_units = self.completed_units;
+        self.completed_units = self
+            .completed_units
+            .max(completed_units)
+            .min(self.total_units);
+
+        self.completed_units - previous_completed_units
+    }
+
+    pub(crate) fn complete(&mut self) -> usize {
+        self.record(self.total_units)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
-    use super::{VolatileProgressGate, progress_percent};
+    use super::{
+        ProgressUnitTracker, VolatileProgressGate, format_cpu_count, progress_count_label,
+        progress_percent, progress_position_label, progress_scaled_units,
+    };
 
     #[test]
     fn volatile_progress_gate_emits_first_update() {
@@ -96,5 +193,59 @@ mod tests {
     fn progress_percent_uses_bounded_integer_units() {
         assert_eq!(progress_percent(4, 10), 40);
         assert_eq!(progress_percent(1, 0), 0);
+    }
+
+    #[test]
+    fn progress_scaled_units_projects_progress_onto_target_unit_count() {
+        assert_eq!(progress_scaled_units(3, 10, 100), 30);
+        assert_eq!(progress_scaled_units(12, 10, 100), 100);
+        assert_eq!(progress_scaled_units(1, 0, 100), 0);
+    }
+
+    #[test]
+    fn format_cpu_count_uses_singular_for_one_cpu() {
+        assert_eq!(format_cpu_count(1), "1 CPU");
+        assert_eq!(format_cpu_count(4), "4 CPUs");
+    }
+
+    #[test]
+    fn progress_count_label_formats_completed_units() {
+        assert_eq!(
+            progress_count_label(Some(24), Some(47)),
+            Some("24/47".to_string())
+        );
+        assert_eq!(progress_count_label(Some(24), None), Some("24".to_string()));
+        assert_eq!(
+            progress_count_label(None, Some(47)),
+            Some("-/47".to_string())
+        );
+        assert_eq!(progress_count_label(None, None), None);
+    }
+
+    #[test]
+    fn progress_position_label_formats_zero_based_position() {
+        assert_eq!(
+            progress_position_label(Some(24), Some(47)),
+            Some("25/47".to_string())
+        );
+        assert_eq!(
+            progress_position_label(Some(24), None),
+            Some("25".to_string())
+        );
+        assert_eq!(
+            progress_position_label(None, Some(47)),
+            Some("-/47".to_string())
+        );
+        assert_eq!(progress_position_label(None, None), None);
+    }
+
+    #[test]
+    fn progress_unit_tracker_records_monotonic_bounded_progress() {
+        let mut tracker = ProgressUnitTracker::new(100);
+
+        assert_eq!(tracker.record(25), 25);
+        assert_eq!(tracker.record(20), 0);
+        assert_eq!(tracker.record(250), 75);
+        assert_eq!(tracker.completed_units(), 100);
     }
 }

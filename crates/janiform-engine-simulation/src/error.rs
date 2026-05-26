@@ -15,6 +15,9 @@ use janiform_model_kernels::mean_reversion::{
 use janiform_model_kernels::news::NewsProcessConfigurationError;
 use janiform_model_kernels::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
+use janiform_model_kernels::return_clock::{
+    EffectiveReturnClocksBuildError, ReturnClockExposureParametersError,
+};
 use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
 
 /// Structured simulator run failure with explicit validation diagnostics.
@@ -61,9 +64,19 @@ pub enum SeededTickSimulationRunError {
         current_interval_start_utc_nanos: i64,
     },
     SeasonalityScaledEndogenousInstability {
-        max_seasonality_factor: f64,
         spectral_radius_alpha_over_beta: f64,
         effective_branching_ratio: f64,
+    },
+    InvalidReturnClockExposureParameters {
+        source: Box<ReturnClockExposureParametersError>,
+    },
+    InvalidObservedPriceTickSize {
+        value: f64,
+    },
+    TickGridProjectionFailed {
+        interval_index: usize,
+        previous_observed_log_price: f64,
+        raw_total_return: f64,
     },
     InvalidDebugTraceSamplingStride {
         value: u64,
@@ -147,6 +160,10 @@ pub enum SeededTickSimulationRunError {
         interval_index: usize,
         source: Box<janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError>,
     },
+    EffectiveReturnClockBuildFailure {
+        interval_index: usize,
+        source: Box<EffectiveReturnClocksBuildError>,
+    },
     InvalidReturnComponents {
         interval_index: usize,
         source: Box<SufficientStatisticsReturnComponentsError>,
@@ -229,12 +246,29 @@ impl Display for SeededTickSimulationRunError {
                 "hourly_factor_contract interval coverage must be consecutive, interval {previous_interval_index} end ({previous_interval_end_utc_nanos}) must equal interval {current_interval_index} start ({current_interval_start_utc_nanos})"
             ),
             Self::SeasonalityScaledEndogenousInstability {
-                max_seasonality_factor,
                 spectral_radius_alpha_over_beta,
                 effective_branching_ratio,
             } => write!(
                 formatter,
-                "seasonality-scaled endogenous branching must remain below 1.0, found max_s_h={max_seasonality_factor}, spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
+                "endogenous Hawkes branching must remain below 1.0, found spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
+            ),
+            Self::InvalidReturnClockExposureParameters { source } => {
+                write!(
+                    formatter,
+                    "return_clock_exposure_parameters are invalid: {source}"
+                )
+            }
+            Self::InvalidObservedPriceTickSize { value } => write!(
+                formatter,
+                "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
+            ),
+            Self::TickGridProjectionFailed {
+                interval_index,
+                previous_observed_log_price,
+                raw_total_return,
+            } => write!(
+                formatter,
+                "interval {interval_index} tick-grid observation projection failed for previous_observed_log_price={previous_observed_log_price} and raw_total_return={raw_total_return}"
             ),
             Self::InvalidDebugTraceSamplingStride { value } => write!(
                 formatter,
@@ -360,6 +394,13 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "interval {interval_index} trading-time sampling failed: {source}"
             ),
+            Self::EffectiveReturnClockBuildFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} effective return-clock construction failed: {source}"
+            ),
             Self::InvalidReturnComponents {
                 interval_index,
                 source,
@@ -391,11 +432,13 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidMeanReversionBoundaryState { source } => Some(source.as_ref()),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source.as_ref()),
             Self::InvalidNewsProcessConfiguration { source } => Some(source.as_ref()),
+            Self::InvalidReturnClockExposureParameters { source } => Some(source.as_ref()),
             Self::NewsMarkSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
             Self::NewsMarketStateResolutionFailed { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
             Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::EffectiveReturnClockBuildFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
             Self::InvalidTransitionStep { source } => Some(source.as_ref()),
             Self::CalendarSessionBoundaryResolutionFailed { .. } => None,

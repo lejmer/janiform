@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use janiform_engine_pricing::PricingIntervalSchedule;
+use crate::contracts::CalibrationLossEvaluation;
+use janiform_engine_pricing::{PricingIntervalSchedule, VanillaOptionPricingKernelParameters};
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
@@ -10,6 +11,7 @@ use janiform_model_kernels::mean_reversion::{
 };
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeasonalityStageNormalizationMetadata {
@@ -41,10 +43,20 @@ pub struct SurpriseNewsDeterministicIntensityProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TickGridObservationModel {
+    pub tick_size: Option<f64>,
+    pub tick_size_source: String,
+    pub inference_policy: String,
+    pub observation_policy: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub tick_grid_observation_model: TickGridObservationModel,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
 }
 
@@ -100,23 +112,7 @@ pub struct MeanReversionStageCandidateDiagnostics {
     pub stage_decision_reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JointRefinementStageObjectiveBreakdown {
-    pub aggregated_likelihood_fit: f64,
-    pub aggregated_return_shape_fit: f64,
-    pub return_asymmetry_fit: f64,
-    pub tick_return_asymmetry_fit: f64,
-    pub aggregated_return_scale_fit: f64,
-    pub tick_return_scale_fit: f64,
-    pub business_time_return_scale_fit: f64,
-    pub intraday_return_level_fit: f64,
-    pub activity_shape_fit: f64,
-    pub activity_level_fit: f64,
-    pub rv_activity_coupling_fit: f64,
-    pub price_span_sanity_fit: f64,
-    pub weighted_objective: f64,
-    pub hard_constraint_penalty: f64,
-}
+pub type JointRefinementStageObjectiveBreakdown = CalibrationLossEvaluation;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageLabeledCount {
@@ -148,13 +144,47 @@ pub struct JointRefinementStageRuntimeProfile {
     pub deterministic_cache_miss_count: usize,
     pub seed_summary_cache_hit_count: usize,
     pub seed_summary_cache_miss_count: usize,
+    pub aggregated_likelihood_context_cache_hit_count: usize,
+    pub aggregated_likelihood_context_cache_miss_count: usize,
     pub option_pricing_cache_hit_count: usize,
     pub option_pricing_cache_miss_count: usize,
     pub option_pricing_run_count: usize,
     pub invalid_candidate_evaluation_count: usize,
     pub cumulative_deterministic_evaluation_millis: u64,
+    pub cumulative_modeled_rate_millis: u64,
+    pub cumulative_likelihood_context_resolution_millis: u64,
+    pub cumulative_likelihood_context_5m_sample_millis: u64,
+    pub cumulative_likelihood_context_15m_sample_millis: u64,
+    pub cumulative_likelihood_context_tick_sample_millis: u64,
+    pub cumulative_likelihood_context_tick_optimizer_millis: u64,
+    pub cumulative_likelihood_context_5m_optimizer_millis: u64,
+    pub cumulative_likelihood_context_15m_optimizer_millis: u64,
+    pub cumulative_tick_likelihood_millis: u64,
+    pub cumulative_5m_likelihood_millis: u64,
+    pub cumulative_15m_likelihood_millis: u64,
+    pub cumulative_expected_activity_counts_millis: u64,
+    pub cumulative_deterministic_activity_shape_millis: u64,
+    pub cumulative_deterministic_activity_level_millis: u64,
     pub cumulative_seed_summary_simulation_millis: u64,
+    pub cumulative_raw_seed_metrics_millis: u64,
+    pub cumulative_loss_build_millis: u64,
     pub cumulative_option_pricing_millis: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageRestartEvaluationTimingDiagnostic {
+    pub restart_id: String,
+    pub schedule_category: String,
+    pub candidate_evaluation_count: usize,
+    pub poll_direction_position: Option<usize>,
+    pub poll_direction_label: String,
+    pub elapsed_millis: u64,
+    pub objective: Option<f64>,
+    pub admissibility_blocker_count: Option<usize>,
+    pub max_standardized_residual: Option<f64>,
+    pub exact_closed_form_buy_count: Option<usize>,
+    pub exact_closed_form_sell_count: Option<usize>,
+    pub exact_tilted_mixed_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -166,6 +196,8 @@ pub struct JointRefinementStageOptimizerDiagnostics {
     pub stop_reason: String,
     pub restart_diagnostics: JointRefinementStageRestartDiagnostics,
     pub runtime_profile: JointRefinementStageRuntimeProfile,
+    pub restart_evaluation_timing_diagnostics:
+        Vec<JointRefinementStageRestartEvaluationTimingDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -176,9 +208,30 @@ pub struct JointRefinementStageFittedParameters {
     pub pricing_block_fitted_parameters: Option<JointRefinementStagePricingBlockFittedParameters>,
 }
 
+impl JointRefinementStageFittedParameters {
+    /// Return the Hawkes kernel that option-pricing workflows should use.
+    pub fn pricing_hawkes_kernel_parameters(&self) -> HawkesKernelParameters {
+        self.hawkes_fitted_parameters.kernel_parameters
+    }
+
+    /// Return the NIG configuration that option-pricing workflows should use.
+    pub fn pricing_nig_shared_plus_shift_configuration(&self) -> NigSharedPlusShiftConfiguration {
+        self.return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration
+    }
+
+    /// Return the pricing kernel that option-pricing workflows should use.
+    pub fn pricing_kernel_parameters(&self) -> VanillaOptionPricingKernelParameters {
+        self.pricing_block_fitted_parameters
+            .as_ref()
+            .map(|pricing_block| pricing_block.pricing_kernel_parameters)
+            .unwrap_or_else(VanillaOptionPricingKernelParameters::identity)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStagePricingBlockFittedParameters {
-    pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -303,4 +356,19 @@ pub struct JointRefinementStageOptionCalibrationDiagnostics {
     pub audit_tier_pricing: Option<JointRefinementStageOptionTierPricingDiagnostics>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reduced_model: Option<JointRefinementStageOptionReducedModelDiagnostics>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_selection_agreement:
+        Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionSearchSelectionAgreementDiagnostics {
+    pub frontier_size: usize,
+    pub best_by_search_restart_id: Option<String>,
+    pub best_by_selection_restart_id: Option<String>,
+    pub selected_restart_id: Option<String>,
+    pub selected_search_rank: Option<usize>,
+    pub selected_selection_rank: Option<usize>,
+    pub selected_rank_movement: Option<i64>,
+    pub spearman_rank_correlation: Option<f64>,
 }

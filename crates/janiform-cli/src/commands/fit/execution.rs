@@ -2,8 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use janiform::calibration::staged::{
-    CalibrationStageExecutionStatus, CalibrationStagedExecutionInput,
-    CalibrationStagedExecutionRuntimeResources,
+    CalibrationStagedExecutionInput, CalibrationStagedExecutionRuntimeResources,
 };
 use janiform_event_log::RunEvent;
 use janiform_terminal_ui::{ProgressAdapter, format_path};
@@ -53,6 +52,10 @@ pub(crate) fn run_fit_command(
                 mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
                 dynamics_search_restart_candidate_budget: command
                     .dynamics_search_restart_candidate_budget,
+                treat_calibration_warnings_as_errors: command.treat_calibration_warnings_as_errors,
+                stylized_fact_huber_cutoff: command.stylized_fact_huber_cutoff,
+                stylized_fact_admissibility_z_threshold: command
+                    .stylized_fact_admissibility_z_threshold,
             },
             no_persist: command.no_persist,
         },
@@ -251,7 +254,7 @@ fn run_execution_input(
     let terminal_output = terminal_output_for_context(context);
 
     let mut progress_adapter = match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
+        OutputMode::Terminal | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
         OutputMode::Json | OutputMode::Silent => None,
     };
 
@@ -286,9 +289,10 @@ fn run_execution_input(
         persist_outputs,
     )?;
 
-    if output.report.status != CalibrationStageExecutionStatus::Success {
+    if !output.report.status.is_successful() {
         return Err(CliError::FitExecutionFailed {
             message: failure_reason(&output.report)?,
+            workflow_summary_rendered: true,
         });
     }
 
@@ -319,7 +323,7 @@ fn emit_completion_output(
 
             write_json_payload(&payload)
         }
-        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }
 

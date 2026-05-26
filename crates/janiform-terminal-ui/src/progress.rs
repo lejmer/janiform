@@ -18,7 +18,8 @@ mod table;
 
 use display::{
     format_elapsed_duration, format_elapsed_seconds, progress_measure_label,
-    progress_percent_label, work_item_status_text, work_item_waiting_status_text,
+    progress_percent_label, work_item_status_is_completed, work_item_status_text,
+    work_item_waiting_status_text,
 };
 use refresh::MessageRefresh;
 use render::ProgressRenderState;
@@ -147,6 +148,7 @@ impl ProgressAdapter {
                 measure,
                 work_item_label,
                 work_item_progress_percent,
+                work_item_status,
                 planned_work_item_labels,
                 work_item_columns,
                 work_item_metrics,
@@ -168,6 +170,7 @@ impl ProgressAdapter {
                         work_item_label,
                         measure,
                         work_item_progress_percent,
+                        work_item_status,
                         work_item_metrics,
                     );
                 }
@@ -188,6 +191,7 @@ impl ProgressAdapter {
             }
             ProgressEvent::StageCompleted {
                 stage,
+                status,
                 runtime_seconds,
             } => {
                 self.snapshot.completed_stage = Some(stage);
@@ -199,7 +203,7 @@ impl ProgressAdapter {
                 if let Some(stage_number) = self.snapshot.stage_number {
                     self.update_stage_status(
                         stage_number,
-                        ProgressStageStatus::Completed,
+                        completed_progress_stage_status(status.as_str()),
                         Some(elapsed),
                     );
                 }
@@ -268,6 +272,15 @@ impl ProgressAdapter {
 
                 progress_bar.set_message(message);
                 progress_bar.set_position(completed_units);
+
+                self.enable_steady_tick();
+                self.start_message_refresh();
+            }
+            ProgressMeasure::Percent { percent } => {
+                let progress_bar = self.progress_bar_for_bounded(100);
+
+                progress_bar.set_message(message);
+                progress_bar.set_position(u64::try_from(percent.min(100))?);
 
                 self.enable_steady_tick();
                 self.start_message_refresh();
@@ -435,9 +448,10 @@ impl ProgressAdapter {
         label: String,
         measure: ProgressMeasure,
         progress_percent: Option<usize>,
+        status: Option<String>,
         metrics: Vec<ProgressWorkItemMetric>,
     ) {
-        let status = work_item_status_text(progress_percent).to_string();
+        let status = status.unwrap_or_else(|| work_item_status_text(progress_percent).to_string());
 
         let started_at = self
             .active_work_started_at_by_label
@@ -461,6 +475,12 @@ impl ProgressAdapter {
             .iter_mut()
             .find(|work_item| work_item.label == label)
         {
+            if work_item_status_is_completed(&work_item.status)
+                && !work_item_status_is_completed(&status)
+            {
+                return;
+            }
+
             work_item.progress = progress;
             work_item.elapsed = elapsed;
             work_item.status = status;
@@ -491,5 +511,13 @@ impl ProgressAdapter {
 
             self.snapshot.work_item_columns.push(column);
         }
+    }
+}
+
+fn completed_progress_stage_status(status: &str) -> ProgressStageStatus {
+    if status == "completed with warnings" {
+        ProgressStageStatus::CompletedWithWarnings
+    } else {
+        ProgressStageStatus::Completed
     }
 }

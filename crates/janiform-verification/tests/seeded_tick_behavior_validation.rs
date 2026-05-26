@@ -1299,6 +1299,9 @@ fn build_run_config_with_options(
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
             hourly_factor_contract,
+            return_clock_exposure_parameters:
+                janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            observed_price_tick_size: None,
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1526,6 +1529,9 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1573,6 +1579,9 @@ fn build_one_interval_ordering_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1619,6 +1628,9 @@ fn build_two_interval_boundary_adjacent_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1894,6 +1906,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             }
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
                 Vec::new()
@@ -1959,6 +1972,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => vec![],
         };

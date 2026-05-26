@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,22 @@ def build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload() -> di
     return build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.0)
 
 
+def build_neutral_return_clock_exposure_parameters_payload() -> dict[str, Any]:
+    return {
+        "buy_excitation_return_clock_scale": 1.0,
+        "sell_excitation_return_clock_scale": 1.0,
+    }
+
+
+def build_nominal_tick_grid_observation_model_payload() -> dict[str, Any]:
+    return {
+        "tick_size": None,
+        "tick_size_source": "unavailable",
+        "inference_policy": "unit_test_no_tick_grid_inference.v1",
+        "observation_policy": "continuous_price_observation.v1",
+    }
+
+
 def update_model_mean_reversion_payload(model: Any, mean_reversion_payload: dict[str, Any]) -> None:
     _update_model_parameters_mean_reversion_payload(
         model.parameters,
@@ -53,32 +70,53 @@ def _update_model_parameters_mean_reversion_payload(
     parameters: dict[str, Any],
     mean_reversion_payload: dict[str, Any],
 ) -> None:
-    joint_refinement_parameters = parameters.get("joint_refinement")
+    finalization_parameters = parameters.get("finalization")
+    if not isinstance(finalization_parameters, dict):
+        raise AssertionError("model parameters must contain finalization parameters")
 
-    if not isinstance(joint_refinement_parameters, dict):
-        parameters["return_components"]["fitted_parameters"][
-            "mean_reversion_fitted_parameters"
-        ] = mean_reversion_payload
-
-        parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
-
-        return
-
-    fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
+    fitted_parameters = finalization_parameters.get("fitted_parameters")
     if not isinstance(fitted_parameters, dict):
-        raise AssertionError("joint_refinement model parameters must contain fitted_parameters")
+        raise AssertionError("finalization model parameters must contain fitted_parameters")
 
     return_components_fitted_parameters = fitted_parameters.get(
         "return_components_fitted_parameters"
     )
     if not isinstance(return_components_fitted_parameters, dict):
         raise AssertionError(
-            "joint_refinement fitted_parameters must contain return_components_fitted_parameters"
+            "finalization fitted_parameters must contain return_components_fitted_parameters"
         )
 
     return_components_fitted_parameters["mean_reversion_fitted_parameters"] = (
         mean_reversion_payload
     )
+
+
+def stage_report_by_stage(
+    raw_stage_reports: list[dict[str, Any]],
+    stage: CalibrationStage,
+) -> dict[str, Any]:
+    for raw_stage_report in raw_stage_reports:
+        if raw_stage_report.get("stage") == stage.value:
+            return raw_stage_report
+
+    raise AssertionError(f"stage reports must contain {stage.value}")
+
+
+def append_finalization_stage_report_from_joint_refinement(raw_response: dict[str, Any]) -> None:
+    raw_stage_reports = raw_response.get("stage_reports")
+    if not isinstance(raw_stage_reports, list):
+        raise AssertionError("staged response must contain stage_reports")
+
+    joint_refinement_report = stage_report_by_stage(
+        raw_stage_reports,
+        CalibrationStage.JOINT_REFINEMENT,
+    )
+
+    finalization_report = deepcopy(joint_refinement_report)
+    finalization_report["stage_report_kind"] = CalibrationStage.FINALIZATION.value
+    finalization_report["stage"] = CalibrationStage.FINALIZATION.value
+
+    raw_stage_reports.append(finalization_report)
 
 
 def build_endogenous_mean_reversion_fitted_parameters_payload(

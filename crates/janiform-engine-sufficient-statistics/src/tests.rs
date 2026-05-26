@@ -29,11 +29,11 @@ use super::{
     SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY, SufficientStatisticsBoundaryStateUpdateError,
     SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsGeneratedIntervalReturn,
     SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalFactorsError,
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsModelInputs,
-    SufficientStatisticsPath, SufficientStatisticsPathError, SufficientStatisticsPathRecord,
-    SufficientStatisticsReturnComponents, SufficientStatisticsReturnGenerationOptions,
-    SufficientStatisticsRunRequest, SufficientStatisticsRunRequestError,
-    SufficientStatisticsStreamingChunkingSettings,
+    SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError,
+    SufficientStatisticsModelInputs, SufficientStatisticsPath, SufficientStatisticsPathError,
+    SufficientStatisticsPathRecord, SufficientStatisticsReturnComponents,
+    SufficientStatisticsReturnGenerationOptions, SufficientStatisticsRunRequest,
+    SufficientStatisticsRunRequestError, SufficientStatisticsStreamingChunkingSettings,
     SufficientStatisticsStreamingChunkingSettingsError, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceExecutionError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
@@ -54,6 +54,7 @@ fn run_request_round_trip_serialization_preserves_contract_shape() {
 
     let serialized =
         serde_json::to_value(&run_request).expect("run request payload should serialize");
+
     assert_eq!(serialized["seed"], serde_json::json!(17));
     assert_eq!(serialized["horizon_interval_count"], serde_json::json!(2));
     assert_eq!(serialized["interval_delta"], serde_json::json!(1.0));
@@ -68,6 +69,7 @@ fn run_request_round_trip_serialization_preserves_contract_shape() {
 
     let parsed: SufficientStatisticsRunRequest =
         serde_json::from_value(serialized).expect("serialized payload should deserialize");
+
     assert_eq!(parsed, run_request);
 }
 
@@ -80,9 +82,11 @@ fn interval_factors_component_news_intensity_round_trip_and_context_consistency(
         Some(1.0),
     )
     .expect("component-aware interval factors should construct");
+
     assert_eq!(factors.nu_h.as_ref(), &[0.2, 0.1]);
 
     let first_interval_news_intensity = factors.news_intensity_input_at(0);
+
     assert_eq!(
         first_interval_news_intensity,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.12, 0.08)
@@ -90,11 +94,13 @@ fn interval_factors_component_news_intensity_round_trip_and_context_consistency(
     );
 
     let serialized = serde_json::to_value(&factors).expect("interval factors should serialize");
+
     assert_eq!(serialized["nu_h_known"], serde_json::json!([0.12, 0.03]));
     assert_eq!(serialized["nu_h_surprise"], serde_json::json!([0.08, 0.07]));
 
     let parsed: SufficientStatisticsIntervalFactors =
         serde_json::from_value(serialized).expect("serialized interval factors should parse");
+
     assert_eq!(parsed, factors);
 }
 
@@ -107,9 +113,11 @@ fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
         nu_h_known: vec![0.1].into_boxed_slice(),
         nu_h_surprise: vec![0.1].into_boxed_slice(),
     };
+
     let error = factors
         .validate()
         .expect_err("inconsistent total and component intensities must fail validation");
+
     assert!(matches!(
         error,
         SufficientStatisticsIntervalFactorsError::InconsistentNewsIntensityAggregation {
@@ -123,12 +131,12 @@ fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
 fn path_round_trip_serialization_preserves_interval_statistics_and_return_components() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
     );
+
     let path = SufficientStatisticsPath::try_new(
         17,
         1.0,
@@ -140,6 +148,7 @@ fn path_round_trip_serialization_preserves_interval_statistics_and_return_compon
     .expect("path should be valid");
 
     let serialized = serde_json::to_value(&path).expect("path payload should serialize");
+
     assert_eq!(
         serialized["schema_version"],
         serde_json::json!(SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION)
@@ -175,6 +184,7 @@ fn path_round_trip_serialization_preserves_interval_statistics_and_return_compon
 
     let parsed: SufficientStatisticsPath =
         serde_json::from_value(serialized).expect("serialized path should deserialize");
+
     assert_eq!(parsed, path);
 }
 
@@ -182,12 +192,12 @@ fn path_round_trip_serialization_preserves_interval_statistics_and_return_compon
 fn sufficient_statistics_path_diagnostics_schema_metadata_exposes_required_fields() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.9, 0.4, 2, 1)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.9, 0.4, 2, 1).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.03, -0.02, 0.01, 0.0, -0.01, 0.0)
             .expect("return components should be valid"),
         0.0,
     );
+
     let path = SufficientStatisticsPath::try_new(
         19,
         1.0,
@@ -199,6 +209,7 @@ fn sufficient_statistics_path_diagnostics_schema_metadata_exposes_required_field
     .expect("path should be valid");
 
     let serialized = serde_json::to_value(path).expect("path payload should serialize");
+
     assert_eq!(
         serialized["output_schema_metadata"]["required_path_fields"],
         serde_json::json!([
@@ -243,12 +254,12 @@ fn sufficient_statistics_path_diagnostics_schema_metadata_exposes_required_field
 fn sufficient_statistics_path_deserialization_rejects_incorrect_diagnostics_with_field_context() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
     );
+
     let path = SufficientStatisticsPath::try_new(
         17,
         1.0,
@@ -264,6 +275,7 @@ fn sufficient_statistics_path_deserialization_rejects_incorrect_diagnostics_with
 
     let error = serde_json::from_value::<SufficientStatisticsPath>(serialized)
         .expect_err("mismatched diagnostics should fail deserialization");
+
     assert!(
         error
             .to_string()
@@ -275,12 +287,12 @@ fn sufficient_statistics_path_deserialization_rejects_incorrect_diagnostics_with
 fn sufficient_statistics_path_metadata_values_are_deterministic_across_repeated_runs() {
     let record = build_sufficient_statistics_path_record(
         0,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
     );
+
     let first_path = SufficientStatisticsPath::try_new(
         17,
         1.0,
@@ -290,6 +302,7 @@ fn sufficient_statistics_path_metadata_values_are_deterministic_across_repeated_
         vec![record.clone()],
     )
     .expect("first path should be valid");
+
     let second_path = SufficientStatisticsPath::try_new(
         17,
         1.0,
@@ -318,6 +331,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         build_interval_factors(),
     )
     .expect_err("zero horizon must fail validation");
+
     assert_eq!(
         invalid_horizon,
         SufficientStatisticsRunRequestError::InvalidHorizonIntervalCount { value: 0 }
@@ -331,6 +345,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         build_interval_factors(),
     )
     .expect_err("non-positive interval delta must fail validation");
+
     assert_eq!(
         invalid_interval_delta,
         SufficientStatisticsRunRequestError::InvalidIntervalDelta { value: 0.0 }
@@ -344,6 +359,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         build_interval_factors(),
     )
     .expect_err("non-hourly interval delta without compatible factor metadata must fail");
+
     assert_eq!(
         unsupported_non_hourly,
         SufficientStatisticsRunRequestError::IntervalDeltaFactorMismatch {
@@ -360,6 +376,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         build_interval_factors_with_interval_delta(0.5),
     )
     .expect("non-hourly interval delta with compatible factor metadata should pass");
+
     assert_eq!(supported_sub_hour.interval_delta, 0.5);
 }
 
@@ -375,6 +392,7 @@ fn deserialization_rejects_incomplete_or_malformed_request_payloads() {
             "nu_h_surprise": [0.08, 0.07]
         }
     });
+
     let missing_model_inputs_error =
         serde_json::from_value::<SufficientStatisticsRunRequest>(missing_model_inputs_payload)
             .expect_err("missing model_inputs must fail deserialization");
@@ -396,6 +414,7 @@ fn deserialization_rejects_incomplete_or_malformed_request_payloads() {
             "nu_h_surprise": [0.0, 0.1]
         }
     });
+
     let malformed_factors_error =
         serde_json::from_value::<SufficientStatisticsRunRequest>(malformed_factors_payload)
             .expect_err("mismatched interval_factors lengths must fail deserialization");
@@ -423,6 +442,7 @@ fn run_request_deserialization_defaults_interval_delta_to_hourly() {
     let parsed_request: SufficientStatisticsRunRequest =
         serde_json::from_value(payload_without_interval_delta)
             .expect("payload without interval_delta should deserialize");
+
     assert_eq!(
         parsed_request.interval_delta,
         SufficientStatisticsRunRequest::default_interval_delta()
@@ -444,6 +464,7 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
 
     let parsed_request: SufficientStatisticsRunRequest = serde_json::from_value(payload)
         .expect("component-only news-intensity payload should parse");
+
     assert_eq!(parsed_request.interval_factors.nu_h.as_ref(), &[0.2, 0.1]);
     assert_eq!(
         parsed_request.interval_factors.news_intensity_input_at(1),
@@ -456,8 +477,7 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
 fn path_validation_rejects_non_sequential_interval_indices() {
     let first_record = build_sufficient_statistics_path_record(
         1,
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 3, 2).expect("statistics should be valid"),
         SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
@@ -472,6 +492,7 @@ fn path_validation_rejects_non_sequential_interval_indices() {
         vec![first_record],
     )
     .expect_err("non-sequential interval index must fail validation");
+
     assert_eq!(
         error,
         SufficientStatisticsPathError::NonSequentialIntervalIndex {
@@ -483,11 +504,14 @@ fn path_validation_rejects_non_sequential_interval_indices() {
 
 #[test]
 fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_gap() {
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.8, 0.6, 2, 1)
-        .expect("sampled statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(0.8, 0.6, 2, 1).expect("sampled statistics should be valid");
+
     let driver_parameters = valid_nig_driver_parameters();
+
     let mut observed_stream = SplitMix64SimulationRandomnessStream::from_seed(44_001);
     let mut expected_stream = SplitMix64SimulationRandomnessStream::from_seed(44_001);
+
     let open_jump_return = -0.27;
     let closed_gap_return = 0.19;
 
@@ -503,6 +527,7 @@ fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_
         }),
     )
     .expect("interval return generation should succeed for open-window path");
+
     let expected_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: sampled_statistics.a_plus,
         a_minus: sampled_statistics.a_minus,
@@ -510,6 +535,7 @@ fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_
         closed_gap: 0.0,
     })
     .expect("expected decomposition should construct");
+
     let expected_trading_contributions = expected_decomposition
         .sample_nig_trading_time_increment(driver_parameters, &mut expected_stream)
         .expect("reference trading-time sampling should succeed");
@@ -517,6 +543,7 @@ fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_
     let component_breakdown = generated_return
         .component_breakdown
         .expect("component breakdown should be present");
+
     assert_eq!(
         SufficientStatisticsGeneratedIntervalReturn::component_routing_policy(),
         SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY
@@ -547,11 +574,14 @@ fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_
 
 #[test]
 fn interval_return_generator_closed_window_routes_closed_gap_and_supports_optional_breakdown() {
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.9, 0.7, 3, 2)
-        .expect("sampled statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(0.9, 0.7, 3, 2).expect("sampled statistics should be valid");
+
     let driver_parameters = valid_nig_driver_parameters();
+
     let mut stream_with_breakdown = SplitMix64SimulationRandomnessStream::from_seed(44_002);
     let mut stream_without_breakdown = SplitMix64SimulationRandomnessStream::from_seed(44_002);
+
     let open_jump_return = -0.11;
     let closed_gap_return = 0.19;
 
@@ -567,6 +597,7 @@ fn interval_return_generator_closed_window_routes_closed_gap_and_supports_option
         }),
     )
     .expect("closed-window return generation should succeed with breakdown");
+
     let without_breakdown = generate_interval_return_from_sampled_statistics(
         driver_parameters,
         sampled_statistics,
@@ -583,6 +614,7 @@ fn interval_return_generator_closed_window_routes_closed_gap_and_supports_option
     let component_breakdown = with_breakdown
         .component_breakdown
         .expect("component breakdown should be present");
+
     assert_float_close(
         component_breakdown.total_return,
         component_breakdown.trading_time_return + closed_gap_return,
@@ -595,12 +627,15 @@ fn interval_return_generator_closed_window_routes_closed_gap_and_supports_option
 
 #[test]
 fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(1.0, 0.4, 1, 2)
-        .expect("sampled statistics should be valid");
+    let sampled_statistics =
+        build_interval_statistics(1.0, 0.4, 1, 2).expect("sampled statistics should be valid");
+
     let driver_parameters = valid_nig_driver_parameters();
+
     let options = Some(SufficientStatisticsReturnGenerationOptions {
         include_component_breakdown: true,
     });
+
     let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(44_003);
     let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(44_003);
 
@@ -614,6 +649,7 @@ fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
         options,
     )
     .expect("first seeded interval return generation should succeed");
+
     let second_generated_return = generate_interval_return_from_sampled_statistics(
         driver_parameters,
         sampled_statistics,
@@ -631,9 +667,12 @@ fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
 #[test]
 fn boundary_state_update_is_consistent_with_shared_transition_api_reference_sequence() {
     let initial_state = build_initial_state();
+
     let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(1.4, 1.1, 3, 2)
-        .expect("statistics should be valid");
+
+    let sampled_statistics =
+        build_interval_statistics(1.4, 1.1, 3, 2).expect("statistics should be valid");
+
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         3,
         0.75,
@@ -684,10 +723,14 @@ fn boundary_state_update_is_consistent_with_shared_transition_api_reference_sequ
 #[test]
 fn boundary_state_update_maps_sampled_counts_to_canonical_components() {
     let initial_state = build_initial_state();
+
     let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.8, 0.6, 4, 5)
-        .expect("statistics should be valid");
+
+    let sampled_statistics =
+        build_interval_statistics(0.8, 0.6, 4, 5).expect("statistics should be valid");
+
     let interval_delta = 0.5;
+
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         1,
         interval_delta,
@@ -700,12 +743,16 @@ fn boundary_state_update_maps_sampled_counts_to_canonical_components() {
             .expect("boundary-state mapping update should succeed");
 
     let shared_decay_factor = (-kernel_parameters.beta * interval_delta).exp();
+
     let expected_y_plus_plus = initial_state.y_plus_plus * shared_decay_factor
         + kernel_parameters.alpha.plus_plus * sampled_statistics.n_plus as f64;
+
     let expected_y_plus_minus = initial_state.y_plus_minus * shared_decay_factor
         + kernel_parameters.alpha.plus_minus * sampled_statistics.n_minus as f64;
+
     let expected_y_minus_plus = initial_state.y_minus_plus * shared_decay_factor
         + kernel_parameters.alpha.minus_plus * sampled_statistics.n_plus as f64;
+
     let expected_y_minus_minus = initial_state.y_minus_minus * shared_decay_factor
         + kernel_parameters.alpha.minus_minus * sampled_statistics.n_minus as f64;
 
@@ -718,18 +765,21 @@ fn boundary_state_update_maps_sampled_counts_to_canonical_components() {
 #[test]
 fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
     let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
+
     let interval_delta = 1.0;
+
     let sampled_statistics_path = [
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
+        build_interval_statistics(0.7, 0.5, 2, 1)
             .expect("first interval statistics should be valid"),
-        SufficientStatisticsIntervalStatistics::try_new(0.4, 0.9, 1, 3)
+        build_interval_statistics(0.4, 0.9, 1, 3)
             .expect("second interval statistics should be valid"),
-        SufficientStatisticsIntervalStatistics::try_new(1.1, 0.2, 4, 0)
+        build_interval_statistics(1.1, 0.2, 4, 0)
             .expect("third interval statistics should be valid"),
     ];
 
     let mut first_run_state = build_initial_state();
     let mut second_run_state = build_initial_state();
+
     let mut first_run_boundary_states: Vec<HawkesExcitationState> = Vec::new();
     let mut second_run_boundary_states: Vec<HawkesExcitationState> = Vec::new();
 
@@ -741,9 +791,11 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
             first_run_state,
             sampled_statistics,
         );
+
         first_run_state =
             update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
                 .expect("first run carryover update should succeed");
+
         first_run_boundary_states.push(first_run_state);
     }
 
@@ -755,9 +807,11 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
             second_run_state,
             sampled_statistics,
         );
+
         second_run_state =
             update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
                 .expect("second run carryover update should succeed");
+
         second_run_boundary_states.push(second_run_state);
     }
 
@@ -768,8 +822,10 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
 #[test]
 fn boundary_state_update_failures_include_interval_and_state_snapshot_metadata() {
     let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
-    let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
-        .expect("statistics should be valid");
+
+    let sampled_statistics =
+        build_interval_statistics(0.7, 0.5, 2, 1).expect("statistics should be valid");
+
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         9,
         0.0,
@@ -810,12 +866,12 @@ fn boundary_state_update_wraps_transition_failures_with_snapshot_metadata() {
             minus_minus: 0.1,
         },
     };
+
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         4,
         0.5,
         build_initial_state(),
-        SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
-            .expect("statistics should be valid"),
+        build_interval_statistics(0.7, 0.5, 2, 1).expect("statistics should be valid"),
     );
 
     let error =
@@ -836,7 +892,9 @@ fn boundary_state_update_wraps_transition_failures_with_snapshot_metadata() {
 #[test]
 fn transform_slice_sampler_outputs_domain_sane_statistics() {
     let equation_specification = build_equation_specification();
+
     let context = build_transform_slice_context(0, 1.1, 0.2, 1.0);
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let slices =
@@ -861,8 +919,11 @@ fn transform_slice_sampler_outputs_domain_sane_statistics() {
 #[test]
 fn transform_slice_sampler_is_seed_deterministic_for_repeated_sampling() {
     let equation_specification = build_equation_specification();
+
     let context = build_transform_slice_context(1, 0.9, 0.1, 1.0);
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
+
     let slices =
         solve_sufficient_statistics_transform_slices(equation_specification, context, settings)
             .expect("transform slices should solve");
@@ -876,21 +937,28 @@ fn transform_slice_sampler_is_seed_deterministic_for_repeated_sampling() {
 }
 
 #[test]
-fn transform_slice_sampler_uses_slice_implied_integrated_intensity_means_directly() {
+fn transform_slice_sampler_uses_normalized_slice_implied_integrated_intensity_means() {
     let equation_specification = build_equation_specification();
+
     let context = build_transform_slice_context(2, 1.15, 0.18, 0.25);
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
+
     let slices =
         solve_sufficient_statistics_transform_slices(equation_specification, context, settings)
             .expect("transform slices should solve");
 
     let baseline_transform = slices.baseline_transform.real;
-    let expected_a_plus = (baseline_transform - slices.a_plus_transform.real) / settings.a_plus_u;
-    let expected_a_minus =
-        (baseline_transform - slices.a_minus_transform.real) / settings.a_minus_u;
+
+    let expected_a_plus = (baseline_transform - slices.a_plus_transform.real)
+        / (settings.a_plus_u * baseline_transform);
+
+    let expected_a_minus = (baseline_transform - slices.a_minus_transform.real)
+        / (settings.a_minus_u * baseline_transform);
 
     let first_sample = sample_interval_statistics_from_transform_slices(11, slices)
         .expect("first sampling run should succeed");
+
     let second_sample = sample_interval_statistics_from_transform_slices(29, slices)
         .expect("second sampling run should succeed");
 
@@ -903,23 +971,28 @@ fn transform_slice_sampler_uses_slice_implied_integrated_intensity_means_directl
 #[test]
 fn transform_slice_batch_sampler_is_seed_deterministic_for_repeated_sampling() {
     let equation_specification = build_equation_specification();
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
+
     let first_interval_slices = solve_sufficient_statistics_transform_slices(
         equation_specification,
         build_transform_slice_context(0, 1.1, 0.2, 1.0),
         settings,
     )
     .expect("first interval slices should solve");
+
     let second_interval_slices = solve_sufficient_statistics_transform_slices(
         equation_specification,
         build_transform_slice_context(1, 0.8, 0.15, 1.0),
         settings,
     )
     .expect("second interval slices should solve");
+
     let batch = vec![first_interval_slices, second_interval_slices];
 
     let first_batch_sample = sample_interval_statistics_batch_from_transform_slices(77, &batch)
         .expect("first batch sampling run should succeed");
+
     let second_batch_sample = sample_interval_statistics_batch_from_transform_slices(77, &batch)
         .expect("second batch sampling run should succeed");
 
@@ -929,6 +1002,7 @@ fn transform_slice_batch_sampler_is_seed_deterministic_for_repeated_sampling() {
 #[test]
 fn transform_slice_streaming_sampler_matches_batch_sampler_with_ordered_complete_output() {
     let equation_specification = build_equation_specification();
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let slices_batch = vec![
@@ -981,6 +1055,7 @@ fn transform_slice_streaming_sampler_matches_batch_sampler_with_ordered_complete
         .iter()
         .flat_map(|chunk| chunk.records.iter().copied())
         .collect();
+
     let batched_statistics =
         sample_interval_statistics_batch_from_transform_slices(77, &slices_batch)
             .expect("batch sampling should succeed");
@@ -991,6 +1066,7 @@ fn transform_slice_streaming_sampler_matches_batch_sampler_with_ordered_complete
 #[test]
 fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning() {
     let equation_specification = build_equation_specification();
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let first_path = vec![
@@ -1007,6 +1083,7 @@ fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning
         )
         .expect("first path second interval should solve"),
     ];
+
     let second_path = vec![
         solve_sufficient_statistics_transform_slices(
             equation_specification,
@@ -1023,6 +1100,7 @@ fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning
     ];
 
     let path_batch = vec![first_path, second_path];
+
     let chunking_settings = SufficientStatisticsStreamingChunkingSettings::try_new(1)
         .expect("chunking settings should be valid");
 
@@ -1037,6 +1115,7 @@ fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning
         chunking_settings,
     )
     .expect("first multi-path batch sampling run should succeed");
+
     let second_batch = sample_interval_statistics_multi_path_batch_from_transform_slices(
         1_901,
         &path_batch,
@@ -1048,13 +1127,16 @@ fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning
 
     for (path_index, path_slices) in path_batch.iter().enumerate() {
         let path_seed = derive_sufficient_statistics_batch_path_seed(1_901, path_index as u64);
+
         let expected_path_statistics =
             sample_interval_statistics_batch_from_transform_slices(path_seed, path_slices)
                 .expect("single-path sampling with partitioned seed should succeed");
+
         assert_eq!(first_batch[path_index], expected_path_statistics);
     }
 
     let mut streamed_path_chunks = Vec::new();
+
     stream_interval_statistics_multi_path_batch_from_transform_slices(
         1_901,
         &path_batch,
@@ -1089,6 +1171,7 @@ fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning
 #[test]
 fn transform_slice_streaming_sampler_rejects_zero_chunk_size() {
     let equation_specification = build_equation_specification();
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let slices_batch = vec![
@@ -1123,6 +1206,7 @@ fn transform_slice_sampling_error_preserves_chunking_validation_source() {
     let source = SufficientStatisticsStreamingChunkingSettingsError::InvalidMaxIntervalsPerChunk {
         value: 0,
     };
+
     let error = SufficientStatisticsTransformSliceSamplingError::InvalidChunkingSettings {
         source: source.clone(),
     };
@@ -1143,8 +1227,11 @@ fn transform_slice_sampling_error_preserves_chunking_validation_source() {
 #[test]
 fn transform_slice_sampler_uses_modulus_for_finite_complex_transform_inputs() {
     let context = build_transform_slice_context(4, 1.2, 0.3, 1.0);
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
+
     let slices = SufficientStatisticsTransformSlices::try_new(
+        build_equation_specification(),
         context,
         settings,
         ComplexScalar::new(1.0, 1.0e-3),
@@ -1158,13 +1245,15 @@ fn transform_slice_sampler_uses_modulus_for_finite_complex_transform_inputs() {
     let sampled_statistics = sample_interval_statistics_from_transform_slices(8, slices)
         .expect("finite complex transform slice should sample successfully");
 
-    let expected_a_plus =
-        (slices.baseline_transform.norm() - slices.a_plus_transform.norm()) / settings.a_plus_u;
-    let expected_a_minus =
-        (slices.baseline_transform.norm() - slices.a_minus_transform.norm()) / settings.a_minus_u;
+    let expected_a_plus = (slices.baseline_transform.norm() - slices.a_plus_transform.norm())
+        / (settings.a_plus_u * slices.baseline_transform.norm());
+
+    let expected_a_minus = (slices.baseline_transform.norm() - slices.a_minus_transform.norm())
+        / (settings.a_minus_u * slices.baseline_transform.norm());
 
     assert!((sampled_statistics.a_plus - expected_a_plus).abs() <= 1.0e-12);
     assert!((sampled_statistics.a_minus - expected_a_minus).abs() <= 1.0e-12);
+
     sampled_statistics
         .validate()
         .expect("sampled statistics should remain domain-valid");
@@ -1173,8 +1262,11 @@ fn transform_slice_sampler_uses_modulus_for_finite_complex_transform_inputs() {
 #[test]
 fn transform_slice_sampler_rejects_invalid_expected_statistics_from_invalid_slices() {
     let context = build_transform_slice_context(6, 1.2, 0.3, 1.0);
+
     let settings = SufficientStatisticsTransformSliceSettings::default();
+
     let invalid_slices = SufficientStatisticsTransformSlices::try_new(
+        build_equation_specification(),
         context,
         settings,
         ComplexScalar::new(1.0, 0.0),
@@ -1187,6 +1279,7 @@ fn transform_slice_sampler_rejects_invalid_expected_statistics_from_invalid_slic
 
     let error = sample_interval_statistics_from_transform_slices(8, invalid_slices)
         .expect_err("invalid expected A-plus value should fail sampling");
+
     assert!(matches!(
         error,
         SufficientStatisticsTransformSliceSamplingError::InvalidExpectedStatistic {
@@ -1228,6 +1321,7 @@ fn build_transform_slice_context(
 ) -> SufficientStatisticsTransformSliceContext {
     let known_nu_h = total_nu_h * 0.5;
     let surprise_nu_h = total_nu_h - known_nu_h;
+
     SufficientStatisticsTransformSliceContext::try_new(
         interval_index,
         s_h,
@@ -1317,6 +1411,15 @@ fn build_sufficient_statistics_path_record(
         observed_log_price_end,
     )
     .expect("record should be valid")
+}
+
+fn build_interval_statistics(
+    a_plus: f64,
+    a_minus: f64,
+    n_plus: u64,
+    n_minus: u64,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError> {
+    SufficientStatisticsIntervalStatistics::try_new(a_plus, 0.0, a_minus, 0.0, n_plus, n_minus)
 }
 
 fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDriverParameters {

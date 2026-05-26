@@ -13,6 +13,8 @@ use janiform_calibration_artifacts::{
     CalibrationDiskCheckpointError, CalibrationExecutionMode, CalibrationResumeSource,
     CalibrationRunContract, build_calibration_artifact_manifest,
     build_calibration_dataset_snapshot_artifact, calibration_dataset_snapshot_artifact_reference,
+    calibration_last_success_checkpoint_reference,
+    calibration_stage_parameter_artifact_load_error_message,
     calibration_stage_parameter_artifact_path_in_run_directory,
     load_calibration_stage_parameter_artifact_from_disk, load_stage_checkpoint_from_disk,
     persist_calibration_artifact_manifest_to_run_directory,
@@ -27,7 +29,6 @@ use super::checkpointing::{build_stage_checkpoint_metadata, build_stage_paramete
 use super::contracts::{
     CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    calibration_last_success_checkpoint_reference,
 };
 use super::dispatch::{
     RunStageForStagedExecutionInput, expected_stage_output_artifact_reference,
@@ -49,6 +50,9 @@ use crate::diagnostics::artifacts::{
     build_diagnostic_artifact_bundle, persist_diagnostic_artifact_bundle,
 };
 use crate::diagnostics::types::CalibrationDiagnosticRuntimeProfileEntry;
+use crate::stages::return_components::{
+    ReturnComponentsStageCandidateDiagnostic, ReturnComponentsStageExecutionFailure,
+};
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -375,6 +379,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
 
         for stage in execution_stage_order.iter().copied().take(start_position) {
             let artifact_reference = expected_stage_output_artifact_reference(run_spec, stage);
+
             let artifact_path = calibration_stage_parameter_artifact_path_in_run_directory(
                 artifact_run_writer.pending_run_directory(),
                 stage,
@@ -392,10 +397,12 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                         resumed_from_checkpoint_reference,
                         resumed_from_last_successful_stage,
                         None,
-                        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                        CalibrationStagedRunFailure::StageParameterArtifactLoadFailed {
                             stage,
                             artifact_reference,
-                            error_message: source.to_string(),
+                            error_message: calibration_stage_parameter_artifact_load_error_message(
+                                stage, &source,
+                            ),
                         },
                     );
                 }
@@ -405,13 +412,21 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                 &mut payload_state,
                 &artifact,
             );
+
             persisted_stage_parameter_artifacts.push(artifact);
         }
     }
 
     let run_start_time = Instant::now();
+
     let started_from_stage = execution_stage_order.get(start_position).copied();
     let completed_stage_count = start_position;
+
+    let load_current_stage_resume_state = run_spec
+        .resume_settings
+        .as_ref()
+        .and_then(|resume_settings| resume_settings.resume_from_stage)
+        .is_none();
 
     emit_observer_event(
         &mut observer,
@@ -428,12 +443,20 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     );
 
     if start_position >= execution_stage_order.len() {
+        let completed_status = if stage_reports.iter().any(|stage_report| {
+            stage_report.status() == CalibrationStageExecutionStatus::SuccessWithWarnings
+        }) {
+            CalibrationStageExecutionStatus::SuccessWithWarnings
+        } else {
+            CalibrationStageExecutionStatus::Success
+        };
+
         let report = CalibrationStagedRunReport {
             schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
             failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
             run_id: run_spec.run_id.clone(),
             execution_mode: run_spec.execution_mode,
-            status: CalibrationStageExecutionStatus::Success,
+            status: completed_status,
             stage_reports,
             emitted_checkpoints,
             diagnostic_artifact_references: Vec::new(),
@@ -484,6 +507,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             stage_count: execution_stage_order.len(),
             staged_run_inputs: &mut staged_run_inputs,
             payload_state: &payload_state,
+            load_current_stage_resume_state,
             observer: &mut observer,
         }) {
             Ok(stage_report) => stage_report,
@@ -596,7 +620,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                         resumed_from_checkpoint_reference,
                         resumed_from_last_successful_stage,
                         started_from_stage,
-                        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                        CalibrationStagedRunFailure::StageParameterArtifactBuildFailed {
                             stage,
                             artifact_reference: expected_stage_output_artifact_reference(
                                 run_spec, stage,
@@ -621,7 +645,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                             resumed_from_checkpoint_reference,
                             resumed_from_last_successful_stage,
                             started_from_stage,
-                            CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                            CalibrationStagedRunFailure::StageParameterArtifactBuildFailed {
                                 stage,
                                 artifact_reference: expected_stage_output_artifact_reference(
                                     run_spec, stage,
@@ -643,7 +667,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                     resumed_from_checkpoint_reference,
                     resumed_from_last_successful_stage,
                     started_from_stage,
-                    CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                    CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
                         stage,
                         artifact_reference: stage_parameter_artifact.artifact_reference.clone(),
                         error_message: source.to_string(),
@@ -662,7 +686,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                     resumed_from_checkpoint_reference,
                     resumed_from_last_successful_stage,
                     started_from_stage,
-                    CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                    CalibrationStagedRunFailure::StageParameterArtifactPersistFailed {
                         stage,
                         artifact_reference: format!(
                             "artifact://stage_report/{}/{}",
@@ -884,12 +908,20 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         }
     }
 
+    let completed_status = if stage_reports.iter().any(|stage_report| {
+        stage_report.status() == CalibrationStageExecutionStatus::SuccessWithWarnings
+    }) {
+        CalibrationStageExecutionStatus::SuccessWithWarnings
+    } else {
+        CalibrationStageExecutionStatus::Success
+    };
+
     let report = CalibrationStagedRunReport {
         schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
         failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
         run_id: run_spec.run_id.clone(),
         execution_mode: run_spec.execution_mode,
-        status: CalibrationStageExecutionStatus::Success,
+        status: completed_status,
         stage_reports,
         emitted_checkpoints,
         diagnostic_artifact_references,
@@ -929,6 +961,7 @@ fn persist_stage_report_snapshot_to_run_directory(
     let artifact_path =
         stage_report_snapshot_path_in_run_directory(run_directory, stage_report.stage());
     let temporary_path = artifact_path.with_extension("json.tmp");
+
     let serialized_payload =
         serde_json::to_vec_pretty(stage_report).map_err(|source| source.to_string())?;
 
@@ -938,6 +971,7 @@ fn persist_stage_report_snapshot_to_run_directory(
             temporary_path.display()
         )
     })?;
+
     temporary_file
         .write_all(serialized_payload.as_slice())
         .and_then(|_| temporary_file.flush())
@@ -947,6 +981,7 @@ fn persist_stage_report_snapshot_to_run_directory(
                 temporary_path.display()
             )
         })?;
+
     fs::rename(temporary_path.as_path(), artifact_path.as_path()).map_err(|source| {
         format!(
             "unable to publish stage report `{}` from `{}`: {source}",
@@ -983,12 +1018,18 @@ fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport)
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
-            serialized_failure_error_message(report.failure.as_ref())
+            return_components_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }
     }
@@ -1009,6 +1050,44 @@ where
         .map(ToString::to_string)
 }
 
+fn return_components_failure_error_message(
+    failure: Option<&ReturnComponentsStageExecutionFailure>,
+) -> Option<String> {
+    match failure {
+        Some(ReturnComponentsStageExecutionFailure::ConstraintViolationsForAllCandidates {
+            candidate_diagnostics,
+        }) => Some(return_components_all_candidates_rejected_message(
+            candidate_diagnostics.as_slice(),
+        )),
+        source => serialized_failure_error_message(source),
+    }
+}
+
+fn return_components_all_candidates_rejected_message(
+    candidate_diagnostics: &[ReturnComponentsStageCandidateDiagnostic],
+) -> String {
+    let Some(best_candidate) = candidate_diagnostics.iter().min_by(|left, right| {
+        left.penalized_objective_value
+            .total_cmp(&right.penalized_objective_value)
+            .then_with(|| left.candidate_id.cmp(&right.candidate_id))
+    }) else {
+        return "all return distribution candidates violated constraints, but no candidate diagnostics were recorded".to_string();
+    };
+
+    let first_violation_message = best_candidate
+        .constraint_violations
+        .first()
+        .map(|violation| violation.message.as_str())
+        .unwrap_or("no violation detail was recorded");
+
+    format!(
+        "all return distribution candidates violated constraints; best candidate `{}` had {} violation(s): {}",
+        best_candidate.candidate_id,
+        best_candidate.constraint_violation_count,
+        first_violation_message
+    )
+}
+
 fn validate_run_contract_for_staged_execution(
     run_contract: &CalibrationRunContract,
 ) -> Result<(), String> {
@@ -1018,12 +1097,14 @@ fn validate_run_contract_for_staged_execution(
             CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, run_contract.schema_version
         ));
     }
+
     if run_contract.run_spec_schema_version != CALIBRATION_RUN_SPEC_SCHEMA_VERSION {
         return Err(format!(
             "run_contract.run_spec_schema_version must be `{}`, found `{}`",
             CALIBRATION_RUN_SPEC_SCHEMA_VERSION, run_contract.run_spec_schema_version
         ));
     }
+
     if run_contract.stage_graph_schema_version != CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION {
         return Err(format!(
             "run_contract.stage_graph_schema_version must be `{}`, found `{}`",
@@ -1036,6 +1117,7 @@ fn validate_run_contract_for_staged_execution(
         &run_contract.stage_graph,
     )
     .map_err(|source| source.to_string())?;
+
     if resolved_execution_order != run_contract.execution_stage_order {
         return Err(format!(
             "run_contract.execution_stage_order is stale, expected `{:?}`, found `{:?}`",

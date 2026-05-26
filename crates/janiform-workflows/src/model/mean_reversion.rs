@@ -41,8 +41,12 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
         interval_alignment_policy,
         start_anchor_value,
         ExponentialAffineTransformEquationSpecification::try_new(
-            context.hawkes_fitted_parameters.kernel_parameters,
             context
+                .fitted_parameters
+                .hawkes_fitted_parameters
+                .kernel_parameters,
+            context
+                .fitted_parameters
                 .return_components_fitted_parameters
                 .news_process_configuration
                 .shared_mark_law
@@ -50,9 +54,11 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
         )
         .map_err(|source| validation_error("equation_specification", source.to_string()))?,
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
         &context
+            .fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration,
         initial_excitation_state,
@@ -74,6 +80,7 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
             start_anchor_value,
             DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE,
             &context
+                .fitted_parameters
                 .return_components_fitted_parameters
                 .mean_reversion_fitted_parameters
                 .anchor_model,

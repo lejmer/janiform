@@ -74,7 +74,7 @@ Use --category or --scope to narrow discovery. Add --preset-registry or --user-p
         about = "Show a resolved preset document.",
         long_about = "Show a resolved preset document.
 
-The command resolves the selected preset through the requested registry scope. Session and known-news presets support --expanded for category-specific detail tables in human output."
+The command resolves the selected preset through the requested registry scope. Session and known-news presets support --expanded for category-specific detail tables in terminal output."
     )]
     Show(PresetsShowCommand),
 
@@ -137,7 +137,7 @@ pub(crate) struct PresetsShowExpandedPresetCommand {
     #[arg(
         long,
         action = ArgAction::SetTrue,
-        help = "Show expanded category-specific detail tables in human output."
+        help = "Show expanded category-specific detail tables in terminal output."
     )]
     pub(crate) expanded: bool,
 }

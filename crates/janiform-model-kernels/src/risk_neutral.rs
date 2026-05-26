@@ -444,6 +444,47 @@ pub fn differentiate_nig_characteristic_exponent(
     })
 }
 
+/// Evaluate the exact derivative of one physical NIG exponent with respect to its argument.
+pub fn differentiate_nig_characteristic_exponent_wrt_argument(
+    physical_parameters: NigParameters,
+    argument: ComplexScalar,
+) -> Result<ComplexScalar, EsscherTransformError> {
+    validate_nig_parameters(physical_parameters, "physical")?;
+    validate_argument(argument)?;
+
+    let shifted_beta_argument =
+        ComplexScalar::new(physical_parameters.beta - argument.imaginary, argument.real);
+
+    let shifted_square_root_term = principal_branch_square_root(
+        ComplexScalar::new(physical_parameters.alpha * physical_parameters.alpha, 0.0)
+            .subtract(shifted_beta_argument.square()),
+    );
+
+    let shifted_square_root_reciprocal = ComplexScalar::new(1.0, 0.0)
+        .divide(shifted_square_root_term)
+        .ok_or(
+            EsscherTransformError::UndefinedCharacteristicExponentSensitivity {
+                context: "physical exponent argument",
+                denominator: shifted_square_root_term,
+            },
+        )?;
+
+    let i_times_shifted_beta_argument =
+        ComplexScalar::new(-shifted_beta_argument.imaginary, shifted_beta_argument.real);
+
+    let shape_derivative = janiform_foundations::complex_math::complex_multiply(
+        i_times_shifted_beta_argument,
+        shifted_square_root_reciprocal,
+    )
+    .scale(physical_parameters.delta);
+
+    let derivative = ComplexScalar::new(0.0, physical_parameters.mu).plus(shape_derivative);
+
+    validate_sensitivity_component("argument", derivative)?;
+
+    Ok(derivative)
+}
+
 /// Evaluate one Esscher-transformed exponent together with exact parameter sensitivities.
 pub fn differentiate_nig_characteristic_exponent_under_esscher_tilt(
     input: NigEsscherTransformationInput,

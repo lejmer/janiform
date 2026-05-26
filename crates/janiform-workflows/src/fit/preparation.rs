@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use janiform_calibration_artifacts::CalibrationStageSolverSettings;
+use janiform_calibration_artifacts::{CalibrationEffortOptions, CalibrationStageSolverSettings};
 use janiform_calibration_runtime::{
     CalibrationMarketDataCarryInput, CalibrationMarketDataColumnMapping,
     CalibrationMarketDataKnownNewsInput, CalibrationMarketDataMeanReversionConfiguration,
@@ -94,12 +94,27 @@ pub struct FitPreparationConfiguration {
     /// Optional dynamics restart budget override.
     #[serde(default)]
     pub dynamics_search_restart_candidate_budget: Option<usize>,
+    /// Calibration search effort policy.
+    #[serde(default)]
+    pub calibration_effort: Option<CalibrationEffortOptions>,
+    /// Treat admissibility warnings as hard fit errors.
+    #[serde(default)]
+    pub treat_calibration_warnings_as_errors: bool,
     /// Optional joint option-refinement candidate count override.
     #[serde(default)]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    /// Optional joint option-refinement wall-clock budget in milliseconds.
+    #[serde(default)]
+    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
     /// Whether audit option pricing is enabled.
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
+    /// Optional stylized-fact Huber cutoff override.
+    #[serde(default)]
+    pub stylized_fact_huber_cutoff: Option<f64>,
+    /// Optional stylized-fact admissibility z-threshold override.
+    #[serde(default)]
+    pub stylized_fact_admissibility_z_threshold: Option<f64>,
     /// Default mean-reversion configuration.
     pub default_endogenous_mean_reversion_configuration:
         CalibrationMarketDataMeanReversionConfiguration,
@@ -595,14 +610,28 @@ fn build_preparation_request(
             .request
             .configuration
             .dynamics_search_restart_candidate_budget,
+        calibration_effort: input.request.configuration.calibration_effort,
+        treat_calibration_warnings_as_errors: input
+            .request
+            .configuration
+            .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: input
             .request
             .configuration
             .joint_refinement_option_refinement_candidate_count_override,
+        joint_refinement_option_refinement_wall_clock_budget_millis: input
+            .request
+            .configuration
+            .joint_refinement_option_refinement_wall_clock_budget_millis,
         joint_refinement_audit_option_pricing_enabled: input
             .request
             .configuration
             .joint_refinement_audit_option_pricing_enabled,
+        stylized_fact_huber_cutoff: input.request.configuration.stylized_fact_huber_cutoff,
+        stylized_fact_admissibility_z_threshold: input
+            .request
+            .configuration
+            .stylized_fact_admissibility_z_threshold,
         known_news_inputs,
         mean_reversion: mean_reversion_configuration(input.request, input.workflow_scope),
     })

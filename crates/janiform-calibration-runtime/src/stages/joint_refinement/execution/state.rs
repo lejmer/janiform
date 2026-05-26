@@ -4,10 +4,11 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
-    HawkesStageFittedParameters, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptionAggregateDiagnostic,
-    JointRefinementStageOptionNodeDiagnostic, JointRefinementStageRuntimeProfile,
-    ReturnComponentsStageFittedParameters,
+    CalibrationLossEvaluation, CalibrationObjectivePolicy, HawkesStageFittedParameters,
+    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageOptionAggregateDiagnostic, JointRefinementStageOptionNodeDiagnostic,
+    JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
+    JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -27,17 +28,19 @@ use crate::stages::joint_refinement::option_surface_tiering::{
     JointRefinementOptionSurfaceTierKind, JointRefinementOptionSurfaceTierSet,
 };
 use crate::stages::return_components::{
-    ContinuousLikelihoodEvaluatorCounts, ReturnComponentsStageContinuousReturnCalibrationSample,
+    ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
+    ContinuousReturnOptimizerContext, ReturnComponentsStageContinuousReturnCalibrationSample,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
-use super::option_objective_gradient::JointRefinementOptionTierScoreGradientArtifact;
-use super::option_reduced_model::JointRefinementOptionReducedModelArtifact;
+use super::option_refinement::objective_gradient::{
+    JointRefinementOptionNodeResidualSensitivity, JointRefinementOptionTierScoreGradientArtifact,
+};
+use super::option_refinement::reduced_model::JointRefinementOptionReducedModelArtifact;
 
-pub(crate) const JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR: f64 = 1.0e-8;
-pub(crate) const JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
-pub(crate) const JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT: usize = 3;
+pub(crate) const JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
+pub(crate) const JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT: usize = 5;
 pub(crate) const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 
 type JointRefinementSeedSummaryCache = Arc<
@@ -53,8 +56,18 @@ type JointRefinementOptionPricingCache = Arc<
     >,
 >;
 
+type JointRefinementObservedReturnShapeStatisticCache = Arc<
+    Mutex<
+        BTreeMap<
+            JointRefinementObservedReturnShapeStatisticCacheKey,
+            Arc<[JointRefinementReturnShapeStatisticEstimate]>,
+        >,
+    >,
+>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum JointRefinementFidelityTier {
+    CoarseLocal,
     Local,
     Final,
 }
@@ -67,16 +80,52 @@ pub(crate) struct JointRefinementObjectiveCacheKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct JointRefinementDeterministicCacheKey {
+    pub(crate) likelihood_fidelity_tier: ContinuousLikelihoodFidelityTier,
     pub(crate) parameter_bits: Vec<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct JointRefinementAggregatedLikelihoodContextCacheKey {
+    pub(crate) likelihood_fidelity_tier: ContinuousLikelihoodFidelityTier,
+    pub(crate) modeled_open_event_rate_per_hour_bits: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct JointRefinementDeterministicEvaluation {
     pub(crate) modeled_open_event_rate_per_hour: f64,
     pub(crate) raw_aggregated_likelihood_fit: f64,
+    pub(crate) component_shifted_average_negative_log_likelihoods: [f64; 3],
     pub(crate) exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
+    pub(crate) expected_hourly_tick_counts: Option<Vec<f64>>,
     pub(crate) raw_expected_activity_shape_fit: Option<f64>,
     pub(crate) raw_expected_activity_level_fit: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct JointRefinementAggregatedLikelihoodContexts {
+    pub(crate) tick: ContinuousReturnOptimizerContext,
+    pub(crate) five_minute: ContinuousReturnOptimizerContext,
+    pub(crate) fifteen_minute: ContinuousReturnOptimizerContext,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct JointRefinementReturnShapeStatisticEstimate {
+    pub(crate) metric_name: &'static str,
+    pub(crate) value: f64,
+    pub(crate) standard_error: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum JointRefinementReturnShapeHorizon {
+    Tick,
+    FiveMinute,
+    FifteenMinute,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct JointRefinementObservedReturnShapeStatisticCacheKey {
+    pub(crate) horizon: JointRefinementReturnShapeHorizon,
+    pub(crate) temporal_block_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -102,12 +151,30 @@ pub(crate) struct JointRefinementProfilingState {
     deterministic_cache_miss_count: AtomicUsize,
     seed_summary_cache_hit_count: AtomicUsize,
     seed_summary_cache_miss_count: AtomicUsize,
+    aggregated_likelihood_context_cache_hit_count: AtomicUsize,
+    aggregated_likelihood_context_cache_miss_count: AtomicUsize,
     option_pricing_cache_hit_count: AtomicUsize,
     option_pricing_cache_miss_count: AtomicUsize,
     option_pricing_run_count: AtomicUsize,
     invalid_candidate_evaluation_count: AtomicUsize,
     cumulative_deterministic_evaluation_millis: AtomicU64,
+    cumulative_modeled_rate_millis: AtomicU64,
+    cumulative_likelihood_context_resolution_millis: AtomicU64,
+    cumulative_likelihood_context_5m_sample_millis: AtomicU64,
+    cumulative_likelihood_context_15m_sample_millis: AtomicU64,
+    cumulative_likelihood_context_tick_sample_millis: AtomicU64,
+    cumulative_likelihood_context_tick_optimizer_millis: AtomicU64,
+    cumulative_likelihood_context_5m_optimizer_millis: AtomicU64,
+    cumulative_likelihood_context_15m_optimizer_millis: AtomicU64,
+    cumulative_tick_likelihood_millis: AtomicU64,
+    cumulative_5m_likelihood_millis: AtomicU64,
+    cumulative_15m_likelihood_millis: AtomicU64,
+    cumulative_expected_activity_counts_millis: AtomicU64,
+    cumulative_deterministic_activity_shape_millis: AtomicU64,
+    cumulative_deterministic_activity_level_millis: AtomicU64,
     cumulative_seed_summary_simulation_millis: AtomicU64,
+    cumulative_raw_seed_metrics_millis: AtomicU64,
+    cumulative_loss_build_millis: AtomicU64,
     cumulative_option_pricing_millis: AtomicU64,
 }
 
@@ -142,6 +209,16 @@ impl JointRefinementProfilingState {
             .fetch_add(miss_count, Ordering::Relaxed);
     }
 
+    pub(crate) fn record_aggregated_likelihood_context_cache_hit(&self) {
+        self.aggregated_likelihood_context_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_aggregated_likelihood_context_cache_miss(&self) {
+        self.aggregated_likelihood_context_cache_miss_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
     pub(crate) fn record_option_pricing_cache_hit(&self) {
         self.option_pricing_cache_hit_count
             .fetch_add(1, Ordering::Relaxed);
@@ -169,8 +246,88 @@ impl JointRefinementProfilingState {
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
+    pub(crate) fn record_modeled_rate_duration(&self, elapsed_millis: u64) {
+        self.cumulative_modeled_rate_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_likelihood_context_resolution_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_resolution_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_likelihood_context_5m_sample_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_5m_sample_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_likelihood_context_15m_sample_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_15m_sample_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_likelihood_context_tick_sample_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_tick_sample_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_likelihood_context_tick_optimizer_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_tick_optimizer_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_likelihood_context_5m_optimizer_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_5m_optimizer_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_likelihood_context_15m_optimizer_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_15m_optimizer_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_tick_likelihood_duration(&self, elapsed_millis: u64) {
+        self.cumulative_tick_likelihood_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_5m_likelihood_duration(&self, elapsed_millis: u64) {
+        self.cumulative_5m_likelihood_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_15m_likelihood_duration(&self, elapsed_millis: u64) {
+        self.cumulative_15m_likelihood_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_expected_activity_counts_duration(&self, elapsed_millis: u64) {
+        self.cumulative_expected_activity_counts_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_deterministic_activity_shape_duration(&self, elapsed_millis: u64) {
+        self.cumulative_deterministic_activity_shape_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_deterministic_activity_level_duration(&self, elapsed_millis: u64) {
+        self.cumulative_deterministic_activity_level_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
     pub(crate) fn record_seed_summary_simulation_duration(&self, elapsed_millis: u64) {
         self.cumulative_seed_summary_simulation_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_raw_seed_metrics_duration(&self, elapsed_millis: u64) {
+        self.cumulative_raw_seed_metrics_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_loss_build_duration(&self, elapsed_millis: u64) {
+        self.cumulative_loss_build_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
@@ -211,6 +368,12 @@ impl JointRefinementProfilingState {
             seed_summary_cache_miss_count: self
                 .seed_summary_cache_miss_count
                 .load(Ordering::Relaxed),
+            aggregated_likelihood_context_cache_hit_count: self
+                .aggregated_likelihood_context_cache_hit_count
+                .load(Ordering::Relaxed),
+            aggregated_likelihood_context_cache_miss_count: self
+                .aggregated_likelihood_context_cache_miss_count
+                .load(Ordering::Relaxed),
             option_pricing_cache_hit_count: self
                 .option_pricing_cache_hit_count
                 .load(Ordering::Relaxed),
@@ -224,9 +387,55 @@ impl JointRefinementProfilingState {
             cumulative_deterministic_evaluation_millis: self
                 .cumulative_deterministic_evaluation_millis
                 .load(Ordering::Relaxed),
+            cumulative_modeled_rate_millis: self
+                .cumulative_modeled_rate_millis
+                .load(Ordering::Relaxed),
+            cumulative_likelihood_context_resolution_millis: self
+                .cumulative_likelihood_context_resolution_millis
+                .load(Ordering::Relaxed),
+            cumulative_likelihood_context_5m_sample_millis: self
+                .cumulative_likelihood_context_5m_sample_millis
+                .load(Ordering::Relaxed),
+            cumulative_likelihood_context_15m_sample_millis: self
+                .cumulative_likelihood_context_15m_sample_millis
+                .load(Ordering::Relaxed),
+            cumulative_likelihood_context_tick_sample_millis: self
+                .cumulative_likelihood_context_tick_sample_millis
+                .load(Ordering::Relaxed),
+            cumulative_likelihood_context_tick_optimizer_millis: self
+                .cumulative_likelihood_context_tick_optimizer_millis
+                .load(Ordering::Relaxed),
+            cumulative_likelihood_context_5m_optimizer_millis: self
+                .cumulative_likelihood_context_5m_optimizer_millis
+                .load(Ordering::Relaxed),
+            cumulative_likelihood_context_15m_optimizer_millis: self
+                .cumulative_likelihood_context_15m_optimizer_millis
+                .load(Ordering::Relaxed),
+            cumulative_tick_likelihood_millis: self
+                .cumulative_tick_likelihood_millis
+                .load(Ordering::Relaxed),
+            cumulative_5m_likelihood_millis: self
+                .cumulative_5m_likelihood_millis
+                .load(Ordering::Relaxed),
+            cumulative_15m_likelihood_millis: self
+                .cumulative_15m_likelihood_millis
+                .load(Ordering::Relaxed),
+            cumulative_expected_activity_counts_millis: self
+                .cumulative_expected_activity_counts_millis
+                .load(Ordering::Relaxed),
+            cumulative_deterministic_activity_shape_millis: self
+                .cumulative_deterministic_activity_shape_millis
+                .load(Ordering::Relaxed),
+            cumulative_deterministic_activity_level_millis: self
+                .cumulative_deterministic_activity_level_millis
+                .load(Ordering::Relaxed),
             cumulative_seed_summary_simulation_millis: self
                 .cumulative_seed_summary_simulation_millis
                 .load(Ordering::Relaxed),
+            cumulative_raw_seed_metrics_millis: self
+                .cumulative_raw_seed_metrics_millis
+                .load(Ordering::Relaxed),
+            cumulative_loss_build_millis: self.cumulative_loss_build_millis.load(Ordering::Relaxed),
             cumulative_option_pricing_millis: self
                 .cumulative_option_pricing_millis
                 .load(Ordering::Relaxed),
@@ -238,11 +447,17 @@ impl JointRefinementProfilingState {
 pub(crate) struct JointRefinementActiveParameterLayout {
     pub(crate) hawkes_block: Vec<usize>,
     pub(crate) nig_block: Vec<usize>,
+    pub(crate) return_clock_block: Vec<usize>,
+    pub(crate) option_pricing_kernel_block: Vec<usize>,
     pub(crate) coupling_block: Vec<usize>,
-    pub(crate) log_lambda_scale_index: usize,
+    pub(crate) log_stationary_event_rate_scale_index: usize,
     pub(crate) log_beta_scale_index: usize,
     pub(crate) log_self_excitation_scale_index: usize,
     pub(crate) log_cross_excitation_scale_index: usize,
+    pub(crate) log_buy_excitation_return_clock_scale_index: usize,
+    pub(crate) log_sell_excitation_return_clock_scale_index: usize,
+    pub(crate) option_pricing_log_buy_activity_premium_index: usize,
+    pub(crate) option_pricing_log_sell_activity_premium_index: usize,
     pub(crate) known_activity_scale_index: Option<usize>,
     pub(crate) surprise_activity_scale_index: Option<usize>,
     pub(crate) surprise_baseline_scale_index: Option<usize>,
@@ -254,6 +469,8 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) fallback_sell_share_proxy: f64,
     pub(crate) observed_tick_continuous_return_calibration_sample:
         ReturnComponentsStageContinuousReturnCalibrationSample,
+    pub(crate) observed_tick_continuous_return_optimizer_context: ContinuousReturnOptimizerContext,
+    pub(crate) weighted_tick_continuous_return_optimizer_context: ContinuousReturnOptimizerContext,
     pub(crate) observed_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) observed_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) observed_tick_intraday_mean_absolute_returns: Vec<f64>,
@@ -275,7 +492,6 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) observed_15m_intraday_mean_absolute_returns: Vec<f64>,
     pub(crate) observed_hourly_tick_counts: Vec<f64>,
     pub(crate) observed_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
-    pub(crate) observed_log_price_span: f64,
     pub(crate) hourly_simulation_start_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_end_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_interval_count: usize,
@@ -287,22 +503,6 @@ pub(crate) struct JointRefinementObservedData {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct JointRefinementBaselineBuckets {
-    pub(crate) aggregated_likelihood_fit: f64,
-    pub(crate) aggregated_return_shape_fit: f64,
-    pub(crate) return_asymmetry_fit: f64,
-    pub(crate) tick_return_asymmetry_fit: f64,
-    pub(crate) aggregated_return_scale_fit: f64,
-    pub(crate) tick_return_scale_fit: f64,
-    pub(crate) business_time_return_scale_fit: f64,
-    pub(crate) intraday_return_level_fit: f64,
-    pub(crate) activity_shape_fit: f64,
-    pub(crate) activity_level_fit: f64,
-    pub(crate) rv_activity_coupling_fit: f64,
-    pub(crate) price_span_sanity_fit: f64,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct JointRefinementContext {
     pub(crate) stage_thread_pool: Option<Arc<rayon::ThreadPool>>,
     pub(crate) summary_simulation_scheduler: Arc<JointRefinementSummarySimulationScheduler>,
@@ -310,8 +510,8 @@ pub(crate) struct JointRefinementContext {
     pub(crate) option_pricing_execution_failure: Arc<Mutex<Option<String>>>,
     pub(crate) calendar_registry: ExchangeCalendarRegistry,
     pub(crate) exchange_code: String,
+    pub(crate) objective_policy: CalibrationObjectivePolicy,
     pub(crate) runtime_hourly_seasonality_factors: Vec<f64>,
-    pub(crate) max_runtime_hourly_seasonality_factor: f64,
     pub(crate) observed_data: JointRefinementObservedData,
     pub(crate) baseline_modeled_open_event_rate_per_hour: f64,
     pub(crate) baseline_hawkes_fitted_parameters: HawkesStageFittedParameters,
@@ -324,8 +524,6 @@ pub(crate) struct JointRefinementContext {
     pub(crate) option_pricing_refinement_enabled: bool,
     pub(crate) local_simulation_seed: u64,
     pub(crate) final_simulation_seeds: Vec<u64>,
-    pub(crate) local_baseline_buckets: JointRefinementBaselineBuckets,
-    pub(crate) final_baseline_buckets: JointRefinementBaselineBuckets,
     pub(crate) objective_cache:
         Arc<Mutex<BTreeMap<JointRefinementObjectiveCacheKey, JointRefinementCandidateEvaluation>>>,
     pub(crate) deterministic_evaluation_cache: Arc<
@@ -333,6 +531,16 @@ pub(crate) struct JointRefinementContext {
             BTreeMap<JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation>,
         >,
     >,
+    pub(crate) aggregated_likelihood_context_cache: Arc<
+        Mutex<
+            BTreeMap<
+                JointRefinementAggregatedLikelihoodContextCacheKey,
+                Arc<JointRefinementAggregatedLikelihoodContexts>,
+            >,
+        >,
+    >,
+    pub(crate) observed_return_shape_statistic_cache:
+        JointRefinementObservedReturnShapeStatisticCache,
     pub(crate) seed_summary_cache: JointRefinementSeedSummaryCache,
     pub(crate) option_pricing_cache: JointRefinementOptionPricingCache,
     pub(crate) option_pricing_context: Option<JointRefinementOptionPricingContext>,
@@ -411,6 +619,7 @@ pub(crate) struct JointRefinementOptionTierPricingArtifact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) spectral_collocation_node_count: Option<usize>,
     pub(crate) score: JointRefinementOptionTierScore,
+    pub(crate) loss_evaluation: CalibrationLossEvaluation,
     pub(crate) maturity_scores: Vec<JointRefinementOptionMaturityScoreArtifact>,
     pub(crate) node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
     pub(crate) aggregate_diagnostics: Vec<JointRefinementStageOptionAggregateDiagnostic>,
@@ -418,6 +627,8 @@ pub(crate) struct JointRefinementOptionTierPricingArtifact {
     pub(crate) score_gradient_artifact: Option<JointRefinementOptionTierScoreGradientArtifact>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) reduced_model_artifact: Option<JointRefinementOptionReducedModelArtifact>,
+    #[serde(skip)]
+    pub(crate) node_sensitivities: Option<Vec<JointRefinementOptionNodeResidualSensitivity>>,
     pub(crate) maturity_intervals: Vec<f64>,
     pub(crate) maturity_terminal_interval_indices: Vec<usize>,
 }
@@ -447,7 +658,6 @@ pub(crate) struct JointRefinementRawAdmissibilityMetrics {
     pub(crate) activity_shape_fit: f64,
     pub(crate) activity_level_fit: f64,
     pub(crate) rv_activity_coupling_fit: f64,
-    pub(crate) price_span_sanity_fit: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -470,11 +680,31 @@ pub(crate) struct JointRefinementRestartOutcome {
     pub(crate) stop_reason: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct JointRefinementStageRuntimeHandoff {
+    pub(crate) baseline_restart_outcome: JointRefinementRestartOutcome,
+    pub(crate) restart_outcomes: Vec<JointRefinementRestartOutcome>,
+    pub(crate) restart_evaluation_timing_diagnostics:
+        Vec<janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic>,
+    pub(crate) valid_restart_count: usize,
+    pub(crate) best_restart: JointRefinementRestartOutcome,
+    pub(crate) option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
+    pub(crate) selected_option_search_tier_pricing_artifact:
+        Option<Arc<JointRefinementOptionTierPricingArtifact>>,
+    pub(crate) selected_option_selection_tier_pricing_artifact:
+        Option<Arc<JointRefinementOptionTierPricingArtifact>>,
+    pub(crate) selected_option_audit_tier_pricing_artifact:
+        Option<Arc<JointRefinementOptionTierPricingArtifact>>,
+    pub(crate) option_search_selection_agreement:
+        Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics>,
+    pub(crate) warning: Option<String>,
+    pub(crate) restart_optimization_wall_clock_millis: u64,
+    pub(crate) coarse_consistency_wall_clock_millis: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementCoarseConsistencySummary {
     pub(crate) raw_fit: f64,
-    pub(crate) normalized_fit: f64,
-    pub(crate) admissibility_threshold: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

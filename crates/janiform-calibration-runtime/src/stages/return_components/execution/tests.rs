@@ -35,10 +35,14 @@ use super::super::signal_partition_fit;
 use super::super::surprise_episode_selection_fit;
 use super::candidate_generation::generate_return_components_stage_candidate_inputs;
 use super::diagnostics::collect_return_components_exact_likelihood_constraint_violations;
+use super::signals::{
+    ReturnComponentsStageActivityCalibrationContext, derive_continuous_fit_business_time_scales,
+};
 use super::{
     ReturnComponentsStageSortedSignalInputs, build_activity_coupling_diagnostic,
     build_gap_diagnostic, build_jump_diagnostic, build_price_range_sanity_diagnostic,
-    build_surprise_arrival_diagnostic, default_surprise_deterministic_intensity_profile,
+    build_surprise_arrival_diagnostic, default_return_clock_exposure_parameters,
+    default_surprise_deterministic_intensity_profile, default_tick_grid_observation_model,
     derive_close_open_gap_candidates, evaluate_return_components_exact_candidate,
     sort_candidate_generation_signals, summarize_candidate_generation_signals,
     summarize_return_distribution,
@@ -46,6 +50,8 @@ use super::{
 use crate::stages::return_components::continuous_fit;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
+
+const BUSINESS_TIME_SCALE_ASSERTION_TOLERANCE: f64 = 1.0e-12;
 
 #[test]
 fn derived_close_open_gap_detection_filters_zero_gap_boundaries() {
@@ -82,6 +88,21 @@ fn exact_likelihood_structural_failures_are_treated_as_constraint_violations() {
         optimizer_final_objective: 0.0,
         optimizer_local_evaluation_count: 0,
         optimizer_stop_reason: "test".to_string(),
+        proxy_em_best_objective: None,
+        proxy_em_final_convergence_ratio: None,
+        proxy_em_evaluation_count: 0,
+        proxy_em_completed_seed_count: 0,
+        proxy_em_refined_seed_count: 0,
+        proxy_em_requested_seed_count: 0,
+        proxy_em_iteration_budget_per_seed: 0,
+        proxy_em_fitting_sample_count: 0,
+        proxy_em_fitting_sample_weight_sum: 0.0,
+        proxy_em_converged_seed_count: 0,
+        proxy_em_non_improving_seed_count: 0,
+        proxy_em_numerical_failure_seed_count: 0,
+        proxy_em_iteration_budget_exhausted_seed_count: 0,
+        proxy_em_projection_failure_seed_count: 0,
+        proxy_em_invalid_initial_seed_count: 0,
         optimizer_basin_diagnostics: Vec::new(),
         exact_likelihood_failures: vec![ReturnComponentsStageExactLikelihoodFailureDiagnostic {
             scope: ReturnComponentsStageExactLikelihoodFailureScope::Global,
@@ -271,12 +292,14 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
         observed_open_session_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                elapsed_same_session_hours: 1.0,
                 log_return: -1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
@@ -285,12 +308,14 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
         continuous_fit_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                elapsed_same_session_hours: 1.0,
                 log_return: -1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
@@ -337,6 +362,58 @@ fn return_distribution_summary_normalizes_each_return_by_business_time_scale() {
 }
 
 #[test]
+fn business_time_scales_use_full_finite_same_session_elapsed_time() {
+    let observed_open_session_returns = vec![
+        ReturnComponentsObservedOpenSessionReturn {
+            return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+            elapsed_same_session_hours: 1.0 / 3_600.0,
+            log_return: 0.0,
+            post_shock_activity_lift: 1.0,
+            sell_share_proxy: 0.5,
+        },
+        ReturnComponentsObservedOpenSessionReturn {
+            return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+            elapsed_same_session_hours: 1.0 / 3_600.0,
+            log_return: 0.0,
+            post_shock_activity_lift: 1.0,
+            sell_share_proxy: 0.5,
+        },
+        ReturnComponentsObservedOpenSessionReturn {
+            return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 5, 1),
+            elapsed_same_session_hours: 300.0 / 3_600.0,
+            log_return: 0.0,
+            post_shock_activity_lift: 1.0,
+            sell_share_proxy: 0.5,
+        },
+    ];
+    let sorted_signals = ReturnComponentsStageSortedSignalInputs {
+        known_return_samples: Vec::new(),
+        observed_open_session_returns: observed_open_session_returns.clone(),
+        continuous_fit_returns: observed_open_session_returns,
+        intraday_jump_candidates: Vec::new(),
+        surprise_jump_episodes: Vec::new(),
+        selected_surprise_jump_episodes: Vec::new(),
+        close_open_gap_candidates: Vec::new(),
+        surprise_open_jump_magnitudes: Vec::new(),
+        combined_gap_magnitudes: Vec::new(),
+        source_window: test_source_window(),
+    };
+
+    let business_time_scales = derive_continuous_fit_business_time_scales(
+        &sorted_signals,
+        Some(ReturnComponentsStageActivityCalibrationContext {
+            modeled_open_event_rate_per_hour: 3_600.0,
+            representative_interarrival_hours: 1.0 / 3_600.0,
+        }),
+    );
+
+    assert_eq!(business_time_scales.len(), 3);
+    assert!((business_time_scales[0] - 1.0).abs() <= BUSINESS_TIME_SCALE_ASSERTION_TOLERANCE);
+    assert!((business_time_scales[1] - 1.0).abs() <= BUSINESS_TIME_SCALE_ASSERTION_TOLERANCE);
+    assert!((business_time_scales[2] - 300.0).abs() <= BUSINESS_TIME_SCALE_ASSERTION_TOLERANCE);
+}
+
+#[test]
 fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample() {
     let candidate_generation_input = ReturnComponentsStageCandidateGenerationInput {
         known_news_calendar: ReturnComponentsKnownNewsCalendarInput {
@@ -347,36 +424,42 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         observed_open_session_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.0,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.0,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.0,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
+                elapsed_same_session_hours: 1.0,
                 log_return: -2.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 1.0,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 4),
+                elapsed_same_session_hours: 1.0,
                 log_return: 3.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.0,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 5),
+                elapsed_same_session_hours: 1.0,
                 log_return: 5.0e-3,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 1.0,
@@ -402,6 +485,8 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
+        tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -464,36 +549,42 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
         observed_open_session_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.20,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                elapsed_same_session_hours: 1.0,
                 log_return: -0.7e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.80,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.5e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.30,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
+                elapsed_same_session_hours: 1.0,
                 log_return: -1.2e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.70,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 4),
+                elapsed_same_session_hours: 1.0,
                 log_return: 0.8e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.35,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 5),
+                elapsed_same_session_hours: 1.0,
                 log_return: -1.4e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.65,
@@ -515,6 +606,8 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
+        tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -565,18 +658,21 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         observed_open_session_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
+                elapsed_same_session_hours: 1.0,
                 log_return: 2.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
+                elapsed_same_session_hours: 1.0,
                 log_return: 3.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
@@ -598,6 +694,8 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
+        tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -692,18 +790,21 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         observed_open_session_returns: vec![
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.4,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                elapsed_same_session_hours: 1.0,
                 log_return: -2.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.6,
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
+                elapsed_same_session_hours: 1.0,
                 log_return: 1.5e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
@@ -725,6 +826,8 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
             },
             coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
         },
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
+        tick_grid_observation_model: default_tick_grid_observation_model(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -765,6 +868,8 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         .expect("news process configuration should validate"),
         surprise_deterministic_intensity_profile: default_surprise_deterministic_intensity_profile(
         ),
+        return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
+        tick_grid_observation_model: default_tick_grid_observation_model(),
         mean_reversion_fitted_parameters:
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-gain mean reversion should validate"),

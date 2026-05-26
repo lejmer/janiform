@@ -79,7 +79,7 @@ pub fn build_hourly_factor_contract(
     }
 
     for (interval_index, seasonality_factor) in seasonality_factors.iter().copied().enumerate() {
-        if !seasonality_factor.is_finite() || seasonality_factor <= 0.0 {
+        if !seasonality_factor.is_finite() || seasonality_factor < 0.0 {
             return Err(HourlyFactorContractError::InvalidSeasonalityFactor {
                 interval_index,
                 value: seasonality_factor,

@@ -1,18 +1,19 @@
-"""Internal market-snapshot pricing workflow helpers."""
+"""Internal market-snapshot pricing workflow boundary."""
 
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ....._workflow_progress import WorkflowProgressMode
-from janiform.contracts.base import require_finite_scalar
-from janiform.pricing import VanillaOptionPayoffType
-from janiform.pricing.errors import _pricing_error
-from janiform.calibration.market_data.contracts import CalibrationOptionSurfaceColumnMapping
-from .context import prepare_observed_option_market_context
-from .pricing import price_prepared_snapshot_groups_for_model
-from .preparation import prepare_snapshot_groups
+from .....calibration.market_data.contracts import CalibrationOptionSurfaceColumnMapping
+from .....pricing import VanillaOptionPayoffType
+from ...physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsRequest
+from ...internal.native_observed import (
+    observed_snapshot_result_from_native_payload,
+    run_native_observed_options_pricing,
+)
 from ..result import JaniformObservedOptionSnapshotPricingResult
 
 if TYPE_CHECKING:
@@ -31,38 +32,33 @@ def price_option_snapshot_for_model(
     risk_free_rate: float = 0.0,
     dividend_yield: float = 0.0,
     cpu_count: Optional[int] = None,
+    physical_distribution_diagnostics: (
+        bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
+    ) = False,
+    output_path: Optional[str | Path] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
 ) -> JaniformObservedOptionSnapshotPricingResult:
-    require_finite_scalar(risk_free_rate, "risk_free_rate", _pricing_error)
-    require_finite_scalar(dividend_yield, "dividend_yield", _pricing_error)
-
-    context = prepare_observed_option_market_context(
+    native_payload = run_native_observed_options_pricing(
         model,
         tick_data=tick_data,
         option_surface=option_surface,
         valuation_time_utc=valuation_time_utc,
         option_type=option_type,
         option_surface_column_mapping=option_surface_column_mapping,
-    )
-
-    prepared_snapshot_groups = prepare_snapshot_groups(
-        option_surface_frame=context.option_surface_frame,
-        resolved_option_columns=context.resolved_option_columns,
-        valuation_time_utc=context.valuation_time_utc,
-        option_type=context.option_type,
-    )
-
-    return price_prepared_snapshot_groups_for_model(
-        model,
-        valuation_time_utc=context.valuation_time_utc,
-        spot=context.spot,
-        prepared_snapshot_groups=prepared_snapshot_groups,
-        filtered_tick_data=context.filtered_tick_data,
-        resolved_tick_column_mapping=context.resolved_tick_column_mapping,
         risk_free_rate=risk_free_rate,
         dividend_yield=dividend_yield,
+        valuation_count=None,
+        use_all_valuation_times=False,
         cpu_count=cpu_count,
+        physical_distribution_diagnostics=physical_distribution_diagnostics,
+        output_path=output_path,
         silent=silent,
         progress_mode=progress_mode,
+        scope="snapshot",
     )
+
+    return observed_snapshot_result_from_native_payload(native_payload)
+
+
+__all__ = ["price_option_snapshot_for_model"]

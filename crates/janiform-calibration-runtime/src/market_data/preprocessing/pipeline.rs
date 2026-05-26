@@ -77,6 +77,7 @@ pub fn preprocess_market_data_translation_request(
                 open_price_ticks: tick_summary.open_price_ticks.as_slice(),
                 open_signed_tick_count: tick_summary.open_signed_tick_count,
                 open_session_sell_tick_count: tick_summary.open_session_sell_tick_count,
+                reference_price: request.reference_price,
                 retained_known_news: retained_known_news.retained_records.as_slice(),
                 source_window: tick_summary.source_window.clone(),
                 _option_surface_quote_values: request.option_surface_quote_values.as_slice(),

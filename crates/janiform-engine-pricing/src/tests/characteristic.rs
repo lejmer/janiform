@@ -5,8 +5,11 @@ use crate::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingRequest,
     characteristic::{
-        LocalTiltResidualEvaluation, build_local_tilt_bracket_with_residual_evaluator,
+        LocalTiltResidualEvaluation, MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+        build_local_tilt_bracket_with_residual_evaluator,
+        build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator,
         differentiate_local_tilt_root_for_shared_plus_shift_configuration,
+        resolve_local_martingale_tilt_search_domain,
     },
     compose_nig_trading_time_exponent, compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
@@ -25,7 +28,6 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
-use janiform_model_kernels::risk_neutral::evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument;
 
 use super::support::{
     assert_complex_close, disabled_boundary_input, oracle_output_with_transform_value,
@@ -50,9 +52,8 @@ fn pricing_path_preserves_sell_side_minus_u_sign_handling() {
     let composed =
         compose_nig_trading_time_exponent(driver_parameters, argument, return_decomposition);
 
-    let expected_sell_side_minus_u = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument.scale(-1.0));
+    let expected_sell_side_minus_u =
+        driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
     assert_complex_close(
         composed.sell_side_weighted_exponent,
         expected_sell_side_minus_u,
@@ -87,9 +88,8 @@ fn full_characteristic_function_assembly_uses_trading_time_factor_when_news_jump
     )
     .expect("full CF assembly should succeed with valid finite inputs");
 
-    let expected_sell_side_minus_u = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument.scale(-1.0));
+    let expected_sell_side_minus_u =
+        driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
     assert_complex_close(
         assembled
             .trading_time_exponent_contributions
@@ -356,8 +356,7 @@ fn edge_mode_buy_only_disables_sell_and_news_jump_components_in_full_cf_assembly
     .expect("buy-only edge mode CF assembly should succeed");
 
     let expected_buy = driver_parameters
-        .buy_side_parameters
-        .characteristic_exponent(argument)
+        .buy_side_characteristic_exponent(argument)
         .scale(1.2);
     let expected_trading = complex_exponential(expected_buy);
 
@@ -424,8 +423,7 @@ fn edge_mode_sell_only_preserves_minus_u_sign_and_disables_news_jump_components(
     .expect("sell-only edge mode CF assembly should succeed");
 
     let expected_sell = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument.scale(-1.0))
+        .sell_side_characteristic_exponent_for_return_composition(argument)
         .scale(1.1);
     let expected_trading = complex_exponential(expected_sell);
 
@@ -689,7 +687,7 @@ fn full_characteristic_function_assembly_rejects_invalid_return_decomposition_pa
 }
 
 #[test]
-fn anchored_local_tilt_solver_accepts_kappa_zero_nested_case() {
+fn anchored_local_tilt_solver_accepts_kappa_zero_row_independent_target_case() {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
@@ -721,7 +719,7 @@ fn anchored_local_tilt_solver_accepts_kappa_zero_nested_case() {
 
     let diagnostics =
         solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
-            .expect("kappa=0 nested case should solve");
+            .expect("kappa=0 row-independent target case should solve");
 
     assert_eq!(diagnostics.policy, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY);
     assert!(diagnostics.absolute_residual <= diagnostics.tolerance);
@@ -843,9 +841,43 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
 }
 
 #[test]
+fn anchored_local_tilt_search_domain_requires_martingale_first_moment_domain() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters)
+        .expect("search domain should resolve");
+
+    let return_composition_domain = driver_parameters.derive_return_composition_log_moment_domain();
+
+    let martingale_domain = return_composition_domain.intersect(
+        janiform_model_kernels::risk_neutral::NigEsscherTiltDomain::new(
+            return_composition_domain.lower_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+            return_composition_domain.upper_theta_exclusive - MARTINGALE_FIRST_LOG_MOMENT_SHIFT,
+        ),
+    );
+
+    assert_eq!(
+        search_domain.lower_theta,
+        martingale_domain
+            .interior_lower_bound()
+            .expect("martingale domain should have an interior lower bound")
+    );
+    assert_eq!(
+        search_domain.upper_theta,
+        martingale_domain
+            .interior_upper_bound()
+            .expect("martingale domain should have an interior upper bound")
+    );
+}
+
+#[test]
 fn anchored_local_tilt_implicit_root_sensitivity_matches_finite_difference() {
     let configuration = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct");
+
     let driver_parameters = configuration
         .derive_driver_parameters()
         .expect("valid shared-plus-shift payload should derive drivers");
@@ -860,7 +892,7 @@ fn anchored_local_tilt_implicit_root_sensitivity_matches_finite_difference() {
 
     let request = pricing_request_for_local_tilt(
         return_decomposition,
-        -0.03,
+        0.2,
         AnchoredVanillaOptionPricingBoundaryInput::try_new(
             0,
             HawkesExcitationState {
@@ -897,6 +929,7 @@ fn anchored_local_tilt_implicit_root_sensitivity_matches_finite_difference() {
         solved_theta,
     )
     .expect("implicit theta sensitivity should exist");
+
     let alpha_finite_difference = finite_difference_local_tilt_theta_sensitivity(
         return_decomposition,
         &request,
@@ -912,6 +945,7 @@ fn anchored_local_tilt_implicit_root_sensitivity_matches_finite_difference() {
         },
         configuration.alpha,
     );
+
     let beta_0_finite_difference = finite_difference_local_tilt_theta_sensitivity(
         return_decomposition,
         &request,
@@ -976,23 +1010,27 @@ fn anchored_local_tilt_implicit_root_sensitivity_matches_finite_difference() {
         .abs()
             < 1.0e-2
     );
+
+    let delta_beta_finite_difference = finite_difference_local_tilt_theta_sensitivity(
+        return_decomposition,
+        &request,
+        |value| {
+            NigSharedPlusShiftConfiguration::try_new(
+                configuration.alpha,
+                configuration.beta_0,
+                configuration.delta,
+                configuration.mu,
+                value,
+            )
+            .expect("perturbed delta_beta configuration should construct")
+        },
+        configuration.delta_beta,
+    );
     assert!(
-        (implicit_sensitivity.delta_beta_derivative
-            - finite_difference_local_tilt_theta_sensitivity(
-                return_decomposition,
-                &request,
-                |value| NigSharedPlusShiftConfiguration::try_new(
-                    configuration.alpha,
-                    configuration.beta_0,
-                    configuration.delta,
-                    configuration.mu,
-                    value,
-                )
-                .expect("perturbed delta_beta configuration should construct"),
-                configuration.delta_beta,
-            ))
-        .abs()
-            < 1.0e-2
+        (implicit_sensitivity.delta_beta_derivative - delta_beta_finite_difference).abs() < 1.0e-2,
+        "delta_beta analytic={} finite_difference={}",
+        implicit_sensitivity.delta_beta_derivative,
+        delta_beta_finite_difference,
     );
 }
 
@@ -1011,8 +1049,11 @@ fn anchored_local_tilt_solver_rejects_inadmissible_states() {
     })
     .expect("valid return decomposition payload should construct");
 
+    let unreachable_target_log_moment_exponent = 2.0;
+    let rate_spread = unreachable_target_log_moment_exponent / intraday_year_fraction(0.5);
+
     let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 25.0, -25.0)
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, rate_spread, 0.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -1069,6 +1110,107 @@ fn anchored_local_tilt_bracket_search_shrinks_inward_from_non_admissible_side_bo
         },
     )
     .expect("solver should shrink inward from the invalid side boundary and recover the root");
+
+    assert!((theta + 0.5).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+}
+
+#[test]
+fn anchored_local_tilt_bracket_search_does_not_probe_admissibility_edge_first() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters)
+        .expect("valid driver parameters should produce a search domain");
+    let mut evaluated_left_edge = false;
+    let mut evaluated_right_edge = false;
+
+    let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        -0.5,
+        1.0e-8,
+        |theta| {
+            evaluated_left_edge |= theta == search_domain.lower_theta;
+            evaluated_right_edge |= theta == search_domain.upper_theta;
+
+            Ok(LocalTiltResidualEvaluation {
+                observed_log_moment_exponent: theta,
+                residual: theta + 0.5,
+            })
+        },
+    )
+    .expect("solver should recover the interior root without probing domain edges first");
+
+    assert!((theta + 0.5).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+    assert!(!evaluated_left_edge);
+    assert!(!evaluated_right_edge);
+}
+
+#[test]
+fn anchored_local_tilt_bracket_search_uses_preferred_candidate_before_wide_midpoint() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let search_domain = resolve_local_martingale_tilt_search_domain(driver_parameters)
+        .expect("valid driver parameters should produce a search domain");
+
+    let mut evaluated_wide_point = false;
+
+    let (theta, evaluation) =
+        build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator(
+            search_domain,
+            -0.5,
+            1.0e-8,
+            Some(-0.5),
+            |theta| {
+                evaluated_wide_point |= theta.abs() > 1.0;
+
+                Ok(LocalTiltResidualEvaluation {
+                    observed_log_moment_exponent: theta,
+                    residual: theta + 0.5,
+                })
+            },
+        )
+        .expect("solver should recover the preferred interior root");
+
+    assert!((theta + 0.5).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+    assert!(!evaluated_wide_point);
+}
+
+#[test]
+fn anchored_local_tilt_bracket_search_recovers_from_retryable_invalid_reference() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        -0.5,
+        1.0e-8,
+        |theta| {
+            if theta > -0.25 {
+                return Err(
+                    AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent {
+                        theta,
+                        value: ComplexScalar::new(0.0, 1.0),
+                    },
+                );
+            }
+
+            Ok(LocalTiltResidualEvaluation {
+                observed_log_moment_exponent: theta,
+                residual: theta + 0.5,
+            })
+        },
+    )
+    .expect("solver should locate a valid reference before bracketing the root");
 
     assert!((theta + 0.5).abs() <= 1.0e-8);
     assert!(evaluation.residual.abs() <= 1.0e-8);
@@ -1146,25 +1288,14 @@ fn pricing_request_for_local_tilt(
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
         .expect("valid shared-plus-shift payload should derive drivers");
-    let buy_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.buy_side_parameters,
-            -1.0,
-            theta,
-        )
-        .expect("buy-side transformed exponent should construct");
-    let sell_side_log_moment_exponent =
-        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
-            driver_parameters.sell_side_parameters,
-            1.0,
-            theta,
-        )
-        .expect("sell-side transformed exponent should construct");
 
-    let combined = return_decomposition.a_plus.mul_add(
-        buy_side_log_moment_exponent,
-        return_decomposition.a_minus * sell_side_log_moment_exponent,
-    );
+    let combined = driver_parameters
+        .evaluate_return_composition_log_moment(
+            return_decomposition.a_plus,
+            return_decomposition.a_minus,
+            theta,
+        )
+        .expect("return-composition transformed exponent should construct");
 
     let target_adjustment = boundary_input
         .local_martingale_deviation_adjustment()
@@ -1210,6 +1341,7 @@ fn finite_difference_local_tilt_theta_sensitivity(
     parameter_value: f64,
 ) -> f64 {
     let step = 1.0e-5 * parameter_value.abs().max(1.0);
+
     let lower_configuration = rebuild_configuration(parameter_value - step);
     let upper_configuration = rebuild_configuration(parameter_value + step);
 
@@ -1223,6 +1355,7 @@ fn finite_difference_local_tilt_theta_sensitivity(
     )
     .expect("lower perturbed local tilt should solve")
     .theta;
+
     let upper_theta = solve_anchored_local_pricing_tilt(
         upper_configuration
             .derive_driver_parameters()

@@ -83,29 +83,29 @@
       "expected_status": "completed",
       "expected_output": {
         "c_at_delta": {
-          "real": -0.44000000000000006,
+          "real": -0.44000000000000045,
           "imaginary": 0.0
         },
         "d_at_delta": {
           "plus_plus": {
-            "real": -0.12811439448276296,
+            "real": -0.11646763128494497,
             "imaginary": 0.0
           },
           "plus_minus": {
-            "real": -0.12811439448276296,
+            "real": -0.11646763128494497,
             "imaginary": 0.0
           },
           "minus_plus": {
-            "real": -0.1921715917241444,
+            "real": -0.17470144692741743,
             "imaginary": 0.0
           },
           "minus_minus": {
-            "real": -0.1921715917241444,
+            "real": -0.17470144692741743,
             "imaginary": 0.0
           }
         },
         "transform_value": {
-          "real": 0.5113986223189336,
+          "real": 0.5222328403128708,
           "imaginary": 0.0
         }
       },
@@ -182,30 +182,30 @@
       "expected_status": "completed",
       "expected_output": {
         "c_at_delta": {
-          "real": -0.5468705375036489,
-          "imaginary": 0.06723555928704061
+          "real": -0.5408029666956399,
+          "imaginary": 0.0667132284941913
         },
         "d_at_delta": {
           "plus_plus": {
-            "real": -0.15131708705547525,
-            "imaginary": 0.06897154273951159
+            "real": -0.13549473886759153,
+            "imaginary": 0.06229008939817648
           },
           "plus_minus": {
-            "real": -0.15131708705547525,
-            "imaginary": 0.06897154273951159
+            "real": -0.13549473886759153,
+            "imaginary": 0.06229008939817648
           },
           "minus_plus": {
-            "real": -0.2530028213926669,
-            "imaginary": -0.01952750677108098
+            "real": -0.22748219618578741,
+            "imaginary": -0.01772949121734341
           },
           "minus_minus": {
-            "real": -0.2530028213926669,
-            "imaginary": -0.01952750677108098
+            "real": -0.22748219618578741,
+            "imaginary": -0.01772949121734341
           }
         },
         "transform_value": {
-          "real": 0.429817978087629,
-          "imaginary": 0.04008718809080439
+          "real": 0.44568967748715455,
+          "imaginary": 0.04017745167188784
         }
       },
       "tolerances": {
@@ -281,30 +281,30 @@
       "expected_status": "completed",
       "expected_output": {
         "c_at_delta": {
-          "real": -0.2600766041073922,
-          "imaginary": 0.03245118229134845
+          "real": -0.2583783429909051,
+          "imaginary": 0.03229941311049686
         },
         "d_at_delta": {
           "plus_plus": {
-            "real": -0.09075714821057886,
-            "imaginary": 0.04311605886869983
+            "real": -0.08181508093523089,
+            "imaginary": 0.03905023070308086
           },
           "plus_minus": {
-            "real": -0.09075714821057886,
-            "imaginary": 0.04311605886869983
+            "real": -0.08181508093523089,
+            "imaginary": 0.03905023070308086
           },
           "minus_plus": {
-            "real": -0.15482774305845548,
-            "imaginary": -0.01252652643520976
+            "real": -0.13989482349083801,
+            "imaginary": -0.01137851971704391
           },
           "minus_minus": {
-            "real": -0.15482774305845548,
-            "imaginary": -0.01252652643520976
+            "real": -0.13989482349083801,
+            "imaginary": -0.01137851971704391
           }
         },
         "transform_value": {
-          "real": 0.6443198808592454,
-          "imaginary": 0.03114461258728484
+          "real": 0.6567376399001572,
+          "imaginary": 0.03064374265268777
         }
       },
       "tolerances": {

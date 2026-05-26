@@ -13,7 +13,7 @@ use parquet::arrow::ArrowWriter;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::artifact_io::write_pretty_json_file;
+use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
 /// Default number of simulation output rows written per artifact batch.
@@ -136,7 +136,7 @@ pub(super) fn write_model_artifact_simulation_sidecars(
     let report_path = run_directory.join("simulation_report.json");
     let manifest_path = run_directory.join("run.json");
 
-    write_json_file(
+    write_pretty_json_file(
         &report_path,
         &json!({
             "schema_version": "janiform.workflow_report.v1",
@@ -144,9 +144,10 @@ pub(super) fn write_model_artifact_simulation_sidecars(
             "primary_output_path": output_path,
             "response": response_payload,
         }),
+        ArtifactWriteKind::Simulation,
     )?;
 
-    write_json_file(
+    write_pretty_json_file(
         &manifest_path,
         &json!({
             "schema_version": "janiform.run_manifest.v1",
@@ -159,6 +160,7 @@ pub(super) fn write_model_artifact_simulation_sidecars(
                 "model_run_id": model_run_id,
             },
         }),
+        ArtifactWriteKind::Simulation,
     )
 }
 
@@ -208,15 +210,6 @@ fn write_simulation_rows(
     Ok(SimulationExportSummary {
         record_count: rows.len(),
         chunk_count: rows.chunks(batch_size).count(),
-    })
-}
-
-fn write_json_file<T>(path: &Path, payload: &T) -> Result<(), WorkflowError>
-where
-    T: serde::Serialize + ?Sized,
-{
-    write_pretty_json_file(path, payload, artifact_write_error, |source| {
-        artifact_write_error(path, std::io::Error::other(source))
     })
 }
 

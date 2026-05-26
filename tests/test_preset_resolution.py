@@ -36,6 +36,17 @@ def test_market_profile_inference_uses_embedded_instrument_token() -> None:
     assert inferred_profile["exchange_code"] == "FXSPOT"
 
 
+def test_market_profile_inference_accepts_two_character_futures_root() -> None:
+    inferred_profile = infer_bundled_market_profile_for_tick_data_path(
+        "ES_continuous_ticks.parquet"
+    )
+
+    assert inferred_profile is not None
+    assert inferred_profile["profile_name"] == "es_futures_globex"
+    assert inferred_profile["session_preset_name"] == "XCME"
+    assert inferred_profile["exchange_code"] == "XCME"
+
+
 def test_resolution_uses_inferred_session_and_keeps_known_news_none_for_profile_suggestions() -> None:
     resolved_configuration = resolve_preset_workflow_configuration(
         registry=PresetRegistry(),

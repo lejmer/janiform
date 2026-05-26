@@ -4,7 +4,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Optional, cast, Final
+from math import isfinite
+from typing import Any, Optional
 
 from ..coarse.news import NewsProcessConfiguration
 from ..shared import (
@@ -21,6 +22,7 @@ from ...mean_reversion import (
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
 )
+from ...return_clock import ReturnClockExposureParameters
 from ...contracts import ContractModel
 from ...contracts.base import (
     require_datetime_utc,
@@ -38,9 +40,6 @@ from ...calendar import MarketState
 from ...hourly_factors import HourlyFactorContract
 from ...pricing import NigSharedPlusShiftConfiguration
 from ...sufficient_statistics import SufficientStatisticsReturnComponents
-
-
-_MEAN_REVERSION_ALIGNMENT_TOLERANCE: Final[float] = 1e-12
 
 
 def _parse_nig_shared_plus_shift_configuration(
@@ -260,6 +259,8 @@ class SeededTickSimulationRequest(ContractModel):
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState
     hourly_factor_summary: SeededTickSimulationHourlyFactorSummary
+    return_clock_exposure_parameters: ReturnClockExposureParameters
+    observed_price_tick_size: Optional[float] = None
     debug_trace_enabled: bool = False
     sample_every_nth_transition: int = 1
     max_records_per_chunk: int = 1024
@@ -278,14 +279,35 @@ class SeededTickSimulationRequest(ContractModel):
     def __post_init__(self) -> None:
         if self.seed < 0:
             raise _simulation_error("seed", "must be non-negative")
+
         if self.start_time_utc.tzinfo is None:
             raise _simulation_error("start_time_utc", "must be timezone-aware")
+
         if self.horizon_interval_count <= 0:
             raise _simulation_error("horizon_interval_count", "must be strictly positive")
+
         if self.hourly_factor_summary.interval_count != self.horizon_interval_count:
             raise _simulation_error(
                 "hourly_factor_summary.interval_count",
                 "must match horizon_interval_count",
+            )
+
+        if not isinstance(
+            self.return_clock_exposure_parameters,
+            ReturnClockExposureParameters,
+        ):
+            raise _simulation_error(
+                "return_clock_exposure_parameters",
+                "must be a ReturnClockExposureParameters",
+            )
+
+        if self.observed_price_tick_size is not None and (
+            not isfinite(self.observed_price_tick_size)
+            or self.observed_price_tick_size <= 0.0
+        ):
+            raise _simulation_error(
+                "observed_price_tick_size",
+                "must be finite and strictly positive when provided",
             )
 
         if (
@@ -298,11 +320,8 @@ class SeededTickSimulationRequest(ContractModel):
             )
 
         if (
-            abs(
-                self.initial_mean_reversion_boundary_state.anchor_value
-                - self.mean_reversion_runtime_interval_anchors.start_anchor_value
-            )
-            > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
+            self.initial_mean_reversion_boundary_state.anchor_value
+            != self.mean_reversion_runtime_interval_anchors.start_anchor_value
         ):
             raise _simulation_error(
                 "initial_mean_reversion_boundary_state.anchor_value",
@@ -314,6 +333,7 @@ class SeededTickSimulationRequest(ContractModel):
 
         if self.sample_every_nth_transition <= 0:
             raise _simulation_error("sample_every_nth_transition", "must be strictly positive")
+
         if self.max_records_per_chunk <= 0:
             raise _simulation_error("max_records_per_chunk", "must be strictly positive")
 
@@ -341,6 +361,8 @@ class SeededTickSimulationRequest(ContractModel):
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
         initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
         hourly_factor_contract: HourlyFactorContract,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+        observed_price_tick_size: Optional[float] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
         max_records_per_chunk: int = 1024,
@@ -363,6 +385,8 @@ class SeededTickSimulationRequest(ContractModel):
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract),
+            return_clock_exposure_parameters=return_clock_exposure_parameters,
+            observed_price_tick_size=observed_price_tick_size,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
@@ -374,10 +398,12 @@ class SeededTickSimulationRequest(ContractModel):
     def from_mapping(raw_payload: dict[str, Any] | Any) -> SeededTickSimulationRequest:
         if not isinstance(raw_payload, dict):
             raise _simulation_error("seeded_tick_simulation_request", "must be an object")
+
         if "start_time_utc" not in raw_payload:
             raise _simulation_error("start_time_utc", "is required")
 
         raw_state_snapshot_capture = raw_payload.get("state_snapshot_capture")
+
         state_snapshot_capture = (
             _parse_seeded_tick_state_snapshot_capture(
                 raw_state_snapshot_capture,
@@ -401,6 +427,7 @@ class SeededTickSimulationRequest(ContractModel):
             if "sample_every_nth_transition" in raw_payload
             else 1
         )
+
         max_records_per_chunk = (
             require_positive_integer(
                 raw_payload,
@@ -501,6 +528,27 @@ class SeededTickSimulationRequest(ContractModel):
                 ),
                 field_path="hourly_factor_summary",
             ),
+            return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "return_clock_exposure_parameters",
+                    "return_clock_exposure_parameters",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="return_clock_exposure_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
+            ),
+            observed_price_tick_size=(
+                require_finite_number(
+                    raw_payload,
+                    "observed_price_tick_size",
+                    "observed_price_tick_size",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                if "observed_price_tick_size" in raw_payload
+                and raw_payload["observed_price_tick_size"] is not None
+                else None
+            ),
             debug_trace_enabled=raw_debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
@@ -597,6 +645,7 @@ class SeededTickEventRecord(ContractModel):
             ) from e
 
         raw_state_snapshot = raw_payload.get("state_snapshot")
+
         state_snapshot = (
             SeededTickEventStateSnapshot.from_mapping(
                 raw_state_snapshot,
@@ -678,6 +727,7 @@ class SeededTickEventTapeMetadata(ContractModel):
             f"{field_path}.state_snapshot_capture",
             SIMULATION_ERROR_FACTORY,
         )
+
         try:
             capture = SeededTickEventStateSnapshotCapture(raw_capture)
         except ValueError as e:
@@ -726,7 +776,7 @@ class SeededTickEventTapeMetadata(ContractModel):
                 SIMULATION_ERROR_FACTORY,
             ),
             state_snapshot_capture=capture,
-            state_snapshot_capture_point_policy=cast(Optional[str], raw_capture_policy),
+            state_snapshot_capture_point_policy=raw_capture_policy,
         )
 
 
@@ -764,6 +814,7 @@ class SeededFinePathMetadata(ContractModel):
             f"{field_path}.state_snapshot_capture",
             SIMULATION_ERROR_FACTORY,
         )
+
         try:
             capture = SeededTickEventStateSnapshotCapture(raw_capture)
         except ValueError as e:
@@ -812,7 +863,7 @@ class SeededFinePathMetadata(ContractModel):
                 SIMULATION_ERROR_FACTORY,
             ),
             state_snapshot_capture=capture,
-            state_snapshot_capture_point_policy=cast(Optional[str], raw_capture_policy),
+            state_snapshot_capture_point_policy=raw_capture_policy,
         )
 
 
@@ -844,6 +895,7 @@ class SeededFinePathRecord(ContractModel):
             f"{field_path}.transition_kind",
             SIMULATION_ERROR_FACTORY,
         )
+
         try:
             transition_kind = SeededFinePathTransitionKind(raw_transition_kind)
         except ValueError as e:
@@ -857,6 +909,7 @@ class SeededFinePathRecord(ContractModel):
 
         raw_side = raw_payload.get("side")
         side: Optional[SeededTickEventSide]
+
         if raw_side is None:
             side = None
         elif not isinstance(raw_side, str):
@@ -872,6 +925,7 @@ class SeededFinePathRecord(ContractModel):
 
         raw_news_arrival_component = raw_payload.get("news_arrival_component")
         news_arrival_component: Optional[SeededFinePathNewsArrivalComponent]
+
         if raw_news_arrival_component is None:
             news_arrival_component = None
         elif not isinstance(raw_news_arrival_component, str):
@@ -894,6 +948,7 @@ class SeededFinePathRecord(ContractModel):
             f"{field_path}.market_state",
             SIMULATION_ERROR_FACTORY,
         )
+
         try:
             market_state = MarketState(raw_market_state)
         except ValueError as e:
@@ -903,6 +958,7 @@ class SeededFinePathRecord(ContractModel):
             ) from e
 
         raw_state_snapshot = raw_payload.get("state_snapshot")
+
         state_snapshot = (
             SeededTickEventStateSnapshot.from_mapping(
                 raw_state_snapshot,

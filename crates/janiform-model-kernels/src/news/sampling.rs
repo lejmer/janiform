@@ -1,8 +1,4 @@
-use chrono::{DateTime, Utc};
-
 use janiform_foundations::randomness::SimulationRandomnessStream;
-
-use super::interface::ONE_SECOND_NANOS;
 
 pub(crate) fn sample_gamma_shape_scale<R>(
     shape_k: f64,
@@ -87,12 +83,4 @@ where
         .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
 
     -uniform_draw.ln() / rate
-}
-
-pub(crate) fn utc_timestamp_from_nanos(timestamp_utc_nanos: i64) -> Option<DateTime<Utc>> {
-    let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
-    let subsecond_nanos = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
-
-    DateTime::from_timestamp(seconds, subsecond_nanos)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
 }

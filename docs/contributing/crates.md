@@ -23,20 +23,20 @@ When editing a crate's `Cargo.toml`, check whether any dependency points at anot
 
 Put new Rust behavior in the crate that owns the domain:
 
-| Crate or crate family | Owns |
-| --- | --- |
-| `janiform-foundations` | Foundational contracts and small shared primitives. |
-| `janiform-model-kernels` | Stochastic model kernels. |
-| `janiform-engine-*` | Pricing, simulation, and sufficient-statistics execution. Sufficient statistics are compact path summaries used by downstream engines instead of replaying every simulated tick. |
-| `janiform-market-time` | Reusable market calendar and market-time behavior. |
-| `janiform-calibration-artifacts` | Calibration artifacts and serialized calibration contracts. |
-| `janiform-calibration-runtime` | Calibration execution. |
-| `janiform-validation` | Model validation. |
-| `janiform-verification` | Verification harnesses and cross-engine checks. |
-| `janiform-governance` and `janiform-governance-bench` | Performance baselines, benchmark policies, benchmark execution support, and drift reports used to decide whether model/runtime behavior has changed acceptably. |
-| `janiform-workflows` | Workflow orchestration for fitting, simulation, pricing, validation, generated artifacts, and shared progress/event reporting. |
-| `janiform-cli` | Command parsing and terminal command behavior. |
-| `janiform-pybind` | Python bindings. |
+| Crate or crate family                                 | Owns                                                                                                                                                                             |
+|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `janiform-foundations`                                | Foundational contracts and small shared primitives.                                                                                                                              |
+| `janiform-model-kernels`                              | Stochastic model kernels.                                                                                                                                                        |
+| `janiform-engine-*`                                   | Pricing, simulation, and sufficient-statistics execution. Sufficient statistics are compact path summaries used by downstream engines instead of replaying every simulated tick. |
+| `janiform-market-time`                                | Reusable market calendar and market-time behavior.                                                                                                                               |
+| `janiform-calibration-artifacts`                      | Calibration artifacts and serialized calibration contracts.                                                                                                                      |
+| `janiform-calibration-runtime`                        | Calibration execution.                                                                                                                                                           |
+| `janiform-validation`                                 | Model validation.                                                                                                                                                                |
+| `janiform-verification`                               | Verification harnesses and cross-engine checks.                                                                                                                                  |
+| `janiform-governance` and `janiform-governance-bench` | Performance baselines, benchmark policies, benchmark execution support, and drift reports used to decide whether model/runtime behavior has changed acceptably.                  |
+| `janiform-workflows`                                  | Workflow orchestration for fitting, simulation, pricing, validation, generated artifacts, and shared progress/event reporting.                                                   |
+| `janiform-cli`                                        | Command parsing and terminal command behavior.                                                                                                                                   |
+| `janiform-pybind`                                     | Python bindings.                                                                                                                                                                 |
 
 If the behavior is useful to more than one downstream crate, move it to the lowest appropriate shared crate instead of adding duplicate helpers.
 

@@ -1,4 +1,5 @@
 mod support;
+
 use std::sync::{LazyLock, Mutex};
 
 use support::shared::{
@@ -273,6 +274,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
     let _guard = JOINT_REFINEMENT_WORKER_ENV_LOCK
         .lock()
         .expect("joint-refinement worker environment lock should be available");
+
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
@@ -288,6 +290,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         None,
     )
     .run_spec;
+
     let return_components_report = run_return_components_calibration_stage(
         &memory_run_spec,
         &calendar_registry,
@@ -298,6 +301,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
     );
+
     let return_components_payload = return_components_report
         .fitted_stage_payload
         .expect("return-components stage fixture should produce fitted payload");
@@ -310,6 +314,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                 day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                 day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
             },
             hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
@@ -322,12 +327,16 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(1),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
+            option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
             option_pricing_input: None,
         },
     );
+
     let disk_report = run_joint_refinement_calibration_stage(
         &disk_run_spec,
         &calendar_registry,
@@ -335,6 +344,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
@@ -355,23 +365,18 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                     payload: Some(build_mean_reversion_stage_success_payload()),
                 },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(1),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
+            option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
             option_pricing_input: None,
         },
     );
 
-    assert_eq!(
-        memory_report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{memory_report:#?}"
-    );
-    assert_eq!(
-        disk_report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{disk_report:#?}"
-    );
+    assert!(memory_report.status.is_successful(), "{memory_report:#?}");
+    assert!(disk_report.status.is_successful(), "{disk_report:#?}");
 }
 
 #[test]
@@ -410,6 +415,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
@@ -424,8 +430,11 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
+                    treat_inadmissible_calibration_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
+                    option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
                     option_pricing_input: None,
                 },
@@ -439,6 +448,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                         intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
                         day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
                     },
                     hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
@@ -453,8 +463,11 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
+                    treat_inadmissible_calibration_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
+                    option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
                     option_pricing_input: None,
                 },
@@ -483,70 +496,68 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
 
 #[test]
 fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_is_unavailable() {
-    with_joint_refinement_worker_executable_override(
-        std::env::temp_dir().join("missing-janiform-joint-refinement-worker"),
-        || {
-            let calendar_registry = calibration_stage_test_registry();
+    let calendar_registry = calibration_stage_test_registry();
 
-            let seasonality_payload = build_seasonality_stage_success_payload();
-            let hawkes_payload = build_hawkes_stage_success_payload();
-            let return_components_payload = run_return_components_calibration_stage(
-                &build_run_contract_with_mode_and_resume(
-                    "run-joint-stage-missing-worker",
-                    CalibrationExecutionMode::Memory,
-                    None,
-                )
-                .run_spec,
-                &calendar_registry,
-                ReturnComponentsStageExecutionInput {
-                    activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
-                        payload: hawkes_payload.clone(),
-                    },
-                    candidate_generation_input:
-                        return_components_stage_candidate_generation_fixture(),
-                },
-            )
-            .fitted_stage_payload
-            .expect("return-components fixture should produce fitted payload");
-
-            let report = run_joint_refinement_calibration_stage(
-                &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
-                &calendar_registry,
-                JointRefinementStageExecutionInput {
-                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-                        day_of_week_factor: seasonality_payload.day_of_week_factor,
-                        day_of_year_factor: seasonality_payload.day_of_year_factor,
-                    },
-                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
-                        payload: hawkes_payload,
-                    },
-                    return_components_input:
-                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
-                            payload: return_components_payload,
-                        },
-                    mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
-                        payload: build_mean_reversion_stage_success_payload(),
-                    },
-                    candidate_generation_input:
-                        return_components_stage_candidate_generation_fixture(),
-                    restart_candidate_budget_override: Some(1),
-                    option_refinement_candidate_count_override: Some(1),
-                    audit_option_pricing_enabled: false,
-                    option_pricing_input: None,
-                },
-            );
-
-            assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
-            assert!(matches!(
-                report.failure,
-                Some(JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
-                    ref error_message,
-                }) if error_message.contains("worker executable path does not exist")
-            ));
+    let seasonality_payload = build_seasonality_stage_success_payload();
+    let hawkes_payload = build_hawkes_stage_success_payload();
+    let return_components_payload = run_return_components_calibration_stage(
+        &build_run_contract_with_mode_and_resume(
+            "run-joint-stage-missing-worker",
+            CalibrationExecutionMode::Memory,
+            None,
+        )
+        .run_spec,
+        &calendar_registry,
+        ReturnComponentsStageExecutionInput {
+            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                payload: hawkes_payload.clone(),
+            },
+            candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
+    )
+    .fitted_stage_payload
+    .expect("return-components fixture should produce fitted payload");
+
+    let run_spec = joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1);
+    let stage_input = JointRefinementStageExecutionInput {
+        seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+            intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+            intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+            hour_of_week_factor: seasonality_payload.hour_of_week_factor,
+            day_of_week_factor: seasonality_payload.day_of_week_factor,
+            day_of_year_factor: seasonality_payload.day_of_year_factor,
+        },
+        hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+            payload: hawkes_payload,
+        },
+        return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+            payload: return_components_payload,
+        },
+        mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+            payload: build_mean_reversion_stage_success_payload(),
+        },
+        candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        calibration_effort: None,
+        restart_candidate_budget_override: Some(1),
+        treat_inadmissible_calibration_warning_as_error: false,
+        option_refinement_candidate_count_override: Some(1),
+        option_refinement_wall_clock_budget_millis: None,
+        audit_option_pricing_enabled: false,
+        option_pricing_input: None,
+    };
+
+    let report = with_joint_refinement_worker_executable_override(
+        std::env::temp_dir().join("missing-janiform-joint-refinement-worker"),
+        || run_joint_refinement_calibration_stage(&run_spec, &calendar_registry, stage_input),
     );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+    assert!(matches!(
+        report.failure,
+        Some(JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
+            ref error_message,
+        }) if error_message.contains("worker executable path does not exist")
+    ));
 }
 
 #[test]
@@ -584,6 +595,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
             seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
@@ -597,8 +609,11 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(1),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
+            option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
             option_pricing_input: Some(option_pricing_input),
         },
@@ -643,6 +658,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
             seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                 intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
                 intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
@@ -656,8 +672,11 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            calibration_effort: None,
             restart_candidate_budget_override: Some(0),
+            treat_inadmissible_calibration_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
+            option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
             option_pricing_input: None,
         },
@@ -802,7 +821,7 @@ fn hawkes_stage_execution_reports_constraint_violations_for_invalid_candidates()
 }
 
 #[test]
-fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_outputs() {
+fn hawkes_stage_keeps_subcritical_candidates_stable_under_baseline_seasonality() {
     let calendar_registry = calibration_stage_test_registry();
 
     let mut seasonality_payload = build_seasonality_stage_success_payload();
@@ -844,17 +863,12 @@ fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_ou
         .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
         .expect("selected candidate should be present in diagnostics");
 
-    assert!(
-        fitted_stage_payload
-            .selected_candidate_id
-            .contains("_refined_")
-    );
-    assert!(original_candidate.constraint_violation_count > 0);
+    assert_eq!(original_candidate.constraint_violation_count, 0);
     assert!(
         original_candidate
-            .warnings
-            .iter()
-            .any(|warning: &String| warning.contains("effective branching ratio"))
+            .implied_metrics
+            .max_runtime_effective_branching_ratio
+            < 1.0
     );
     assert_eq!(selected_candidate.constraint_violation_count, 0);
     assert!(
@@ -866,7 +880,7 @@ fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_ou
 }
 
 #[test]
-fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelope() {
+fn hawkes_stage_tracks_unobserved_runtime_seasonality_without_branching_constraint() {
     let calendar_registry = calibration_stage_test_registry();
 
     let mut seasonality_payload = build_seasonality_stage_success_payload();
@@ -913,23 +927,20 @@ fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelo
         .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
         .expect("selected candidate should be present in diagnostics");
 
-    assert!(
-        fitted_stage_payload
-            .selected_candidate_id
-            .contains("_refined_")
-    );
-    assert!(original_candidate.constraint_violation_count > 0);
+    assert_eq!(original_candidate.constraint_violation_count, 0);
     assert_eq!(
         original_candidate
             .implied_metrics
             .max_runtime_hourly_seasonality_factor,
         3.0
     );
-    assert!(
+    assert_eq!(
         original_candidate
-            .warnings
-            .iter()
-            .any(|warning: &String| warning.contains("effective branching ratio"))
+            .implied_metrics
+            .max_runtime_effective_branching_ratio,
+        original_candidate
+            .implied_metrics
+            .endogenous_branching_ratio
     );
     assert_eq!(selected_candidate.constraint_violation_count, 0);
     assert!(
@@ -1011,10 +1022,7 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
         (high_loss
             .implied_metrics
             .max_runtime_effective_branching_ratio
-            - high_loss
-                .implied_metrics
-                .max_runtime_hourly_seasonality_factor
-                * high_loss.implied_metrics.endogenous_branching_ratio)
+            - high_loss.implied_metrics.endogenous_branching_ratio)
             .abs()
             < 1.0e-12
     );

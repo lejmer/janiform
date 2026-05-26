@@ -1,6 +1,7 @@
 //! Seeded simulation run configuration contracts and validation.
 
 use chrono::{DateTime, Utc};
+use janiform_foundations::time::{duration_hours_to_nanos, duration_nanos_to_hours};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
@@ -11,10 +12,11 @@ use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
-    NANOS_PER_HOUR, SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
+    SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
 };
 use super::error::SeededTickSimulationRunError;
 use super::runtime::{
@@ -133,6 +135,12 @@ pub struct SeededTickSimulationModelInputs {
     /// Interval-aligned hourly factors (`s_h`, `nu_h`) used by the simulator.
     pub hourly_factor_contract: HourlyFactorContractOutput,
 
+    /// Exposure parameters mapping endogenous activity into return-clock time.
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+
+    /// Optional reference-price-normalized observed-price tick size for tick-grid rounding.
+    pub observed_price_tick_size: Option<f64>,
+
     /// Calendar registry used to resolve open and closed market states.
     pub calendar_registry: ExchangeCalendarRegistry,
 }
@@ -187,8 +195,6 @@ impl SeededTickSimulationRunConfig {
     }
 
     pub fn validate(&self) -> Result<(), SeededTickSimulationRunError> {
-        const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
-
         if self.horizon_interval_count == 0 {
             return Err(SeededTickSimulationRunError::InvalidHorizonIntervalCount { value: 0 });
         }
@@ -213,21 +219,41 @@ impl SeededTickSimulationRunConfig {
             expected_interval_count,
             hourly_factor_contract.interval_start_utc_nanos.len(),
         )?;
+
         validate_hourly_factor_field_length(
             "interval_end_utc_nanos",
             expected_interval_count,
             hourly_factor_contract.interval_end_utc_nanos.len(),
         )?;
+
         validate_hourly_factor_field_length(
             "s_h",
             expected_interval_count,
             hourly_factor_contract.s_h.len(),
         )?;
+
         validate_hourly_factor_field_length(
             "nu_h",
             expected_interval_count,
             hourly_factor_contract.nu_h.len(),
         )?;
+
+        self.model_inputs
+            .return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidReturnClockExposureParameters {
+                    source: Box::new(source),
+                }
+            })?;
+
+        if let Some(tick_size) = self.model_inputs.observed_price_tick_size
+            && !super::runtime::is_valid_observed_price_tick_size(tick_size)
+        {
+            return Err(SeededTickSimulationRunError::InvalidObservedPriceTickSize {
+                value: tick_size,
+            });
+        }
 
         if self.horizon_interval_count > expected_interval_count {
             return Err(
@@ -243,6 +269,7 @@ impl SeededTickSimulationRunConfig {
                 value: self.start_time_utc,
             },
         )?;
+
         let first_interval_start_utc_nanos = hourly_factor_contract.interval_start_utc_nanos[0];
 
         if start_time_utc_nanos != first_interval_start_utc_nanos {
@@ -268,6 +295,7 @@ impl SeededTickSimulationRunConfig {
                     source: Box::new(source),
                 }
             })?;
+
         self.model_inputs
             .mean_reversion_runtime_interval_anchors
             .validate()
@@ -276,6 +304,7 @@ impl SeededTickSimulationRunConfig {
                     source: Box::new(source),
                 }
             })?;
+
         self.model_inputs
             .initial_mean_reversion_boundary_state
             .validate()
@@ -310,9 +339,7 @@ impl SeededTickSimulationRunConfig {
         }
 
         let initial_boundary_state = &self.model_inputs.initial_mean_reversion_boundary_state;
-        if (initial_boundary_state.anchor_value - runtime_interval_anchors.start_anchor_value).abs()
-            > MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        {
+        if initial_boundary_state.anchor_value != runtime_interval_anchors.start_anchor_value {
             return Err(
                 SeededTickSimulationRunError::MeanReversionBoundaryStateStartAnchorMismatch {
                     boundary_anchor_value: initial_boundary_state.anchor_value,
@@ -322,15 +349,13 @@ impl SeededTickSimulationRunConfig {
         }
 
         for interval_index in 0..self.horizon_interval_count {
-            let expected_interval_delta = (hourly_factor_contract.interval_end_utc_nanos
+            let expected_interval_delta_nanos = hourly_factor_contract.interval_end_utc_nanos
                 [interval_index]
-                - hourly_factor_contract.interval_start_utc_nanos[interval_index])
-                as f64
-                / NANOS_PER_HOUR as f64;
+                - hourly_factor_contract.interval_start_utc_nanos[interval_index];
+            let expected_interval_delta = duration_nanos_to_hours(expected_interval_delta_nanos);
             let observed_interval_delta = runtime_interval_anchors.interval_deltas[interval_index];
-            if (observed_interval_delta - expected_interval_delta).abs()
-                > MEAN_REVERSION_ALIGNMENT_TOLERANCE
-            {
+            let observed_interval_delta_nanos = duration_hours_to_nanos(observed_interval_delta);
+            if observed_interval_delta_nanos != Ok(expected_interval_delta_nanos) {
                 return Err(
                     SeededTickSimulationRunError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
                         interval_index,
@@ -341,18 +366,12 @@ impl SeededTickSimulationRunConfig {
             }
         }
 
-        if let Some((
-            max_seasonality_factor,
-            spectral_radius_alpha_over_beta,
-            effective_branching_ratio,
-        )) = compute_max_effective_endogenous_branching_ratio(
-            self.model_inputs.kernel_parameters,
-            &hourly_factor_contract.s_h[..self.horizon_interval_count],
-        ) && effective_branching_ratio >= 1.0
+        if let Some((spectral_radius_alpha_over_beta, effective_branching_ratio)) =
+            compute_max_effective_endogenous_branching_ratio(self.model_inputs.kernel_parameters)
+            && effective_branching_ratio >= 1.0
         {
             return Err(
                 SeededTickSimulationRunError::SeasonalityScaledEndogenousInstability {
-                    max_seasonality_factor,
                     spectral_radius_alpha_over_beta,
                     effective_branching_ratio,
                 },
@@ -367,6 +386,7 @@ impl SeededTickSimulationRunConfig {
                     source: Box::new(source),
                 }
             })?;
+
         self.model_inputs
             .news_process_configuration
             .validate()

@@ -12,6 +12,7 @@ from janiform.pricing import (
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingKernelParameters,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -19,6 +20,7 @@ from janiform.pricing import (
     VanillaOptionSurfacePricingExecutionInput,
     VanillaOptionSurfacePricingRequest,
 )
+from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
 from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
@@ -203,6 +205,8 @@ def _build_model_parameters() -> VanillaOptionPricingModelParameters:
             mu=0.1,
             delta_beta=-0.2,
         ),
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
     )
 
 

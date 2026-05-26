@@ -31,6 +31,7 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 - [janiform-test-support](https://github.com/lejmer/janiform/blob/main/crates/janiform-test-support): Shared Rust test support for Janiform workspace fixtures. Not published independently.
 - [janiform-validation](https://github.com/lejmer/janiform/blob/main/crates/janiform-validation): Model validation domains for Janiform.
 - [janiform-verification](https://github.com/lejmer/janiform/blob/main/crates/janiform-verification): Verification and regression domains for Janiform.
+- [janiform-work-scheduler](https://github.com/lejmer/janiform/blob/main/crates/janiform-work-scheduler): Shared bounded work scheduling for Janiform.
 - [janiform-workflows](https://github.com/lejmer/janiform/blob/main/crates/janiform-workflows): Shared workflow orchestration for Janiform entrypoints.
 
 Most Janiform workspace crates are internal implementation details and evolve together inside this

@@ -3,6 +3,7 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     evolve_mean_reversion_boundary_state_on_interval_grid,
     evolve_mean_reversion_boundary_state_with_endogenous_pressure,
+    evolve_mean_reversion_deviation_with_decay_on_interval_grid,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 
@@ -10,7 +11,7 @@ use janiform_model_kernels::mean_reversion::{
 fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
     let fitted_parameters = MeanReversionFittedParameters::try_new(
         0.25,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 1.25),
+        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),
     )
     .expect("mean reversion fitted parameters should validate");
 
@@ -22,7 +23,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
         serde_json::json!({
             "reference_interval_hours": 24.0,
             "pressure_persistence_per_reference_interval": 0.5,
-            "pressure_level_gain": 1.25,
+            "pressure_level_gain": 0.75,
         })
     );
 
@@ -70,6 +71,25 @@ fn endogenous_mean_reversion_anchor_model_rejects_unknown_fields() {
 }
 
 #[test]
+fn endogenous_mean_reversion_anchor_model_rejects_pressure_gain_outside_unit_interval() {
+    for pressure_level_gain in [-0.1, 1.1] {
+        let error = MeanReversionAnchorModel::endogenous_core_pressure_level(
+            24.0,
+            0.5,
+            pressure_level_gain,
+        )
+        .validate()
+        .expect_err("pressure-level gain outside the unit interval must fail validation");
+
+        assert!(
+            error
+                .to_string()
+                .contains("pressure_level_gain must lie in [0, 1]")
+        );
+    }
+}
+
+#[test]
 fn mean_reversion_runtime_interval_anchors_validate_alignment_metadata() {
     let runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
         "explicit_runtime_interval_grid_alignment.v1",
@@ -105,6 +125,14 @@ fn mean_reversion_interval_grid_evolution_matches_anchor_deviation_formula() {
     let boundary_state = MeanReversionBoundaryState::try_new(1.5, 1.0, 0.2, 0.5)
         .expect("boundary state should construct");
 
+    let precomputed_deviation = evolve_mean_reversion_deviation_with_decay_on_interval_grid(
+        0.5,
+        (-0.8_f64).exp(),
+        0.25,
+        1.0,
+        1.25,
+    )
+    .expect("precomputed deviation update should succeed");
     let evolved_state = evolve_mean_reversion_boundary_state_on_interval_grid(
         boundary_state,
         0.4,
@@ -115,7 +143,8 @@ fn mean_reversion_interval_grid_evolution_matches_anchor_deviation_formula() {
     )
     .expect("interval-grid state update should succeed");
 
-    let expected_deviation = (-0.8_f64).exp() * 0.5 + 0.25 + 1.0 - 1.25;
+    let expected_deviation = (-0.8_f64).exp().mul_add(0.5, 0.25 + 1.0 - 1.25);
+    assert_eq!(precomputed_deviation, expected_deviation);
     assert!((evolved_state.deviation - expected_deviation).abs() < 1.0e-12);
     assert!((evolved_state.observed_log_price - (1.25 + expected_deviation)).abs() < 1.0e-12);
     assert_eq!(evolved_state.pressure_state, 0.35);
@@ -148,7 +177,7 @@ fn endogenous_pressure_state_evolution_matches_canonical_recursion() {
         .expect("boundary state should construct");
     let fitted_parameters = MeanReversionFittedParameters::try_new(
         0.4,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(2.0, 0.5, 2.0),
+        MeanReversionAnchorModel::endogenous_core_pressure_level(2.0, 0.5, 1.0),
     )
     .expect("pressure-to-level mean reversion parameters should validate");
 
@@ -162,7 +191,7 @@ fn endogenous_pressure_state_evolution_matches_canonical_recursion() {
     .expect("pressure-to-level state update should succeed");
 
     let expected_pressure_state = 0.5_f64 * 0.1 + (1.0 - 0.5_f64) * 0.25;
-    let expected_anchor_value = 1.0 + 2.0 * (expected_pressure_state - 0.1);
+    let expected_anchor_value = 1.0 + (expected_pressure_state - 0.1);
     let expected_deviation = (-0.8_f64).exp() * 0.5 + 0.25 + 1.0 - expected_anchor_value;
 
     assert!((evolved_state.pressure_state - expected_pressure_state).abs() < 1.0e-12);
@@ -172,7 +201,7 @@ fn endogenous_pressure_state_evolution_matches_canonical_recursion() {
 
 #[test]
 fn endogenous_pressure_level_anchor_materialization_tracks_pressure_state_and_anchor_level() {
-    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(1.0, 0.5, 2.0);
+    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(1.0, 0.5, 1.0);
 
     let runtime_interval_anchors =
         materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
@@ -188,7 +217,7 @@ fn endogenous_pressure_level_anchor_materialization_tracks_pressure_state_and_an
     assert_eq!(runtime_interval_anchors.start_anchor_value, 0.0);
     assert_eq!(runtime_interval_anchors.start_pressure_state, 0.0);
     assert!((runtime_interval_anchors.end_pressure_states[0] - 0.5).abs() < 1.0e-12);
-    assert!((runtime_interval_anchors.end_anchor_values[0] - 1.0).abs() < 1.0e-12);
+    assert!((runtime_interval_anchors.end_anchor_values[0] - 0.5).abs() < 1.0e-12);
     assert!((runtime_interval_anchors.end_pressure_states[1] - 1.75).abs() < 1.0e-12);
-    assert!((runtime_interval_anchors.end_anchor_values[1] - 3.5).abs() < 1.0e-12);
+    assert!((runtime_interval_anchors.end_anchor_values[1] - 1.75).abs() < 1.0e-12);
 }

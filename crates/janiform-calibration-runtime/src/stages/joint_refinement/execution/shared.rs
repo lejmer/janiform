@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use chrono::{DateTime, Utc};
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_market_time::calendar::{
@@ -14,6 +16,16 @@ pub(crate) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
         .iter()
         .map(|value| value.to_bits())
         .collect::<Vec<_>>()
+}
+
+pub(crate) fn planned_restart_work_item_labels<'a>(
+    restart_ids: impl IntoIterator<Item = &'a str>,
+) -> Vec<String> {
+    restart_ids.into_iter().map(str::to_string).collect()
+}
+
+pub(crate) fn elapsed_millis(started_at: Instant) -> u64 {
+    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }
 
 pub(crate) fn deduplicate_restart_seed_candidates(
@@ -62,15 +74,6 @@ pub(crate) fn halton_parameter_vector(
 
 pub(crate) fn build_halton_restart_id(position: usize) -> String {
     format!("halton_{position:02}")
-}
-
-pub(crate) fn clamp_in_place(values: &mut [f64], lower_bounds: &[f64], upper_bounds: &[f64]) {
-    for (value, (lower_bound, upper_bound)) in values
-        .iter_mut()
-        .zip(lower_bounds.iter().zip(upper_bounds.iter()))
-    {
-        *value = value.clamp(*lower_bound, *upper_bound);
-    }
 }
 
 pub(crate) fn with_joint_refinement_thread_pool<T, F>(

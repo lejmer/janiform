@@ -39,7 +39,7 @@ pub struct FitWorkflowOutput {
     pub execution_duration: Duration,
 }
 
-/// Human completion view for a fit workflow.
+/// Terminal completion view for a fit workflow.
 #[derive(Debug)]
 pub(super) enum FitCompletionView {
     /// Successful completion summary.
@@ -48,7 +48,7 @@ pub(super) enum FitCompletionView {
     Failure(FailureBlock),
 }
 
-/// Build the human start summary for a fit workflow.
+/// Build the terminal start summary for a fit workflow.
 pub(super) fn fit_start_summary(
     execution_input: &CalibrationStagedExecutionInput,
     input_paths: &[String],
@@ -64,7 +64,7 @@ pub(super) fn fit_start_summary(
     )
 }
 
-/// Build the human start summary once preparation inputs are resolved.
+/// Build the terminal start summary once preparation inputs are resolved.
 pub(super) fn fit_preparation_start_summary(
     preparation_request: &CalibrationMarketDataPreparationRequest,
     paths: &FitWorkflowPaths,
@@ -93,7 +93,7 @@ pub fn fit_completion_json_payload(
         "command_id": FIT_RUN_COMMAND_ID,
         "run_id": execution_input.request.run_id,
         "status": report.status,
-        "model_path": (report.status == CalibrationStageExecutionStatus::Success).then_some(&paths.model_path),
+        "model_path": report.status.is_successful().then_some(&paths.model_path),
         "report_path": paths.report_path,
         "event_log_path": event_log_path,
         "checkpoint_count": report.emitted_checkpoints.len(),
@@ -106,14 +106,14 @@ pub fn fit_completion_json_payload(
     })
 }
 
-/// Build the human completion view for a fit workflow.
+/// Build the terminal completion view for a fit workflow.
 pub(super) fn fit_completion_view(
     report: &CalibrationStagedRunReport,
     paths: &FitWorkflowPaths,
     event_log_path: &Path,
     execution_duration: Duration,
 ) -> Result<FitCompletionView, WorkflowError> {
-    if report.status == CalibrationStageExecutionStatus::Success {
+    if report.status.is_successful() {
         return Ok(FitCompletionView::Success(success_summary(
             report,
             paths,
@@ -136,7 +136,11 @@ fn success_summary(
     execution_duration: Duration,
 ) -> CompletionSummary {
     CompletionSummary {
-        status: CompletionSummaryStatus::Succeeded,
+        status: if report.status == CalibrationStageExecutionStatus::SuccessWithWarnings {
+            CompletionSummaryStatus::SucceededWithWarnings
+        } else {
+            CompletionSummaryStatus::Succeeded
+        },
         title: format!(
             "Fit completed in {}",
             format_elapsed_label(execution_duration)
@@ -146,14 +150,7 @@ fn success_summary(
             KeyValueRow::new("Report", format_artifact_path(paths.report_path.as_path())),
             KeyValueRow::new("Events", format_artifact_path(event_log_path)),
             KeyValueRow::new("Checkpoints", report.emitted_checkpoints.len().to_string()),
-            KeyValueRow::new(
-                "Resume",
-                report
-                    .resumed_from_checkpoint_reference
-                    .as_deref()
-                    .unwrap_or("not used")
-                    .to_string(),
-            ),
+            KeyValueRow::new("Resume", resume_availability(report)),
         ],
     }
 }
@@ -290,3 +287,6 @@ fn input_paths_summary(input_paths: &[String]) -> String {
 fn input_path_parts(input_path: &str) -> (&str, &str) {
     input_path.split_once(": ").unwrap_or(("input", input_path))
 }
+
+#[cfg(test)]
+mod tests;

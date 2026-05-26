@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::hashing::Fnv1a64Hasher;
 use serde::Serialize;
 
 use super::calendar_buckets::{
@@ -905,7 +906,7 @@ fn build_reproducibility_metadata(
 fn build_input_snapshot_fingerprint(
     report_input: &SeasonalityDiagnosticsReportInput<'_>,
 ) -> String {
-    let mut hash = 14_695_981_039_346_656_037_u64;
+    let mut hash = Fnv1a64Hasher::new();
 
     hash_with_text(&mut hash, report_input.dataset_id);
     hash_with_text(&mut hash, report_input.input_schema_version);
@@ -937,34 +938,30 @@ fn build_input_snapshot_fingerprint(
         hash_with_u8(&mut hash, *market_state_code);
     }
 
-    format!("{hash:016x}")
+    hash.finish_hex_lowercase()
 }
 
-fn hash_with_text(hash: &mut u64, text_value: &str) {
+fn hash_with_text(hash: &mut Fnv1a64Hasher, text_value: &str) {
     hash_with_u64(hash, text_value.len() as u64);
     hash_with_bytes(hash, text_value.as_bytes());
 }
 
-fn hash_with_u8(hash: &mut u64, value: u8) {
+fn hash_with_u8(hash: &mut Fnv1a64Hasher, value: u8) {
     hash_with_bytes(hash, &[value]);
 }
 
-fn hash_with_u16(hash: &mut u64, value: u16) {
+fn hash_with_u16(hash: &mut Fnv1a64Hasher, value: u16) {
     hash_with_bytes(hash, &value.to_le_bytes());
 }
 
-fn hash_with_u64(hash: &mut u64, value: u64) {
+fn hash_with_u64(hash: &mut Fnv1a64Hasher, value: u64) {
     hash_with_bytes(hash, &value.to_le_bytes());
 }
 
-fn hash_with_i64(hash: &mut u64, value: i64) {
+fn hash_with_i64(hash: &mut Fnv1a64Hasher, value: i64) {
     hash_with_bytes(hash, &value.to_le_bytes());
 }
 
-fn hash_with_bytes(hash: &mut u64, raw_bytes: &[u8]) {
-    const FNV_PRIME: u64 = 1_099_511_628_211;
-    for raw_byte in raw_bytes {
-        *hash ^= u64::from(*raw_byte);
-        *hash = hash.wrapping_mul(FNV_PRIME);
-    }
+fn hash_with_bytes(hash: &mut Fnv1a64Hasher, raw_bytes: &[u8]) {
+    hash.update(raw_bytes);
 }

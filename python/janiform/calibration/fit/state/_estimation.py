@@ -22,7 +22,7 @@ from .._runtime.payloads import (
     hawkes_kernel_parameters_for_model,
     mean_reversion_fitted_parameters_for_model,
 )
-from .._runtime.option_pricing.support import price_observed_log_price_from_spot
+from .._runtime.option_pricing.support import price_observed_log_return_from_spot
 from .contracts import CurrentStateEstimationRequest, CurrentStateEstimationResult
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ def estimate_current_state_for_model(
         if request.observed_price is not None
         else observed_trade_prices[-1]
     )
-    observed_log_price = price_observed_log_price_from_spot(
+    observed_log_return = price_observed_log_return_from_spot(
         model,
         spot=observed_price,
     )
@@ -66,7 +66,7 @@ def estimate_current_state_for_model(
         hawkes_kernel_parameters_for_model(model).to_payload(),
         mean_reversion_fitted_parameters_for_model(model).to_payload(),
         datetime_to_utc_nanos(state_time_utc),
-        observed_log_price,
+        observed_log_return,
         observed_timestamps_utc,
         observed_trade_prices,
         observed_trade_sides,

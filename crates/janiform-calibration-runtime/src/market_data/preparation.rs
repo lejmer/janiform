@@ -4,13 +4,16 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationRunDataInputs, CalibrationRunSeedSettings,
-    CalibrationRunSpec, CalibrationStage, CalibrationStageSolverSettings,
+    CalibrationEffortOptions, CalibrationExecutionMode, CalibrationObjectivePolicy,
+    CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageSolverSettings,
 };
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
 use janiform_foundations::numeric::coverage_ratio;
-use janiform_foundations::time::{NANOS_PER_HOUR_F64, duration_nanos_to_hours, format_utc_nanos};
+use janiform_foundations::time::{
+    NANOS_PER_HOUR_F64, duration_nanos_to_hours, format_utc_nanos, parse_utc_datetime,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -159,9 +162,19 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub dynamics_search_restart_candidate_budget: Option<usize>,
     #[serde(default)]
+    pub calibration_effort: Option<CalibrationEffortOptions>,
+    #[serde(default)]
+    pub treat_calibration_warnings_as_errors: bool,
+    #[serde(default)]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     #[serde(default)]
+    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
+    #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
+    #[serde(default)]
+    pub stylized_fact_huber_cutoff: Option<f64>,
+    #[serde(default)]
+    pub stylized_fact_admissibility_z_threshold: Option<f64>,
     #[serde(default)]
     pub known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
     #[serde(default)]
@@ -248,6 +261,19 @@ fn validate_joint_refinement_option_refinement_candidate_count_override(
     Ok(())
 }
 
+fn validate_joint_refinement_option_refinement_wall_clock_budget(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if request.joint_refinement_option_refinement_wall_clock_budget_millis == Some(0) {
+        return Err(CalibrationMarketDataPreparationError::from(
+            "joint_refinement_option_refinement_wall_clock_budget_millis must be greater than zero when provided"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn validate_dynamics_search_restart_candidate_budget(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Result<(), CalibrationMarketDataPreparationError> {
@@ -256,6 +282,18 @@ fn validate_dynamics_search_restart_candidate_budget(
             "dynamics_search_restart_candidate_budget must be greater than zero when provided"
                 .to_string(),
         ));
+    }
+
+    Ok(())
+}
+
+fn validate_calibration_effort(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if let Some(calibration_effort) = request.calibration_effort {
+        calibration_effort.validate().map_err(|source| {
+            CalibrationMarketDataPreparationError::from(format!("calibration_effort {source}"))
+        })?;
     }
 
     Ok(())
@@ -298,7 +336,9 @@ pub fn prepare_market_data_calibration_plan(
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
+    validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
@@ -324,7 +364,9 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
+    validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
@@ -360,13 +402,22 @@ fn selected_stages_for_scope(
         CalibrationMarketDataWorkflowScope::SeasonalityOnly => {
             vec![CalibrationStage::Seasonality]
         }
-        CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface
-        | CalibrationMarketDataWorkflowScope::FullWithOptionSurface => vec![
+        CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface => vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
+            CalibrationStage::Finalization,
+        ],
+        CalibrationMarketDataWorkflowScope::FullWithOptionSurface => vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+            CalibrationStage::OptionRefinement,
+            CalibrationStage::Finalization,
         ],
     }
 }
@@ -379,6 +430,26 @@ fn build_dataset_reference(run_id: &str, dataset_role: &str, provenance_label: &
         sanitize_ascii_identifier_component(provenance_label)
             .unwrap_or_else(|| "unknown".to_string())
     )
+}
+
+fn calibration_objective_policy_from_request(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<CalibrationObjectivePolicy, CalibrationMarketDataPreparationError> {
+    let default_policy = CalibrationObjectivePolicy::default();
+
+    CalibrationObjectivePolicy::try_new(
+        request
+            .stylized_fact_huber_cutoff
+            .unwrap_or(default_policy.stylized_fact_huber_cutoff),
+        request
+            .stylized_fact_admissibility_z_threshold
+            .unwrap_or(default_policy.admissibility_z_threshold),
+    )
+    .map_err(|source| {
+        CalibrationMarketDataPreparationError::from(format!(
+            "invalid calibration objective policy: {source}"
+        ))
+    })
 }
 
 fn stable_seed_from_run_id(run_id: &str) -> u64 {
@@ -829,10 +900,12 @@ fn selected_option_snapshot_nodes_from_loading_output(
             )));
         }
 
-        let observed_mid_price = match record.mid_price {
-            Some(mid_price) => mid_price,
-            None => 0.5 * (bid_price + ask_price),
-        };
+        let observed_mid_price = record.observed_mid_price().ok_or_else(|| {
+            CalibrationMarketDataPreparationError::from(format!(
+                "joint option calibration requires observed mid prices for option row {}",
+                record.source_row_number
+            ))
+        })?;
         if !observed_mid_price.is_finite() {
             return Err(CalibrationMarketDataPreparationError::from(format!(
                 "joint option calibration requires finite observed mid prices for option row {}",
@@ -919,12 +992,12 @@ fn joint_option_current_state_estimation_input(
                     .to_string(),
             )
         })?;
-    let observed_log_price = (observed_spot / reference_price).ln();
+    let observed_log_return = observed_spot.ln() - reference_price.ln();
 
     Ok(CalibrationJointRefinementCurrentStateEstimationInput {
         state_time_utc_nanos: valuation_time_utc_nanos,
         observed_spot,
-        observed_log_price,
+        observed_log_return,
         observation_timestamp_utc_nanos,
         observation_trade_prices,
         observation_trade_sides,
@@ -1289,7 +1362,9 @@ fn prepared_market_data_plan_from_loading_output(
     normalized_tick_output: MarketDataNormalizedTickOutput,
     loading_output: MarketDataLoadingOutput,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    let run_request = CalibrationRunSpec::try_new(
+    let objective_policy = calibration_objective_policy_from_request(&request)?;
+
+    let run_request = CalibrationRunSpec::builder(
         request.run_id.clone(),
         CalibrationRunDataInputs {
             exchange_code: request.session_configuration.exchange_code.clone(),
@@ -1310,6 +1385,8 @@ fn prepared_market_data_plan_from_loading_output(
         )
         .map_err(CalibrationMarketDataPreparationError::from)?,
     )
+    .with_objective_policy(objective_policy)
+    .build()
     .map_err(|source| {
         CalibrationMarketDataPreparationError::from(format!(
             "failed to build calibration run spec: {source}"
@@ -1340,8 +1417,13 @@ fn prepared_market_data_plan_from_loading_output(
         )?,
         joint_refinement_restart_candidate_budget_override: request
             .dynamics_search_restart_candidate_budget,
+        joint_refinement_calibration_effort: request.calibration_effort,
+        treat_inadmissible_calibration_warning_as_error: request
+            .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: request
             .joint_refinement_option_refinement_candidate_count_override,
+        joint_refinement_option_refinement_wall_clock_budget_millis: request
+            .joint_refinement_option_refinement_wall_clock_budget_millis,
         joint_refinement_audit_option_pricing_enabled: request
             .joint_refinement_audit_option_pricing_enabled,
         joint_refinement_option_pricing_input: joint_refinement_option_pricing_input_from_request(
@@ -1500,9 +1582,7 @@ fn prepared_market_data_plan_from_loading_output(
 fn parse_timestamp_utc(
     raw_timestamp: &str,
 ) -> Result<DateTime<Utc>, CalibrationMarketDataPreparationError> {
-    DateTime::parse_from_rfc3339(raw_timestamp)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(|_| {
+    parse_utc_datetime(raw_timestamp).map_err(|_| {
             CalibrationMarketDataPreparationError::from(format!(
                 "joint option calibration received invalid option_surface_valuation_time_utc: {raw_timestamp}"
             ))

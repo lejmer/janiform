@@ -13,8 +13,10 @@ from ....mean_reversion import (
 from ....pricing import (
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
+    VanillaOptionPricingKernelParameters,
     VanillaOptionPricingModelParameters,
 )
+from ....return_clock import ReturnClockExposureParameters
 from ....simulation.coarse import NewsProcessConfiguration
 from ....simulation.shared import HawkesExcitationState, HawkesKernelParameters
 
@@ -32,8 +34,10 @@ class PreparedModelRuntimeFactors:
     range_end_utc: datetime
     kernel_parameters: HawkesKernelParameters
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+    pricing_kernel_parameters: VanillaOptionPricingKernelParameters
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
+    return_clock_exposure_parameters: ReturnClockExposureParameters
 
 
 @dataclass(frozen=True, slots=True)

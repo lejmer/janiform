@@ -19,14 +19,14 @@ pub(super) fn resolve_pricing_boundary_state(
     request: &FittedModelSingleOptionPricingRequest,
     context: &FittedModelContext,
     boundary_hourly_factor_contract: &HourlyFactorContractOutput,
-    observed_log_price: f64,
+    observed_log_return: f64,
 ) -> Result<PricingBoundaryState, WorkflowError> {
     if let Some(excitation_state) = request.initial_excitation_state {
         let (_anchors, mean_reversion_boundary_state) = materialize_mean_reversion_runtime_inputs(
             context,
             boundary_hourly_factor_contract,
             excitation_state,
-            observed_log_price,
+            observed_log_return,
             context.interval_delta,
             1,
         )?;
@@ -52,8 +52,8 @@ pub(super) fn resolve_pricing_boundary_state(
     }
 
     let excitation_state = context
-        .hawkes_fitted_parameters
-        .kernel_parameters
+        .fitted_parameters
+        .pricing_hawkes_kernel_parameters()
         .stationary_excitation_state()
         .map_err(|source| validation_error("kernel_parameters", source.to_string()))?;
 
@@ -61,7 +61,7 @@ pub(super) fn resolve_pricing_boundary_state(
         context,
         boundary_hourly_factor_contract,
         excitation_state,
-        observed_log_price,
+        observed_log_return,
         context.interval_delta,
         1,
     )?;

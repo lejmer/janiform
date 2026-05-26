@@ -10,11 +10,10 @@ use super::constants::{
 use super::errors::{NigSharedPlusShiftConfigurationError, NigTradingTimeIncrementSamplingError};
 use super::parameters::NigParameters;
 use crate::risk_neutral::{
-    EsscherTransformError, NigEsscherTiltDomain, NigEsscherTransformationInput,
-    differentiate_nig_characteristic_exponent,
+    EsscherTransformError, NigEsscherTiltDomain, differentiate_nig_characteristic_exponent,
+    differentiate_nig_characteristic_exponent_wrt_argument,
     differentiate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument,
     differentiate_shifted_characteristic_exponent_wrt_theta,
-    transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 
@@ -146,9 +145,9 @@ pub struct NigSharedPlusShiftPureImaginaryLogMomentSensitivity {
 /// - `design/janiform_compact_model_spec.tex`, Section 5
 /// - `design/archive/janiform_design_brainstorm_notes.md`, Section 2.1
 ///
-/// The canonical return composition sign convention is:
+/// The canonical mean-compensated return composition sign convention is:
 /// \f[
-/// A^+\psi_+(u) + A^-\psi_-(-u).
+/// A^+(\psi_+(u)-iu m_+) + A^-(\psi_-(-u)+iu m_-).
 /// \f]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NigTradingTimeCharacteristicExponentContributions {
@@ -162,7 +161,8 @@ pub struct NigTradingTimeCharacteristicExponentContributions {
 ///
 /// Equation reference:
 /// \f[
-/// \Delta X_{\mathrm{trading}} = \Delta L_{A^+}^+ - \Delta L_{A^-}^-.
+/// \Delta X_{\mathrm{trading}}
+/// = (\Delta L_{A^+}^+ - A^+m_+) - (\Delta L_{A^-}^- - A^-m_-).
 /// \f]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NigTradingTimeIncrementContributions {
@@ -173,9 +173,24 @@ pub struct NigTradingTimeIncrementContributions {
 }
 
 impl NigBuySellDriverParameters {
-    /// Evaluate buy-side NIG exponent with the direct argument \f$u\f$, i.e. \f$\psi_+(u)\f$.
+    /// Evaluate buy-side mean-compensated NIG exponent with direct argument \f$u\f$.
     pub fn buy_side_characteristic_exponent(self, argument: ComplexScalar) -> ComplexScalar {
-        self.buy_side_parameters.characteristic_exponent(argument)
+        compensated_buy_side_characteristic_exponent(self.buy_side_parameters, argument)
+    }
+
+    pub fn differentiate_buy_side_characteristic_exponent_wrt_argument(
+        self,
+        argument: ComplexScalar,
+    ) -> Result<ComplexScalar, EsscherTransformError> {
+        let derivative = differentiate_nig_characteristic_exponent_wrt_argument(
+            self.buy_side_parameters,
+            argument,
+        )?;
+
+        Ok(derivative.plus(ComplexScalar::new(
+            0.0,
+            -self.buy_side_parameters.mean_per_unit_time(),
+        )))
     }
 
     pub fn differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
@@ -185,12 +200,26 @@ impl NigBuySellDriverParameters {
         let sensitivity =
             differentiate_nig_characteristic_exponent(self.buy_side_parameters, argument)?;
 
+        let mean_sensitivity =
+            nig_mean_per_unit_time_sensitivity(self.buy_side_parameters, argument)?;
+
         Ok(NigSharedPlusShiftCharacteristicExponentSensitivity {
-            exponent: sensitivity.exponent,
-            alpha_derivative: sensitivity.alpha_derivative,
-            beta_0_derivative: sensitivity.beta_derivative,
-            delta_derivative: sensitivity.delta_derivative,
-            mu_derivative: sensitivity.mu_derivative,
+            exponent: self.buy_side_characteristic_exponent(argument),
+            alpha_derivative: sensitivity.alpha_derivative.plus(
+                buy_side_mean_compensation_correction(argument, mean_sensitivity.alpha_derivative),
+            ),
+            beta_0_derivative: sensitivity.beta_derivative.plus(
+                buy_side_mean_compensation_correction(argument, mean_sensitivity.beta_derivative),
+            ),
+            delta_derivative: sensitivity.delta_derivative.plus(
+                buy_side_mean_compensation_correction(argument, mean_sensitivity.delta_derivative),
+            ),
+            mu_derivative: sensitivity
+                .mu_derivative
+                .plus(buy_side_mean_compensation_correction(
+                    argument,
+                    mean_sensitivity.mu_derivative,
+                )),
             delta_beta_derivative: ComplexScalar::new(0.0, 0.0),
             theta_shift_derivative: ComplexScalar::new(0.0, 0.0),
         })
@@ -211,12 +240,16 @@ impl NigBuySellDriverParameters {
                 shifted_argument,
                 "buy_side_negative_imaginary_shift",
             )?
-            .scale(-1.0);
+            .scale(-1.0)
+            .plus(ComplexScalar::new(
+                -self.buy_side_parameters.mean_per_unit_time(),
+                0.0,
+            ));
 
         Ok(sensitivity)
     }
 
-    /// Evaluate sell-side NIG exponent with the negated argument, i.e. \f$\psi_-(-u)\f$.
+    /// Evaluate sell-side mean-compensated NIG exponent with the negated argument.
     ///
     /// This sign convention matches the model equation
     /// \f[
@@ -224,14 +257,28 @@ impl NigBuySellDriverParameters {
     /// \f]
     /// which yields the characteristic-function term
     /// \f[
-    /// \exp\!\left(A^+\psi_+(u) + A^-\psi_-(-u)\right).
+    /// \exp\!\left(A^+(\psi_+(u)-iu m_+) + A^-(\psi_-(-u)+iu m_-)\right).
     /// \f]
     pub fn sell_side_characteristic_exponent_for_return_composition(
         self,
         argument: ComplexScalar,
     ) -> ComplexScalar {
-        self.sell_side_parameters
-            .characteristic_exponent(argument.scale(-1.0))
+        compensated_sell_side_characteristic_exponent(self.sell_side_parameters, argument)
+    }
+
+    pub fn differentiate_sell_side_characteristic_exponent_for_return_composition_wrt_argument(
+        self,
+        argument: ComplexScalar,
+    ) -> Result<ComplexScalar, EsscherTransformError> {
+        let physical_derivative = differentiate_nig_characteristic_exponent_wrt_argument(
+            self.sell_side_parameters,
+            argument.scale(-1.0),
+        )?;
+
+        Ok(physical_derivative.scale(-1.0).plus(ComplexScalar::new(
+            0.0,
+            self.sell_side_parameters.mean_per_unit_time(),
+        )))
     }
 
     pub fn differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
@@ -243,13 +290,26 @@ impl NigBuySellDriverParameters {
             argument.scale(-1.0),
         )?;
 
+        let mean_sensitivity =
+            nig_mean_per_unit_time_sensitivity(self.sell_side_parameters, argument)?;
+
         Ok(NigSharedPlusShiftCharacteristicExponentSensitivity {
-            exponent: physical_sensitivity.exponent,
-            alpha_derivative: physical_sensitivity.alpha_derivative,
-            beta_0_derivative: physical_sensitivity.beta_derivative,
-            delta_derivative: physical_sensitivity.delta_derivative,
-            mu_derivative: physical_sensitivity.mu_derivative,
-            delta_beta_derivative: physical_sensitivity.beta_derivative,
+            exponent: self.sell_side_characteristic_exponent_for_return_composition(argument),
+            alpha_derivative: physical_sensitivity.alpha_derivative.plus(
+                sell_side_mean_compensation_correction(argument, mean_sensitivity.alpha_derivative),
+            ),
+            beta_0_derivative: physical_sensitivity.beta_derivative.plus(
+                sell_side_mean_compensation_correction(argument, mean_sensitivity.beta_derivative),
+            ),
+            delta_derivative: physical_sensitivity.delta_derivative.plus(
+                sell_side_mean_compensation_correction(argument, mean_sensitivity.delta_derivative),
+            ),
+            mu_derivative: physical_sensitivity.mu_derivative.plus(
+                sell_side_mean_compensation_correction(argument, mean_sensitivity.mu_derivative),
+            ),
+            delta_beta_derivative: physical_sensitivity.beta_derivative.plus(
+                sell_side_mean_compensation_correction(argument, mean_sensitivity.beta_derivative),
+            ),
             theta_shift_derivative: ComplexScalar::new(0.0, 0.0),
         })
     }
@@ -270,7 +330,11 @@ impl NigBuySellDriverParameters {
                 self.sell_side_parameters,
                 effective_argument,
                 "sell_side_return_composition_negative_imaginary_shift",
-            )?;
+            )?
+            .plus(ComplexScalar::new(
+                self.sell_side_parameters.mean_per_unit_time(),
+                0.0,
+            ));
 
         Ok(sensitivity)
     }
@@ -286,13 +350,22 @@ impl NigBuySellDriverParameters {
                 argument_imaginary,
                 theta,
             )?;
+        let mean_sensitivity = nig_mean_per_unit_time_sensitivity(
+            self.buy_side_parameters,
+            ComplexScalar::new(0.0, argument_imaginary),
+        )?;
 
         Ok(NigSharedPlusShiftPureImaginaryLogMomentSensitivity {
-            observed_log_moment_exponent: sensitivity.observed_log_moment_exponent,
-            alpha_derivative: sensitivity.alpha_derivative,
-            beta_0_derivative: sensitivity.beta_derivative,
-            delta_derivative: sensitivity.delta_derivative,
-            mu_derivative: sensitivity.mu_derivative,
+            observed_log_moment_exponent: sensitivity.observed_log_moment_exponent
+                + argument_imaginary * self.buy_side_parameters.mean_per_unit_time(),
+            alpha_derivative: sensitivity.alpha_derivative
+                + argument_imaginary * mean_sensitivity.alpha_derivative,
+            beta_0_derivative: sensitivity.beta_derivative
+                + argument_imaginary * mean_sensitivity.beta_derivative,
+            delta_derivative: sensitivity.delta_derivative
+                + argument_imaginary * mean_sensitivity.delta_derivative,
+            mu_derivative: sensitivity.mu_derivative
+                + argument_imaginary * mean_sensitivity.mu_derivative,
             delta_beta_derivative: 0.0,
             theta_derivative: sensitivity.theta_derivative,
         })
@@ -309,14 +382,24 @@ impl NigBuySellDriverParameters {
                 argument_imaginary,
                 theta,
             )?;
+        let mean_sensitivity = nig_mean_per_unit_time_sensitivity(
+            self.sell_side_parameters,
+            ComplexScalar::new(0.0, argument_imaginary),
+        )?;
 
         Ok(NigSharedPlusShiftPureImaginaryLogMomentSensitivity {
-            observed_log_moment_exponent: sensitivity.observed_log_moment_exponent,
-            alpha_derivative: sensitivity.alpha_derivative,
-            beta_0_derivative: sensitivity.beta_derivative,
-            delta_derivative: sensitivity.delta_derivative,
-            mu_derivative: sensitivity.mu_derivative,
-            delta_beta_derivative: sensitivity.beta_derivative,
+            observed_log_moment_exponent: sensitivity.observed_log_moment_exponent
+                - argument_imaginary * self.sell_side_parameters.mean_per_unit_time(),
+            alpha_derivative: sensitivity.alpha_derivative
+                - argument_imaginary * mean_sensitivity.alpha_derivative,
+            beta_0_derivative: sensitivity.beta_derivative
+                - argument_imaginary * mean_sensitivity.beta_derivative,
+            delta_derivative: sensitivity.delta_derivative
+                - argument_imaginary * mean_sensitivity.delta_derivative,
+            mu_derivative: sensitivity.mu_derivative
+                - argument_imaginary * mean_sensitivity.mu_derivative,
+            delta_beta_derivative: sensitivity.beta_derivative
+                - argument_imaginary * mean_sensitivity.beta_derivative,
             theta_derivative: sensitivity.theta_derivative,
         })
     }
@@ -434,23 +517,22 @@ impl NigBuySellDriverParameters {
             });
         }
 
-        let buy_transformed = transform_nig_characteristic_exponent_under_esscher_tilt(
-            NigEsscherTransformationInput::new(self.buy_side_parameters, argument, -lambda),
-        )?
-        .transformed_exponent
-        .scale(integrated_buy_intensity);
+        let shifted_argument = argument.plus(ComplexScalar::new(0.0, -lambda));
+        let shifted_exponent = self
+            .compose_trading_time_weighted_characteristic_exponent(
+                shifted_argument,
+                integrated_buy_intensity,
+                integrated_sell_intensity,
+            )
+            .combined_weighted_exponent;
+        let anchor_log_moment = self.evaluate_return_composition_log_moment(
+            integrated_buy_intensity,
+            integrated_sell_intensity,
+            lambda,
+        )?;
 
-        let sell_transformed = transform_nig_characteristic_exponent_under_esscher_tilt(
-            NigEsscherTransformationInput::new(
-                self.sell_side_parameters,
-                argument.scale(-1.0),
-                lambda,
-            ),
-        )?
-        .transformed_exponent
-        .scale(integrated_sell_intensity);
-
-        let combined_transformed = buy_transformed.plus(sell_transformed);
+        let combined_transformed =
+            shifted_exponent.subtract(ComplexScalar::new(anchor_log_moment, 0.0));
 
         if !combined_transformed.is_finite() {
             return Err(EsscherTransformError::NonFiniteTransformedExponent {
@@ -461,7 +543,7 @@ impl NigBuySellDriverParameters {
         Ok(combined_transformed)
     }
 
-    /// Assemble trading-time weighted characteristic exponents with canonical sign handling.
+    /// Assemble mean-compensated trading-time weighted characteristic exponents.
     pub fn compose_trading_time_weighted_characteristic_exponent(
         self,
         argument: ComplexScalar,
@@ -486,11 +568,11 @@ impl NigBuySellDriverParameters {
         }
     }
 
-    /// Sample one trading-time return increment using the canonical buy-minus-sell composition.
+    /// Sample one mean-compensated trading-time return increment.
     ///
     /// Sampling path:
-    /// - buy-side increment uses `integrated_buy_intensity`
-    /// - sell-side increment uses `integrated_sell_intensity`
+    /// - buy-side increment is raw buy-side NIG minus `integrated_buy_intensity * m_+`
+    /// - sell-side increment is raw sell-side NIG minus `integrated_sell_intensity * m_-`
     /// - combined trading-time increment is `buy_side_increment - sell_side_increment`
     pub fn sample_trading_time_return_increment<R>(
         self,
@@ -501,7 +583,7 @@ impl NigBuySellDriverParameters {
     where
         R: SimulationRandomnessStream,
     {
-        let buy_side_increment = self
+        let raw_buy_side_increment = self
             .buy_side_parameters
             .sample_increment(integrated_buy_intensity, randomness_stream)
             .map_err(
@@ -511,7 +593,7 @@ impl NigBuySellDriverParameters {
                 },
             )?;
 
-        let sell_side_increment = self
+        let raw_sell_side_increment = self
             .sell_side_parameters
             .sample_increment(integrated_sell_intensity, randomness_stream)
             .map_err(
@@ -520,6 +602,11 @@ impl NigBuySellDriverParameters {
                     source,
                 },
             )?;
+
+        let buy_side_increment = raw_buy_side_increment
+            - integrated_buy_intensity * self.buy_side_parameters.mean_per_unit_time();
+        let sell_side_increment = raw_sell_side_increment
+            - integrated_sell_intensity * self.sell_side_parameters.mean_per_unit_time();
 
         Ok(NigTradingTimeIncrementContributions {
             buy_side_increment,
@@ -550,9 +637,10 @@ fn evaluate_buy_side_log_moment(
 
     let shifted_gamma = shifted_margin.sqrt();
 
-    let log_moment = parameters
+    let raw_log_moment = parameters
         .mu
         .mul_add(lambda, parameters.delta * (gamma - shifted_gamma));
+    let log_moment = raw_log_moment - lambda * parameters.mean_per_unit_time();
     if !log_moment.is_finite() {
         return Err(EsscherTransformError::NonFiniteTransformedExponent {
             value: ComplexScalar::new(log_moment, 0.0),
@@ -582,7 +670,9 @@ fn evaluate_sell_side_return_composition_log_moment(
 
     let shifted_gamma = shifted_margin.sqrt();
 
-    let log_moment = (-parameters.mu).mul_add(lambda, parameters.delta * (gamma - shifted_gamma));
+    let raw_log_moment =
+        (-parameters.mu).mul_add(lambda, parameters.delta * (gamma - shifted_gamma));
+    let log_moment = raw_log_moment + lambda * parameters.mean_per_unit_time();
     if !log_moment.is_finite() {
         return Err(EsscherTransformError::NonFiniteTransformedExponent {
             value: ComplexScalar::new(log_moment, 0.0),
@@ -610,10 +700,11 @@ fn differentiate_buy_side_log_moment(
 
     let shifted_gamma = shifted_margin.sqrt();
 
-    let derivative = parameters.mu.mul_add(
+    let raw_derivative = parameters.mu.mul_add(
         1.0,
         parameters.delta * (parameters.beta + lambda) / shifted_gamma,
     );
+    let derivative = raw_derivative - parameters.mean_per_unit_time();
     if !derivative.is_finite() {
         return Err(
             EsscherTransformError::NonFiniteCharacteristicExponentSensitivity {
@@ -644,10 +735,11 @@ fn differentiate_sell_side_return_composition_log_moment(
 
     let shifted_gamma = shifted_margin.sqrt();
 
-    let derivative = (-parameters.mu).mul_add(
+    let raw_derivative = (-parameters.mu).mul_add(
         1.0,
         -parameters.delta * (parameters.beta - lambda) / shifted_gamma,
     );
+    let derivative = raw_derivative + parameters.mean_per_unit_time();
     if !derivative.is_finite() {
         return Err(
             EsscherTransformError::NonFiniteCharacteristicExponentSensitivity {
@@ -670,6 +762,108 @@ fn stable_positive_gamma(parameters: NigParameters) -> Result<f64, EsscherTransf
     }
 
     Ok(gamma_margin.sqrt())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct NigMeanPerUnitTimeSensitivity {
+    alpha_derivative: f64,
+    beta_derivative: f64,
+    delta_derivative: f64,
+    mu_derivative: f64,
+}
+
+fn compensated_buy_side_characteristic_exponent(
+    parameters: NigParameters,
+    argument: ComplexScalar,
+) -> ComplexScalar {
+    parameters
+        .characteristic_exponent(argument)
+        .plus(buy_side_mean_compensation_correction(
+            argument,
+            parameters.mean_per_unit_time(),
+        ))
+}
+
+fn compensated_sell_side_characteristic_exponent(
+    parameters: NigParameters,
+    argument: ComplexScalar,
+) -> ComplexScalar {
+    parameters
+        .characteristic_exponent(argument.scale(-1.0))
+        .plus(sell_side_mean_compensation_correction(
+            argument,
+            parameters.mean_per_unit_time(),
+        ))
+}
+
+fn buy_side_mean_compensation_correction(
+    argument: ComplexScalar,
+    mean_per_unit_time: f64,
+) -> ComplexScalar {
+    ComplexScalar::new(
+        argument.imaginary * mean_per_unit_time,
+        -argument.real * mean_per_unit_time,
+    )
+}
+
+fn sell_side_mean_compensation_correction(
+    argument: ComplexScalar,
+    mean_per_unit_time: f64,
+) -> ComplexScalar {
+    ComplexScalar::new(
+        -argument.imaginary * mean_per_unit_time,
+        argument.real * mean_per_unit_time,
+    )
+}
+
+fn nig_mean_per_unit_time_sensitivity(
+    parameters: NigParameters,
+    argument: ComplexScalar,
+) -> Result<NigMeanPerUnitTimeSensitivity, EsscherTransformError> {
+    let gamma = stable_positive_gamma(parameters)?;
+    let gamma_cubed = gamma * gamma * gamma;
+
+    let alpha_derivative = -parameters.delta * parameters.beta * parameters.alpha / gamma_cubed;
+    let beta_derivative = parameters.delta * parameters.alpha * parameters.alpha / gamma_cubed;
+    let delta_derivative = parameters.beta / gamma;
+    let mu_derivative = 1.0;
+
+    validate_real_sensitivity_component("nig_mean_per_unit_time_alpha", alpha_derivative)?;
+    validate_real_sensitivity_component("nig_mean_per_unit_time_beta", beta_derivative)?;
+    validate_real_sensitivity_component("nig_mean_per_unit_time_delta", delta_derivative)?;
+    validate_real_sensitivity_component("nig_mean_per_unit_time_mu", mu_derivative)?;
+    validate_complex_argument(argument)?;
+
+    Ok(NigMeanPerUnitTimeSensitivity {
+        alpha_derivative,
+        beta_derivative,
+        delta_derivative,
+        mu_derivative,
+    })
+}
+
+fn validate_real_sensitivity_component(
+    parameter: &'static str,
+    value: f64,
+) -> Result<(), EsscherTransformError> {
+    if !value.is_finite() {
+        return Err(
+            EsscherTransformError::NonFiniteCharacteristicExponentSensitivity {
+                parameter,
+                value: ComplexScalar::new(value, 0.0),
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_complex_argument(argument: ComplexScalar) -> Result<(), EsscherTransformError> {
+    if !argument.is_finite() {
+        return Err(EsscherTransformError::InvalidArgument { value: argument });
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

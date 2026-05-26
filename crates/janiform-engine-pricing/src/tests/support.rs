@@ -7,15 +7,15 @@ use crate::fourier::{
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    build_pricing_transform_input, solve_exponential_affine_transform,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingKernelParameters,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformOutput, ExponentialAffineTransformSolverSettings,
-    ExponentialAffineTransformTelemetryMode,
+    ExponentialAffineTransformTelemetryMode, solve_exponential_affine_transform_with_settings,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -182,6 +182,8 @@ pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
         .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig shared-plus-shift configuration should construct"),
+        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")
 }
@@ -236,7 +238,7 @@ pub(crate) fn build_reference_transform_diagnostics_source()
     )
     .expect("pricing transform input should construct");
 
-    solve_exponential_affine_transform(
+    solve_exponential_affine_transform_with_settings(
         transform_input,
         build_reference_affine_transform_solver_settings(),
     )

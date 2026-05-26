@@ -16,8 +16,9 @@ use super::column_resolution::{
 use super::contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
     MarketDataLoadingError, MarketDataLoadingOutput, MarketDataLoadingRequest,
-    MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput,
-    MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataNormalizationPolicy, MarketDataNormalizedOptionSurfaceOutput,
+    MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
+    MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
     MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
     MarketDataSourceProbePayload, MarketDataSourceSummary, MarketDataTickDataColumnMapping,
     MarketDataTickPriceInputPolicy,
@@ -149,6 +150,21 @@ pub fn normalize_market_data_source(
     })
 }
 
+pub fn normalize_option_surface_source(
+    option_surface_input: &MarketDataOptionSurfaceLoadingInput,
+    normalization_policy: &MarketDataNormalizationPolicy,
+) -> Result<MarketDataNormalizedOptionSurfaceOutput, MarketDataLoadingError> {
+    let option_surface_output =
+        load_option_surface_records(option_surface_input, normalization_policy)?;
+
+    Ok(MarketDataNormalizedOptionSurfaceOutput {
+        option_surface_records: materialize_option_surface_records_for_payload(
+            option_surface_output.option_surface_records.as_slice(),
+        ),
+        option_surface_summary: option_surface_output.summary,
+    })
+}
+
 pub fn resolve_market_data_session_configuration(
     session_configuration: MarketDataSessionConfiguration,
     normalized_tick_output: Option<&MarketDataNormalizedTickOutput>,
@@ -221,6 +237,7 @@ pub fn prepare_market_data_loading_from_phases(
         exchange_code: request.session_configuration.exchange_code,
         trade_events_data_reference: request.trade_events_data_reference,
         tick_records: normalized_tick_output.tick_records.clone(),
+        reference_price: normalized_tick_output.reference_price,
         known_news_records,
         option_surface_quote_values,
         directional_label_diagnostics: normalized_tick_output

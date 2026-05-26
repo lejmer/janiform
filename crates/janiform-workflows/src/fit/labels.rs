@@ -1,6 +1,7 @@
 use janiform_calibration_artifacts::CalibrationStage;
 use janiform_calibration_runtime::{
-    CalibrationMarketDataWorkflowScope, MarketDataInputFileFormat, MarketDataTickPriceInputPolicy,
+    CalibrationMarketDataWorkflowScope, CalibrationStageExecutionStatus, MarketDataInputFileFormat,
+    MarketDataTickPriceInputPolicy,
 };
 use janiform_terminal_ui::format_token_as_words;
 
@@ -21,7 +22,7 @@ pub const fn tick_price_policy_label(policy: MarketDataTickPriceInputPolicy) -> 
     }
 }
 
-/// Render a workflow scope for human summaries.
+/// Render a workflow scope for terminal summaries.
 pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> &'static str {
     match scope {
         CalibrationMarketDataWorkflowScope::SeasonalityOnly => "seasonality only",
@@ -34,7 +35,7 @@ pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> 
     }
 }
 
-/// Render a persisted workflow-scope token for human summaries.
+/// Render a persisted workflow-scope token for terminal summaries.
 pub fn workflow_scope_label_from_token(scope: &str) -> String {
     match scope {
         "seasonality_only" => "seasonality only".to_string(),
@@ -54,10 +55,21 @@ pub const fn stage_label(stage: CalibrationStage) -> &'static str {
         CalibrationStage::ReturnComponents => "Fit return distribution",
         CalibrationStage::MeanReversion => "Fit mean reversion",
         CalibrationStage::JointRefinement => "Refine dynamics",
+        CalibrationStage::OptionRefinement => "Fit option surface",
+        CalibrationStage::Finalization => "Finalize model",
     }
 }
 
-/// Render a persisted stage token for human summaries.
+/// Render a staged calibration execution status for terminal and event payloads.
+pub const fn stage_execution_status_label(status: CalibrationStageExecutionStatus) -> &'static str {
+    match status {
+        CalibrationStageExecutionStatus::Success => "completed",
+        CalibrationStageExecutionStatus::SuccessWithWarnings => "completed with warnings",
+        CalibrationStageExecutionStatus::Failure => "failed",
+    }
+}
+
+/// Render a persisted stage token for terminal summaries.
 pub fn stage_label_from_token(stage: &str) -> String {
     let label = match stage {
         "seasonality" => "Fit seasonality",
@@ -65,6 +77,8 @@ pub fn stage_label_from_token(stage: &str) -> String {
         "return_components" => "Fit return distribution",
         "mean_reversion" => "Fit mean reversion",
         "joint_refinement" => "Refine dynamics",
+        "option_refinement" => "Fit option surface",
+        "finalization" => "Finalize model",
         other => return format_token_as_words(other),
     };
 

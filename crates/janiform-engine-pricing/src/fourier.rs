@@ -21,6 +21,10 @@ use super::contracts::{
     VanillaOptionPricingMarketInputsError,
 };
 use super::time_scaling::intraday_year_fraction;
+use super::vanilla_payoff::{
+    unvalidated_vanilla_payoff_price_from_discounted_projection,
+    vanilla_payoff_price_from_discounted_call,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FourierInversionProgress {
@@ -49,6 +53,7 @@ impl FourierInversionContour {
     pub fn try_new(damping_factor: f64) -> Result<Self, FourierInversionContourError> {
         let contour = Self::new(damping_factor);
         contour.validate()?;
+
         Ok(contour)
     }
 
@@ -117,7 +122,9 @@ impl FourierInversionNumericSettings {
             integration_step_count,
             quadrature_rule,
         );
+
         settings.validate()?;
+
         Ok(settings)
     }
 
@@ -220,7 +227,9 @@ impl FourierInversionIntegrationStabilityControls {
             terminal_integrand_ratio_tolerance,
             quality_gate,
         );
+
         controls.validate()?;
+
         Ok(controls)
     }
 
@@ -324,6 +333,7 @@ impl FourierInversionEngineSettings {
     ) -> Result<Self, FourierInversionEngineSettingsError> {
         let settings = Self::new(contour, numeric_settings, stability_controls);
         settings.validate()?;
+
         Ok(settings)
     }
 
@@ -618,6 +628,7 @@ where
         .map_err(|source| FourierInversionPricingError::InvalidMarketInputs {
             source: Box::new(source),
         })?;
+
     settings
         .validate()
         .map_err(|source| FourierInversionPricingError::InvalidSettings {
@@ -636,7 +647,7 @@ where
         }
     })?;
 
-    let log_moneyness = (strike / market_inputs.spot).ln();
+    let log_moneyness = strike.ln() - market_inputs.spot.ln();
     if !log_moneyness.is_finite() {
         return Err(FourierInversionPricingError::NonFiniteLogMoneyness {
             value: log_moneyness,
@@ -853,7 +864,9 @@ where
                     completed_evaluation_offset + step_index,
                     total_evaluations,
                 );
+
                 let frequency = (step_index as f64 + 0.5) * integration_interval_width;
+
                 let integrand_value = evaluate_damped_call_fourier_integrand(
                     damping_factor,
                     log_moneyness,
@@ -862,13 +875,17 @@ where
                 )?;
 
                 weighted_integrand_sum += integrand_value;
+
                 let absolute_integrand_value = integrand_value.abs();
+
                 weighted_absolute_integrand_sum += absolute_integrand_value;
+
                 max_abs_integrand = max_abs_integrand.max(absolute_integrand_value);
                 penultimate_frequency = terminal_frequency;
                 penultimate_abs_integrand = terminal_abs_integrand;
                 terminal_frequency = frequency;
                 terminal_abs_integrand = absolute_integrand_value;
+
                 integrand_evaluation_count += 1;
             }
         }
@@ -879,13 +896,16 @@ where
                     completed_evaluation_offset + step_index,
                     total_evaluations,
                 );
+
                 let frequency = step_index as f64 * integration_interval_width;
+
                 let integrand_value = evaluate_damped_call_fourier_integrand(
                     damping_factor,
                     log_moneyness,
                     frequency,
                     log_return_characteristic_function,
                 )?;
+
                 let integration_weight = if step_index == 0 || step_index == integration_step_count
                 {
                     0.5
@@ -894,13 +914,17 @@ where
                 };
 
                 weighted_integrand_sum += integration_weight * integrand_value;
+
                 let absolute_integrand_value = integrand_value.abs();
+
                 weighted_absolute_integrand_sum += integration_weight * absolute_integrand_value;
+
                 max_abs_integrand = max_abs_integrand.max(absolute_integrand_value);
                 penultimate_frequency = terminal_frequency;
                 penultimate_abs_integrand = terminal_abs_integrand;
                 terminal_frequency = frequency;
                 terminal_abs_integrand = absolute_integrand_value;
+
                 integrand_evaluation_count += 1;
             }
         }
@@ -1118,26 +1142,34 @@ fn map_discounted_call_to_vanilla_payoff(
     discount_factor: f64,
     dividend_discount_factor: f64,
 ) -> Result<f64, FourierInversionPricingError> {
-    match payoff_type {
-        VanillaOptionPayoffType::Call => clamp_small_negative_price(discounted_call_price),
-        VanillaOptionPayoffType::Put => {
-            let strike = market_inputs.single_strike().map_err(|source| {
-                FourierInversionPricingError::InvalidMarketInputs {
-                    source: Box::new(source),
-                }
-            })?;
-
-            let discounted_spot = market_inputs.spot * dividend_discount_factor;
-            let discounted_strike = strike * discount_factor;
-
-            let put_price = discounted_call_price - discounted_spot + discounted_strike;
-            if !put_price.is_finite() {
-                return Err(FourierInversionPricingError::NonFiniteFinalPrice { value: put_price });
-            }
-
-            clamp_small_negative_price(put_price)
+    let strike = market_inputs.single_strike().map_err(|source| {
+        FourierInversionPricingError::InvalidMarketInputs {
+            source: Box::new(source),
         }
-    }
+    })?;
+
+    let discounted_spot = market_inputs.spot * dividend_discount_factor;
+    let discounted_strike = strike * discount_factor;
+
+    let price = vanilla_payoff_price_from_discounted_call(
+        payoff_type,
+        discounted_call_price,
+        discounted_spot,
+        discounted_strike,
+    )
+    .ok_or_else(|| {
+        let value = unvalidated_vanilla_payoff_price_from_discounted_projection(
+            payoff_type,
+            VanillaOptionPayoffType::Call,
+            discounted_call_price,
+            discounted_spot,
+            discounted_strike,
+        );
+
+        FourierInversionPricingError::NonFiniteFinalPrice { value }
+    })?;
+
+    clamp_small_negative_price(price)
 }
 
 fn clamp_small_negative_price(price: f64) -> Result<f64, FourierInversionPricingError> {

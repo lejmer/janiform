@@ -73,6 +73,25 @@ fn hourly_factor_contract_builds_expected_schema_and_metadata() {
 }
 
 #[test]
+fn hourly_factor_contract_builder_accepts_zero_seasonality_factors() {
+    let registry = build_calendar_registry();
+
+    let output = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T16:00:00Z"),
+        interval_duration_nanos: NANOS_PER_HOUR,
+        seasonality_factors: &[0.0, 0.9],
+        news_intensity_factors: &[0.0, 0.2],
+        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    })
+    .expect("zero seasonality factors should remain valid contract values");
+
+    assert_eq!(output.s_h, vec![0.0, 0.9]);
+}
+
+#[test]
 fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
     let registry = build_calendar_registry();
 
@@ -298,6 +317,41 @@ fn seasonality_materializer_handles_sparse_and_missing_intervals_with_fallback_p
     );
     assert_eq!(output.diagnostics.skipped_local_hour_interval_count, 0);
     assert_eq!(output.diagnostics.repeated_local_hour_interval_count, 0);
+}
+
+#[test]
+fn seasonality_materializer_accepts_zero_source_factors() {
+    let registry = build_calendar_registry();
+
+    let output = materialize_hourly_seasonality_factors(HourlySeasonalityMaterializationInput {
+        calendar_registry: &registry,
+        exchange_code: "XNYS",
+        range_utc: parse_timestamp("2026-02-02T14:00:00Z")..parse_timestamp("2026-02-02T17:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
+        source_signal: HourlySeasonalitySourceSignal {
+            timestamp_utc_nanos: &[
+                parse_timestamp("2026-02-02T14:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-02-02T15:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-02-02T16:05:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+            ],
+            seasonality_factors: &[1.0, 0.0, 1.5],
+        },
+        policy: HourlySeasonalityMaterializationPolicy {
+            interpolation_method: "previous_observation_carry_forward.v1",
+            aggregation_method: "last_observation.v1",
+            sparse_fallback_policy: "global_mean.v1",
+            sparse_hour_minimum_observation_count: 1,
+        },
+    })
+    .expect("zero source seasonality factors should remain valid");
+
+    assert_eq!(output.s_h, vec![1.0, 0.0, 1.5]);
 }
 
 #[test]

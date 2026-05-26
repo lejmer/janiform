@@ -6,9 +6,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationRunContract, CalibrationRunContractError,
-    CalibrationRunSpec, CalibrationStage, CalibrationStageDependency, CalibrationStageGraph,
-    JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
+    CalibrationEffortOptions, CalibrationExecutionMode, CalibrationRunContract,
+    CalibrationRunContractError, CalibrationRunSpec, CalibrationStage, CalibrationStageDependency,
+    CalibrationStageGraph, JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
+    TickGridObservationModel,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
 use janiform_market_time::calendar::{
@@ -26,6 +27,7 @@ use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;
 use super::staged_runner::{
@@ -33,7 +35,7 @@ use super::staged_runner::{
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
 };
-use super::stages::hawkes::HawkesStageCandidateInput;
+use super::stages::hawkes::{HawkesStageCandidateInput, HawkesStageObservedSourceRegime};
 use super::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageObservation,
 };
@@ -80,7 +82,13 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_restart_candidate_budget_override: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
+    #[serde(default)]
+    pub treat_inadmissible_calibration_warning_as_error: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -247,24 +255,6 @@ pub struct CalibrationSeasonalityStageExecutionInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationHawkesObservedSourceRegime {
-    pub observation_duration_hours: f64,
-    pub open_session_duration_hours: f64,
-    pub total_tick_count: usize,
-    pub open_session_tick_count: usize,
-    pub closed_session_tick_count: usize,
-    pub open_session_buy_tick_count: usize,
-    pub open_session_sell_tick_count: usize,
-    pub open_session_mean_interarrival_seconds: f64,
-    pub open_session_interarrival_coefficient_of_variation: f64,
-    pub open_session_short_gap_threshold_seconds: f64,
-    pub open_session_short_gap_ratio: f64,
-    pub known_news_open_event_count: usize,
-    pub open_session_known_news_activity_share: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CalibrationHawkesDirectionalLabelDiagnostics {
     pub policy_id: String,
     pub first_inferred_trade_sign: String,
@@ -286,7 +276,7 @@ pub struct CalibrationHawkesStageCandidateInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
     pub stability_numeric_tolerance: f64,
-    pub source_regime: CalibrationHawkesObservedSourceRegime,
+    pub source_regime: HawkesStageObservedSourceRegime,
     pub directional_label_diagnostics: CalibrationHawkesDirectionalLabelDiagnostics,
 }
 
@@ -326,6 +316,7 @@ pub struct CalibrationReturnComponentsDetectedIntradayJumpCandidate {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsObservedOpenSessionReturn {
     pub return_timestamp_utc_nanos: i64,
+    pub elapsed_same_session_hours: f64,
     pub log_return: f64,
     pub post_shock_activity_lift: f64,
     pub sell_share_proxy: f64,
@@ -379,6 +370,8 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub tick_grid_observation_model: TickGridObservationModel,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
 }
 
@@ -392,7 +385,7 @@ pub struct CalibrationReturnComponentsActivityContextImpliedMetrics {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsActivityContextCandidateDiagnostic {
     pub candidate_id: String,
-    pub source_regime: CalibrationHawkesObservedSourceRegime,
+    pub source_regime: HawkesStageObservedSourceRegime,
     pub implied_metrics: CalibrationReturnComponentsActivityContextImpliedMetrics,
 }
 
@@ -426,7 +419,7 @@ pub struct CalibrationMeanReversionStageExecutionInput {
 pub struct CalibrationJointRefinementCurrentStateEstimationInput {
     pub state_time_utc_nanos: i64,
     pub observed_spot: f64,
-    pub observed_log_price: f64,
+    pub observed_log_return: f64,
     pub observation_timestamp_utc_nanos: Vec<i64>,
     pub observation_trade_prices: Vec<f64>,
     pub observation_trade_sides: Vec<String>,
@@ -482,6 +475,7 @@ pub enum CalibrationStagedExecutionBridgeError {
     UnexpectedDiskCheckpointDirectoryForMemoryMode,
     InvalidJointRefinementRestartCandidateBudgetOverride,
     InvalidJointRefinementOptionRefinementCandidateCountOverride,
+    InvalidJointRefinementOptionRefinementWallClockBudget,
     AuditOptionPricingRequiresOptionInput,
     InvalidObservationTradeSide {
         trade_side: String,
@@ -529,6 +523,10 @@ impl Display for CalibrationStagedExecutionBridgeError {
                 formatter,
                 "joint_refinement_option_refinement_candidate_count_override must be greater than zero when provided"
             ),
+            Self::InvalidJointRefinementOptionRefinementWallClockBudget => write!(
+                formatter,
+                "joint_refinement_option_refinement_wall_clock_budget_millis must be greater than zero when provided"
+            ),
             Self::AuditOptionPricingRequiresOptionInput => write!(
                 formatter,
                 "joint_refinement_audit_option_pricing_enabled requires joint_refinement_option_pricing_input"
@@ -572,6 +570,11 @@ impl CalibrationStagedExecutionInput {
         }
         if self.joint_refinement_option_refinement_candidate_count_override == Some(0) {
             return Err(CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementCandidateCountOverride);
+        }
+        if self.joint_refinement_option_refinement_wall_clock_budget_millis == Some(0) {
+            return Err(
+                CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementWallClockBudget,
+            );
         }
         if self.joint_refinement_audit_option_pricing_enabled
             && self.joint_refinement_option_pricing_input.is_none()
@@ -680,11 +683,15 @@ impl CalibrationStagedExecutionInput {
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
             joint_refinement_restart_candidate_budget_override: self
                 .joint_refinement_restart_candidate_budget_override,
-            joint_refinement_option_refinement_candidate_count_override: self
+            joint_refinement_calibration_effort: self.joint_refinement_calibration_effort,
+            treat_inadmissible_calibration_warning_as_error: self
+                .treat_inadmissible_calibration_warning_as_error,
+            option_refinement_candidate_count_override: self
                 .joint_refinement_option_refinement_candidate_count_override,
-            joint_refinement_audit_option_pricing_enabled: self
-                .joint_refinement_audit_option_pricing_enabled,
-            joint_refinement_option_pricing_input: self
+            option_refinement_wall_clock_budget_millis: self
+                .joint_refinement_option_refinement_wall_clock_budget_millis,
+            audit_option_pricing_enabled: self.joint_refinement_audit_option_pricing_enabled,
+            option_refinement_pricing_input: self
                 .joint_refinement_option_pricing_input
                 .map(CalibrationJointRefinementOptionPricingInput::try_into_core)
                 .transpose()?,
@@ -782,12 +789,27 @@ fn canonical_stage_graph_for_selected_stages(
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::MeanReversion,
         },
+        CalibrationStageDependency {
+            stage: CalibrationStage::OptionRefinement,
+            depends_on: CalibrationStage::JointRefinement,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::Finalization,
+            depends_on: CalibrationStage::JointRefinement,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::Finalization,
+            depends_on: CalibrationStage::OptionRefinement,
+        },
     ];
 
     CalibrationStageGraph::new(
         dependencies
             .into_iter()
-            .filter(|dependency| selected_stage_set.contains(&dependency.stage))
+            .filter(|dependency| {
+                selected_stage_set.contains(&dependency.stage)
+                    && selected_stage_set.contains(&dependency.depends_on)
+            })
             .collect(),
     )
 }
@@ -886,29 +908,8 @@ impl CalibrationHawkesStageCandidateInput {
             structured_rho: self.structured_rho,
             self_dominance_policy: self.self_dominance_policy,
             stability_numeric_tolerance: self.stability_numeric_tolerance,
-            source_regime: self.source_regime.into_core(),
+            source_regime: self.source_regime,
             directional_label_diagnostics: self.directional_label_diagnostics.into_core(),
-        }
-    }
-}
-
-impl CalibrationHawkesObservedSourceRegime {
-    fn into_core(self) -> super::stages::hawkes::HawkesStageObservedSourceRegime {
-        super::stages::hawkes::HawkesStageObservedSourceRegime {
-            observation_duration_hours: self.observation_duration_hours,
-            open_session_duration_hours: self.open_session_duration_hours,
-            total_tick_count: self.total_tick_count,
-            open_session_tick_count: self.open_session_tick_count,
-            closed_session_tick_count: self.closed_session_tick_count,
-            open_session_buy_tick_count: self.open_session_buy_tick_count,
-            open_session_sell_tick_count: self.open_session_sell_tick_count,
-            open_session_mean_interarrival_seconds: self.open_session_mean_interarrival_seconds,
-            open_session_interarrival_coefficient_of_variation: self
-                .open_session_interarrival_coefficient_of_variation,
-            open_session_short_gap_threshold_seconds: self.open_session_short_gap_threshold_seconds,
-            open_session_short_gap_ratio: self.open_session_short_gap_ratio,
-            known_news_open_event_count: self.known_news_open_event_count,
-            open_session_known_news_activity_share: self.open_session_known_news_activity_share,
         }
     }
 }
@@ -954,6 +955,8 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
             close_open_gap_detection_policy: self.close_open_gap_detection_policy.into_core(),
             open_session_sell_share_proxy: self.open_session_sell_share_proxy,
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
+            return_clock_exposure_parameters: self.return_clock_exposure_parameters,
+            tick_grid_observation_model: self.tick_grid_observation_model,
             objective_metric_weights: self.objective_metric_weights.into_core(),
         }
     }
@@ -1004,6 +1007,7 @@ impl CalibrationReturnComponentsObservedOpenSessionReturn {
     fn into_core(self) -> ReturnComponentsObservedOpenSessionReturn {
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
+            elapsed_same_session_hours: self.elapsed_same_session_hours,
             log_return: self.log_return,
             post_shock_activity_lift: self.post_shock_activity_lift,
             sell_share_proxy: self.sell_share_proxy,
@@ -1136,7 +1140,7 @@ impl CalibrationJointRefinementCurrentStateEstimationInput {
             super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: self.state_time_utc_nanos,
                 observed_spot: self.observed_spot,
-                observed_log_price: self.observed_log_price,
+                observed_log_return: self.observed_log_return,
                 observation_timestamp_utc_nanos: self.observation_timestamp_utc_nanos,
                 observation_trade_prices: self.observation_trade_prices,
                 observation_trade_sides,
@@ -1197,8 +1201,8 @@ impl CalibrationMeanReversionStageObservation {
 mod tests {
     use super::{
         CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-        CalibrationHawkesStageCandidateInput, CalibrationJointRefinementCarryInput,
+        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+        CalibrationJointRefinementCarryInput,
         CalibrationJointRefinementCurrentStateEstimationInput,
         CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
         CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
@@ -1214,13 +1218,14 @@ mod tests {
         CalibrationSeasonalityStageExecutionInput, CalibrationSharedNewsMarkLawConfiguration,
         CalibrationStagedExecutionBridgeError, CalibrationStagedExecutionInput,
         CalibrationStagedExecutionRuntimeResources, CalibrationTimestampEventRecord,
+        HawkesStageObservedSourceRegime,
     };
     use std::path::PathBuf;
 
     use janiform_calibration_artifacts::{
         CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
-        CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+        CalibrationStageSeedOverride, CalibrationStageSolverSettings, TickGridObservationModel,
     };
     use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
     use janiform_model_kernels::hawkes::{
@@ -1308,7 +1313,7 @@ mod tests {
                 structured_rho: HawkesStructuredRhoParameterization::new(0.30, 0.08, 0.04, 0.05),
                 self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
                 stability_numeric_tolerance: 0.0,
-                source_regime: CalibrationHawkesObservedSourceRegime {
+                source_regime: HawkesStageObservedSourceRegime {
                     observation_duration_hours: 12.0,
                     open_session_duration_hours: 8.0,
                     total_tick_count: 95,
@@ -1359,12 +1364,14 @@ mod tests {
                     observed_open_session_returns: vec![
                         CalibrationReturnComponentsObservedOpenSessionReturn {
                             return_timestamp_utc_nanos: 1_770_046_200_000_000_000,
+                            elapsed_same_session_hours: 1.0,
                             log_return: 0.004,
                             post_shock_activity_lift: 1.00,
                             sell_share_proxy: 0.50,
                         },
                         CalibrationReturnComponentsObservedOpenSessionReturn {
                             return_timestamp_utc_nanos: 1_770_048_300_000_000_000,
+                            elapsed_same_session_hours: 1.0,
                             log_return: 0.018,
                             post_shock_activity_lift: 1.35,
                             sell_share_proxy: 0.50,
@@ -1398,6 +1405,15 @@ mod tests {
                             DoubleExponentialBaseShockConfiguration::try_new(0.45, 8.0, 10.0)
                                 .expect("base shock configuration should validate"),
                         coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
+                    },
+                    return_clock_exposure_parameters:
+                        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
+                        ),
+                    tick_grid_observation_model: TickGridObservationModel {
+                        tick_size: None,
+                        tick_size_source: "test".to_string(),
+                        inference_policy: "test".to_string(),
+                        observation_policy: "test".to_string(),
                     },
                     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                         continuous_distribution_fit_weight: 1.0,
@@ -1434,7 +1450,10 @@ mod tests {
                 ],
             }),
             joint_refinement_restart_candidate_budget_override: None,
+            joint_refinement_calibration_effort: None,
+            treat_inadmissible_calibration_warning_as_error: false,
             joint_refinement_option_refinement_candidate_count_override: None,
+            joint_refinement_option_refinement_wall_clock_budget_millis: None,
             joint_refinement_audit_option_pricing_enabled: false,
             joint_refinement_option_pricing_input: None,
             runtime_resources: match execution_mode {
@@ -1538,6 +1557,21 @@ mod tests {
     }
 
     #[test]
+    fn execution_input_plan_rejects_zero_joint_refinement_option_refinement_wall_clock_budget() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_option_refinement_wall_clock_budget_millis = Some(0);
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("zero option refinement wall-clock budget should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementWallClockBudget
+        );
+    }
+
+    #[test]
     fn execution_input_plan_rejects_audit_option_pricing_without_option_input() {
         let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
         execution_input.joint_refinement_audit_option_pricing_enabled = true;
@@ -1567,7 +1601,7 @@ mod tests {
                     CalibrationJointRefinementCurrentStateEstimationInput {
                         state_time_utc_nanos: 1_770_042_600_000_000_000,
                         observed_spot: 100.0,
-                        observed_log_price: 100.0_f64.ln(),
+                        observed_log_return: 100.0_f64.ln(),
                         observation_timestamp_utc_nanos: vec![
                             1_770_042_599_000_000_000,
                             1_770_042_600_000_000_000,

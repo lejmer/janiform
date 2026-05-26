@@ -1,21 +1,19 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use janiform::model::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform::model::factors::hourly::{HourlyFactorContractOutput, NANOS_PER_HOUR};
 use janiform::model::hawkes::HawkesExcitationState;
-use janiform::model::sufficient_statistics::{
-    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
-};
 use janiform::simulation::{
-    CoarseSimulationModelInputs, MeanReversionBoundaryState, SeededTickSimulationDebugTraceOptions,
-    SeededTickSimulationModelInputs, SeededTickSimulationRunOptions, SimulationProgressEvent,
+    MeanReversionBoundaryState, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationRunOptions, SimulationProgressEvent,
 };
 use janiform::time::calendar::MarketState;
 
 use crate::error::WorkflowError;
 use crate::model::{
-    FittedModelContext, ModelStateObservationData, estimate_current_state_from_observation_data,
+    FittedModelContext, ModelStateObservationData, build_coarse_simulation_model_inputs,
+    build_seeded_tick_simulation_model_inputs, build_sufficient_statistics_interval_factors,
+    build_sufficient_statistics_model_inputs, estimate_current_state_from_observation_data,
     fitted_model_context,
 };
 use crate::simulation::direct::{
@@ -176,6 +174,7 @@ fn resolve_initial_state(
         (Some(excitation_state), _) => excitation_state,
         (None, Some(estimated_state)) => estimated_state.hawkes_excitation_state,
         (None, None) => context
+            .fitted_parameters
             .hawkes_fitted_parameters
             .kernel_parameters
             .stationary_excitation_state()
@@ -249,35 +248,19 @@ fn build_direct_job(
 
     match request.simulation_kind {
         ModelArtifactSimulationKind::SeededTick => {
+            let model_inputs = build_seeded_tick_simulation_model_inputs(
+                context,
+                initial_state.excitation_state,
+                runtime_interval_anchors,
+                initial_mean_reversion_boundary_state,
+                hourly_factor_contract,
+            );
+
             let run_config = janiform::simulation::SeededTickSimulationRunConfig::try_new(
                 request.seed,
                 request.start_time_utc,
                 request.horizon_interval_count,
-                SeededTickSimulationModelInputs {
-                    kernel_parameters: context.hawkes_fitted_parameters.kernel_parameters,
-                    nig_shared_plus_shift_configuration: context
-                        .return_components_fitted_parameters
-                        .nig_shared_plus_shift_configuration,
-                    // Intentional copy because seeded simulation owns model inputs
-                    // while workflow export settings continue to use the shared context.
-                    news_process_configuration: context
-                        .return_components_fitted_parameters
-                        .news_process_configuration
-                        .clone(),
-                    initial_excitation_state: initial_state.excitation_state,
-                    // Intentional copy because seeded simulation owns a validated
-                    // model input independent of the shared fitted-model context.
-                    mean_reversion_fitted_parameters: context
-                        .return_components_fitted_parameters
-                        .mean_reversion_fitted_parameters
-                        .clone(),
-                    mean_reversion_runtime_interval_anchors: runtime_interval_anchors,
-                    initial_mean_reversion_boundary_state,
-                    hourly_factor_contract,
-                    // Intentional copy because seeded simulation owns runtime inputs
-                    // while export settings continue to use the shared context.
-                    calendar_registry: context.calendar_registry.clone(),
-                },
+                model_inputs,
                 Some(SeededTickSimulationRunOptions {
                     debug_trace_enabled: request.debug_trace_enabled,
                     debug_trace_options: SeededTickSimulationDebugTraceOptions {
@@ -301,57 +284,17 @@ fn build_direct_job(
             })
         }
         ModelArtifactSimulationKind::CoarseInterval => {
-            let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
-                context.hawkes_fitted_parameters.kernel_parameters,
-                context
-                    .return_components_fitted_parameters
-                    .news_process_configuration
-                    .shared_mark_law
-                    .gamma_severity_marks,
-            )
-            .map_err(|source| validation_error("equation_specification", source.to_string()))?;
-
-            let model_inputs = SufficientStatisticsModelInputs::try_new(
-                equation_specification,
-                context
-                    .return_components_fitted_parameters
-                    .nig_shared_plus_shift_configuration,
+            let model_inputs = build_sufficient_statistics_model_inputs(
+                context,
                 initial_state.excitation_state,
-                // Intentional copy because the sufficient-statistics contract owns
-                // validated fitted parameters independent of the shared context.
-                context
-                    .return_components_fitted_parameters
-                    .mean_reversion_fitted_parameters
-                    .clone(),
                 runtime_interval_anchors,
                 initial_mean_reversion_boundary_state,
-            )
-            .map_err(|source| {
-                validation_error("sufficient_statistics_model_inputs", source.to_string())
-            })?;
+            )?;
 
-            let coarse_model_inputs = CoarseSimulationModelInputs::try_new(
-                model_inputs,
-                // Intentional copy because the coarse simulation contract owns model inputs
-                // while export settings still borrow the shared workflow context.
-                context
-                    .return_components_fitted_parameters
-                    .news_process_configuration
-                    .clone(),
-                // Intentional copies because coarse simulation owns serialized
-                // calendar identity independent of the shared workflow context.
-                context.calendar_registry_artifact.clone(),
-                context.model.session_resolution.exchange_code.clone(),
-            )
-            .map_err(|source| validation_error("coarse_model_inputs", source.to_string()))?;
+            let coarse_model_inputs = build_coarse_simulation_model_inputs(context, model_inputs)?;
 
-            let interval_factors = SufficientStatisticsIntervalFactors::try_new(
-                hourly_factor_contract.s_h,
-                hourly_factor_contract.known_component_nu_h,
-                hourly_factor_contract.surprise_component_nu_h,
-                Some(context.interval_delta),
-            )
-            .map_err(|source| validation_error("interval_factors", source.to_string()))?;
+            let interval_factors =
+                build_sufficient_statistics_interval_factors(context, hourly_factor_contract)?;
 
             let start_time_utc_nanos =
                 request

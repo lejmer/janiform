@@ -17,9 +17,14 @@
 mod constants;
 mod contracts;
 mod rhs;
+mod runge_kutta;
+mod schedule;
 mod sensitivities;
 mod serde_impls;
 mod solver;
+
+#[cfg(test)]
+mod test_support;
 
 #[cfg(test)]
 mod tests;
@@ -41,6 +46,7 @@ pub use constants::{
     EXPONENTIAL_AFFINE_TRANSFORM_NEWS_INTENSITY_USAGE_POLICY,
 };
 pub use contracts::{
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformActivityLoadingsError,
     ExponentialAffineTransformDVector, ExponentialAffineTransformDVectorError,
     ExponentialAffineTransformEquationSpecification,
     ExponentialAffineTransformEquationSpecificationError, ExponentialAffineTransformInput,
@@ -53,9 +59,17 @@ pub use rhs::{
     evaluate_exponential_affine_transform_hamiltonians,
     evaluate_exponential_affine_transform_ode_rhs,
 };
+pub use schedule::{
+    ExponentialAffineScheduleCumulantError, ExponentialAffineScheduleCumulantOutput,
+    ExponentialAffineScheduleCumulantProgress, ExponentialAffineScheduleCumulantRequest,
+    ExponentialAffineScheduleIntervalInput, ExponentialAffineTransformInputTangent,
+    ExponentialAffineTransformInputTangentError, solve_exponential_affine_schedule_cumulant,
+    solve_exponential_affine_schedule_cumulant_with_progress,
+};
 pub use sensitivities::{
     ExponentialAffineTransformInputSensitivityError,
     ExponentialAffineTransformInputSensitivityOutput, ExponentialAffineTransformOutputSensitivity,
+    solve_exponential_affine_transform_input_sensitivities,
     solve_exponential_affine_transform_input_sensitivities_with_settings,
 };
 pub use solver::{
@@ -70,4 +84,5 @@ pub use solver::{
     ExponentialAffineTransformSolverSettingsError, ExponentialAffineTransformTelemetryMode,
     solve_exponential_affine_transform, solve_exponential_affine_transform_with_optional_settings,
     solve_exponential_affine_transform_with_settings,
+    solve_exponential_affine_transform_with_terminal_loading,
 };

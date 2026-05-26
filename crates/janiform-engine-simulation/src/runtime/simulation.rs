@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
+use janiform_foundations::time::{duration_nanos_to_hours, elapsed_utc_nanos_to_hours};
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelParameters, evolve_hawkes_state,
 };
@@ -17,7 +18,7 @@ use crate::artifacts::{
 };
 use crate::config::{SeededTickEventStateSnapshotCapture, SeededTickSimulationRunConfig};
 use crate::constants::{
-    NANOS_PER_HOUR, SEEDED_TICK_EVENT_DETERMINISM_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
+    SEEDED_TICK_EVENT_DETERMINISM_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
     SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION, SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
     SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
 };
@@ -42,7 +43,6 @@ use super::news::{
 };
 use super::observed_state::SeededObservedState;
 use super::results::estimate_seeded_result_capacities;
-use super::time::derive_elapsed_hours;
 use super::trading_time::{
     TransitionTradingTimeReturnInput, build_interval_open_market_segments,
     integrate_open_market_elapsed_hours, sample_transition_trading_time_return,
@@ -261,6 +261,7 @@ fn build_interval_simulation_inputs<'a>(
         .model_inputs
         .hourly_factor_contract
         .interval_start_utc_nanos[interval_index];
+
     let interval_end_utc_nanos = run_config
         .model_inputs
         .hourly_factor_contract
@@ -296,7 +297,7 @@ fn build_interval_simulation_inputs<'a>(
         interval_start_utc_nanos,
         interval_end_utc_nanos,
         interval_duration_nanos,
-        interval_duration_in_hours: interval_duration_nanos as f64 / NANOS_PER_HOUR as f64,
+        interval_duration_in_hours: duration_nanos_to_hours(interval_duration_nanos),
         interval_seasonality_factor: run_config.model_inputs.hourly_factor_contract.s_h
             [interval_index],
         interval_news_intensity: run_config.model_inputs.hourly_factor_contract.nu_h
@@ -469,13 +470,14 @@ where
         interval_update,
     } = input;
 
-    let elapsed_hours_since_previous_update = derive_elapsed_hours(
+    let elapsed_hours_since_previous_update = elapsed_utc_nanos_to_hours(
         previous_timestamp_utc_nanos,
         interval_update.timestamp_utc_nanos(),
     );
 
     let current_market_state = market_state_resolver
         .resolve_market_state_at_nanos(interval_update.timestamp_utc_nanos())?;
+
     let (open_jump_return, closed_gap_return) =
         realize_pending_jump_returns(runtime_state, current_market_state);
 
@@ -486,6 +488,9 @@ where
             lambda_bar: fine_path_state.lambda_bar,
             beta: run_config.model_inputs.kernel_parameters.beta,
             seasonality_factor: interval_inputs.interval_seasonality_factor,
+            return_clock_exposure_parameters: run_config
+                .model_inputs
+                .return_clock_exposure_parameters,
             interval_open_market_segments: interval_inputs.interval_open_market_segments,
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
@@ -497,13 +502,29 @@ where
             ),
         })?;
 
-    let total_return =
+    let raw_total_return =
         trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
+
+    let elapsed_open_hours_since_previous_update = integrate_open_market_elapsed_hours(
+        interval_inputs.interval_open_market_segments,
+        previous_timestamp_utc_nanos,
+        interval_update.timestamp_utc_nanos(),
+    );
+
+    let projected_core_increment = runtime_state.observed_state.project_core_increment(
+        fine_path_state.mean_reversion_kappa,
+        elapsed_open_hours_since_previous_update,
+        raw_total_return,
+        run_config.model_inputs.observed_price_tick_size,
+        interval_inputs.interval_index,
+    )?;
+
+    let total_return = projected_core_increment.observed_core_increment;
 
     let return_components = SufficientStatisticsReturnComponents::try_new(
         trading_time_return.buy_side_return,
         trading_time_return.sell_side_return,
-        trading_time_return.trading_time_return,
+        trading_time_return.trading_time_return + total_return - raw_total_return,
         open_jump_return,
         closed_gap_return,
         total_return,
@@ -515,14 +536,10 @@ where
         },
     )?;
 
-    runtime_state.observed_state = runtime_state.observed_state.apply_core_increment(
+    runtime_state.observed_state = runtime_state.observed_state.apply_projected_core_increment(
         fine_path_state.mean_reversion_kappa,
-        integrate_open_market_elapsed_hours(
-            interval_inputs.interval_open_market_segments,
-            previous_timestamp_utc_nanos,
-            interval_update.timestamp_utc_nanos(),
-        ),
-        total_return,
+        elapsed_open_hours_since_previous_update,
+        projected_core_increment,
     );
 
     let transition_step = interval_update.transition_step(elapsed_hours_since_previous_update);
@@ -640,7 +657,7 @@ where
         previous_timestamp_utc_nanos,
     } = input;
 
-    let elapsed_hours_to_interval_end = derive_elapsed_hours(
+    let elapsed_hours_to_interval_end = elapsed_utc_nanos_to_hours(
         previous_timestamp_utc_nanos,
         interval_inputs.interval_end_utc_nanos,
     );
@@ -649,6 +666,7 @@ where
 
     let boundary_market_state = market_state_resolver
         .resolve_market_state_at_nanos(interval_inputs.interval_end_utc_nanos)?;
+
     let (open_jump_return, closed_gap_return) =
         realize_pending_jump_returns(runtime_state, boundary_market_state);
 
@@ -659,6 +677,9 @@ where
             lambda_bar: fine_path_state.lambda_bar,
             beta: run_config.model_inputs.kernel_parameters.beta,
             seasonality_factor: interval_inputs.interval_seasonality_factor,
+            return_clock_exposure_parameters: run_config
+                .model_inputs
+                .return_clock_exposure_parameters,
             interval_open_market_segments: interval_inputs.interval_open_market_segments,
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
@@ -670,13 +691,29 @@ where
             ),
         })?;
 
-    let total_return =
+    let raw_total_return =
         trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
+
+    let elapsed_open_hours_to_interval_end = integrate_open_market_elapsed_hours(
+        interval_inputs.interval_open_market_segments,
+        previous_timestamp_utc_nanos,
+        interval_inputs.interval_end_utc_nanos,
+    );
+
+    let projected_core_increment = runtime_state.observed_state.project_core_increment(
+        fine_path_state.mean_reversion_kappa,
+        elapsed_open_hours_to_interval_end,
+        raw_total_return,
+        run_config.model_inputs.observed_price_tick_size,
+        interval_inputs.interval_index,
+    )?;
+
+    let total_return = projected_core_increment.observed_core_increment;
 
     let return_components = SufficientStatisticsReturnComponents::try_new(
         trading_time_return.buy_side_return,
         trading_time_return.sell_side_return,
-        trading_time_return.trading_time_return,
+        trading_time_return.trading_time_return + total_return - raw_total_return,
         open_jump_return,
         closed_gap_return,
         total_return,
@@ -690,14 +727,10 @@ where
 
     runtime_state.observed_state = runtime_state
         .observed_state
-        .apply_core_increment(
+        .apply_projected_core_increment(
             fine_path_state.mean_reversion_kappa,
-            integrate_open_market_elapsed_hours(
-                interval_inputs.interval_open_market_segments,
-                previous_timestamp_utc_nanos,
-                interval_inputs.interval_end_utc_nanos,
-            ),
-            total_return,
+            elapsed_open_hours_to_interval_end,
+            projected_core_increment,
         )
         .apply_anchor_reset(
             interval_inputs.interval_end_anchor_value,

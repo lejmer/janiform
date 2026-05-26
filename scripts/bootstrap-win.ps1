@@ -8,16 +8,22 @@ $ScriptDir = Split-Path -Parent $PSCommandPath
 # - Either uv or Python is installed
 
 function Show-Usage {
-    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [--release-wheel] [venv_dir]"
+    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [--release-wheel|--release-wheel-dev] [venv_dir]"
 }
 
 $ReleaseWheel = $false
+$ReleaseWheelDev = $false
+$SkipWheelDependencyInstall = $false
 $UseUvPackageInstaller = $false
 $VenvDir = ".venv-win"
 $venvDirSet = $false
 
 foreach ($argumentValue in $args) {
-    if ($argumentValue -eq "--release-wheel" -or $argumentValue -eq "-ReleaseWheel") {
+    if ($argumentValue -eq "--release-wheel-dev" -or $argumentValue -eq "-ReleaseWheelDev") {
+        $ReleaseWheel = $true
+        $ReleaseWheelDev = $true
+    }
+    elseif ($argumentValue -eq "--release-wheel" -or $argumentValue -eq "-ReleaseWheel") {
         $ReleaseWheel = $true
     }
     elseif ($argumentValue -eq "--help" -or $argumentValue -eq "-Help" -or $argumentValue -eq "-h") {
@@ -40,7 +46,10 @@ foreach ($argumentValue in $args) {
 }
 
 Write-Host "Using virtual environment: $VenvDir"
-if ($ReleaseWheel) {
+if ($ReleaseWheelDev) {
+    Write-Host "Using package build mode: release wheel with dev dependencies"
+}
+elseif ($ReleaseWheel) {
     Write-Host "Using package build mode: release wheel"
 }
 else {
@@ -57,11 +66,17 @@ if (Have-Cmd "uv") {
     uv venv $VenvDir
     Activate-Venv
 
-    if ($ReleaseWheel) {
+    if ($ReleaseWheelDev) {
+        $SkipWheelDependencyInstall = $true
+        uv sync --extra dev --no-install-project
+    }
+    elseif ($ReleaseWheel) {
+        $SkipWheelDependencyInstall = $true
+        uv sync --no-install-project
         uv pip install "maturin>=1.9,<2.0"
     }
     else {
-        # Install project and dev extra into the chosen local venv
+        # Install project and dev extra into the chosen local venv.
         uv sync --extra dev
     }
 }
@@ -71,11 +86,15 @@ elseif (Have-Cmd "python") {
     python -m venv $VenvDir
     Activate-Venv
 
-    if ($ReleaseWheel) {
+    if ($ReleaseWheelDev) {
+        $SkipWheelDependencyInstall = $true
+        Install-EditableWithPip
+    }
+    elseif ($ReleaseWheel) {
         Install-ReleaseBuildToolWithPip
     }
     else {
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         Install-EditableWithPip
     }
 }
@@ -85,11 +104,15 @@ elseif (Have-Cmd "py") {
     py -m venv $VenvDir
     Activate-Venv
 
-    if ($ReleaseWheel) {
+    if ($ReleaseWheelDev) {
+        $SkipWheelDependencyInstall = $true
+        Install-EditableWithPip
+    }
+    elseif ($ReleaseWheel) {
         Install-ReleaseBuildToolWithPip
     }
     else {
-        # Install project in editable mode with dev dependencies
+        # Install project in editable mode with dev dependencies.
         Install-EditableWithPip
     }
 }

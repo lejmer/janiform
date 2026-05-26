@@ -2,15 +2,6 @@
 
 These pages show how to use Janiform: preparing market context, fitting a model, inspecting saved artifacts, validating model behavior, simulating paths, and pricing derivatives.
 
-## Recommended path
-
-1. [Presets and market data](presets-and-market-data.md)
-2. [Fit models](fit-models.md)
-3. [Inspect and report](inspect-and-report.md)
-4. [Model validation](model-validation.md)
-5. [Simulate paths](simulate-paths.md)
-6. [Price derivatives](price-derivatives.md)
-
 ## Pages
 
 | Page                                                    | Purpose                                                                                                 |
@@ -21,3 +12,4 @@ These pages show how to use Janiform: preparing market context, fitting a model,
 | [Model validation](model-validation.md)                 | Comparing empirical and simulated stylized facts and producing validation reports.                      |
 | [Simulate paths](simulate-paths.md)                     | Generating seeded tick paths or coarse interval paths from a fitted model.                              |
 | [Price derivatives](price-derivatives.md)               | Pricing vanilla options from a fitted model and working with observed option snapshots or surfaces.     |
+| [Calibration diagnostics](calibration-diagnostics.md)   | Reading objective scores, candidate diagnostics, and fitted runtime policies from fit reports.          |

@@ -266,7 +266,7 @@ fn build_record(
 
     SufficientStatisticsPathRecord::try_new(
         interval_index,
-        SufficientStatisticsIntervalStatistics::try_new(a_plus, a_minus, n_plus, n_minus)
+        SufficientStatisticsIntervalStatistics::try_new(a_plus, 0.0, a_minus, 0.0, n_plus, n_minus)
             .expect("fixture statistics should validate"),
         SufficientStatisticsReturnComponents::try_new(
             buy_side_return,

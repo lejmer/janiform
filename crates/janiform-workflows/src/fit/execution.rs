@@ -22,12 +22,15 @@ use serde_json::Value;
 
 use crate::error::WorkflowError;
 use crate::progress::VolatileProgressGate;
-use crate::terminal::{emit_terminal_completion_view, emit_terminal_start_view};
+use crate::terminal::{
+    complete_terminal_progress, emit_terminal_completion_view, emit_terminal_start_view,
+};
 
 use super::artifacts::{build_fit_report_payload, build_model_payload, write_pretty_json};
 use super::events::{
     append_artifact_event, progress_event_from_staged_event, run_events_from_staged_event,
 };
+use super::labels::stage_execution_status_label;
 use super::output::FitWorkflowOutput;
 use super::output::{FitCompletionView, fit_completion_view, fit_start_summary};
 use super::request::{FitWorkflowPaths, StagedFitExecutionWorkflowRequest};
@@ -144,8 +147,7 @@ pub fn run_staged_fit_execution_workflow(
         execution_duration,
     };
 
-    complete_progress(&mut observer.progress_adapter, output.report.status)?;
-    finish_progress(&mut observer.progress_adapter)?;
+    complete_progress_before_summary(&mut observer.progress_adapter, output.report.status);
     emit_completion_summary(&observer, &request.paths, &output)?;
 
     Ok(output)
@@ -334,19 +336,23 @@ fn should_observe_staged_event(
     if progress.evaluation_progress_percent == Some(100) {
         return true;
     }
+
+    if progress.restart_evaluation_timing_diagnostic.is_some() {
+        return true;
+    }
+
     if !progress.planned_work_item_labels.is_empty() {
         return true;
     }
+
     if progress.current_item_label.is_some()
         && progress.current_evaluation_count.is_none()
         && progress.evaluation_progress_percent.is_none()
     {
         return true;
     }
-    if progress.current_item_label.is_some()
-        && progress.current_parameter_block.is_some()
-        && progress.evaluation_progress_percent.is_none()
-    {
+
+    if progress.current_item_label.is_some() && progress.evaluation_progress_percent == Some(0) {
         return true;
     }
 
@@ -371,6 +377,7 @@ fn observe_progress(
     };
 
     progress_adapter.observe(progress_event);
+
     progress_adapter
         .draw_latest()
         .map_err(|source| WorkflowError::OutputProgress { source })
@@ -395,40 +402,15 @@ fn observe_output_materialization_progress(
         .map_err(|source| WorkflowError::OutputProgress { source })
 }
 
-fn finish_progress(
-    progress_adapter: &mut Option<&mut ProgressAdapter>,
-) -> Result<(), WorkflowError> {
-    if let Some(progress_adapter) = progress_adapter.as_deref_mut() {
-        progress_adapter
-            .finish_and_keep()
-            .map_err(|source| WorkflowError::OutputWrite { source })?;
-    }
-
-    Ok(())
-}
-
-fn complete_progress(
+fn complete_progress_before_summary(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     status: CalibrationStageExecutionStatus,
-) -> Result<(), WorkflowError> {
+) {
     let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
-        return Ok(());
+        return;
     };
 
-    progress_adapter.observe(ProgressEvent::RunCompleted {
-        status: terminal_progress_status(status).to_string(),
-    });
-
-    progress_adapter
-        .draw_latest()
-        .map_err(|source| WorkflowError::OutputProgress { source })
-}
-
-const fn terminal_progress_status(status: CalibrationStageExecutionStatus) -> &'static str {
-    match status {
-        CalibrationStageExecutionStatus::Success => "completed",
-        CalibrationStageExecutionStatus::Failure => "failed",
-    }
+    complete_terminal_progress(progress_adapter, stage_execution_status_label(status));
 }
 
 fn observe_run_events(input: RunEventObservationInput<'_, '_>) -> Result<(), WorkflowError> {
@@ -450,6 +432,15 @@ fn observe_run_events(input: RunEventObservationInput<'_, '_>) -> Result<(), Wor
         if let Some(machine_event_sink) = input.machine_event_sink.as_deref_mut() {
             machine_event_sink(&run_event)?;
         }
+    }
+
+    if let CalibrationStagedRunObserverEvent::StageProgress(progress) = input.event
+        && progress.restart_evaluation_timing_diagnostic.is_some()
+    {
+        input
+            .event_writer
+            .flush()
+            .map_err(|source| WorkflowError::FitEventLog { source })?;
     }
 
     Ok(())
@@ -485,7 +476,7 @@ fn write_execution_artifacts(
         None,
     )?;
 
-    if input.report.status != CalibrationStageExecutionStatus::Success {
+    if !input.report.status.is_successful() {
         return Ok((report_payload, None));
     }
 
@@ -552,16 +543,50 @@ mod tests {
     }
 
     #[test]
-    fn progress_gate_observes_restart_block_start_without_eval_metrics() {
+    fn progress_gate_observes_restart_work_item_start_without_eval_metrics() {
         let mut progress_gate = VolatileProgressGate::default();
 
         assert!(should_observe_staged_event(
             &mut progress_gate,
-            &joint_refinement_restart_progress_event("baseline", None, Some(1), Some(1),)
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::RestartOptimization,
+                Some("baseline"),
+                Some(1),
+                Some(1),
+            )
         ));
         assert!(should_observe_staged_event(
             &mut progress_gate,
-            &joint_refinement_restart_progress_event("midpoint", Some("nig"), Some(0), None,)
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::RestartOptimization,
+                Some("midpoint"),
+                None,
+                None,
+            )
+        ));
+    }
+
+    #[test]
+    fn progress_gate_observes_active_option_work_item_start_after_phase_start() {
+        let mut progress_gate = VolatileProgressGate::default();
+
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+                None,
+                None,
+                None,
+            )
+        ));
+        assert!(should_observe_staged_event(
+            &mut progress_gate,
+            &joint_refinement_progress_event(
+                JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+                Some("halton_02"),
+                Some(0),
+                Some(0),
+            )
         ));
     }
 
@@ -586,34 +611,39 @@ mod tests {
                 aggregate_progress_percent: None,
                 current_item_label: current_item_label.map(str::to_string),
                 current_restart_id: None,
+                current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: None,
-                current_parameter_block: None,
                 completed_outer_cycles: None,
                 total_outer_cycles: None,
                 current_evaluation_count,
                 total_evaluation_budget: None,
                 evaluation_progress_percent,
+                current_pricing_interval_index: None,
+                total_pricing_interval_count: None,
+                completed_pricing_row_count: None,
+                total_pricing_row_count: None,
                 valid_completed_units: None,
                 cumulative_local_evaluation_count: None,
-                current_weighted_objective: None,
-                current_restart_best_weighted_objective: None,
+                current_global_loss: None,
+                current_restart_best_global_loss: None,
                 current_candidate_assessment: None,
                 best_restart_id: None,
-                best_weighted_objective: None,
+                best_global_loss: None,
                 current_coarse_consistency_fit: None,
                 best_coarse_consistency_fit: None,
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
+                restart_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))
     }
 
-    fn joint_refinement_restart_progress_event(
-        restart_id: &str,
-        current_parameter_block: Option<&str>,
+    fn joint_refinement_progress_event(
+        phase: JointRefinementStageProgressPhase,
+        restart_id: Option<&str>,
         current_evaluation_count: Option<usize>,
         evaluation_progress_percent: Option<usize>,
     ) -> CalibrationStagedRunObserverEvent {
@@ -623,35 +653,38 @@ mod tests {
                 stage: CalibrationStage::JointRefinement,
                 stage_index: 5,
                 stage_count: 5,
-                progress_phase: CalibrationStageProgressPhase::JointRefinement(
-                    JointRefinementStageProgressPhase::RestartOptimization,
-                ),
+                progress_phase: CalibrationStageProgressPhase::JointRefinement(phase),
                 completed_units: 0,
                 total_units: 6,
                 stage_progress_percent: None,
                 aggregate_progress_percent: None,
-                current_item_label: Some(restart_id.to_string()),
-                current_restart_id: Some(restart_id.to_string()),
+                current_item_label: restart_id.map(str::to_string),
+                current_restart_id: restart_id.map(str::to_string),
+                current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: Some(5),
-                current_parameter_block: current_parameter_block.map(str::to_string),
-                completed_outer_cycles: current_parameter_block.map(|_| 0),
+                completed_outer_cycles: None,
                 total_outer_cycles: Some(1),
                 current_evaluation_count,
                 total_evaluation_budget: Some(59),
                 evaluation_progress_percent,
+                current_pricing_interval_index: None,
+                total_pricing_interval_count: None,
+                completed_pricing_row_count: None,
+                total_pricing_row_count: None,
                 valid_completed_units: Some(0),
                 cumulative_local_evaluation_count: Some(0),
-                current_weighted_objective: None,
-                current_restart_best_weighted_objective: None,
+                current_global_loss: None,
+                current_restart_best_global_loss: None,
                 current_candidate_assessment: None,
                 best_restart_id: None,
-                best_weighted_objective: None,
+                best_global_loss: None,
                 current_coarse_consistency_fit: None,
                 best_coarse_consistency_fit: None,
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
+                restart_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))

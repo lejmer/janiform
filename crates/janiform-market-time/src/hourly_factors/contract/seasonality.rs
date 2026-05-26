@@ -224,7 +224,7 @@ pub fn materialize_hourly_seasonality_factors(
         .zip(source_signal.seasonality_factors.iter().copied())
         .enumerate()
     {
-        if !seasonality_factor.is_finite() || seasonality_factor <= 0.0 {
+        if !seasonality_factor.is_finite() || seasonality_factor < 0.0 {
             return Err(HourlyFactorContractError::InvalidSeasonalitySourceFactor {
                 source_position,
                 value: seasonality_factor,
@@ -317,7 +317,7 @@ pub fn materialize_hourly_seasonality_factors(
                 }
             };
 
-        if !interval_factor.is_finite() || interval_factor <= 0.0 {
+        if !interval_factor.is_finite() || interval_factor < 0.0 {
             return Err(HourlyFactorContractError::InvalidSeasonalityFactor {
                 interval_index,
                 value: interval_factor,

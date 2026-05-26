@@ -100,7 +100,7 @@ def simulate_model(
             else native_terminal_progress_mode(
                 resolve_workflow_progress_mode(
                     progress_mode,
-                    default_mode=WorkflowProgressMode.HUMAN,
+                    default_mode=WorkflowProgressMode.TERMINAL,
                 )
             )
         ),

@@ -233,7 +233,7 @@ When supplied, validation skips empirical loading, simulation, and metric comput
         long,
         value_enum,
         default_value = "summary",
-        help = "Control human check detail."
+        help = "Control terminal check detail."
     )]
     pub(crate) show_checks: StylizedFactCheckDisplay,
 
@@ -241,7 +241,7 @@ When supplied, validation skips empirical loading, simulation, and metric comput
         long,
         value_name = "N",
         default_value_t = 10,
-        help = "Maximum number of checks to show in human output."
+        help = "Maximum number of checks to show in terminal output."
     )]
     pub(crate) max_checks: usize,
 }

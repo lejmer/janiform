@@ -25,7 +25,8 @@ import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_w
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 import janiform.model as model_module
-import janiform.pricing.fitted.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
+import janiform.pricing.fitted.market_snapshot._workflow.workflow as fit_market_snapshot_workflow_module
+import janiform.pricing.fitted.market_surface._workflow.workflow as fit_market_surface_workflow_module
 import janiform.simulation.result as simulation_result_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform._workflow_outputs import SimulationArtifactSink
@@ -42,6 +43,12 @@ from janiform.pricing.fitted import (
     JaniformVanillaOptionMaturitySummary,
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
+)
+from janiform.pricing.fitted.physical_distribution import (
+    DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
+    DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
+    physical_distribution_diagnostics_request_payload,
 )
 from janiform.simulation import JaniformSimulationResult
 from janiform.calibration.fit.state import (
@@ -100,7 +107,10 @@ from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 from janiform.simulation import SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
+    append_finalization_stage_report_from_joint_refinement,
     build_endogenous_mean_reversion_fitted_parameters_payload,
+    build_nominal_tick_grid_observation_model_payload,
+    build_neutral_return_clock_exposure_parameters_payload,
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
@@ -617,6 +627,72 @@ def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
     assert request.normalization_policy.option_quote_input_policy is None
 
 
+def _observed_pricing_native_payload(
+    *,
+    valuation_time_utc: datetime,
+    snapshot_specs: tuple[tuple[datetime, tuple[dict[str, Any], ...], float], ...],
+) -> dict[str, Any]:
+    return {
+        "valuation_time_utc": valuation_time_utc.isoformat(),
+        "snapshot_results": [
+            {
+                "valuation_time_utc": snapshot_valuation_time_utc.isoformat(),
+                "spot": spot,
+                "nodes": list(nodes),
+            }
+            for snapshot_valuation_time_utc, nodes, spot in snapshot_specs
+        ],
+        "artifacts": None,
+    }
+
+
+def test_physical_distribution_diagnostics_request_payload_supports_shorthand_and_typed_request(
+) -> None:
+    assert physical_distribution_diagnostics_request_payload(False) is None
+    assert physical_distribution_diagnostics_request_payload(True) == {
+        "path_count": DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
+        "seed": DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
+    }
+    assert physical_distribution_diagnostics_request_payload(
+        ObservedOptionsPhysicalDistributionDiagnosticsRequest(path_count=7, seed=11)
+    ) == {
+        "path_count": 7,
+        "seed": 11,
+    }
+
+
+def _observed_pricing_node_payload(
+    *,
+    quote_timestamp_utc: datetime,
+    expiry_timestamp_utc: datetime,
+    strike: float,
+    observed_mid_price: float,
+    model_implied_volatility: float,
+    forward_price: float,
+) -> dict[str, Any]:
+    return {
+        "quote_timestamp_utc": quote_timestamp_utc.isoformat(),
+        "expiry_timestamp_utc": expiry_timestamp_utc.isoformat(),
+        "strike": strike,
+        "option_type": VanillaOptionPayoffType.CALL.value,
+        "risk_free_rate": 0.0,
+        "dividend_yield": 0.0,
+        "maturity_interval": 0.1,
+        "observed_bid_price": observed_mid_price - 0.25,
+        "observed_ask_price": observed_mid_price + 0.25,
+        "observed_mid_price": observed_mid_price,
+        "model_price": 1.0 + strike / 100.0,
+        "model_implied_volatility": model_implied_volatility,
+        "implied_volatility_inversion_status": VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED.value,
+        "pricing_status": VanillaOptionPricingStatus.SUCCEEDED.value,
+        "pricing_failure_stage": None,
+        "pricing_failure_reason": None,
+        "forward_price": forward_price,
+        "discount_factor": 1.0,
+        "boundary_state_norm": 0.3,
+    }
+
+
 def test_price_option_snapshot_returns_tidy_snapshot_and_surface_df(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -656,76 +732,60 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_df(
         encoding="utf-8",
     )
 
-    captured_arguments: dict[str, Any] = {}
+    captured_requests: list[dict[str, Any]] = []
 
-    def _capture_price_option_grid(
+    def _capture_native_observed_pricing(
         model: JaniformModel,
-        *,
-        valuation_time_utc: datetime,
-        batch: JaniformVanillaOptionGridBatch,
-        observed_data: Optional[CurrentStateEstimationRequest] = None,
-        boundary_state: Any = None,
-        include_transform_diagnostics: bool = False,
-        include_integration_quality_diagnostics: bool = False,
-        cpu_count: Optional[int] = None,
-        silent: bool = False,
-        progress_mode: Any = model_module.WorkflowProgressMode.AUTO,
-        progress: Any = None,
-    ) -> JaniformVanillaOptionGridBatchPricingResult:
+        **request: Any,
+    ) -> dict[str, Any]:
         _ = model
-        _ = boundary_state
-        _ = include_transform_diagnostics
-        _ = include_integration_quality_diagnostics
-        _ = progress
-        captured_arguments["valuation_time_utc"] = valuation_time_utc
-        captured_arguments["batch"] = batch
-        captured_arguments["observed_data"] = observed_data
-        captured_arguments["cpu_count"] = cpu_count
-        captured_arguments["silent"] = silent
-        captured_arguments["progress_mode"] = progress_mode
+        captured_requests.append(request)
 
-        grids = []
-        for grid_index, grid in enumerate(batch.grids):
-            grids.append(
-                JaniformVanillaOptionGridPricingResult(
-                    payoff_type=grid.payoff_type,
-                    risk_free_rate=grid.risk_free_rate,
-                    dividend_yield=grid.dividend_yield,
-                    strikes=grid.strikes,
-                    maturity_intervals=(0.1 + 0.1 * grid_index,),
-                    maturity_terminal_interval_indices=(grid_index,),
-                    price_grid=(tuple(1.0 + strike / 100.0 for strike in grid.strikes),),
-                    implied_volatility_grid=(
-                        tuple(0.2 + 0.01 * strike_index + 0.05 * grid_index for strike_index, _strike in enumerate(grid.strikes)),
-                    ),
-                    implied_volatility_inversion_status_grid=(
-                        tuple(
-                            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED
-                            for _ in grid.strikes
-                        ),
-                    ),
-                    pricing_status_grid=(
-                        tuple(VanillaOptionPricingStatus.SUCCEEDED for _ in grid.strikes),
-                    ),
-                    pricing_failure_stage_grid=(tuple(None for _ in grid.strikes),),
-                    pricing_failure_reason_grid=(tuple(None for _ in grid.strikes),),
-                    forward_price_grid=(tuple(100.0 for _ in grid.strikes),),
-                    discount_factor_grid=(tuple(1.0 for _ in grid.strikes),),
-                    boundary_state_norm_grid=(tuple(0.3 for _ in grid.strikes),),
-                    maturity_summaries=(None,),
-                )
-            )
+        valuation_time_utc = datetime(2026, 2, 3, 15, 0, tzinfo=UTC)
+        nodes = (
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=valuation_time_utc,
+                expiry_timestamp_utc=datetime(2026, 3, 20, 20, 0, tzinfo=UTC),
+                strike=95.0,
+                observed_mid_price=8.25,
+                model_implied_volatility=0.2,
+                forward_price=100.0,
+            ),
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=valuation_time_utc,
+                expiry_timestamp_utc=datetime(2026, 3, 20, 20, 0, tzinfo=UTC),
+                strike=105.0,
+                observed_mid_price=3.25,
+                model_implied_volatility=0.21,
+                forward_price=100.0,
+            ),
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=datetime(2026, 2, 3, 14, 59, tzinfo=UTC),
+                expiry_timestamp_utc=datetime(2026, 4, 17, 20, 0, tzinfo=UTC),
+                strike=95.0,
+                observed_mid_price=9.25,
+                model_implied_volatility=0.25,
+                forward_price=100.0,
+            ),
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=datetime(2026, 2, 3, 14, 59, tzinfo=UTC),
+                expiry_timestamp_utc=datetime(2026, 4, 17, 20, 0, tzinfo=UTC),
+                strike=105.0,
+                observed_mid_price=4.25,
+                model_implied_volatility=0.26,
+                forward_price=100.0,
+            ),
+        )
 
-        return JaniformVanillaOptionGridBatchPricingResult(
-            spot=batch.spot,
-            grids=tuple(grids),
-            runtime_interval_schedule=build_runtime_interval_schedule((0.1, 0.1)),
+        return _observed_pricing_native_payload(
+            valuation_time_utc=valuation_time_utc,
+            snapshot_specs=((valuation_time_utc, nodes, 102.0),),
         )
 
     monkeypatch.setattr(
-        fit_market_snapshot_pricing_workflow_module,
-        "price_option_grid_for_model",
-        _capture_price_option_grid,
+        fit_market_snapshot_workflow_module,
+        "run_native_observed_options_pricing",
+        _capture_native_observed_pricing,
     )
 
     result = model.price_option_snapshot(
@@ -737,23 +797,15 @@ def test_price_option_snapshot_returns_tidy_snapshot_and_surface_df(
         progress_mode=WorkflowProgressMode.NONE,
     )
 
-    observed_data = captured_arguments["observed_data"]
-    assert observed_data is not None
-    assert list(observed_data.observed_tick_data["trade_time"]) == [
-        "2026-02-03T14:30:00Z",
-        "2026-02-03T14:45:00Z",
-        "2026-02-03T15:00:00Z",
-    ]
-    assert observed_data.observed_price == pytest.approx(102.0)
-
-    batch = captured_arguments["batch"]
-    assert batch.spot == pytest.approx(102.0)
-    assert tuple(grid.strikes for grid in batch.grids) == (
-        (95.0, 105.0),
-        (95.0, 105.0),
-    )
-    assert captured_arguments["silent"] is True
-    assert captured_arguments["progress_mode"] is WorkflowProgressMode.NONE
+    assert len(captured_requests) == 1
+    assert captured_requests[0]["tick_data"] == tick_data_path
+    assert captured_requests[0]["option_surface"] == option_surface_path
+    assert captured_requests[0]["valuation_time_utc"] == datetime(2026, 2, 3, 15, 0, tzinfo=UTC)
+    assert captured_requests[0]["option_type"] == "call"
+    assert captured_requests[0]["scope"] == "snapshot"
+    assert captured_requests[0]["output_path"] is None
+    assert captured_requests[0]["silent"] is True
+    assert captured_requests[0]["progress_mode"] is WorkflowProgressMode.NONE
 
     frame = result.to_pandas()
     assert list(frame.columns) == [
@@ -838,79 +890,66 @@ def test_price_option_surface_returns_single_expiry_evolution_surface(
         encoding="utf-8",
     )
 
-    observed_valuation_times: list[datetime] = []
+    captured_requests: list[dict[str, Any]] = []
 
-    def _capture_price_option_grid(
+    def _capture_native_observed_pricing(
         model: JaniformModel,
-        *,
-        valuation_time_utc: datetime,
-        batch: JaniformVanillaOptionGridBatch,
-        observed_data: Optional[CurrentStateEstimationRequest] = None,
-        boundary_state: Any = None,
-        include_transform_diagnostics: bool = False,
-        include_integration_quality_diagnostics: bool = False,
-        cpu_count: Optional[int] = None,
-        silent: bool = False,
-        progress_mode: Any = model_module.WorkflowProgressMode.AUTO,
-        progress: Any = None,
-    ) -> JaniformVanillaOptionGridBatchPricingResult:
+        **request: Any,
+    ) -> dict[str, Any]:
         _ = model
-        _ = observed_data
-        _ = boundary_state
-        _ = include_transform_diagnostics
-        _ = include_integration_quality_diagnostics
-        _ = cpu_count
-        _ = silent
-        _ = progress_mode
-        _ = progress
-        observed_valuation_times.append(valuation_time_utc)
+        captured_requests.append(request)
 
-        forward_price = 100.0 if valuation_time_utc.minute == 55 else 102.0
-        volatility_level_shift = 0.0 if valuation_time_utc.minute == 55 else 0.05
-        grids = tuple(
-            JaniformVanillaOptionGridPricingResult(
-                payoff_type=grid.payoff_type,
-                risk_free_rate=grid.risk_free_rate,
-                dividend_yield=grid.dividend_yield,
-                strikes=grid.strikes,
-                maturity_intervals=(0.1,),
-                maturity_terminal_interval_indices=(0,),
-                price_grid=(tuple(1.0 + strike / 100.0 for strike in grid.strikes),),
-                implied_volatility_grid=(
-                    tuple(
-                        0.2 + 0.01 * strike_index + volatility_level_shift
-                        for strike_index, _strike in enumerate(grid.strikes)
-                    ),
-                ),
-                implied_volatility_inversion_status_grid=(
-                    tuple(
-                        VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED
-                        for _ in grid.strikes
-                    ),
-                ),
-                pricing_status_grid=(
-                    tuple(VanillaOptionPricingStatus.SUCCEEDED for _ in grid.strikes),
-                ),
-                pricing_failure_stage_grid=(tuple(None for _ in grid.strikes),),
-                pricing_failure_reason_grid=(tuple(None for _ in grid.strikes),),
-                forward_price_grid=(tuple(forward_price for _ in grid.strikes),),
-                discount_factor_grid=(tuple(1.0 for _ in grid.strikes),),
-                boundary_state_norm_grid=(tuple(0.3 for _ in grid.strikes),),
-                maturity_summaries=(None,),
-            )
-            for grid in batch.grids
+        first_valuation_time_utc = datetime(2026, 2, 3, 14, 55, tzinfo=UTC)
+        second_valuation_time_utc = datetime(2026, 2, 3, 15, 0, tzinfo=UTC)
+        first_nodes = (
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=first_valuation_time_utc,
+                expiry_timestamp_utc=datetime(2026, 3, 20, 20, 0, tzinfo=UTC),
+                strike=95.0,
+                observed_mid_price=8.25,
+                model_implied_volatility=0.2,
+                forward_price=100.0,
+            ),
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=first_valuation_time_utc,
+                expiry_timestamp_utc=datetime(2026, 3, 20, 20, 0, tzinfo=UTC),
+                strike=105.0,
+                observed_mid_price=3.25,
+                model_implied_volatility=0.21,
+                forward_price=100.0,
+            ),
+        )
+        second_nodes = (
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=second_valuation_time_utc,
+                expiry_timestamp_utc=datetime(2026, 3, 20, 20, 0, tzinfo=UTC),
+                strike=95.0,
+                observed_mid_price=8.45,
+                model_implied_volatility=0.25,
+                forward_price=102.0,
+            ),
+            _observed_pricing_node_payload(
+                quote_timestamp_utc=second_valuation_time_utc,
+                expiry_timestamp_utc=datetime(2026, 3, 20, 20, 0, tzinfo=UTC),
+                strike=105.0,
+                observed_mid_price=3.45,
+                model_implied_volatility=0.26,
+                forward_price=102.0,
+            ),
         )
 
-        return JaniformVanillaOptionGridBatchPricingResult(
-            spot=batch.spot,
-            grids=grids,
-            runtime_interval_schedule=build_runtime_interval_schedule((0.1, 0.1)),
+        return _observed_pricing_native_payload(
+            valuation_time_utc=second_valuation_time_utc,
+            snapshot_specs=(
+                (first_valuation_time_utc, first_nodes, 101.0),
+                (second_valuation_time_utc, second_nodes, 102.0),
+            ),
         )
 
     monkeypatch.setattr(
-        fit_market_snapshot_pricing_workflow_module,
-        "price_option_grid_for_model",
-        _capture_price_option_grid,
+        fit_market_surface_workflow_module,
+        "run_native_observed_options_pricing",
+        _capture_native_observed_pricing,
     )
 
     result = model.price_option_surface(
@@ -920,13 +959,19 @@ def test_price_option_surface_returns_single_expiry_evolution_surface(
         option_type="call",
         valuation_count=2,
         cpu_count=1,
+        output_path=tmp_path / "observed_pricing.json",
     )
 
     assert isinstance(result, JaniformObservedOptionSurfacePricingResult)
-    assert observed_valuation_times == [
-        datetime(2026, 2, 3, 14, 55, tzinfo=UTC),
-        datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
-    ]
+    assert len(captured_requests) == 1
+    assert captured_requests[0]["tick_data"] == tick_data_path
+    assert captured_requests[0]["option_surface"] == option_surface_path
+    assert captured_requests[0]["valuation_time_utc"] == datetime(2026, 2, 3, 15, 0, tzinfo=UTC)
+    assert captured_requests[0]["option_type"] == "call"
+    assert captured_requests[0]["scope"] == "surface"
+    assert captured_requests[0]["valuation_count"] == 2
+    assert captured_requests[0]["cpu_count"] == 1
+    assert captured_requests[0]["output_path"] == tmp_path / "observed_pricing.json"
 
     frame = result.to_pandas()
     assert tuple(sorted(frame["valuation_time_utc"].unique())) == (
@@ -1284,7 +1329,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
 
     summary = model.summary()
 
-    assert set(summary["fitted_parameters"]) == {"seasonality", "joint_refinement"}
+    assert set(summary["fitted_parameters"]) == {"seasonality", "finalization"}
     assert (
         summary["preset_provenance"]["known_news"]["selected_preset"]["preset_name"]
         == "none"
@@ -1300,6 +1345,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
         "hawkes",
         "return_components",
         "joint_refinement",
+        "finalization",
     ]
 
 
@@ -1330,9 +1376,14 @@ def test_high_level_model_load_preserves_rust_model_artifact_metadata(
         "resolved_configuration",
         "session_resolution",
     }
-    assert set(persisted_payload["parameters"]) == {"seasonality", "joint_refinement"}
+    assert set(persisted_payload["parameters"]) == {"seasonality", "finalization"}
+    assert set(persisted_payload["parameters"]["finalization"]) == {
+        "schema_version",
+        "selected_candidate_id",
+        "fitted_parameters",
+    }
     assert (
-        persisted_payload["parameters"]["joint_refinement"]["fitted_parameters"][
+        persisted_payload["parameters"]["finalization"]["fitted_parameters"][
             "return_components_fitted_parameters"
         ]["mean_reversion_fitted_parameters"]
         == build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
@@ -1533,7 +1584,7 @@ def test_high_level_model_load_preserves_endogenous_mean_reversion_block(
     loaded_model = JaniformModel.load(persisted_model_path)
 
     assert (
-        loaded_model.parameters["joint_refinement"]["fitted_parameters"][
+        loaded_model.parameters["finalization"]["fitted_parameters"][
             "return_components_fitted_parameters"
         ]["mean_reversion_fitted_parameters"]
         == mean_reversion_payload
@@ -1973,11 +2024,11 @@ def test_run_model_vanilla_option_surface_pricing_uses_terminal_progress_native_
 
     result = fit_pricing_native_module.run_model_vanilla_option_surface_pricing(
         native_execution_input={"prepared": "surface"},
-        progress_mode="human",
+        progress_mode="terminal",
     )
 
     assert observed_native_inputs == [{"prepared": "surface"}]
-    assert observed_progress_modes == ["human"]
+    assert observed_progress_modes == ["terminal"]
     assert result == expected_result
 
 
@@ -2029,7 +2080,7 @@ def test_price_option_grid_for_model_does_not_render_python_pricing_progress(
     )
 
     assert result is observed_result
-    assert captured_progress_modes == ["human"]
+    assert captured_progress_modes == ["terminal"]
 
 
 def test_high_level_model_simulate_sends_continuation_data_to_native_workflow(
@@ -2800,7 +2851,7 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
     assert captured_requests[0]["spot"] == 100.0
     assert captured_requests[0]["strike"] == 105.0
     assert captured_requests[0]["expiry_timestamp_utc"] == "2026-02-02T19:00:00+00:00"
-    assert captured_requests[0]["progress_mode"] == "human"
+    assert captured_requests[0]["progress_mode"] == "terminal"
 
 
 def test_high_level_model_price_option_forwards_terminal_progress_suppression_to_native(
@@ -2944,7 +2995,7 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
         datetime(2026, 2, 2, 15, tzinfo=UTC)
     )
     assert captured_native_arguments[0][3] == pytest.approx(
-        fit_pricing_support_module.price_observed_log_price_from_spot(model, spot=100.0)
+        fit_pricing_support_module.price_observed_log_return_from_spot(model, spot=100.0)
     )
     assert captured_native_arguments[0][4] == (
         datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
@@ -3369,7 +3420,7 @@ def test_high_level_model_price_option_grid_dispatches_through_grid_batch_pricin
         lambda native_execution_input, *, progress_mode: (
             observed_result
             if native_execution_input is prepared_native_execution_input
-            and progress_mode == "human"
+            and progress_mode == "terminal"
             else None
         ),
     )
@@ -3476,7 +3527,7 @@ def test_high_level_model_price_option_grid_surface_dispatches_through_surface_p
         lambda native_execution_input, *, progress_mode: (
             observed_result
             if native_execution_input is prepared_native_execution_input
-            and progress_mode == "human"
+            and progress_mode == "terminal"
             else None
         ),
     )
@@ -3773,6 +3824,86 @@ def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hou
         HourlySeasonalityProviderExplicitSource,
     )
     assert tuple(seasonality_source.hourly_factors) == (1.0, 1.0)
+
+
+def test_runtime_pricing_factors_use_pricing_kernel_when_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-block-hawkes-runtime",
+    )
+
+    raw_fitted_parameters = cast(
+        dict[str, Any],
+        model.parameters["finalization"]["fitted_parameters"],
+    )
+    raw_hawkes_parameters = cast(
+        dict[str, Any],
+        raw_fitted_parameters["hawkes_fitted_parameters"]["kernel_parameters"],
+    )
+
+    raw_fitted_parameters["pricing_block_fitted_parameters"] = {
+        "pricing_kernel_parameters": {
+            "buy_activity_premium": 1.2,
+            "sell_activity_premium": 0.8,
+        },
+    }
+
+    valuation_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
+
+    physical_runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
+        start_time_utc=valuation_time_utc,
+        horizon_interval_count=2,
+        interval="1h",
+    )
+
+    pricing_runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
+        start_time_utc=valuation_time_utc,
+        horizon_interval_count=2,
+        interval="1h",
+        prefer_joint_pricing_block=True,
+    )
+
+    assert physical_runtime_factors.kernel_parameters.lambda_bar == raw_hawkes_parameters[
+        "lambda_bar"
+    ]
+    assert pricing_runtime_factors.kernel_parameters.lambda_bar == raw_hawkes_parameters[
+        "lambda_bar"
+    ]
+    assert physical_runtime_factors.pricing_kernel_parameters.buy_activity_premium == 1.0
+    assert pricing_runtime_factors.pricing_kernel_parameters.buy_activity_premium == 1.2
+    assert pricing_runtime_factors.pricing_kernel_parameters.sell_activity_premium == 0.8
+
+
+def test_runtime_pricing_factors_reject_incomplete_pricing_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-invalid-pricing-block-runtime",
+    )
+
+    raw_fitted_parameters = cast(
+        dict[str, Any],
+        model.parameters["finalization"]["fitted_parameters"],
+    )
+    raw_fitted_parameters["pricing_block_fitted_parameters"] = {}
+
+    with pytest.raises(RuntimeError, match="pricing_kernel_parameters"):
+        fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+            model,
+            start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+            horizon_interval_count=2,
+            interval="1h",
+            prefer_joint_pricing_block=True,
+        )
 
 
 def test_high_level_fit_routes_through_prepared_staged_runner(
@@ -4176,6 +4307,7 @@ def test_high_level_fit_report_returns_success_details_with_model(
         "return_components",
         "mean_reversion",
         "joint_refinement",
+        "finalization",
     ]
 
 
@@ -4267,6 +4399,7 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
             CalibrationStage.RETURN_COMPONENTS,
             CalibrationStage.MEAN_REVERSION,
             CalibrationStage.JOINT_REFINEMENT,
+            CalibrationStage.FINALIZATION,
         ),
     )
 
@@ -4605,8 +4738,8 @@ def _capture_native_single_option_pricing_requests(
 def _mean_reversion_fitted_parameters_payload_from_model_payload(
     model_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    raw_joint_refinement = model_payload["parameters"]["joint_refinement"]
-    raw_fitted_parameters = raw_joint_refinement["fitted_parameters"]
+    raw_finalization = model_payload["parameters"]["finalization"]
+    raw_fitted_parameters = raw_finalization["fitted_parameters"]
     raw_return_components = raw_fitted_parameters["return_components_fitted_parameters"]
 
     return raw_return_components["mean_reversion_fitted_parameters"]
@@ -4989,6 +5122,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                        "return_clock_exposure_parameters": (
+                            build_neutral_return_clock_exposure_parameters_payload()
+                        ),
+                        "tick_grid_observation_model": (
+                            build_nominal_tick_grid_observation_model_payload()
+                        ),
                         "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
                 },
@@ -5158,6 +5297,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                     "exposure_weighted_mean_one_over_source_window.v1"
                                 ),
                             },
+                            "return_clock_exposure_parameters": (
+                                build_neutral_return_clock_exposure_parameters_payload()
+                            ),
+                            "tick_grid_observation_model": (
+                                build_nominal_tick_grid_observation_model_payload()
+                            ),
                             "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                         },
                     },
@@ -5249,6 +5394,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                        "return_clock_exposure_parameters": (
+                            build_neutral_return_clock_exposure_parameters_payload()
+                        ),
+                        "tick_grid_observation_model": (
+                            build_nominal_tick_grid_observation_model_payload()
+                        ),
                         "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
                     "objective_breakdown": {
@@ -5276,6 +5427,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
         ],
         "emitted_checkpoints": [],
     }
+    append_finalization_stage_report_from_joint_refinement(raw_response)
 
     return validate_staged_calibration_response(raw_response), raw_response
 

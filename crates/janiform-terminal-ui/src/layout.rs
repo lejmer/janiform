@@ -97,6 +97,8 @@ impl StartSummary {
 pub enum CompletionSummaryStatus {
     /// Run completed successfully.
     Succeeded,
+    /// Run completed and emitted warnings.
+    SucceededWithWarnings,
     /// Run failed.
     Failed,
 }
@@ -117,6 +119,7 @@ impl CompletionSummary {
     pub fn render(&self, renderer: &TerminalRenderer) -> String {
         let status_style = match self.status {
             CompletionSummaryStatus::Succeeded => SemanticStyle::CompletedMarker,
+            CompletionSummaryStatus::SucceededWithWarnings => SemanticStyle::WarningMarker,
             CompletionSummaryStatus::Failed => SemanticStyle::FailureMarker,
         };
 
@@ -130,6 +133,7 @@ impl CompletionSummary {
 
         let marker = match self.status {
             CompletionSummaryStatus::Succeeded => COMPLETED_MARKER,
+            CompletionSummaryStatus::SucceededWithWarnings => WARNING_MARKER,
             CompletionSummaryStatus::Failed => FAILURE_MARKER,
         };
         let heading = renderer.style_text(status_style, &format!("{marker} {}", self.title));
@@ -428,6 +432,7 @@ fn split_lines(text: &str) -> Vec<String> {
 fn completion_status_text(status: CompletionSummaryStatus) -> &'static str {
     match status {
         CompletionSummaryStatus::Succeeded => "succeeded",
+        CompletionSummaryStatus::SucceededWithWarnings => "succeeded with warnings",
         CompletionSummaryStatus::Failed => "failed",
     }
 }

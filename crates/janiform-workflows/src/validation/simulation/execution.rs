@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::sync::mpsc;
 
 use chrono::{DateTime, Utc};
 use janiform::simulation::SimulationProgressEvent;
@@ -7,11 +6,16 @@ use janiform_foundations::parallelism::resolved_cpu_count;
 use janiform_foundations::randomness::{
     SimulationRandomnessSubstreamDomain, derive_simulation_substream_seed,
 };
+use janiform_work_scheduler::{
+    StreamingWorkContext, StreamingWorkOutput, StreamingWorkPoolInput, StreamingWorkProgress,
+    run_streaming_work_pool,
+};
 use serde_json::Value;
 
 use super::super::artifacts::{FullSimulationPathCache, SimulationPathManifest};
 use super::super::empirical::{AnalysisWindow, ReturnObservation};
 use super::super::request::StylizedFactsValidationWorkflowRequest;
+use super::super::validation_error::stylized_facts_validation_error;
 use super::super::workflow::StylizedFactsValidationWorkflowObserver;
 use super::progress::{
     SimulationCompletedProgressInput, SimulationIntervalProgressInput,
@@ -19,6 +23,7 @@ use super::progress::{
     emit_simulation_plan, emit_simulation_started,
 };
 use crate::error::WorkflowError;
+use crate::progress::ProgressUnitTracker;
 use crate::simulation::{
     DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, DirectSimulationCompleted, ModelArtifactSimulationKind,
     ModelArtifactSimulationWorkflowRequest, SimulationOutputColumns,
@@ -145,20 +150,15 @@ fn simulate_validation_paths_serial(
             },
         );
 
-        let mut path_completed_interval_units = 0usize;
+        let mut path_progress_units = ProgressUnitTracker::new(simulated_interval_count);
 
         let output = {
             let mut progress_observer = |event: SimulationProgressEvent| {
-                let path_event_completed_units =
-                    event.completed_units.min(simulated_interval_count);
-
-                if path_event_completed_units <= path_completed_interval_units {
+                let completed_delta = path_progress_units.record(event.completed_units);
+                if completed_delta == 0 {
                     return;
                 }
 
-                let completed_delta = path_event_completed_units - path_completed_interval_units;
-
-                path_completed_interval_units = path_event_completed_units;
                 completed_interval_units += completed_delta;
 
                 emit_simulation_interval_progress(
@@ -166,7 +166,7 @@ fn simulate_validation_paths_serial(
                     SimulationIntervalProgressInput {
                         path_position,
                         seed,
-                        path_completed_intervals: path_completed_interval_units,
+                        path_completed_intervals: path_progress_units.completed_units(),
                         path_total_intervals: simulated_interval_count,
                         completed_units: completed_interval_units,
                         total_units: total_interval_units,
@@ -188,9 +188,7 @@ fn simulate_validation_paths_serial(
             )?
         };
 
-        if path_completed_interval_units < simulated_interval_count {
-            completed_interval_units += simulated_interval_count - path_completed_interval_units;
-        }
+        completed_interval_units += path_progress_units.complete();
 
         emit_simulation_completed(
             observer,
@@ -223,63 +221,52 @@ fn simulate_validation_paths_parallel(
     worker_count: usize,
     total_interval_units: usize,
 ) -> Result<Vec<SimulatedValidationPathOutput>, WorkflowError> {
-    let active_initial_count = worker_count.min(generated_seeds.len());
-
-    let mut path_started = (0..generated_seeds.len())
-        .map(|path_position| path_position < active_initial_count)
-        .collect::<Vec<_>>();
-
-    for (path_position, seed) in generated_seeds
+    let jobs = generated_seeds
         .iter()
         .copied()
         .enumerate()
-        .take(active_initial_count)
-    {
-        emit_simulation_started(
-            observer,
-            SimulationStartedProgressInput {
+        .collect::<Vec<_>>();
+    let mut collector = SimulationPathResultCollector::new(
+        generated_seeds.len(),
+        simulated_interval_count,
+        worker_count,
+        total_interval_units,
+        observer,
+    );
+
+    run_streaming_work_pool(StreamingWorkPoolInput::new(
+        &mut collector,
+        jobs,
+        worker_count,
+        |(path_position, seed),
+         context: StreamingWorkContext<
+            SimulationPathProgressMessage,
+            Result<SimulatedValidationPathOutput, WorkflowError>,
+        >| {
+            if !context.send_progress(SimulationPathProgressMessage::Started {
                 path_position,
                 seed,
-                path_total_intervals: simulated_interval_count,
-                total_path_count: generated_seeds.len(),
-                completed_units: 0,
-                total_units: total_interval_units,
-                worker_count,
-            },
-        );
-    }
+            }) {
+                return Err(stylized_facts_validation_error(
+                    "simulation progress channel closed before path start",
+                ));
+            }
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(worker_count)
-        .build()
-        .map_err(|source| WorkflowError::ValidationInputFailed {
-            field: "--cpu-count",
-            message: source.to_string(),
-        })?;
+            // Intentional copy because the simulator request owns its model payload.
+            let model_payload = model_payload.clone();
 
-    let (sender, receiver) = mpsc::channel::<SimulationPathMessage>();
+            // Intentional copy because each parallel path needs an owned workflow request.
+            let request = request.clone();
 
-    for (path_position, seed) in generated_seeds.iter().copied().enumerate() {
-        let sender = sender.clone();
-
-        // Intentional copy because each simulation request owns its model payload.
-        let model_payload = model_payload.clone();
-
-        // Intentional copy because each parallel path needs an owned workflow request.
-        let request = request.clone();
-
-        pool.spawn(move || {
-            let progress_sender = sender.clone();
-
-            let mut progress_observer = move |event: SimulationProgressEvent| {
-                let _ = progress_sender.send(SimulationPathMessage::Progress {
+            let mut progress_observer = |event: SimulationProgressEvent| {
+                let _ = context.send_progress(SimulationPathProgressMessage::Progress {
                     path_position,
                     seed,
                     event,
                 });
             };
 
-            let result = simulate_validation_path(
+            simulate_validation_path(
                 &request,
                 model_payload,
                 analysis_window,
@@ -288,168 +275,19 @@ fn simulate_validation_paths_parallel(
                 path_position,
                 seed,
                 &mut progress_observer,
-            );
+            )
+        },
+        |collector: &mut SimulationPathResultCollector<'_, '_>,
+         progress: StreamingWorkProgress<SimulationPathProgressMessage>| {
+            collector.record_progress(progress.progress)
+        },
+        |collector: &mut SimulationPathResultCollector<'_, '_>,
+         output: StreamingWorkOutput<Result<SimulatedValidationPathOutput, WorkflowError>>| {
+            collector.record_output(output.output)
+        },
+    ))?;
 
-            let _ = sender.send(SimulationPathMessage::Completed(result));
-        });
-    }
-
-    drop(sender);
-
-    let mut completed_count = 0usize;
-    let mut completed_interval_units = 0usize;
-    let mut next_started_position = active_initial_count;
-
-    let mut path_completed_interval_units = (0..generated_seeds.len())
-        .map(|_| 0usize)
-        .collect::<Vec<_>>();
-
-    let mut outputs = (0..generated_seeds.len()).map(|_| None).collect::<Vec<_>>();
-
-    for message in receiver {
-        let output = match message {
-            SimulationPathMessage::Progress {
-                path_position,
-                seed,
-                event,
-            } => {
-                let path_event_completed_units =
-                    event.completed_units.min(simulated_interval_count);
-
-                let Some(path_started_flag) = path_started.get_mut(path_position) else {
-                    return Err(WorkflowError::ValidationInputFailed {
-                        field: "validate stylized-facts",
-                        message: "simulation progress referenced an unknown path".to_string(),
-                    });
-                };
-
-                if !*path_started_flag {
-                    emit_simulation_started(
-                        observer,
-                        SimulationStartedProgressInput {
-                            path_position,
-                            seed,
-                            path_total_intervals: simulated_interval_count,
-                            total_path_count: generated_seeds.len(),
-                            completed_units: completed_interval_units,
-                            total_units: total_interval_units,
-                            worker_count,
-                        },
-                    );
-
-                    *path_started_flag = true;
-                }
-
-                let Some(path_completed_interval_units) =
-                    path_completed_interval_units.get_mut(path_position)
-                else {
-                    return Err(WorkflowError::ValidationInputFailed {
-                        field: "validate stylized-facts",
-                        message: "simulation progress referenced an unknown path".to_string(),
-                    });
-                };
-
-                if path_event_completed_units <= *path_completed_interval_units {
-                    continue;
-                }
-
-                let completed_delta = path_event_completed_units - *path_completed_interval_units;
-
-                *path_completed_interval_units = path_event_completed_units;
-                completed_interval_units += completed_delta;
-
-                emit_simulation_interval_progress(
-                    observer,
-                    SimulationIntervalProgressInput {
-                        path_position,
-                        seed,
-                        path_completed_intervals: path_event_completed_units,
-                        path_total_intervals: simulated_interval_count,
-                        completed_units: completed_interval_units,
-                        total_units: total_interval_units,
-                        worker_count,
-                    },
-                );
-
-                continue;
-            }
-            SimulationPathMessage::Completed(result) => result?,
-        };
-
-        completed_count += 1;
-
-        let path_position = output.path_position;
-
-        let Some(path_started_flag) = path_started.get_mut(path_position) else {
-            return Err(WorkflowError::ValidationInputFailed {
-                field: "validate stylized-facts",
-                message: "simulation result referenced an unknown path".to_string(),
-            });
-        };
-
-        *path_started_flag = true;
-
-        let Some(path_completed_interval_units) =
-            path_completed_interval_units.get_mut(path_position)
-        else {
-            return Err(WorkflowError::ValidationInputFailed {
-                field: "validate stylized-facts",
-                message: "simulation result referenced an unknown path".to_string(),
-            });
-        };
-
-        if *path_completed_interval_units < simulated_interval_count {
-            completed_interval_units += simulated_interval_count - *path_completed_interval_units;
-            *path_completed_interval_units = simulated_interval_count;
-        }
-
-        emit_simulation_completed(
-            observer,
-            SimulationCompletedProgressInput {
-                manifest: &output.manifest,
-                path_total_intervals: simulated_interval_count,
-                completed_units: completed_interval_units,
-                total_units: total_interval_units,
-                completed_path_count: completed_count,
-                total_path_count: generated_seeds.len(),
-                worker_count,
-            },
-        );
-
-        while next_started_position < generated_seeds.len() && path_started[next_started_position] {
-            next_started_position += 1;
-        }
-
-        if let Some(seed) = generated_seeds.get(next_started_position).copied() {
-            emit_simulation_started(
-                observer,
-                SimulationStartedProgressInput {
-                    path_position: next_started_position,
-                    seed,
-                    path_total_intervals: simulated_interval_count,
-                    total_path_count: generated_seeds.len(),
-                    completed_units: completed_interval_units,
-                    total_units: total_interval_units,
-                    worker_count,
-                },
-            );
-
-            path_started[next_started_position] = true;
-            next_started_position += 1;
-        }
-
-        outputs[path_position] = Some(output);
-    }
-
-    outputs
-        .into_iter()
-        .map(|output| {
-            output.ok_or_else(|| WorkflowError::ValidationInputFailed {
-                field: "validate stylized-facts",
-                message: "simulation did not return every path".to_string(),
-            })
-        })
-        .collect()
+    collector.finish()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -546,25 +384,199 @@ fn simulate_validation_path(
     })
 }
 
-enum SimulationPathMessage {
+enum SimulationPathProgressMessage {
+    Started {
+        path_position: usize,
+        seed: u64,
+    },
     Progress {
         path_position: usize,
         seed: u64,
         event: SimulationProgressEvent,
     },
-    Completed(Result<SimulatedValidationPathOutput, WorkflowError>),
+}
+
+struct SimulationPathResultCollector<'collector, 'observer> {
+    observer: &'collector mut StylizedFactsValidationWorkflowObserver<'observer>,
+    path_started: Vec<bool>,
+    completed_count: usize,
+    completed_interval_units: usize,
+    path_progress_units: Vec<ProgressUnitTracker>,
+    outputs: Vec<Option<SimulatedValidationPathOutput>>,
+    simulated_interval_count: usize,
+    total_interval_units: usize,
+    worker_count: usize,
+}
+
+impl<'collector, 'observer> SimulationPathResultCollector<'collector, 'observer> {
+    fn new(
+        path_count: usize,
+        simulated_interval_count: usize,
+        worker_count: usize,
+        total_interval_units: usize,
+        observer: &'collector mut StylizedFactsValidationWorkflowObserver<'observer>,
+    ) -> Self {
+        Self {
+            observer,
+            path_started: (0..path_count).map(|_| false).collect(),
+            completed_count: 0,
+            completed_interval_units: 0,
+            path_progress_units: (0..path_count)
+                .map(|_| ProgressUnitTracker::new(simulated_interval_count))
+                .collect(),
+            outputs: (0..path_count).map(|_| None).collect(),
+            simulated_interval_count,
+            total_interval_units,
+            worker_count,
+        }
+    }
+
+    fn record_progress(
+        &mut self,
+        progress: SimulationPathProgressMessage,
+    ) -> Result<(), WorkflowError> {
+        match progress {
+            SimulationPathProgressMessage::Started {
+                path_position,
+                seed,
+            } => self.record_started(path_position, seed),
+            SimulationPathProgressMessage::Progress {
+                path_position,
+                seed,
+                event,
+            } => self.record_interval_progress(path_position, seed, event),
+        }
+    }
+
+    fn record_output(
+        &mut self,
+        output: Result<SimulatedValidationPathOutput, WorkflowError>,
+    ) -> Result<(), WorkflowError> {
+        let output = output?;
+        let path_position = output.path_position;
+        let seed = output.manifest.seed;
+
+        self.record_started(path_position, seed)?;
+
+        let Some(path_progress_units) = self.path_progress_units.get_mut(path_position) else {
+            return Err(stylized_facts_validation_error(
+                "simulation result referenced an unknown path",
+            ));
+        };
+
+        self.completed_interval_units += path_progress_units.complete();
+        self.completed_count += 1;
+
+        emit_simulation_completed(
+            self.observer,
+            SimulationCompletedProgressInput {
+                manifest: &output.manifest,
+                path_total_intervals: self.simulated_interval_count,
+                completed_units: self.completed_interval_units,
+                total_units: self.total_interval_units,
+                completed_path_count: self.completed_count,
+                total_path_count: self.outputs.len(),
+                worker_count: self.worker_count,
+            },
+        );
+
+        let Some(output_slot) = self.outputs.get_mut(path_position) else {
+            return Err(stylized_facts_validation_error(
+                "simulation result referenced an unknown path",
+            ));
+        };
+
+        *output_slot = Some(output);
+
+        Ok(())
+    }
+
+    fn finish(self) -> Result<Vec<SimulatedValidationPathOutput>, WorkflowError> {
+        self.outputs
+            .into_iter()
+            .map(|output| {
+                output.ok_or_else(|| {
+                    stylized_facts_validation_error("simulation did not return every path")
+                })
+            })
+            .collect()
+    }
+
+    fn record_started(&mut self, path_position: usize, seed: u64) -> Result<(), WorkflowError> {
+        let total_path_count = self.path_started.len();
+        let Some(path_started) = self.path_started.get_mut(path_position) else {
+            return Err(stylized_facts_validation_error(
+                "simulation progress referenced an unknown path",
+            ));
+        };
+
+        if *path_started {
+            return Ok(());
+        }
+
+        emit_simulation_started(
+            self.observer,
+            SimulationStartedProgressInput {
+                path_position,
+                seed,
+                path_total_intervals: self.simulated_interval_count,
+                total_path_count,
+                completed_units: self.completed_interval_units,
+                total_units: self.total_interval_units,
+                worker_count: self.worker_count,
+            },
+        );
+
+        *path_started = true;
+
+        Ok(())
+    }
+
+    fn record_interval_progress(
+        &mut self,
+        path_position: usize,
+        seed: u64,
+        event: SimulationProgressEvent,
+    ) -> Result<(), WorkflowError> {
+        self.record_started(path_position, seed)?;
+
+        let Some(path_progress_units) = self.path_progress_units.get_mut(path_position) else {
+            return Err(stylized_facts_validation_error(
+                "simulation progress referenced an unknown path",
+            ));
+        };
+
+        let completed_delta = path_progress_units.record(event.completed_units);
+        if completed_delta == 0 {
+            return Ok(());
+        }
+
+        self.completed_interval_units += completed_delta;
+
+        emit_simulation_interval_progress(
+            self.observer,
+            SimulationIntervalProgressInput {
+                path_position,
+                seed,
+                path_completed_intervals: path_progress_units.completed_units(),
+                path_total_intervals: self.simulated_interval_count,
+                completed_units: self.completed_interval_units,
+                total_units: self.total_interval_units,
+                worker_count: self.worker_count,
+            },
+        );
+
+        Ok(())
+    }
 }
 
 fn simulation_progress_total_units(
     path_count: usize,
     interval_count: usize,
 ) -> Result<usize, WorkflowError> {
-    path_count
-        .checked_mul(interval_count)
-        .ok_or_else(|| WorkflowError::ValidationInputFailed {
-            field: "validate stylized-facts",
-            message: "simulation progress unit count does not fit in usize".to_string(),
-        })
+    path_count.checked_mul(interval_count).ok_or_else(|| {
+        stylized_facts_validation_error("simulation progress unit count does not fit in usize")
+    })
 }
 
 pub(in crate::validation) fn derived_seeds(seed: u64, path_count: usize) -> Vec<u64> {
@@ -585,22 +597,14 @@ fn concatenated_path_timestamp(
     path_interval_count: usize,
     interval_duration_nanos: i64,
 ) -> Result<i64, WorkflowError> {
-    let offset =
-        i128::try_from(path_position).map_err(|_| WorkflowError::ValidationInputFailed {
-            field: "validate stylized-facts",
-            message: "simulation path position does not fit in i128".to_string(),
-        })? * i128::try_from(path_interval_count).map_err(|_| {
-            WorkflowError::ValidationInputFailed {
-                field: "validate stylized-facts",
-                message: "simulation interval count does not fit in i128".to_string(),
-            }
-        })? * i128::from(interval_duration_nanos);
+    let offset = i128::try_from(path_position).map_err(|_| {
+        stylized_facts_validation_error("simulation path position does not fit in i128")
+    })? * i128::try_from(path_interval_count).map_err(|_| {
+        stylized_facts_validation_error("simulation interval count does not fit in i128")
+    })? * i128::from(interval_duration_nanos);
 
     i64::try_from(i128::from(timestamp_utc_nanos) + offset).map_err(|_| {
-        WorkflowError::ValidationInputFailed {
-            field: "validate stylized-facts",
-            message: "concatenated simulation timestamp does not fit in i64".to_string(),
-        }
+        stylized_facts_validation_error("concatenated simulation timestamp does not fit in i64")
     })
 }
 

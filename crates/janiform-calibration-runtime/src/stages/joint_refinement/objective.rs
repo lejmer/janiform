@@ -1,56 +1,99 @@
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use janiform_foundations::numeric::{
-    bowley_skewness_from_sorted, central_skewness_or_zero, relative_rmse, sorted_finite_values,
-    standardized_path_distance,
+    arithmetic_mean_or_zero, bowley_skewness_from_sorted, central_skewness_or_zero,
+    compute_sorted_quantile_or_zero, l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted,
+    relative_rmse, sample_standard_deviation, sample_variance, sorted_finite_values,
+    standardized_path_distance, winsorized_sample_standard_deviation_from_sorted,
 };
-use janiform_foundations::time::duration_nanos_to_hours;
+use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, duration_nanos_to_hours};
 
 use super::execution::{
-    JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
-    JointRefinementAdmissibilityThresholds, JointRefinementBaselineBuckets,
-    JointRefinementCandidateEvaluation, JointRefinementContext,
-    JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation,
-    JointRefinementFidelityTier, JointRefinementObservedData,
-    JointRefinementRawAdmissibilityMetrics, JointRefinementSeedSummary,
-    joint_refinement_admissibility_thresholds, ordered_parameter_bits,
+    JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR, JointRefinementAggregatedLikelihoodContextCacheKey,
+    JointRefinementAggregatedLikelihoodContexts, JointRefinementCandidateEvaluation,
+    JointRefinementContext, JointRefinementDeterministicCacheKey,
+    JointRefinementDeterministicEvaluation, JointRefinementFidelityTier,
+    JointRefinementObservedData, JointRefinementObservedReturnShapeStatisticCacheKey,
+    JointRefinementRawAdmissibilityMetrics, JointRefinementReturnShapeHorizon,
+    JointRefinementReturnShapeStatisticEstimate, JointRefinementSeedSummary,
+    build_joint_coarse_interval_observations, elapsed_millis, ordered_parameter_bits,
 };
 use super::setup::{
     CandidateSeedSummariesCacheInput, cached_seed_summaries_for_candidate_seeds,
-    compute_cumulative_log_price_span, parameter_vector_to_fitted_parameters,
+    parameter_vector_to_fitted_parameters,
 };
+use super::tick_shape_proxy::coarse_search_tick_shape_proxy_returns;
+use crate::objective::CalibrationLossBuilder;
 use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
-    log_ratio_distance, normalized_profile_distance, zero_aware_normalized_bucket_value,
+    log_ratio_distance, mean_absolute_return_by_utc_hour, normalized_profile_distance,
+    return_scale_summaries_by_business_time_bucket, return_scale_summary,
+    return_scale_summary_from_returns, rolling_variance_activity_metric, scale_normalized_returns,
+    tick_count_series,
 };
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
-    ContinuousReturnOptimizerContext, build_continuous_return_optimizer_context,
+    build_continuous_return_optimizer_context,
     evaluate_configuration_likelihood_objective_with_context_and_counts,
-    rescale_continuous_return_calibration_sample_business_time_scales,
+    rescale_continuous_return_optimizer_context_business_time_scales,
 };
 use janiform_calibration_artifacts::{
-    CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
+    CalibrationLossEvaluation, CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
     JointRefinementStageObjectiveBreakdown,
 };
-use janiform_model_kernels::hawkes::HawkesKernelParameters;
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::hawkes::{
+    HawkesKernelLoadings, HawkesKernelParameters, spectral_radius_alpha_over_beta,
+};
 
-use super::contracts::{JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate};
+use super::contracts::{
+    JointRefinementStageObjectiveTermDiagnostic, JointRefinementStageProgressPhase,
+    JointRefinementStageProgressUpdate,
+};
 
 pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
 
-#[derive(Debug, Clone)]
-pub(super) struct JointRefinementAggregatedLikelihoodContexts {
-    tick: ContinuousReturnOptimizerContext,
-    five_minute: ContinuousReturnOptimizerContext,
-    fifteen_minute: ContinuousReturnOptimizerContext,
-}
+const ACTIVITY_PROFILE_SESSION_HOURS: usize = 24;
+const RETURN_SHAPE_WINSORIZED_VOLATILITY_LOWER_QUANTILE: f64 = 0.05;
+const RETURN_SHAPE_WINSORIZED_VOLATILITY_UPPER_QUANTILE: f64 = 0.95;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct JointRefinementLikelihoodFitWithCounts {
     pub(super) fit: f64,
+    pub(super) component_shifted_average_negative_log_likelihoods: [f64; 3],
     pub(super) exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct JointRefinementRestartAdmissionScreening {
+    pub(super) aggregate_score: f64,
+    pub(super) component_scores: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct JointRefinementRestartAdmissionDiagnostics {
+    pub(super) screening: JointRefinementRestartAdmissionScreening,
+    pub(super) term_diagnostics: Vec<JointRefinementStageObjectiveTermDiagnostic>,
+}
+
+impl JointRefinementRestartAdmissionScreening {
+    pub(super) fn maximum_component_score(&self) -> f64 {
+        self.component_scores
+            .iter()
+            .copied()
+            .fold(self.aggregate_score, f64::max)
+    }
+
+    pub(super) fn component_score_sum(&self) -> f64 {
+        if self.component_scores.is_empty() {
+            return self.aggregate_score;
+        }
+
+        self.component_scores.iter().sum()
+    }
 }
 
 pub(super) fn evaluate_joint_candidate(
@@ -83,85 +126,10 @@ pub(super) fn evaluate_joint_candidate(
     candidate_evaluation
 }
 
-pub(super) fn evaluate_joint_candidate_nig_block_search_objective_with_counts(
-    parameter_vector: &[f64],
-    context: &JointRefinementContext,
-) -> Option<JointRefinementLikelihoodFitWithCounts> {
-    let fitted_parameters = parameter_vector_to_fitted_parameters(parameter_vector, context)?;
-    if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
-        context
-            .profiling_state
-            .record_invalid_candidate_evaluation();
-        return None;
-    }
-
-    let likelihood_contexts =
-        build_joint_refinement_aggregated_likelihood_contexts_for_fitted_parameters(
-            &fitted_parameters,
-            context,
-        );
-
-    evaluate_joint_candidate_nig_block_search_objective_with_contexts(
-        parameter_vector,
-        context,
-        &likelihood_contexts,
-    )
-}
-
-pub(super) fn build_joint_refinement_nig_block_likelihood_contexts(
-    current_vector: &[f64],
-    context: &JointRefinementContext,
-) -> Option<JointRefinementAggregatedLikelihoodContexts> {
-    let fitted_parameters = parameter_vector_to_fitted_parameters(current_vector, context)?;
-
-    Some(
-        build_joint_refinement_aggregated_likelihood_contexts_for_fitted_parameters(
-            &fitted_parameters,
-            context,
-        ),
-    )
-}
-
-pub(super) fn evaluate_joint_candidate_nig_block_search_objective_with_contexts(
-    parameter_vector: &[f64],
-    context: &JointRefinementContext,
-    likelihood_contexts: &JointRefinementAggregatedLikelihoodContexts,
-) -> Option<JointRefinementLikelihoodFitWithCounts> {
-    let fitted_parameters = parameter_vector_to_fitted_parameters(parameter_vector, context)?;
-    if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
-        context
-            .profiling_state
-            .record_invalid_candidate_evaluation();
-        return None;
-    }
-
-    let likelihood_fit = raw_aggregated_likelihood_fit_for_contexts_with_counts(
-        fitted_parameters
-            .return_components_fitted_parameters
-            .nig_shared_plus_shift_configuration,
-        likelihood_contexts,
-        ContinuousLikelihoodFidelityTier::Local,
-    );
-
-    let thresholds = joint_refinement_admissibility_thresholds(context);
-
-    let likelihood_search_score = threshold_relative_likelihood_search_score(
-        likelihood_fit.fit,
-        thresholds.aggregated_likelihood_fit,
-    );
-
-    likelihood_search_score
-        .is_finite()
-        .then_some(JointRefinementLikelihoodFitWithCounts {
-            fit: likelihood_search_score,
-            exact_likelihood_evaluator_counts: likelihood_fit.exact_likelihood_evaluator_counts,
-        })
-}
-
-pub(super) fn evaluate_joint_fitted_candidate_restart_admission_score(
+pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
     fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
-) -> Result<f64, &'static str> {
+) -> Result<JointRefinementRestartAdmissionDiagnostics, &'static str> {
     if violates_runtime_seasonality_scaled_stationarity(fitted_parameters, context) {
         context
             .profiling_state
@@ -172,37 +140,39 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_score(
     let deterministic_evaluation =
         build_restart_screening_deterministic_evaluation(fitted_parameters, context);
     if let Some(failure_reason) =
-        deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation, context)
+        deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation)
     {
         return Err(failure_reason);
     }
 
-    let thresholds = joint_refinement_admissibility_thresholds(context);
+    let loss_evaluation =
+        build_joint_loss_evaluation(fitted_parameters, &deterministic_evaluation, &[], context);
+    let component_scores = loss_evaluation
+        .family_losses
+        .iter()
+        .map(|family_loss| family_loss.loss)
+        .chain(
+            loss_evaluation
+                .hard_constraint_diagnostics
+                .iter()
+                .map(|constraint| constraint.loss),
+        )
+        .collect::<Vec<_>>();
 
-    let mut threshold_relative_scores = vec![threshold_relative_likelihood_search_score(
-        deterministic_evaluation.raw_aggregated_likelihood_fit,
-        thresholds.aggregated_likelihood_fit,
-    )];
-
-    if let Some(activity_level_fit) = deterministic_evaluation.raw_expected_activity_level_fit {
-        threshold_relative_scores.push(threshold_relative_search_score(
-            activity_level_fit,
-            thresholds.activity_level_fit,
-        ));
-    }
-
-    if let Some(activity_shape_fit) = deterministic_evaluation.raw_expected_activity_shape_fit {
-        threshold_relative_scores.push(threshold_relative_search_score(
-            activity_shape_fit,
-            thresholds.activity_shape_fit,
-        ));
-    }
-
-    let admission_score = root_mean_square(threshold_relative_scores.as_slice());
-    if admission_score.is_finite() {
-        Ok(admission_score)
+    if loss_evaluation.global_loss.is_finite()
+        && component_scores
+            .iter()
+            .all(|component_score| component_score.is_finite())
+    {
+        Ok(JointRefinementRestartAdmissionDiagnostics {
+            screening: JointRefinementRestartAdmissionScreening {
+                aggregate_score: loss_evaluation.global_loss,
+                component_scores,
+            },
+            term_diagnostics: loss_evaluation.term_diagnostics,
+        })
     } else {
-        Err("deterministic_restart_admission_score_not_finite")
+        Err("deterministic_restart_global_loss_not_finite")
     }
 }
 
@@ -216,104 +186,7 @@ fn build_restart_screening_deterministic_evaluation(
         fitted_parameters,
         context,
         ContinuousLikelihoodFidelityTier::Seed,
-    )
-}
-
-pub(super) fn dynamics_block_search_objective(
-    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
-    thresholds: JointRefinementAdmissibilityThresholds,
-) -> f64 {
-    root_mean_square(
-        [
-            threshold_relative_likelihood_search_score(
-                raw_metrics.aggregated_likelihood_fit,
-                thresholds.aggregated_likelihood_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.business_time_return_scale_fit,
-                thresholds.business_time_return_scale_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.intraday_return_level_fit,
-                thresholds.intraday_return_level_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.activity_shape_fit,
-                thresholds.activity_shape_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.activity_level_fit,
-                thresholds.activity_level_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.rv_activity_coupling_fit,
-                thresholds.rv_activity_coupling_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.price_span_sanity_fit,
-                thresholds.price_span_sanity_fit,
-            ),
-        ]
-        .as_slice(),
-    )
-}
-
-pub(super) fn compressed_final_objective(
-    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
-    thresholds: JointRefinementAdmissibilityThresholds,
-) -> f64 {
-    root_mean_square(
-        [
-            threshold_relative_likelihood_search_score(
-                raw_metrics.aggregated_likelihood_fit,
-                thresholds.aggregated_likelihood_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.aggregated_return_shape_fit,
-                thresholds.aggregated_return_shape_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.return_asymmetry_fit,
-                thresholds.return_asymmetry_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.tick_return_asymmetry_fit,
-                thresholds.tick_return_asymmetry_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.aggregated_return_scale_fit,
-                thresholds.aggregated_return_scale_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.tick_return_scale_fit,
-                thresholds.tick_return_scale_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.business_time_return_scale_fit,
-                thresholds.business_time_return_scale_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.intraday_return_level_fit,
-                thresholds.intraday_return_level_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.activity_shape_fit,
-                thresholds.activity_shape_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.activity_level_fit,
-                thresholds.activity_level_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.rv_activity_coupling_fit,
-                thresholds.rv_activity_coupling_fit,
-            ),
-            threshold_relative_search_score(
-                raw_metrics.price_span_sanity_fit,
-                thresholds.price_span_sanity_fit,
-            ),
-        ]
-        .as_slice(),
+        LikelihoodContextCachePolicy::Uncached,
     )
 }
 
@@ -344,6 +217,7 @@ fn build_joint_candidate_evaluation(
     solver_settings: &CalibrationOptimizerSettings,
 ) -> JointRefinementCandidateEvaluation {
     let parameter_bits = ordered_parameter_bits(parameter_vector);
+
     let simulation_parameter_bits = if context.option_pricing_refinement_enabled {
         Some(&[][..])
     } else {
@@ -382,9 +256,11 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     progress_phase: Option<JointRefinementStageProgressPhase>,
 ) -> JointRefinementCandidateEvaluation {
     let simulation_seed_count = match fidelity_tier {
+        JointRefinementFidelityTier::CoarseLocal => 1,
         JointRefinementFidelityTier::Local => 1,
         JointRefinementFidelityTier::Final => context.final_simulation_seeds.len(),
     };
+
     let total_progress_units = 1 + simulation_seed_count;
 
     if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
@@ -411,8 +287,12 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         parameter_bits
     };
 
-    let deterministic_evaluation =
-        resolve_deterministic_evaluation(&fitted_parameters, simulation_parameter_bits, context);
+    let deterministic_evaluation = resolve_deterministic_evaluation(
+        &fitted_parameters,
+        simulation_parameter_bits,
+        context,
+        fidelity_tier,
+    );
 
     emit_joint_refinement_candidate_evaluation_progress(
         progress_sender,
@@ -425,7 +305,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     let raw_aggregated_likelihood_fit = deterministic_evaluation.raw_aggregated_likelihood_fit;
 
     if let Some(failure_reason) =
-        deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation, context)
+        deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation)
     {
         return invalid_candidate_evaluation(
             context,
@@ -436,38 +316,28 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         );
     }
 
-    let simulation_seeds = match fidelity_tier {
-        JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
-        JointRefinementFidelityTier::Final => context.final_simulation_seeds.clone(),
+    let resolved_seed_summaries = match build_seed_summaries_for_fidelity(
+        &fitted_parameters,
+        simulation_parameter_bits,
+        context,
+        fidelity_tier,
+        progress_sender,
+        progress_phase,
+        total_progress_units,
+    ) {
+        Ok(seed_summaries) => seed_summaries,
+        Err(error_message) => {
+            return invalid_candidate_evaluation(
+                context,
+                &context.baseline_hawkes_fitted_parameters,
+                &context.baseline_return_components_fitted_parameters,
+                solver_settings.constraint_penalty_weight,
+                error_message.as_str(),
+            );
+        }
     };
 
-    let seed_summaries =
-        match cached_seed_summaries_for_candidate_seeds(CandidateSeedSummariesCacheInput {
-            parameter_bits: simulation_parameter_bits,
-            fitted_parameters: &fitted_parameters,
-            context,
-            simulation_seeds: simulation_seeds.as_slice(),
-            progress_sender,
-            progress_phase,
-            completed_units_before_seed_summaries: 1,
-            total_units: total_progress_units,
-        }) {
-            Ok(seed_summaries) => seed_summaries,
-            Err(error_message) => {
-                return invalid_candidate_evaluation(
-                    context,
-                    &context.baseline_hawkes_fitted_parameters,
-                    &context.baseline_return_components_fitted_parameters,
-                    solver_settings.constraint_penalty_weight,
-                    error_message.as_str(),
-                );
-            }
-        };
-
-    let resolved_seed_summaries = seed_summaries
-        .into_iter()
-        .map(|(_, summary)| summary)
-        .collect::<Vec<_>>();
+    let raw_seed_metrics_started_at = std::time::Instant::now();
 
     let raw_aggregated_return_shape_fit = average_seed_score(
         resolved_seed_summaries
@@ -530,84 +400,16 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
             )
         }));
 
-    let raw_price_span_sanity_fit =
-        average_seed_score(resolved_seed_summaries.iter().map(|seed_summary| {
-            (compute_cumulative_log_price_span(seed_summary.simulated_15m_intervals.as_slice())
-                - context.observed_data.observed_log_price_span)
-                .abs()
-                / context.observed_data.observed_log_price_span.max(1.0e-8)
-        }));
-
-    let baseline_buckets = match fidelity_tier {
-        JointRefinementFidelityTier::Local => &context.local_baseline_buckets,
-        JointRefinementFidelityTier::Final => &context.final_baseline_buckets,
-    };
+    context
+        .profiling_state
+        .record_raw_seed_metrics_duration(elapsed_millis(raw_seed_metrics_started_at));
 
     emit_joint_refinement_candidate_evaluation_progress(
         progress_sender,
         progress_phase,
         total_progress_units,
         total_progress_units,
-        Some("objective_normalization"),
-    );
-
-    let use_raw_bucket_values = baseline_bucket_values_are_unity(baseline_buckets);
-
-    let normalized_aggregated_likelihood_fit = likelihood_ratio_fit_score(
-        raw_aggregated_likelihood_fit,
-        baseline_buckets.aggregated_likelihood_fit,
-        use_raw_bucket_values,
-    );
-
-    let normalized_aggregated_return_shape_fit = normalize_bucket(
-        raw_aggregated_return_shape_fit,
-        baseline_buckets.aggregated_return_shape_fit,
-    );
-
-    let normalized_return_asymmetry_fit = normalize_bucket(
-        raw_return_asymmetry_fit,
-        baseline_buckets.return_asymmetry_fit,
-    );
-
-    let normalized_tick_return_asymmetry_fit = normalize_bucket(
-        raw_tick_return_asymmetry_fit,
-        baseline_buckets.tick_return_asymmetry_fit,
-    );
-
-    let normalized_aggregated_return_scale_fit = normalize_bucket(
-        raw_aggregated_return_scale_fit,
-        baseline_buckets.aggregated_return_scale_fit,
-    );
-
-    let normalized_tick_return_scale_fit = normalize_bucket(
-        raw_tick_return_scale_fit,
-        baseline_buckets.tick_return_scale_fit,
-    );
-
-    let normalized_business_time_return_scale_fit = normalize_bucket(
-        raw_business_time_return_scale_fit,
-        baseline_buckets.business_time_return_scale_fit,
-    );
-
-    let normalized_intraday_return_level_fit = normalize_bucket(
-        raw_intraday_return_level_fit,
-        baseline_buckets.intraday_return_level_fit,
-    );
-
-    let normalized_activity_shape_fit =
-        normalize_bucket(raw_activity_shape_fit, baseline_buckets.activity_shape_fit);
-
-    let normalized_activity_level_fit =
-        normalize_bucket(raw_activity_level_fit, baseline_buckets.activity_level_fit);
-
-    let normalized_rv_activity_coupling_fit = normalize_bucket(
-        raw_rv_activity_coupling_fit,
-        baseline_buckets.rv_activity_coupling_fit,
-    );
-
-    let normalized_price_span_sanity_fit = normalize_bucket(
-        raw_price_span_sanity_fit,
-        baseline_buckets.price_span_sanity_fit,
+        Some("objective_evaluation"),
     );
 
     let raw_admissibility_metrics = JointRefinementRawAdmissibilityMetrics {
@@ -622,32 +424,29 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         activity_shape_fit: raw_activity_shape_fit,
         activity_level_fit: raw_activity_level_fit,
         rv_activity_coupling_fit: raw_rv_activity_coupling_fit,
-        price_span_sanity_fit: raw_price_span_sanity_fit,
     };
 
-    let hard_constraint_penalty = admissibility_constraint_penalty(
-        &raw_admissibility_metrics,
-        joint_refinement_admissibility_thresholds(context),
-        solver_settings.constraint_penalty_weight,
-    );
+    let loss_build_started_at = std::time::Instant::now();
+    let loss_evaluation = match fidelity_tier {
+        JointRefinementFidelityTier::CoarseLocal => build_joint_coarse_search_loss_evaluation(
+            &fitted_parameters,
+            &deterministic_evaluation,
+            resolved_seed_summaries.as_slice(),
+            context,
+        ),
+        JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
+            build_joint_loss_evaluation(
+                &fitted_parameters,
+                &deterministic_evaluation,
+                resolved_seed_summaries.as_slice(),
+                context,
+            )
+        }
+    };
 
-    let normalized_objective_terms = vec![
-        normalized_aggregated_likelihood_fit,
-        normalized_aggregated_return_shape_fit,
-        normalized_return_asymmetry_fit,
-        normalized_tick_return_asymmetry_fit,
-        normalized_aggregated_return_scale_fit,
-        normalized_tick_return_scale_fit,
-        normalized_business_time_return_scale_fit,
-        normalized_intraday_return_level_fit,
-        normalized_activity_shape_fit,
-        normalized_activity_level_fit,
-        normalized_rv_activity_coupling_fit,
-        normalized_price_span_sanity_fit,
-    ];
-
-    let weighted_objective =
-        root_mean_square(normalized_objective_terms.as_slice()) + hard_constraint_penalty;
+    context
+        .profiling_state
+        .record_loss_build_duration(elapsed_millis(loss_build_started_at));
 
     emit_joint_refinement_candidate_evaluation_progress(
         progress_sender,
@@ -662,74 +461,8 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         raw_admissibility_metrics,
         exact_likelihood_evaluator_counts: deterministic_evaluation
             .exact_likelihood_evaluator_counts,
-        objective_terms: build_joint_objective_term_diagnostics(
-            resolved_seed_summaries.as_slice(),
-            &context.observed_data,
-        ),
-        breakdown: JointRefinementStageObjectiveBreakdown {
-            aggregated_likelihood_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_aggregated_likelihood_fit,
-                normalized_aggregated_likelihood_fit,
-            ),
-            aggregated_return_shape_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_aggregated_return_shape_fit,
-                normalized_aggregated_return_shape_fit,
-            ),
-            return_asymmetry_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_return_asymmetry_fit,
-                normalized_return_asymmetry_fit,
-            ),
-            tick_return_asymmetry_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_tick_return_asymmetry_fit,
-                normalized_tick_return_asymmetry_fit,
-            ),
-            aggregated_return_scale_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_aggregated_return_scale_fit,
-                normalized_aggregated_return_scale_fit,
-            ),
-            tick_return_scale_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_tick_return_scale_fit,
-                normalized_tick_return_scale_fit,
-            ),
-            business_time_return_scale_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_business_time_return_scale_fit,
-                normalized_business_time_return_scale_fit,
-            ),
-            intraday_return_level_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_intraday_return_level_fit,
-                normalized_intraday_return_level_fit,
-            ),
-            activity_shape_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_activity_shape_fit,
-                normalized_activity_shape_fit,
-            ),
-            activity_level_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_activity_level_fit,
-                normalized_activity_level_fit,
-            ),
-            rv_activity_coupling_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_rv_activity_coupling_fit,
-                normalized_rv_activity_coupling_fit,
-            ),
-            price_span_sanity_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_price_span_sanity_fit,
-                normalized_price_span_sanity_fit,
-            ),
-            weighted_objective,
-            hard_constraint_penalty,
-        },
+        objective_terms: loss_evaluation.term_diagnostics.clone(),
+        breakdown: loss_evaluation,
         invalid_reason: None,
     }
 }
@@ -744,6 +477,7 @@ fn emit_joint_refinement_candidate_evaluation_progress(
     let Some(progress_sender) = progress_sender else {
         return;
     };
+
     let Some(progress_phase) = progress_phase else {
         return;
     };
@@ -754,23 +488,167 @@ fn emit_joint_refinement_candidate_evaluation_progress(
     });
 }
 
+fn build_seed_summaries_for_fidelity(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    simulation_parameter_bits: Option<&[u64]>,
+    context: &JointRefinementContext,
+    fidelity_tier: JointRefinementFidelityTier,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
+    total_progress_units: usize,
+) -> Result<Vec<JointRefinementSeedSummary>, String> {
+    match fidelity_tier {
+        JointRefinementFidelityTier::CoarseLocal => {
+            emit_joint_refinement_candidate_evaluation_progress(
+                progress_sender,
+                progress_phase,
+                1,
+                total_progress_units,
+                Some("coarse_interval_simulation"),
+            );
+
+            build_coarse_search_seed_summary(
+                context,
+                fitted_parameters,
+                context.local_simulation_seed,
+            )
+            .map(|summary| vec![summary])
+        }
+        JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
+            let simulation_seeds = match fidelity_tier {
+                JointRefinementFidelityTier::CoarseLocal => unreachable!(),
+                JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
+                JointRefinementFidelityTier::Final => context.final_simulation_seeds.clone(),
+            };
+
+            cached_seed_summaries_for_candidate_seeds(CandidateSeedSummariesCacheInput {
+                parameter_bits: simulation_parameter_bits,
+                fitted_parameters,
+                context,
+                simulation_seeds: simulation_seeds.as_slice(),
+                progress_sender,
+                progress_phase,
+                completed_units_before_seed_summaries: 1,
+                total_units: total_progress_units,
+            })
+            .map(|seed_summaries| {
+                seed_summaries
+                    .into_iter()
+                    .map(|(_, summary)| summary)
+                    .collect::<Vec<_>>()
+            })
+            .map_err(|error_message| error_message.to_string())
+        }
+    }
+}
+
+fn build_coarse_search_seed_summary(
+    context: &JointRefinementContext,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    simulation_seed: u64,
+) -> Result<JointRefinementSeedSummary, String> {
+    let simulated_5m_intervals = build_joint_coarse_interval_observations(
+        context,
+        fitted_parameters,
+        simulation_seed,
+        NANOS_PER_FIVE_MINUTES,
+        context
+            .observed_data
+            .simulated_5m_interval_template
+            .as_slice(),
+    )?;
+
+    let simulated_15m_intervals = build_joint_coarse_interval_observations(
+        context,
+        fitted_parameters,
+        simulation_seed,
+        3 * NANOS_PER_FIVE_MINUTES,
+        context
+            .observed_data
+            .simulated_15m_interval_template
+            .as_slice(),
+    )?;
+
+    let simulated_hourly_intervals = build_joint_coarse_interval_observations(
+        context,
+        fitted_parameters,
+        simulation_seed,
+        NANOS_PER_HOUR,
+        context
+            .observed_data
+            .simulated_hourly_interval_template
+            .as_slice(),
+    )?;
+
+    let simulated_5m_log_returns = interval_log_returns(simulated_5m_intervals.as_slice());
+    let simulated_15m_log_returns = interval_log_returns(simulated_15m_intervals.as_slice());
+    let simulated_tick_returns =
+        coarse_search_tick_shape_proxy_returns(context, fitted_parameters, simulation_seed);
+
+    Ok(JointRefinementSeedSummary {
+        simulated_5m_intervals: simulated_5m_intervals.clone(),
+        simulated_15m_intervals: simulated_15m_intervals.clone(),
+        simulated_tick_shape_returns: scale_normalized_returns(simulated_tick_returns.as_slice()),
+        simulated_5m_shape_returns: scale_normalized_returns(simulated_5m_log_returns.as_slice()),
+        simulated_15m_shape_returns: scale_normalized_returns(simulated_15m_log_returns.as_slice()),
+        simulated_tick_return_scale_summary: return_scale_summary_from_returns(
+            simulated_tick_returns.as_slice(),
+        ),
+        simulated_5m_return_scale_summary: return_scale_summary(simulated_5m_intervals.as_slice()),
+        simulated_15m_return_scale_summary: return_scale_summary(
+            simulated_15m_intervals.as_slice(),
+        ),
+        simulated_5m_business_time_return_scale_summaries:
+            return_scale_summaries_by_business_time_bucket(
+                simulated_5m_intervals.as_slice(),
+                context
+                    .observed_data
+                    .observed_5m_business_time_bucket_thresholds,
+            ),
+        simulated_15m_business_time_return_scale_summaries:
+            return_scale_summaries_by_business_time_bucket(
+                simulated_15m_intervals.as_slice(),
+                context
+                    .observed_data
+                    .observed_15m_business_time_bucket_thresholds,
+            ),
+        simulated_tick_intraday_mean_absolute_returns: Vec::new(),
+        simulated_5m_intraday_mean_absolute_returns: mean_absolute_return_by_utc_hour(
+            simulated_5m_intervals.as_slice(),
+        ),
+        simulated_15m_intraday_mean_absolute_returns: mean_absolute_return_by_utc_hour(
+            simulated_15m_intervals.as_slice(),
+        ),
+        simulated_hourly_tick_counts: tick_count_series(simulated_hourly_intervals.as_slice()),
+        simulated_15m_rv_activity_metric: rolling_variance_activity_metric(
+            simulated_15m_intervals.as_slice(),
+        ),
+    })
+}
+
+fn interval_log_returns(
+    intervals: &[crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation],
+) -> Vec<f64> {
+    intervals
+        .iter()
+        .map(|interval| interval.log_return)
+        .collect()
+}
+
 pub(super) fn joint_primary_metrics_from_breakdown(
     breakdown: &JointRefinementStageObjectiveBreakdown,
-) -> [f64; 12] {
-    [
-        breakdown.aggregated_likelihood_fit,
-        breakdown.aggregated_return_shape_fit,
-        breakdown.return_asymmetry_fit,
-        breakdown.tick_return_asymmetry_fit,
-        breakdown.aggregated_return_scale_fit,
-        breakdown.tick_return_scale_fit,
-        breakdown.business_time_return_scale_fit,
-        breakdown.intraday_return_level_fit,
-        breakdown.activity_shape_fit,
-        breakdown.activity_level_fit,
-        breakdown.rv_activity_coupling_fit,
-        breakdown.price_span_sanity_fit,
-    ]
+) -> Vec<f64> {
+    breakdown
+        .family_losses
+        .iter()
+        .map(|family| family.loss)
+        .chain(
+            breakdown
+                .hard_constraint_diagnostics
+                .iter()
+                .map(|constraint| constraint.loss),
+        )
+        .collect()
 }
 
 pub(super) fn compare_joint_candidate_breakdowns(
@@ -788,19 +666,21 @@ pub(super) fn compare_joint_candidate_breakdowns(
         has_admissible_candidate,
     } = input;
 
-    let left_max_primary_metric = joint_primary_metrics_from_breakdown(left_breakdown)
-        .into_iter()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let right_max_primary_metric = joint_primary_metrics_from_breakdown(right_breakdown)
-        .into_iter()
+    let left_primary_metrics = joint_primary_metrics_from_breakdown(left_breakdown);
+    let right_primary_metrics = joint_primary_metrics_from_breakdown(right_breakdown);
+
+    let left_max_primary_metric = left_primary_metrics
+        .iter()
+        .copied()
         .fold(f64::NEG_INFINITY, f64::max);
 
-    let left_primary_metric_sum = joint_primary_metrics_from_breakdown(left_breakdown)
-        .into_iter()
-        .sum::<f64>();
-    let right_primary_metric_sum = joint_primary_metrics_from_breakdown(right_breakdown)
-        .into_iter()
-        .sum::<f64>();
+    let right_max_primary_metric = right_primary_metrics
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let left_primary_metric_sum = left_primary_metrics.iter().sum::<f64>();
+    let right_primary_metric_sum = right_primary_metrics.iter().sum::<f64>();
 
     (!left_admissible)
         .cmp(&!right_admissible)
@@ -809,8 +689,8 @@ pub(super) fn compare_joint_candidate_breakdowns(
                 left_pareto_rank.cmp(&right_pareto_rank)
             } else {
                 left_breakdown
-                    .weighted_objective
-                    .total_cmp(&right_breakdown.weighted_objective)
+                    .global_loss
+                    .total_cmp(&right_breakdown.global_loss)
             }
         })
         .then_with(|| {
@@ -829,13 +709,8 @@ pub(super) fn compare_joint_candidate_breakdowns(
         })
         .then_with(|| {
             left_breakdown
-                .weighted_objective
-                .total_cmp(&right_breakdown.weighted_objective)
-        })
-        .then_with(|| {
-            left_breakdown
-                .price_span_sanity_fit
-                .total_cmp(&right_breakdown.price_span_sanity_fit)
+                .global_loss
+                .total_cmp(&right_breakdown.global_loss)
         })
         .then_with(|| left_pareto_rank.cmp(&right_pareto_rank))
         .then_with(|| left_restart_id.cmp(right_restart_id))
@@ -896,11 +771,13 @@ pub(super) fn intraday_return_level_horizon_fit(
         observed_profile,
         observed_mean.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR),
     );
+
     let total_fit = log_ratio_distance(
         candidate_total,
         observed_total,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let peak_fit = log_ratio_distance(
         candidate_peak,
         observed_peak,
@@ -929,130 +806,23 @@ pub(super) fn return_asymmetry_horizon_fit(
     )
 }
 
-fn normalize_bucket(raw_value: f64, baseline_bucket: f64) -> f64 {
-    zero_aware_normalized_bucket_value(
-        raw_value,
-        baseline_bucket,
-        JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
-    )
-}
-
-fn likelihood_ratio_fit_score(
-    raw_score: f64,
-    baseline_score: f64,
-    baseline_is_uninitialized: bool,
-) -> f64 {
-    if baseline_is_uninitialized {
-        return 1.0;
-    }
-
-    // Shifted average NLL differences cancel the sample-specific likelihood shift.
-    // The exponentiated difference is the geometric likelihood ratio to baseline.
-    (raw_score - baseline_score).exp()
-}
-
-fn maybe_raw(use_raw: bool, raw_value: f64, normalized_value: f64) -> f64 {
-    if use_raw { raw_value } else { normalized_value }
-}
-
 fn average_seed_score(values: impl Iterator<Item = f64>) -> f64 {
     let collected = values.collect::<Vec<_>>();
     collected.iter().sum::<f64>() / collected.len().max(1) as f64
-}
-
-fn admissibility_constraint_penalty(
-    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
-    thresholds: JointRefinementAdmissibilityThresholds,
-    constraint_penalty_weight: f64,
-) -> f64 {
-    let exceedance_terms = [
-        admissibility_threshold_exceedance(
-            raw_metrics.aggregated_likelihood_fit,
-            thresholds.aggregated_likelihood_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.aggregated_return_shape_fit,
-            thresholds.aggregated_return_shape_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.return_asymmetry_fit,
-            thresholds.return_asymmetry_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.tick_return_asymmetry_fit,
-            thresholds.tick_return_asymmetry_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.aggregated_return_scale_fit,
-            thresholds.aggregated_return_scale_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.tick_return_scale_fit,
-            thresholds.tick_return_scale_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.business_time_return_scale_fit,
-            thresholds.business_time_return_scale_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.intraday_return_level_fit,
-            thresholds.intraday_return_level_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.activity_shape_fit,
-            thresholds.activity_shape_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.activity_level_fit,
-            thresholds.activity_level_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.rv_activity_coupling_fit,
-            thresholds.rv_activity_coupling_fit,
-        ),
-        admissibility_threshold_exceedance(
-            raw_metrics.price_span_sanity_fit,
-            thresholds.price_span_sanity_fit,
-        ),
-    ];
-
-    constraint_penalty_weight * root_mean_square(exceedance_terms.as_slice())
-}
-
-fn admissibility_threshold_exceedance(metric_value: f64, threshold: f64) -> f64 {
-    (metric_value - threshold).max(0.0)
-}
-
-fn threshold_relative_search_score(metric_value: f64, threshold: f64) -> f64 {
-    let threshold_ratio = metric_value / threshold;
-
-    if threshold_ratio <= 1.0 {
-        threshold_ratio
-    } else {
-        1.0 + threshold_ratio.ln()
-    }
-}
-
-fn threshold_relative_likelihood_search_score(metric_value: f64, threshold: f64) -> f64 {
-    let log_ratio_to_threshold = metric_value - threshold;
-
-    if log_ratio_to_threshold <= 0.0 {
-        log_ratio_to_threshold.exp()
-    } else {
-        1.0 + log_ratio_to_threshold
-    }
 }
 
 pub(crate) fn invalid_candidate_evaluation(
     context: &JointRefinementContext,
     baseline_hawkes_fitted_parameters: &janiform_calibration_artifacts::HawkesStageFittedParameters,
     baseline_return_components_fitted_parameters: &janiform_calibration_artifacts::ReturnComponentsStageFittedParameters,
-    constraint_penalty_weight: f64,
+    _constraint_penalty_weight: f64,
     reason: &str,
 ) -> JointRefinementCandidateEvaluation {
     context
         .profiling_state
         .record_invalid_candidate_evaluation();
+
+    let breakdown = invalid_loss_evaluation(context, reason);
 
     JointRefinementCandidateEvaluation {
         fitted_parameters: JointRefinementStageFittedParameters {
@@ -1073,36 +843,38 @@ pub(crate) fn invalid_candidate_evaluation(
             activity_shape_fit: 100.0,
             activity_level_fit: 100.0,
             rv_activity_coupling_fit: 100.0,
-            price_span_sanity_fit: 100.0,
         },
         exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts::default(),
-        objective_terms: Vec::new(),
-        breakdown: JointRefinementStageObjectiveBreakdown {
-            aggregated_likelihood_fit: 100.0,
-            aggregated_return_shape_fit: 100.0,
-            return_asymmetry_fit: 100.0,
-            tick_return_asymmetry_fit: 100.0,
-            aggregated_return_scale_fit: 100.0,
-            tick_return_scale_fit: 100.0,
-            business_time_return_scale_fit: 100.0,
-            intraday_return_level_fit: 100.0,
-            activity_shape_fit: 100.0,
-            activity_level_fit: 100.0,
-            rv_activity_coupling_fit: 100.0,
-            price_span_sanity_fit: 100.0,
-            weighted_objective: 100.0 + constraint_penalty_weight,
-            hard_constraint_penalty: constraint_penalty_weight,
-        },
+        objective_terms: breakdown.term_diagnostics.clone(),
+        breakdown,
         invalid_reason: Some(reason.to_string()),
     }
+}
+
+fn invalid_loss_evaluation(
+    context: &JointRefinementContext,
+    reason: &str,
+) -> JointRefinementStageObjectiveBreakdown {
+    let mut builder = CalibrationLossBuilder::new(context.objective_policy);
+
+    builder.add_exact_likelihood_term(
+        format!("invalid_candidate.{reason}"),
+        "invalid",
+        f64::INFINITY,
+    );
+
+    builder.build()
 }
 
 fn resolve_deterministic_evaluation(
     fitted_parameters: &JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,
     context: &JointRefinementContext,
+    fidelity_tier: JointRefinementFidelityTier,
 ) -> JointRefinementDeterministicEvaluation {
+    let likelihood_fidelity_tier = likelihood_fidelity_tier_for_joint_fidelity(fidelity_tier);
     let cache_key = parameter_bits.map(|bits| JointRefinementDeterministicCacheKey {
+        likelihood_fidelity_tier,
         parameter_bits: bits.to_vec(),
     });
 
@@ -1119,7 +891,8 @@ fn resolve_deterministic_evaluation(
     let deterministic_evaluation = build_deterministic_evaluation_for_fidelity(
         fitted_parameters,
         context,
-        ContinuousLikelihoodFidelityTier::Full,
+        likelihood_fidelity_tier,
+        likelihood_context_cache_policy_for_joint_fidelity(fidelity_tier),
     );
 
     if let Some(deterministic_cache_key) = cache_key
@@ -1131,47 +904,112 @@ fn resolve_deterministic_evaluation(
     deterministic_evaluation
 }
 
+fn likelihood_fidelity_tier_for_joint_fidelity(
+    fidelity_tier: JointRefinementFidelityTier,
+) -> ContinuousLikelihoodFidelityTier {
+    match fidelity_tier {
+        JointRefinementFidelityTier::CoarseLocal => {
+            ContinuousLikelihoodFidelityTier::Representative
+        }
+        JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
+            ContinuousLikelihoodFidelityTier::Full
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LikelihoodContextCachePolicy {
+    CachedByModeledRate,
+    Uncached,
+}
+
+fn likelihood_context_cache_policy_for_joint_fidelity(
+    fidelity_tier: JointRefinementFidelityTier,
+) -> LikelihoodContextCachePolicy {
+    match fidelity_tier {
+        JointRefinementFidelityTier::CoarseLocal => {
+            LikelihoodContextCachePolicy::CachedByModeledRate
+        }
+        JointRefinementFidelityTier::Local | JointRefinementFidelityTier::Final => {
+            LikelihoodContextCachePolicy::Uncached
+        }
+    }
+}
+
 fn build_deterministic_evaluation_for_fidelity(
     fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
     likelihood_fidelity_tier: ContinuousLikelihoodFidelityTier,
+    context_cache_policy: LikelihoodContextCachePolicy,
 ) -> JointRefinementDeterministicEvaluation {
     let deterministic_evaluation_started_at = std::time::Instant::now();
 
+    let modeled_rate_started_at = std::time::Instant::now();
     let modeled_open_event_rate_per_hour =
         modeled_open_event_rate_per_hour(fitted_parameters, context);
+    context
+        .profiling_state
+        .record_modeled_rate_duration(elapsed_millis(modeled_rate_started_at));
 
     let aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity_with_counts(
         fitted_parameters,
         modeled_open_event_rate_per_hour,
         context,
         likelihood_fidelity_tier,
+        context_cache_policy,
     );
 
+    let expected_activity_counts_started_at = std::time::Instant::now();
     let expected_hourly_tick_counts =
         expected_hourly_tick_counts(modeled_open_event_rate_per_hour, context);
+    context
+        .profiling_state
+        .record_expected_activity_counts_duration(elapsed_millis(
+            expected_activity_counts_started_at,
+        ));
 
-    let deterministic_evaluation = JointRefinementDeterministicEvaluation {
-        modeled_open_event_rate_per_hour,
-        raw_aggregated_likelihood_fit: aggregated_likelihood_fit.fit,
-        exact_likelihood_evaluator_counts: aggregated_likelihood_fit
-            .exact_likelihood_evaluator_counts,
-        raw_expected_activity_shape_fit: expected_hourly_tick_counts.as_ref().map(
-            |expected_hourly_tick_counts| {
+    let deterministic_activity_shape_started_at = std::time::Instant::now();
+    let raw_expected_activity_shape_fit =
+        expected_hourly_tick_counts
+            .as_ref()
+            .map(|expected_hourly_tick_counts| {
                 activity_shape_fit_for_counts(
                     expected_hourly_tick_counts.as_slice(),
                     context.observed_data.observed_hourly_tick_counts.as_slice(),
                 )
-            },
-        ),
-        raw_expected_activity_level_fit: expected_hourly_tick_counts.as_ref().map(
-            |expected_hourly_tick_counts| {
+            });
+    context
+        .profiling_state
+        .record_deterministic_activity_shape_duration(elapsed_millis(
+            deterministic_activity_shape_started_at,
+        ));
+
+    let deterministic_activity_level_started_at = std::time::Instant::now();
+    let raw_expected_activity_level_fit =
+        expected_hourly_tick_counts
+            .as_ref()
+            .map(|expected_hourly_tick_counts| {
                 activity_level_fit_for_counts(
                     expected_hourly_tick_counts.as_slice(),
                     context.observed_data.observed_hourly_tick_counts.as_slice(),
                 )
-            },
-        ),
+            });
+    context
+        .profiling_state
+        .record_deterministic_activity_level_duration(elapsed_millis(
+            deterministic_activity_level_started_at,
+        ));
+
+    let deterministic_evaluation = JointRefinementDeterministicEvaluation {
+        modeled_open_event_rate_per_hour,
+        raw_aggregated_likelihood_fit: aggregated_likelihood_fit.fit,
+        component_shifted_average_negative_log_likelihoods: aggregated_likelihood_fit
+            .component_shifted_average_negative_log_likelihoods,
+        exact_likelihood_evaluator_counts: aggregated_likelihood_fit
+            .exact_likelihood_evaluator_counts,
+        expected_hourly_tick_counts: expected_hourly_tick_counts.clone(),
+        raw_expected_activity_shape_fit,
+        raw_expected_activity_level_fit,
     };
 
     context
@@ -1188,29 +1026,12 @@ fn build_deterministic_evaluation_for_fidelity(
 
 fn deterministic_pre_simulation_dynamics_failure(
     deterministic_evaluation: &JointRefinementDeterministicEvaluation,
-    context: &JointRefinementContext,
 ) -> Option<&'static str> {
-    let thresholds = joint_refinement_admissibility_thresholds(context);
-
     if !deterministic_evaluation
         .raw_aggregated_likelihood_fit
         .is_finite()
     {
         return Some("deterministic_pre_simulation_aggregated_likelihood_not_finite");
-    }
-
-    if deterministic_evaluation
-        .raw_expected_activity_level_fit
-        .is_some_and(|fit| fit > thresholds.activity_level_fit)
-    {
-        return Some("deterministic_pre_simulation_expected_activity_level_infeasible");
-    }
-
-    if deterministic_evaluation
-        .raw_expected_activity_shape_fit
-        .is_some_and(|fit| fit > thresholds.activity_shape_fit)
-    {
-        return Some("deterministic_pre_simulation_expected_activity_shape_infeasible");
     }
 
     None
@@ -1269,35 +1090,88 @@ fn raw_aggregated_likelihood_fit_for_fidelity_with_counts(
     modeled_open_event_rate_per_hour: f64,
     context: &JointRefinementContext,
     fidelity_tier: ContinuousLikelihoodFidelityTier,
+    context_cache_policy: LikelihoodContextCachePolicy,
 ) -> JointRefinementLikelihoodFitWithCounts {
-    let likelihood_contexts = build_joint_refinement_aggregated_likelihood_contexts(
+    let context_resolution_started_at = std::time::Instant::now();
+    let likelihood_contexts = resolve_joint_refinement_aggregated_likelihood_contexts(
         modeled_open_event_rate_per_hour,
         context,
+        fidelity_tier,
+        context_cache_policy,
     );
+    context
+        .profiling_state
+        .record_likelihood_context_resolution_duration(elapsed_millis(
+            context_resolution_started_at,
+        ));
 
     raw_aggregated_likelihood_fit_for_contexts_with_counts(
+        context,
         fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
-        &likelihood_contexts,
+        likelihood_contexts.as_ref(),
         fidelity_tier,
     )
 }
 
-fn build_joint_refinement_aggregated_likelihood_contexts_for_fitted_parameters(
-    fitted_parameters: &JointRefinementStageFittedParameters,
+fn resolve_joint_refinement_aggregated_likelihood_contexts(
+    modeled_open_event_rate_per_hour: f64,
     context: &JointRefinementContext,
-) -> JointRefinementAggregatedLikelihoodContexts {
-    let modeled_open_event_rate_per_hour =
-        modeled_open_event_rate_per_hour(fitted_parameters, context);
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+    cache_policy: LikelihoodContextCachePolicy,
+) -> Arc<JointRefinementAggregatedLikelihoodContexts> {
+    match cache_policy {
+        LikelihoodContextCachePolicy::CachedByModeledRate => {
+            let cache_key = JointRefinementAggregatedLikelihoodContextCacheKey {
+                likelihood_fidelity_tier: fidelity_tier,
+                modeled_open_event_rate_per_hour_bits: modeled_open_event_rate_per_hour.to_bits(),
+            };
+            if let Ok(cache_guard) = context.aggregated_likelihood_context_cache.lock()
+                && let Some(cached_contexts) = cache_guard.get(&cache_key)
+            {
+                context
+                    .profiling_state
+                    .record_aggregated_likelihood_context_cache_hit();
+                return Arc::clone(cached_contexts);
+            }
 
-    build_joint_refinement_aggregated_likelihood_contexts(modeled_open_event_rate_per_hour, context)
+            context
+                .profiling_state
+                .record_aggregated_likelihood_context_cache_miss();
+
+            let contexts = Arc::new(build_joint_refinement_aggregated_likelihood_contexts(
+                modeled_open_event_rate_per_hour,
+                context,
+                fidelity_tier,
+            ));
+
+            if let Ok(mut cache_guard) = context.aggregated_likelihood_context_cache.lock() {
+                cache_guard.insert(cache_key, Arc::clone(&contexts));
+            }
+
+            contexts
+        }
+        LikelihoodContextCachePolicy::Uncached => {
+            context
+                .profiling_state
+                .record_aggregated_likelihood_context_cache_miss();
+
+            Arc::new(build_joint_refinement_aggregated_likelihood_contexts(
+                modeled_open_event_rate_per_hour,
+                context,
+                fidelity_tier,
+            ))
+        }
+    }
 }
 
 fn build_joint_refinement_aggregated_likelihood_contexts(
     modeled_open_event_rate_per_hour: f64,
     context: &JointRefinementContext,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
 ) -> JointRefinementAggregatedLikelihoodContexts {
+    let observed_5m_sample_started_at = std::time::Instant::now();
     let observed_5m_sample =
         crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
             context.observed_data.observed_5m_intervals.as_slice(),
@@ -1305,6 +1179,13 @@ fn build_joint_refinement_aggregated_likelihood_contexts(
             context.observed_data.observed_open_event_rate_per_hour,
             context.observed_data.fallback_sell_share_proxy,
         );
+    context
+        .profiling_state
+        .record_likelihood_context_5m_sample_duration(elapsed_millis(
+            observed_5m_sample_started_at,
+        ));
+
+    let observed_15m_sample_started_at = std::time::Instant::now();
     let observed_15m_sample =
         crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
             context.observed_data.observed_15m_intervals.as_slice(),
@@ -1312,47 +1193,103 @@ fn build_joint_refinement_aggregated_likelihood_contexts(
             context.observed_data.observed_open_event_rate_per_hour,
             context.observed_data.fallback_sell_share_proxy,
         );
+    context
+        .profiling_state
+        .record_likelihood_context_15m_sample_duration(elapsed_millis(
+            observed_15m_sample_started_at,
+        ));
 
-    let observed_tick_sample = rescale_continuous_return_calibration_sample_business_time_scales(
-        &context
-            .observed_data
-            .observed_tick_continuous_return_calibration_sample,
-        modeled_open_event_rate_per_hour
-            / context
-                .baseline_modeled_open_event_rate_per_hour
-                .max(1.0e-8),
+    let observed_tick_sample_started_at = std::time::Instant::now();
+    let tick_context_source = match fidelity_tier {
+        ContinuousLikelihoodFidelityTier::Seed
+        | ContinuousLikelihoodFidelityTier::Representative
+        | ContinuousLikelihoodFidelityTier::Local => {
+            &context
+                .observed_data
+                .weighted_tick_continuous_return_optimizer_context
+        }
+        ContinuousLikelihoodFidelityTier::Full => {
+            &context
+                .observed_data
+                .observed_tick_continuous_return_optimizer_context
+        }
+    };
+    context
+        .profiling_state
+        .record_likelihood_context_tick_sample_duration(elapsed_millis(
+            observed_tick_sample_started_at,
+        ));
+
+    let tick_context_started_at = std::time::Instant::now();
+    let tick = rescale_continuous_return_optimizer_context_business_time_scales(
+        tick_context_source,
+        modeled_open_event_rate_per_hour / context.baseline_modeled_open_event_rate_per_hour,
     );
+    context
+        .profiling_state
+        .record_likelihood_context_tick_optimizer_duration(elapsed_millis(tick_context_started_at));
+
+    let five_minute_context_started_at = std::time::Instant::now();
+    let five_minute = build_continuous_return_optimizer_context(&observed_5m_sample);
+    context
+        .profiling_state
+        .record_likelihood_context_5m_optimizer_duration(elapsed_millis(
+            five_minute_context_started_at,
+        ));
+
+    let fifteen_minute_context_started_at = std::time::Instant::now();
+    let fifteen_minute = build_continuous_return_optimizer_context(&observed_15m_sample);
+    context
+        .profiling_state
+        .record_likelihood_context_15m_optimizer_duration(elapsed_millis(
+            fifteen_minute_context_started_at,
+        ));
 
     JointRefinementAggregatedLikelihoodContexts {
-        tick: build_continuous_return_optimizer_context(&observed_tick_sample),
-        five_minute: build_continuous_return_optimizer_context(&observed_5m_sample),
-        fifteen_minute: build_continuous_return_optimizer_context(&observed_15m_sample),
+        tick,
+        five_minute,
+        fifteen_minute,
     }
 }
 
 fn raw_aggregated_likelihood_fit_for_contexts_with_counts(
+    context: &JointRefinementContext,
     configuration: janiform_model_kernels::nig::NigSharedPlusShiftConfiguration,
     likelihood_contexts: &JointRefinementAggregatedLikelihoodContexts,
     fidelity_tier: ContinuousLikelihoodFidelityTier,
 ) -> JointRefinementLikelihoodFitWithCounts {
+    let tick_likelihood_started_at = std::time::Instant::now();
     let (tick_objective, tick_counts) =
         evaluate_configuration_likelihood_objective_with_context_and_counts(
             configuration,
             &likelihood_contexts.tick,
             fidelity_tier,
         );
+    context
+        .profiling_state
+        .record_tick_likelihood_duration(elapsed_millis(tick_likelihood_started_at));
+
+    let five_minute_likelihood_started_at = std::time::Instant::now();
     let (five_minute_objective, five_minute_counts) =
         evaluate_configuration_likelihood_objective_with_context_and_counts(
             configuration,
             &likelihood_contexts.five_minute,
             fidelity_tier,
         );
+    context
+        .profiling_state
+        .record_5m_likelihood_duration(elapsed_millis(five_minute_likelihood_started_at));
+
+    let fifteen_minute_likelihood_started_at = std::time::Instant::now();
     let (fifteen_minute_objective, fifteen_minute_counts) =
         evaluate_configuration_likelihood_objective_with_context_and_counts(
             configuration,
             &likelihood_contexts.fifteen_minute,
             fidelity_tier,
         );
+    context
+        .profiling_state
+        .record_15m_likelihood_duration(elapsed_millis(fifteen_minute_likelihood_started_at));
 
     JointRefinementLikelihoodFitWithCounts {
         fit: [
@@ -1363,25 +1300,15 @@ fn raw_aggregated_likelihood_fit_for_contexts_with_counts(
         .into_iter()
         .sum::<f64>()
             / 3.0,
+        component_shifted_average_negative_log_likelihoods: [
+            tick_objective.shifted_objective_score,
+            five_minute_objective.shifted_objective_score,
+            fifteen_minute_objective.shifted_objective_score,
+        ],
         exact_likelihood_evaluator_counts: tick_counts
             .add(five_minute_counts)
             .add(fifteen_minute_counts),
     }
-}
-
-fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {
-    baseline_buckets.aggregated_likelihood_fit == 1.0
-        && baseline_buckets.aggregated_return_shape_fit == 1.0
-        && baseline_buckets.return_asymmetry_fit == 1.0
-        && baseline_buckets.tick_return_asymmetry_fit == 1.0
-        && baseline_buckets.aggregated_return_scale_fit == 1.0
-        && baseline_buckets.tick_return_scale_fit == 1.0
-        && baseline_buckets.business_time_return_scale_fit == 1.0
-        && baseline_buckets.intraday_return_level_fit == 1.0
-        && baseline_buckets.activity_shape_fit == 1.0
-        && baseline_buckets.activity_level_fit == 1.0
-        && baseline_buckets.rv_activity_coupling_fit == 1.0
-        && baseline_buckets.price_span_sanity_fit == 1.0
 }
 
 fn aggregated_return_shape_fit(
@@ -1640,295 +1567,1435 @@ fn rv_activity_coupling_fit(
     )
 }
 
-fn build_joint_objective_term_diagnostics(
+fn build_joint_loss_evaluation(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    deterministic_evaluation: &JointRefinementDeterministicEvaluation,
+    seed_summaries: &[JointRefinementSeedSummary],
+    context: &JointRefinementContext,
+) -> CalibrationLossEvaluation {
+    let observed_data = &context.observed_data;
+
+    let mut builder = CalibrationLossBuilder::new(context.objective_policy);
+
+    add_likelihood_terms(&mut builder, deterministic_evaluation);
+    add_domain_margin_priors(&mut builder, fitted_parameters, observed_data);
+
+    if !seed_summaries.is_empty() {
+        add_return_shape_terms(&mut builder, seed_summaries, context);
+        add_return_scale_terms(&mut builder, seed_summaries, observed_data);
+        add_business_time_return_scale_terms(&mut builder, seed_summaries, observed_data);
+        add_intraday_return_level_terms(&mut builder, seed_summaries, observed_data);
+        add_activity_terms(
+            &mut builder,
+            fitted_parameters,
+            deterministic_evaluation,
+            seed_summaries,
+            observed_data,
+        );
+        add_rv_activity_coupling_terms(&mut builder, seed_summaries, observed_data);
+    }
+
+    builder.build()
+}
+
+fn build_joint_coarse_search_loss_evaluation(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    deterministic_evaluation: &JointRefinementDeterministicEvaluation,
+    seed_summaries: &[JointRefinementSeedSummary],
+    context: &JointRefinementContext,
+) -> CalibrationLossEvaluation {
+    let observed_data = &context.observed_data;
+
+    let mut builder = CalibrationLossBuilder::new(context.objective_policy);
+
+    add_likelihood_terms(&mut builder, deterministic_evaluation);
+    add_domain_margin_priors(&mut builder, fitted_parameters, observed_data);
+    add_deterministic_activity_terms(
+        &mut builder,
+        fitted_parameters,
+        deterministic_evaluation,
+        observed_data,
+    );
+
+    if !seed_summaries.is_empty() {
+        add_coarse_return_shape_terms(&mut builder, seed_summaries, context);
+        add_coarse_return_scale_terms(&mut builder, seed_summaries, observed_data);
+        add_business_time_return_scale_terms(&mut builder, seed_summaries, observed_data);
+        add_coarse_intraday_return_level_terms(&mut builder, seed_summaries, observed_data);
+        add_rv_activity_coupling_terms(&mut builder, seed_summaries, observed_data);
+    }
+
+    builder.build()
+}
+
+fn add_likelihood_terms(
+    builder: &mut CalibrationLossBuilder,
+    deterministic_evaluation: &JointRefinementDeterministicEvaluation,
+) {
+    for (term_id, shifted_average_negative_log_likelihood) in [
+        (
+            "returns.nig_likelihood.tick",
+            deterministic_evaluation.component_shifted_average_negative_log_likelihoods[0],
+        ),
+        (
+            "returns.nig_likelihood.5m",
+            deterministic_evaluation.component_shifted_average_negative_log_likelihoods[1],
+        ),
+        (
+            "returns.nig_likelihood.15m",
+            deterministic_evaluation.component_shifted_average_negative_log_likelihoods[2],
+        ),
+    ] {
+        builder.add_exact_likelihood_term(
+            term_id,
+            "returns",
+            shifted_average_negative_log_likelihood,
+        );
+    }
+}
+
+fn add_return_shape_terms(
+    builder: &mut CalibrationLossBuilder,
+    seed_summaries: &[JointRefinementSeedSummary],
+    context: &JointRefinementContext,
+) {
+    let observed_data = &context.observed_data;
+    let temporal_block_count = observed_data.hourly_simulation_interval_count;
+
+    add_return_shape_horizon_terms(
+        builder,
+        JointRefinementReturnShapeHorizon::Tick,
+        temporal_block_count,
+        observed_data.observed_tick_shape_returns.as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_tick_shape_returns.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+        context,
+    );
+
+    add_return_shape_horizon_terms(
+        builder,
+        JointRefinementReturnShapeHorizon::FiveMinute,
+        temporal_block_count,
+        observed_data.observed_5m_shape_returns.as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_5m_shape_returns.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+        context,
+    );
+
+    add_return_shape_horizon_terms(
+        builder,
+        JointRefinementReturnShapeHorizon::FifteenMinute,
+        temporal_block_count,
+        observed_data.observed_15m_shape_returns.as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_15m_shape_returns.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+        context,
+    );
+}
+
+fn add_coarse_return_shape_terms(
+    builder: &mut CalibrationLossBuilder,
+    seed_summaries: &[JointRefinementSeedSummary],
+    context: &JointRefinementContext,
+) {
+    let observed_data = &context.observed_data;
+    let temporal_block_count = observed_data.hourly_simulation_interval_count;
+
+    add_return_shape_horizon_terms(
+        builder,
+        JointRefinementReturnShapeHorizon::Tick,
+        temporal_block_count,
+        observed_data.observed_tick_shape_returns.as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_tick_shape_returns.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+        context,
+    );
+
+    add_return_shape_horizon_terms(
+        builder,
+        JointRefinementReturnShapeHorizon::FiveMinute,
+        temporal_block_count,
+        observed_data.observed_5m_shape_returns.as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_5m_shape_returns.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+        context,
+    );
+
+    add_return_shape_horizon_terms(
+        builder,
+        JointRefinementReturnShapeHorizon::FifteenMinute,
+        temporal_block_count,
+        observed_data.observed_15m_shape_returns.as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_15m_shape_returns.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+        context,
+    );
+}
+
+fn add_return_shape_horizon_terms(
+    builder: &mut CalibrationLossBuilder,
+    horizon: JointRefinementReturnShapeHorizon,
+    temporal_block_count: usize,
+    observed_values: &[f64],
+    simulated_values_by_seed: &[&[f64]],
+    context: &JointRefinementContext,
+) {
+    let observed_estimates = cached_observed_return_shape_statistic_estimates(
+        horizon,
+        temporal_block_count,
+        observed_values,
+        context,
+    );
+
+    for observed_estimate in observed_estimates.iter().copied() {
+        let model_estimate = average_seed_statistic_estimate(
+            simulated_values_by_seed
+                .iter()
+                .filter_map(|values| {
+                    statistic_estimate_by_name(
+                        return_shape_statistic_estimates(values, temporal_block_count),
+                        observed_estimate.metric_name,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+
+        if let Some(model_estimate) = model_estimate {
+            let term_id = format!(
+                "return_shape.{}.{}",
+                return_shape_horizon_label(horizon),
+                observed_estimate.metric_name
+            );
+
+            add_direct_term(
+                builder,
+                term_id.as_str(),
+                "return_shape",
+                observed_estimate.value,
+                model_estimate.value,
+                observed_estimate.standard_error,
+                model_estimate.standard_error,
+            );
+        }
+    }
+}
+
+fn cached_observed_return_shape_statistic_estimates(
+    horizon: JointRefinementReturnShapeHorizon,
+    temporal_block_count: usize,
+    observed_values: &[f64],
+    context: &JointRefinementContext,
+) -> Arc<[JointRefinementReturnShapeStatisticEstimate]> {
+    let cache_key = JointRefinementObservedReturnShapeStatisticCacheKey {
+        horizon,
+        temporal_block_count,
+    };
+
+    if let Ok(cache_guard) = context.observed_return_shape_statistic_cache.lock()
+        && let Some(cached_estimates) = cache_guard.get(&cache_key)
+    {
+        return Arc::clone(cached_estimates);
+    }
+
+    let estimates = Arc::from(return_shape_statistic_estimates(
+        observed_values,
+        temporal_block_count,
+    ));
+
+    if let Ok(mut cache_guard) = context.observed_return_shape_statistic_cache.lock() {
+        cache_guard.insert(cache_key, Arc::clone(&estimates));
+    }
+
+    estimates
+}
+
+fn return_shape_horizon_label(horizon: JointRefinementReturnShapeHorizon) -> &'static str {
+    match horizon {
+        JointRefinementReturnShapeHorizon::Tick => "tick",
+        JointRefinementReturnShapeHorizon::FiveMinute => "5m",
+        JointRefinementReturnShapeHorizon::FifteenMinute => "15m",
+    }
+}
+
+fn add_return_scale_terms(
+    builder: &mut CalibrationLossBuilder,
     seed_summaries: &[JointRefinementSeedSummary],
     observed_data: &JointRefinementObservedData,
-) -> Vec<crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic> {
-    if seed_summaries.is_empty() {
+) {
+    add_return_scale_summary_terms(
+        builder,
+        "tick",
+        observed_data.observed_tick_return_scale_summary,
+        average_return_scale_summary(
+            seed_summaries
+                .iter()
+                .map(|summary| summary.simulated_tick_return_scale_summary),
+        ),
+        observed_data.observed_tick_shape_returns.len(),
+        seed_summaries.len(),
+        "return_scale",
+    );
+
+    add_return_scale_summary_terms(
+        builder,
+        "5m",
+        observed_data.observed_5m_return_scale_summary,
+        average_return_scale_summary(
+            seed_summaries
+                .iter()
+                .map(|summary| summary.simulated_5m_return_scale_summary),
+        ),
+        observed_data.observed_5m_intervals.len(),
+        seed_summaries.len(),
+        "return_scale",
+    );
+
+    add_return_scale_summary_terms(
+        builder,
+        "15m",
+        observed_data.observed_15m_return_scale_summary,
+        average_return_scale_summary(
+            seed_summaries
+                .iter()
+                .map(|summary| summary.simulated_15m_return_scale_summary),
+        ),
+        observed_data.observed_15m_intervals.len(),
+        seed_summaries.len(),
+        "return_scale",
+    );
+}
+
+fn add_coarse_return_scale_terms(
+    builder: &mut CalibrationLossBuilder,
+    seed_summaries: &[JointRefinementSeedSummary],
+    observed_data: &JointRefinementObservedData,
+) {
+    add_return_scale_summary_terms(
+        builder,
+        "5m",
+        observed_data.observed_5m_return_scale_summary,
+        average_return_scale_summary(
+            seed_summaries
+                .iter()
+                .map(|summary| summary.simulated_5m_return_scale_summary),
+        ),
+        observed_data.observed_5m_intervals.len(),
+        seed_summaries.len(),
+        "return_scale",
+    );
+
+    add_return_scale_summary_terms(
+        builder,
+        "15m",
+        observed_data.observed_15m_return_scale_summary,
+        average_return_scale_summary(
+            seed_summaries
+                .iter()
+                .map(|summary| summary.simulated_15m_return_scale_summary),
+        ),
+        observed_data.observed_15m_intervals.len(),
+        seed_summaries.len(),
+        "return_scale",
+    );
+}
+
+fn add_business_time_return_scale_terms(
+    builder: &mut CalibrationLossBuilder,
+    seed_summaries: &[JointRefinementSeedSummary],
+    observed_data: &JointRefinementObservedData,
+) {
+    add_business_time_return_scale_horizon_terms(
+        builder,
+        "5m",
+        observed_data.observed_5m_business_time_return_scale_summaries,
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_5m_business_time_return_scale_summaries)
+            .collect::<Vec<_>>()
+            .as_slice(),
+        observed_data.observed_5m_intervals.len(),
+    );
+
+    add_business_time_return_scale_horizon_terms(
+        builder,
+        "15m",
+        observed_data.observed_15m_business_time_return_scale_summaries,
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_15m_business_time_return_scale_summaries)
+            .collect::<Vec<_>>()
+            .as_slice(),
+        observed_data.observed_15m_intervals.len(),
+    );
+}
+
+fn add_intraday_return_level_terms(
+    builder: &mut CalibrationLossBuilder,
+    seed_summaries: &[JointRefinementSeedSummary],
+    observed_data: &JointRefinementObservedData,
+) {
+    add_intraday_profile_terms(
+        builder,
+        "tick",
+        observed_data
+            .observed_tick_intraday_mean_absolute_returns
+            .as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| {
+                summary
+                    .simulated_tick_intraday_mean_absolute_returns
+                    .as_slice()
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+
+    add_intraday_profile_terms(
+        builder,
+        "5m",
+        observed_data
+            .observed_5m_intraday_mean_absolute_returns
+            .as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| {
+                summary
+                    .simulated_5m_intraday_mean_absolute_returns
+                    .as_slice()
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+
+    add_intraday_profile_terms(
+        builder,
+        "15m",
+        observed_data
+            .observed_15m_intraday_mean_absolute_returns
+            .as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| {
+                summary
+                    .simulated_15m_intraday_mean_absolute_returns
+                    .as_slice()
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+}
+
+fn add_coarse_intraday_return_level_terms(
+    builder: &mut CalibrationLossBuilder,
+    seed_summaries: &[JointRefinementSeedSummary],
+    observed_data: &JointRefinementObservedData,
+) {
+    add_intraday_profile_terms(
+        builder,
+        "5m",
+        observed_data
+            .observed_5m_intraday_mean_absolute_returns
+            .as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| {
+                summary
+                    .simulated_5m_intraday_mean_absolute_returns
+                    .as_slice()
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+
+    add_intraday_profile_terms(
+        builder,
+        "15m",
+        observed_data
+            .observed_15m_intraday_mean_absolute_returns
+            .as_slice(),
+        seed_summaries
+            .iter()
+            .map(|summary| {
+                summary
+                    .simulated_15m_intraday_mean_absolute_returns
+                    .as_slice()
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+}
+
+fn add_activity_terms(
+    builder: &mut CalibrationLossBuilder,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    deterministic_evaluation: &JointRefinementDeterministicEvaluation,
+    seed_summaries: &[JointRefinementSeedSummary],
+    observed_data: &JointRefinementObservedData,
+) {
+    let simulated_hourly_counts = mean_profile_by_seed(
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_hourly_tick_counts.as_slice())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+
+    let fano_factor = hawkes_count_fano_factor(fitted_parameters).unwrap_or(1.0);
+
+    let model_hourly_counts = deterministic_evaluation
+        .expected_hourly_tick_counts
+        .as_deref()
+        .unwrap_or(simulated_hourly_counts.as_slice());
+
+    add_activity_level_terms(
+        builder,
+        observed_data.observed_hourly_tick_counts.as_slice(),
+        model_hourly_counts,
+        fano_factor,
+    );
+
+    add_activity_shape_terms(
+        builder,
+        observed_data.observed_hourly_tick_counts.as_slice(),
+        model_hourly_counts,
+    );
+}
+
+fn add_deterministic_activity_terms(
+    builder: &mut CalibrationLossBuilder,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    deterministic_evaluation: &JointRefinementDeterministicEvaluation,
+    observed_data: &JointRefinementObservedData,
+) {
+    let Some(model_hourly_counts) = deterministic_evaluation
+        .expected_hourly_tick_counts
+        .as_deref()
+    else {
+        return;
+    };
+
+    let fano_factor = hawkes_count_fano_factor(fitted_parameters).unwrap_or(1.0);
+
+    add_activity_level_terms(
+        builder,
+        observed_data.observed_hourly_tick_counts.as_slice(),
+        model_hourly_counts,
+        fano_factor,
+    );
+
+    add_activity_shape_terms(
+        builder,
+        observed_data.observed_hourly_tick_counts.as_slice(),
+        model_hourly_counts,
+    );
+}
+
+fn add_rv_activity_coupling_terms(
+    builder: &mut CalibrationLossBuilder,
+    seed_summaries: &[JointRefinementSeedSummary],
+    observed_data: &JointRefinementObservedData,
+) {
+    let observed_metric = observed_data.observed_15m_rv_activity_metric;
+
+    let model_correlation = average_seed_score(
+        seed_summaries
+            .iter()
+            .map(|summary| summary.simulated_15m_rv_activity_metric.correlation),
+    );
+
+    let model_path_distance = average_seed_score(seed_summaries.iter().map(|summary| {
+        summary
+            .simulated_15m_rv_activity_metric
+            .standardized_path_distance
+    }));
+
+    let sample_count = observed_data.observed_15m_intervals.len();
+
+    add_direct_term(
+        builder,
+        "rv_activity_coupling.correlation",
+        "rv_activity_coupling",
+        observed_metric.correlation,
+        model_correlation,
+        unit_scale_standard_error(sample_count),
+        unit_scale_standard_error(seed_summaries.len()),
+    );
+
+    add_direct_term(
+        builder,
+        "rv_activity_coupling.standardized_path_distance",
+        "rv_activity_coupling",
+        observed_metric.standardized_path_distance,
+        model_path_distance,
+        unit_scale_standard_error(sample_count),
+        unit_scale_standard_error(seed_summaries.len()),
+    );
+}
+
+fn add_domain_margin_priors(
+    builder: &mut CalibrationLossBuilder,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    observed_data: &JointRefinementObservedData,
+) {
+    if let Some(runtime_effective_branching_ratio) =
+        hawkes_runtime_effective_branching_ratio(fitted_parameters)
+    {
+        let target_margin = (observed_data.observed_hourly_tick_counts.len().max(1) as f64)
+            .recip()
+            .sqrt();
+
+        builder.add_domain_margin_constraint(
+            "domain_margin.hawkes_stationarity",
+            1.0 - runtime_effective_branching_ratio,
+            target_margin,
+        );
+    }
+
+    let nig_configuration = fitted_parameters.pricing_nig_shared_plus_shift_configuration();
+
+    if let Ok(driver_parameters) = nig_configuration.derive_driver_parameters() {
+        let buy_report = driver_parameters
+            .buy_side_parameters
+            .characteristic_exponent_with_guardrails(ComplexScalar::new(0.0, 0.0));
+
+        builder.add_domain_margin_constraint(
+            "domain_margin.nig_buy_alpha_beta",
+            buy_report.alpha_beta_margin,
+            buy_report.alpha_beta_margin_warning_threshold,
+        );
+
+        let sell_report = driver_parameters
+            .sell_side_parameters
+            .characteristic_exponent_with_guardrails(ComplexScalar::new(0.0, 0.0));
+
+        builder.add_domain_margin_constraint(
+            "domain_margin.nig_sell_alpha_beta",
+            sell_report.alpha_beta_margin,
+            sell_report.alpha_beta_margin_warning_threshold,
+        );
+    }
+}
+
+fn return_shape_statistic_estimates(
+    values: &[f64],
+    temporal_block_count: usize,
+) -> Vec<JointRefinementReturnShapeStatisticEstimate> {
+    let sorted_values = sorted_finite_values(values);
+    if sorted_values.is_empty() {
         return Vec::new();
     }
 
-    let observed_total_hourly_tick_count = observed_data
-        .observed_hourly_tick_counts
-        .iter()
-        .sum::<f64>();
+    let finite_values = sorted_values.as_slice();
+    let effective_sample_count =
+        return_shape_effective_sample_count(finite_values.len(), temporal_block_count);
 
-    let observed_mean_hourly_tick_count = observed_total_hourly_tick_count
-        / observed_data.observed_hourly_tick_counts.len().max(1) as f64;
+    let mut estimates =
+        base_return_shape_statistic_estimates(finite_values, effective_sample_count);
+    let block_standard_errors =
+        return_shape_temporal_block_standard_errors(values, temporal_block_count);
 
-    let observed_peak_hourly_tick_count = observed_data
-        .observed_hourly_tick_counts
-        .iter()
-        .copied()
-        .fold(0.0, f64::max);
+    for estimate in estimates.iter_mut() {
+        if let Some(block_standard_error) = block_standard_errors.get(estimate.metric_name) {
+            estimate.standard_error = estimate.standard_error.max(*block_standard_error);
+        }
+    }
 
-    let observed_peak_hourly_tick_share = observed_peak_hourly_tick_count
-        / observed_total_hourly_tick_count.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+    estimates
+}
 
-    let observed_return_scale_summary = observed_data.observed_15m_return_scale_summary;
-    let observed_tick_return_scale_summary = observed_data.observed_tick_return_scale_summary;
-
-    let observed_return_shape_skewness =
-        skewness_or_zero(observed_data.observed_15m_shape_returns.as_slice());
-
-    let observed_return_shape_bowley_skewness =
-        bowley_skewness_or_zero(observed_data.observed_15m_shape_returns.as_slice());
-
-    let observed_tick_shape_skewness =
-        skewness_or_zero(observed_data.observed_tick_shape_returns.as_slice());
-
-    let observed_tick_shape_bowley_skewness =
-        bowley_skewness_or_zero(observed_data.observed_tick_shape_returns.as_slice());
-
-    let observed_rv_activity_metric = observed_data.observed_15m_rv_activity_metric;
-    let observed_log_price_span = observed_data.observed_log_price_span;
-
-    let simulated_total_hourly_tick_count =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            seed_summary
-                .simulated_hourly_tick_counts
-                .iter()
-                .sum::<f64>()
-        }));
-
-    let simulated_mean_hourly_tick_count =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            let total_hourly_tick_count = seed_summary
-                .simulated_hourly_tick_counts
-                .iter()
-                .sum::<f64>();
-            total_hourly_tick_count / seed_summary.simulated_hourly_tick_counts.len().max(1) as f64
-        }));
-
-    let simulated_peak_hourly_tick_share =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            let total_hourly_tick_count = seed_summary
-                .simulated_hourly_tick_counts
-                .iter()
-                .sum::<f64>();
-            let peak_hourly_tick_count = seed_summary
-                .simulated_hourly_tick_counts
-                .iter()
-                .copied()
-                .fold(0.0, f64::max);
-            peak_hourly_tick_count
-                / total_hourly_tick_count.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR)
-        }));
-
-    let simulated_realized_variance_15m =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            seed_summary
-                .simulated_15m_return_scale_summary
-                .realized_variance
-        }));
-
-    let simulated_mean_absolute_return_15m =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            seed_summary
-                .simulated_15m_return_scale_summary
-                .mean_absolute_return
-        }));
-
-    let simulated_realized_variance_tick =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            seed_summary
-                .simulated_tick_return_scale_summary
-                .realized_variance
-        }));
-
-    let simulated_mean_absolute_return_tick =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            seed_summary
-                .simulated_tick_return_scale_summary
-                .mean_absolute_return
-        }));
-
-    let simulated_return_shape_skewness =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            skewness_or_zero(seed_summary.simulated_15m_shape_returns.as_slice())
-        }));
-
-    let simulated_return_shape_bowley_skewness =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            bowley_skewness_or_zero(seed_summary.simulated_15m_shape_returns.as_slice())
-        }));
-
-    let simulated_tick_shape_skewness =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            skewness_or_zero(seed_summary.simulated_tick_shape_returns.as_slice())
-        }));
-
-    let simulated_tick_shape_bowley_skewness =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            bowley_skewness_or_zero(seed_summary.simulated_tick_shape_returns.as_slice())
-        }));
-
-    let simulated_rv_activity_correlation = average_seed_score(
-        seed_summaries
-            .iter()
-            .map(|seed_summary| seed_summary.simulated_15m_rv_activity_metric.correlation),
+fn base_return_shape_statistic_estimates(
+    finite_values: &[f64],
+    effective_sample_count: usize,
+) -> Vec<JointRefinementReturnShapeStatisticEstimate> {
+    let sample_standard_deviation_value = sample_standard_deviation(finite_values);
+    let winsorized_volatility = winsorized_sample_standard_deviation_from_sorted(
+        finite_values,
+        RETURN_SHAPE_WINSORIZED_VOLATILITY_LOWER_QUANTILE,
+        RETURN_SHAPE_WINSORIZED_VOLATILITY_UPPER_QUANTILE,
     );
 
-    let simulated_rv_activity_path_distance =
-        average_seed_score(seed_summaries.iter().map(|seed_summary| {
-            seed_summary
-                .simulated_15m_rv_activity_metric
-                .standardized_path_distance
-        }));
+    let mut estimates = Vec::new();
 
-    let simulated_log_price_span = average_seed_score(seed_summaries.iter().map(|seed_summary| {
-        compute_cumulative_log_price_span(seed_summary.simulated_15m_intervals.as_slice())
-    }));
+    estimates.push(JointRefinementReturnShapeStatisticEstimate {
+        metric_name: "mean",
+        value: arithmetic_mean_or_zero(finite_values),
+        standard_error: standard_error_from_scale(
+            sample_standard_deviation_value,
+            effective_sample_count,
+        ),
+    });
 
-    vec![
-        build_positive_joint_objective_term(
-            "joint.activity_level",
-            "joint.activity_level",
-            "activity_level",
-            observed_total_hourly_tick_count,
-            simulated_total_hourly_tick_count,
+    estimates.push(JointRefinementReturnShapeStatisticEstimate {
+        metric_name: "winsorized_volatility_q05_q95",
+        value: winsorized_volatility,
+        standard_error: standard_deviation_standard_error(
+            winsorized_volatility,
+            effective_sample_count,
         ),
-        build_positive_joint_objective_term(
-            "joint.activity_level.mean_hourly_tick_count",
-            "joint.activity_level.mean_hourly_tick_count",
-            "activity_level",
-            observed_mean_hourly_tick_count,
-            simulated_mean_hourly_tick_count,
+    });
+
+    for (metric_name, quantile_level) in [
+        ("q01", 0.01),
+        ("q05", 0.05),
+        ("q25", 0.25),
+        ("median", 0.50),
+        ("q75", 0.75),
+        ("q95", 0.95),
+        ("q99", 0.99),
+    ] {
+        estimates.push(JointRefinementReturnShapeStatisticEstimate {
+            metric_name,
+            value: compute_sorted_quantile_or_zero(finite_values, quantile_level),
+            standard_error: quantile_standard_error(
+                finite_values,
+                quantile_level,
+                effective_sample_count,
+            ),
+        });
+    }
+
+    let absolute_values = sorted_finite_values(
+        finite_values
+            .iter()
+            .copied()
+            .map(f64::abs)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+
+    estimates.push(JointRefinementReturnShapeStatisticEstimate {
+        metric_name: "mean_abs",
+        value: arithmetic_mean_or_zero(absolute_values.as_slice()),
+        standard_error: standard_error_from_scale(
+            sample_standard_deviation(absolute_values.as_slice()),
+            effective_sample_count,
         ),
-        build_positive_joint_objective_term(
-            "joint.activity_shape",
-            "joint.activity_shape",
-            "activity_shape",
-            observed_peak_hourly_tick_share,
-            simulated_peak_hourly_tick_share,
+    });
+
+    estimates.push(JointRefinementReturnShapeStatisticEstimate {
+        metric_name: "median_abs",
+        value: compute_sorted_quantile_or_zero(absolute_values.as_slice(), 0.50),
+        standard_error: quantile_standard_error(
+            absolute_values.as_slice(),
+            0.50,
+            effective_sample_count,
         ),
-        build_positive_joint_objective_term(
-            "joint.return_scale",
-            "joint.return_scale",
-            "return_scale",
-            observed_return_scale_summary.realized_variance,
-            simulated_realized_variance_15m,
-        ),
-        build_positive_joint_objective_term(
-            "joint.return_scale.mean_absolute_return_15m",
-            "joint.return_scale.mean_absolute_return_15m",
-            "return_scale",
-            observed_return_scale_summary.mean_absolute_return,
-            simulated_mean_absolute_return_15m,
-        ),
-        build_positive_joint_objective_term(
-            "joint.return_scale.tick_realized_variance",
-            "joint.return_scale.tick_realized_variance",
-            "return_scale",
-            observed_tick_return_scale_summary.realized_variance,
-            simulated_realized_variance_tick,
-        ),
-        build_positive_joint_objective_term(
-            "joint.return_scale.tick_mean_absolute_return",
-            "joint.return_scale.tick_mean_absolute_return",
-            "return_scale",
-            observed_tick_return_scale_summary.mean_absolute_return,
-            simulated_mean_absolute_return_tick,
-        ),
-        build_signed_joint_objective_term(
-            "joint.return_asymmetry.central_skewness",
-            "joint.return_asymmetry.central_skewness",
-            "return_asymmetry",
-            observed_return_shape_skewness,
-            simulated_return_shape_skewness,
-        ),
-        build_signed_joint_objective_term(
-            "joint.return_asymmetry.bowley_skewness",
-            "joint.return_asymmetry.bowley_skewness",
-            "return_asymmetry",
-            observed_return_shape_bowley_skewness,
-            simulated_return_shape_bowley_skewness,
-        ),
-        build_signed_joint_objective_term(
-            "joint.return_asymmetry.tick_central_skewness",
-            "joint.return_asymmetry.tick_central_skewness",
-            "return_asymmetry",
-            observed_tick_shape_skewness,
-            simulated_tick_shape_skewness,
-        ),
-        build_signed_joint_objective_term(
-            "joint.return_asymmetry.tick_bowley_skewness",
-            "joint.return_asymmetry.tick_bowley_skewness",
-            "return_asymmetry",
-            observed_tick_shape_bowley_skewness,
-            simulated_tick_shape_bowley_skewness,
-        ),
-        build_signed_joint_objective_term(
-            "joint.rv_activity_coupling",
-            "joint.rv_activity_coupling",
-            "activity_vs_volatility_coupling",
-            observed_rv_activity_metric.correlation,
-            simulated_rv_activity_correlation,
-        ),
-        build_signed_joint_objective_term(
-            "joint.rv_activity_coupling.path_distance",
-            "joint.rv_activity_coupling.path_distance",
-            "activity_vs_volatility_coupling",
-            observed_rv_activity_metric.standardized_path_distance,
-            simulated_rv_activity_path_distance,
-        ),
-        build_positive_joint_objective_term(
-            "joint.price_span_sanity",
-            "joint.price_span_sanity",
-            "diagnostic",
-            observed_log_price_span,
-            simulated_log_price_span,
-        ),
-    ]
+    });
+
+    estimates.push(JointRefinementReturnShapeStatisticEstimate {
+        metric_name: "bowley_skewness",
+        value: bowley_skewness_or_zero(finite_values),
+        standard_error: bowley_skewness_standard_error(finite_values, effective_sample_count),
+    });
+
+    if let Some(lambda2) = l_moment_lambda2_from_sorted(finite_values) {
+        estimates.push(JointRefinementReturnShapeStatisticEstimate {
+            metric_name: "l_moment_lambda2",
+            value: lambda2,
+            standard_error: standard_error_from_scale(
+                sample_standard_deviation_value,
+                effective_sample_count,
+            ),
+        });
+    }
+
+    if let Some(tau3) =
+        l_moment_tau3_from_sorted(finite_values, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR)
+    {
+        estimates.push(JointRefinementReturnShapeStatisticEstimate {
+            metric_name: "l_moment_tau3",
+            value: tau3,
+            standard_error: unit_scale_standard_error(effective_sample_count),
+        });
+    }
+
+    estimates
 }
 
-fn build_positive_joint_objective_term(
-    metric_id: &str,
-    target_id: &str,
-    target_family: &str,
-    observed_value: f64,
-    simulated_value: f64,
-) -> crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic {
-    let uncertainty_scale = observed_value
-        .abs()
-        .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+fn return_shape_temporal_block_standard_errors(
+    values: &[f64],
+    temporal_block_count: usize,
+) -> BTreeMap<&'static str, f64> {
+    let finite_values = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
 
-    crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic {
-        metric_id: metric_id.to_string(),
-        target_id: target_id.to_string(),
-        target_family: target_family.to_string(),
-        observed_value,
-        simulated_value,
-        uncertainty_scale,
-        normalized_error: log_ratio_distance(
-            simulated_value,
+    let block_count =
+        return_shape_effective_sample_count(finite_values.len(), temporal_block_count);
+    if block_count < 2 {
+        return BTreeMap::new();
+    }
+
+    let mut block_values_by_metric = BTreeMap::<&'static str, Vec<f64>>::new();
+
+    for block_index in 0..block_count {
+        let block_start = block_index
+            .checked_mul(finite_values.len())
+            .unwrap_or(finite_values.len())
+            / block_count;
+
+        let block_end = (block_index + 1)
+            .checked_mul(finite_values.len())
+            .unwrap_or(finite_values.len())
+            / block_count;
+
+        if block_end <= block_start {
+            continue;
+        }
+
+        let sorted_block_values = sorted_finite_values(&finite_values[block_start..block_end]);
+        let block_estimates = base_return_shape_statistic_estimates(
+            sorted_block_values.as_slice(),
+            block_end - block_start,
+        );
+
+        for block_estimate in block_estimates {
+            if block_estimate.value.is_finite() {
+                block_values_by_metric
+                    .entry(block_estimate.metric_name)
+                    .or_default()
+                    .push(block_estimate.value);
+            }
+        }
+    }
+
+    block_values_by_metric
+        .into_iter()
+        .filter_map(|(metric_name, block_values)| {
+            if block_values.len() < 2 {
+                return None;
+            }
+
+            let standard_error = sample_standard_deviation(block_values.as_slice())
+                / (block_values.len() as f64).sqrt();
+
+            (standard_error.is_finite() && standard_error > 0.0)
+                .then_some((metric_name, standard_error))
+        })
+        .collect()
+}
+
+fn return_shape_effective_sample_count(value_count: usize, temporal_block_count: usize) -> usize {
+    // Shape diagnostics compare clustered market-time distributions. The effective
+    // independent evidence is bounded by temporal blocks, while sparse horizons
+    // cannot contribute more observations than they contain.
+    value_count.min(temporal_block_count.max(1))
+}
+
+fn statistic_estimate_by_name(
+    estimates: Vec<JointRefinementReturnShapeStatisticEstimate>,
+    metric_name: &str,
+) -> Option<JointRefinementReturnShapeStatisticEstimate> {
+    estimates
+        .into_iter()
+        .find(|estimate| estimate.metric_name == metric_name)
+}
+
+fn average_seed_statistic_estimate(
+    estimates: &[JointRefinementReturnShapeStatisticEstimate],
+) -> Option<JointRefinementReturnShapeStatisticEstimate> {
+    if estimates.is_empty() {
+        return None;
+    }
+
+    let values = estimates
+        .iter()
+        .map(|estimate| estimate.value)
+        .collect::<Vec<_>>();
+
+    let standard_error_variance = estimates
+        .iter()
+        .map(|estimate| estimate.standard_error * estimate.standard_error)
+        .sum::<f64>()
+        / estimates.len() as f64;
+
+    let between_seed_variance = if estimates.len() > 1 {
+        sample_variance(values.as_slice()).unwrap_or(0.0) / estimates.len() as f64
+    } else {
+        0.0
+    };
+
+    Some(JointRefinementReturnShapeStatisticEstimate {
+        metric_name: estimates[0].metric_name,
+        value: arithmetic_mean_or_zero(values.as_slice()),
+        standard_error: (standard_error_variance + between_seed_variance).sqrt(),
+    })
+}
+
+fn add_return_scale_summary_terms(
+    builder: &mut CalibrationLossBuilder,
+    horizon_label: &str,
+    observed_summary: JointRefinementReturnScaleSummary,
+    model_summary: JointRefinementReturnScaleSummary,
+    observed_sample_count: usize,
+    model_seed_count: usize,
+    family_id: &str,
+) {
+    for (metric_name, observed_value, model_value) in [
+        (
+            "mean_absolute_return",
+            observed_summary.mean_absolute_return,
+            model_summary.mean_absolute_return,
+        ),
+        (
+            "realized_variance",
+            observed_summary.realized_variance,
+            model_summary.realized_variance,
+        ),
+        (
+            "absolute_return_quantile_q95",
+            observed_summary.absolute_return_quantile_q90,
+            model_summary.absolute_return_quantile_q90,
+        ),
+    ] {
+        add_direct_term(
+            builder,
+            format!("{family_id}.{horizon_label}.{metric_name}").as_str(),
+            family_id,
             observed_value,
-            JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+            model_value,
+            standard_error_from_positive_value(observed_value, observed_sample_count),
+            standard_error_from_positive_value(model_value, model_seed_count),
+        );
+    }
+}
+
+fn average_return_scale_summary(
+    summaries: impl Iterator<Item = JointRefinementReturnScaleSummary>,
+) -> JointRefinementReturnScaleSummary {
+    let summaries = summaries.collect::<Vec<_>>();
+
+    JointRefinementReturnScaleSummary {
+        mean_absolute_return: average_seed_score(
+            summaries.iter().map(|summary| summary.mean_absolute_return),
+        ),
+        realized_variance: average_seed_score(
+            summaries.iter().map(|summary| summary.realized_variance),
+        ),
+        absolute_return_quantile_q90: average_seed_score(
+            summaries
+                .iter()
+                .map(|summary| summary.absolute_return_quantile_q90),
         ),
     }
 }
 
-fn build_signed_joint_objective_term(
-    metric_id: &str,
-    target_id: &str,
-    target_family: &str,
-    observed_value: f64,
-    simulated_value: f64,
-) -> crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic {
-    let uncertainty_scale = observed_value
-        .abs()
-        .max(simulated_value.abs())
-        .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+fn add_business_time_return_scale_horizon_terms(
+    builder: &mut CalibrationLossBuilder,
+    horizon_label: &str,
+    observed_summaries: JointRefinementBusinessTimeBucketReturnScaleSummaries,
+    simulated_summaries_by_seed: &[JointRefinementBusinessTimeBucketReturnScaleSummaries],
+    observed_sample_count: usize,
+) {
+    for (bucket_index, observed_summary) in observed_summaries.bucket_summaries.iter().enumerate() {
+        let Some(observed_summary) = observed_summary else {
+            continue;
+        };
 
-    crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic {
-        metric_id: metric_id.to_string(),
-        target_id: target_id.to_string(),
-        target_family: target_family.to_string(),
-        observed_value,
-        simulated_value,
-        uncertainty_scale,
-        normalized_error: (simulated_value - observed_value).abs() / uncertainty_scale,
+        let model_summary = average_return_scale_summary(
+            simulated_summaries_by_seed
+                .iter()
+                .filter_map(|summaries| summaries.bucket_summaries[bucket_index]),
+        );
+
+        add_return_scale_summary_terms(
+            builder,
+            format!("{horizon_label}.business_time_bucket_{bucket_index}").as_str(),
+            *observed_summary,
+            model_summary,
+            observed_sample_count
+                .checked_div(observed_summaries.bucket_summaries.len().max(1))
+                .unwrap_or(0)
+                .max(1),
+            simulated_summaries_by_seed.len(),
+            "business_time_return_scale",
+        );
     }
+}
+
+fn add_intraday_profile_terms(
+    builder: &mut CalibrationLossBuilder,
+    horizon_label: &str,
+    observed_profile: &[f64],
+    simulated_profiles_by_seed: &[&[f64]],
+) {
+    let model_profile = mean_profile_by_seed(simulated_profiles_by_seed);
+    let profile_length = observed_profile.len().min(model_profile.len());
+
+    for hour_index in 0..profile_length {
+        let observed_value = observed_profile[hour_index];
+        let model_value = model_profile[hour_index];
+
+        add_direct_term(
+            builder,
+            format!("intraday_return_level.{horizon_label}.hour_{hour_index:02}").as_str(),
+            "intraday_return_level",
+            observed_value,
+            model_value,
+            standard_error_from_positive_value(observed_value, profile_length),
+            standard_error_from_positive_value(model_value, simulated_profiles_by_seed.len()),
+        );
+    }
+}
+
+fn add_activity_level_terms(
+    builder: &mut CalibrationLossBuilder,
+    observed_counts: &[f64],
+    model_counts: &[f64],
+    fano_factor: f64,
+) {
+    let observed_total = observed_counts.iter().sum::<f64>();
+    let model_total = model_counts.iter().sum::<f64>();
+    let count = observed_counts.len().min(model_counts.len()).max(1);
+
+    let observed_standard_errors = activity_level_standard_errors(observed_counts, fano_factor);
+    let model_standard_errors = activity_level_standard_errors(model_counts, fano_factor);
+
+    add_direct_term(
+        builder,
+        "activity_level.total_count",
+        "activity_level_timing",
+        observed_total,
+        model_total,
+        observed_standard_errors.total_count,
+        model_standard_errors.total_count,
+    );
+
+    add_direct_term(
+        builder,
+        "activity_level.mean_hourly_count",
+        "activity_level_timing",
+        observed_total / count as f64,
+        model_total / count as f64,
+        observed_standard_errors.mean_hourly_count,
+        model_standard_errors.mean_hourly_count,
+    );
+
+    add_direct_term(
+        builder,
+        "activity_timing.hourly_count_cv",
+        "activity_level_timing",
+        coefficient_of_variation(observed_counts),
+        coefficient_of_variation(model_counts),
+        unit_scale_standard_error(count),
+        unit_scale_standard_error(count),
+    );
+
+    add_direct_term(
+        builder,
+        "activity_timing.zero_count_share",
+        "activity_level_timing",
+        zero_count_share(observed_counts),
+        zero_count_share(model_counts),
+        binomial_share_standard_error(zero_count_share(observed_counts), count),
+        binomial_share_standard_error(zero_count_share(model_counts), count),
+    );
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ActivityLevelStandardErrors {
+    total_count: f64,
+    mean_hourly_count: f64,
+}
+
+fn activity_level_standard_errors(counts: &[f64], fano_factor: f64) -> ActivityLevelStandardErrors {
+    let total_count = counts.iter().sum::<f64>();
+    let count = counts.len().max(1);
+
+    let hawkes_total_standard_error = hawkes_count_standard_error(total_count, fano_factor);
+    let hawkes_mean_standard_error = hawkes_total_standard_error / count as f64;
+
+    let block_mean_standard_error =
+        activity_session_block_mean_standard_error(counts).unwrap_or(0.0);
+    let block_total_standard_error = block_mean_standard_error * count as f64;
+
+    ActivityLevelStandardErrors {
+        total_count: hawkes_total_standard_error.max(block_total_standard_error),
+        mean_hourly_count: hawkes_mean_standard_error.max(block_mean_standard_error),
+    }
+}
+
+fn activity_session_block_mean_standard_error(counts: &[f64]) -> Option<f64> {
+    if counts.len() < ACTIVITY_PROFILE_SESSION_HOURS * 2 {
+        return None;
+    }
+
+    let block_rates = counts
+        .chunks(ACTIVITY_PROFILE_SESSION_HOURS)
+        .filter_map(|session_counts| {
+            if session_counts.is_empty() {
+                return None;
+            }
+
+            let session_total = session_counts.iter().sum::<f64>();
+            (session_total.is_finite()).then_some(session_total / session_counts.len() as f64)
+        })
+        .collect::<Vec<_>>();
+    if block_rates.len() < 2 {
+        return None;
+    }
+
+    let block_standard_deviation = sample_standard_deviation(block_rates.as_slice());
+    let standard_error = block_standard_deviation / (block_rates.len() as f64).sqrt();
+
+    (standard_error.is_finite() && standard_error > 0.0).then_some(standard_error)
+}
+
+fn add_activity_shape_terms(
+    builder: &mut CalibrationLossBuilder,
+    observed_counts: &[f64],
+    model_counts: &[f64],
+) {
+    let observed_total = observed_counts.iter().sum::<f64>();
+    let model_total = model_counts.iter().sum::<f64>();
+
+    if observed_total <= 0.0 || model_total <= 0.0 {
+        return;
+    }
+
+    let concentration = dirichlet_multinomial_concentration_from_hourly_counts(observed_counts);
+
+    let count = observed_counts.len().min(model_counts.len());
+
+    for hour_index in 0..count {
+        let observed_share = observed_counts[hour_index] / observed_total;
+        let model_share = model_counts[hour_index] / model_total;
+
+        let observed_standard_error = dirichlet_multinomial_share_standard_error(
+            observed_share,
+            observed_total,
+            concentration,
+        );
+
+        let term_id = format!("activity_shape.hourly_profile_share_{hour_index:03}");
+
+        add_direct_term(
+            builder,
+            term_id.as_str(),
+            "activity_shape",
+            observed_share,
+            model_share,
+            observed_standard_error,
+            dirichlet_multinomial_share_standard_error(model_share, model_total, concentration),
+        );
+    }
+}
+
+fn add_direct_term(
+    builder: &mut CalibrationLossBuilder,
+    term_id: &str,
+    family_id: &str,
+    observed_value: f64,
+    model_value: f64,
+    observed_standard_error: f64,
+    model_standard_error: f64,
+) {
+    if observed_value.is_finite()
+        && model_value.is_finite()
+        && observed_standard_error.is_finite()
+        && observed_standard_error > 0.0
+        && model_standard_error.is_finite()
+        && model_standard_error >= 0.0
+    {
+        builder.add_stylized_fact_term(
+            term_id,
+            family_id,
+            observed_value,
+            model_value,
+            observed_standard_error,
+            model_standard_error,
+        );
+    }
+}
+
+fn mean_profile_by_seed(profiles_by_seed: &[&[f64]]) -> Vec<f64> {
+    let Some(profile_length) = profiles_by_seed.iter().map(|profile| profile.len()).min() else {
+        return Vec::new();
+    };
+
+    (0..profile_length)
+        .map(|position| {
+            average_seed_score(profiles_by_seed.iter().map(|profile| profile[position]))
+        })
+        .collect()
+}
+
+fn standard_error_from_scale(scale: f64, sample_count: usize) -> f64 {
+    if !scale.is_finite() || scale <= 0.0 || sample_count == 0 {
+        return f64::INFINITY;
+    }
+
+    scale / (sample_count as f64).sqrt()
+}
+
+fn standard_error_from_positive_value(value: f64, sample_count: usize) -> f64 {
+    standard_error_from_scale(value.abs(), sample_count)
+}
+
+fn standard_deviation_standard_error(standard_deviation: f64, sample_count: usize) -> f64 {
+    if sample_count <= 1 {
+        return f64::INFINITY;
+    }
+
+    standard_deviation / (2.0 * (sample_count - 1) as f64).sqrt()
+}
+
+fn quantile_standard_error(
+    sorted_values: &[f64],
+    quantile_level: f64,
+    effective_sample_count: usize,
+) -> f64 {
+    if sorted_values.len() <= 1 || effective_sample_count <= 1 || !quantile_level.is_finite() {
+        return f64::INFINITY;
+    }
+
+    let sample_count = sorted_values.len();
+
+    let rank_position = quantile_level.clamp(0.0, 1.0) * (sample_count - 1) as f64;
+    let rank_index = rank_position.round() as usize;
+    let rank_window = (sample_count as f64).sqrt().round().max(1.0) as usize;
+
+    let lower_index = rank_index.saturating_sub(rank_window);
+    let upper_index = rank_index.saturating_add(rank_window).min(sample_count - 1);
+
+    let value_spacing = sorted_values[upper_index] - sorted_values[lower_index];
+
+    let rank_count = upper_index.saturating_sub(lower_index).max(1) as f64;
+
+    if value_spacing > 0.0 {
+        let density_estimate = rank_count / (sample_count as f64 * value_spacing);
+        return (quantile_level * (1.0 - quantile_level) / effective_sample_count as f64).sqrt()
+            / density_estimate;
+    }
+
+    standard_error_from_scale(
+        sample_standard_deviation(sorted_values),
+        effective_sample_count,
+    )
+}
+
+fn bowley_skewness_standard_error(sorted_values: &[f64], effective_sample_count: usize) -> f64 {
+    if sorted_values.len() < 3 || effective_sample_count <= 1 {
+        return f64::INFINITY;
+    }
+
+    let lower_quartile = compute_sorted_quantile_or_zero(sorted_values, 0.25);
+    let median = compute_sorted_quantile_or_zero(sorted_values, 0.50);
+    let upper_quartile = compute_sorted_quantile_or_zero(sorted_values, 0.75);
+
+    let denominator = upper_quartile - lower_quartile;
+    if !denominator.is_finite() || denominator.abs() <= JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR {
+        return f64::INFINITY;
+    }
+
+    let numerator = upper_quartile + lower_quartile - 2.0 * median;
+    let denominator_squared = denominator * denominator;
+
+    let lower_quartile_sensitivity = (denominator + numerator) / denominator_squared;
+    let median_sensitivity = -2.0 / denominator;
+    let upper_quartile_sensitivity = (denominator - numerator) / denominator_squared;
+
+    let lower_quartile_standard_error =
+        quantile_standard_error(sorted_values, 0.25, effective_sample_count);
+    let median_standard_error =
+        quantile_standard_error(sorted_values, 0.50, effective_sample_count);
+    let upper_quartile_standard_error =
+        quantile_standard_error(sorted_values, 0.75, effective_sample_count);
+
+    let variance = [
+        lower_quartile_sensitivity * lower_quartile_standard_error,
+        median_sensitivity * median_standard_error,
+        upper_quartile_sensitivity * upper_quartile_standard_error,
+    ]
+    .into_iter()
+    .map(|component| component * component)
+    .sum::<f64>();
+
+    if variance.is_finite() && variance > 0.0 {
+        variance.sqrt()
+    } else {
+        f64::INFINITY
+    }
+}
+
+fn unit_scale_standard_error(sample_count: usize) -> f64 {
+    standard_error_from_scale(1.0, sample_count)
+}
+
+fn binomial_share_standard_error(share: f64, sample_count: usize) -> f64 {
+    if sample_count == 0 || !share.is_finite() {
+        return f64::INFINITY;
+    }
+
+    (share.clamp(0.0, 1.0) * (1.0 - share.clamp(0.0, 1.0)) / sample_count as f64).sqrt()
+}
+
+fn hawkes_count_standard_error(expected_count: f64, fano_factor: f64) -> f64 {
+    if !expected_count.is_finite() || expected_count < 0.0 || !fano_factor.is_finite() {
+        return f64::INFINITY;
+    }
+
+    (expected_count * fano_factor.max(1.0)).sqrt()
+}
+
+fn coefficient_of_variation(values: &[f64]) -> f64 {
+    let mean_value = arithmetic_mean_or_zero(values);
+    if mean_value <= 0.0 {
+        return 0.0;
+    }
+
+    sample_standard_deviation(values) / mean_value
+}
+
+fn zero_count_share(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+
+    values.iter().filter(|value| **value == 0.0).count() as f64 / values.len() as f64
+}
+
+fn dirichlet_multinomial_concentration_from_hourly_counts(hourly_counts: &[f64]) -> f64 {
+    let total_count = hourly_counts.iter().sum::<f64>();
+    if hourly_counts.len() < 48 || total_count <= 0.0 {
+        return total_count.max(1.0);
+    }
+
+    let session_length = ACTIVITY_PROFILE_SESSION_HOURS;
+    let session_count = hourly_counts.len() / session_length;
+    if session_count < 2 {
+        return total_count.max(1.0);
+    }
+
+    let mut session_totals = Vec::with_capacity(session_count);
+    let mut share_by_session = Vec::with_capacity(session_count);
+
+    for session_counts in hourly_counts.chunks(session_length).take(session_count) {
+        let session_total = session_counts.iter().sum::<f64>();
+        if session_total <= 0.0 {
+            continue;
+        }
+
+        session_totals.push(session_total);
+
+        share_by_session.push(
+            session_counts
+                .iter()
+                .map(|count| *count / session_total)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    if share_by_session.len() < 2 {
+        return total_count.max(1.0);
+    }
+
+    let mean_session_total = arithmetic_mean_or_zero(session_totals.as_slice());
+    if mean_session_total <= 1.0 {
+        return total_count.max(1.0);
+    }
+
+    let mut rho_estimates = Vec::new();
+
+    for hour_index in 0..session_length {
+        let shares = share_by_session
+            .iter()
+            .filter_map(|session_shares| session_shares.get(hour_index).copied())
+            .collect::<Vec<_>>();
+        if shares.len() < 2 {
+            continue;
+        }
+
+        let mean_share = arithmetic_mean_or_zero(shares.as_slice());
+
+        let multinomial_variance = mean_share * (1.0 - mean_share) / mean_session_total;
+        if multinomial_variance <= 0.0 {
+            continue;
+        }
+
+        let observed_variance = sample_variance(shares.as_slice()).unwrap_or(0.0);
+
+        let rho = ((observed_variance / multinomial_variance) - 1.0) / (mean_session_total - 1.0);
+        if rho.is_finite() && rho > 0.0 && rho < 1.0 {
+            rho_estimates.push(rho);
+        }
+    }
+
+    let rho = arithmetic_mean_or_zero(rho_estimates.as_slice());
+    if rho > 0.0 {
+        (1.0 / rho) - 1.0
+    } else {
+        total_count.max(1.0)
+    }
+}
+
+fn dirichlet_multinomial_share_standard_error(
+    share: f64,
+    total_count: f64,
+    concentration: f64,
+) -> f64 {
+    if !share.is_finite()
+        || !total_count.is_finite()
+        || !concentration.is_finite()
+        || total_count <= 0.0
+        || concentration <= 0.0
+    {
+        return f64::INFINITY;
+    }
+
+    let overdispersion = (total_count + concentration) / (1.0 + concentration);
+
+    (share.clamp(0.0, 1.0) * (1.0 - share.clamp(0.0, 1.0)) * overdispersion / total_count).sqrt()
+}
+
+fn hawkes_count_fano_factor(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+) -> Option<f64> {
+    let branching_ratio = hawkes_runtime_effective_branching_ratio(fitted_parameters)?;
+    if !(0.0..1.0).contains(&branching_ratio) {
+        return None;
+    }
+
+    Some((1.0 - branching_ratio).recip().powi(2))
+}
+
+fn hawkes_runtime_effective_branching_ratio(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+) -> Option<f64> {
+    let derived_alpha = HawkesKernelLoadings::try_from_structured_alpha(
+        fitted_parameters.hawkes_fitted_parameters.structured_alpha,
+    )
+    .ok()?;
+
+    Some(spectral_radius_alpha_over_beta(
+        derived_alpha,
+        fitted_parameters
+            .hawkes_fitted_parameters
+            .kernel_parameters
+            .beta,
+    ))
 }
 
 fn skewness_or_zero(values: &[f64]) -> f64 {
@@ -1945,7 +3012,7 @@ fn bowley_skewness_or_zero(values: &[f64]) -> f64 {
 
 fn violates_runtime_seasonality_scaled_stationarity(
     fitted_parameters: &JointRefinementStageFittedParameters,
-    context: &JointRefinementContext,
+    _context: &JointRefinementContext,
 ) -> bool {
     let Ok(stability_check) = HawkesKernelParameters::check_spectral_radius_stability(
         fitted_parameters
@@ -1963,128 +3030,25 @@ fn violates_runtime_seasonality_scaled_stationarity(
         return true;
     };
 
-    context.max_runtime_hourly_seasonality_factor * stability_check.spectral_radius_alpha_over_beta
-        >= 1.0
+    stability_check.spectral_radius_alpha_over_beta >= 1.0
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        activity_level_fit_for_counts, activity_shape_fit_for_counts,
-        admissibility_constraint_penalty, dynamics_block_search_objective,
-        likelihood_ratio_fit_score, threshold_relative_likelihood_search_score,
-        threshold_relative_search_score,
+        LikelihoodContextCachePolicy, activity_level_fit_for_counts,
+        activity_level_standard_errors, activity_shape_fit_for_counts, add_direct_term,
+        bowley_skewness_standard_error, likelihood_context_cache_policy_for_joint_fidelity,
+        likelihood_fidelity_tier_for_joint_fidelity, return_shape_effective_sample_count,
+        return_shape_statistic_estimates, statistic_estimate_by_name,
     };
-    use crate::stages::joint_refinement::execution::{
-        JointRefinementAdmissibilityThresholds, JointRefinementRawAdmissibilityMetrics,
+    use crate::objective::CalibrationLossBuilder;
+    use crate::stages::joint_refinement::execution::JointRefinementFidelityTier;
+    use crate::stages::return_components::ContinuousLikelihoodFidelityTier;
+    use janiform_calibration_artifacts::CalibrationObjectivePolicy;
+    use janiform_foundations::numeric::{
+        sample_standard_deviation, winsorized_sample_standard_deviation_from_sorted,
     };
-
-    fn test_thresholds() -> JointRefinementAdmissibilityThresholds {
-        JointRefinementAdmissibilityThresholds {
-            aggregated_likelihood_fit: 2.0,
-            aggregated_return_shape_fit: 2.0,
-            return_asymmetry_fit: 2.0,
-            tick_return_asymmetry_fit: 2.0,
-            aggregated_return_scale_fit: 2.0,
-            tick_return_scale_fit: 2.0,
-            business_time_return_scale_fit: 2.0,
-            intraday_return_level_fit: 2.0,
-            activity_shape_fit: 2.0,
-            activity_level_fit: 2.0,
-            rv_activity_coupling_fit: 2.0,
-            price_span_sanity_fit: 2.0,
-        }
-    }
-
-    fn test_metrics(value: f64) -> JointRefinementRawAdmissibilityMetrics {
-        JointRefinementRawAdmissibilityMetrics {
-            aggregated_likelihood_fit: value,
-            aggregated_return_shape_fit: value,
-            return_asymmetry_fit: value,
-            tick_return_asymmetry_fit: value,
-            aggregated_return_scale_fit: value,
-            tick_return_scale_fit: value,
-            business_time_return_scale_fit: value,
-            intraday_return_level_fit: value,
-            activity_shape_fit: value,
-            activity_level_fit: value,
-            rv_activity_coupling_fit: value,
-            price_span_sanity_fit: value,
-        }
-    }
-
-    #[test]
-    fn admissibility_constraint_penalty_is_zero_within_thresholds() {
-        let penalty = admissibility_constraint_penalty(&test_metrics(1.5), test_thresholds(), 10.0);
-
-        assert_eq!(penalty, 0.0);
-    }
-
-    #[test]
-    fn admissibility_constraint_penalty_scales_with_threshold_exceedance() {
-        let penalty = admissibility_constraint_penalty(&test_metrics(2.5), test_thresholds(), 10.0);
-
-        assert_eq!(penalty, 5.0);
-    }
-
-    #[test]
-    fn threshold_relative_search_score_matches_threshold_ratio_within_boundary() {
-        assert_eq!(threshold_relative_search_score(1.0, 2.0), 0.5);
-        assert_eq!(threshold_relative_search_score(2.0, 2.0), 1.0);
-    }
-
-    #[test]
-    fn threshold_relative_search_score_compresses_exceedance_above_boundary() {
-        assert_eq!(
-            threshold_relative_search_score(4.0, 2.0),
-            1.0 + 2.0_f64.ln()
-        );
-    }
-
-    #[test]
-    fn likelihood_ratio_fit_score_is_positive_and_baseline_centered() {
-        assert_eq!(likelihood_ratio_fit_score(-0.5, -0.5, false), 1.0);
-        assert!(likelihood_ratio_fit_score(-0.75, -0.5, false) < 1.0);
-        assert!(likelihood_ratio_fit_score(-0.25, -0.5, false) > 1.0);
-    }
-
-    #[test]
-    fn likelihood_ratio_fit_score_uses_unit_reference_before_baseline_is_established() {
-        assert_eq!(likelihood_ratio_fit_score(-0.5, 1.0, true), 1.0);
-    }
-
-    #[test]
-    fn threshold_relative_likelihood_search_score_is_positive_and_threshold_centered() {
-        assert_eq!(threshold_relative_likelihood_search_score(-0.5, -0.5), 1.0);
-        assert!(threshold_relative_likelihood_search_score(-0.75, -0.5) < 1.0);
-        assert_eq!(
-            threshold_relative_likelihood_search_score(-0.25, -0.5),
-            1.25
-        );
-    }
-
-    #[test]
-    fn dynamics_block_search_objective_uses_compressed_threshold_relative_terms() {
-        let raw_metrics = JointRefinementRawAdmissibilityMetrics {
-            aggregated_likelihood_fit: 4.0,
-            aggregated_return_shape_fit: 50.0,
-            return_asymmetry_fit: 50.0,
-            tick_return_asymmetry_fit: 50.0,
-            aggregated_return_scale_fit: 50.0,
-            tick_return_scale_fit: 50.0,
-            business_time_return_scale_fit: 2.0,
-            intraday_return_level_fit: 2.0,
-            activity_shape_fit: 2.0,
-            activity_level_fit: 2.0,
-            rv_activity_coupling_fit: 2.0,
-            price_span_sanity_fit: 2.0,
-        };
-
-        let objective = dynamics_block_search_objective(&raw_metrics, test_thresholds());
-        let expected = super::root_mean_square([3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0].as_slice());
-
-        assert_eq!(objective, expected);
-    }
 
     #[test]
     fn expected_activity_fit_helpers_match_hourly_count_identity() {
@@ -2097,6 +3061,142 @@ mod tests {
         assert_eq!(
             activity_level_fit_for_counts(&observed_counts, &observed_counts),
             0.0
+        );
+    }
+
+    #[test]
+    fn return_shape_uncertainty_uses_temporal_block_effective_sample_count() {
+        let returns = (-500..500)
+            .map(|value| f64::from(value) / 100.0)
+            .collect::<Vec<_>>();
+
+        let full_sample_winsorized_volatility = statistic_estimate_by_name(
+            return_shape_statistic_estimates(returns.as_slice(), returns.len()),
+            "winsorized_volatility_q05_q95",
+        )
+        .expect("winsorized volatility estimate should be present");
+        let temporal_blocked_winsorized_volatility = statistic_estimate_by_name(
+            return_shape_statistic_estimates(returns.as_slice(), 10),
+            "winsorized_volatility_q05_q95",
+        )
+        .expect("winsorized volatility estimate should be present");
+
+        assert_eq!(return_shape_effective_sample_count(5, 10), 5);
+        assert_eq!(return_shape_effective_sample_count(1_000, 10), 10);
+        assert!(
+            temporal_blocked_winsorized_volatility.standard_error
+                > full_sample_winsorized_volatility.standard_error
+        );
+    }
+
+    #[test]
+    fn return_shape_winsorized_volatility_limits_tail_leverage() {
+        let base_returns = [-1.0, -0.5, 0.0, 0.5, 1.0];
+        let tail_contaminated_returns = [-1.0, -0.5, 0.0, 0.5, 100.0];
+
+        let base_winsorized_volatility =
+            winsorized_sample_standard_deviation_from_sorted(&base_returns, 0.20, 0.80);
+        let contaminated_winsorized_volatility = winsorized_sample_standard_deviation_from_sorted(
+            &tail_contaminated_returns,
+            0.20,
+            0.80,
+        );
+        let contaminated_sample_volatility =
+            sample_standard_deviation(tail_contaminated_returns.as_slice());
+
+        assert!(contaminated_winsorized_volatility > base_winsorized_volatility);
+        assert!(contaminated_winsorized_volatility < contaminated_sample_volatility);
+    }
+
+    #[test]
+    fn direct_terms_skip_unidentified_model_uncertainty() {
+        let mut builder = CalibrationLossBuilder::new(CalibrationObjectivePolicy::default());
+
+        add_direct_term(
+            &mut builder,
+            "return_shape.tick.q05",
+            "return_shape",
+            -1.0,
+            -0.5,
+            0.2,
+            f64::INFINITY,
+        );
+
+        assert!(builder.build().term_diagnostics.is_empty());
+    }
+
+    #[test]
+    fn direct_terms_skip_non_finite_values() {
+        let mut builder = CalibrationLossBuilder::new(CalibrationObjectivePolicy::default());
+
+        add_direct_term(
+            &mut builder,
+            "activity_shape.hourly_profile_share_000",
+            "activity_shape",
+            0.1,
+            f64::INFINITY,
+            0.2,
+            0.2,
+        );
+
+        assert!(builder.build().term_diagnostics.is_empty());
+    }
+
+    #[test]
+    fn bowley_uncertainty_reflects_discrete_quantile_instability() {
+        let mut returns = vec![-1.0; 1_180];
+        returns.extend(vec![1.0; 1_220]);
+
+        let standard_error = bowley_skewness_standard_error(returns.as_slice(), 168);
+
+        assert!(standard_error > 1.0);
+    }
+
+    #[test]
+    fn activity_level_uncertainty_uses_session_block_variation() {
+        let smooth_counts = vec![100.0; 72];
+        let clustered_counts = (0..72)
+            .map(|hour_index| {
+                if hour_index < 24 {
+                    50.0
+                } else if hour_index < 48 {
+                    100.0
+                } else {
+                    150.0
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let smooth_errors = activity_level_standard_errors(smooth_counts.as_slice(), 1.0);
+        let clustered_errors = activity_level_standard_errors(clustered_counts.as_slice(), 1.0);
+
+        assert!(clustered_errors.total_count > smooth_errors.total_count);
+        assert!(clustered_errors.mean_hourly_count > smooth_errors.mean_hourly_count);
+    }
+
+    #[test]
+    fn joint_search_uses_tiered_likelihood_fidelity_for_return_terms() {
+        assert_eq!(
+            likelihood_fidelity_tier_for_joint_fidelity(JointRefinementFidelityTier::CoarseLocal),
+            ContinuousLikelihoodFidelityTier::Representative
+        );
+        assert_eq!(
+            likelihood_fidelity_tier_for_joint_fidelity(JointRefinementFidelityTier::Local),
+            ContinuousLikelihoodFidelityTier::Full
+        );
+        assert_eq!(
+            likelihood_fidelity_tier_for_joint_fidelity(JointRefinementFidelityTier::Final),
+            ContinuousLikelihoodFidelityTier::Full
+        );
+        assert_eq!(
+            likelihood_context_cache_policy_for_joint_fidelity(
+                JointRefinementFidelityTier::CoarseLocal
+            ),
+            LikelihoodContextCachePolicy::CachedByModeledRate
+        );
+        assert_eq!(
+            likelihood_context_cache_policy_for_joint_fidelity(JointRefinementFidelityTier::Local),
+            LikelihoodContextCachePolicy::Uncached
         );
     }
 }

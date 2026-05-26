@@ -1,7 +1,10 @@
-use chrono::{DateTime, Datelike, NaiveDate, Timelike, Utc};
-use chrono_tz::Tz;
 use serde::Serialize;
 
+pub(crate) use crate::stages::seasonality_runtime::{
+    RuntimeHourlySeasonalityFactorsBuildInput,
+    build_runtime_hourly_seasonality_factors_from_components,
+    maximum_runtime_hourly_seasonality_factor_from_payload,
+};
 use janiform_calibration_artifacts::{
     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
     CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -12,17 +15,17 @@ use janiform_calibration_artifacts::{
     SeasonalityStageNormalizationMetadata, resolve_calibration_stage_seed_metadata,
     stage_solver_settings_for_stage,
 };
-use janiform_foundations::numeric::arithmetic_mean;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
 };
 use janiform_market_time::seasonality::{
     DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimatorSettings,
     DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimatorSettings,
-    DeterministicSeasonalityCompositionInput, IntradaySeasonalityEstimatorSettings,
-    ScheduledEventOverlayDefinition, SeasonalityDiagnosticsReportOutput,
-    compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
-    estimate_day_of_year_seasonality, estimate_intraday_seasonality,
+    DeterministicSeasonalityCompositionInput, HourOfWeekSeasonalityEstimatorSettings,
+    IntradaySeasonalityEstimatorSettings, ScheduledEventOverlayDefinition,
+    SeasonalityDiagnosticsReportOutput, compose_deterministic_seasonality_signal,
+    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
+    estimate_hour_of_week_seasonality, estimate_intraday_seasonality,
     generate_seasonality_diagnostics_report,
 };
 /// Configurable knobs for deterministic seasonality stage execution.
@@ -79,7 +82,14 @@ impl SeasonalityStageExecutionInput {
 #[serde(rename_all = "snake_case")]
 pub enum CalibrationStageExecutionStatus {
     Success,
+    SuccessWithWarnings,
     Failure,
+}
+
+impl CalibrationStageExecutionStatus {
+    pub const fn is_successful(self) -> bool {
+        matches!(self, Self::Success | Self::SuccessWithWarnings)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -107,6 +117,7 @@ pub struct SeasonalityStageNormalizedPayload {
     pub timestamp_event_preprocessed_schema_version: String,
     pub intraday_estimate_schema_version: String,
     pub day_of_week_estimate_schema_version: String,
+    pub hour_of_week_estimate_schema_version: String,
     pub day_of_year_estimate_schema_version: String,
     pub composition_schema_version: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -124,6 +135,7 @@ pub struct SeasonalityStageNormalizedPayload {
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
+    pub hour_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub normalized_combined_log_component_by_event: Vec<f64>,
@@ -147,6 +159,7 @@ impl SeasonalityStageNormalizedPayload {
                 .clone(),
             intraday_estimate_schema_version: self.intraday_estimate_schema_version.clone(),
             day_of_week_estimate_schema_version: self.day_of_week_estimate_schema_version.clone(),
+            hour_of_week_estimate_schema_version: self.hour_of_week_estimate_schema_version.clone(),
             day_of_year_estimate_schema_version: self.day_of_year_estimate_schema_version.clone(),
             composition_schema_version: self.composition_schema_version.clone(),
             source_record_positions: Vec::new(),
@@ -158,6 +171,7 @@ impl SeasonalityStageNormalizedPayload {
             intraday_minutes_per_bin: self.intraday_minutes_per_bin,
             intraday_factor_by_bin: self.intraday_factor_by_bin.clone(),
             day_of_week_factor: self.day_of_week_factor.clone(),
+            hour_of_week_factor: self.hour_of_week_factor.clone(),
             day_of_year_factor: self.day_of_year_factor.clone(),
             normalized_combined_log_component_by_event: Vec::new(),
             normalized_combined_factor_by_event: Vec::new(),
@@ -213,6 +227,7 @@ pub enum SeasonalityStageExecutionFailure {
     TimestampPreprocessingFailed { error_message: String },
     IntradayEstimationFailed { error_message: String },
     DayOfWeekEstimationFailed { error_message: String },
+    HourOfWeekEstimationFailed { error_message: String },
     DayOfYearEstimationFailed { error_message: String },
     DeterministicCompositionFailed { error_message: String },
     DiagnosticsReportFailed { error_message: String },
@@ -234,255 +249,6 @@ pub struct SeasonalityStageExecutionReport {
     pub metadata: Option<SeasonalityStageExecutionMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<SeasonalityStageExecutionFailure>,
-}
-
-pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
-    input: RuntimeHourlySeasonalityFactorsBuildInput<'_>,
-) -> Result<Vec<f64>, String> {
-    let RuntimeHourlySeasonalityFactorsBuildInput {
-        calendar_registry,
-        exchange_code,
-        intraday_minutes_per_bin,
-        intraday_factor_by_bin,
-        day_of_week_factor,
-        day_of_year_factor,
-        range_start_utc_nanos,
-        range_end_utc_nanos,
-        interval_duration_nanos,
-    } = input;
-
-    if range_end_utc_nanos <= range_start_utc_nanos {
-        return Ok(Vec::new());
-    }
-
-    if interval_duration_nanos <= 0 {
-        return Err("runtime seasonality materialization requires a positive interval".to_string());
-    }
-    if intraday_factor_by_bin.is_empty() {
-        return Err(
-            "runtime seasonality materialization requires non-empty intraday factors".to_string(),
-        );
-    }
-
-    if day_of_week_factor.len() < 7 {
-        return Err(format!(
-            "runtime seasonality materialization requires at least 7 weekday factors, found {}",
-            day_of_week_factor.len()
-        ));
-    }
-    if day_of_year_factor.len() < 366 {
-        return Err(format!(
-            "runtime seasonality materialization requires at least 366 day-of-year factors, found {}",
-            day_of_year_factor.len()
-        ));
-    }
-
-    let timezone_name = calendar_registry
-        .get_required(exchange_code)
-        .map_err(|error| error.to_string())?
-        .timezone_name()
-        .to_string();
-    let timezone: Tz = timezone_name.parse().map_err(|_| {
-        format!("exchange `{exchange_code}` has invalid timezone name `{timezone_name}`")
-    })?;
-
-    let mut hourly_factors = Vec::new();
-    let mut interval_start_utc_nanos = range_start_utc_nanos;
-    while interval_start_utc_nanos < range_end_utc_nanos {
-        hourly_factors.push(structural_seasonality_factor_at_timestamp(
-            intraday_minutes_per_bin,
-            intraday_factor_by_bin,
-            day_of_week_factor,
-            day_of_year_factor,
-            timezone,
-            interval_start_utc_nanos,
-        )?);
-
-        interval_start_utc_nanos = interval_start_utc_nanos
-            .checked_add(interval_duration_nanos)
-            .ok_or_else(|| {
-                "runtime seasonality materialization overflowed the interval grid".to_string()
-            })?;
-    }
-
-    mean_renormalize_runtime_hourly_factors(hourly_factors)
-}
-
-pub(crate) struct RuntimeHourlySeasonalityFactorsBuildInput<'a> {
-    pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
-    pub(crate) exchange_code: &'a str,
-    pub(crate) intraday_minutes_per_bin: u16,
-    pub(crate) intraday_factor_by_bin: &'a [f64],
-    pub(crate) day_of_week_factor: &'a [f64],
-    pub(crate) day_of_year_factor: &'a [f64],
-    pub(crate) range_start_utc_nanos: i64,
-    pub(crate) range_end_utc_nanos: i64,
-    pub(crate) interval_duration_nanos: i64,
-}
-
-pub(crate) fn maximum_runtime_hourly_seasonality_factor_from_payload(
-    _calendar_registry: &ExchangeCalendarRegistry,
-    seasonality_payload: &SeasonalityStageNormalizedPayload,
-) -> Result<f64, String> {
-    maximum_realizable_runtime_hourly_seasonality_factor_from_components(
-        seasonality_payload.intraday_minutes_per_bin,
-        seasonality_payload.intraday_factor_by_bin.as_slice(),
-        seasonality_payload.day_of_week_factor.as_slice(),
-        seasonality_payload.day_of_year_factor.as_slice(),
-    )
-}
-
-pub(crate) fn maximum_realizable_runtime_hourly_seasonality_factor_from_components(
-    intraday_minutes_per_bin: u16,
-    intraday_factor_by_bin: &[f64],
-    day_of_week_factor: &[f64],
-    day_of_year_factor: &[f64],
-) -> Result<f64, String> {
-    if intraday_minutes_per_bin == 0 {
-        return Err(
-            "runtime seasonality upper-bound estimation requires a positive intraday bin width"
-                .to_string(),
-        );
-    }
-    if intraday_factor_by_bin.is_empty() {
-        return Err(
-            "runtime seasonality upper-bound estimation requires non-empty intraday factors"
-                .to_string(),
-        );
-    }
-    if day_of_week_factor.len() < 7 {
-        return Err(format!(
-            "runtime seasonality upper-bound estimation requires at least 7 weekday factors, found {}",
-            day_of_week_factor.len()
-        ));
-    }
-    if day_of_year_factor.len() < 366 {
-        return Err(format!(
-            "runtime seasonality upper-bound estimation requires at least 366 day-of-year factors, found {}",
-            day_of_year_factor.len()
-        ));
-    }
-
-    let intraday_max = intraday_factor_by_bin
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .fold(1.0, f64::max);
-
-    let weekday_day_of_year_max = maximum_realizable_weekday_day_of_year_factor_product(
-        day_of_week_factor,
-        day_of_year_factor,
-    )?;
-
-    Ok(intraday_max * weekday_day_of_year_max)
-}
-
-// The weekday and day-of-year alignment only repeats exactly over the Gregorian 400-year cycle.
-fn maximum_realizable_weekday_day_of_year_factor_product(
-    day_of_week_factor: &[f64],
-    day_of_year_factor: &[f64],
-) -> Result<f64, String> {
-    let mut maximum_product = 1.0_f64;
-
-    for year in 2000..2400 {
-        for ordinal in 1..=366 {
-            let Some(date) = NaiveDate::from_yo_opt(year, ordinal) else {
-                continue;
-            };
-
-            let day_of_week_index = date.weekday().num_days_from_monday() as usize;
-            let day_of_year_index = (date.ordinal() - 1) as usize;
-
-            let Some(weekday_factor) = day_of_week_factor.get(day_of_week_index).copied() else {
-                return Err(format!(
-                    "runtime seasonality realizability scan weekday index {day_of_week_index} is out of range for {} factors",
-                    day_of_week_factor.len()
-                ));
-            };
-
-            let Some(day_of_year_factor_value) = day_of_year_factor.get(day_of_year_index).copied()
-            else {
-                return Err(format!(
-                    "runtime seasonality realizability scan day-of-year index {day_of_year_index} is out of range for {} factors",
-                    day_of_year_factor.len()
-                ));
-            };
-
-            if weekday_factor.is_finite() && day_of_year_factor_value.is_finite() {
-                maximum_product = maximum_product.max(weekday_factor * day_of_year_factor_value);
-            }
-        }
-    }
-
-    Ok(maximum_product)
-}
-
-fn structural_seasonality_factor_at_timestamp(
-    intraday_minutes_per_bin: u16,
-    intraday_factor_by_bin: &[f64],
-    day_of_week_factor: &[f64],
-    day_of_year_factor: &[f64],
-    timezone: Tz,
-    timestamp_utc_nanos: i64,
-) -> Result<f64, String> {
-    let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos);
-    let exchange_local_timestamp = timestamp_utc.with_timezone(&timezone);
-
-    let minute_of_day =
-        exchange_local_timestamp.hour() as usize * 60 + exchange_local_timestamp.minute() as usize;
-    let minutes_per_bin = intraday_minutes_per_bin.max(1) as usize;
-
-    let intraday_bin_index =
-        (minute_of_day / minutes_per_bin).min(intraday_factor_by_bin.len() - 1);
-
-    let day_of_week_index = exchange_local_timestamp.weekday().number_from_monday() as usize - 1;
-    let day_of_year_index = exchange_local_timestamp.ordinal0() as usize;
-
-    let intraday_factor = intraday_factor_by_bin[intraday_bin_index];
-
-    let Some(day_of_week_factor) = day_of_week_factor.get(day_of_week_index).copied() else {
-        return Err(format!(
-            "runtime seasonality materialization weekday index {day_of_week_index} is out of range for {} factors",
-            day_of_week_factor.len()
-        ));
-    };
-
-    let Some(day_of_year_factor) = day_of_year_factor.get(day_of_year_index).copied() else {
-        return Err(format!(
-            "runtime seasonality materialization day-of-year index {day_of_year_index} is out of range for {} factors",
-            day_of_year_factor.len()
-        ));
-    };
-
-    let combined_factor = intraday_factor * day_of_week_factor * day_of_year_factor;
-    if !combined_factor.is_finite() {
-        return Err(format!(
-            "runtime seasonality materialization produced non-finite factor at timestamp {timestamp_utc_nanos}"
-        ));
-    }
-
-    Ok(combined_factor)
-}
-
-fn mean_renormalize_runtime_hourly_factors(hourly_factors: Vec<f64>) -> Result<Vec<f64>, String> {
-    if hourly_factors.is_empty() {
-        return Ok(hourly_factors);
-    }
-
-    let mean_factor = arithmetic_mean(hourly_factors.as_slice()).ok_or_else(|| {
-        "runtime seasonality materialization requires a non-empty factor sequence".to_string()
-    })?;
-    if !mean_factor.is_finite() || mean_factor == 0.0 {
-        return Err(
-            "runtime seasonality materialization requires factors with a finite non-zero mean"
-                .to_string(),
-        );
-    }
-
-    Ok(hourly_factors
-        .into_iter()
-        .map(|factor| factor / mean_factor)
-        .collect())
 }
 
 /// Execute the deterministic seasonality stage and emit normalized handoff-ready output.
@@ -612,6 +378,25 @@ pub fn run_seasonality_calibration_stage(
         day_of_week_estimate,
         &preprocessed.exchange_local_day_of_week,
     );
+
+    let hour_of_week_estimate = match estimate_hour_of_week_seasonality(
+        &preprocessed.exchange_local_day_of_week,
+        &preprocessed.exchange_local_minute_of_day,
+        HourOfWeekSeasonalityEstimatorSettings {
+            minimum_bucket_events: settings.day_of_week_settings.minimum_bucket_events,
+            pseudocount: settings.day_of_week_settings.pseudocount,
+        },
+    ) {
+        Ok(estimate) => estimate,
+        Err(source) => {
+            return build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::HourOfWeekEstimationFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
 
     let day_of_year_estimate = match estimate_day_of_year_seasonality(
         &preprocessed.exchange_local_day_of_year,
@@ -780,6 +565,7 @@ pub fn run_seasonality_calibration_stage(
         timestamp_event_preprocessed_schema_version: preprocessed.schema_version.to_string(),
         intraday_estimate_schema_version: intraday_estimate.schema_version.to_string(),
         day_of_week_estimate_schema_version: day_of_week_estimate.schema_version.to_string(),
+        hour_of_week_estimate_schema_version: hour_of_week_estimate.schema_version.to_string(),
         day_of_year_estimate_schema_version: day_of_year_estimate.schema_version.to_string(),
         composition_schema_version: composition.schema_version.to_string(),
         source_record_positions: preprocessed.source_record_positions.clone(),
@@ -791,6 +577,7 @@ pub fn run_seasonality_calibration_stage(
         intraday_minutes_per_bin: intraday_estimate.minutes_per_bin,
         intraday_factor_by_bin: intraday_estimate.intraday_factor_by_bin.clone(),
         day_of_week_factor: day_of_week_estimate.day_of_week_factor.clone(),
+        hour_of_week_factor: hour_of_week_estimate.hour_of_week_factor.clone(),
         day_of_year_factor: day_of_year_estimate.day_of_year_factor.clone(),
         normalized_combined_log_component_by_event: composition
             .combined_log_component_by_event

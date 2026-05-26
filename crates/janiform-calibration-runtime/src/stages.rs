@@ -1,3 +1,4 @@
+pub(crate) mod adaptive_direct_search;
 pub(crate) mod hawkes;
 pub(crate) mod joint_metrics;
 pub(crate) mod joint_refinement;
@@ -5,3 +6,4 @@ pub(crate) mod mean_reversion;
 pub(crate) mod optimization;
 pub(crate) mod return_components;
 pub(crate) mod seasonality;
+pub(crate) mod seasonality_runtime;

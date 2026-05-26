@@ -40,9 +40,9 @@ pub(crate) fn emit_stylized_fact_validation_report_output(
 ) -> Result<(), CliError> {
     match context.output_mode() {
         OutputMode::Json => write_json_payload(report_bundle),
-        OutputMode::Human => write_terminal_output(
+        OutputMode::Terminal => write_terminal_output(
             context,
-            &render_human_report(
+            &render_terminal_report(
                 report_bundle,
                 execution_mode,
                 check_display,
@@ -58,7 +58,7 @@ pub(crate) fn emit_stylized_fact_validation_report_output(
     }
 }
 
-fn render_human_report(
+fn render_terminal_report(
     report_bundle: &StylizedFactHorizonComparisonReportBundle,
     execution_mode: CalibrationExecutionMode,
     check_display: StylizedFactCheckDisplay,

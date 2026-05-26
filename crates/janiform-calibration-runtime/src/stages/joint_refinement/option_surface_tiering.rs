@@ -129,9 +129,9 @@ pub(crate) fn clean_option_pricing_input(
             observed_spot: option_pricing_input
                 .current_state_estimation_input
                 .observed_spot,
-            observed_log_price: option_pricing_input
+            observed_log_return: option_pricing_input
                 .current_state_estimation_input
-                .observed_log_price,
+                .observed_log_return,
             observation_timestamp_utc_nanos: option_pricing_input
                 .current_state_estimation_input
                 .observation_timestamp_utc_nanos
@@ -743,7 +743,7 @@ mod tests {
             current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: 0,
                 observed_spot: 100.0,
-                observed_log_price: 100.0_f64.ln(),
+                observed_log_return: 100.0_f64.ln(),
                 observation_timestamp_utc_nanos: vec![0],
                 observation_trade_prices: vec![100.0],
                 observation_trade_sides: vec![HawkesEventSide::Buy],

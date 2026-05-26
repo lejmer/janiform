@@ -3,7 +3,7 @@ from enum import StrEnum
 
 class WorkflowProgressMode(StrEnum):
     AUTO = "auto"
-    HUMAN = "human"
+    TERMINAL = "terminal"
     JSONL = "jsonl"
     NONE = "none"
 

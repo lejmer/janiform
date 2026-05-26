@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
-use janiform::model::factors::hourly::{HourlyFactorContractOutput, NANOS_PER_HOUR};
+use janiform::model::factors::hourly::HourlyFactorContractOutput;
 use janiform::pricing::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
     PricingIntervalSchedule, PricingIntervalSchedulePolicy,
     derive_activity_compressed_pricing_interval_schedule,
     resolve_high_level_pricing_maturity_inputs,
 };
+use janiform_foundations::time::{checked_ceil_to_hour_utc_nanos, checked_floor_to_hour_utc_nanos};
 
 use crate::error::WorkflowError;
 
@@ -47,8 +48,20 @@ pub(super) fn finalize_single_maturity_resolution(
     maturity_resolution: HighLevelPricingMaturityResolution,
     hourly_factor_contract: &HourlyFactorContractOutput,
 ) -> Result<HighLevelPricingMaturityResolution, WorkflowError> {
+    finalize_maturity_resolution(
+        &request.pricing_interval_schedule_policy,
+        maturity_resolution,
+        hourly_factor_contract,
+    )
+}
+
+pub(super) fn finalize_maturity_resolution(
+    pricing_interval_schedule_policy: &PricingIntervalSchedulePolicy,
+    maturity_resolution: HighLevelPricingMaturityResolution,
+    hourly_factor_contract: &HourlyFactorContractOutput,
+) -> Result<HighLevelPricingMaturityResolution, WorkflowError> {
     if !matches!(
-        request.pricing_interval_schedule_policy,
+        pricing_interval_schedule_policy,
         PricingIntervalSchedulePolicy::AutoActivityCompressed
     ) {
         return Ok(maturity_resolution);
@@ -104,8 +117,13 @@ pub(super) fn runtime_schedule_hourly_factor_contract_coverage(
             pricing_validation_error("runtime_interval_schedule", "must not be empty")
         })?;
 
-    let coverage_start_utc_nanos = floor_to_hour_utc_nanos(valuation_time_utc_nanos)?;
-    let coverage_end_utc_nanos = ceil_to_hour_utc_nanos(terminal_interval_end_utc_nanos)?;
+    let coverage_start_utc_nanos = checked_floor_to_hour_utc_nanos(valuation_time_utc_nanos)
+        .ok_or_else(|| pricing_validation_error("timestamp_utc_nanos", "hour floor overflowed"))?;
+
+    let coverage_end_utc_nanos = checked_ceil_to_hour_utc_nanos(terminal_interval_end_utc_nanos)
+        .ok_or_else(|| {
+            pricing_validation_error("timestamp_utc_nanos", "hour ceiling overflowed")
+        })?;
 
     Ok((
         DateTime::<Utc>::from_timestamp_nanos(coverage_start_utc_nanos),
@@ -129,22 +147,4 @@ fn maturity_expiry_timestamps_utc_nanos(
                 })
         })
         .collect()
-}
-
-fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Result<i64, WorkflowError> {
-    timestamp_utc_nanos
-        .div_euclid(NANOS_PER_HOUR)
-        .checked_mul(NANOS_PER_HOUR)
-        .ok_or_else(|| pricing_validation_error("timestamp_utc_nanos", "hour floor overflowed"))
-}
-
-fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Result<i64, WorkflowError> {
-    let floor = floor_to_hour_utc_nanos(timestamp_utc_nanos)?;
-    if floor == timestamp_utc_nanos {
-        return Ok(floor);
-    }
-
-    floor
-        .checked_add(NANOS_PER_HOUR)
-        .ok_or_else(|| pricing_validation_error("timestamp_utc_nanos", "hour ceiling overflowed"))
 }

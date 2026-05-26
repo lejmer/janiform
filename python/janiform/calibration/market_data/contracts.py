@@ -278,6 +278,7 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
 class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
     intraday_jump_threshold_multiplier: float = 4.0
     close_open_gap_tolerance_multiplier: float = 3.0
+    tick_size: Optional[float] = None
 
     def __post_init__(self) -> None:
         if (
@@ -295,6 +296,13 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
             raise calibration_error(
                 "close_open_gap_tolerance_multiplier",
                 "must be finite and strictly positive",
+            )
+        if self.tick_size is not None and (
+            not isfinite(self.tick_size) or self.tick_size <= 0.0
+        ):
+            raise calibration_error(
+                "tick_size",
+                "must be finite and strictly positive when provided",
             )
 
     @staticmethod
@@ -318,6 +326,16 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
                 "close_open_gap_tolerance_multiplier",
                 f"{field_path}.close_open_gap_tolerance_multiplier",
                 calibration_error,
+            ),
+            tick_size=(
+                require_positive_finite_number(
+                    raw_payload,
+                    "tick_size",
+                    f"{field_path}.tick_size",
+                    calibration_error,
+                )
+                if "tick_size" in raw_payload and raw_payload["tick_size"] is not None
+                else None
             ),
         )
 

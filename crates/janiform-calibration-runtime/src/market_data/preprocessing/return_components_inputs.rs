@@ -20,7 +20,17 @@ use super::shared::{
     OpenTickRecord, ResolvedKnownNewsRecord, TradeSign, Tz, arithmetic_mean,
     fit_shared_news_mark_law_from_shock_samples, median_abs, round_to,
 };
+use janiform_calibration_artifacts::TickGridObservationModel;
 use janiform_foundations::time::duration_nanos_to_hours;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+
+const TICK_GRID_OBSERVATION_POLICY: &str = "nearest_reference_price_normalized_cumulative_latent_price_rounding_preserves_sub_tick_residuals.v1";
+const TICK_SIZE_INFERENCE_POLICY: &str =
+    "minimum_positive_same_session_adjacent_open_price_difference_reference_price_normalized.v1";
+
+const PROVIDED_TICK_SIZE_SOURCE: &str = "user_provided_reference_price_normalized";
+const INFERRED_TICK_SIZE_SOURCE: &str = "training_data_inferred_reference_price_normalized";
+const DISABLED_TICK_SIZE_SOURCE: &str = "unavailable";
 
 pub(super) fn build_return_components_candidate_generation_input(
     input: ReturnComponentsCandidateGenerationInputBuildInput<'_>,
@@ -38,6 +48,7 @@ pub(super) fn build_return_components_candidate_generation_input(
         open_price_ticks,
         open_signed_tick_count,
         open_session_sell_tick_count,
+        reference_price,
         retained_known_news,
         source_window,
         _option_surface_quote_values,
@@ -52,6 +63,7 @@ pub(super) fn build_return_components_candidate_generation_input(
         MarketDataTranslationReturnComponentsPreprocessingSettings {
             intraday_jump_threshold_multiplier: 4.0,
             close_open_gap_tolerance_multiplier: 3.0,
+            tick_size: None,
         },
     );
 
@@ -61,10 +73,17 @@ pub(super) fn build_return_components_candidate_generation_input(
         .collect();
 
     let same_session_returns = same_session_open_returns(open_price_ticks);
+
     let observed_open_session_returns = derive_observed_open_session_returns(
         open_price_ticks,
         open_price_tick_timestamps.as_slice(),
     );
+
+    let tick_grid_observation_model = tick_grid_observation_model(
+        open_price_ticks,
+        reference_price,
+        return_components_settings.tick_size,
+    )?;
 
     let close_open_boundary_observations = derive_close_open_boundary_observations(
         definition,
@@ -85,6 +104,7 @@ pub(super) fn build_return_components_candidate_generation_input(
         .iter()
         .map(|record| record.event_timestamp_utc_nanos)
         .collect();
+
     let known_news_attributed_open_return_timestamps = attributed_open_return_timestamps(
         retained_known_news,
         open_price_ticks,
@@ -143,6 +163,8 @@ pub(super) fn build_return_components_candidate_generation_input(
         },
         open_session_sell_share_proxy: round_to(open_tick_sell_share, 6),
         shared_mark_law_template,
+        return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
+        tick_grid_observation_model,
         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -163,6 +185,7 @@ pub(super) struct ReturnComponentsCandidateGenerationInputBuildInput<'a> {
     pub(super) open_price_ticks: &'a [OpenTickRecord],
     pub(super) open_signed_tick_count: usize,
     pub(super) open_session_sell_tick_count: usize,
+    pub(super) reference_price: Option<f64>,
     pub(super) retained_known_news: &'a [ResolvedKnownNewsRecord],
     pub(super) source_window: CalibrationReturnComponentsSignalSourceWindow,
     pub(super) _option_surface_quote_values: &'a [f64],
@@ -182,6 +205,7 @@ pub(super) fn derive_mean_reversion_open_session_grid_inputs(
         .collect();
 
     let mut unique_session_duration_hours: BTreeMap<(i64, i64), f64> = BTreeMap::new();
+
     for tick in open_price_ticks {
         let session_duration_nanos = tick.session_close_utc_nanos - tick.session_open_utc_nanos;
         if session_duration_nanos <= 0 {
@@ -209,10 +233,14 @@ pub(super) fn derive_observed_open_session_returns(
         .filter(|(previous_tick, current_tick)| {
             previous_tick.session_open_utc_nanos == current_tick.session_open_utc_nanos
                 && previous_tick.session_close_utc_nanos == current_tick.session_close_utc_nanos
+                && current_tick.timestamp_utc_nanos > previous_tick.timestamp_utc_nanos
         })
         .map(
             |(previous_tick, current_tick)| CalibrationReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: current_tick.timestamp_utc_nanos,
+                elapsed_same_session_hours: duration_nanos_to_hours(
+                    current_tick.timestamp_utc_nanos - previous_tick.timestamp_utc_nanos,
+                ),
                 log_return: f64::ln(current_tick.price / previous_tick.price),
                 post_shock_activity_lift: activity_lift(
                     current_tick.timestamp_utc_nanos,
@@ -235,11 +263,13 @@ pub(super) fn sell_share_proxy_for_open_return(trade_sign: Option<TradeSign>) ->
 
 pub(super) fn same_session_open_returns(open_price_ticks: &[OpenTickRecord]) -> Vec<(i64, f64)> {
     let mut same_session_returns: Vec<(i64, f64)> = Vec::new();
+
     for (previous_tick, current_tick) in
         open_price_ticks.iter().zip(open_price_ticks.iter().skip(1))
     {
         if previous_tick.session_close_utc_nanos != current_tick.session_close_utc_nanos
             || previous_tick.session_open_utc_nanos != current_tick.session_open_utc_nanos
+            || current_tick.timestamp_utc_nanos <= previous_tick.timestamp_utc_nanos
         {
             continue;
         }
@@ -251,6 +281,79 @@ pub(super) fn same_session_open_returns(open_price_ticks: &[OpenTickRecord]) -> 
     }
 
     same_session_returns
+}
+
+fn tick_grid_observation_model(
+    open_price_ticks: &[OpenTickRecord],
+    reference_price: Option<f64>,
+    provided_tick_size: Option<f64>,
+) -> Result<TickGridObservationModel, MarketDataTranslationPreprocessingError> {
+    let (tick_size, tick_size_source) = match provided_tick_size {
+        Some(tick_size) => (
+            Some(reference_price_normalized_tick_size(
+                tick_size,
+                reference_price,
+            )?),
+            PROVIDED_TICK_SIZE_SOURCE,
+        ),
+        None => match infer_tick_size_from_open_prices(open_price_ticks) {
+            Some(tick_size) => (
+                Some(reference_price_normalized_tick_size(
+                    tick_size,
+                    reference_price,
+                )?),
+                INFERRED_TICK_SIZE_SOURCE,
+            ),
+            None => (None, DISABLED_TICK_SIZE_SOURCE),
+        },
+    };
+
+    Ok(TickGridObservationModel {
+        tick_size,
+        tick_size_source: tick_size_source.to_string(),
+        inference_policy: TICK_SIZE_INFERENCE_POLICY.to_string(),
+        observation_policy: TICK_GRID_OBSERVATION_POLICY.to_string(),
+    })
+}
+
+fn reference_price_normalized_tick_size(
+    tick_size: f64,
+    reference_price: Option<f64>,
+) -> Result<f64, MarketDataTranslationPreprocessingError> {
+    let Some(reference_price) = reference_price
+        .filter(|reference_price| reference_price.is_finite() && *reference_price > 0.0)
+    else {
+        return Err(
+            MarketDataTranslationPreprocessingError::InvalidTickGridReferencePrice {
+                reference_price,
+            },
+        );
+    };
+
+    Ok(tick_size / reference_price)
+}
+
+pub(super) fn infer_tick_size_from_open_prices(open_price_ticks: &[OpenTickRecord]) -> Option<f64> {
+    open_price_ticks
+        .iter()
+        .zip(open_price_ticks.iter().skip(1))
+        .filter(|(previous_tick, current_tick)| {
+            previous_tick.session_open_utc_nanos == current_tick.session_open_utc_nanos
+                && previous_tick.session_close_utc_nanos == current_tick.session_close_utc_nanos
+        })
+        .filter_map(|(previous_tick, current_tick)| {
+            if !previous_tick.price.is_finite()
+                || previous_tick.price <= 0.0
+                || !current_tick.price.is_finite()
+                || current_tick.price <= 0.0
+            {
+                return None;
+            }
+
+            let price_difference = (current_tick.price - previous_tick.price).abs();
+            (price_difference.is_finite() && price_difference > 0.0).then_some(price_difference)
+        })
+        .min_by(f64::total_cmp)
 }
 
 pub(super) fn derive_shared_mark_law_template(

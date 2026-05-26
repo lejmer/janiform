@@ -22,8 +22,8 @@ mod state;
 
 pub use analytics::{
     HawkesSpectralRadiusStabilityCheck, HawkesStationaryIntensityMultipliers,
-    spectral_radius_alpha_over_beta, spectral_radius_stability_check,
-    stationary_intensity_multipliers,
+    baseline_intensity_for_stationary_total_intensity, spectral_radius_alpha_over_beta,
+    spectral_radius_stability_check, stationary_intensity_multipliers,
 };
 pub use loadings::{
     HawkesKernelLoadings, HawkesStructuredAlphaParameterError,

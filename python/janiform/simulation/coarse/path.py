@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from math import isfinite
+from typing import Any, Optional
 
+from ._native_path_hydration import coarse_simulation_path_from_validated_payload
 from .news import (
     COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
     COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY,
@@ -22,12 +25,13 @@ from .news import (
     _prefix_nested_field_path,
     _validate_calendar_registry_artifact_payload,
 )
-from ..shared import HawkesExcitationState, SeededTickSimulationValidationError
+from ..shared import HawkesExcitationState
 from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,
     _simulation_error,
 )
 from ...mean_reversion import MeanReversionBoundaryState
+from ...return_clock import ReturnClockExposureParameters
 from ...contracts.base import (
     ContractModel,
     parse_json_object,
@@ -41,12 +45,9 @@ from ...contracts.base import (
     require_sequence,
     require_string,
     serialize_deterministic_json,
-    validate_exact_integer,
-    validate_exact_number,
-    validate_exact_string,
-    validate_required_field_list,
 )
 from ..._timestamps import datetime_to_utc_nanos
+from ..._native_api import native_error_parts, native_exception_matches, native_module
 from ...calendar import CalendarRegistry
 from ...hourly_factors import (
     HourlyFactorContract,
@@ -64,102 +65,36 @@ COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION = "simulation.coarse_interval.
 COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY = (
     "time_indexed_coarse_interval_simulation_path_for_validation_and_analytics.v1"
 )
-COARSE_SIMULATION_REQUIRED_PATH_FIELDS: tuple[str, ...] = (
-    "schema_version",
-    "run_request_schema_version",
-    "output_schema_metadata",
-    "provenance",
-    "diagnostics",
-    "seed",
-    "start_time_utc_nanos",
-    "end_time_utc_nanos",
-    "interval_delta",
-    "simulated_interval_count",
-    "initial_excitation_state",
-    "terminal_excitation_state",
-    "records",
-)
-COARSE_SIMULATION_REQUIRED_RECORD_FIELDS: tuple[str, ...] = (
-    "schema_version",
-    "interval_index",
-    "interval_start_utc_nanos",
-    "interval_end_utc_nanos",
-    "sufficient_statistics",
-    "return_components",
-    "core_total_return",
-    "observed_interval_return",
-    "observed_log_price_end",
-    "anchor_value_end",
-    "pressure_state_end",
-    "deviation_from_anchor_end",
-)
-COARSE_SIMULATION_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
-    "schema_version",
-    "artifact_workflow_policy",
-    "environment_metadata_policy",
-    "interval_timing_policy",
-    "interval_identifier_policy",
-    "interval_factor_alignment_policy",
-    "compatible_interval_grid_policy",
-    "interval_factor_policy",
-    "transform_slice_sampling_policy",
-    "boundary_state_update_policy",
-    "interval_return_generation_policy",
-    "interval_return_component_routing_policy",
-    "batch_seed_partition_policy",
-)
-COARSE_SIMULATION_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
-    "schema_version",
-    "simulated_interval_count",
-    "first_interval_index",
-    "last_interval_index",
-    "first_interval_start_utc_nanos",
-    "last_interval_end_utc_nanos",
-    "cumulative_a_plus",
-    "cumulative_a_minus",
-    "cumulative_n_plus",
-    "cumulative_n_minus",
-    "cumulative_trading_time_return",
-    "cumulative_open_jump_return",
-    "cumulative_closed_gap_return",
-    "cumulative_total_return",
-    "cumulative_observed_return",
-    "max_abs_total_return",
-    "max_abs_deviation_from_anchor",
-    "terminal_observed_log_price",
-    "terminal_deviation_from_anchor",
-)
-
-_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
-
-_SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY = (
-    "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
-)
-_SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY = (
-    "counts_via_fractional_rounding_and_integrated_intensity_via_exponential_with_slice_implied_mean.v1"
-)
-_SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY = (
-    "interval_boundary_drift_then_count_mapped_endogenous_jump_composition.v1"
-)
-_SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY = (
-    "sample_trading_time_increment_from_sampled_statistics_via_shared_return_decomposition.v1"
-)
-_SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY = (
-    "open_market_state_routes_to_mt_closed_market_state_routes_to_gt.v1"
-)
-_SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY = (
-    "path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1"
-)
 
 
 @dataclass(frozen=True, slots=True)
 class CoarseSimulationModelInputs(ContractModel):
     sufficient_statistics_model_inputs: Any
     news_process_configuration: NewsProcessConfiguration
+    return_clock_exposure_parameters: ReturnClockExposureParameters
+    observed_price_tick_size: Optional[float]
     calendar_registry_artifact: dict[str, Any]
     exchange_code: str
 
     def __post_init__(self) -> None:
+        if not isinstance(
+            self.return_clock_exposure_parameters,
+            ReturnClockExposureParameters,
+        ):
+            raise _simulation_error(
+                "return_clock_exposure_parameters",
+                "must be a ReturnClockExposureParameters",
+            )
+
+        if self.observed_price_tick_size is not None and (
+            not isfinite(self.observed_price_tick_size)
+            or self.observed_price_tick_size <= 0.0
+        ):
+            raise _simulation_error(
+                "observed_price_tick_size",
+                "must be finite and strictly positive when provided",
+            )
+
         if not self.exchange_code.strip():
             raise _simulation_error("exchange_code", "must be a non-empty string")
 
@@ -207,6 +142,27 @@ class CoarseSimulationModelInputs(ContractModel):
                     f"{field_path}.news_process_configuration",
                     SIMULATION_ERROR_FACTORY,
                 )
+            ),
+            return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "return_clock_exposure_parameters",
+                    f"{field_path}.return_clock_exposure_parameters",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.return_clock_exposure_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
+            ),
+            observed_price_tick_size=(
+                require_finite_number(
+                    raw_payload,
+                    "observed_price_tick_size",
+                    f"{field_path}.observed_price_tick_size",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                if "observed_price_tick_size" in raw_payload
+                and raw_payload["observed_price_tick_size"] is not None
+                else None
             ),
             calendar_registry_artifact=_validate_calendar_registry_artifact_payload(
                 require_mapping(
@@ -262,6 +218,7 @@ class CoarseSimulationRunRequest(ContractModel):
                     f"({self.hourly_factor_contract.interval_count})"
                 ),
             )
+
         if self.hourly_factor_contract.interval_duration_nanos != interval_delta_nanos:
             raise _simulation_error(
                 "hourly_factor_contract.interval_duration_nanos",
@@ -272,6 +229,7 @@ class CoarseSimulationRunRequest(ContractModel):
                     f"{self.hourly_factor_contract.interval_duration_nanos})"
                 ),
             )
+
         if self.hourly_factor_contract.first_interval_start_utc_nanos != self.start_time_utc_nanos:
             raise _simulation_error(
                 "hourly_factor_contract.first_interval_start_utc_nanos",
@@ -283,7 +241,9 @@ class CoarseSimulationRunRequest(ContractModel):
                 ),
             )
 
-        runtime_interval_anchors = self.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors
+        runtime_interval_anchors = (
+            self.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors
+        )
         if len(runtime_interval_anchors.end_anchor_values) != self.horizon_interval_count:
             raise _simulation_error(
                 "model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
@@ -293,10 +253,22 @@ class CoarseSimulationRunRequest(ContractModel):
         for interval_index, observed_interval_delta in enumerate(
             runtime_interval_anchors.interval_deltas[: self.horizon_interval_count]
         ):
-            if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
+            field_path = (
+                "model_inputs.sufficient_statistics_model_inputs"
+                ".mean_reversion_runtime_interval_anchors"
+                f".interval_deltas[{interval_index}]"
+            )
+            observed_interval_delta_nanos = _interval_delta_to_nanos(
+                observed_interval_delta,
+                field_path=field_path,
+            )
+            if observed_interval_delta_nanos != interval_delta_nanos:
                 raise _simulation_error(
-                    f"model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
-                    f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",
+                    field_path,
+                    (
+                        f"must equal interval_delta ({self.interval_delta}), "
+                        f"found {observed_interval_delta}"
+                    ),
                 )
 
     @staticmethod
@@ -309,6 +281,8 @@ class CoarseSimulationRunRequest(ContractModel):
         sufficient_statistics_model_inputs: Any,
         hourly_factor_contract: HourlyFactorContract,
         news_process_configuration: NewsProcessConfiguration,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+        observed_price_tick_size: Optional[float],
         calendar_registry: CalendarRegistry,
         exchange_code: str,
     ) -> CoarseSimulationRunRequest:
@@ -327,6 +301,8 @@ class CoarseSimulationRunRequest(ContractModel):
             model_inputs=CoarseSimulationModelInputs(
                 sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
                 news_process_configuration=news_process_configuration,
+                return_clock_exposure_parameters=return_clock_exposure_parameters,
+                observed_price_tick_size=observed_price_tick_size,
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,
             ),
@@ -622,553 +598,7 @@ class CoarseSimulationPath(ContractModel):
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> CoarseSimulationPath:
-        if not isinstance(raw_payload, dict):
-            raise _simulation_error("coarse_simulation_path", "must be an object")
-
-        seed = require_non_negative_integer(raw_payload, "seed", "seed", SIMULATION_ERROR_FACTORY)
-        start_time_utc_nanos = require_non_negative_integer(
-            raw_payload,
-            "start_time_utc_nanos",
-            "start_time_utc_nanos",
-            SIMULATION_ERROR_FACTORY,
-        )
-        interval_delta = require_positive_finite_number(
-            raw_payload,
-            "interval_delta",
-            "interval_delta",
-            SIMULATION_ERROR_FACTORY,
-        )
-
-        interval_delta_nanos = _interval_delta_to_nanos(interval_delta, field_path="interval_delta")
-
-        simulated_interval_count = require_positive_integer(
-            raw_payload,
-            "simulated_interval_count",
-            "simulated_interval_count",
-            SIMULATION_ERROR_FACTORY,
-        )
-
-        records_payload = require_sequence(raw_payload, "records", "records", SIMULATION_ERROR_FACTORY)
-        if len(records_payload) != simulated_interval_count:
-            raise _simulation_error("records", f"must contain exactly {simulated_interval_count} records")
-
-        records = tuple(
-            CoarseSimulationPathRecord.from_mapping(
-                raw_record,
-                field_path=f"records[{record_position}]",
-                expected_interval_index=record_position,
-            )
-            for record_position, raw_record in enumerate(records_payload)
-        )
-
-        if records[0].interval_start_utc_nanos != start_time_utc_nanos:
-            raise _simulation_error(
-                "start_time_utc_nanos",
-                f"must equal {records[0].interval_start_utc_nanos}, found {start_time_utc_nanos}",
-            )
-
-        expected_end_time_utc_nanos = start_time_utc_nanos + simulated_interval_count * interval_delta_nanos
-        provided_end_time_utc_nanos = require_non_negative_integer(
-            raw_payload,
-            "end_time_utc_nanos",
-            "end_time_utc_nanos",
-            SIMULATION_ERROR_FACTORY,
-        )
-        if provided_end_time_utc_nanos != expected_end_time_utc_nanos:
-            raise _simulation_error(
-                "end_time_utc_nanos",
-                f"must be {expected_end_time_utc_nanos}, found {provided_end_time_utc_nanos}",
-            )
-        if records[-1].interval_end_utc_nanos != expected_end_time_utc_nanos:
-            raise _simulation_error(
-                "records[-1].interval_end_utc_nanos",
-                f"must equal {expected_end_time_utc_nanos}",
-            )
-
-        output_schema_metadata = _build_coarse_simulation_path_output_schema_metadata()
-        provenance = _build_coarse_simulation_path_provenance()
-        diagnostics = _build_coarse_simulation_path_diagnostics(
-            records=records,
-            simulated_interval_count=simulated_interval_count,
-        )
-
-        validate_exact_string(
-            raw_payload,
-            "schema_version",
-            "schema_version",
-            COARSE_SIMULATION_PATH_SCHEMA_VERSION,
-            SIMULATION_ERROR_FACTORY,
-        )
-        validate_exact_string(
-            raw_payload,
-            "run_request_schema_version",
-            "run_request_schema_version",
-            COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
-            SIMULATION_ERROR_FACTORY,
-        )
-        _validate_coarse_path_output_schema_metadata(
-            require_mapping(
-                raw_payload,
-                "output_schema_metadata",
-                "output_schema_metadata",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            expected_metadata=output_schema_metadata,
-        )
-        _validate_coarse_path_provenance(
-            require_mapping(raw_payload, "provenance", "provenance", SIMULATION_ERROR_FACTORY),
-            expected_provenance=provenance,
-        )
-        _validate_coarse_path_diagnostics(
-            require_mapping(raw_payload, "diagnostics", "diagnostics", SIMULATION_ERROR_FACTORY),
-            expected_diagnostics=diagnostics,
-            simulated_interval_count=simulated_interval_count,
-        )
-
-        try:
-            return CoarseSimulationPath(
-                schema_version=COARSE_SIMULATION_PATH_SCHEMA_VERSION,
-                run_request_schema_version=COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
-                output_schema_metadata=output_schema_metadata,
-                provenance=provenance,
-                diagnostics=diagnostics,
-                seed=seed,
-                start_time_utc_nanos=start_time_utc_nanos,
-                end_time_utc_nanos=provided_end_time_utc_nanos,
-                interval_delta=interval_delta,
-                simulated_interval_count=simulated_interval_count,
-                initial_excitation_state=HawkesExcitationState.from_mapping(
-                    require_mapping(
-                        raw_payload,
-                        "initial_excitation_state",
-                        "initial_excitation_state",
-                        SIMULATION_ERROR_FACTORY,
-                    ),
-                    field_path="initial_excitation_state",
-                ),
-                terminal_excitation_state=HawkesExcitationState.from_mapping(
-                    require_mapping(
-                        raw_payload,
-                        "terminal_excitation_state",
-                        "terminal_excitation_state",
-                        SIMULATION_ERROR_FACTORY,
-                    ),
-                    field_path="terminal_excitation_state",
-                ),
-                records=records,
-            )
-        except SeededTickSimulationValidationError as e:
-            raise _simulation_error(e.failure.field_path, e.failure.message) from e
-
-
-def _build_coarse_simulation_path_output_schema_metadata() -> CoarseSimulationPathOutputSchemaMetadata:
-    return CoarseSimulationPathOutputSchemaMetadata(
-        schema_version=COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
-        provenance_schema_version=COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION,
-        diagnostics_schema_version=COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION,
-        artifact_workflow_policy=COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY,
-        environment_metadata_policy=COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY,
-        required_path_fields=COARSE_SIMULATION_REQUIRED_PATH_FIELDS,
-        required_record_fields=COARSE_SIMULATION_REQUIRED_RECORD_FIELDS,
-        required_provenance_fields=COARSE_SIMULATION_REQUIRED_PROVENANCE_FIELDS,
-        required_diagnostics_fields=COARSE_SIMULATION_REQUIRED_DIAGNOSTICS_FIELDS,
-    )
-
-
-def _build_coarse_simulation_path_provenance() -> CoarseSimulationPathProvenance:
-    return CoarseSimulationPathProvenance(
-        schema_version=COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION,
-        artifact_workflow_policy=COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY,
-        environment_metadata_policy=COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY,
-        interval_timing_policy=COARSE_SIMULATION_INTERVAL_TIMING_POLICY,
-        interval_identifier_policy=COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY,
-        interval_factor_alignment_policy=COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY,
-        compatible_interval_grid_policy=COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
-        interval_factor_policy=_SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
-        transform_slice_sampling_policy=_SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY,
-        boundary_state_update_policy=_SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
-        interval_return_generation_policy=_SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
-        interval_return_component_routing_policy=_SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
-        batch_seed_partition_policy=_SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
-    )
-
-
-def _build_coarse_simulation_path_diagnostics(
-    *,
-    records: tuple[CoarseSimulationPathRecord, ...],
-    simulated_interval_count: int,
-) -> CoarseSimulationPathDiagnostics:
-    cumulative_a_plus = 0.0
-    cumulative_a_minus = 0.0
-    cumulative_n_plus = 0
-    cumulative_n_minus = 0
-    cumulative_trading_time_return = 0.0
-    cumulative_open_jump_return = 0.0
-    cumulative_closed_gap_return = 0.0
-    cumulative_total_return = 0.0
-    cumulative_observed_return = 0.0
-    max_abs_total_return = 0.0
-    max_abs_deviation_from_anchor = 0.0
-
-    for record in records:
-        cumulative_a_plus += record.sufficient_statistics.a_plus
-        cumulative_a_minus += record.sufficient_statistics.a_minus
-        cumulative_n_plus += record.sufficient_statistics.n_plus
-        cumulative_n_minus += record.sufficient_statistics.n_minus
-        cumulative_trading_time_return += record.return_components.trading_time_return
-        cumulative_open_jump_return += record.return_components.open_jump_return
-        cumulative_closed_gap_return += record.return_components.closed_gap_return
-        cumulative_total_return += record.return_components.total_return
-        cumulative_observed_return += record.observed_interval_return
-        max_abs_total_return = max(max_abs_total_return, abs(record.return_components.total_return))
-        max_abs_deviation_from_anchor = max(
-            max_abs_deviation_from_anchor,
-            abs(record.deviation_from_anchor_end),
-        )
-
-    return CoarseSimulationPathDiagnostics(
-        schema_version=COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION,
-        simulated_interval_count=simulated_interval_count,
-        first_interval_index=records[0].interval_index,
-        last_interval_index=records[-1].interval_index,
-        first_interval_start_utc_nanos=records[0].interval_start_utc_nanos,
-        last_interval_end_utc_nanos=records[-1].interval_end_utc_nanos,
-        cumulative_a_plus=cumulative_a_plus,
-        cumulative_a_minus=cumulative_a_minus,
-        cumulative_n_plus=cumulative_n_plus,
-        cumulative_n_minus=cumulative_n_minus,
-        cumulative_trading_time_return=cumulative_trading_time_return,
-        cumulative_open_jump_return=cumulative_open_jump_return,
-        cumulative_closed_gap_return=cumulative_closed_gap_return,
-        cumulative_total_return=cumulative_total_return,
-        cumulative_observed_return=cumulative_observed_return,
-        max_abs_total_return=max_abs_total_return,
-        max_abs_deviation_from_anchor=max_abs_deviation_from_anchor,
-        terminal_observed_log_price=records[-1].observed_log_price_end,
-        terminal_deviation_from_anchor=records[-1].deviation_from_anchor_end,
-    )
-
-
-def _validate_coarse_path_output_schema_metadata(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    expected_metadata: CoarseSimulationPathOutputSchemaMetadata,
-) -> None:
-    validate_exact_string(
-        raw_payload,
-        "schema_version",
-        "output_schema_metadata.schema_version",
-        expected_metadata.schema_version,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "provenance_schema_version",
-        "output_schema_metadata.provenance_schema_version",
-        expected_metadata.provenance_schema_version,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "diagnostics_schema_version",
-        "output_schema_metadata.diagnostics_schema_version",
-        expected_metadata.diagnostics_schema_version,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "artifact_workflow_policy",
-        "output_schema_metadata.artifact_workflow_policy",
-        expected_metadata.artifact_workflow_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "environment_metadata_policy",
-        "output_schema_metadata.environment_metadata_policy",
-        expected_metadata.environment_metadata_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_required_field_list(
-        raw_payload,
-        "required_path_fields",
-        "output_schema_metadata.required_path_fields",
-        expected_metadata.required_path_fields,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_required_field_list(
-        raw_payload,
-        "required_record_fields",
-        "output_schema_metadata.required_record_fields",
-        expected_metadata.required_record_fields,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_required_field_list(
-        raw_payload,
-        "required_provenance_fields",
-        "output_schema_metadata.required_provenance_fields",
-        expected_metadata.required_provenance_fields,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_required_field_list(
-        raw_payload,
-        "required_diagnostics_fields",
-        "output_schema_metadata.required_diagnostics_fields",
-        expected_metadata.required_diagnostics_fields,
-        SIMULATION_ERROR_FACTORY,
-    )
-
-
-def _validate_coarse_path_provenance(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    expected_provenance: CoarseSimulationPathProvenance,
-) -> None:
-    validate_exact_string(
-        raw_payload,
-        "schema_version",
-        "provenance.schema_version",
-        expected_provenance.schema_version,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "artifact_workflow_policy",
-        "provenance.artifact_workflow_policy",
-        expected_provenance.artifact_workflow_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "environment_metadata_policy",
-        "provenance.environment_metadata_policy",
-        expected_provenance.environment_metadata_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "interval_timing_policy",
-        "provenance.interval_timing_policy",
-        expected_provenance.interval_timing_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "interval_identifier_policy",
-        "provenance.interval_identifier_policy",
-        expected_provenance.interval_identifier_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "interval_factor_alignment_policy",
-        "provenance.interval_factor_alignment_policy",
-        expected_provenance.interval_factor_alignment_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "compatible_interval_grid_policy",
-        "provenance.compatible_interval_grid_policy",
-        expected_provenance.compatible_interval_grid_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "interval_factor_policy",
-        "provenance.interval_factor_policy",
-        expected_provenance.interval_factor_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "transform_slice_sampling_policy",
-        "provenance.transform_slice_sampling_policy",
-        expected_provenance.transform_slice_sampling_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "boundary_state_update_policy",
-        "provenance.boundary_state_update_policy",
-        expected_provenance.boundary_state_update_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "interval_return_generation_policy",
-        "provenance.interval_return_generation_policy",
-        expected_provenance.interval_return_generation_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "interval_return_component_routing_policy",
-        "provenance.interval_return_component_routing_policy",
-        expected_provenance.interval_return_component_routing_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_string(
-        raw_payload,
-        "batch_seed_partition_policy",
-        "provenance.batch_seed_partition_policy",
-        expected_provenance.batch_seed_partition_policy,
-        SIMULATION_ERROR_FACTORY,
-    )
-
-
-def _validate_coarse_path_diagnostics(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    expected_diagnostics: CoarseSimulationPathDiagnostics,
-    simulated_interval_count: int,
-) -> None:
-    validate_exact_string(
-        raw_payload,
-        "schema_version",
-        "diagnostics.schema_version",
-        expected_diagnostics.schema_version,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_integer(
-        raw_payload,
-        "simulated_interval_count",
-        "diagnostics.simulated_interval_count",
-        expected_diagnostics.simulated_interval_count,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_integer(
-        raw_payload,
-        "first_interval_index",
-        "diagnostics.first_interval_index",
-        expected_diagnostics.first_interval_index,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_integer(
-        raw_payload,
-        "last_interval_index",
-        "diagnostics.last_interval_index",
-        expected_diagnostics.last_interval_index,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_integer(
-        raw_payload,
-        "first_interval_start_utc_nanos",
-        "diagnostics.first_interval_start_utc_nanos",
-        expected_diagnostics.first_interval_start_utc_nanos,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_integer(
-        raw_payload,
-        "last_interval_end_utc_nanos",
-        "diagnostics.last_interval_end_utc_nanos",
-        expected_diagnostics.last_interval_end_utc_nanos,
-        SIMULATION_ERROR_FACTORY,
-    )
-    validate_exact_number(
-        raw_payload,
-        "cumulative_a_plus",
-        "diagnostics.cumulative_a_plus",
-        expected_diagnostics.cumulative_a_plus,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "cumulative_a_minus",
-        "diagnostics.cumulative_a_minus",
-        expected_diagnostics.cumulative_a_minus,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_integer(
-        raw_payload,
-        "cumulative_n_plus",
-        "diagnostics.cumulative_n_plus",
-        expected_diagnostics.cumulative_n_plus,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_integer(
-        raw_payload,
-        "cumulative_n_minus",
-        "diagnostics.cumulative_n_minus",
-        expected_diagnostics.cumulative_n_minus,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "cumulative_trading_time_return",
-        "diagnostics.cumulative_trading_time_return",
-        expected_diagnostics.cumulative_trading_time_return,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "cumulative_open_jump_return",
-        "diagnostics.cumulative_open_jump_return",
-        expected_diagnostics.cumulative_open_jump_return,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "cumulative_closed_gap_return",
-        "diagnostics.cumulative_closed_gap_return",
-        expected_diagnostics.cumulative_closed_gap_return,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "cumulative_total_return",
-        "diagnostics.cumulative_total_return",
-        expected_diagnostics.cumulative_total_return,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "cumulative_observed_return",
-        "diagnostics.cumulative_observed_return",
-        expected_diagnostics.cumulative_observed_return,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "max_abs_total_return",
-        "diagnostics.max_abs_total_return",
-        expected_diagnostics.max_abs_total_return,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "max_abs_deviation_from_anchor",
-        "diagnostics.max_abs_deviation_from_anchor",
-        expected_diagnostics.max_abs_deviation_from_anchor,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "terminal_observed_log_price",
-        "diagnostics.terminal_observed_log_price",
-        expected_diagnostics.terminal_observed_log_price,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
-    validate_exact_number(
-        raw_payload,
-        "terminal_deviation_from_anchor",
-        "diagnostics.terminal_deviation_from_anchor",
-        expected_diagnostics.terminal_deviation_from_anchor,
-        SIMULATION_ERROR_FACTORY,
-        context_suffix=f"simulated_interval_count={simulated_interval_count}",
-    )
+        return validate_coarse_simulation_path(raw_payload)
 
 
 def validate_coarse_simulation_run_request(
@@ -1180,7 +610,27 @@ def validate_coarse_simulation_run_request(
 def validate_coarse_simulation_path(
     raw_path: dict[str, Any] | Any,
 ) -> CoarseSimulationPath:
-    return CoarseSimulationPath.from_mapping(raw_path)
+    native = native_module()
+    try:
+        validated_path = native.validate_coarse_simulation_path(raw_path)
+    except Exception as e:
+        if native_exception_matches(native, e, "SimulationExecutionError"):
+            field_path, message = native_error_parts(
+                str(e),
+                default_field_path="coarse_simulation_path",
+            )
+
+            raise _simulation_error(field_path, message) from e
+
+        raise
+
+    if not isinstance(validated_path, Mapping):
+        raise _simulation_error(
+            "coarse_simulation_path",
+            "native validation returned an invalid response payload",
+        )
+
+    return coarse_simulation_path_from_validated_payload(validated_path)
 
 
 def serialize_coarse_simulation_run_request(request: CoarseSimulationRunRequest) -> str:

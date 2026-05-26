@@ -44,7 +44,7 @@ from .native import (
 )
 from .support import (
     build_model_pricing_hourly_factor_contract,
-    price_observed_log_price_from_spot,
+    price_observed_log_return_from_spot,
     runtime_schedule_hourly_factor_contract_coverage,
 )
 from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
@@ -256,7 +256,7 @@ def native_pricing_terminal_progress_mode(
     silent: bool,
     progress_mode: WorkflowProgressMode | str,
 ) -> str:
-    default_mode = WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN
+    default_mode = WorkflowProgressMode.NONE if silent else WorkflowProgressMode.TERMINAL
 
     resolved_mode = resolve_workflow_progress_mode(
         progress_mode,
@@ -398,7 +398,7 @@ def prepare_model_pricing_runtime_input(
             runtime_factors=runtime_factors,
             hourly_factor_contract=boundary_hourly_factor_contract,
             initial_excitation_state=effective_boundary_state,
-            start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
+            start_anchor_value=price_observed_log_return_from_spot(model, spot=spot),
         )
     else:
         pricing_state = estimate_model_state_from_observed_data(
@@ -419,7 +419,7 @@ def prepare_model_pricing_runtime_input(
                 runtime_factors=runtime_factors,
                 hourly_factor_contract=boundary_hourly_factor_contract,
                 initial_excitation_state=effective_boundary_state,
-                start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
+                start_anchor_value=price_observed_log_return_from_spot(model, spot=spot),
             )
 
     return PreparedModelPricingRuntimeInput(
@@ -432,6 +432,8 @@ def prepare_model_pricing_runtime_input(
             hawkes_kernel_parameters=runtime_factors.kernel_parameters,
             news_process_configuration=runtime_factors.news_process_configuration,
             nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters=runtime_factors.return_clock_exposure_parameters,
+            pricing_kernel_parameters=runtime_factors.pricing_kernel_parameters,
         ),
     )
 

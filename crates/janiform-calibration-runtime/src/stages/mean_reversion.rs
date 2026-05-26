@@ -14,8 +14,7 @@ use janiform_calibration_artifacts::{
     MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
     MeanReversionStageDiagnostics,
 };
-use janiform_foundations::matrix2::solve_two_by_two_linear_system;
-use janiform_foundations::numeric::coverage_ratio;
+use janiform_foundations::numeric::{GOLDEN_RATIO, clamp_to_unit_interval, coverage_ratio};
 use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
@@ -25,8 +24,10 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionFittedParameters,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
+use nalgebra::{Matrix2, Vector2};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_grid;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
@@ -58,8 +59,6 @@ const QUASI_LIKELIHOOD_MODEL_SELECTION_SAMPLE_SUPPORT_REQUIRED_REASON: &str =
     "gaussian_quasi_likelihood_bic_model_selection_sample_support_required.v1";
 const ENDOGENOUS_MODEL_SELECTION_POLICY: &str =
     "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1";
-const RUNTIME_SEASONALITY_MATERIALIZATION_METHOD: &str =
-    "runtime_compact_seasonality_parameters_mean_renormalized.v1";
 const CALIBRATION_GRID_ALIGNMENT_POLICY: &str =
     "calibration_grid_observation_boundary_alignment.v1";
 
@@ -109,6 +108,7 @@ pub struct MeanReversionStageSeasonalityInput {
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
+    pub hour_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
 }
 
@@ -119,6 +119,7 @@ impl MeanReversionStageSeasonalityInput {
             intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
             intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
             day_of_week_factor: payload.day_of_week_factor.clone(),
+            hour_of_week_factor: payload.hour_of_week_factor.clone(),
             day_of_year_factor: payload.day_of_year_factor.clone(),
         }
     }
@@ -674,7 +675,7 @@ fn build_endogenous_mean_reversion_calibration_context(
             interval_duration_nanos,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
-                materialization_method: RUNTIME_SEASONALITY_MATERIALIZATION_METHOD,
+                materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
             news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: return_components_payload
@@ -851,7 +852,7 @@ fn evaluate_full_pressure_to_level_candidate(
         phi_reference,
     );
 
-    let least_squares_solution = solve_two_column_least_squares(
+    let least_squares_solution = solve_full_pressure_to_level_least_squares(
         transition_terms.intercept_column.as_slice(),
         transition_terms.pressure_column.as_slice(),
         transition_terms.response.as_slice(),
@@ -933,7 +934,7 @@ fn evaluate_pressure_to_level_without_mean_reversion_candidate(
         .collect::<Vec<_>>();
 
     let least_squares_solution =
-        solve_one_column_least_squares(pressure_column.as_slice(), response.as_slice());
+        solve_unit_interval_gain_least_squares(pressure_column.as_slice(), response.as_slice());
 
     assemble_candidate_evaluation(
         observation_levels,
@@ -1158,10 +1159,8 @@ fn profile_candidate_over_unit_interval<Error>(
     let mut lower_position = 0.0_f64;
     let mut upper_position = 1.0_f64;
 
-    let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
-
-    let mut left_position = upper_position - (upper_position - lower_position) / golden_ratio;
-    let mut right_position = lower_position + (upper_position - lower_position) / golden_ratio;
+    let mut left_position = upper_position - (upper_position - lower_position) / GOLDEN_RATIO;
+    let mut right_position = lower_position + (upper_position - lower_position) / GOLDEN_RATIO;
 
     let mut left_candidate = evaluate_candidate_at_position(left_position)?;
     let mut right_candidate = evaluate_candidate_at_position(right_position)?;
@@ -1182,7 +1181,7 @@ fn profile_candidate_over_unit_interval<Error>(
 
             right_candidate = left_candidate;
 
-            left_position = upper_position - (upper_position - lower_position) / golden_ratio;
+            left_position = upper_position - (upper_position - lower_position) / GOLDEN_RATIO;
             left_candidate = evaluate_candidate_at_position(left_position)?;
         } else {
             lower_position = left_position;
@@ -1190,7 +1189,7 @@ fn profile_candidate_over_unit_interval<Error>(
 
             left_candidate = right_candidate;
 
-            right_position = lower_position + (upper_position - lower_position) / golden_ratio;
+            right_position = lower_position + (upper_position - lower_position) / GOLDEN_RATIO;
             right_candidate = evaluate_candidate_at_position(right_position)?;
         }
     }
@@ -1596,16 +1595,17 @@ fn solve_two_column_least_squares(
         };
     }
 
-    if let Some([first_coefficient, second_coefficient]) = solve_two_by_two_linear_system(
+    let normal_matrix = Matrix2::new(
         first_self_inner_product,
         cross_inner_product,
         cross_inner_product,
         second_self_inner_product,
-        [first_response_inner_product, second_response_inner_product],
-    ) {
+    );
+    let response_vector = Vector2::new(first_response_inner_product, second_response_inner_product);
+    if let Some(coefficients) = normal_matrix.lu().solve(&response_vector) {
         return MeanReversionLeastSquaresSolution {
-            first_coefficient,
-            second_coefficient,
+            first_coefficient: coefficients[0],
+            second_coefficient: coefficients[1],
             rank: 2,
         };
     }
@@ -1618,6 +1618,73 @@ fn solve_two_column_least_squares(
         first_coefficient: effective_coefficient / normalization,
         second_coefficient: effective_coefficient * dependence_ratio / normalization,
         rank: 1,
+    }
+}
+
+fn solve_full_pressure_to_level_least_squares(
+    intercept_column: &[f64],
+    pressure_column: &[f64],
+    response: &[f64],
+) -> MeanReversionLeastSquaresSolution {
+    let unconstrained_solution =
+        solve_two_column_least_squares(intercept_column, pressure_column, response);
+    if (0.0..=1.0).contains(&unconstrained_solution.second_coefficient) {
+        return unconstrained_solution;
+    }
+
+    let lower_boundary_solution = solve_full_pressure_to_level_least_squares_at_fixed_gain(
+        intercept_column,
+        pressure_column,
+        response,
+        0.0,
+    );
+    let upper_boundary_solution = solve_full_pressure_to_level_least_squares_at_fixed_gain(
+        intercept_column,
+        pressure_column,
+        response,
+        1.0,
+    );
+
+    if residual_sum_of_squares_for_two_column_fit(
+        intercept_column,
+        pressure_column,
+        response,
+        lower_boundary_solution.first_coefficient,
+        lower_boundary_solution.second_coefficient,
+    ) <= residual_sum_of_squares_for_two_column_fit(
+        intercept_column,
+        pressure_column,
+        response,
+        upper_boundary_solution.first_coefficient,
+        upper_boundary_solution.second_coefficient,
+    ) {
+        lower_boundary_solution
+    } else {
+        upper_boundary_solution
+    }
+}
+
+fn solve_full_pressure_to_level_least_squares_at_fixed_gain(
+    intercept_column: &[f64],
+    pressure_column: &[f64],
+    response: &[f64],
+    pressure_level_gain: f64,
+) -> MeanReversionLeastSquaresSolution {
+    let adjusted_response = response
+        .iter()
+        .zip(pressure_column.iter())
+        .map(|(response_value, pressure_value)| {
+            response_value - pressure_level_gain * pressure_value
+        })
+        .collect::<Vec<_>>();
+
+    let intercept_solution =
+        solve_one_column_least_squares(intercept_column, adjusted_response.as_slice());
+
+    MeanReversionLeastSquaresSolution {
+        first_coefficient: intercept_solution.first_coefficient,
+        second_coefficient: pressure_level_gain,
+        rank: intercept_solution.rank,
     }
 }
 
@@ -1645,6 +1712,40 @@ fn solve_one_column_least_squares(
         second_coefficient: 0.0,
         rank: 1,
     }
+}
+
+fn solve_unit_interval_gain_least_squares(
+    column: &[f64],
+    response: &[f64],
+) -> MeanReversionLeastSquaresSolution {
+    let unconstrained_solution = solve_one_column_least_squares(column, response);
+
+    MeanReversionLeastSquaresSolution {
+        first_coefficient: clamp_to_unit_interval(unconstrained_solution.first_coefficient),
+        second_coefficient: unconstrained_solution.second_coefficient,
+        rank: unconstrained_solution.rank,
+    }
+}
+
+fn residual_sum_of_squares_for_two_column_fit(
+    first_column: &[f64],
+    second_column: &[f64],
+    response: &[f64],
+    first_coefficient: f64,
+    second_coefficient: f64,
+) -> f64 {
+    response
+        .iter()
+        .zip(first_column.iter())
+        .zip(second_column.iter())
+        .map(|((response_value, first_value), second_value)| {
+            let residual = response_value
+                - first_coefficient * first_value
+                - second_coefficient * second_value;
+
+            residual * residual
+        })
+        .sum()
 }
 
 fn kappa_from_phi_reference(phi_reference: f64, calibration_grid_interval_hours: f64) -> f64 {

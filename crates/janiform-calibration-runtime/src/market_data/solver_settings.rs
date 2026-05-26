@@ -1,8 +1,11 @@
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, CalibrationStage, CalibrationStageSolverSettings,
 };
-use janiform_foundations::numeric::strictly_positive_machine_value;
+use janiform_foundations::numeric::{GOLDEN_RATIO, strictly_positive_machine_value};
 use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
+
+use crate::information_depth::support_information_depth;
+use crate::stages::joint_refinement::pricing_block_search_coordinate_count;
 
 use super::loading::MarketDataLoadingOutput;
 
@@ -108,6 +111,8 @@ fn calibration_stage_name(stage: CalibrationStage) -> &'static str {
         CalibrationStage::ReturnComponents => "return_components",
         CalibrationStage::MeanReversion => "mean_reversion",
         CalibrationStage::JointRefinement => "joint_refinement",
+        CalibrationStage::OptionRefinement => "option_refinement",
+        CalibrationStage::Finalization => "finalization",
     }
 }
 
@@ -122,6 +127,7 @@ fn stage_solver_geometry(
                 .seasonality_stage_input
                 .timestamp_event_records
                 .len();
+
             let overlay_count = loading_output
                 .preprocessing_output
                 .seasonality_stage_input
@@ -142,10 +148,12 @@ fn stage_solver_geometry(
                 .hawkes_candidate_inputs
                 .as_deref()
                 .unwrap_or(&[]);
+
             let support_count = candidate_inputs
                 .first()
                 .map(|candidate_input| candidate_input.source_regime.open_session_tick_count)
                 .unwrap_or_default();
+
             let objective_term_count = candidate_inputs
                 .first()
                 .map(|candidate_input| {
@@ -166,19 +174,23 @@ fn stage_solver_geometry(
                 .preprocessing_output
                 .return_components_candidate_generation_input
                 .as_ref();
+
             let support_count = candidate_generation_input.map_or(0, |input| {
                 input.observed_open_session_returns.len()
                     + input.realized_known_news_return_samples.len()
                     + input.detected_intraday_jump_candidates.len()
                     + input.observed_close_open_boundary_observations.len()
             });
+
             let candidate_geometry_count = candidate_generation_input.map_or(0, |input| {
                 input.realized_known_news_return_samples.len()
                     + input.detected_intraday_jump_candidates.len()
                     + input.observed_close_open_boundary_observations.len()
             });
+
             let objective_term_count = candidate_generation_input
                 .map_or(1, active_return_components_objective_weight_count);
+
             let scale_reference =
                 candidate_generation_input.map_or(1.0, return_components_scale_reference);
 
@@ -196,6 +208,7 @@ fn stage_solver_geometry(
                 .mean_reversion_open_session_price_observations
                 .as_deref()
                 .unwrap_or(&[]);
+
             let scale_reference = observed_mean_reversion_log_price_span(observations);
 
             StageSolverGeometry {
@@ -220,33 +233,73 @@ fn stage_solver_geometry(
                 .map(|input| input.detected_intraday_jump_candidates.len())
                 .unwrap_or_default();
 
-            let return_support_count = candidate_generation_input.map_or(0, |input| {
-                input.observed_open_session_returns.len()
-                    + input.observed_close_open_boundary_observations.len()
-            });
-
-            let option_support_count = loading_output
-                .option_surface_records
-                .as_ref()
-                .map_or(0, Vec::len);
+            let return_support_count =
+                joint_refinement_return_support_count(candidate_generation_input);
 
             StageSolverGeometry {
                 parameter_dimension: 8
                     + usize::from(known_news_sample_count > 0)
                     + usize::from(surprise_jump_count > 0) * 2,
-                objective_term_count: 12 + usize::from(option_support_count > 0),
-                support_count: return_support_count + option_support_count,
+                objective_term_count: 12,
+                support_count: return_support_count,
                 candidate_geometry_count: loading_output
                     .preprocessing_output
                     .hawkes_candidate_inputs
                     .as_ref()
                     .map_or(0, Vec::len)
-                    + surprise_jump_count
-                    + option_support_count,
+                    + surprise_jump_count,
+                scale_reference: 1.0,
+            }
+        }
+        CalibrationStage::OptionRefinement => {
+            let option_support_count = option_surface_support_count(loading_output);
+
+            StageSolverGeometry {
+                parameter_dimension: pricing_block_search_coordinate_count(),
+                objective_term_count: usize::from(option_support_count > 0),
+                support_count: option_support_count,
+                candidate_geometry_count: option_support_count,
+                scale_reference: 1.0,
+            }
+        }
+        CalibrationStage::Finalization => {
+            let candidate_generation_input = loading_output
+                .preprocessing_output
+                .return_components_candidate_generation_input
+                .as_ref();
+
+            let return_support_count =
+                joint_refinement_return_support_count(candidate_generation_input);
+
+            let option_support_count = option_surface_support_count(loading_output);
+
+            StageSolverGeometry {
+                parameter_dimension: 1,
+                objective_term_count: 1,
+                support_count: return_support_count + option_support_count,
+                candidate_geometry_count: 1,
                 scale_reference: 1.0,
             }
         }
     }
+}
+
+fn joint_refinement_return_support_count(
+    candidate_generation_input: Option<
+        &crate::CalibrationReturnComponentsStageCandidateGenerationInput,
+    >,
+) -> usize {
+    candidate_generation_input.map_or(0, |input| {
+        input.observed_open_session_returns.len()
+            + input.observed_close_open_boundary_observations.len()
+    })
+}
+
+fn option_surface_support_count(loading_output: &MarketDataLoadingOutput) -> usize {
+    loading_output
+        .option_surface_records
+        .as_ref()
+        .map_or(0, Vec::len)
 }
 
 fn active_return_components_objective_weight_count(
@@ -349,12 +402,6 @@ fn stage_geometry_complexity_units(geometry: StageSolverGeometry) -> usize {
         .saturating_add(geometry.candidate_geometry_count.max(1))
 }
 
-fn support_information_depth(support_count: usize) -> usize {
-    usize::try_from(support_count.max(1).ilog2())
-        .unwrap_or(usize::MAX)
-        .saturating_add(1)
-}
-
 fn derived_relative_tolerance(geometry: StageSolverGeometry) -> f64 {
     let resolution_cell_count = geometry
         .parameter_dimension
@@ -381,13 +428,11 @@ fn derived_absolute_tolerance(
 }
 
 fn derived_mean_reversion_iteration_budget(tolerance: f64) -> usize {
-    let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
-
     let mut interval_width = 1.0_f64;
     let mut iteration_count = 0usize;
 
     while interval_width > tolerance {
-        interval_width /= golden_ratio;
+        interval_width /= GOLDEN_RATIO;
         iteration_count = iteration_count.saturating_add(1);
     }
 
@@ -404,17 +449,17 @@ mod tests {
         resolve_solver_settings_by_stage, stage_geometry_complexity_units,
     };
     use crate::{
-        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-        CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
-        CalibrationIntradaySmoothingKernel, CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
+        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+        CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
+        CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsKnownNewsCalendarInput,
         CalibrationReturnComponentsObjectiveMetricWeights,
         CalibrationReturnComponentsObservedOpenSessionReturn,
         CalibrationReturnComponentsSignalSourceWindow,
         CalibrationReturnComponentsStageCandidateGenerationInput,
         CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
-        CalibrationTimestampEventSessionFilter, MarketDataLoadingOutput,
-        MarketDataSessionResolutionPayload, MarketDataSourceSummary,
+        CalibrationTimestampEventSessionFilter, HawkesStageObservedSourceRegime,
+        MarketDataLoadingOutput, MarketDataSessionResolutionPayload, MarketDataSourceSummary,
         MarketDataTranslationPreprocessingOutput,
     };
 
@@ -516,7 +561,7 @@ mod tests {
                     },
                     self_dominance_policy: None,
                     stability_numeric_tolerance: 0.0,
-                    source_regime: CalibrationHawkesObservedSourceRegime {
+                    source_regime: HawkesStageObservedSourceRegime {
                         observation_duration_hours: 6.5,
                         open_session_duration_hours: 6.5,
                         total_tick_count: 10,
@@ -554,6 +599,7 @@ mod tests {
                         observed_open_session_returns: vec![
                             CalibrationReturnComponentsObservedOpenSessionReturn {
                                 return_timestamp_utc_nanos: 1,
+                                elapsed_same_session_hours: 1.0,
                                 log_return: 0.01,
                                 post_shock_activity_lift: 0.0,
                                 sell_share_proxy: 0.5,
@@ -583,6 +629,16 @@ mod tests {
                                     janiform_model_kernels::news::CoupledGapMarkConfiguration {
                                         sigma_g: 0.5,
                                     },
+                            },
+                        return_clock_exposure_parameters:
+                            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
+                            ),
+                        tick_grid_observation_model:
+                            janiform_calibration_artifacts::TickGridObservationModel {
+                                tick_size: None,
+                                tick_size_source: "test".to_string(),
+                                inference_policy: "test".to_string(),
+                                observation_policy: "test".to_string(),
                             },
                         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                             continuous_distribution_fit_weight: 1.0,

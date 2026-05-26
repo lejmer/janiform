@@ -87,7 +87,9 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
         "schema_version",
         "request",
         "seasonality_stage_input",
+        "joint_refinement_calibration_effort",
         "joint_refinement_audit_option_pricing_enabled",
+        "treat_inadmissible_calibration_warning_as_error",
     }
     assert translation.diagnostics.tick_record_count == 3
 
@@ -167,6 +169,7 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
         CalibrationStage.RETURN_COMPONENTS,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
+        CalibrationStage.FINALIZATION,
     )
     assert first_translation.diagnostics.known_news_event_count == 2
     assert first_translation.diagnostics.known_news_events_outside_source_window_count == 1
@@ -193,6 +196,11 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert closed_sample["post_shock_activity_lift"] == pytest.approx(1.0)
 
     assert len(return_components_input["observed_open_session_returns"]) == 4
+    elapsed_hours = [
+        observation["elapsed_same_session_hours"]
+        for observation in return_components_input["observed_open_session_returns"]
+    ]
+    assert elapsed_hours == pytest.approx([0.5, 1.0 / 6.0, 349.0 / 60.0, 1.0 / 6.0])
     assert return_components_input["open_session_sell_share_proxy"] == pytest.approx(0.5)
 
     boundary_observation = return_components_input["observed_close_open_boundary_observations"][0]
@@ -253,6 +261,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
         CalibrationStage.RETURN_COMPONENTS,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
+        CalibrationStage.FINALIZATION,
     )
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
@@ -1150,6 +1159,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         CalibrationStage.RETURN_COMPONENTS,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
+        CalibrationStage.FINALIZATION,
     )
     assert prepared.diagnostics.selected_stages == (
         CalibrationStage.SEASONALITY,
@@ -1157,6 +1167,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         CalibrationStage.RETURN_COMPONENTS,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
+        CalibrationStage.FINALIZATION,
     )
     assert prepared.staged_request.selected_stages == prepared.diagnostics.selected_stages
     assert prepared.diagnostics.executed_preprocessing_steps == (

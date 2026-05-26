@@ -7,6 +7,7 @@ mod checkpointing;
 mod current_state;
 mod diagnostics;
 mod execution_bridge;
+mod information_depth;
 mod market_data;
 mod objective;
 mod optimizer_adapter;
@@ -27,16 +28,19 @@ pub use adapters::{
 };
 pub use checkpointing::CalibrationMemoryCheckpointStore;
 pub use current_state::{
-    CurrentStateEstimationError, CurrentStateEstimationInput, CurrentStateEstimationOutput,
-    estimate_current_state_from_observed_data,
+    CurrentStateEstimationBatchInput, CurrentStateEstimationBatchItem,
+    CurrentStateEstimationBatchProgressEvent, CurrentStateEstimationError,
+    CurrentStateEstimationInput, CurrentStateEstimationOutput,
+    estimate_current_state_from_observed_data, estimate_current_states_from_observed_data,
+    estimate_current_states_from_observed_data_with_observer,
 };
 pub use execution_bridge::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
     CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesObservedSourceRegime, CalibrationHawkesStageCandidateInput,
-    CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
-    CalibrationJointRefinementCarryInput, CalibrationJointRefinementCurrentStateEstimationInput,
+    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
+    CalibrationIntradaySmoothingKernel, CalibrationJointRefinementCarryInput,
+    CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsActivityContextCandidateDiagnostic,
@@ -71,16 +75,17 @@ pub use market_data::{
     MarketDataFitMarketProfileDefaults, MarketDataFitNormalizationOverrides,
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
     MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataLoadingOutput,
-    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput,
-    MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
-    MarketDataOptionSurfaceLoadingInput, MarketDataPresetInferenceError,
-    MarketDataSessionConfiguration, MarketDataSessionRecurringClosedWindowPayload,
-    MarketDataSessionRegularWindowPayload, MarketDataSessionResolutionPayload,
-    MarketDataSourceProbePayload, MarketDataSourceSummary, MarketDataTickColumnCandidatesPayload,
-    MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
-    MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
-    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
-    MarketDataTranslationPreprocessingSettings,
+    MarketDataLoadingRequest, MarketDataNormalizationPolicy,
+    MarketDataNormalizedOptionSurfaceOutput, MarketDataNormalizedOptionSurfaceRecord,
+    MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
+    MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
+    MarketDataPresetInferenceError, MarketDataSessionConfiguration,
+    MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
+    MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
+    MarketDataTickColumnCandidatesPayload, MarketDataTickDataColumnMapping,
+    MarketDataTickPriceInputPolicy, MarketDataTranslationKnownNewsRecord,
+    MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
+    MarketDataTranslationPreprocessingRequest, MarketDataTranslationPreprocessingSettings,
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
     PreparedMarketDataCalibrationPlan, PresetWorkflowResolutionError, ResolvedMarketProfile,
@@ -91,9 +96,10 @@ pub use market_data::{
     infer_market_data_input_file_format_from_path, infer_market_data_option_quote_input_policy,
     infer_market_data_run_id_from_path, infer_market_data_tick_price_input_policy,
     load_and_preprocess_market_data_translation_request, normalize_market_data_source,
-    normalize_preset_artifact, prepare_market_data_calibration_plan,
-    prepare_market_data_calibration_plan_from_phases, prepare_market_data_loading_from_phases,
-    preprocess_market_data_translation_request, preset_registry_index, probe_market_data_source,
+    normalize_option_surface_source, normalize_preset_artifact,
+    prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_from_phases,
+    prepare_market_data_loading_from_phases, preprocess_market_data_translation_request,
+    preset_registry_index, probe_market_data_source,
     resolve_market_data_option_surface_column_mapping_for_source,
     resolve_market_data_session_configuration,
     resolve_market_data_tick_data_column_mapping_for_source, resolve_market_profile_configuration,
@@ -120,6 +126,7 @@ pub use optimizer_adapter::{
     CalibrationOptimizerParameterBoundError, run_constrained_optimizer_adapter,
 };
 pub use runtime_seasonality::{
+    RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
     RuntimeStructuralSeasonalityMaterializationError,
     RuntimeStructuralSeasonalityMaterializationInput,
     RuntimeStructuralSeasonalityMaterializationOutput, materialize_runtime_structural_seasonality,
@@ -128,7 +135,6 @@ pub use staged_runner::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
     CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
-    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
 };

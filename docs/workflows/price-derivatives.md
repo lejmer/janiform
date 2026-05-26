@@ -102,6 +102,8 @@ df: pd.DataFrame = surface_result.to_pandas()
 
 `price_option_surface(...)` prices each selected observed option node and returns a tidy table through `to_pandas()`. `to_surface_df(...)` gives a pivoted strike-by-expiry or strike-by-valuation view.
 
+Set `physical_distribution_diagnostics=True` to add model-P terminal distribution diagnostics from the same observed valuation states and option nodes. The returned result exposes `physical_distribution.to_pandas()` with forward-normalized and market-forward physical volatility equivalents. When an output path is supplied, Rust writes the diagnostic JSON sidecars next to the observed-options pricing artifacts.
+
 > **Integrating into a larger application**: option grid and surface pricing methods accept `progress_callback` where the workload can fan out across many nodes.
 
 ## CLI

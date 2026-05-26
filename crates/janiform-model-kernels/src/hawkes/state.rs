@@ -215,6 +215,21 @@ impl HawkesExcitationState {
         }
     }
 
+    /// Build the canonical first-moment state from side-level target sums.
+    ///
+    /// The first-moment Hawkes target-sum dynamics are closed in side-level
+    /// aggregates. When source-sign attribution is unavailable or irrelevant,
+    /// this constructor stores each aggregate in the buy-source canonical
+    /// component and zeros the sell-source component.
+    pub const fn from_target_sums(target_plus_sum: f64, target_minus_sum: f64) -> Self {
+        Self {
+            y_plus_plus: target_plus_sum,
+            y_plus_minus: 0.0,
+            y_minus_plus: target_minus_sum,
+            y_minus_minus: 0.0,
+        }
+    }
+
     /// Return buy-target (`+`) state components grouped by source sign.
     pub const fn target_plus_components(self) -> HawkesSourceComponents {
         HawkesSourceComponents {
@@ -229,6 +244,16 @@ impl HawkesExcitationState {
             from_plus: self.y_minus_plus,
             from_minus: self.y_minus_minus,
         }
+    }
+
+    /// Return the buy-target (`+`) aggregate excitation.
+    pub const fn target_plus_sum(self) -> f64 {
+        self.y_plus_plus + self.y_plus_minus
+    }
+
+    /// Return the sell-target (`-`) aggregate excitation.
+    pub const fn target_minus_sum(self) -> f64 {
+        self.y_minus_plus + self.y_minus_minus
     }
 
     /// Return canonical model ordering: `[Y++, Y+-, Y-+, Y--]`.
@@ -251,8 +276,8 @@ impl HawkesExcitationState {
         lambda_bar: f64,
     ) -> HawkesSideIntensities {
         HawkesSideIntensities {
-            lambda_plus: lambda_bar + self.y_plus_plus + self.y_plus_minus,
-            lambda_minus: lambda_bar + self.y_minus_plus + self.y_minus_minus,
+            lambda_plus: lambda_bar + self.target_plus_sum(),
+            lambda_minus: lambda_bar + self.target_minus_sum(),
         }
     }
 

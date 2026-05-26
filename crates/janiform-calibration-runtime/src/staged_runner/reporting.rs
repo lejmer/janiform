@@ -91,6 +91,28 @@ pub(super) fn diagnostic_runtime_profile_entry_for_stage_report(
                     .unwrap_or(0),
             }
         }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            CalibrationDiagnosticRuntimeProfileEntry {
+                component_id: "stage.option_refinement".to_string(),
+                elapsed_seconds,
+                evaluation_count: report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| metadata.input_candidate_count)
+                    .unwrap_or(0),
+            }
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
+            CalibrationDiagnosticRuntimeProfileEntry {
+                component_id: "stage.finalization".to_string(),
+                elapsed_seconds,
+                evaluation_count: report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| metadata.input_candidate_count)
+                    .unwrap_or(0),
+            }
+        }
     }
 }
 
@@ -119,6 +141,23 @@ pub(super) fn retained_stage_report(
                 },
             ))
         }
-        _ => stage_report.clone(),
+        CalibrationStagedRunStageReport::JointRefinement(report) => {
+            let mut retained_report = (**report).clone();
+            retained_report.runtime_handoff = None;
+            CalibrationStagedRunStageReport::JointRefinement(Box::new(retained_report))
+        }
+        CalibrationStagedRunStageReport::OptionRefinement(report) => {
+            let mut retained_report = (**report).clone();
+            retained_report.runtime_handoff = None;
+            CalibrationStagedRunStageReport::OptionRefinement(Box::new(retained_report))
+        }
+        CalibrationStagedRunStageReport::Finalization(report) => {
+            let mut retained_report = (**report).clone();
+            retained_report.runtime_handoff = None;
+            CalibrationStagedRunStageReport::Finalization(Box::new(retained_report))
+        }
+        CalibrationStagedRunStageReport::Hawkes(_)
+        | CalibrationStagedRunStageReport::ReturnComponents(_)
+        | CalibrationStagedRunStageReport::MeanReversion(_) => stage_report.clone(),
     }
 }

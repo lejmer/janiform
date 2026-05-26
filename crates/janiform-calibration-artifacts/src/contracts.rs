@@ -2,6 +2,7 @@ mod artifact_manifest;
 mod constants;
 mod data_inputs;
 mod handoff_resume;
+mod objective;
 mod optimizer;
 mod run_contract;
 mod run_spec;
@@ -49,8 +50,16 @@ pub use handoff_resume::{
     CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffRoute,
     CalibrationStageHandoffTransport,
 };
+pub use objective::{
+    CalibrationHardConstraintDiagnostic, CalibrationLossAdmissibility, CalibrationLossEvaluation,
+    CalibrationLossFamilyDiagnostic, CalibrationLossTermDiagnostic, CalibrationLossTermKind,
+    CalibrationObjectivePolicy, CalibrationObjectivePolicyError,
+    DEFAULT_STYLIZED_FACT_ADMISSIBILITY_Z, DEFAULT_STYLIZED_FACT_HUBER_CUTOFF,
+};
 pub use optimizer::{
-    CalibrationOptimizerSettings, CalibrationOptimizerSettingsError, CalibrationStageSolverSettings,
+    CalibrationEffortOptions, CalibrationEffortOptionsError, CalibrationOptimizerSettings,
+    CalibrationOptimizerSettingsError, CalibrationStageSolverSettings, FAST_CALIBRATION_EFFORT,
+    STANDARD_CALIBRATION_EFFORT, THOROUGH_CALIBRATION_EFFORT,
 };
 pub use run_contract::{
     CalibrationRunContract, CalibrationRunContractError, resolve_calibration_stage_execution_order,

@@ -210,12 +210,101 @@ impl Display for ExponentialAffineTransformNewsIntensityInputError {
 
 impl Error for ExponentialAffineTransformNewsIntensityInputError {}
 
+/// Integrated-activity Laplace loadings split by baseline and endogenous activity.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformActivityLoadings {
+    pub u_plus_baseline: ComplexScalar,
+    pub u_plus_endogenous: ComplexScalar,
+    pub u_minus_baseline: ComplexScalar,
+    pub u_minus_endogenous: ComplexScalar,
+}
+
+impl ExponentialAffineTransformActivityLoadings {
+    pub const fn new(
+        u_plus_baseline: ComplexScalar,
+        u_plus_endogenous: ComplexScalar,
+        u_minus_baseline: ComplexScalar,
+        u_minus_endogenous: ComplexScalar,
+    ) -> Self {
+        Self {
+            u_plus_baseline,
+            u_plus_endogenous,
+            u_minus_baseline,
+            u_minus_endogenous,
+        }
+    }
+
+    /// Build loadings for queries where baseline and endogenous activity share the same weight.
+    pub const fn total_activity(u_plus: ComplexScalar, u_minus: ComplexScalar) -> Self {
+        Self {
+            u_plus_baseline: u_plus,
+            u_plus_endogenous: u_plus,
+            u_minus_baseline: u_minus,
+            u_minus_endogenous: u_minus,
+        }
+    }
+
+    pub fn try_new(
+        u_plus_baseline: ComplexScalar,
+        u_plus_endogenous: ComplexScalar,
+        u_minus_baseline: ComplexScalar,
+        u_minus_endogenous: ComplexScalar,
+    ) -> Result<Self, ExponentialAffineTransformActivityLoadingsError> {
+        let loadings = Self::new(
+            u_plus_baseline,
+            u_plus_endogenous,
+            u_minus_baseline,
+            u_minus_endogenous,
+        );
+
+        loadings.validate()?;
+
+        Ok(loadings)
+    }
+
+    pub fn validate(self) -> Result<(), ExponentialAffineTransformActivityLoadingsError> {
+        ensure_finite_complex_activity_loading("u_plus_baseline", self.u_plus_baseline)?;
+        ensure_finite_complex_activity_loading("u_plus_endogenous", self.u_plus_endogenous)?;
+        ensure_finite_complex_activity_loading("u_minus_baseline", self.u_minus_baseline)?;
+        ensure_finite_complex_activity_loading("u_minus_endogenous", self.u_minus_endogenous)?;
+
+        Ok(())
+    }
+
+    pub(crate) fn is_zero(self) -> bool {
+        self.u_plus_baseline == ComplexScalar::new(0.0, 0.0)
+            && self.u_plus_endogenous == ComplexScalar::new(0.0, 0.0)
+            && self.u_minus_baseline == ComplexScalar::new(0.0, 0.0)
+            && self.u_minus_endogenous == ComplexScalar::new(0.0, 0.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformActivityLoadingsError {
+    InvalidComplexField {
+        field: &'static str,
+        value: ComplexScalar,
+    },
+}
+
+impl Display for ExponentialAffineTransformActivityLoadingsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidComplexField { field, value } => write!(
+                formatter,
+                "{field} must be finite as a complex scalar, found {value:?}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformActivityLoadingsError {}
+
 /// Solver input payload for one interval `Delta`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformInput {
     pub equation_specification: ExponentialAffineTransformEquationSpecification,
-    pub u_plus: ComplexScalar,
-    pub u_minus: ComplexScalar,
+    pub activity_loadings: ExponentialAffineTransformActivityLoadings,
     pub z_plus: ComplexScalar,
     pub z_minus: ComplexScalar,
     pub s_h: f64,
@@ -228,8 +317,7 @@ impl ExponentialAffineTransformInput {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         equation_specification: ExponentialAffineTransformEquationSpecification,
-        u_plus: ComplexScalar,
-        u_minus: ComplexScalar,
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
         s_h: f64,
@@ -239,8 +327,7 @@ impl ExponentialAffineTransformInput {
     ) -> Self {
         Self {
             equation_specification,
-            u_plus,
-            u_minus,
+            activity_loadings,
             z_plus,
             z_minus,
             s_h,
@@ -253,8 +340,7 @@ impl ExponentialAffineTransformInput {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         equation_specification: ExponentialAffineTransformEquationSpecification,
-        u_plus: ComplexScalar,
-        u_minus: ComplexScalar,
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
         s_h: f64,
@@ -264,8 +350,7 @@ impl ExponentialAffineTransformInput {
     ) -> Result<Self, ExponentialAffineTransformInputError> {
         let input = Self::new(
             equation_specification,
-            u_plus,
-            u_minus,
+            activity_loadings,
             z_plus,
             z_minus,
             s_h,
@@ -273,7 +358,9 @@ impl ExponentialAffineTransformInput {
             delta,
             initial_state,
         );
+
         input.validate()?;
+
         Ok(input)
     }
 
@@ -282,8 +369,10 @@ impl ExponentialAffineTransformInput {
             ExponentialAffineTransformInputError::InvalidEquationSpecification { source }
         })?;
 
-        ensure_finite_complex_input("u_plus", self.u_plus)?;
-        ensure_finite_complex_input("u_minus", self.u_minus)?;
+        self.activity_loadings.validate().map_err(|source| {
+            ExponentialAffineTransformInputError::InvalidActivityLoadings { source }
+        })?;
+
         ensure_finite_complex_input("z_plus", self.z_plus)?;
         ensure_finite_complex_input("z_minus", self.z_minus)?;
 
@@ -292,20 +381,22 @@ impl ExponentialAffineTransformInput {
                 ExponentialAffineTransformInputError::InvalidSeasonalityFactor { value: self.s_h },
             );
         }
+
         self.news_intensity.validate().map_err(|source| {
             ExponentialAffineTransformInputError::InvalidNewsIntensityInput { source }
         })?;
+
         if !self.delta.is_finite() || self.delta <= 0.0 {
             return Err(ExponentialAffineTransformInputError::InvalidDelta { value: self.delta });
         }
 
         validate_initial_state(self.initial_state)?;
+
         Ok(())
     }
 
     pub(crate) fn is_exact_identity_query(self) -> bool {
-        self.u_plus == ComplexScalar::new(0.0, 0.0)
-            && self.u_minus == ComplexScalar::new(0.0, 0.0)
+        self.activity_loadings.is_zero()
             && self.z_plus == ComplexScalar::new(1.0, 0.0)
             && self.z_minus == ComplexScalar::new(1.0, 0.0)
     }
@@ -318,6 +409,9 @@ pub enum ExponentialAffineTransformInputError {
     },
     InvalidNewsIntensityInput {
         source: ExponentialAffineTransformNewsIntensityInputError,
+    },
+    InvalidActivityLoadings {
+        source: ExponentialAffineTransformActivityLoadingsError,
     },
     InvalidComplexField {
         field: &'static str,
@@ -350,6 +444,12 @@ impl Display for ExponentialAffineTransformInputError {
                     "transform input news_intensity is invalid: {source}"
                 )
             }
+            Self::InvalidActivityLoadings { source } => {
+                write!(
+                    formatter,
+                    "transform input activity_loadings are invalid: {source}"
+                )
+            }
             Self::InvalidComplexField { field, value } => write!(
                 formatter,
                 "{field} must be finite as a complex scalar, found {value:?}"
@@ -375,6 +475,7 @@ impl Error for ExponentialAffineTransformInputError {
         match self {
             Self::InvalidEquationSpecification { source } => Some(source),
             Self::InvalidNewsIntensityInput { source } => Some(source),
+            Self::InvalidActivityLoadings { source } => Some(source),
             _ => None,
         }
     }
@@ -390,6 +491,16 @@ pub struct ExponentialAffineTransformDVector {
 }
 
 impl ExponentialAffineTransformDVector {
+    /// Return the additive identity in model order `[++, +-, -+, --]`.
+    pub fn zero() -> Self {
+        Self::new(
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+        )
+    }
+
     pub fn new(
         plus_plus: ComplexScalar,
         plus_minus: ComplexScalar,
@@ -412,6 +523,7 @@ impl ExponentialAffineTransformDVector {
     ) -> Result<Self, ExponentialAffineTransformDVectorError> {
         let vector = Self::new(plus_plus, plus_minus, minus_plus, minus_minus);
         vector.validate()?;
+
         Ok(vector)
     }
 
@@ -427,6 +539,16 @@ impl ExponentialAffineTransformDVector {
     /// Componentwise addition in model order `[++, +-, -+, --]`.
     pub fn plus(self, other: Self) -> Self {
         self + other
+    }
+
+    /// Componentwise subtraction in model order `[++, +-, -+, --]`.
+    pub fn subtract(self, other: Self) -> Self {
+        Self::new(
+            self.plus_plus.subtract(other.plus_plus),
+            self.plus_minus.subtract(other.plus_minus),
+            self.minus_plus.subtract(other.minus_plus),
+            self.minus_minus.subtract(other.minus_minus),
+        )
     }
 
     /// Uniform scalar multiplication across all components.
@@ -524,6 +646,7 @@ impl ExponentialAffineTransformOutput {
     ) -> Result<Self, ExponentialAffineTransformOutputError> {
         let output = Self::new(c_at_delta, d_at_delta, transform_value);
         output.validate()?;
+
         Ok(output)
     }
 
@@ -533,9 +656,11 @@ impl ExponentialAffineTransformOutput {
                 value: self.c_at_delta,
             });
         }
+
         self.d_at_delta
             .validate()
             .map_err(|source| ExponentialAffineTransformOutputError::InvalidDAtDelta { source })?;
+
         if !self.transform_value.is_finite() {
             return Err(
                 ExponentialAffineTransformOutputError::InvalidTransformValue {
@@ -543,6 +668,7 @@ impl ExponentialAffineTransformOutput {
                 },
             );
         }
+
         Ok(())
     }
 }
@@ -584,6 +710,20 @@ impl Error for ExponentialAffineTransformOutputError {
         }
     }
 }
+
+fn ensure_finite_complex_activity_loading(
+    field: &'static str,
+    value: ComplexScalar,
+) -> Result<(), ExponentialAffineTransformActivityLoadingsError> {
+    if !value.is_finite() {
+        return Err(
+            ExponentialAffineTransformActivityLoadingsError::InvalidComplexField { field, value },
+        );
+    }
+
+    Ok(())
+}
+
 fn ensure_finite_complex_input(
     field: &'static str,
     value: ComplexScalar,

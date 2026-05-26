@@ -10,16 +10,14 @@ use janiform::pricing::{
 use janiform_terminal_ui::{ProgressEvent, ProgressMeasure, TerminalSummaryPolicy};
 
 use crate::error::WorkflowError;
-use crate::model::{
-    build_hourly_factor_contract, fitted_model_context, model_reference_price,
-    pricing_nig_shared_plus_shift_configuration,
-};
+use crate::model::{build_hourly_factor_contract, fitted_model_context, model_reference_price};
 
 use super::artifacts::{pricing_artifact_paths, write_pricing_artifacts};
 use super::maturity::{
     finalize_single_maturity_resolution, resolve_single_maturity,
     runtime_schedule_hourly_factor_contract_coverage,
 };
+use super::model_parameters::build_vanilla_option_pricing_model_parameters;
 use super::output::FittedModelSingleOptionPricingOutput;
 use super::output::{pricing_completion_summary, pricing_start_summary};
 use super::progress::{
@@ -248,13 +246,13 @@ fn prepare_pricing_input(
     )?;
 
     let reference_price = model_reference_price(&context.model)?;
-    let observed_log_price = (request.spot / reference_price).ln();
+    let observed_log_return = request.spot.ln() - reference_price.ln();
 
     let boundary_state = resolve_pricing_boundary_state(
         request,
         context,
         &boundary_hourly_factor_contract,
-        observed_log_price,
+        observed_log_return,
     )?;
 
     let interval_delta = maturity_resolution
@@ -268,6 +266,7 @@ fn prepare_pricing_input(
         0,
         boundary_state.excitation_state,
         context
+            .fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
             // Intentional copy because the pricing boundary owns a validated
@@ -278,17 +277,7 @@ fn prepare_pricing_input(
     )
     .map_err(|source| pricing_validation_error("boundary_input", source.to_string()))?;
 
-    let model_parameters = VanillaOptionPricingModelParameters::try_new(
-        context.hawkes_fitted_parameters.kernel_parameters,
-        context
-            .return_components_fitted_parameters
-            .news_process_configuration
-            // Intentional copy because pricing model parameters own their
-            // native contract after workflow preparation completes.
-            .clone(),
-        pricing_nig_shared_plus_shift_configuration(context)?,
-    )
-    .map_err(|source| pricing_validation_error("model_parameters", source.to_string()))?;
+    let model_parameters = build_vanilla_option_pricing_model_parameters(context)?;
 
     let interval_factors = materialize_schedule_interval_factors(
         &maturity_resolution.pricing_interval_schedule,

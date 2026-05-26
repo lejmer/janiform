@@ -3,8 +3,8 @@ use super::known_news_samples::{
     attributed_open_return_timestamps, open_session_known_news_activity_share,
 };
 use super::shared::{
-    CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-    CalibrationHawkesStageCandidateInput, HawkesStructuredAlphaParameterization,
+    CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+    HawkesStageObservedSourceRegime, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy, MarketState,
     OpenTickRecord, ResolvedKnownNewsRecord, ResolvedTickRecord, arithmetic_mean,
     clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation, logistic,
@@ -12,7 +12,9 @@ use super::shared::{
     strictly_positive_machine_value, unique_sorted_values,
 };
 use janiform_foundations::time::duration_nanos_to_hours;
-use janiform_model_kernels::hawkes::{HawkesKernelLoadings, stationary_intensity_multipliers};
+use janiform_model_kernels::hawkes::{
+    HawkesKernelLoadings, baseline_intensity_for_stationary_total_intensity,
+};
 
 pub(super) fn build_hawkes_candidate_inputs(
     input: HawkesCandidateInputsBuildInput<'_>,
@@ -106,7 +108,7 @@ pub(super) fn build_hawkes_candidate_inputs(
         known_news_attributed_open_return_timestamps.as_slice(),
     );
 
-    let source_regime = CalibrationHawkesObservedSourceRegime {
+    let source_regime = HawkesStageObservedSourceRegime {
         observation_duration_hours: round_to(observation_duration_hours, 6),
         open_session_duration_hours: round_to(open_session_duration_hours, 6),
         total_tick_count: tick_count,
@@ -336,16 +338,10 @@ pub(super) fn matched_lambda_bar_for_observed_open_rate(
         minus_minus: structured_alpha.a_self + structured_alpha.delta_self,
     };
 
-    let Some(stationary_multipliers) = stationary_intensity_multipliers(alpha, beta) else {
-        return (open_session_rate_per_hour / 2.0).max(strictly_positive_machine_value());
-    };
-
-    let inverse_sum = stationary_multipliers.total_intensity_multiplier();
-    if inverse_sum <= strictly_positive_machine_value() {
-        return (open_session_rate_per_hour / 2.0).max(strictly_positive_machine_value());
-    }
-
-    (open_session_rate_per_hour / inverse_sum).max(strictly_positive_machine_value())
+    baseline_intensity_for_stationary_total_intensity(open_session_rate_per_hour, alpha, beta)
+        .unwrap_or_else(|| {
+            (open_session_rate_per_hour / 2.0).max(strictly_positive_machine_value())
+        })
 }
 
 pub(super) fn derive_branching_ratio_candidates(center: f64) -> Vec<f64> {

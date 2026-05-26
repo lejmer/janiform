@@ -1,6 +1,8 @@
 pub const INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION: &str = "seasonality.intraday.estimate.v1";
 pub const DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION: &str =
     "seasonality.day_of_week.estimate.v1";
+pub const HOUR_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION: &str =
+    "seasonality.hour_of_week.estimate.v1";
 pub const DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION: &str =
     "seasonality.day_of_year.estimate.v1";
 pub const DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION: &str =
@@ -11,6 +13,12 @@ pub const SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION: &str =
 
 // Exact calendar bin count for a 24-hour intraday seasonality grid.
 pub(crate) const MINUTES_PER_DAY: usize = 1_440;
+// Exact minute count for one wall-clock hour.
+pub(crate) const MINUTES_PER_HOUR: usize = 60;
+// Exact hour count for one wall-clock day.
+pub(crate) const HOURS_PER_DAY: usize = 24;
+// Exact hourly bucket count for a full local calendar week.
+pub const HOURS_PER_WEEK: usize = 168;
 // Exact weekday count for day-of-week seasonality factors.
 pub(crate) const DAYS_PER_WEEK: usize = 7;
 // Calendar-year support includes leap-day indexing, so the factor table always has 366 slots.

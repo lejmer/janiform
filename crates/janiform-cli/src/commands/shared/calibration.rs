@@ -22,6 +22,8 @@ pub(crate) fn calibration_stage(stage: CalibrationStageOption) -> CalibrationSta
         CalibrationStageOption::ReturnComponents => CalibrationStage::ReturnComponents,
         CalibrationStageOption::MeanReversion => CalibrationStage::MeanReversion,
         CalibrationStageOption::JointRefinement => CalibrationStage::JointRefinement,
+        CalibrationStageOption::OptionRefinement => CalibrationStage::OptionRefinement,
+        CalibrationStageOption::Finalization => CalibrationStage::Finalization,
     }
 }
 

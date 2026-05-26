@@ -4,9 +4,9 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 
+use super::constants::MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT;
 use super::contracts::{
     AnchoredVanillaOptionPricingBoundaryInput, SpectralPricingIntervalDiagnostics,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingFailureStage,
@@ -30,7 +30,6 @@ pub struct VanillaOptionMaturitySummary {
     pub collocation_node_count: usize,
     pub collocation_nodes: Vec<f64>,
     pub interval_summaries: Vec<SpectralPricingIntervalDiagnostics>,
-    pub representative_transform: Option<ExponentialAffineTransformIntegrationResult>,
     pub integration_quality: Option<FourierInversionDiagnostics>,
 }
 
@@ -40,6 +39,8 @@ pub struct VanillaOptionNodePriceSensitivity {
     pub beta_0_derivative: f64,
     pub delta_derivative: f64,
     pub delta_beta_derivative: f64,
+    pub buy_activity_premium_derivative: f64,
+    pub sell_activity_premium_derivative: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -227,7 +228,7 @@ impl VanillaOptionGridBatchPricingExecutionInput {
         }
 
         if let Some(collocation_node_count) = self.spectral_collocation_node_count_override
-            && collocation_node_count == 0
+            && collocation_node_count < MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT
         {
             return Err(
                 VanillaOptionGridBatchPricingExecutionInputError::InvalidCollocationNodeCount {
@@ -332,7 +333,7 @@ impl Display for VanillaOptionGridBatchPricingExecutionInputError {
             ),
             Self::InvalidCollocationNodeCount { value } => write!(
                 formatter,
-                "grid batch pricing spectral_collocation_node_count_override must be strictly positive when provided, found {value}"
+                "grid batch pricing spectral_collocation_node_count_override must be at least {MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT}, found {value}"
             ),
         }
     }
@@ -545,106 +546,37 @@ impl Error for VanillaOptionSurfacePricingRunError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SpectralThetaWarmStartKey {
+    pub(crate) risk_free_rate_bits: u64,
+    pub(crate) dividend_yield_bits: u64,
+    pub(crate) maturity_count: usize,
+}
+
+impl SpectralThetaWarmStartKey {
+    pub(crate) const fn new(
+        risk_free_rate_bits: u64,
+        dividend_yield_bits: u64,
+        maturity_count: usize,
+    ) -> Self {
+        Self {
+            risk_free_rate_bits,
+            dividend_yield_bits,
+            maturity_count,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SpectralThetaWarmStartState {
-    row_theta_states_by_carry_group: BTreeMap<(u64, u64), Vec<Vec<SpectralThetaWarmStartRowState>>>,
-    last_driver_configuration_by_carry_group:
-        BTreeMap<(u64, u64), SpectralThetaWarmStartDriverConfiguration>,
+    theta_solution_by_maturity: BTreeMap<SpectralThetaWarmStartKey, SpectralThetaWarmStartEntry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct SpectralThetaWarmStartDriverConfiguration {
-    pub(crate) alpha: f64,
-    pub(crate) beta_0: f64,
-    pub(crate) delta: f64,
-    pub(crate) mu: f64,
-    pub(crate) delta_beta: f64,
-}
-
-impl SpectralThetaWarmStartDriverConfiguration {
-    fn parameter_delta_from(self, previous: Self) -> SpectralThetaWarmStartSensitivity {
-        SpectralThetaWarmStartSensitivity {
-            alpha_derivative: self.alpha - previous.alpha,
-            beta_0_derivative: self.beta_0 - previous.beta_0,
-            delta_derivative: self.delta - previous.delta,
-            mu_derivative: self.mu - previous.mu,
-            delta_beta_derivative: self.delta_beta - previous.delta_beta,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct SpectralThetaWarmStartSensitivity {
-    pub(crate) alpha_derivative: f64,
-    pub(crate) beta_0_derivative: f64,
-    pub(crate) delta_derivative: f64,
-    pub(crate) mu_derivative: f64,
-    pub(crate) delta_beta_derivative: f64,
-}
-
-impl SpectralThetaWarmStartSensitivity {
-    fn predicted_theta_shift(self, parameter_delta: Self) -> f64 {
-        self.alpha_derivative.mul_add(
-            parameter_delta.alpha_derivative,
-            self.beta_0_derivative.mul_add(
-                parameter_delta.beta_0_derivative,
-                self.delta_derivative.mul_add(
-                    parameter_delta.delta_derivative,
-                    self.mu_derivative.mul_add(
-                        parameter_delta.mu_derivative,
-                        self.delta_beta_derivative * parameter_delta.delta_beta_derivative,
-                    ),
-                ),
-            ),
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct SpectralThetaWarmStartRowState {
-    pub(crate) theta_hint: Option<f64>,
-    pub(crate) local_theta_sensitivity: Option<SpectralThetaWarmStartSensitivity>,
-}
-
-impl SpectralThetaWarmStartRowState {
-    pub(crate) fn from_theta_hint(theta_hint: f64) -> Self {
-        Self {
-            theta_hint: Some(theta_hint),
-            local_theta_sensitivity: None,
-        }
-    }
-
-    pub(crate) fn with_local_theta_sensitivity(
-        mut self,
-        local_theta_sensitivity: SpectralThetaWarmStartSensitivity,
-    ) -> Self {
-        self.local_theta_sensitivity = Some(local_theta_sensitivity);
-        self
-    }
-
-    fn predicted_theta(
-        self,
-        parameter_delta: Option<SpectralThetaWarmStartSensitivity>,
-    ) -> Option<f64> {
-        let theta_hint = self.theta_hint?;
-
-        let Some(parameter_delta) = parameter_delta else {
-            return Some(theta_hint);
-        };
-
-        let Some(local_theta_sensitivity) = self.local_theta_sensitivity else {
-            return Some(theta_hint);
-        };
-
-        let predicted_theta =
-            theta_hint + local_theta_sensitivity.predicted_theta_shift(parameter_delta);
-
-        if predicted_theta.is_finite() {
-            Some(predicted_theta)
-        } else {
-            Some(theta_hint)
-        }
-    }
+pub(crate) struct SpectralThetaWarmStartEntry {
+    pub(crate) theta: f64,
+    pub(crate) buy_activity_premium_theta_derivative: f64,
+    pub(crate) sell_activity_premium_theta_derivative: f64,
 }
 
 impl SpectralThetaWarmStartState {
@@ -652,67 +584,31 @@ impl SpectralThetaWarmStartState {
         Self::default()
     }
 
-    pub(crate) fn interval_theta_hints(
-        &mut self,
-        carry_group_key: (u64, u64),
-        interval_index: usize,
-        row_count: usize,
-        current_driver_configuration: SpectralThetaWarmStartDriverConfiguration,
-    ) -> Vec<Option<f64>> {
-        self.ensure_interval_shape(carry_group_key, interval_index, row_count);
-
-        let parameter_delta = self
-            .last_driver_configuration_by_carry_group
-            .get(&carry_group_key)
-            .copied()
-            .map(|previous_driver_configuration| {
-                current_driver_configuration.parameter_delta_from(previous_driver_configuration)
-            });
-
-        self.row_theta_states_by_carry_group[&carry_group_key][interval_index]
-            .iter()
-            .map(|row_state| row_state.predicted_theta(parameter_delta))
-            .collect()
+    pub(crate) fn theta_hint(&self, warm_start_key: SpectralThetaWarmStartKey) -> Option<f64> {
+        self.theta_solution_by_maturity
+            .get(&warm_start_key)
+            .and_then(|entry| entry.theta.is_finite().then_some(entry.theta))
     }
 
-    pub(crate) fn record_interval_theta_states(
+    pub(crate) fn record_theta_solution(
         &mut self,
-        carry_group_key: (u64, u64),
-        interval_index: usize,
-        current_driver_configuration: SpectralThetaWarmStartDriverConfiguration,
-        solved_row_states: impl IntoIterator<Item = SpectralThetaWarmStartRowState>,
+        warm_start_key: SpectralThetaWarmStartKey,
+        theta: f64,
+        buy_activity_premium_theta_derivative: f64,
+        sell_activity_premium_theta_derivative: f64,
     ) {
-        let solved_row_states = solved_row_states.into_iter().collect::<Vec<_>>();
-
-        self.ensure_interval_shape(carry_group_key, interval_index, solved_row_states.len());
-
-        self.row_theta_states_by_carry_group
-            .get_mut(&carry_group_key)
-            .expect("carry-group theta warm-start storage should exist")[interval_index] =
-            solved_row_states;
-
-        self.last_driver_configuration_by_carry_group
-            .insert(carry_group_key, current_driver_configuration);
-    }
-
-    fn ensure_interval_shape(
-        &mut self,
-        carry_group_key: (u64, u64),
-        interval_index: usize,
-        row_count: usize,
-    ) {
-        let row_theta_states_by_interval = self
-            .row_theta_states_by_carry_group
-            .entry(carry_group_key)
-            .or_default();
-
-        if row_theta_states_by_interval.len() <= interval_index {
-            row_theta_states_by_interval.resize_with(interval_index + 1, Vec::new);
-        }
-
-        if row_theta_states_by_interval[interval_index].len() != row_count {
-            row_theta_states_by_interval[interval_index] =
-                vec![SpectralThetaWarmStartRowState::default(); row_count];
+        if theta.is_finite()
+            && buy_activity_premium_theta_derivative.is_finite()
+            && sell_activity_premium_theta_derivative.is_finite()
+        {
+            self.theta_solution_by_maturity.insert(
+                warm_start_key,
+                SpectralThetaWarmStartEntry {
+                    theta,
+                    buy_activity_premium_theta_derivative,
+                    sell_activity_premium_theta_derivative,
+                },
+            );
         }
     }
 }

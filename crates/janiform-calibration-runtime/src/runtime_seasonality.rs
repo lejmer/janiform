@@ -9,6 +9,9 @@ use crate::stages::seasonality::{
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
+pub const RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: &str =
+    "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1";
+
 /// Rust-native input for compact structural runtime seasonality materialization.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeStructuralSeasonalityMaterializationInput {

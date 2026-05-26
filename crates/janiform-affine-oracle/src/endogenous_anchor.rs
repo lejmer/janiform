@@ -13,8 +13,8 @@ use crate::sufficient_statistics::{
     SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsIntervalStatisticsError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSolveError,
 };
-use janiform_foundations::matrix2::solve_two_by_two_linear_source_system;
-use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesNewsSeverityMarkError};
+use janiform_foundations::linear_algebra::solve_two_by_two_linear_source_system;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::MeanReversionRuntimeIntervalAnchors;
 use janiform_model_kernels::news::{
     CoupledGapMarkConstructionError, NewsProcessConfiguration, NewsProcessConfigurationError,
@@ -23,6 +23,7 @@ use janiform_model_kernels::nig::{
     NigIncrementSamplingError, NigSharedPlusShiftConfiguration,
     NigSharedPlusShiftConfigurationError,
 };
+use nalgebra::{Matrix2, Vector2};
 
 /// One interval's structural factors used by endogenous-anchor recursion.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -111,6 +112,13 @@ pub struct EndogenousAnchorMaterialization {
     pub interval_expectations: Vec<EndogenousAnchorIntervalExpectation>,
 }
 
+/// One interval's exact first-moment projection for endogenous Hawkes statistics.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct EndogenousAnchorFirstMomentIntervalProjection {
+    pub expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    pub structural_state_after: HawkesExcitationState,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EndogenousAnchorMaterializationError {
     InvalidSeasonalityFactor {
@@ -157,16 +165,17 @@ pub enum EndogenousAnchorMaterializationError {
     ExpectedGapJumpMarkFailure {
         source: CoupledGapMarkConstructionError,
     },
-    ExpectedNewsLoadingFailure {
-        interval_index: usize,
-        source: HawkesNewsSeverityMarkError,
-    },
     NonFiniteCoreExpectedIncrement {
         interval_index: usize,
         value: f64,
     },
     InvalidRuntimeIntervalAnchors {
         error_message: String,
+    },
+    InvalidExpectedHawkesState {
+        interval_index: usize,
+        field: &'static str,
+        value: f64,
     },
 }
 
@@ -240,13 +249,6 @@ impl Display for EndogenousAnchorMaterializationError {
                 formatter,
                 "endogenous-anchor expected gap jump mark failed to evaluate: {source}"
             ),
-            Self::ExpectedNewsLoadingFailure {
-                interval_index,
-                source,
-            } => write!(
-                formatter,
-                "endogenous-anchor expected Hawkes news-loading update failed at interval {interval_index}: {source}"
-            ),
             Self::NonFiniteCoreExpectedIncrement {
                 interval_index,
                 value,
@@ -257,6 +259,14 @@ impl Display for EndogenousAnchorMaterializationError {
             Self::InvalidRuntimeIntervalAnchors { error_message } => write!(
                 formatter,
                 "endogenous-anchor materialization produced invalid runtime interval anchors: {error_message}"
+            ),
+            Self::InvalidExpectedHawkesState {
+                interval_index,
+                field,
+                value,
+            } => write!(
+                formatter,
+                "endogenous-anchor expected Hawkes state field {field} is invalid at interval {interval_index}: {value}"
             ),
         }
     }
@@ -275,7 +285,6 @@ impl Error for EndogenousAnchorMaterializationError {
             Self::BuySideExpectationFailure { source, .. } => Some(source),
             Self::SellSideExpectationFailure { source, .. } => Some(source),
             Self::ExpectedGapJumpMarkFailure { source } => Some(source),
-            Self::ExpectedNewsLoadingFailure { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -302,6 +311,7 @@ pub fn materialize_endogenous_anchor_path(
     equation_specification.validate().map_err(|source| {
         EndogenousAnchorMaterializationError::InvalidEquationSpecification { source }
     })?;
+
     news_process_configuration.validate().map_err(|source| {
         EndogenousAnchorMaterializationError::InvalidNewsProcessConfiguration { source }
     })?;
@@ -323,6 +333,7 @@ pub fn materialize_endogenous_anchor_path(
                 },
             }
         })?;
+
     let expected_square_root_severity_mark = news_process_configuration
         .shared_mark_law
         .gamma_severity_marks
@@ -334,6 +345,7 @@ pub fn materialize_endogenous_anchor_path(
                 },
             }
         })?;
+
     let expected_base_shock_mark = news_process_configuration
         .shared_mark_law
         .double_exponential_base_shock
@@ -343,6 +355,7 @@ pub fn materialize_endogenous_anchor_path(
                 source: NewsProcessConfigurationError::InvalidBaseShockConfiguration { source },
             }
         })?;
+
     let expected_gap_jump_mark = news_process_configuration
         .shared_mark_law
         .coupled_gap_marks
@@ -368,31 +381,40 @@ pub fn materialize_endogenous_anchor_path(
             .last()
             .unwrap_or(&initial_excitation_state);
 
-        let expected_statistics = expected_interval_statistics_from_first_moment_dynamics(
-            equation_specification,
+        let expected_activity_loading_rate = expected_scaled_news_loading_rate(
+            factors,
+            news_process_configuration
+                .known_component_mark_scales
+                .activity_coupling_scale,
+            news_process_configuration
+                .surprise_component_mark_scales
+                .activity_coupling_scale,
             expected_severity_mark,
+        );
+
+        let first_moment_projection = expected_interval_projection_from_first_moment_dynamics(
+            interval_index,
+            equation_specification,
             factors,
             structural_state_before,
-        )
-        .map_err(|source| {
-            EndogenousAnchorMaterializationError::InvalidExpectedIntervalStatistics {
-                interval_index,
-                source,
-            }
-        })?;
+            expected_activity_loading_rate,
+        )?;
+
+        let expected_statistics = first_moment_projection.expected_statistics;
 
         let expected_buy_increment = driver_parameters
             .buy_side_parameters
-            .expected_increment(expected_statistics.expected_a_plus)
+            .expected_mean_compensated_increment(expected_statistics.expected_a_plus)
             .map_err(
                 |source| EndogenousAnchorMaterializationError::BuySideExpectationFailure {
                     interval_index,
                     source,
                 },
             )?;
+
         let expected_sell_increment = driver_parameters
             .sell_side_parameters
-            .expected_increment(expected_statistics.expected_a_minus)
+            .expected_mean_compensated_increment(expected_statistics.expected_a_minus)
             .map_err(
                 |source| EndogenousAnchorMaterializationError::SellSideExpectationFailure {
                     interval_index,
@@ -427,20 +449,7 @@ pub fn materialize_endogenous_anchor_path(
         end_anchor_values.push(current_anchor_value);
         interval_deltas.push(factors.delta);
 
-        let structural_state_after = expected_next_hawkes_state(
-            equation_specification,
-            news_process_configuration,
-            expected_severity_mark,
-            factors,
-            expected_statistics,
-            structural_state_before,
-        )
-        .map_err(|source| {
-            EndogenousAnchorMaterializationError::ExpectedNewsLoadingFailure {
-                interval_index,
-                source,
-            }
-        })?;
+        let structural_state_after = first_moment_projection.structural_state_after;
 
         expected_hawkes_state_path.push(structural_state_after);
         interval_expectations.push(EndogenousAnchorIntervalExpectation {
@@ -478,6 +487,8 @@ pub fn materialize_endogenous_anchor_path(
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HawkesTargetSumFirstMoment {
+    target_plus_after: f64,
+    target_minus_after: f64,
     integrated_target_plus: f64,
     integrated_target_minus: f64,
 }
@@ -501,6 +512,67 @@ pub fn derive_expected_interval_statistics_from_first_moment_dynamics(
     )
 }
 
+/// Derive one interval's exact first-moment statistics and terminal target state.
+pub fn derive_expected_interval_projection_from_first_moment_dynamics(
+    interval_index: usize,
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    expected_severity_mark: f64,
+    factors: EndogenousAnchorIntervalFactors,
+    structural_state_before: HawkesExcitationState,
+) -> Result<EndogenousAnchorFirstMomentIntervalProjection, EndogenousAnchorMaterializationError> {
+    let expected_activity_loading_rate =
+        (factors.known_nu_h + factors.surprise_nu_h) * expected_severity_mark;
+
+    expected_interval_projection_from_first_moment_dynamics(
+        interval_index,
+        equation_specification,
+        factors,
+        structural_state_before,
+        expected_activity_loading_rate,
+    )
+}
+
+fn expected_interval_projection_from_first_moment_dynamics(
+    interval_index: usize,
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    factors: EndogenousAnchorIntervalFactors,
+    structural_state_before: HawkesExcitationState,
+    expected_activity_loading_rate: f64,
+) -> Result<EndogenousAnchorFirstMomentIntervalProjection, EndogenousAnchorMaterializationError> {
+    let target_sum_first_moment = integrate_expected_target_sums(
+        equation_specification,
+        factors,
+        structural_state_before,
+        expected_activity_loading_rate,
+    );
+
+    let expected_statistics = expected_interval_statistics_from_target_sum_first_moment(
+        equation_specification,
+        factors,
+        target_sum_first_moment,
+    )
+    .map_err(|source| {
+        EndogenousAnchorMaterializationError::InvalidExpectedIntervalStatistics {
+            interval_index,
+            source,
+        }
+    })?;
+
+    let structural_state_after =
+        expected_hawkes_state_after_first_moment_interval(target_sum_first_moment).map_err(
+            |(field, value)| EndogenousAnchorMaterializationError::InvalidExpectedHawkesState {
+                interval_index,
+                field,
+                value,
+            },
+        )?;
+
+    Ok(EndogenousAnchorFirstMomentIntervalProjection {
+        expected_statistics,
+        structural_state_after,
+    })
+}
+
 fn expected_interval_statistics_from_first_moment_dynamics(
     equation_specification: ExponentialAffineTransformEquationSpecification,
     expected_severity_mark: f64,
@@ -512,73 +584,116 @@ fn expected_interval_statistics_from_first_moment_dynamics(
 > {
     let target_sum_first_moment = integrate_expected_target_sums(
         equation_specification,
-        expected_severity_mark,
         factors,
         structural_state_before,
+        (factors.known_nu_h + factors.surprise_nu_h) * expected_severity_mark,
     );
 
+    expected_interval_statistics_from_target_sum_first_moment(
+        equation_specification,
+        factors,
+        target_sum_first_moment,
+    )
+}
+
+fn expected_interval_statistics_from_target_sum_first_moment(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    factors: EndogenousAnchorIntervalFactors,
+    target_sum_first_moment: HawkesTargetSumFirstMoment,
+) -> Result<
+    SufficientStatisticsExpectedIntervalStatistics,
+    SufficientStatisticsIntervalStatisticsError,
+> {
     let baseline_expected_business_time =
         equation_specification.hawkes_kernel_parameters.lambda_bar * factors.s_h * factors.delta;
 
-    let expected_a_plus = baseline_expected_business_time
-        + factors.s_h * target_sum_first_moment.integrated_target_plus;
-    let expected_a_minus = baseline_expected_business_time
-        + factors.s_h * target_sum_first_moment.integrated_target_minus;
-
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        expected_a_plus,
-        expected_a_minus,
-        expected_a_plus,
-        expected_a_minus,
+        baseline_expected_business_time,
+        target_sum_first_moment.integrated_target_plus,
+        baseline_expected_business_time,
+        target_sum_first_moment.integrated_target_minus,
+        baseline_expected_business_time + target_sum_first_moment.integrated_target_plus,
+        baseline_expected_business_time + target_sum_first_moment.integrated_target_minus,
     )
 }
 
 fn integrate_expected_target_sums(
     equation_specification: ExponentialAffineTransformEquationSpecification,
-    expected_severity_mark: f64,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
+    expected_activity_loading_rate: f64,
 ) -> HawkesTargetSumFirstMoment {
     let kernel_parameters = equation_specification.hawkes_kernel_parameters;
 
     let alpha = kernel_parameters.alpha;
     let rho = kernel_parameters.rho;
 
-    let target_plus_before =
-        structural_state_before.y_plus_plus + structural_state_before.y_plus_minus;
-    let target_minus_before =
-        structural_state_before.y_minus_plus + structural_state_before.y_minus_minus;
+    let target_plus_before = structural_state_before.target_plus_sum();
+    let target_minus_before = structural_state_before.target_minus_sum();
 
-    let news_loading_rate = (factors.known_nu_h + factors.surprise_nu_h) * expected_severity_mark;
-
-    let matrix_a = -kernel_parameters.beta + factors.s_h * alpha.plus_plus;
-    let matrix_b = factors.s_h * alpha.plus_minus;
-    let matrix_c = factors.s_h * alpha.minus_plus;
-    let matrix_d = -kernel_parameters.beta + factors.s_h * alpha.minus_minus;
+    let system_matrix = Matrix2::new(
+        -kernel_parameters.beta + alpha.plus_plus,
+        alpha.plus_minus,
+        alpha.minus_plus,
+        -kernel_parameters.beta + alpha.minus_minus,
+    );
+    let initial_state = Vector2::new(target_plus_before, target_minus_before);
 
     let source_plus =
         factors.s_h * kernel_parameters.lambda_bar * (alpha.plus_plus + alpha.plus_minus)
-            + news_loading_rate * (rho.plus_plus + rho.plus_minus);
+            + expected_activity_loading_rate * (rho.plus_plus + rho.plus_minus);
     let source_minus =
         factors.s_h * kernel_parameters.lambda_bar * (alpha.minus_plus + alpha.minus_minus)
-            + news_loading_rate * (rho.minus_plus + rho.minus_minus);
+            + expected_activity_loading_rate * (rho.minus_plus + rho.minus_minus);
 
-    let system_solution = solve_two_by_two_linear_source_system(
-        matrix_a,
-        matrix_b,
-        matrix_c,
-        matrix_d,
-        target_plus_before,
-        target_minus_before,
-        source_plus,
-        source_minus,
+    let (target_after, integrated_target) = solve_two_by_two_linear_source_system(
+        system_matrix,
+        initial_state,
+        Vector2::new(source_plus, source_minus),
         factors.delta,
     );
 
     HawkesTargetSumFirstMoment {
-        integrated_target_plus: system_solution.integrated_first_component,
-        integrated_target_minus: system_solution.integrated_second_component,
+        target_plus_after: target_after[0],
+        target_minus_after: target_after[1],
+        integrated_target_plus: integrated_target[0],
+        integrated_target_minus: integrated_target[1],
     }
+}
+
+fn expected_hawkes_state_after_first_moment_interval(
+    target_sum_first_moment: HawkesTargetSumFirstMoment,
+) -> Result<HawkesExcitationState, (&'static str, f64)> {
+    let target_plus_after = target_sum_first_moment.target_plus_after;
+    if !target_plus_after.is_finite() || target_plus_after < 0.0 {
+        return Err(("target_plus_after", target_plus_after));
+    }
+
+    let target_minus_after = target_sum_first_moment.target_minus_after;
+    if !target_minus_after.is_finite() || target_minus_after < 0.0 {
+        return Err(("target_minus_after", target_minus_after));
+    }
+
+    // The first-moment dynamics are closed in side-level target sums, so the
+    // aggregate target is carried in a canonical component for the next step.
+    Ok(HawkesExcitationState::from_target_sums(
+        target_plus_after,
+        target_minus_after,
+    ))
+}
+
+fn expected_scaled_news_loading_rate(
+    factors: EndogenousAnchorIntervalFactors,
+    known_component_scale: f64,
+    surprise_component_scale: f64,
+    expected_mark: f64,
+) -> f64 {
+    let expected_known_loading_rate = factors.known_nu_h * known_component_scale * expected_mark;
+
+    let expected_surprise_loading_rate =
+        factors.surprise_nu_h * surprise_component_scale * expected_mark;
+
+    expected_known_loading_rate + expected_surprise_loading_rate
 }
 
 fn expected_scaled_news_arrival_contribution(
@@ -593,47 +708,6 @@ fn expected_scaled_news_arrival_contribution(
         factors.expected_surprise_arrival_count() * surprise_component_scale * expected_mark;
 
     expected_known_contribution + expected_surprise_contribution
-}
-
-fn expected_next_hawkes_state(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
-    news_process_configuration: &NewsProcessConfiguration,
-    expected_severity_mark: f64,
-    factors: EndogenousAnchorIntervalFactors,
-    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
-    state_before_update: HawkesExcitationState,
-) -> Result<HawkesExcitationState, HawkesNewsSeverityMarkError> {
-    let drifted_state = state_before_update.apply_shared_decay_drift(
-        equation_specification.hawkes_kernel_parameters.beta,
-        factors.delta,
-    );
-
-    let post_buy_state = drifted_state.apply_expected_endogenous_event_jump(
-        janiform_model_kernels::hawkes::HawkesEventSide::Buy,
-        equation_specification.hawkes_kernel_parameters.alpha,
-        expected_statistics.expected_n_plus,
-    );
-    let post_sell_state = post_buy_state.apply_expected_endogenous_event_jump(
-        janiform_model_kernels::hawkes::HawkesEventSide::Sell,
-        equation_specification.hawkes_kernel_parameters.alpha,
-        expected_statistics.expected_n_minus,
-    );
-
-    let expected_news_loading = expected_scaled_news_arrival_contribution(
-        factors,
-        news_process_configuration
-            .known_component_mark_scales
-            .activity_coupling_scale,
-        news_process_configuration
-            .surprise_component_mark_scales
-            .activity_coupling_scale,
-        expected_severity_mark,
-    );
-
-    post_sell_state.apply_exogenous_news_loading_jump(
-        equation_specification.hawkes_kernel_parameters.rho,
-        expected_news_loading,
-    )
 }
 
 #[cfg(test)]
@@ -837,6 +911,91 @@ mod tests {
                 - expected_anchor_increment)
                 .abs()
                 <= 1.0e-12
+        );
+    }
+
+    #[test]
+    fn endogenous_anchor_uses_seasonality_for_baseline_only() {
+        let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
+            HawkesKernelParameters::try_new(
+                4784.844063542383,
+                1758.535955776643,
+                HawkesKernelLoadings {
+                    plus_plus: 1007.730876687951,
+                    plus_minus: 111.970097409772,
+                    minus_plus: 112.136913128064,
+                    minus_minus: 1009.23221815258,
+                },
+                HawkesKernelLoadings {
+                    plus_plus: 0.0,
+                    plus_minus: 0.0,
+                    minus_plus: 0.0,
+                    minus_minus: 0.0,
+                },
+            )
+            .expect("hawkes parameters should construct"),
+            GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
+                .expect("gamma configuration should construct"),
+        )
+        .expect("equation specification should construct");
+
+        let nig_configuration = NigSharedPlusShiftConfiguration::try_new(2.5, 0.0, 0.8, 0.0, -0.2)
+            .expect("nig configuration should construct");
+
+        let news_process_configuration = NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: Vec::new(),
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.0,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
+                    .expect("gamma configuration should construct"),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
+                    0.6, 2.0, 3.0,
+                )
+                .expect("base-shock configuration should construct"),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.7),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 0.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 0.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("news process configuration should construct");
+
+        let materialization = materialize_endogenous_anchor_path(
+            "explicit_runtime_interval_grid_alignment.v1",
+            0.0,
+            equation_specification,
+            nig_configuration,
+            &news_process_configuration,
+            zero_hawkes_excitation_state(),
+            &[
+                EndogenousAnchorIntervalFactors::try_new(1.571_170_932_355_796_6, 0.0, 0.0, 1.0)
+                    .expect("interval factors should construct"),
+            ],
+        )
+        .expect("endogenous anchor materialization should succeed");
+
+        assert!(
+            materialization.interval_expectations[0]
+                .expected_statistics
+                .expected_a_plus
+                .is_finite()
+        );
+        assert!(
+            materialization.interval_expectations[0]
+                .expected_statistics
+                .expected_a_minus
+                .is_finite()
         );
     }
 }

@@ -1,13 +1,17 @@
 use janiform_calibration_artifacts::{
-    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
+    ReturnComponentsStageFittedParameters,
+    SurpriseNewsDeterministicIntensityProfile as SurpriseIntensityProfile,
+    TickGridObservationModel,
 };
 use janiform_foundations::numeric::{
     round_positive_to_domain, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
     sample_standard_deviation,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
-use janiform_model_kernels::news::NewsProcessConfiguration;
+use janiform_model_kernels::news::{NewsProcessConfiguration, SharedNewsMarkLawConfiguration};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+#[cfg(test)]
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::super::constants::{
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
@@ -33,7 +37,6 @@ use super::super::derived_contracts::{
 };
 use super::super::diagnostic_policy_fit;
 use super::super::surprise_intensity_fit;
-use janiform_model_kernels::news::SharedNewsMarkLawConfiguration;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ReturnComponentsStageReturnDistributionSummary {
@@ -75,9 +78,9 @@ pub(crate) fn build_surprise_arrival_diagnostic(
     diagnostic_policy: &ReturnComponentsStageDiagnosticPolicy,
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     surprise_arrival_family: &ReturnComponentsSurpriseNewsArrivalCandidateFamily,
-    fitted_surprise_deterministic_intensity_profile: &SurpriseNewsDeterministicIntensityProfile,
+    fitted_surprise_deterministic_intensity_profile: &SurpriseIntensityProfile,
 ) -> ReturnComponentsStageSurpriseArrivalDiagnostic {
-    let candidate_surprise_profile = SurpriseNewsDeterministicIntensityProfile {
+    let candidate_surprise_profile = SurpriseIntensityProfile {
         weekly_hour_utc_multipliers: surprise_arrival_family.weekly_hour_utc_multipliers.clone(),
         profile_resolution_hours: surprise_arrival_family.profile_resolution_hours,
         fit_policy: fitted_surprise_deterministic_intensity_profile
@@ -191,6 +194,7 @@ pub(crate) fn build_price_range_sanity_diagnostic(
     price_range_sanity_policy: &ReturnComponentsStagePriceRangeSanityPolicy,
 ) -> ReturnComponentsStagePriceRangeSanityDiagnostic {
     let effective_continuous_sample_count = summary_statistics.continuous_fit_return_count.max(1);
+
     let effective_mean_business_time_scale = summary_statistics
         .mean_continuous_business_time_scale
         .max(return_components_stage_positive_domain_floor());
@@ -262,6 +266,7 @@ pub(crate) fn theoretical_net_process_moments(
         configuration.delta,
         configuration.mu,
     )?;
+
     let sell_unit_cumulants = nig_unit_cumulants(
         configuration.alpha,
         configuration.derived_sell_beta(),
@@ -272,7 +277,8 @@ pub(crate) fn theoretical_net_process_moments(
     let sell_weight = open_session_sell_share_proxy.clamp(0.0, 1.0);
     let buy_weight = 1.0 - sell_weight;
 
-    let mean_return = buy_weight * buy_unit_cumulants.0 - sell_weight * sell_unit_cumulants.0;
+    let mean_return = 0.0;
+
     let variance = buy_weight * buy_unit_cumulants.1 + sell_weight * sell_unit_cumulants.1;
     if !variance.is_finite() || variance <= return_components_stage_positive_domain_floor() {
         return None;
@@ -280,6 +286,7 @@ pub(crate) fn theoretical_net_process_moments(
 
     let third_cumulant = buy_weight * buy_unit_cumulants.2 - sell_weight * sell_unit_cumulants.2;
     let fourth_cumulant = buy_weight * buy_unit_cumulants.3 + sell_weight * sell_unit_cumulants.3;
+
     let skewness = third_cumulant / variance.powf(1.5);
     let excess_kurtosis = fourth_cumulant / (variance * variance);
 
@@ -325,8 +332,16 @@ pub(crate) fn round_negative_candidate_value(value: f64) -> f64 {
         return -return_components_stage_positive_domain_floor();
     }
 
-    ((value.min(-return_components_stage_positive_domain_floor())) * 1_000_000_000_000.0).round()
-        / 1_000_000_000_000.0
+    let rounded = ((value.min(-return_components_stage_positive_domain_floor()))
+        * 1_000_000_000_000.0)
+        .round()
+        / 1_000_000_000_000.0;
+
+    if rounded < 0.0 {
+        rounded
+    } else {
+        -return_components_stage_positive_domain_floor()
+    }
 }
 
 pub(super) fn round_candidate_value(value: f64) -> f64 {
@@ -385,6 +400,8 @@ pub(crate) fn summarize_return_distribution(
 pub(super) fn collect_return_components_stage_constraint_violations(
     candidate_input: &ReturnComponentsStageCandidateInput,
 ) -> Vec<ReturnComponentsStageConstraintViolationDiagnostic> {
+    let tick_grid_observation_model = default_tick_grid_observation_model();
+
     let mut violations = collect_return_components_exact_candidate_constraint_violations(
         &ReturnComponentsStageFittedParameters {
             nig_shared_plus_shift_configuration: candidate_input
@@ -392,6 +409,8 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             news_process_configuration: candidate_input.news_process_configuration.clone(),
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
+            return_clock_exposure_parameters: candidate_input.return_clock_exposure_parameters,
+            tick_grid_observation_model,
             mean_reversion_fitted_parameters:
                 MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
         },
@@ -402,6 +421,7 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             &candidate_input.continuous_distribution_fit_breakdown,
         ),
     );
+
     violations
 }
 
@@ -526,22 +546,53 @@ pub(crate) fn collect_return_components_exact_likelihood_constraint_violations(
     let first_failure_reason = first_failure
         .map(|failure| format!("{:?}", failure.failure_reason))
         .unwrap_or_else(|| "unknown".to_string());
+
     let first_scope = first_failure
         .map(|failure| format!("{:?}", failure.scope))
         .unwrap_or_else(|| "unknown".to_string());
 
+    let first_failure_location = first_failure
+        .map(|failure| {
+            let block_member_index = failure
+                .block_member_index
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let evaluator = failure
+                .evaluator_kind
+                .map(|value| format!("{value:?}"))
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let business_time_scale = failure
+                .business_time_scale
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let observed_return = failure
+                .observed_return
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            format!(
+                " at block_member_index={block_member_index} evaluator={evaluator} business_time_scale={business_time_scale} observed_return={observed_return}",
+            )
+        })
+        .unwrap_or_default();
+
     vec![ReturnComponentsStageConstraintViolationDiagnostic {
         field: "continuous_distribution_fit_breakdown.exact_likelihood_failures".to_string(),
         message: format!(
-            "exact likelihood produced {} structural failure(s); first failure scope={} reason={}",
-            fit_breakdown.exact_structural_failure_count, first_scope, first_failure_reason,
+            "exact likelihood produced {} structural failure(s); first failure scope={} reason={}{}",
+            fit_breakdown.exact_structural_failure_count,
+            first_scope,
+            first_failure_reason,
+            first_failure_location,
         ),
     }]
 }
 
-pub(crate) fn default_surprise_deterministic_intensity_profile()
--> SurpriseNewsDeterministicIntensityProfile {
-    SurpriseNewsDeterministicIntensityProfile {
+pub(crate) fn default_surprise_deterministic_intensity_profile() -> SurpriseIntensityProfile {
+    SurpriseIntensityProfile {
         weekly_hour_utc_multipliers: vec![
             1.0;
             return_components_stage_surprise_intensity_weekly_profile_bucket_count()
@@ -551,6 +602,20 @@ pub(crate) fn default_surprise_deterministic_intensity_profile()
         fit_policy: RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY.to_string(),
         normalization_policy:
             RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_NORMALIZATION_POLICY.to_string(),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn default_return_clock_exposure_parameters() -> ReturnClockExposureParameters {
+    ReturnClockExposureParameters::neutral()
+}
+
+pub(crate) fn default_tick_grid_observation_model() -> TickGridObservationModel {
+    TickGridObservationModel {
+        tick_size: None,
+        tick_size_source: "unavailable".to_string(),
+        inference_policy: "not_inferred_for_candidate_diagnostics.v1".to_string(),
+        observation_policy: "disabled_without_tick_size.v1".to_string(),
     }
 }
 

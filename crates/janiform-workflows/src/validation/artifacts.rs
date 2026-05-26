@@ -15,6 +15,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::output::{StylizedFactsValidationCacheLevel, StylizedFactsValidationPlan};
+use super::validation_error::stylized_facts_validation_error;
+use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
 pub(super) const DERIVED_COMPARISON_REQUEST_FILE_NAME: &str = "comparison_request.json";
@@ -112,12 +114,11 @@ pub(super) fn write_cache_artifacts(
         simulation_manifests,
     )?;
 
-    let run_input = comparison_request.calibration_runs.first().ok_or(
-        WorkflowError::ValidationInputFailed {
-            field: "validate stylized-facts",
-            message: "generated comparison request must contain one validation run".to_string(),
-        },
-    )?;
+    let run_input = comparison_request.calibration_runs.first().ok_or_else(|| {
+        stylized_facts_validation_error(
+            "generated comparison request must contain one validation run",
+        )
+    })?;
 
     write_json_artifact(
         &output_dir.join(METRIC_OBSERVATIONS_FILE_NAME),
@@ -145,13 +146,7 @@ pub(super) fn write_json_artifact<T: Serialize + ?Sized>(
     path: &Path,
     value: &T,
 ) -> Result<(), WorkflowError> {
-    let payload = serde_json::to_vec_pretty(value)
-        .map_err(|source| WorkflowError::OutputSerialize { source })?;
-
-    fs::write(path, payload).map_err(|source| WorkflowError::ValidationArtifactWrite {
-        path: path.to_path_buf(),
-        source,
-    })
+    write_pretty_json_file(path, value, ArtifactWriteKind::Validation)
 }
 
 pub(super) fn cache_artifacts(
@@ -181,10 +176,7 @@ pub(super) fn cache_artifacts(
 fn map_report_generation_error(
     source: StylizedFactHorizonComparisonReportGenerationError,
 ) -> WorkflowError {
-    WorkflowError::ValidationInputFailed {
-        field: "validate stylized-facts",
-        message: source.to_string(),
-    }
+    stylized_facts_validation_error(source.to_string())
 }
 
 pub(super) fn load_typed_json_artifact<T: DeserializeOwned>(

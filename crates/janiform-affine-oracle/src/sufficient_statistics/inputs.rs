@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformNewsIntensityInput,
 };
+use janiform_foundations::time::duration_hours_to_nanos;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
@@ -18,8 +19,6 @@ use super::constants::{
     SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
 };
 use super::validation::validate_excitation_state;
-
-const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SufficientStatisticsIntervalFactorsError {
@@ -110,7 +109,7 @@ impl std::fmt::Display for SufficientStatisticsIntervalFactorsError {
             ),
             Self::InvalidIntervalDelta { value } => write!(
                 formatter,
-                "interval_factors.interval_delta must be finite and strictly positive when provided, found {value}"
+                "interval_factors.interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration when provided, found {value}"
             ),
         }
     }
@@ -269,7 +268,7 @@ impl SufficientStatisticsIntervalFactors {
         }
 
         if let Some(interval_delta) = self.interval_delta
-            && (!interval_delta.is_finite() || interval_delta <= 0.0)
+            && duration_hours_to_nanos(interval_delta).is_err()
         {
             return Err(
                 SufficientStatisticsIntervalFactorsError::InvalidIntervalDelta {
@@ -458,12 +457,10 @@ impl SufficientStatisticsModelInputs {
                 SufficientStatisticsModelInputsError::InvalidMeanReversionBoundaryState { source }
             })?;
 
-        if (self.initial_mean_reversion_boundary_state.anchor_value
-            - self
+        if self.initial_mean_reversion_boundary_state.anchor_value
+            != self
                 .mean_reversion_runtime_interval_anchors
-                .start_anchor_value)
-            .abs()
-            > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+                .start_anchor_value
         {
             return Err(
                 SufficientStatisticsModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
@@ -474,12 +471,10 @@ impl SufficientStatisticsModelInputs {
                 },
             );
         }
-        if (self.initial_mean_reversion_boundary_state.pressure_state
-            - self
+        if self.initial_mean_reversion_boundary_state.pressure_state
+            != self
                 .mean_reversion_runtime_interval_anchors
-                .start_pressure_state)
-            .abs()
-            > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+                .start_pressure_state
         {
             return Err(
                 SufficientStatisticsModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {

@@ -50,6 +50,8 @@ def run_seeded_tick_event_simulation(
         mean_reversion_runtime_interval_anchors=request.mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=request.initial_mean_reversion_boundary_state,
         hourly_factor_summary=request.hourly_factor_summary,
+        return_clock_exposure_parameters=request.return_clock_exposure_parameters,
+        observed_price_tick_size=request.observed_price_tick_size,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,
         max_records_per_chunk=request.max_records_per_chunk,
@@ -76,7 +78,7 @@ def run_seeded_tick_event_simulation(
         else:
             resolved_progress_mode = resolve_workflow_progress_mode(
                 progress_mode,
-                default_mode=WorkflowProgressMode.HUMAN,
+                default_mode=WorkflowProgressMode.TERMINAL,
             )
 
             native_run_kwargs["progress_mode"] = native_terminal_progress_mode(

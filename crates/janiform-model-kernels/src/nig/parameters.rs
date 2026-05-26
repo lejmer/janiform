@@ -39,6 +39,16 @@ pub struct NigParameters {
 }
 
 impl NigParameters {
+    /// Evaluate the first moment per unit business-time increment.
+    ///
+    /// The unit-time mean is:
+    /// `mu + delta * beta / sqrt(alpha^2 - beta^2)`.
+    pub fn mean_per_unit_time(self) -> f64 {
+        let gamma = stable_gamma(self.alpha, self.beta);
+
+        self.mu + self.delta * self.beta / gamma
+    }
+
     /// Evaluate the first moment of one business-time increment.
     ///
     /// For increment scale `a`, the mean is:
@@ -59,10 +69,7 @@ impl NigParameters {
             return Ok(0.0);
         }
 
-        let gamma = stable_gamma(self.alpha, self.beta);
-
-        let expected_increment =
-            business_time_increment_scale * (self.mu + self.delta * self.beta / gamma);
+        let expected_increment = business_time_increment_scale * self.mean_per_unit_time();
         if !expected_increment.is_finite() {
             return Err(NigIncrementSamplingError::NonFiniteIncrementDraw {
                 business_time_increment_scale,
@@ -70,6 +77,18 @@ impl NigParameters {
         }
 
         Ok(expected_increment)
+    }
+
+    /// Evaluate the first moment of the mean-compensated business-time increment.
+    ///
+    /// This is the expectation of `L_a - a * mean_per_unit_time`.
+    pub fn expected_mean_compensated_increment(
+        self,
+        business_time_increment_scale: f64,
+    ) -> Result<f64, NigIncrementSamplingError> {
+        let expected_increment = self.expected_increment(business_time_increment_scale)?;
+
+        Ok(expected_increment - business_time_increment_scale * self.mean_per_unit_time())
     }
 
     /// Evaluate the NIG characteristic exponent for a complex argument.

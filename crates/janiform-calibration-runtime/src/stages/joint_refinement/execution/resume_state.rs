@@ -7,17 +7,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+use janiform_calibration_artifacts::{
+    CalibrationStage, JointRefinementStageRuntimeProfile, calibration_stage_token,
+};
+
 use super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts;
 use super::option_refinement::{OptionRefinedCandidate, SearchTierCandidate};
 use super::state::{JointRefinementOptionPricingContext, JointRefinementOptionTierPricingInputs};
-use super::{
-    JointRefinementCoarseConsistencySummary, JointRefinementOptionTierPricingArtifact,
-    JointRefinementRestartOutcome,
-};
+use super::{JointRefinementOptionTierPricingArtifact, JointRefinementRestartOutcome};
 
 const JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION: &str =
     "janiform.joint_refinement.resume_state.v1";
-const JOINT_REFINEMENT_RESUME_STATE_FILENAME: &str = "joint-refinement.resume_state.json";
 const JOINT_REFINEMENT_OPTION_PRICING_CONTEXT_FINGERPRINT_POLICY: &str =
     "joint_refinement_option_pricing_context_sha256_canonical_tiers_and_pricing_inputs.v1";
 
@@ -31,8 +31,6 @@ pub(crate) struct PersistedRestartSelectionArtifacts {
     pub(crate) option_pricing_context_fingerprint: Option<String>,
     pub(crate) coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
-    pub(crate) selection_coarse_consistency_by_restart_id:
-        BTreeMap<String, JointRefinementCoarseConsistencySummary>,
     pub(crate) coarse_consistency_wall_clock_millis: u64,
 }
 
@@ -45,7 +43,7 @@ impl PersistedRestartSelectionArtifacts {
     ) -> bool {
         self.option_pricing_context_fingerprint.as_deref() == option_pricing_context_fingerprint
             && self.selected_restart_count >= selected_restart_count
-            && self.option_refinement_candidate_frontier_ids.len() >= selected_restart_count
+            && !self.option_refinement_candidate_frontier_ids.is_empty()
             && self
                 .option_refinement_candidate_frontier_ids
                 .iter()
@@ -130,6 +128,7 @@ pub(crate) struct PersistedSelectedOptionRefinement {
 struct JointRefinementResumeState {
     schema_version: String,
     run_id: String,
+    stage: CalibrationStage,
     stage_seed: u64,
     restart_outcomes_by_id: BTreeMap<String, JointRefinementRestartOutcome>,
     restart_selection: Option<PersistedRestartSelectionArtifacts>,
@@ -144,13 +143,16 @@ struct JointRefinementResumeState {
     #[serde(default)]
     audit_tier_pricing_artifact_by_context:
         BTreeMap<String, JointRefinementOptionTierPricingArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_profile: Option<JointRefinementStageRuntimeProfile>,
 }
 
 impl JointRefinementResumeState {
-    fn new(run_id: &str, stage_seed: u64) -> Self {
+    fn new(run_id: &str, stage: CalibrationStage, stage_seed: u64) -> Self {
         Self {
             schema_version: JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION.to_string(),
             run_id: run_id.to_string(),
+            stage,
             stage_seed,
             restart_outcomes_by_id: BTreeMap::new(),
             restart_selection: None,
@@ -158,6 +160,7 @@ impl JointRefinementResumeState {
             selection_tier_candidates_by_option_context: BTreeMap::new(),
             selected_option_refinement_by_context: BTreeMap::new(),
             audit_tier_pricing_artifact_by_context: BTreeMap::new(),
+            runtime_profile: None,
         }
     }
 }
@@ -171,23 +174,39 @@ impl JointRefinementResumeStore {
     pub(crate) fn load(
         disk_checkpoint_directory: Option<&Path>,
         run_id: &str,
+        stage: CalibrationStage,
         stage_seed: u64,
     ) -> Self {
         let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
             return Self {
                 path: None,
-                state: JointRefinementResumeState::new(run_id, stage_seed),
+                state: JointRefinementResumeState::new(run_id, stage, stage_seed),
             };
         };
 
-        let path = disk_checkpoint_directory.join(JOINT_REFINEMENT_RESUME_STATE_FILENAME);
+        let path = disk_checkpoint_directory.join(resume_state_filename(stage));
 
-        let state = load_resume_state_from_disk(path.as_path(), run_id, stage_seed)
-            .unwrap_or_else(|| JointRefinementResumeState::new(run_id, stage_seed));
+        let state = load_resume_state_from_disk(path.as_path(), run_id, stage, stage_seed)
+            .unwrap_or_else(|| JointRefinementResumeState::new(run_id, stage, stage_seed));
 
         Self {
             path: Some(path),
             state,
+        }
+    }
+
+    pub(crate) fn fresh(
+        disk_checkpoint_directory: Option<&Path>,
+        run_id: &str,
+        stage: CalibrationStage,
+        stage_seed: u64,
+    ) -> Self {
+        let path =
+            disk_checkpoint_directory.map(|directory| directory.join(resume_state_filename(stage)));
+
+        Self {
+            path,
+            state: JointRefinementResumeState::new(run_id, stage, stage_seed),
         }
     }
 
@@ -196,6 +215,14 @@ impl JointRefinementResumeStore {
         restart_id: &str,
     ) -> Option<JointRefinementRestartOutcome> {
         self.state.restart_outcomes_by_id.get(restart_id).cloned()
+    }
+
+    pub(crate) fn restart_outcomes(&self) -> Vec<JointRefinementRestartOutcome> {
+        self.state
+            .restart_outcomes_by_id
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn restart_selection(&self) -> Option<&PersistedRestartSelectionArtifacts> {
@@ -272,6 +299,14 @@ impl JointRefinementResumeStore {
         selection: PersistedRestartSelectionArtifacts,
     ) {
         self.state.restart_selection = Some(selection);
+        self.persist();
+    }
+
+    pub(crate) fn record_runtime_profile(
+        &mut self,
+        runtime_profile: JointRefinementStageRuntimeProfile,
+    ) {
+        self.state.runtime_profile = Some(runtime_profile);
         self.persist();
     }
 
@@ -486,6 +521,7 @@ fn tier_pricing_inputs_fingerprint_payload(
 fn load_resume_state_from_disk(
     path: &Path,
     run_id: &str,
+    stage: CalibrationStage,
     stage_seed: u64,
 ) -> Option<JointRefinementResumeState> {
     let raw_bytes = match fs::read(path) {
@@ -501,12 +537,20 @@ fn load_resume_state_from_disk(
 
     if resume_state.schema_version != JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION
         || resume_state.run_id != run_id
+        || resume_state.stage != stage
         || resume_state.stage_seed != stage_seed
     {
         return None;
     }
 
     Some(resume_state)
+}
+
+fn resume_state_filename(stage: CalibrationStage) -> String {
+    format!(
+        "{}.resume_state.json",
+        calibration_stage_token(stage).replace('_', "-")
+    )
 }
 
 fn persist_resume_state_to_disk(
@@ -541,9 +585,11 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use janiform_calibration_artifacts::{CalibrationStage, JointRefinementStageRuntimeProfile};
+
     use super::{
-        JOINT_REFINEMENT_RESUME_STATE_FILENAME, JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION,
-        JointRefinementResumeState, JointRefinementResumeStore, persist_resume_state_to_disk,
+        JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION, JointRefinementResumeState,
+        JointRefinementResumeStore, persist_resume_state_to_disk, resume_state_filename,
     };
 
     fn temp_directory() -> PathBuf {
@@ -559,29 +605,39 @@ mod tests {
     #[test]
     fn joint_refinement_resume_store_loads_matching_state_and_ignores_mismatches() {
         let directory = temp_directory();
-        let persisted_path = directory.join(JOINT_REFINEMENT_RESUME_STATE_FILENAME);
+        let persisted_path =
+            directory.join(resume_state_filename(CalibrationStage::JointRefinement));
 
-        let matching_state = JointRefinementResumeState::new("run-001", 17);
+        let matching_state =
+            JointRefinementResumeState::new("run-001", CalibrationStage::JointRefinement, 17);
 
         persist_resume_state_to_disk(persisted_path.as_path(), &matching_state)
             .expect("matching resume state should persist");
 
-        let loaded_store =
-            JointRefinementResumeStore::load(Some(directory.as_path()), "run-001", 17);
+        let loaded_store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::JointRefinement,
+            17,
+        );
         assert!(loaded_store.restart_selection().is_none());
 
         let mismatched_state = JointRefinementResumeState {
             schema_version: JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION.to_string(),
             run_id: "run-002".to_string(),
             stage_seed: 17,
-            ..JointRefinementResumeState::new("run-002", 17)
+            ..JointRefinementResumeState::new("run-002", CalibrationStage::JointRefinement, 17)
         };
 
         persist_resume_state_to_disk(persisted_path.as_path(), &mismatched_state)
             .expect("mismatched resume state should persist");
 
-        let ignored_store =
-            JointRefinementResumeStore::load(Some(directory.as_path()), "run-001", 17);
+        let ignored_store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::JointRefinement,
+            17,
+        );
         assert!(ignored_store.restart_selection().is_none());
         assert!(persisted_path.exists());
 
@@ -590,7 +646,68 @@ mod tests {
     }
 
     #[test]
-    fn restart_selection_resume_requires_matching_option_context_and_frontier_width() {
+    fn joint_refinement_resume_store_fresh_starts_empty_and_persists_to_stage_path() {
+        let directory = temp_directory();
+        let persisted_path =
+            directory.join(resume_state_filename(CalibrationStage::OptionRefinement));
+        let mut persisted_state =
+            JointRefinementResumeState::new("run-001", CalibrationStage::OptionRefinement, 17);
+        persisted_state.restart_selection = Some(super::PersistedRestartSelectionArtifacts {
+            best_restart_id: "stale".to_string(),
+            option_refinement_candidate_frontier_ids: vec!["stale".to_string()],
+            selected_restart_count: 1,
+            option_pricing_context_fingerprint: Some("options-a".to_string()),
+            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            coarse_consistency_wall_clock_millis: 0,
+        });
+
+        persist_resume_state_to_disk(persisted_path.as_path(), &persisted_state)
+            .expect("stale resume state should persist");
+
+        let loaded_store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::OptionRefinement,
+            17,
+        );
+        assert!(loaded_store.restart_selection().is_some());
+
+        let mut fresh_store = JointRefinementResumeStore::fresh(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::OptionRefinement,
+            17,
+        );
+        assert!(fresh_store.restart_selection().is_none());
+
+        fresh_store.record_restart_selection(super::PersistedRestartSelectionArtifacts {
+            best_restart_id: "fresh".to_string(),
+            option_refinement_candidate_frontier_ids: vec!["fresh".to_string()],
+            selected_restart_count: 1,
+            option_pricing_context_fingerprint: Some("options-a".to_string()),
+            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            coarse_consistency_wall_clock_millis: 0,
+        });
+
+        let persisted_bytes =
+            fs::read(persisted_path.as_path()).expect("fresh resume state should persist");
+        let persisted_state: JointRefinementResumeState =
+            serde_json::from_slice(persisted_bytes.as_slice())
+                .expect("fresh resume state should deserialize");
+
+        assert_eq!(
+            persisted_state
+                .restart_selection
+                .map(|selection| selection.best_restart_id),
+            Some("fresh".to_string())
+        );
+
+        let _ = fs::remove_file(persisted_path);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn restart_selection_resume_requires_matching_option_context_and_selection_width() {
         let selection = super::PersistedRestartSelectionArtifacts {
             best_restart_id: "baseline".to_string(),
             option_refinement_candidate_frontier_ids: vec![
@@ -600,7 +717,6 @@ mod tests {
             selected_restart_count: 2,
             option_pricing_context_fingerprint: Some("options-a".to_string()),
             coarse_consistency_artifacts_by_restart_id: Default::default(),
-            selection_coarse_consistency_by_restart_id: Default::default(),
             coarse_consistency_wall_clock_millis: 0,
         };
         let valid_restart_ids = ["baseline".to_string(), "halton_01".to_string()]
@@ -611,5 +727,79 @@ mod tests {
         assert!(!selection.matches_resume_context(&valid_restart_ids, 3, Some("options-a")));
         assert!(!selection.matches_resume_context(&valid_restart_ids, 2, Some("options-b")));
         assert!(!selection.matches_resume_context(&valid_restart_ids, 2, None));
+
+        let filtered_selection = super::PersistedRestartSelectionArtifacts {
+            selected_restart_count: 5,
+            ..selection
+        };
+
+        assert!(filtered_selection.matches_resume_context(
+            &valid_restart_ids,
+            5,
+            Some("options-a")
+        ));
+    }
+
+    #[test]
+    fn joint_refinement_resume_store_persists_runtime_profile() {
+        let directory = temp_directory();
+        let persisted_path =
+            directory.join(resume_state_filename(CalibrationStage::JointRefinement));
+        let mut store = JointRefinementResumeStore::load(
+            Some(directory.as_path()),
+            "run-001",
+            CalibrationStage::JointRefinement,
+            17,
+        );
+        let runtime_profile = JointRefinementStageRuntimeProfile {
+            restart_optimization_wall_clock_millis: 123,
+            coarse_consistency_wall_clock_millis: 0,
+            final_seed_evaluation_wall_clock_millis: 0,
+            final_assembly_wall_clock_millis: 0,
+            objective_cache_hit_count: 1,
+            objective_cache_miss_count: 2,
+            deterministic_cache_hit_count: 3,
+            deterministic_cache_miss_count: 4,
+            seed_summary_cache_hit_count: 5,
+            seed_summary_cache_miss_count: 6,
+            aggregated_likelihood_context_cache_hit_count: 8,
+            aggregated_likelihood_context_cache_miss_count: 9,
+            option_pricing_cache_hit_count: 0,
+            option_pricing_cache_miss_count: 0,
+            option_pricing_run_count: 0,
+            invalid_candidate_evaluation_count: 7,
+            cumulative_deterministic_evaluation_millis: 89,
+            cumulative_modeled_rate_millis: 10,
+            cumulative_likelihood_context_resolution_millis: 11,
+            cumulative_likelihood_context_5m_sample_millis: 12,
+            cumulative_likelihood_context_15m_sample_millis: 13,
+            cumulative_likelihood_context_tick_sample_millis: 14,
+            cumulative_likelihood_context_tick_optimizer_millis: 15,
+            cumulative_likelihood_context_5m_optimizer_millis: 16,
+            cumulative_likelihood_context_15m_optimizer_millis: 17,
+            cumulative_tick_likelihood_millis: 18,
+            cumulative_5m_likelihood_millis: 19,
+            cumulative_15m_likelihood_millis: 20,
+            cumulative_expected_activity_counts_millis: 21,
+            cumulative_deterministic_activity_shape_millis: 22,
+            cumulative_deterministic_activity_level_millis: 23,
+            cumulative_seed_summary_simulation_millis: 55,
+            cumulative_raw_seed_metrics_millis: 24,
+            cumulative_loss_build_millis: 25,
+            cumulative_option_pricing_millis: 0,
+        };
+
+        store.record_runtime_profile(runtime_profile.clone());
+
+        let persisted_bytes =
+            fs::read(persisted_path.as_path()).expect("runtime resume state should persist");
+        let persisted_state: JointRefinementResumeState =
+            serde_json::from_slice(persisted_bytes.as_slice())
+                .expect("runtime resume state should deserialize");
+
+        assert_eq!(persisted_state.runtime_profile, Some(runtime_profile));
+
+        let _ = fs::remove_file(persisted_path);
+        let _ = fs::remove_dir_all(directory);
     }
 }

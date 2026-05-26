@@ -11,6 +11,8 @@ use janiform::validation::stylized_facts::{
     StylizedFactSampleSufficiencyRequirements, build_stylized_fact_metric_catalog,
 };
 use janiform_cli::CliExitCode;
+use janiform_foundations::json::document::write_pretty_json_document;
+use serde::Serialize;
 
 const HOUR_DURATION_NANOS: i64 = 3_600_000_000_000;
 
@@ -85,15 +87,23 @@ fn fit_help_shows_no_persist_opt_out() {
         stdout.contains("--no-persist"),
         "missing --no-persist in fit help:\n{stdout}"
     );
+    for expected_resume_stage in ["option-refinement", "finalization"] {
+        assert!(
+            stdout.contains(expected_resume_stage),
+            "missing resume stage `{expected_resume_stage}` in fit help:\n{stdout}"
+        );
+    }
 }
 
 #[test]
-fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
+fn observed_options_reports_normal_cli_validation_errors() {
     let arguments = &[
         "price",
         "observed-options",
         "--model-path",
         "model.jf",
+        "--tick-data-path",
+        "ticks.parquet",
         "--option-surface-path",
         "options.parquet",
     ];
@@ -105,7 +115,7 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
 
     assert_eq!(
         output.status.code(),
-        Some(CliExitCode::UnimplementedCommand as i32),
+        Some(CliExitCode::CommandLineUsage as i32),
         "unexpected exit for arguments {arguments:?}: stdout=`{}` stderr=`{}`",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
@@ -651,7 +661,7 @@ fn validate_stylized_facts_json_runs_native_report() {
 }
 
 #[test]
-fn validate_stylized_facts_human_reports_incomplete_coverage() {
+fn validate_stylized_facts_terminal_reports_incomplete_coverage() {
     let workspace = temporary_run_directory("stylized-facts-coverage");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
     let metric_catalog_path = workspace.join("metric_catalog.json");
@@ -678,7 +688,7 @@ fn validate_stylized_facts_human_reports_incomplete_coverage() {
 
     assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
 
-    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     for expected in ["Coverage notes", "Not enough data", "Passed checks"] {
         assert!(
             stdout.contains(expected),
@@ -690,8 +700,8 @@ fn validate_stylized_facts_human_reports_incomplete_coverage() {
 }
 
 #[test]
-fn validate_stylized_facts_human_reports_failures_and_artifacts() {
-    let workspace = temporary_run_directory("stylized-facts-human");
+fn validate_stylized_facts_terminal_reports_failures_and_artifacts() {
+    let workspace = temporary_run_directory("stylized-facts-terminal");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
     let metric_catalog_path = workspace.join("metric_catalog.json");
     let comparison_request_path = workspace.join("comparison_request.json");
@@ -727,7 +737,7 @@ fn validate_stylized_facts_human_reports_failures_and_artifacts() {
         Some(CliExitCode::ReportFailedChecks as i32)
     );
 
-    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     for expected in [
         "Stylized-fact interval comparison",
         "Metric checks",
@@ -912,7 +922,7 @@ fn presets_list_json_filters_by_category_and_scope() {
 }
 
 #[test]
-fn presets_list_human_output_aligns_table_columns() {
+fn presets_list_terminal_output_aligns_table_columns() {
     let output = janiform_command()
         .args(["presets", "list"])
         .output()
@@ -920,7 +930,7 @@ fn presets_list_human_output_aligns_table_columns() {
 
     assert!(output.status.success());
 
-    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     assert!(stdout.contains(
         "Category        Scope     Name                 Version\nmarket-profile  built-in  btcusd_spot          2026.03"
     ));
@@ -952,7 +962,7 @@ fn presets_show_json_returns_artifact_payload() {
 }
 
 #[test]
-fn presets_show_market_profile_human_renders_named_references() {
+fn presets_show_market_profile_terminal_renders_named_references() {
     let output = janiform_command()
         .args(["presets", "show", "market-profile", "btcusd_spot"])
         .output()
@@ -960,7 +970,7 @@ fn presets_show_market_profile_human_renders_named_references() {
 
     assert!(output.status.success());
 
-    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     assert!(stdout.contains("Session       : crypto_24_7 (built-in)"));
     assert!(stdout.contains("Known news    : none (built-in)"));
 }
@@ -980,7 +990,7 @@ fn presets_show_known_news_expanded_renders_event_table() {
 
     assert!(output.status.success());
 
-    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     assert!(stdout.contains(
         "Events\n\nScheduled At               Event ID            Name                             Tags"
     ));
@@ -998,7 +1008,7 @@ fn presets_show_session_expanded_renders_window_tables() {
 
     assert!(output.status.success());
 
-    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     assert!(stdout.contains(
         "Regular Session Windows\n\nWeekday    Open   Close  Label\nMonday     00:00  24:00  spot"
     ));
@@ -1037,11 +1047,7 @@ fn presets_show_auto_scope_prefers_user_registered_presets() {
     .expect("bundled session should be JSON");
     user_session["metadata"]["display_name"] = serde_json::Value::String("Desk XNYS".to_string());
     user_session["metadata"]["provenance"]["content_hash"] = serde_json::Value::Null;
-    std::fs::write(
-        &user_preset_path,
-        serde_json::to_string_pretty(&user_session).expect("user session should serialize"),
-    )
-    .expect("user preset should be writable");
+    write_json_file(&user_preset_path, &user_session);
 
     let output = janiform_command()
         .args([
@@ -1084,22 +1090,16 @@ fn presets_show_loads_user_presets_from_registry_manifest() {
     user_session["metadata"]["display_name"] =
         serde_json::Value::String("Manifest XNYS".to_string());
     user_session["metadata"]["provenance"]["content_hash"] = serde_json::Value::Null;
-    std::fs::write(
-        &user_preset_path,
-        serde_json::to_string_pretty(&user_session).expect("user session should serialize"),
-    )
-    .expect("user preset should be writable");
+    write_json_file(&user_preset_path, &user_session);
 
     let registry_path = registry_directory.join("registry.json");
-    std::fs::write(
+    write_json_file(
         &registry_path,
-        serde_json::to_string_pretty(&serde_json::json!({
+        &serde_json::json!({
             "schema_version": "preset.user_registry.v1",
             "preset_artifact_paths": ["presets/XNYS.json"],
-        }))
-        .expect("registry manifest should serialize"),
-    )
-    .expect("registry manifest should be writable");
+        }),
+    );
 
     let output = janiform_command()
         .args([
@@ -1424,7 +1424,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
     assert_eq!(reported_fit["run_id"], payload["run_id"]);
     assert!(reported_fit["parameter_fits"]["seasonality"]["parameters"].is_object());
 
-    let human_report_output = janiform_command()
+    let terminal_report_output = janiform_command()
         .args([
             "--color",
             "never",
@@ -1438,12 +1438,12 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
         .expect("janiform report fit should execute");
 
     assert_eq!(
-        human_report_output.status.code(),
+        terminal_report_output.status.code(),
         Some(CliExitCode::Success as i32)
     );
 
-    let human_report =
-        String::from_utf8(human_report_output.stdout).expect("human output should be UTF-8");
+    let terminal_report =
+        String::from_utf8(terminal_report_output.stdout).expect("terminal output should be UTF-8");
     for expected in [
         "Fit report",
         "Fit summary",
@@ -1455,14 +1455,14 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
         "  report:",
     ] {
         assert!(
-            human_report.contains(expected),
-            "missing `{expected}` in report output:\n{human_report}"
+            terminal_report.contains(expected),
+            "missing `{expected}` in report output:\n{terminal_report}"
         );
     }
     assert_eq!(
-        human_report.matches("  model:").count(),
+        terminal_report.matches("  model:").count(),
         1,
-        "report fit should list the model artifact once:\n{human_report}"
+        "report fit should list the model artifact once:\n{terminal_report}"
     );
 
     let html_report_path = report_path.with_extension("html");
@@ -1602,7 +1602,7 @@ fn fit_plan_accepts_explicit_market_profile_preset() {
 }
 
 #[test]
-fn fit_inspect_human_separates_user_inputs_and_inference() {
+fn fit_inspect_terminal_separates_user_inputs_and_inference() {
     let workspace = temporary_run_directory("fit-inspect");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
     let tick_data_path = workspace.join("ticks.csv");
@@ -1630,7 +1630,7 @@ fn fit_inspect_human_separates_user_inputs_and_inference() {
 
     assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
 
-    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     for expected in [
         "Janiform fit inspect",
         "Explicit user inputs",
@@ -1861,7 +1861,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
     assert_eq!(payload["status"], "completed");
     assert_eq!(payload["event_count"], 2);
 
-    let human_output = janiform_command()
+    let terminal_output = janiform_command()
         .args([
             "--color",
             "never",
@@ -1875,19 +1875,19 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
         .expect("janiform command should execute");
 
     assert_eq!(
-        human_output.status.code(),
+        terminal_output.status.code(),
         Some(CliExitCode::Success as i32)
     );
 
-    let human_stdout =
-        String::from_utf8(human_output.stdout).expect("human output should be UTF-8");
-    assert!(human_stdout.contains("Run"));
-    assert!(human_stdout.contains("Artifacts"));
-    assert!(human_stdout.contains("Paths:"));
-    assert!(human_stdout.contains("  model: model.json"));
-    assert!(human_stdout.contains("  events: events.jsonl"));
-    assert!(!human_stdout.contains("Event log"));
-    assert!(!human_stdout.contains("State source"));
+    let terminal_stdout =
+        String::from_utf8(terminal_output.stdout).expect("terminal output should be UTF-8");
+    assert!(terminal_stdout.contains("Run"));
+    assert!(terminal_stdout.contains("Artifacts"));
+    assert!(terminal_stdout.contains("Paths:"));
+    assert!(terminal_stdout.contains("  model: model.json"));
+    assert!(terminal_stdout.contains("  events: events.jsonl"));
+    assert!(!terminal_stdout.contains("Event log"));
+    assert!(!terminal_stdout.contains("State source"));
 
     std::fs::remove_dir_all(run_directory).expect("temporary run directory should be removable");
 }
@@ -1982,6 +1982,8 @@ fn terminal_diagnostics_follow_color_policy() {
             "observed-options",
             "--model-path",
             "model.jf",
+            "--tick-data-path",
+            "ticks.parquet",
             "--option-surface-path",
             "options.parquet",
         ])
@@ -1990,7 +1992,7 @@ fn terminal_diagnostics_follow_color_policy() {
 
     assert_eq!(
         forced_color.status.code(),
-        Some(CliExitCode::UnimplementedCommand as i32)
+        Some(CliExitCode::CommandLineUsage as i32)
     );
     assert!(
         String::from_utf8_lossy(&forced_color.stderr).contains("\u{1b}["),
@@ -2005,6 +2007,8 @@ fn terminal_diagnostics_follow_color_policy() {
             "observed-options",
             "--model-path",
             "model.jf",
+            "--tick-data-path",
+            "ticks.parquet",
             "--option-surface-path",
             "options.parquet",
         ])
@@ -2013,7 +2017,7 @@ fn terminal_diagnostics_follow_color_policy() {
 
     assert_eq!(
         disabled_color.status.code(),
-        Some(CliExitCode::UnimplementedCommand as i32)
+        Some(CliExitCode::CommandLineUsage as i32)
     );
     assert!(
         !String::from_utf8_lossy(&disabled_color.stderr).contains("\u{1b}["),
@@ -2051,6 +2055,8 @@ fn toml_configuration_supplies_cli_boundary_defaults() {
             "observed-options",
             "--model-path",
             "model.jf",
+            "--tick-data-path",
+            "ticks.parquet",
             "--option-surface-path",
             "options.parquet",
         ])
@@ -2059,7 +2065,7 @@ fn toml_configuration_supplies_cli_boundary_defaults() {
 
     assert_eq!(
         output.status.code(),
-        Some(CliExitCode::UnimplementedCommand as i32)
+        Some(CliExitCode::CommandLineUsage as i32)
     );
     assert!(
         output.stderr.is_empty(),
@@ -2070,7 +2076,7 @@ fn toml_configuration_supplies_cli_boundary_defaults() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
-    assert_eq!(payload["code"], "unimplemented_command");
+    assert_eq!(payload["code"], "missing_input_file");
 
     std::fs::remove_file(config_path).expect("temporary CLI config should be removable");
 }
@@ -2149,11 +2155,11 @@ fn write_calendar_fixture(path: &std::path::Path) {
     .expect("calendar fixture should be writable");
 }
 
-fn write_json_file(path: &std::path::Path, payload: &serde_json::Value) {
-    let contents =
-        serde_json::to_string_pretty(payload).expect("test JSON payload should serialize");
-
-    std::fs::write(path, contents).expect("test JSON payload should be writable");
+fn write_json_file<T>(path: &std::path::Path, payload: &T)
+where
+    T: Serialize + ?Sized,
+{
+    write_pretty_json_document(path, payload).expect("test JSON payload should be writable");
 }
 
 fn write_stylized_fact_inputs(

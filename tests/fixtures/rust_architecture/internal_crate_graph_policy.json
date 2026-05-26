@@ -104,7 +104,8 @@
         "janiform-market-time",
         "janiform-engine-pricing",
         "janiform-engine-simulation",
-        "janiform-calibration-artifacts"
+        "janiform-calibration-artifacts",
+        "janiform-work-scheduler"
       ]
     },
     "janiform-joint-refinement-worker": {
@@ -183,6 +184,12 @@
         "janiform-verification"
       ]
     },
+    "janiform-work-scheduler": {
+      "status": "existing",
+      "kind": "production",
+      "layer": "shared_work_scheduling",
+      "allowed_internal_dependencies": []
+    },
     "janiform-event-log": {
       "status": "existing",
       "kind": "production",
@@ -205,6 +212,7 @@
         "janiform-engine-pricing",
         "janiform-calibration-artifacts",
         "janiform-calibration-runtime",
+        "janiform-work-scheduler",
         "janiform-event-log",
         "janiform-terminal-ui",
         "janiform"

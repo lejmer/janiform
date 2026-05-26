@@ -80,7 +80,7 @@ pub(crate) fn run_report_fit(
             write_json_payload(&report_with_parameter_fits(&report, model.as_ref()))
         }
         OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
+        OutputMode::Terminal | OutputMode::Quiet => {
             let rendered = render_fit_report(
                 &report,
                 model.as_ref(),

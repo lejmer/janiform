@@ -1,14 +1,13 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+use janiform_affine_oracle::endogenous_anchor::{
+    EndogenousAnchorIntervalFactors, derive_expected_interval_projection_from_first_moment_dynamics,
+};
 use janiform_affine_oracle::sufficient_statistics::{
-    SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsReturnComponents, SufficientStatisticsReturnComponentsError,
-    SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSamplingError,
-    SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSliceSolveError,
-    sample_interval_statistics_from_transform_slices_with_randomness_factory,
-    solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
+    SufficientStatisticsTransformSliceSamplingError,
+    sample_interval_statistics_from_expected_statistics_with_randomness_factory,
 };
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessSubstreamDomain,
@@ -17,18 +16,21 @@ use janiform_foundations::randomness::{
 use janiform_model_kernels::hawkes::{
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
 };
-use janiform_model_kernels::mean_reversion::evolve_mean_reversion_boundary_state_on_interval_grid;
 use janiform_model_kernels::news::{
     NewsArrivalComponent, NewsMarkInterfaceError, NewsProcessConfigurationError,
     SharedNewsAccumulatorState, SharedNewsEventDispatchError, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
+};
+use janiform_model_kernels::return_clock::{
+    EffectiveReturnClocksBuildError, IntegratedSideActivityDecomposition,
+    compute_effective_return_clocks,
 };
 use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
 use super::coarse::{CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord};
 use super::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_progress_event};
 use super::runtime::{
-    SeededSimulationMarketStateResolver, build_interval_open_market_segments,
+    SeededObservedState, SeededSimulationMarketStateResolver, build_interval_open_market_segments,
     build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,
     integrate_open_market_elapsed_hours, sample_count_from_expectation,
     sample_interval_timestamp_utc_nanos,
@@ -36,8 +38,6 @@ use super::runtime::{
 use super::{CoarseSimulationRunRequest, CoarseSimulationRunRequestError};
 
 const KNOWN_NEWS_INTENSITY_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
-const TARGET_TRANSFORM_PROBE_SHIFT: f64 = 0.02;
-const MIN_TRANSFORM_PROBE_DISTANCE: f64 = 1.0e-8;
 
 /// Run deterministic coarse-interval simulation using the default splitmix64 randomness policy.
 pub fn run_coarse_simulation(
@@ -52,6 +52,7 @@ pub fn run_coarse_simulation_with_observer(
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<CoarseSimulationPath, CoarseSimulationRunError> {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
+
     run_coarse_simulation_with_randomness_factory_and_observer(
         run_request,
         &randomness_factory,
@@ -122,6 +123,18 @@ where
             },
         )?;
 
+    let expected_news_severity_mark = model_inputs
+        .sufficient_statistics_model_inputs
+        .equation_specification
+        .gamma_severity_mark_configuration
+        .expected_severity_mark()
+        .map_err(
+            |source| CoarseSimulationRunError::EndogenousFirstMomentProjectionFailure {
+                interval_index: 0,
+                message: source.to_string(),
+            },
+        )?;
+
     let interval_delta_nanos = run_request.interval_delta_nanos().map_err(|source| {
         CoarseSimulationRunError::InvalidIntervalDelta {
             source: Box::new(source),
@@ -132,10 +145,11 @@ where
         .sufficient_statistics_model_inputs
         .initial_excitation_state;
 
-    let mut observed_boundary_state = model_inputs
-        .sufficient_statistics_model_inputs
-        .initial_mean_reversion_boundary_state
-        .clone();
+    let mut observed_state = SeededObservedState::from_boundary_state(
+        &model_inputs
+            .sufficient_statistics_model_inputs
+            .initial_mean_reversion_boundary_state,
+    );
 
     let mut next_known_news_timestamp_position = 0usize;
 
@@ -199,39 +213,35 @@ where
         let interval_start_utc_nanos = interval_start_utc_nanos[interval_index];
         let interval_end_utc_nanos = interval_end_utc_nanos[interval_index];
 
-        let interval_settings = adaptive_transform_slice_settings(
-            kernel_parameters.lambda_bar,
+        let endogenous_interval_factors = EndogenousAnchorIntervalFactors::try_new(
             run_request.interval_factors.s_h[interval_index],
+            0.0,
+            0.0,
             run_request.interval_delta,
-        );
-
-        let current_statistics_context = SufficientStatisticsTransformSliceContext::try_new(
-            interval_index,
-            run_request.interval_factors.s_h[interval_index],
-            endogenous_statistics_news_intensity_input(),
-            run_request.interval_delta,
-            terminal_state,
         )
-        .map_err(
-            |source| CoarseSimulationRunError::InvalidTransformSliceContext {
+        .map_err(|source| {
+            CoarseSimulationRunError::EndogenousFirstMomentProjectionFailure {
                 interval_index,
-                source: Box::new(source),
-            },
-        )?;
+                message: source.to_string(),
+            }
+        })?;
 
-        let solved_transform_slices = solve_sufficient_statistics_transform_slices(
-            model_inputs
-                .sufficient_statistics_model_inputs
-                .equation_specification,
-            current_statistics_context,
-            interval_settings,
-        )
-        .map_err(
-            |source| CoarseSimulationRunError::TransformSliceSolveFailure {
+        let first_moment_projection =
+            derive_expected_interval_projection_from_first_moment_dynamics(
                 interval_index,
-                source: Box::new(source),
-            },
-        )?;
+                model_inputs
+                    .sufficient_statistics_model_inputs
+                    .equation_specification,
+                expected_news_severity_mark,
+                endogenous_interval_factors,
+                terminal_state,
+            )
+            .map_err(|source| {
+                CoarseSimulationRunError::EndogenousFirstMomentProjectionFailure {
+                    interval_index,
+                    message: source.to_string(),
+                }
+            })?;
 
         let interval_statistics_seed =
             janiform_foundations::randomness::derive_simulation_substream_seed(
@@ -241,9 +251,10 @@ where
             );
 
         let sampled_statistics =
-            sample_interval_statistics_from_transform_slices_with_randomness_factory(
+            sample_interval_statistics_from_expected_statistics_with_randomness_factory(
                 interval_statistics_seed,
-                solved_transform_slices,
+                interval_index,
+                first_moment_projection.expected_statistics,
                 randomness_factory,
             )
             .map_err(|source| {
@@ -298,9 +309,27 @@ where
             interval_index as u64,
         );
 
+        let effective_return_clocks = compute_effective_return_clocks(
+            model_inputs.return_clock_exposure_parameters,
+            IntegratedSideActivityDecomposition::new(
+                sampled_statistics.baseline_a_plus,
+                sampled_statistics.endogenous_a_plus,
+            ),
+            IntegratedSideActivityDecomposition::new(
+                sampled_statistics.baseline_a_minus,
+                sampled_statistics.endogenous_a_minus,
+            ),
+        )
+        .map_err(
+            |source| CoarseSimulationRunError::EffectiveReturnClockBuildFailure {
+                interval_index,
+                source: Box::new(source),
+            },
+        )?;
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-            a_plus: sampled_statistics.a_plus,
-            a_minus: sampled_statistics.a_minus,
+            a_plus: effective_return_clocks.buy_return_clock,
+            a_minus: effective_return_clocks.sell_return_clock,
             open_jump: interval_direct_jump_totals.open_jump_return,
             closed_gap: interval_direct_jump_totals.closed_gap_return,
         })
@@ -322,16 +351,42 @@ where
 
         let buy_side_return = trading_time_contributions.buy_side_increment;
         let sell_side_return = -trading_time_contributions.sell_side_increment;
+
         let trading_time_return = trading_time_contributions.combined_increment;
 
-        let total_return = trading_time_return
+        let raw_total_return = trading_time_return
             + interval_direct_jump_totals.open_jump_return
             + interval_direct_jump_totals.closed_gap_return;
+
+        let previous_observed_log_price = observed_state.observed_log_price;
+
+        let elapsed_open_hours = integrate_open_market_elapsed_hours(
+            interval_open_market_segments[interval_index].as_slice(),
+            interval_start_utc_nanos,
+            interval_end_utc_nanos,
+        );
+
+        let projected_core_increment = observed_state
+            .project_core_increment(
+                mean_reversion_kappa,
+                elapsed_open_hours,
+                raw_total_return,
+                model_inputs.observed_price_tick_size,
+                interval_index,
+            )
+            .map_err(
+                |source| CoarseSimulationRunError::TickGridProjectionFailure {
+                    interval_index,
+                    source: Box::new(source),
+                },
+            )?;
+
+        let total_return = projected_core_increment.observed_core_increment;
 
         let return_components = SufficientStatisticsReturnComponents::try_new(
             buy_side_return,
             sell_side_return,
-            trading_time_return,
+            trading_time_return + total_return - raw_total_return,
             interval_direct_jump_totals.open_jump_return,
             interval_direct_jump_totals.closed_gap_return,
             total_return,
@@ -341,16 +396,13 @@ where
             source: Box::new(source),
         })?;
 
-        let updated_observed_boundary_state =
-            evolve_mean_reversion_boundary_state_on_interval_grid(
-                observed_boundary_state.clone(),
+        let updated_observed_state = observed_state
+            .apply_projected_core_increment(
                 mean_reversion_kappa,
-                integrate_open_market_elapsed_hours(
-                    interval_open_market_segments[interval_index].as_slice(),
-                    interval_start_utc_nanos,
-                    interval_end_utc_nanos,
-                ),
-                total_return,
+                elapsed_open_hours,
+                projected_core_increment,
+            )
+            .apply_anchor_reset(
                 model_inputs
                     .sufficient_statistics_model_inputs
                     .mean_reversion_runtime_interval_anchors
@@ -359,16 +411,10 @@ where
                     .sufficient_statistics_model_inputs
                     .mean_reversion_runtime_interval_anchors
                     .end_pressure_states[interval_index],
-            )
-            .map_err(|source| {
-                CoarseSimulationRunError::MeanReversionBoundaryStateUpdateFailure {
-                    interval_index,
-                    source: Box::new(source),
-                }
-            })?;
+            );
 
-        let observed_interval_return = updated_observed_boundary_state.observed_log_price
-            - observed_boundary_state.observed_log_price;
+        let observed_interval_return =
+            updated_observed_state.observed_log_price - previous_observed_log_price;
 
         let path_record = CoarseSimulationPathRecord::try_new(
             interval_index,
@@ -378,10 +424,10 @@ where
             return_components,
             total_return,
             observed_interval_return,
-            updated_observed_boundary_state.observed_log_price,
-            updated_observed_boundary_state.anchor_value,
-            updated_observed_boundary_state.pressure_state,
-            updated_observed_boundary_state.deviation,
+            updated_observed_state.observed_log_price,
+            updated_observed_state.anchor_value,
+            updated_observed_state.pressure_state,
+            updated_observed_state.deviation_from_anchor,
         )
         .map_err(|source| CoarseSimulationRunError::InvalidPathRecord {
             interval_index,
@@ -390,28 +436,10 @@ where
 
         records.push(path_record);
 
-        observed_boundary_state = updated_observed_boundary_state;
-
-        let boundary_update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
-            interval_index,
-            run_request.interval_delta,
-            terminal_state,
-            sampled_statistics,
-        );
-
-        let state_after_count_update = update_boundary_state_from_interval_statistics(
-            kernel_parameters,
-            boundary_update_snapshot,
-        )
-        .map_err(
-            |source| CoarseSimulationRunError::BoundaryStateUpdateFailure {
-                interval_index,
-                source: Box::new(source),
-            },
-        )?;
+        observed_state = updated_observed_state;
 
         terminal_state = apply_interval_news_activity_coupling_at_boundary(
-            state_after_count_update,
+            first_moment_projection.structural_state_after,
             kernel_parameters,
             interval_index,
             interval_direct_jump_totals.activity_coupling_j_t_increment,
@@ -460,15 +488,9 @@ pub enum CoarseSimulationRunError {
     IntervalBoundaryOverflow {
         interval_index: usize,
     },
-    InvalidTransformSliceContext {
+    EndogenousFirstMomentProjectionFailure {
         interval_index: usize,
-        source: Box<
-            janiform_affine_oracle::sufficient_statistics::SufficientStatisticsTransformSliceContextError,
-        >,
-    },
-    TransformSliceSolveFailure {
-        interval_index: usize,
-        source: Box<SufficientStatisticsTransformSliceSolveError>,
+        message: String,
     },
     TransformSliceSamplingFailure {
         interval_index: usize,
@@ -493,11 +515,20 @@ pub enum CoarseSimulationRunError {
     },
     InvalidReturnDecomposition {
         interval_index: usize,
-        source: Box<janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError>,
+        source:
+            Box<janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError>,
     },
     TradingTimeSamplingFailure {
         interval_index: usize,
         source: Box<janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError>,
+    },
+    EffectiveReturnClockBuildFailure {
+        interval_index: usize,
+        source: Box<EffectiveReturnClocksBuildError>,
+    },
+    TickGridProjectionFailure {
+        interval_index: usize,
+        source: Box<super::error::SeededTickSimulationRunError>,
     },
     InvalidReturnComponents {
         interval_index: usize,
@@ -507,16 +538,8 @@ pub enum CoarseSimulationRunError {
         interval_index: usize,
         source: Box<super::coarse::CoarseSimulationPathRecordError>,
     },
-    MeanReversionBoundaryStateUpdateFailure {
-        interval_index: usize,
-        source: Box<janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateEvolutionError>,
-    },
     OpenMarketExposureResolutionFailure {
         source: Box<super::error::SeededTickSimulationRunError>,
-    },
-    BoundaryStateUpdateFailure {
-        interval_index: usize,
-        source: Box<SufficientStatisticsBoundaryStateUpdateError>,
     },
     NewsBoundaryStateUpdateFailure {
         interval_index: usize,
@@ -554,19 +577,12 @@ impl Display for CoarseSimulationRunError {
                     "interval {interval_index} boundary timestamps overflowed i64"
                 )
             }
-            Self::InvalidTransformSliceContext {
+            Self::EndogenousFirstMomentProjectionFailure {
                 interval_index,
-                source,
+                message,
             } => write!(
                 formatter,
-                "interval {interval_index} transform-slice context is invalid: {source}"
-            ),
-            Self::TransformSliceSolveFailure {
-                interval_index,
-                source,
-            } => write!(
-                formatter,
-                "interval {interval_index} transform-slice solve failed: {source}"
+                "interval {interval_index} endogenous first-moment projection failed: {message}"
             ),
             Self::TransformSliceSamplingFailure {
                 interval_index,
@@ -618,6 +634,20 @@ impl Display for CoarseSimulationRunError {
                 formatter,
                 "interval {interval_index} trading-time increment sampling failed: {source}"
             ),
+            Self::EffectiveReturnClockBuildFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} effective return-clock construction failed: {source}"
+            ),
+            Self::TickGridProjectionFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} tick-grid observation projection failed: {source}"
+            ),
             Self::InvalidReturnComponents {
                 interval_index,
                 source,
@@ -632,23 +662,9 @@ impl Display for CoarseSimulationRunError {
                 formatter,
                 "interval {interval_index} path record is invalid: {source}"
             ),
-            Self::MeanReversionBoundaryStateUpdateFailure {
-                interval_index,
-                source,
-            } => write!(
-                formatter,
-                "interval {interval_index} mean-reversion observed-state update failed: {source}"
-            ),
             Self::OpenMarketExposureResolutionFailure { source } => write!(
                 formatter,
                 "failed to resolve coarse open-market exposure: {source}"
-            ),
-            Self::BoundaryStateUpdateFailure {
-                interval_index,
-                source,
-            } => write!(
-                formatter,
-                "interval {interval_index} boundary count-mapped state update failed: {source}"
             ),
             Self::NewsBoundaryStateUpdateFailure {
                 interval_index,
@@ -674,22 +690,21 @@ impl Error for CoarseSimulationRunError {
             Self::CalendarRegistryLoadFailure { source } => Some(source.as_ref()),
             Self::InvalidNigDriverConfiguration { source } => Some(source.as_ref()),
             Self::InvalidIntervalDelta { source } => Some(source.as_ref()),
-            Self::InvalidTransformSliceContext { source, .. } => Some(source.as_ref()),
-            Self::TransformSliceSolveFailure { source, .. } => Some(source.as_ref()),
             Self::TransformSliceSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::NewsProcessConfigurationFailure { source, .. } => Some(source.as_ref()),
             Self::NewsMarkSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
             Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
+            Self::EffectiveReturnClockBuildFailure { source, .. } => Some(source.as_ref()),
+            Self::TickGridProjectionFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
             Self::InvalidPathRecord { source, .. } => Some(source.as_ref()),
-            Self::MeanReversionBoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
             Self::OpenMarketExposureResolutionFailure { source } => Some(source.as_ref()),
-            Self::BoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
             Self::NewsBoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidPathArtifact { source } => Some(source.as_ref()),
             Self::IntervalBoundaryOverflow { .. }
+            | Self::EndogenousFirstMomentProjectionFailure { .. }
             | Self::KnownNewsFactorAlignmentFailure { .. } => None,
         }
     }
@@ -874,39 +889,9 @@ fn validate_known_news_factor_alignment(
     Ok(())
 }
 
-fn adaptive_transform_slice_settings(
-    lambda_bar: f64,
-    seasonality_factor: f64,
-    interval_delta: f64,
-) -> SufficientStatisticsTransformSliceSettings {
-    let expected_side_scale = (lambda_bar * seasonality_factor.max(0.0) * interval_delta).max(1.0);
-
-    let probe_distance = (TARGET_TRANSFORM_PROBE_SHIFT / expected_side_scale).clamp(
-        MIN_TRANSFORM_PROBE_DISTANCE,
-        SufficientStatisticsTransformSliceSettings::default().a_plus_u,
-    );
-
-    SufficientStatisticsTransformSliceSettings {
-        a_plus_u: probe_distance,
-        a_minus_u: probe_distance,
-        n_plus_z: 1.0 - probe_distance,
-        n_minus_z: 1.0 - probe_distance,
-    }
-}
-
-fn endogenous_statistics_news_intensity_input() -> ExponentialAffineTransformNewsIntensityInput {
-    // Coarse runtime samples exogenous news explicitly for direct jumps and boundary excitation.
-    // Keep the transform-slice statistics endogenous-only so the same news process is not
-    // absorbed once in the affine counts and again in the explicit event sampler.
-    ExponentialAffineTransformNewsIntensityInput::zero()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        adaptive_transform_slice_settings, endogenous_statistics_news_intensity_input,
-        run_coarse_simulation,
-    };
+    use super::run_coarse_simulation;
     use crate::coarse::{CoarseSimulationModelInputs, CoarseSimulationRunRequest};
     use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use janiform_affine_oracle::sufficient_statistics::{
@@ -930,39 +915,6 @@ mod tests {
         SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
     };
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-
-    #[test]
-    fn adaptive_transform_slice_settings_stay_linear_for_high_intensity_regimes() {
-        let expected_side_scale = 2_500.0;
-        let settings = adaptive_transform_slice_settings(2_500.0, 1.0, 1.0);
-
-        let recovered_integrated_intensity =
-            (1.0 - (-settings.a_plus_u * expected_side_scale).exp()) / settings.a_plus_u;
-        let recovered_count = (((settings.n_plus_z - 1.0) * expected_side_scale).exp() - 1.0)
-            / (settings.n_plus_z - 1.0);
-
-        let integrated_intensity_relative_error =
-            (recovered_integrated_intensity - expected_side_scale).abs() / expected_side_scale;
-        let count_relative_error =
-            (recovered_count - expected_side_scale).abs() / expected_side_scale;
-
-        assert!(
-            integrated_intensity_relative_error < 0.02,
-            "adaptive A probe should stay near the linear regime, relative_error={integrated_intensity_relative_error}"
-        );
-        assert!(
-            count_relative_error < 0.02,
-            "adaptive count probe should stay near the linear regime, relative_error={count_relative_error}"
-        );
-    }
-
-    #[test]
-    fn endogenous_statistics_news_intensity_input_is_zeroed() {
-        let input = endogenous_statistics_news_intensity_input();
-
-        assert_eq!(input.known_nu_h, 0.0);
-        assert_eq!(input.surprise_nu_h, 0.0);
-    }
 
     #[test]
     fn coarse_simulation_does_not_decay_mean_reversion_during_closed_interval() {
@@ -1044,6 +996,8 @@ mod tests {
                 },
             )
             .expect("news process configuration should construct"),
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            None,
             ExchangeCalendarRegistryArtifact {
                 schema_version: "calendar.registry.v1".to_string(),
                 artifact_date: "2024-01-02".to_string(),

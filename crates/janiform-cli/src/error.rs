@@ -145,7 +145,10 @@ pub enum CliError {
 
     #[error("fit execution failed: {message}")]
     #[diagnostic(code(janiform_cli::fit_execution_failed))]
-    FitExecutionFailed { message: String },
+    FitExecutionFailed {
+        message: String,
+        workflow_summary_rendered: bool,
+    },
 
     #[error("failed to write fit artifact `{}`", path.display())]
     #[diagnostic(code(janiform_cli::fit_artifact_write))]
@@ -275,10 +278,6 @@ pub enum CliError {
 }
 
 impl CliError {
-    pub(crate) fn unimplemented(command_path: &'static str) -> Self {
-        Self::UnimplementedCommand { command_path }
-    }
-
     pub fn exit_code(&self) -> CliExitCode {
         match self {
             Self::ArgumentParse { .. } => CliExitCode::CommandLineUsage,
@@ -350,6 +349,16 @@ impl CliError {
             Self::RunInspectionFailed { .. } => "run_inspection_failed",
         }
     }
+
+    pub(crate) const fn terminal_error_block_is_redundant(&self) -> bool {
+        matches!(
+            self,
+            Self::FitExecutionFailed {
+                workflow_summary_rendered: true,
+                ..
+            }
+        )
+    }
 }
 
 impl From<janiform_workflows::error::WorkflowError> for CliError {
@@ -363,7 +372,10 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
             janiform_workflows::error::WorkflowError::CalendarRegistryLoadFailed { message }
             | janiform_workflows::error::WorkflowError::FitExecutionFailed { message }
             | janiform_workflows::error::WorkflowError::OutputPayloadInvalid { message } => {
-                Self::FitExecutionFailed { message }
+                Self::FitExecutionFailed {
+                    message,
+                    workflow_summary_rendered: false,
+                }
             }
             janiform_workflows::error::WorkflowError::FitValidationFailed { field, message } => {
                 Self::InvalidCommandArgument {
@@ -471,5 +483,30 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CliError;
+
+    #[test]
+    fn fit_execution_error_suppresses_redundant_terminal_block_after_workflow_summary() {
+        let error = CliError::FitExecutionFailed {
+            message: "fit failed".to_string(),
+            workflow_summary_rendered: true,
+        };
+
+        assert!(error.terminal_error_block_is_redundant());
+    }
+
+    #[test]
+    fn fit_execution_error_keeps_terminal_block_without_workflow_summary() {
+        let error = CliError::FitExecutionFailed {
+            message: "fit failed".to_string(),
+            workflow_summary_rendered: false,
+        };
+
+        assert!(!error.terminal_error_block_is_redundant());
     }
 }

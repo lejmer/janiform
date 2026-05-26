@@ -587,6 +587,8 @@ fn build_coarse_model_inputs(
     CoarseSimulationModelInputs::try_new(
         build_sufficient_statistics_model_inputs(interval_count, interval_delta),
         build_news_process_configuration(known_news_timestamps_utc_nanos),
+        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        None,
         build_calendar_registry_artifact(),
         "XNYS",
     )
@@ -610,6 +612,9 @@ fn build_seeded_model_inputs(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
         hourly_factor_contract,
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        observed_price_tick_size: None,
         calendar_registry: ExchangeCalendarRegistry::from_artifact(
             build_calendar_registry_artifact(),
         )

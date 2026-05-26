@@ -418,14 +418,22 @@ fn buy_and_sell_sign_convention_helpers_match_equation_mapping() {
     let observed_buy_side = driver_parameters.buy_side_characteristic_exponent(argument);
     let expected_buy_side = driver_parameters
         .buy_side_parameters
-        .characteristic_exponent(argument);
+        .characteristic_exponent(argument)
+        .plus(buy_side_mean_compensation_correction(
+            argument,
+            driver_parameters.buy_side_parameters.mean_per_unit_time(),
+        ));
     assert_complex_close(observed_buy_side, expected_buy_side, 1.0e-13);
 
     let observed_sell_side =
         driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
     let expected_sell_side = driver_parameters
         .sell_side_parameters
-        .characteristic_exponent(argument.scale(-1.0));
+        .characteristic_exponent(argument.scale(-1.0))
+        .plus(sell_side_mean_compensation_correction(
+            argument,
+            driver_parameters.sell_side_parameters.mean_per_unit_time(),
+        ));
     assert_complex_close(observed_sell_side, expected_sell_side, 1.0e-13);
 }
 
@@ -448,10 +456,18 @@ fn trading_time_weighted_exponent_composition_matches_manual_assembly() {
     let expected_buy_side = driver_parameters
         .buy_side_parameters
         .characteristic_exponent(argument)
+        .plus(buy_side_mean_compensation_correction(
+            argument,
+            driver_parameters.buy_side_parameters.mean_per_unit_time(),
+        ))
         .scale(integrated_buy_intensity);
     let expected_sell_side = driver_parameters
         .sell_side_parameters
         .characteristic_exponent(argument.scale(-1.0))
+        .plus(sell_side_mean_compensation_correction(
+            argument,
+            driver_parameters.sell_side_parameters.mean_per_unit_time(),
+        ))
         .scale(integrated_sell_intensity);
     let expected_combined = expected_buy_side.plus(expected_sell_side);
 
@@ -498,11 +514,13 @@ fn trading_time_increment_sampling_composition_matches_manual_buy_minus_sell() {
     let expected_buy_increment = driver_parameters
         .buy_side_parameters
         .sample_increment(integrated_buy_intensity, &mut manual_buy_stream)
-        .expect("buy-side manual sampling should succeed");
+        .expect("buy-side manual sampling should succeed")
+        - integrated_buy_intensity * driver_parameters.buy_side_parameters.mean_per_unit_time();
     let expected_sell_increment = driver_parameters
         .sell_side_parameters
         .sample_increment(integrated_sell_intensity, &mut manual_buy_stream)
-        .expect("sell-side manual sampling should succeed");
+        .expect("sell-side manual sampling should succeed")
+        - integrated_sell_intensity * driver_parameters.sell_side_parameters.mean_per_unit_time();
     let expected_combined_increment = expected_buy_increment - expected_sell_increment;
 
     assert_float_close(
@@ -524,6 +542,66 @@ fn trading_time_increment_sampling_composition_matches_manual_buy_minus_sell() {
         sampled_contributions.policy,
         NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY
     );
+}
+
+#[test]
+fn trading_time_compensated_combined_first_moment_is_zero_for_arbitrary_activity() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(3.1, -1.2, 0.45, 0.08, -0.35)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let observed_first_moment = driver_parameters
+        .differentiate_return_composition_log_moment(17.5, 43.25, 0.0)
+        .expect("compensated first moment should evaluate");
+
+    assert_float_close(observed_first_moment, 0.0, 1.0e-13);
+}
+
+#[test]
+fn trading_time_compensated_characteristic_exponent_has_zero_derivative_at_origin() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(3.1, -1.2, 0.45, 0.08, -0.35)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let argument_step = 1.0e-4;
+    let forward_exponent = driver_parameters
+        .compose_trading_time_weighted_characteristic_exponent(
+            ComplexScalar::new(argument_step, 0.0),
+            17.5,
+            43.25,
+        )
+        .combined_weighted_exponent;
+    let backward_exponent = driver_parameters
+        .compose_trading_time_weighted_characteristic_exponent(
+            ComplexScalar::new(-argument_step, 0.0),
+            17.5,
+            43.25,
+        )
+        .combined_weighted_exponent;
+    let derivative = forward_exponent
+        .subtract(backward_exponent)
+        .scale(1.0 / (2.0 * argument_step));
+
+    assert_complex_close(derivative, ComplexScalar::new(0.0, 0.0), 1.0e-7);
+}
+
+#[test]
+fn high_activity_negative_raw_side_means_do_not_create_trading_time_drift() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(5.0, -2.0, 0.8, 0.0, -1.0)
+        .expect("valid negative-mean shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid negative-mean payload should derive drivers");
+
+    assert!(driver_parameters.buy_side_parameters.mean_per_unit_time() < 0.0);
+    assert!(driver_parameters.sell_side_parameters.mean_per_unit_time() < 0.0);
+
+    let observed_first_moment = driver_parameters
+        .differentiate_return_composition_log_moment(12_000.0, 9_500.0, 0.0)
+        .expect("high-activity compensated first moment should evaluate");
+
+    assert_float_close(observed_first_moment, 0.0, 1.0e-10);
 }
 
 #[test]
@@ -731,12 +809,44 @@ fn expected_increment_matches_closed_form_first_moment() {
     assert_float_close(observed_mean, expected_mean, 1.0e-12);
 }
 
+#[test]
+fn expected_mean_compensated_increment_is_zero_for_valid_business_time_scale() {
+    let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+        .expect("interior NIG parameters should construct");
+
+    let observed_mean = parameters
+        .expected_mean_compensated_increment(0.75)
+        .expect("mean-compensated first moment should evaluate");
+
+    assert_float_close(observed_mean, 0.0, 1.0e-12);
+}
+
 fn assert_complex_close(observed: ComplexScalar, expected: ComplexScalar, tolerance: f64) {
     let difference = observed.subtract(expected).norm();
     assert!(
         difference <= tolerance,
         "difference {difference} exceeded tolerance {tolerance} for observed {observed} and expected {expected}"
     );
+}
+
+fn buy_side_mean_compensation_correction(
+    argument: ComplexScalar,
+    mean_per_unit_time: f64,
+) -> ComplexScalar {
+    ComplexScalar::new(
+        argument.imaginary * mean_per_unit_time,
+        -argument.real * mean_per_unit_time,
+    )
+}
+
+fn sell_side_mean_compensation_correction(
+    argument: ComplexScalar,
+    mean_per_unit_time: f64,
+) -> ComplexScalar {
+    ComplexScalar::new(
+        -argument.imaginary * mean_per_unit_time,
+        argument.real * mean_per_unit_time,
+    )
 }
 
 fn assert_float_close(observed: f64, expected: f64, tolerance: f64) {

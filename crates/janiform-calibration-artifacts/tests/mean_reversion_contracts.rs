@@ -29,7 +29,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
         serde_json::json!({
             "reference_interval_hours": 24.0,
             "pressure_persistence_per_reference_interval": 0.5,
-            "pressure_level_gain": 1.25,
+            "pressure_level_gain": 0.75,
         })
     );
 

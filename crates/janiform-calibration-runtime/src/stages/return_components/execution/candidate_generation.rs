@@ -707,6 +707,11 @@ fn enumerate_candidate_inputs(
                     candidate_families,
                     candidate_provenance: candidate_provenance_template.clone(),
                     dominant_scale_driver,
+                    return_clock_exposure_parameters: candidate_generation_input
+                        .return_clock_exposure_parameters,
+                    tick_grid_observation_model: candidate_generation_input
+                        .tick_grid_observation_model
+                        .clone(),
                 };
 
                 send_return_components_progress(

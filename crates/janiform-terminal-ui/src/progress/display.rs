@@ -7,6 +7,9 @@ use super::ProgressStageStatus;
 
 const PROGRESS_BAR_WIDTH: usize = 14;
 const WORK_ITEM_COMPLETED_STATUS: &str = "completed";
+const WORK_ITEM_PAUSED_STATUS: &str = "paused";
+const WORK_ITEM_QUEUED_STATUS: &str = "queued";
+const WORK_ITEM_REJECTED_STATUS: &str = "rejected";
 const WORK_ITEM_RUNNING_STATUS: &str = "running";
 const WORK_ITEM_WAITING_STATUS: &str = "waiting";
 
@@ -15,6 +18,7 @@ pub(super) fn stage_status_marker(status: ProgressStageStatus) -> &'static str {
         ProgressStageStatus::Pending => " ",
         ProgressStageStatus::Running => "→",
         ProgressStageStatus::Completed => "✓",
+        ProgressStageStatus::CompletedWithWarnings => "!",
         ProgressStageStatus::Failed => "✗",
     }
 }
@@ -24,6 +28,7 @@ pub(super) fn stage_status_text(status: ProgressStageStatus) -> &'static str {
         ProgressStageStatus::Pending => "waiting",
         ProgressStageStatus::Running => "running",
         ProgressStageStatus::Completed => "completed",
+        ProgressStageStatus::CompletedWithWarnings => "completed with warnings",
         ProgressStageStatus::Failed => "failed",
     }
 }
@@ -45,10 +50,13 @@ pub(super) fn work_item_status_is_completed(status: &str) -> bool {
 
 pub(super) fn work_item_status_sort_rank(status: &str) -> usize {
     match status {
-        WORK_ITEM_RUNNING_STATUS => 0,
-        WORK_ITEM_WAITING_STATUS => 1,
-        WORK_ITEM_COMPLETED_STATUS => 2,
-        _ => 3,
+        status if status == WORK_ITEM_RUNNING_STATUS => 0,
+        status if status == WORK_ITEM_QUEUED_STATUS => 1,
+        status if status == WORK_ITEM_PAUSED_STATUS => 2,
+        status if status == WORK_ITEM_WAITING_STATUS => 3,
+        status if status == WORK_ITEM_REJECTED_STATUS => 4,
+        status if status == WORK_ITEM_COMPLETED_STATUS => 5,
+        _ => 6,
     }
 }
 
@@ -62,6 +70,7 @@ pub(super) fn progress_measure_label(measure: ProgressMeasure) -> String {
             progress_percent(completed_units, total_units),
             progress_bar_label(completed_units, total_units)
         ),
+        ProgressMeasure::Percent { percent } => progress_percent_label(percent),
         ProgressMeasure::Unbounded => "-".to_string(),
     }
 }

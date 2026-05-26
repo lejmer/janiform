@@ -1,6 +1,5 @@
-use std::fs;
-use std::io::BufWriter;
-use std::io::Write;
+mod payloads;
+
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -10,20 +9,24 @@ use janiform_calibration_artifacts::{
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationStage, CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
+    calibration_stage_parameter_artifact_load_error_message,
     calibration_stage_parameter_artifact_path, load_calibration_stage_parameter_artifact_from_disk,
 };
 use janiform_calibration_runtime::{
-    CalibrationStageExecutionStatus, CalibrationStagedExecutionInput, CalibrationStagedRunReport,
-    CalibrationStagedRunStageReport,
+    CalibrationStagedExecutionInput, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
 };
 use serde::Serialize;
 use serde_json::Map;
 use serde_json::Value;
 use serde_json::json;
 
+use crate::artifact_io::{
+    ArtifactWriteKind, write_pretty_json_file as write_workflow_pretty_json_file,
+};
 use crate::error::WorkflowError;
 
 use super::scope::{WorkflowScopeId, workflow_scope_id};
+use payloads::{seasonality_parameter_payload, stage_report_payloads};
 
 const FIT_REPORT_SCHEMA_VERSION: &str = "janiform.fit_report.v1";
 const MODEL_PERSISTENCE_SCHEMA_VERSION: &str = "calibration.high_level.model.v1";
@@ -59,11 +62,11 @@ pub fn build_fit_report_payload(
         "schema_version": FIT_REPORT_SCHEMA_VERSION,
         "run_id": execution_input.request.run_id,
         "workflow_scope": workflow_scope_id.as_str(),
-        "success": report.status == CalibrationStageExecutionStatus::Success,
+        "success": report.status.is_successful(),
         "summary": {
             "run_id": execution_input.request.run_id,
             "workflow_scope": workflow_scope_id.as_str(),
-            "success": report.status == CalibrationStageExecutionStatus::Success,
+            "success": report.status.is_successful(),
             "selected_stages": execution_input.request.selected_stages,
             "stage_statuses": stage_statuses(report),
             "diagnostic_count": report.diagnostic_artifact_references.len(),
@@ -87,7 +90,7 @@ pub fn build_staged_response_payload(
         "run_id": report.run_id,
         "execution_mode": report.execution_mode,
         "status": report.status,
-        "stage_reports": compact_stage_report_payloads(report)?,
+        "stage_reports": stage_report_payloads(report)?,
         "emitted_checkpoints": report.emitted_checkpoints,
         "diagnostic_artifact_references": report.diagnostic_artifact_references,
         "resumed_from_checkpoint_reference": report.resumed_from_checkpoint_reference,
@@ -109,8 +112,7 @@ pub fn build_model_payload(
     let workflow_scope_id = workflow_scope_id(execution_input);
     let model_preparation_payload =
         preparation_payload.or_else(|| report_payload.get("preparation"));
-    let resolved_configuration =
-        optional_preparation_field(model_preparation_payload, "resolved_configuration");
+    let resolved_configuration = model_resolved_configuration(model_preparation_payload);
     let session_resolution =
         optional_preparation_field(model_preparation_payload, "session_resolution");
 
@@ -156,34 +158,7 @@ pub(crate) fn write_pretty_json<T>(path: &Path, payload: &T) -> Result<(), Workf
 where
     T: Serialize + ?Sized,
 {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| WorkflowError::FitArtifactWrite {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-
-    let file = fs::File::create(path).map_err(|source| WorkflowError::FitArtifactWrite {
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    let mut writer = BufWriter::new(file);
-
-    serde_json::to_writer_pretty(&mut writer, payload)
-        .map_err(|source| WorkflowError::OutputSerialize { source })?;
-
-    writeln!(writer).map_err(|source| WorkflowError::FitArtifactWrite {
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    writer
-        .flush()
-        .map_err(|source| WorkflowError::FitArtifactWrite {
-            path: path.to_path_buf(),
-            source,
-        })
+    write_workflow_pretty_json_file(path, payload, ArtifactWriteKind::Fit)
 }
 
 fn calibration_scope_id(workflow_scope_id: WorkflowScopeId) -> CalibrationScopeId {
@@ -199,6 +174,17 @@ fn optional_preparation_field(preparation_payload: Option<&Value>, field_name: &
         .and_then(|payload| payload.get(field_name))
         .cloned()
         .unwrap_or(Value::Null)
+}
+
+fn model_resolved_configuration(preparation_payload: Option<&Value>) -> Value {
+    let mut resolved_configuration =
+        optional_preparation_field(preparation_payload, "resolved_configuration");
+
+    if let Some(fields) = resolved_configuration.as_object_mut() {
+        fields.insert("diagnostics".to_string(), Value::Array(Vec::new()));
+    }
+
+    resolved_configuration
 }
 
 fn build_model_metadata(
@@ -255,10 +241,6 @@ fn build_model_metadata(
             "artifact_families": report.diagnostic_artifact_references.iter().map(|reference| reference.artifact_family.clone()).collect::<Vec<_>>(),
         },
         "input_inference": optional_preparation_field(preparation_payload, "input_inference"),
-        "diagnostics": resolved_configuration
-            .and_then(|configuration| configuration.get("diagnostics"))
-            .cloned()
-            .unwrap_or_else(|| Value::Array(Vec::new())),
         "fit_report_summary": report_payload["summary"].clone(),
     })
 }
@@ -388,100 +370,6 @@ fn session_resolution_summary(session_resolution: &Value) -> Value {
     })
 }
 
-fn compact_stage_report_payloads(
-    report: &CalibrationStagedRunReport,
-) -> Result<Vec<Value>, WorkflowError> {
-    report
-        .stage_reports
-        .iter()
-        .map(compact_stage_report_payload)
-        .collect()
-}
-
-fn compact_stage_report_payload(
-    stage_report: &CalibrationStagedRunStageReport,
-) -> Result<Value, WorkflowError> {
-    match stage_report {
-        CalibrationStagedRunStageReport::Seasonality(report) => compact_stage_report_from_parts(
-            "seasonality",
-            report.stage,
-            report.status,
-            report.run_id.as_str(),
-            report.execution_mode,
-            report.handoff_policy,
-            &report.failure,
-        ),
-        CalibrationStagedRunStageReport::Hawkes(report) => compact_stage_report_from_parts(
-            "hawkes",
-            report.stage,
-            report.status,
-            report.run_id.as_str(),
-            report.execution_mode,
-            report.handoff_policy,
-            &report.failure,
-        ),
-        CalibrationStagedRunStageReport::ReturnComponents(report) => {
-            compact_stage_report_from_parts(
-                "return_components",
-                report.stage,
-                report.status,
-                report.run_id.as_str(),
-                report.execution_mode,
-                report.handoff_policy,
-                &report.failure,
-            )
-        }
-        CalibrationStagedRunStageReport::MeanReversion(report) => compact_stage_report_from_parts(
-            "mean_reversion",
-            report.stage,
-            report.status,
-            report.run_id.as_str(),
-            report.execution_mode,
-            report.handoff_policy,
-            &report.failure,
-        ),
-        CalibrationStagedRunStageReport::JointRefinement(report) => {
-            compact_stage_report_from_parts(
-                "joint_refinement",
-                report.stage,
-                report.status,
-                report.run_id.as_str(),
-                report.execution_mode,
-                report.handoff_policy,
-                &report.failure,
-            )
-        }
-    }
-}
-
-fn compact_stage_report_from_parts<T>(
-    stage_report_kind: &str,
-    stage: CalibrationStage,
-    status: CalibrationStageExecutionStatus,
-    run_id: &str,
-    execution_mode: CalibrationExecutionMode,
-    handoff_policy: &str,
-    failure: &Option<T>,
-) -> Result<Value, WorkflowError>
-where
-    T: Serialize,
-{
-    let failure = match failure {
-        Some(failure) => serialize_payload(failure)?,
-        None => Value::Null,
-    };
-
-    Ok(json!({
-        "stage_report_kind": stage_report_kind,
-        "stage": stage,
-        "status": status,
-        "run_id": run_id,
-        "execution_mode": execution_mode,
-        "handoff_policy": handoff_policy,
-        "failure": failure,
-    }))
-}
-
 fn extract_model_parameters(
     execution_input: &CalibrationStagedExecutionInput,
     report: &CalibrationStagedRunReport,
@@ -533,8 +421,9 @@ fn apply_resumed_disk_stage_parameter_artifacts(
             .map_err(|source| WorkflowError::ModelValidationFailed {
                 field: "model_payload.parameters",
                 message: format!(
-                    "failed to load resumed stage parameter artifact `{}`: {source}",
-                    artifact_path.display()
+                    "failed to load resumed stage parameter artifact `{}`: {}",
+                    artifact_path.display(),
+                    calibration_stage_parameter_artifact_load_error_message(stage, &source)
                 ),
             })?;
 
@@ -552,7 +441,7 @@ fn apply_stage_reports_to_model_parameters(
         match stage_report {
             CalibrationStagedRunStageReport::Seasonality(report) => {
                 if let Some(payload) = &report.normalized_stage_payload {
-                    stage_parameters.seasonality = Some(seasonality_parameters(payload));
+                    stage_parameters.seasonality = Some(seasonality_parameter_payload(payload));
                 }
             }
             CalibrationStagedRunStageReport::Hawkes(report) => {
@@ -568,12 +457,23 @@ fn apply_stage_reports_to_model_parameters(
             }
             CalibrationStagedRunStageReport::MeanReversion(report) => {
                 if let Some(payload) = &report.fitted_stage_payload {
-                    stage_parameters.mean_reversion = Some(serialize_payload(payload)?);
+                    stage_parameters.mean_reversion = Some(mean_reversion_parameters(payload)?);
                 }
             }
             CalibrationStagedRunStageReport::JointRefinement(report) => {
                 if let Some(payload) = &report.fitted_stage_payload {
                     stage_parameters.joint_refinement = Some(joint_refinement_parameters(payload)?);
+                }
+            }
+            CalibrationStagedRunStageReport::OptionRefinement(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    stage_parameters.option_refinement =
+                        Some(joint_refinement_parameters(payload)?);
+                }
+            }
+            CalibrationStagedRunStageReport::Finalization(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    stage_parameters.finalization = Some(joint_refinement_parameters(payload)?);
                 }
             }
         }
@@ -589,6 +489,8 @@ fn stage_report_stage(stage_report: &CalibrationStagedRunStageReport) -> Calibra
         CalibrationStagedRunStageReport::ReturnComponents(_) => CalibrationStage::ReturnComponents,
         CalibrationStagedRunStageReport::MeanReversion(_) => CalibrationStage::MeanReversion,
         CalibrationStagedRunStageReport::JointRefinement(_) => CalibrationStage::JointRefinement,
+        CalibrationStagedRunStageReport::OptionRefinement(_) => CalibrationStage::OptionRefinement,
+        CalibrationStagedRunStageReport::Finalization(_) => CalibrationStage::Finalization,
     }
 }
 
@@ -615,6 +517,14 @@ fn apply_stage_parameter_artifact_to_model_parameters(
             stage_parameters.joint_refinement =
                 Some(joint_refinement_parameters_from_artifact(payload)?);
         }
+        CalibrationStageParameterPayload::OptionRefinement(payload) => {
+            stage_parameters.option_refinement =
+                Some(joint_refinement_parameters_from_artifact(payload)?);
+        }
+        CalibrationStageParameterPayload::Finalization(payload) => {
+            stage_parameters.finalization =
+                Some(joint_refinement_parameters_from_artifact(payload)?);
+        }
     }
 
     Ok(())
@@ -627,6 +537,8 @@ struct ModelStageParameters {
     return_components: Option<Value>,
     mean_reversion: Option<Value>,
     joint_refinement: Option<Value>,
+    option_refinement: Option<Value>,
+    finalization: Option<Value>,
 }
 
 impl ModelStageParameters {
@@ -635,6 +547,18 @@ impl ModelStageParameters {
 
         if let Some(seasonality) = self.seasonality {
             parameters.insert("seasonality".to_string(), seasonality);
+        }
+
+        if let Some(finalization) = self.finalization {
+            parameters.insert("finalization".to_string(), finalization);
+
+            return parameters;
+        }
+
+        if let Some(option_refinement) = self.option_refinement {
+            parameters.insert("option_refinement".to_string(), option_refinement);
+
+            return parameters;
         }
 
         if let Some(joint_refinement) = self.joint_refinement {
@@ -659,19 +583,6 @@ impl ModelStageParameters {
     }
 }
 
-fn seasonality_parameters(
-    payload: &janiform_calibration_runtime::SeasonalityStageNormalizedPayload,
-) -> Value {
-    json!({
-        "schema_version": payload.composition_schema_version,
-        "exchange_code": payload.exchange_code,
-        "intraday_minutes_per_bin": payload.intraday_minutes_per_bin,
-        "intraday_factor_by_bin": payload.intraday_factor_by_bin,
-        "day_of_week_factor": payload.day_of_week_factor,
-        "day_of_year_factor": payload.day_of_year_factor,
-    })
-}
-
 fn seasonality_parameters_from_artifact(
     payload: &janiform_calibration_artifacts::SeasonalityStageParameterPayload,
 ) -> Value {
@@ -681,6 +592,7 @@ fn seasonality_parameters_from_artifact(
         "intraday_minutes_per_bin": payload.intraday_minutes_per_bin,
         "intraday_factor_by_bin": payload.intraday_factor_by_bin,
         "day_of_week_factor": payload.day_of_week_factor,
+        "hour_of_week_factor": payload.hour_of_week_factor,
         "day_of_year_factor": payload.day_of_year_factor,
     })
 }
@@ -750,7 +662,18 @@ fn mean_reversion_parameters_from_artifact(
     Ok(json!({
         "schema_version": CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
         "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
-        "diagnostics": serialize_payload(&payload.diagnostics)?,
+        "return_components_input_transport": payload.return_components_input_transport,
+        "return_components_selected_candidate_id": payload.return_components_selected_candidate_id,
+        "return_components_artifact_reference": payload.return_components_artifact_reference,
+    }))
+}
+
+fn mean_reversion_parameters(
+    payload: &janiform_calibration_runtime::MeanReversionStageFittedPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": payload.schema_version,
+        "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
         "return_components_input_transport": payload.return_components_input_transport,
         "return_components_selected_candidate_id": payload.return_components_selected_candidate_id,
         "return_components_artifact_reference": payload.return_components_artifact_reference,
@@ -764,9 +687,6 @@ fn joint_refinement_parameters(
         "schema_version": payload.schema_version,
         "selected_candidate_id": payload.selected_candidate_id,
         "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
-        "objective_breakdown": serialize_payload(&payload.objective_breakdown)?,
-        "optimizer_diagnostics": serialize_payload(&payload.optimizer_diagnostics)?,
-        "option_calibration_diagnostics": serialize_payload(&payload.option_calibration_diagnostics)?,
     }))
 }
 
@@ -777,8 +697,6 @@ fn joint_refinement_parameters_from_artifact(
         "schema_version": CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
         "selected_candidate_id": payload.selected_candidate_id,
         "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
-        "objective_breakdown": serialize_payload(&payload.objective_breakdown)?,
-        "optimizer_diagnostics": serialize_payload(&payload.optimizer_diagnostics)?,
     }))
 }
 
@@ -808,6 +726,12 @@ fn stage_statuses(report: &CalibrationStagedRunReport) -> Vec<Value> {
             }
             CalibrationStagedRunStageReport::JointRefinement(report) => {
                 json!({"stage": "joint_refinement", "status": report.status})
+            }
+            CalibrationStagedRunStageReport::OptionRefinement(report) => {
+                json!({"stage": "option_refinement", "status": report.status})
+            }
+            CalibrationStagedRunStageReport::Finalization(report) => {
+                json!({"stage": "finalization", "status": report.status})
             }
         })
         .collect()
@@ -849,6 +773,22 @@ fn selected_candidate_ids(report: &CalibrationStagedRunReport) -> Value {
                 if let Some(payload) = &report.fitted_stage_payload {
                     selected.insert(
                         "joint_refinement".to_string(),
+                        Value::String(payload.selected_candidate_id.to_owned()),
+                    );
+                }
+            }
+            CalibrationStagedRunStageReport::OptionRefinement(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    selected.insert(
+                        "option_refinement".to_string(),
+                        Value::String(payload.selected_candidate_id.to_owned()),
+                    );
+                }
+            }
+            CalibrationStagedRunStageReport::Finalization(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    selected.insert(
+                        "finalization".to_string(),
                         Value::String(payload.selected_candidate_id.to_owned()),
                     );
                 }

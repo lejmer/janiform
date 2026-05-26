@@ -47,7 +47,7 @@ impl Display for SufficientStatisticsRunRequestError {
             ),
             Self::InvalidIntervalDelta { value } => write!(
                 formatter,
-                "interval_delta must be finite and strictly positive, found {value}"
+                "interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration, found {value}"
             ),
             Self::InvalidModelInputs { source } => {
                 write!(formatter, "model_inputs payload is invalid: {source}")

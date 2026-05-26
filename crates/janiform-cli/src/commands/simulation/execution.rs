@@ -248,7 +248,7 @@ pub(super) fn emit_completion(
                 write_json_payload(&raw_payload)
             }
         }
-        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => Ok(()),
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => Ok(()),
     }
 }
 

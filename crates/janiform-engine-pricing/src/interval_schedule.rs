@@ -266,7 +266,6 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
             },
         );
     }
-
     let first_contract_start_utc_nanos = hourly_factor_contract.interval_start_utc_nanos[0];
     let last_contract_end_utc_nanos = hourly_factor_contract.interval_end_utc_nanos
         [hourly_factor_contract.interval_end_utc_nanos.len() - 1];
@@ -971,8 +970,7 @@ impl HourlyFactorContractCount for HourlyFactorContractOutput {
 
 #[cfg(test)]
 mod tests {
-    use janiform_foundations::time::NANOS_PER_HOUR;
-    use janiform_foundations::time::utc_nanos;
+    use janiform_foundations::time::{NANOS_PER_HOUR, utc_datetime_from_nanos, utc_nanos};
     use janiform_market_time::hourly_factors::{
         HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
         HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
@@ -1005,8 +1003,18 @@ mod tests {
                 utc_nanos(2026, 2, 2, 17, 0, 0),
                 utc_nanos(2026, 2, 2, 18, 0, 0),
             ],
-            interval_start_exchange_local: vec!["".to_string(); 4],
-            interval_end_exchange_local: vec!["".to_string(); 4],
+            interval_start_exchange_local: vec![
+                "2026-02-02T14:00:00+00:00".to_string(),
+                "2026-02-02T15:00:00+00:00".to_string(),
+                "2026-02-02T16:00:00+00:00".to_string(),
+                "2026-02-02T17:00:00+00:00".to_string(),
+            ],
+            interval_end_exchange_local: vec![
+                "2026-02-02T15:00:00+00:00".to_string(),
+                "2026-02-02T16:00:00+00:00".to_string(),
+                "2026-02-02T17:00:00+00:00".to_string(),
+                "2026-02-02T18:00:00+00:00".to_string(),
+            ],
             s_h: vec![1.0, 2.0, 3.0, 4.0],
             known_component_nu_h: vec![10.0, 20.0, 30.0, 40.0],
             surprise_component_nu_h: vec![100.0, 200.0, 300.0, 400.0],
@@ -1048,6 +1056,9 @@ mod tests {
             .iter()
             .map(|is_open| if *is_open { 1.0 } else { 0.0 })
             .collect::<Vec<_>>();
+        let interval_start_exchange_local =
+            exchange_local_labels(interval_start_utc_nanos.as_slice());
+        let interval_end_exchange_local = exchange_local_labels(interval_end_utc_nanos.as_slice());
 
         HourlyFactorContractOutput {
             schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
@@ -1059,8 +1070,8 @@ mod tests {
             interval_indices: (0..interval_count as u64).collect(),
             interval_start_utc_nanos,
             interval_end_utc_nanos,
-            interval_start_exchange_local: vec!["".to_string(); interval_count],
-            interval_end_exchange_local: vec!["".to_string(); interval_count],
+            interval_start_exchange_local,
+            interval_end_exchange_local,
             s_h,
             known_component_nu_h: vec![0.0; interval_count],
             surprise_component_nu_h: vec![0.0; interval_count],
@@ -1083,6 +1094,17 @@ mod tests {
                 repeated_local_hour_interval_count: 0,
             },
         }
+    }
+
+    fn exchange_local_labels(timestamps_utc_nanos: &[i64]) -> Vec<String> {
+        timestamps_utc_nanos
+            .iter()
+            .map(|timestamp_utc_nanos| {
+                utc_datetime_from_nanos(*timestamp_utc_nanos)
+                    .expect("test timestamp should be representable")
+                    .to_rfc3339()
+            })
+            .collect()
     }
 
     #[test]

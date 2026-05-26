@@ -17,6 +17,7 @@ use janiform_foundations::parquet::document::{
 };
 use janiform_foundations::time::{
     NANOS_PER_MICROSECOND, NANOS_PER_MILLISECOND, NANOS_PER_SECOND, parse_utc_datetime,
+    utc_datetime_from_nanos,
 };
 use serde_json::Value;
 
@@ -451,10 +452,7 @@ fn datetime_from_timestamp_integer(
             }
         })?;
 
-    let seconds = timestamp_nanos.div_euclid(NANOS_PER_SECOND);
-    let nanos = timestamp_nanos.rem_euclid(NANOS_PER_SECOND) as u32;
-
-    DateTime::from_timestamp(seconds, nanos).ok_or_else(|| {
+    utc_datetime_from_nanos(timestamp_nanos).ok_or_else(|| {
         TimestampEventSourceLoadError::TimestampOutOfRange {
             path: path.to_path_buf(),
             source_record_position,

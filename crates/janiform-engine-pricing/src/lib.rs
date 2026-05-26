@@ -9,17 +9,19 @@ mod grids;
 mod implied_volatility;
 mod interval_schedule;
 mod maturity_inputs;
-mod news_loading_projection;
+mod pricing_kernel;
 mod progress;
 mod runner;
 mod spectral;
 mod thread_pool;
 mod time_scaling;
+mod vanilla_payoff;
 
 pub use black_scholes::{
     black_scholes_log_return_characteristic_function, black_scholes_no_arbitrage_price_bounds,
     black_scholes_price, intraday_black_scholes_log_return_characteristic_function,
     intraday_black_scholes_no_arbitrage_price_bounds, intraday_black_scholes_price,
+    intraday_discount_factor, intraday_forward_price,
 };
 pub use characteristic::{
     AnchoredLocalTiltSolveError, PricingTransformInputBuildError,
@@ -30,7 +32,7 @@ pub use characteristic::{
     compose_total_return_characteristic_function_from_oracle_output,
     compose_total_return_characteristic_function_with_edge_mode, evolve_hawkes_state,
     load_hourly_factor_contract, project_hawkes_intensities_coarse_interval,
-    solve_anchored_local_pricing_tilt, solve_exponential_affine_transform,
+    solve_anchored_local_pricing_tilt,
 };
 pub use constants::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_CONTOUR_POLICY,
@@ -42,9 +44,9 @@ pub use constants::{
     PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, SPECTRAL_PRICING_COLLOCATION_POLICY,
-    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY,
-    SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY, SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY,
-    VANILLA_OPTION_CALIBRATION_HOOK_POLICY, VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+    SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
@@ -87,7 +89,10 @@ pub use grids::{
     run_vanilla_option_grid_batch_pricing, run_vanilla_option_grid_batch_pricing_with_observer,
     run_vanilla_option_surface_pricing, run_vanilla_option_surface_pricing_with_observer,
 };
-pub use implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
+pub use implied_volatility::{
+    VanillaOptionImpliedVolatilityInversionOutcome, VanillaOptionImpliedVolatilityInversionStatus,
+    invert_vanilla_option_implied_volatility,
+};
 pub use interval_schedule::{
     DerivedPricingIntervalSchedule, PricingIntervalSchedule, PricingIntervalScheduleError,
     PricingIntervalScheduleMetadata, PricingIntervalSchedulePolicy,
@@ -98,6 +103,9 @@ pub use maturity_inputs::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,
     HighLevelPricingMaturityResolutionRequest, resolve_high_level_pricing_maturity_inputs,
 };
+pub use pricing_kernel::{
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingKernelParametersError,
+};
 pub use progress::{
     PricingNodeProgress, PricingNodeProgressPhase, PricingProgressEvent, PricingProgressPhase,
 };
@@ -107,6 +115,8 @@ pub use runner::{
     VanillaOptionPricingRunError, run_vanilla_option_pricing,
     run_vanilla_option_pricing_with_observer,
 };
+pub use time_scaling::intraday_year_fraction;
+pub use vanilla_payoff::vanilla_option_terminal_payoff;
 
 #[doc(hidden)]
 pub mod internal {

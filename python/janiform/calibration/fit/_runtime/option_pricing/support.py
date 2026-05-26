@@ -58,9 +58,9 @@ def build_model_pricing_hourly_factor_contract(
     )
 
 
-def price_observed_log_price_from_spot(model: JaniformModel, *, spot: float) -> float:
+def price_observed_log_return_from_spot(model: JaniformModel, *, spot: float) -> float:
     normalized_spot = require_positive_finite_scalar(spot, "spot", calibration_error)
-    return log(normalized_spot / model_reference_price(model))
+    return log(normalized_spot) - log(model_reference_price(model))
 
 
 def model_reference_price(model: JaniformModel) -> float:

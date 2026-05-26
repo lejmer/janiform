@@ -51,24 +51,24 @@
       },
       "expected_output": {
         "buy_side_weighted_exponent": {
-          "real": -0.13611361318819068,
-          "imaginary": -0.05930084237451666
+          "real": -0.08022078961919771,
+          "imaginary": 0.08602049890486509
         },
         "sell_side_weighted_exponent": {
           "real": 0.0,
           "imaginary": 0.0
         },
         "combined_weighted_exponent": {
-          "real": -0.13611361318819068,
-          "imaginary": -0.05930084237451666
+          "real": -0.08022078961919771,
+          "imaginary": 0.08602049890486509
         },
         "trading_time_characteristic_factor": {
-          "real": 0.8712093808889487,
-          "imaginary": -0.05172409520066992
+          "real": 0.9195001015404676,
+          "imaginary": 0.07929152726757452
         },
         "combined_characteristic_factor": {
-          "real": 0.8712093808889487,
-          "imaginary": -0.05172409520066992
+          "real": 0.9195001015404676,
+          "imaginary": 0.07929152726757452
         }
       },
       "description": "Buy-only analytic case with unity gap factor so combined characteristic factor equals the trading-time factor."
@@ -95,20 +95,20 @@
           "imaginary": 0.0
         },
         "sell_side_weighted_exponent": {
-          "real": -0.1918679230601705,
-          "imaginary": 0.1525330674638018
+          "real": -0.1526039975830721,
+          "imaginary": -0.08305048539878863
         },
         "combined_weighted_exponent": {
-          "real": -0.1918679230601705,
-          "imaginary": 0.1525330674638018
+          "real": -0.1526039975830721,
+          "imaginary": -0.08305048539878863
         },
         "trading_time_characteristic_factor": {
-          "real": 0.8158322807271035,
-          "imaginary": 0.1254155659320086
+          "real": 0.8555107149530543,
+          "imaginary": -0.0712143864469992
         },
         "combined_characteristic_factor": {
-          "real": 0.8158322807271035,
-          "imaginary": 0.1254155659320086
+          "real": 0.8555107149530543,
+          "imaginary": -0.0712143864469992
         }
       },
       "description": "Sell-only analytic case that validates psi_minus(-u) usage against a positive-u regression candidate."
@@ -131,24 +131,24 @@
       },
       "expected_output": {
         "buy_side_weighted_exponent": {
-          "real": -0.0012543761109705788,
-          "imaginary": 0.08230683793963588
+          "real": -0.026805381171081655,
+          "imaginary": 0.024817076554385944
         },
         "sell_side_weighted_exponent": {
-          "real": -0.09924191485585507,
-          "imaginary": -0.08981179914294674
+          "real": -0.03737148683133637,
+          "imaginary": 0.04939666391222033
         },
         "combined_weighted_exponent": {
-          "real": -0.10049629096682565,
-          "imaginary": -0.007504961203310859
+          "real": -0.06417686800241802,
+          "imaginary": 0.07421374046660627
         },
         "trading_time_characteristic_factor": {
-          "real": 0.90436299734475,
-          "imaginary": -0.006787336640245246
+          "real": 0.9352576377670622,
+          "imaginary": 0.06953667640178006
         },
         "combined_characteristic_factor": {
-          "real": 0.8217486069884784,
-          "imaginary": -0.16896181586467815
+          "real": 0.863601052120347,
+          "imaginary": -0.10506799927245133
         }
       },
       "description": "Combined buy plus sell plus explicit gap-factor case for full decomposition and sign behavior coverage."

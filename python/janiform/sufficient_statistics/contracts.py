@@ -172,7 +172,6 @@ SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
 
 # Public sufficient-statistics request default in hours, and callers can override it on the request payload.
 DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA = 1.0
-_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,11 +221,8 @@ class SufficientStatisticsModelInputs(ContractModel):
 
     def __post_init__(self) -> None:
         if (
-            abs(
-                self.initial_mean_reversion_boundary_state.anchor_value
-                - self.mean_reversion_runtime_interval_anchors.start_anchor_value
-            )
-            > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
+            self.initial_mean_reversion_boundary_state.anchor_value
+            != self.mean_reversion_runtime_interval_anchors.start_anchor_value
         ):
             raise _sufficient_statistics_error(
                 "model_inputs.initial_mean_reversion_boundary_state.anchor_value",
@@ -354,7 +350,17 @@ class SufficientStatisticsRunRequest(ContractModel):
         for interval_index, observed_interval_delta in enumerate(
             runtime_interval_anchors.interval_deltas[: self.horizon_interval_count]
         ):
-            if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
+            try:
+                observed_interval_duration_nanos = hours_to_exact_nanoseconds(
+                    observed_interval_delta
+                )
+            except ValueError as e:
+                raise _sufficient_statistics_error(
+                    f"model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
+                    str(e),
+                ) from e
+
+            if observed_interval_duration_nanos != expected_interval_duration_nanos:
                 raise _sufficient_statistics_error(
                     f"model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
                     f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",
@@ -420,8 +426,26 @@ class SufficientStatisticsRunRequest(ContractModel):
 class SufficientStatisticsIntervalStatistics(ContractModel):
     a_plus: float
     a_minus: float
+    baseline_a_plus: float
+    endogenous_a_plus: float
+    baseline_a_minus: float
+    endogenous_a_minus: float
     n_plus: int
     n_minus: int
+
+    def __post_init__(self) -> None:
+        _validate_activity_total(
+            total_field_path="sufficient_statistics.a_plus",
+            total=self.a_plus,
+            baseline=self.baseline_a_plus,
+            endogenous=self.endogenous_a_plus,
+        )
+        _validate_activity_total(
+            total_field_path="sufficient_statistics.a_minus",
+            total=self.a_minus,
+            baseline=self.baseline_a_minus,
+            endogenous=self.endogenous_a_minus,
+        )
 
     @staticmethod
     def from_mapping(
@@ -445,6 +469,30 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
                 f"{field_path}.a_minus",
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
+            baseline_a_plus=require_non_negative_finite_number(
+                raw_payload,
+                "baseline_a_plus",
+                f"{field_path}.baseline_a_plus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
+            endogenous_a_plus=require_non_negative_finite_number(
+                raw_payload,
+                "endogenous_a_plus",
+                f"{field_path}.endogenous_a_plus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
+            baseline_a_minus=require_non_negative_finite_number(
+                raw_payload,
+                "baseline_a_minus",
+                f"{field_path}.baseline_a_minus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
+            endogenous_a_minus=require_non_negative_finite_number(
+                raw_payload,
+                "endogenous_a_minus",
+                f"{field_path}.endogenous_a_minus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
             n_plus=require_non_negative_integer(
                 raw_payload,
                 "n_plus",
@@ -457,6 +505,20 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
                 f"{field_path}.n_minus",
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
+        )
+
+
+def _validate_activity_total(
+    *,
+    total_field_path: str,
+    total: float,
+    baseline: float,
+    endogenous: float,
+) -> None:
+    if total != baseline + endogenous:
+        raise _sufficient_statistics_error(
+            total_field_path,
+            f"must equal baseline plus endogenous activity ({baseline} + {endogenous})",
         )
 
 

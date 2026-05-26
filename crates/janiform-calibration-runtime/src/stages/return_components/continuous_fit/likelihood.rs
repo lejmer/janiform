@@ -3,7 +3,7 @@ use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::super::contracts::{
     ReturnComponentsStageExactLikelihoodEvaluatorKind,
@@ -16,10 +16,14 @@ use super::exact_block::{
     ExactBlockInputBuildInput, ExactLikelihoodFailureContext, build_exact_block_input,
     evaluate_exact_block_likelihood,
 };
+use super::exact_block_cache::{
+    ExactBlockEvaluationCache, ExactBlockEvaluationCacheKey, cached_exact_block_evaluation,
+    record_exact_block_evaluation,
+};
 use super::types::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousLikelihoodObjective, ContinuousReturnOptimizerContext,
-    ReturnComponentsStageContinuousReturnCalibrationSample,
+    ContinuousReturnScaleBucketProfile, ReturnComponentsStageContinuousReturnCalibrationSample,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -98,6 +102,7 @@ enum ExactLikelihoodScopeFailure {
 #[derive(Debug, Clone, Copy)]
 struct ExactLikelihoodBlockContribution {
     member_index: usize,
+    member_weight: f64,
     block_evaluation: ExactBlockLikelihoodEvaluation,
 }
 
@@ -183,9 +188,16 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
     ExactLikelihoodDiagnosticsSummary,
 ) {
     let boundary_penalty = alpha_beta_boundary_penalty(configuration);
+
     let mut diagnostics_summary = ExactLikelihoodDiagnosticsSummary::default();
+
     let selected_member_indices =
         member_indices_for_fidelity_tier(optimizer_context, fidelity_tier);
+
+    let exact_block_cache = (fidelity_tier == ContinuousLikelihoodFidelityTier::Full)
+        .then(ExactBlockEvaluationCache::default);
+
+    let exact_block_cache_ref = exact_block_cache.as_ref();
 
     let global_scope_evaluation = average_negative_log_likelihood_with_failures(
         configuration,
@@ -193,6 +205,7 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
         selected_member_indices,
         ReturnComponentsStageExactLikelihoodFailureScope::Global,
         None,
+        exact_block_cache_ref,
     );
 
     let global_negative_log_likelihood = match global_scope_evaluation {
@@ -225,95 +238,21 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
         }
     };
 
-    let conditional_negative_log_likelihood = if fidelity_tier
-        != ContinuousLikelihoodFidelityTier::Full
-        || optimizer_context.scale_bucket_profiles.is_empty()
-    {
-        diagnostics_summary.conditional_average_log_likelihood_error_upper_bound =
-            diagnostics_summary.global_average_log_likelihood_error_upper_bound;
+    let conditional_negative_log_likelihood =
+        if conditional_likelihood_uses_global_scope(fidelity_tier, optimizer_context) {
+            diagnostics_summary.conditional_average_log_likelihood_error_upper_bound =
+                diagnostics_summary.global_average_log_likelihood_error_upper_bound;
 
-        global_negative_log_likelihood
-    } else {
-        arithmetic_mean(
-            optimizer_context
-                .scale_bucket_profiles
-                .iter()
-                .enumerate()
-                .filter_map(|(scale_bucket_index, scale_bucket_profile)| {
-                    let bucket_member_indices: Vec<usize> = scale_bucket_profile
-                        .member_indices
-                        .iter()
-                        .copied()
-                        .filter(|member_index| {
-                            selected_member_indices.binary_search(member_index).is_ok()
-                        })
-                        .collect();
-                    if bucket_member_indices.is_empty() {
-                        return None;
-                    }
-
-                    Some(match average_negative_log_likelihood_with_failures(
-                        configuration,
-                        optimizer_context,
-                        bucket_member_indices.as_slice(),
-                        ReturnComponentsStageExactLikelihoodFailureScope::ConditionalScaleBucket,
-                        Some(scale_bucket_index),
-                    ) {
-                        Ok(scope_evaluation) => {
-                            diagnostics_summary.conditional_average_log_likelihood_error_upper_bound =
-                                Some(match diagnostics_summary
-                                    .conditional_average_log_likelihood_error_upper_bound
-                                {
-                                    Some(current_bound) => current_bound.max(
-                                            scope_evaluation
-                                                .average_log_likelihood_error_upper_bound,
-                                    ),
-                                    None => scope_evaluation
-                                        .average_log_likelihood_error_upper_bound,
-                                });
-                            diagnostics_summary
-                                .evaluator_block_counts
-                                .add_assign(scope_evaluation.evaluator_block_counts);
-
-                            scope_evaluation.average_negative_log_likelihood_estimate
-                        }
-                        Err(ExactLikelihoodScopeFailure::Structural(failure)) => {
-                            diagnostics_summary.structural_failure_count += 1;
-                            diagnostics_summary.failures.push(*failure);
-
-                            f64::INFINITY
-                        }
-                        Err(ExactLikelihoodScopeFailure::Uncertified {
-                            diagnostic,
-                            scope_evaluation,
-                        }) => {
-                            diagnostics_summary.uncertified_scope_count += 1;
-
-                            diagnostics_summary.failures.push(*diagnostic);
-
-                            diagnostics_summary.conditional_average_log_likelihood_error_upper_bound =
-                                Some(match diagnostics_summary
-                                    .conditional_average_log_likelihood_error_upper_bound
-                                {
-                                    Some(current_bound) => current_bound.max(
-                                        scope_evaluation
-                                            .average_log_likelihood_error_upper_bound,
-                                    ),
-                                    None => scope_evaluation
-                                        .average_log_likelihood_error_upper_bound,
-                                });
-                            diagnostics_summary
-                                .evaluator_block_counts
-                                .add_assign(scope_evaluation.evaluator_block_counts);
-
-                            f64::INFINITY
-                        }
-                    })
-                })
-                .collect::<Vec<_>>()
-                .as_slice(),
-        )
-    };
+            global_negative_log_likelihood
+        } else {
+            conditional_scale_bucket_negative_log_likelihood(
+                configuration,
+                optimizer_context,
+                selected_member_indices,
+                exact_block_cache_ref,
+                &mut diagnostics_summary,
+            )
+        };
 
     if diagnostics_summary.failures.iter().any(|failure| {
         failure.failure_reason
@@ -356,15 +295,123 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
     )
 }
 
+fn conditional_likelihood_uses_global_scope(
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+    optimizer_context: &ContinuousReturnOptimizerContext,
+) -> bool {
+    fidelity_tier != ContinuousLikelihoodFidelityTier::Full
+        || optimizer_context.scale_bucket_profiles.is_empty()
+}
+
+fn conditional_scale_bucket_negative_log_likelihood(
+    configuration: NigSharedPlusShiftConfiguration,
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    selected_member_indices: &[usize],
+    exact_block_cache: Option<&ExactBlockEvaluationCache>,
+    diagnostics_summary: &mut ExactLikelihoodDiagnosticsSummary,
+) -> f64 {
+    let bucket_negative_log_likelihoods = optimizer_context
+        .scale_bucket_profiles
+        .iter()
+        .enumerate()
+        .filter_map(|(scale_bucket_index, scale_bucket_profile)| {
+            conditional_scale_bucket_member_indices(scale_bucket_profile, selected_member_indices)
+                .map(|bucket_member_indices| {
+                    evaluate_conditional_scale_bucket_negative_log_likelihood(
+                        configuration,
+                        optimizer_context,
+                        bucket_member_indices.as_slice(),
+                        scale_bucket_index,
+                        exact_block_cache,
+                        diagnostics_summary,
+                    )
+                })
+        })
+        .collect::<Vec<_>>();
+
+    arithmetic_mean(bucket_negative_log_likelihoods.as_slice())
+}
+
+fn conditional_scale_bucket_member_indices(
+    scale_bucket_profile: &ContinuousReturnScaleBucketProfile,
+    selected_member_indices: &[usize],
+) -> Option<Vec<usize>> {
+    let bucket_member_indices = scale_bucket_profile
+        .member_indices
+        .iter()
+        .copied()
+        .filter(|member_index| selected_member_indices.binary_search(member_index).is_ok())
+        .collect::<Vec<_>>();
+
+    (!bucket_member_indices.is_empty()).then_some(bucket_member_indices)
+}
+
+fn evaluate_conditional_scale_bucket_negative_log_likelihood(
+    configuration: NigSharedPlusShiftConfiguration,
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    bucket_member_indices: &[usize],
+    scale_bucket_index: usize,
+    exact_block_cache: Option<&ExactBlockEvaluationCache>,
+    diagnostics_summary: &mut ExactLikelihoodDiagnosticsSummary,
+) -> f64 {
+    match average_negative_log_likelihood_with_failures(
+        configuration,
+        optimizer_context,
+        bucket_member_indices,
+        ReturnComponentsStageExactLikelihoodFailureScope::ConditionalScaleBucket,
+        Some(scale_bucket_index),
+        exact_block_cache,
+    ) {
+        Ok(scope_evaluation) => {
+            record_conditional_scope_evaluation(diagnostics_summary, scope_evaluation);
+
+            scope_evaluation.average_negative_log_likelihood_estimate
+        }
+        Err(ExactLikelihoodScopeFailure::Structural(failure)) => {
+            diagnostics_summary.structural_failure_count += 1;
+            diagnostics_summary.failures.push(*failure);
+
+            f64::INFINITY
+        }
+        Err(ExactLikelihoodScopeFailure::Uncertified {
+            diagnostic,
+            scope_evaluation,
+        }) => {
+            diagnostics_summary.uncertified_scope_count += 1;
+            diagnostics_summary.failures.push(*diagnostic);
+
+            record_conditional_scope_evaluation(diagnostics_summary, *scope_evaluation);
+
+            f64::INFINITY
+        }
+    }
+}
+
+fn record_conditional_scope_evaluation(
+    diagnostics_summary: &mut ExactLikelihoodDiagnosticsSummary,
+    scope_evaluation: ExactLikelihoodScopeEvaluation,
+) {
+    diagnostics_summary.conditional_average_log_likelihood_error_upper_bound = Some(
+        match diagnostics_summary.conditional_average_log_likelihood_error_upper_bound {
+            Some(current_bound) => {
+                current_bound.max(scope_evaluation.average_log_likelihood_error_upper_bound)
+            }
+            None => scope_evaluation.average_log_likelihood_error_upper_bound,
+        },
+    );
+    diagnostics_summary
+        .evaluator_block_counts
+        .add_assign(scope_evaluation.evaluator_block_counts);
+}
+
 fn average_negative_log_likelihood_with_failures(
     configuration: NigSharedPlusShiftConfiguration,
     optimizer_context: &ContinuousReturnOptimizerContext,
     member_indices: &[usize],
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
+    exact_block_cache: Option<&ExactBlockEvaluationCache>,
 ) -> Result<ExactLikelihoodScopeEvaluation, ExactLikelihoodScopeFailure> {
-    let log_density_resolution = average_negative_log_likelihood_resolution(member_indices.len());
-
     let driver_parameters = configuration.derive_driver_parameters().map_err(|_| {
         ExactLikelihoodScopeFailure::Structural(Box::new(
             build_exact_likelihood_failure_diagnostic(
@@ -391,6 +438,22 @@ fn average_negative_log_likelihood_with_failures(
         )));
     }
 
+    let Some(member_weight_sum) = likelihood_member_weight_sum(optimizer_context, member_indices)
+    else {
+        return Err(ExactLikelihoodScopeFailure::Structural(Box::new(
+            build_exact_likelihood_failure_diagnostic(
+                scope,
+                scale_bucket_index,
+                None,
+                ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
+                None,
+                None,
+            ),
+        )));
+    };
+    let log_density_resolution =
+        average_negative_log_likelihood_resolution_for_weight_sum(member_weight_sum);
+
     let block_contributions = exact_likelihood_block_contributions(
         configuration,
         driver_parameters,
@@ -399,10 +462,11 @@ fn average_negative_log_likelihood_with_failures(
         scope,
         scale_bucket_index,
         log_density_resolution,
+        exact_block_cache,
     );
 
-    let mut log_likelihood_sum = 0.0;
-    let mut log_likelihood_error_upper_bound_sum = 0.0;
+    let mut weighted_log_likelihood_sum = 0.0;
+    let mut weighted_log_likelihood_error_upper_bound_sum = 0.0;
     let mut evaluator_block_counts = ExactEvaluatorBlockCounts::default();
     let mut worst_block_member_index = None;
     let mut worst_block_evaluation: Option<ExactBlockLikelihoodEvaluation> = None;
@@ -410,6 +474,7 @@ fn average_negative_log_likelihood_with_failures(
     for block_contribution in block_contributions {
         let block_contribution = block_contribution?;
         let member_index = block_contribution.member_index;
+        let member_weight = block_contribution.member_weight;
         let block_evaluation = block_contribution.block_evaluation;
 
         match block_evaluation.evaluator_kind {
@@ -424,8 +489,9 @@ fn average_negative_log_likelihood_with_failures(
             }
         }
 
-        log_likelihood_sum += block_evaluation.log_density_estimate;
-        log_likelihood_error_upper_bound_sum += block_evaluation.log_density_error_upper_bound;
+        weighted_log_likelihood_sum += member_weight * block_evaluation.log_density_estimate;
+        weighted_log_likelihood_error_upper_bound_sum +=
+            member_weight * block_evaluation.log_density_error_upper_bound;
 
         let should_replace_worst_block = match worst_block_evaluation {
             Some(current_worst) => {
@@ -440,13 +506,10 @@ fn average_negative_log_likelihood_with_failures(
         }
     }
 
-    let evaluated_block_count = member_indices.len();
-
-    let average_negative_log_likelihood_estimate =
-        -log_likelihood_sum / evaluated_block_count as f64;
+    let average_negative_log_likelihood_estimate = -weighted_log_likelihood_sum / member_weight_sum;
 
     let average_log_likelihood_error_upper_bound =
-        log_likelihood_error_upper_bound_sum / evaluated_block_count as f64;
+        weighted_log_likelihood_error_upper_bound_sum / member_weight_sum;
 
     let scope_evaluation = ExactLikelihoodScopeEvaluation {
         average_negative_log_likelihood_estimate,
@@ -537,6 +600,7 @@ fn exact_likelihood_block_contributions(
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
     log_density_resolution: f64,
+    exact_block_cache: Option<&ExactBlockEvaluationCache>,
 ) -> Vec<Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure>> {
     let evaluate_member = |member_index: &usize| {
         exact_likelihood_block_contribution(
@@ -547,11 +611,21 @@ fn exact_likelihood_block_contributions(
             scope,
             scale_bucket_index,
             log_density_resolution,
+            exact_block_cache,
         )
     };
 
     if member_indices.len() > 1 {
-        return member_indices.par_iter().map(evaluate_member).collect();
+        let parallel_chunk_len = member_indices
+            .len()
+            .div_ceil(rayon::current_num_threads().max(1))
+            .max(1);
+
+        return member_indices
+            .par_iter()
+            .with_min_len(parallel_chunk_len)
+            .map(evaluate_member)
+            .collect();
     }
 
     member_indices.iter().map(evaluate_member).collect()
@@ -565,6 +639,7 @@ fn exact_likelihood_block_contribution(
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
     log_density_resolution: f64,
+    exact_block_cache: Option<&ExactBlockEvaluationCache>,
 ) -> Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure> {
     let observed_return = exact_likelihood_member_value(
         optimizer_context.observed_returns.as_slice(),
@@ -624,6 +699,19 @@ fn exact_likelihood_block_contribution(
         ))
     })?;
 
+    let cache_key =
+        exact_block_cache.map(|_| ExactBlockEvaluationCacheKey::from_block_input(&block_input));
+    if let (Some(exact_block_cache), Some(cache_key)) = (exact_block_cache, cache_key)
+        && let Some(block_evaluation) =
+            cached_exact_block_evaluation(exact_block_cache, cache_key, log_density_resolution)
+    {
+        return Ok(ExactLikelihoodBlockContribution {
+            member_index,
+            member_weight: exact_likelihood_member_weight(optimizer_context, member_index),
+            block_evaluation,
+        });
+    }
+
     let block_evaluation = evaluate_exact_block_likelihood(
         configuration,
         driver_parameters,
@@ -643,10 +731,39 @@ fn exact_likelihood_block_contribution(
         ))
     })?;
 
+    if let (Some(exact_block_cache), Some(cache_key)) = (exact_block_cache, cache_key) {
+        record_exact_block_evaluation(exact_block_cache, cache_key, block_evaluation);
+    }
+
     Ok(ExactLikelihoodBlockContribution {
         member_index,
+        member_weight: exact_likelihood_member_weight(optimizer_context, member_index),
         block_evaluation,
     })
+}
+
+fn likelihood_member_weight_sum(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    member_indices: &[usize],
+) -> Option<f64> {
+    let member_weight_sum = member_indices
+        .iter()
+        .map(|member_index| exact_likelihood_member_weight(optimizer_context, *member_index))
+        .sum::<f64>();
+
+    (member_weight_sum.is_finite() && member_weight_sum > 0.0).then_some(member_weight_sum)
+}
+
+fn exact_likelihood_member_weight(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    member_index: usize,
+) -> f64 {
+    optimizer_context
+        .member_weights
+        .get(member_index)
+        .copied()
+        .filter(|weight| weight.is_finite() && *weight > 0.0)
+        .unwrap_or(1.0)
 }
 
 fn exact_likelihood_member_value(
@@ -670,8 +787,12 @@ fn exact_likelihood_member_value(
 }
 
 pub(super) fn average_negative_log_likelihood_resolution(sample_count: usize) -> f64 {
+    average_negative_log_likelihood_resolution_for_weight_sum(sample_count.max(1) as f64)
+}
+
+fn average_negative_log_likelihood_resolution_for_weight_sum(sample_weight_sum: f64) -> f64 {
     RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_LIKELIHOOD_CHI_SQUARE_95
-        / (2.0 * sample_count.max(1) as f64)
+        / (2.0 * sample_weight_sum.max(1.0))
 }
 
 #[cfg(test)]
@@ -792,13 +913,23 @@ pub(super) fn simulate_matched_scale_returns(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     stage_seed: u64,
 ) -> Vec<f64> {
+    simulate_matched_scale_returns_with_seed(
+        configuration,
+        calibration_sample,
+        candidate_sampling_seed(stage_seed, configuration),
+    )
+}
+
+pub(crate) fn simulate_matched_scale_returns_with_seed(
+    configuration: NigSharedPlusShiftConfiguration,
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    simulation_seed: u64,
+) -> Vec<f64> {
     let Ok(driver_parameters) = configuration.derive_driver_parameters() else {
         return Vec::new();
     };
 
-    let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(
-        candidate_sampling_seed(stage_seed, configuration),
-    );
+    let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(simulation_seed);
 
     let mut synthetic_returns = Vec::with_capacity(calibration_sample.business_time_scales.len());
 
@@ -841,6 +972,9 @@ fn member_indices_for_fidelity_tier(
 ) -> &[usize] {
     match fidelity_tier {
         ContinuousLikelihoodFidelityTier::Seed => optimizer_context.seed_member_indices.as_slice(),
+        ContinuousLikelihoodFidelityTier::Representative => {
+            optimizer_context.full_member_indices.as_slice()
+        }
         ContinuousLikelihoodFidelityTier::Local => {
             optimizer_context.local_member_indices.as_slice()
         }

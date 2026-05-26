@@ -17,9 +17,9 @@ use crate::paths::PathResolver;
 pub enum ColorChoice {
     #[value(help = "Use color when the output stream supports it. Respects NO_COLOR.")]
     Auto,
-    #[value(help = "Use color for human output even when terminal detection is inconclusive.")]
+    #[value(help = "Use color for terminal output even when terminal detection is inconclusive.")]
     Always,
-    #[value(help = "Disable color in human output.")]
+    #[value(help = "Disable color in terminal output.")]
     Never,
 }
 
@@ -27,7 +27,7 @@ pub enum ColorChoice {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum OutputMode {
-    Human,
+    Terminal,
     Json,
     Quiet,
     Silent,
@@ -74,12 +74,12 @@ Configuration can set output and diagnostic defaults such as color, verbosity, J
         global = true,
         value_enum,
         value_name = "WHEN",
-        help = "Control ANSI color for human output.",
-        long_help = "Control ANSI color for human output.
+        help = "Control ANSI color for terminal output.",
+        long_help = "Control ANSI color for terminal output.
 
 Values:
   auto    use color when the stream supports it and NO_COLOR is not set
-  always  force color for human output
+  always  force color for terminal output
   never   disable color
 
 JSON and JSONL output never include ANSI color."
@@ -92,7 +92,7 @@ JSON and JSONL output never include ANSI color."
         action = ArgAction::SetTrue,
         conflicts_with_all = ["quiet", "verbose", "json"],
         help = "Suppress normal output while preserving warnings and errors.",
-        long_help = "Suppress normal human output while preserving warnings and errors.
+        long_help = "Suppress normal terminal output while preserving warnings and errors.
 
 Use --silent when automation only needs the exit code and failure diagnostics. It conflicts with --quiet, --verbose, and --json because those options define different output modes."
     )]
@@ -116,8 +116,8 @@ Use --quiet for logs and CI jobs that should keep a concise human-readable recor
         global = true,
         action = ArgAction::Count,
         conflicts_with_all = ["silent", "quiet"],
-        help = "Increase human diagnostic verbosity.",
-        long_help = "Increase human diagnostic verbosity.
+        help = "Increase terminal diagnostic verbosity.",
+        long_help = "Increase terminal diagnostic verbosity.
 
 Use -v for INFO diagnostics and -vv for DEBUG diagnostics. Verbose output affects terminal diagnostics, not the final JSON result. It conflicts with --silent and --quiet."
     )]
@@ -131,7 +131,7 @@ Use -v for INFO diagnostics and -vv for DEBUG diagnostics. Verbose output affect
         help = "Write one final JSON object to stdout.",
         long_help = "Write one final JSON object to stdout.
 
-JSON mode is for machine consumption. Human progress and summary output are suppressed so stdout remains a single JSON document. Warnings and errors are written as JSON diagnostics when possible. Use --events jsonl for a streaming machine event log."
+JSON mode is for machine consumption. Terminal progress and summary output are suppressed so stdout remains a single JSON document. Warnings and errors are written as JSON diagnostics when possible. Use --events jsonl for a streaming machine event log."
     )]
     pub(crate) json: bool,
 
@@ -143,7 +143,7 @@ JSON mode is for machine consumption. Human progress and summary output are supp
         help = "Write machine events to stderr.",
         long_help = "Write machine events to stderr in the selected format.
 
-Use --events jsonl for one JSON event object per line. Event streams are separate from the final stdout output, so they can be used with human output, quiet output, or --json."
+Use --events jsonl for one JSON event object per line. Event streams are separate from the final stdout output, so they can be used with terminal output, quiet output, or --json."
     )]
     pub(crate) events: Option<EventStreamFormat>,
 
@@ -274,7 +274,7 @@ pub(crate) fn output_mode_from_options(options: &GlobalCliOptions) -> OutputMode
         return OutputMode::Quiet;
     }
 
-    OutputMode::Human
+    OutputMode::Terminal
 }
 
 fn resolve_output_mode(options: &GlobalCliOptions, configuration: &CliConfiguration) -> OutputMode {
@@ -294,7 +294,7 @@ fn resolve_output_mode(options: &GlobalCliOptions, configuration: &CliConfigurat
         return OutputMode::Quiet;
     }
 
-    OutputMode::Human
+    OutputMode::Terminal
 }
 
 fn resolve_color_policy(choice: ColorChoice, output_mode: OutputMode) -> ColorPolicy {

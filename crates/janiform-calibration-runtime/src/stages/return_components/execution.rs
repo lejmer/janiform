@@ -28,7 +28,8 @@ pub(crate) use close_open_gap::derive_close_open_gap_candidates;
 pub(crate) use diagnostics::{
     build_activity_coupling_diagnostic, build_gap_diagnostic, build_jump_diagnostic,
     build_price_range_sanity_diagnostic, build_surprise_arrival_diagnostic,
-    default_surprise_deterministic_intensity_profile,
+    default_return_clock_exposure_parameters, default_surprise_deterministic_intensity_profile,
+    default_tick_grid_observation_model,
 };
 #[cfg(test)]
 pub(crate) use signals::{

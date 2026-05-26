@@ -1,22 +1,14 @@
 use super::super::contracts::ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic;
 
-pub(crate) fn comparable_continuous_distribution_fit_score(
-    exact_objective_score: f64,
+pub(crate) fn continuous_distribution_metric_score(
     fit_breakdown: &ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
 ) -> f64 {
-    if exact_objective_score.is_finite()
-        && fit_breakdown.global_fit_score.is_finite()
-        && fit_breakdown.conditional_fit_score.is_finite()
-    {
-        return exact_objective_score;
-    }
-
     fit_breakdown.profile_fit_score + fit_breakdown.boundary_penalty
 }
 
 #[cfg(test)]
 mod tests {
-    use super::comparable_continuous_distribution_fit_score;
+    use super::continuous_distribution_metric_score;
     use crate::stages::return_components::contracts::ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic;
 
     fn test_fit_breakdown() -> ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
@@ -31,6 +23,21 @@ mod tests {
             optimizer_final_objective: 0.0,
             optimizer_local_evaluation_count: 0,
             optimizer_stop_reason: "test".to_string(),
+            proxy_em_best_objective: None,
+            proxy_em_final_convergence_ratio: None,
+            proxy_em_evaluation_count: 0,
+            proxy_em_completed_seed_count: 0,
+            proxy_em_refined_seed_count: 0,
+            proxy_em_requested_seed_count: 0,
+            proxy_em_iteration_budget_per_seed: 0,
+            proxy_em_fitting_sample_count: 0,
+            proxy_em_fitting_sample_weight_sum: 0.0,
+            proxy_em_converged_seed_count: 0,
+            proxy_em_non_improving_seed_count: 0,
+            proxy_em_numerical_failure_seed_count: 0,
+            proxy_em_iteration_budget_exhausted_seed_count: 0,
+            proxy_em_projection_failure_seed_count: 0,
+            proxy_em_invalid_initial_seed_count: 0,
             optimizer_basin_diagnostics: Vec::new(),
             exact_likelihood_failures: Vec::new(),
             exact_closed_form_single_side_buy_block_count: 0,
@@ -59,23 +66,17 @@ mod tests {
     }
 
     #[test]
-    fn comparable_fit_score_prefers_exact_likelihood_when_it_is_finite() {
+    fn continuous_distribution_metric_score_uses_nonnegative_distribution_distance() {
         let fit_breakdown = test_fit_breakdown();
 
-        assert_eq!(
-            comparable_continuous_distribution_fit_score(5.0, &fit_breakdown),
-            5.0
-        );
+        assert_eq!(continuous_distribution_metric_score(&fit_breakdown), 7.5);
     }
 
     #[test]
-    fn comparable_fit_score_falls_back_to_profile_fit_when_exact_likelihood_is_non_finite() {
+    fn continuous_distribution_metric_score_does_not_depend_on_likelihood_availability() {
         let mut fit_breakdown = test_fit_breakdown();
         fit_breakdown.global_fit_score = f64::NAN;
 
-        assert_eq!(
-            comparable_continuous_distribution_fit_score(11.0, &fit_breakdown),
-            7.5
-        );
+        assert_eq!(continuous_distribution_metric_score(&fit_breakdown), 7.5);
     }
 }

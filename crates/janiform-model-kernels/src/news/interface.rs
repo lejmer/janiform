@@ -43,8 +43,6 @@ pub const SHARED_NEWS_EVENT_BOUNDARY_POLICY: &str = SESSION_WINDOW_BOUNDARY_POLI
 pub const COMPOSABLE_NEWS_MARK_INTERFACE_POLICY: &str =
     "component_arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v1";
 
-pub(crate) const ONE_SECOND_NANOS: i64 = 1_000_000_000;
-
 /// Explicit component stages in the composable news-mark generation lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewsMarkInterfaceStage {

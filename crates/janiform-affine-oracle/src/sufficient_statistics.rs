@@ -37,10 +37,12 @@ pub use errors::{
     SufficientStatisticsTransformSlicesError,
 };
 pub use execution::{
+    derive_expected_interval_statistics_from_transform_sensitivities,
     derive_expected_interval_statistics_from_transform_slices,
     derive_sufficient_statistics_batch_path_seed,
     sample_interval_statistics_batch_from_transform_slices,
     sample_interval_statistics_batch_from_transform_slices_with_randomness_factory,
+    sample_interval_statistics_from_expected_statistics_with_randomness_factory,
     sample_interval_statistics_from_transform_slices,
     sample_interval_statistics_from_transform_slices_with_randomness_factory,
     sample_interval_statistics_multi_path_batch_from_transform_slices,

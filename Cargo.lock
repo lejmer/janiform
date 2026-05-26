@@ -998,6 +998,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-model-kernels",
  "janiform-test-support",
+ "nalgebra 0.34.2",
  "serde",
  "serde_json",
 ]
@@ -1029,6 +1030,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "janiform-work-scheduler",
  "nalgebra 0.34.2",
  "parquet",
  "postcard",
@@ -1072,8 +1074,9 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "nalgebra 0.34.2",
  "rayon",
- "rustfft",
+ "rustdct",
  "serde",
  "serde_json",
  "statrs",
@@ -1125,6 +1128,7 @@ dependencies = [
  "arrow-schema",
  "chrono",
  "csv",
+ "nalgebra 0.34.2",
  "parquet",
  "serde",
  "serde_json",
@@ -1227,6 +1231,7 @@ name = "janiform-test-support"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "janiform-foundations",
  "janiform-market-time",
  "janiform-verification",
  "serde",
@@ -1270,6 +1275,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "janiform-work-scheduler"
+version = "0.0.0"
+dependencies = [
+ "rayon",
+]
+
+[[package]]
 name = "janiform-workflows"
 version = "0.0.0"
 dependencies = [
@@ -1285,6 +1297,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-terminal-ui",
+ "janiform-work-scheduler",
  "parquet",
  "rayon",
  "serde",
@@ -1962,6 +1975,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "rustdct"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b61555105d6a9bf98797c063c362a1d24ed8ab0431655e38f1cf51e52089551"
+dependencies = [
+ "rustfft",
 ]
 
 [[package]]

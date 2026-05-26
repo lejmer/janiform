@@ -36,6 +36,9 @@ class HourlyFactorProviderMissingInputError(ValueError): ...
 class HourlyFactorProviderUnsupportedRangeError(ValueError): ...
 
 
+def compute_fnv1a_64_hex_lowercase(payload: bytes) -> str: ...
+
+
 class PreparedCalibrationExecutionHandle:
     @property
     def schema_version(self) -> str: ...
@@ -1004,7 +1007,7 @@ def estimate_current_state_from_observed_data(
     kernel_parameters: object,
     mean_reversion_fitted_parameters: object,
     state_time_utc_nanos: int,
-    observed_log_price: float,
+    observed_log_return: float,
     observation_timestamps_utc: object,
     observation_trade_prices: object,
     observation_trade_sides: object,
@@ -1020,6 +1023,7 @@ def materialize_runtime_structural_seasonality(
     intraday_minutes_per_bin: int,
     intraday_factor_by_bin: object,
     day_of_week_factor: object,
+    hour_of_week_factor: object,
     day_of_year_factor: object,
 ) -> object: ...
 
@@ -1104,6 +1108,9 @@ def export_coarse_simulation_artifact(
     exchange_code: str,
     batch_size: int = 256,
 ) -> int: ...
+
+
+def validate_coarse_simulation_path(path_payload: object) -> Any: ...
 
 
 def run_prepared_staged_calibration(

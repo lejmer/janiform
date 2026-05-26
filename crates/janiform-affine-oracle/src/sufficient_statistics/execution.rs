@@ -1,5 +1,6 @@
 use crate::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
+    ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformInput, ExponentialAffineTransformInputSensitivityOutput,
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
@@ -29,6 +30,7 @@ use super::contracts::{
 use super::errors::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsTransformSliceExecutionError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSolveError,
+    SufficientStatisticsTransformSlicesError,
 };
 use super::validation::validate_excitation_state;
 
@@ -135,6 +137,7 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     )?;
 
     SufficientStatisticsTransformSlices::try_new(
+        equation_specification,
         context,
         settings,
         baseline_transform,
@@ -180,6 +183,90 @@ pub fn derive_expected_interval_statistics_from_transform_slices(
     derive_expected_interval_statistics_from_validated_transform_slices(slices)
 }
 
+/// Extract interval sufficient-statistic expectations from analytic transform sensitivities.
+pub fn derive_expected_interval_statistics_from_transform_sensitivities(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    context: SufficientStatisticsTransformSliceContext,
+    sensitivities: ExponentialAffineTransformInputSensitivityOutput,
+) -> Result<
+    SufficientStatisticsExpectedIntervalStatistics,
+    SufficientStatisticsTransformSliceSamplingError,
+> {
+    context.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSlices {
+            source: SufficientStatisticsTransformSlicesError::InvalidContext { source },
+        }
+    })?;
+
+    let transform_value = sensitivities.output.transform_value;
+
+    let expected_a_plus = derive_non_negative_log_derivative_expectation(
+        context,
+        "a_plus",
+        transform_value,
+        sensitivities
+            .u_plus_total_activity_sensitivity()
+            .transform_value_derivative
+            .scale(-1.0),
+    )?;
+
+    let expected_a_minus = derive_non_negative_log_derivative_expectation(
+        context,
+        "a_minus",
+        transform_value,
+        sensitivities
+            .u_minus_total_activity_sensitivity()
+            .transform_value_derivative
+            .scale(-1.0),
+    )?;
+
+    let expected_n_plus = derive_non_negative_log_derivative_expectation(
+        context,
+        "n_plus",
+        transform_value,
+        sensitivities.z_plus_sensitivity.transform_value_derivative,
+    )?;
+
+    let expected_n_minus = derive_non_negative_log_derivative_expectation(
+        context,
+        "n_minus",
+        transform_value,
+        sensitivities.z_minus_sensitivity.transform_value_derivative,
+    )?;
+
+    let baseline_expected_business_time =
+        expected_baseline_business_time_for_context(equation_specification, context);
+
+    let expected_endogenous_a_plus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_plus",
+        expected_a_plus,
+        baseline_expected_business_time,
+    )?;
+
+    let expected_endogenous_a_minus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_minus",
+        expected_a_minus,
+        baseline_expected_business_time,
+    )?;
+
+    SufficientStatisticsExpectedIntervalStatistics::try_new(
+        baseline_expected_business_time,
+        expected_endogenous_a_plus,
+        baseline_expected_business_time,
+        expected_endogenous_a_minus,
+        expected_n_plus,
+        expected_n_minus,
+    )
+    .map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
+            interval_index: context.interval_index,
+            source,
+        }
+    })
+}
+
 /// Sample one interval's sufficient statistics with an injected randomness factory.
 pub fn sample_interval_statistics_from_transform_slices_with_randomness_factory<F>(
     seed: u64,
@@ -193,6 +280,27 @@ where
         seed,
         0,
         slices,
+        randomness_factory,
+    )
+}
+
+/// Sample one interval from exact expected sufficient statistics.
+pub fn sample_interval_statistics_from_expected_statistics_with_randomness_factory<F>(
+    seed: u64,
+    interval_index: usize,
+    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    let substream_index = derive_transform_slice_sampling_substream_index(interval_index as u64, 0);
+
+    sample_interval_statistics_from_expected_statistics(
+        seed,
+        interval_index,
+        expected_statistics,
+        substream_index,
         randomness_factory,
     )
 }
@@ -528,8 +636,10 @@ fn solve_transform_slice_value(
 ) -> Result<ComplexScalar, SufficientStatisticsTransformSliceSolveError> {
     let transform_input = ExponentialAffineTransformInput::try_new(
         equation_specification,
-        evaluation_point.u_plus,
-        evaluation_point.u_minus,
+        ExponentialAffineTransformActivityLoadings::total_activity(
+            evaluation_point.u_plus,
+            evaluation_point.u_minus,
+        ),
         evaluation_point.z_plus,
         evaluation_point.z_minus,
         context.s_h,
@@ -605,11 +715,38 @@ where
         batch_position,
     );
 
+    sample_interval_statistics_from_expected_statistics(
+        seed,
+        slices.context.interval_index,
+        expected_statistics,
+        substream_index,
+        randomness_factory,
+    )
+}
+
+fn sample_interval_statistics_from_expected_statistics<F>(
+    seed: u64,
+    interval_index: usize,
+    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    substream_index: u64,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    expected_statistics.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
+            interval_index,
+            source,
+        }
+    })?;
+
     let mut n_plus_stream = randomness_factory.create_substream(
         seed,
         SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
         substream_index,
     );
+
     let mut n_minus_stream = randomness_factory.create_substream(
         seed,
         SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
@@ -618,21 +755,21 @@ where
 
     let sampled_n_plus =
         sample_count_from_expectation(expected_statistics.expected_n_plus, &mut n_plus_stream);
+
     let sampled_n_minus =
         sample_count_from_expectation(expected_statistics.expected_n_minus, &mut n_minus_stream);
 
-    let sampled_a_plus = expected_statistics.expected_a_plus;
-    let sampled_a_minus = expected_statistics.expected_a_minus;
-
     SufficientStatisticsIntervalStatistics::try_new(
-        sampled_a_plus,
-        sampled_a_minus,
+        expected_statistics.expected_baseline_a_plus,
+        expected_statistics.expected_endogenous_a_plus,
+        expected_statistics.expected_baseline_a_minus,
+        expected_statistics.expected_endogenous_a_minus,
         sampled_n_plus,
         sampled_n_minus,
     )
     .map_err(|source| {
         SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
-            interval_index: slices.context.interval_index,
+            interval_index,
             source,
         }
     })
@@ -649,43 +786,69 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
 
     let baseline_transform =
         extract_real_transform_value(context, "baseline_transform", slices.baseline_transform)?;
+
     let a_plus_transform =
         extract_real_transform_value(context, "a_plus_transform", slices.a_plus_transform)?;
+
     let a_minus_transform =
         extract_real_transform_value(context, "a_minus_transform", slices.a_minus_transform)?;
+
     let n_plus_transform =
         extract_real_transform_value(context, "n_plus_transform", slices.n_plus_transform)?;
+
     let n_minus_transform =
         extract_real_transform_value(context, "n_minus_transform", slices.n_minus_transform)?;
+
+    let normalization_baseline = baseline_transform;
 
     let expected_a_plus = derive_non_negative_expectation(
         context,
         "a_plus",
         baseline_transform - a_plus_transform,
-        settings.a_plus_u,
+        settings.a_plus_u * normalization_baseline,
     )?;
+
     let expected_a_minus = derive_non_negative_expectation(
         context,
         "a_minus",
         baseline_transform - a_minus_transform,
-        settings.a_minus_u,
+        settings.a_minus_u * normalization_baseline,
     )?;
+
     let expected_n_plus = derive_non_negative_expectation(
         context,
         "n_plus",
         n_plus_transform - baseline_transform,
-        settings.n_plus_z - 1.0,
+        (settings.n_plus_z - 1.0) * normalization_baseline,
     )?;
+
     let expected_n_minus = derive_non_negative_expectation(
         context,
         "n_minus",
         n_minus_transform - baseline_transform,
-        settings.n_minus_z - 1.0,
+        (settings.n_minus_z - 1.0) * normalization_baseline,
+    )?;
+
+    let baseline_expected_business_time =
+        expected_baseline_business_time_for_context(slices.equation_specification, context);
+    let expected_endogenous_a_plus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_plus",
+        expected_a_plus,
+        baseline_expected_business_time,
+    )?;
+    let expected_endogenous_a_minus = derive_endogenous_activity_expectation(
+        context,
+        "endogenous_a_minus",
+        expected_a_minus,
+        baseline_expected_business_time,
     )?;
 
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        expected_a_plus,
-        expected_a_minus,
+        baseline_expected_business_time,
+        expected_endogenous_a_plus,
+        baseline_expected_business_time,
+        expected_endogenous_a_minus,
         expected_n_plus,
         expected_n_minus,
     )
@@ -695,6 +858,27 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
             source,
         }
     })
+}
+
+fn expected_baseline_business_time_for_context(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    context: SufficientStatisticsTransformSliceContext,
+) -> f64 {
+    equation_specification.hawkes_kernel_parameters.lambda_bar * context.s_h * context.delta
+}
+
+fn derive_endogenous_activity_expectation(
+    context: SufficientStatisticsTransformSliceContext,
+    statistic: &'static str,
+    expected_total_activity: f64,
+    baseline_expected_business_time: f64,
+) -> Result<f64, SufficientStatisticsTransformSliceSamplingError> {
+    derive_non_negative_expectation(
+        context,
+        statistic,
+        expected_total_activity - baseline_expected_business_time,
+        1.0,
+    )
 }
 
 fn extract_real_transform_value(
@@ -762,6 +946,41 @@ fn derive_non_negative_expectation(
     }
 
     Ok(expected_value.max(0.0))
+}
+
+fn derive_non_negative_log_derivative_expectation(
+    context: SufficientStatisticsTransformSliceContext,
+    statistic: &'static str,
+    transform_value: ComplexScalar,
+    transform_value_derivative: ComplexScalar,
+) -> Result<f64, SufficientStatisticsTransformSliceSamplingError> {
+    let Some(logarithmic_derivative) = transform_value_derivative.divide(transform_value) else {
+        return Err(
+            SufficientStatisticsTransformSliceSamplingError::InvalidExpectedStatistic {
+                interval_index: context.interval_index,
+                statistic,
+                value: f64::NAN,
+                numerator: transform_value_derivative.norm(),
+                denominator: transform_value.norm(),
+                context,
+            },
+        );
+    };
+
+    if !logarithmic_derivative.is_finite() {
+        return Err(
+            SufficientStatisticsTransformSliceSamplingError::InvalidExpectedStatistic {
+                interval_index: context.interval_index,
+                statistic,
+                value: f64::NAN,
+                numerator: transform_value_derivative.norm(),
+                denominator: transform_value.norm(),
+                context,
+            },
+        );
+    }
+
+    derive_non_negative_expectation(context, statistic, logarithmic_derivative.real, 1.0)
 }
 
 fn derive_transform_slice_sampling_substream_index(
@@ -1009,11 +1228,22 @@ pub fn solve_exponential_affine_transform_for_sufficient_statistics_sampling_wit
 #[cfg(test)]
 mod tests {
     use janiform_foundations::complex_math::ComplexScalar;
-    use janiform_model_kernels::hawkes::HawkesExcitationState;
+    use janiform_model_kernels::hawkes::{
+        HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+    };
+    use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
-    use super::extract_real_transform_value;
-    use crate::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
-    use crate::sufficient_statistics::SufficientStatisticsTransformSliceContext;
+    use super::{
+        derive_expected_interval_statistics_from_transform_slices, extract_real_transform_value,
+    };
+    use crate::affine_oracle::{
+        ExponentialAffineTransformEquationSpecification,
+        ExponentialAffineTransformNewsIntensityInput,
+    };
+    use crate::sufficient_statistics::{
+        SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSettings,
+        SufficientStatisticsTransformSlices,
+    };
 
     #[test]
     fn extract_real_transform_value_uses_modulus_for_positive_transform_values() {
@@ -1038,5 +1268,67 @@ mod tests {
                 .expect("finite positive transform should recover");
 
         assert_eq!(recovered, transform_value.norm());
+    }
+
+    #[test]
+    fn expected_statistics_are_normalized_by_baseline_transform() {
+        let context = SufficientStatisticsTransformSliceContext::try_new(
+            0,
+            1.0,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+                .expect("news intensity should construct"),
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        )
+        .expect("slice context should construct");
+
+        let settings = SufficientStatisticsTransformSliceSettings::try_new(0.25, 0.5, 1.25, 1.5)
+            .expect("slice settings should construct");
+
+        let slices = SufficientStatisticsTransformSlices::try_new(
+            ExponentialAffineTransformEquationSpecification::try_new(
+                HawkesKernelParameters::try_new(
+                    1.0,
+                    1.0,
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                )
+                .expect("kernel parameters should construct"),
+                GammaSeverityMarkConfiguration::try_new(1.0, 1.0)
+                    .expect("gamma severity marks should construct"),
+            )
+            .expect("equation specification should construct"),
+            context,
+            settings,
+            ComplexScalar::new(2.0, 0.0),
+            ComplexScalar::new(1.5, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(2.5, 0.0),
+            ComplexScalar::new(3.0, 0.0),
+        )
+        .expect("transform slices should construct");
+
+        let statistics = derive_expected_interval_statistics_from_transform_slices(slices)
+            .expect("expected statistics should derive");
+
+        assert_eq!(statistics.expected_a_plus, 1.0);
+        assert_eq!(statistics.expected_a_minus, 1.0);
+        assert_eq!(statistics.expected_n_plus, 1.0);
+        assert_eq!(statistics.expected_n_minus, 1.0);
     }
 }

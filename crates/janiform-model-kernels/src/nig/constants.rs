@@ -10,10 +10,9 @@ pub const NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY: &str =
     "buy_beta_equals_beta_0_and_sell_beta_equals_beta_0_plus_delta_beta.v1";
 pub const NIG_TRADING_TIME_DRIVER_INTERFACE_POLICY: &str =
     "shared_buy_sell_driver_parameters_interface_for_pricing_and_simulation.v1";
-pub const NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY: &str =
-    "buy_side_uses_psi_plus_of_u_and_sell_side_uses_psi_minus_of_negative_u.v1";
+pub const NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY: &str = "buy_side_uses_mean_compensated_psi_plus_of_u_and_sell_side_uses_mean_compensated_psi_minus_of_negative_u.v1";
 pub const NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY: &str =
-    "buy_side_increment_minus_sell_side_increment.v1";
+    "mean_compensated_buy_side_increment_minus_mean_compensated_sell_side_increment.v1";
 pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION: &str =
     "nig.characteristic_exponent.guardrail_report.v1";
 pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY: &str =
