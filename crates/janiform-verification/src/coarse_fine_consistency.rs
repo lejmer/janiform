@@ -25,6 +25,7 @@ use janiform_affine_oracle::affine_oracle::{
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::complex_exponential;
+use janiform_foundations::randomness::standard_normal_draw_from_unit_interval_draws;
 use janiform_governance_bench::benchmarking::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
     OraclePricerSufficientStatisticsBenchmarkPolicy,
@@ -2160,13 +2161,8 @@ fn estimate_fine_pricing_reference_price(
     Ok(discounted_price)
 }
 fn sample_standard_normal_from_seed(seed: u64) -> f64 {
-    let first_uniform_draw = unit_interval_from_seed(seed ^ 0x8B77_D4C9_14F2_5A11)
-        .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
-
-    let second_uniform_draw = unit_interval_from_seed(seed ^ 0xC4D5_1E6A_227A_F093);
-
-    let radius = (-2.0 * first_uniform_draw.ln()).sqrt();
-    let angle = 2.0 * std::f64::consts::PI * second_uniform_draw;
-
-    radius * angle.cos()
+    standard_normal_draw_from_unit_interval_draws(
+        unit_interval_from_seed(seed ^ 0x8B77_D4C9_14F2_5A11),
+        unit_interval_from_seed(seed ^ 0xC4D5_1E6A_227A_F093),
+    )
 }

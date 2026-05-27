@@ -3,6 +3,7 @@
 pub mod affine_oracle;
 pub mod factors;
 pub mod hawkes;
+pub mod long_variance;
 pub mod news;
 pub mod nig;
 pub mod return_clock;

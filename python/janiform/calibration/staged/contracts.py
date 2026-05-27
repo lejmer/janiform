@@ -36,6 +36,7 @@ class CalibrationStage(StrEnum):
     SEASONALITY = "seasonality"
     HAWKES = "hawkes"
     RETURN_COMPONENTS = "return_components"
+    LONG_VARIANCE = "long_variance"
     MEAN_REVERSION = "mean_reversion"
     JOINT_REFINEMENT = "joint_refinement"
     OPTION_REFINEMENT = "option_refinement"

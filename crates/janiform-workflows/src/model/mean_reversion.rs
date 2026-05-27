@@ -51,6 +51,10 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
                 .news_process_configuration
                 .shared_mark_law
                 .gamma_severity_marks,
+            context
+                .fitted_parameters
+                .return_components_fitted_parameters
+                .long_variance_parameters,
         )
         .map_err(|source| validation_error("equation_specification", source.to_string()))?,
         context

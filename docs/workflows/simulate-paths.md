@@ -183,7 +183,7 @@ The path data is the primary output. Python returns a `JaniformSimulationResult`
 
 Path data includes a timestamp column and a price column. Seeded tick output can also include a side column when the fitted model records an explicit trade-sign column. Both seeded and coarse output include state columns for `observed_log_price`, `anchor_value`, `pressure_state`, and `deviation_from_anchor`.
 
-> **Technical note:** Coarse interval simulation uses the same fitted seasonality, return-clock exposure, news routing, mean-reversion, and tick-grid observation contracts as seeded tick simulation while sampling interval sufficient statistics directly.
+> **Technical note:** Coarse interval simulation uses the same fitted seasonality, return-clock exposure, long-variance, news routing, mean-reversion, and tick-grid observation contracts as seeded tick simulation while sampling interval sufficient statistics directly.
 
 ## Advanced configuration
 

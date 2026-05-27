@@ -828,6 +828,14 @@ fn prepare_parameterization(
                     .as_slice()
             })
             .unwrap_or(&[]),
+        resolved_stage_payloads
+            .hawkes_payload
+            .fitted_parameters
+            .kernel_parameters,
+        resolved_stage_payloads
+            .return_components_payload
+            .fitted_parameters
+            .long_variance_parameters,
         observed_data,
         resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
         &resolved_stage_payloads.stage_solver_settings,
@@ -848,7 +856,7 @@ fn prepare_parameterization(
         resolved_stage_payloads.stage_solver_settings.cpu_count,
     )?;
 
-    freeze_hawkes_and_coupling_bounds_for_option_pricing(
+    freeze_physical_parameter_bounds_for_option_pricing(
         &active_parameter_layout,
         baseline_parameter_vector.as_slice(),
         lower_bounds.as_mut_slice(),
@@ -1059,7 +1067,7 @@ fn runtime_hourly_seasonality_range(
     Ok((range_start_utc_nanos, range_end_utc_nanos))
 }
 
-fn freeze_hawkes_and_coupling_bounds_for_option_pricing(
+fn freeze_physical_parameter_bounds_for_option_pricing(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     baseline_parameter_vector: &[f64],
     lower_bounds: &mut [f64],
@@ -1073,6 +1081,9 @@ fn freeze_hawkes_and_coupling_bounds_for_option_pricing(
     for parameter_index in active_parameter_layout
         .hawkes_block
         .iter()
+        .chain(active_parameter_layout.nig_block.iter())
+        .chain(active_parameter_layout.return_clock_block.iter())
+        .chain(active_parameter_layout.long_variance_block.iter())
         .chain(active_parameter_layout.coupling_block.iter())
     {
         lower_bounds[*parameter_index] = baseline_parameter_vector[*parameter_index];

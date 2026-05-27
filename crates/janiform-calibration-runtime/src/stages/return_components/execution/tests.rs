@@ -869,6 +869,8 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         surprise_deterministic_intensity_profile: default_surprise_deterministic_intensity_profile(
         ),
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
+        long_variance_parameters:
+            janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         mean_reversion_fitted_parameters:
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)

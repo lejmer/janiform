@@ -736,6 +736,8 @@ fn build_return_components_stage_success_report(
             },
             return_clock_exposure_parameters: selected_candidate_input
                 .return_clock_exposure_parameters,
+            long_variance_parameters:
+                janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
             tick_grid_observation_model: selected_candidate_input
                 .tick_grid_observation_model
                 .clone(),

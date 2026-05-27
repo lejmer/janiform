@@ -9,6 +9,7 @@ from ....._native_api import native_exception_matches, native_module
 from ....._native_progress import native_terminal_progress_mode
 from ....._workflow_outputs import generate_workflow_run_id
 from ....._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
+from .....long_variance import LongVarianceState
 from .....pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     PricingIntervalSchedule,
@@ -333,6 +334,7 @@ def prepare_model_pricing_execution_input(
             boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
                 interval_index=0,
                 hawkes_boundary_state=runtime_input.effective_boundary_state,
+                long_variance_boundary_state=runtime_input.effective_long_variance_state,
                 mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
                 interval_delta=finalized_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
                 observed_boundary_state=runtime_input.effective_observed_boundary_state,
@@ -392,6 +394,7 @@ def prepare_model_pricing_runtime_input(
 
     if boundary_state is not None:
         effective_boundary_state = boundary_state
+        effective_long_variance_state = LongVarianceState.unit()
 
         (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
             model,
@@ -410,9 +413,11 @@ def prepare_model_pricing_runtime_input(
 
         if pricing_state is not None:
             effective_boundary_state = pricing_state.hawkes_excitation_state
+            effective_long_variance_state = pricing_state.long_variance_state
             effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
         else:
             effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
+            effective_long_variance_state = LongVarianceState.unit()
 
             (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
                 model,
@@ -426,6 +431,7 @@ def prepare_model_pricing_runtime_input(
         runtime_factors=runtime_factors,
         hourly_factor_contract=pricing_hourly_factor_contract,
         effective_boundary_state=effective_boundary_state,
+        effective_long_variance_state=effective_long_variance_state,
         effective_observed_boundary_state=effective_observed_boundary_state,
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         model_parameters=VanillaOptionPricingModelParameters(
@@ -433,6 +439,7 @@ def prepare_model_pricing_runtime_input(
             news_process_configuration=runtime_factors.news_process_configuration,
             nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters=runtime_factors.return_clock_exposure_parameters,
+            long_variance_parameters=runtime_factors.long_variance_parameters,
             pricing_kernel_parameters=runtime_factors.pricing_kernel_parameters,
         ),
     )
@@ -508,6 +515,7 @@ def prepare_model_grid_batch_pricing_native_input(
         "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
+            long_variance_boundary_state=runtime_input.effective_long_variance_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
             interval_delta=finalized_runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,
@@ -578,6 +586,7 @@ def prepare_model_surface_pricing_native_input(
         "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
+            long_variance_boundary_state=runtime_input.effective_long_variance_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
             interval_delta=finalized_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,

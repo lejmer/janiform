@@ -250,6 +250,7 @@ pub(crate) fn run_single_option_pricing(
         maturity_summary.deviation_domain_lower_bound,
         maturity_summary.deviation_domain_upper_bound,
         maturity_summary.collocation_node_count,
+        maturity_summary.terminal_affine_measure_change,
         maturity_summary.interval_summaries.clone(),
     )
     .map_err(
@@ -725,6 +726,7 @@ mod tests {
             observed_log_price,
             characteristic_function_values,
             characteristic_function_sensitivities: None,
+            terminal_affine_measure_change: None,
             interval_summaries: Vec::new(),
         };
 

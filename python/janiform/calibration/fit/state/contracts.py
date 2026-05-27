@@ -8,8 +8,9 @@ from typing import Any, Optional
 
 import pandas
 
-from ....mean_reversion import MeanReversionBoundaryState
 from ....contracts.base import require_positive_finite_scalar
+from ....long_variance import LongVarianceState
+from ....mean_reversion import MeanReversionBoundaryState
 from ....simulation import HawkesExcitationState
 from ...errors import calibration_error
 from ...market_data.contracts import CalibrationTickDataColumnMapping
@@ -71,6 +72,7 @@ class CurrentStateEstimationResult:
     """Current runtime state derived from a fitted model and observed signed trades."""
 
     hawkes_excitation_state: HawkesExcitationState
+    long_variance_state: LongVarianceState
     mean_reversion_boundary_state: MeanReversionBoundaryState
 
     def __post_init__(self) -> None:
@@ -78,6 +80,11 @@ class CurrentStateEstimationResult:
             raise calibration_error(
                 "hawkes_excitation_state",
                 "must be a HawkesExcitationState",
+            )
+        if not isinstance(self.long_variance_state, LongVarianceState):
+            raise calibration_error(
+                "long_variance_state",
+                "must be a LongVarianceState",
             )
         if not isinstance(self.mean_reversion_boundary_state, MeanReversionBoundaryState):
             raise calibration_error(

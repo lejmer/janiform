@@ -8,6 +8,7 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceParametersError};
 use janiform_model_kernels::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
 
 /// Canonical equation specification shared by pricing and sufficient-statistics solver consumers.
@@ -18,24 +19,34 @@ pub struct ExponentialAffineTransformEquationSpecification {
 
     /// Gamma mark parameters that provide `k_U` and `theta_U`.
     pub gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+
+    /// Long-variance parameters for baseline return-clock uncertainty.
+    pub long_variance_parameters: LongVarianceParameters,
 }
 
 impl ExponentialAffineTransformEquationSpecification {
     pub fn new(
         hawkes_kernel_parameters: HawkesKernelParameters,
         gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+        long_variance_parameters: LongVarianceParameters,
     ) -> Self {
         Self {
             hawkes_kernel_parameters,
             gamma_severity_mark_configuration,
+            long_variance_parameters,
         }
     }
 
     pub fn try_new(
         hawkes_kernel_parameters: HawkesKernelParameters,
         gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+        long_variance_parameters: LongVarianceParameters,
     ) -> Result<Self, ExponentialAffineTransformEquationSpecificationError> {
-        let specification = Self::new(hawkes_kernel_parameters, gamma_severity_mark_configuration);
+        let specification = Self::new(
+            hawkes_kernel_parameters,
+            gamma_severity_mark_configuration,
+            long_variance_parameters,
+        );
         specification.validate()?;
         Ok(specification)
     }
@@ -59,6 +70,13 @@ impl ExponentialAffineTransformEquationSpecification {
                     source,
                 }
             })?;
+
+        self.long_variance_parameters.validate().map_err(|source| {
+            ExponentialAffineTransformEquationSpecificationError::InvalidLongVarianceParameters {
+                source,
+            }
+        })?;
+
         Ok(())
     }
 
@@ -92,6 +110,7 @@ impl ExponentialAffineTransformEquationSpecification {
 pub enum ExponentialAffineTransformEquationSpecificationError {
     InvalidHawkesKernelParameters { source: HawkesKernelParameterError },
     InvalidGammaSeverityMarkConfiguration { source: NewsMarkConfigurationError },
+    InvalidLongVarianceParameters { source: LongVarianceParametersError },
 }
 
 impl Display for ExponentialAffineTransformEquationSpecificationError {
@@ -105,6 +124,10 @@ impl Display for ExponentialAffineTransformEquationSpecificationError {
                 formatter,
                 "equation specification gamma_severity_mark_configuration is invalid: {source}"
             ),
+            Self::InvalidLongVarianceParameters { source } => write!(
+                formatter,
+                "equation specification long_variance_parameters are invalid: {source}"
+            ),
         }
     }
 }
@@ -114,6 +137,7 @@ impl Error for ExponentialAffineTransformEquationSpecificationError {
         match self {
             Self::InvalidHawkesKernelParameters { source } => Some(source),
             Self::InvalidGammaSeverityMarkConfiguration { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
         }
     }
 }

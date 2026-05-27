@@ -11,8 +11,9 @@ pub(super) use super::sensitivity::{
 };
 pub(super) use crate::constants::MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT;
 pub(super) use crate::contracts::{
-    SpectralPricingDiagnostics, SpectralPricingIntervalDiagnostics, VanillaOptionPayoffType,
-    VanillaOptionPricingFailureStage, VanillaOptionPricingMarketInputs,
+    SpectralPricingDiagnostics, SpectralPricingIntervalDiagnostics, TerminalAffineCumulantStatus,
+    TerminalAffineMeasureChangeDiagnostics, TerminalAffineOptionSmileContributionDiagnostics,
+    VanillaOptionPayoffType, VanillaOptionPricingFailureStage, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionPricingStatus,
 };

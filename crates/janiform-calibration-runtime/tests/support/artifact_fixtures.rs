@@ -310,6 +310,8 @@ fn regression_return_components_fitted_parameters() -> ReturnComponentsStageFitt
             normalization_policy: "artifact_regression_fixture.v1".to_string(),
         },
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
+        long_variance_parameters:
+            janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         tick_grid_observation_model: TickGridObservationModel {
             tick_size: None,
             tick_size_source: "not_applicable_for_artifact_regression_fixture".to_string(),

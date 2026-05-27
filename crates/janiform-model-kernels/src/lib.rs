@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod hawkes;
+pub mod long_variance;
 pub mod mean_reversion;
 pub mod news;
 pub mod nig;

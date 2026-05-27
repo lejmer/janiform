@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 import pandas
 
@@ -13,13 +13,15 @@ from ....contracts.base import (
     require_positive_finite_scalar,
     require_timezone_aware_datetime,
 )
+from ....long_variance import LongVarianceState
 from ....mean_reversion import MeanReversionBoundaryState
-from ....simulation import SeededTickEventSide, HawkesExcitationState
+from ....simulation import HawkesExcitationState, SeededTickEventSide
 from ...errors import calibration_error
 from ...market_data.contracts import CalibrationTickDataColumnMapping
 from .._runtime.payloads import (
     current_state_tick_data_column_mapping_for_model,
     hawkes_kernel_parameters_for_model,
+    long_variance_parameters_for_model,
     mean_reversion_fitted_parameters_for_model,
 )
 from .._runtime.option_pricing.support import price_observed_log_return_from_spot
@@ -64,6 +66,7 @@ def estimate_current_state_for_model(
 
     native_payload = native_module().estimate_current_state_from_observed_data(
         hawkes_kernel_parameters_for_model(model).to_payload(),
+        long_variance_parameters_for_model(model).to_payload(),
         mean_reversion_fitted_parameters_for_model(model).to_payload(),
         datetime_to_utc_nanos(state_time_utc),
         observed_log_return,
@@ -76,6 +79,11 @@ def estimate_current_state_for_model(
         hawkes_excitation_state=HawkesExcitationState.from_mapping(
             dict(native_payload["hawkes_excitation_state"]),
             field_path="hawkes_excitation_state",
+        ),
+        long_variance_state=LongVarianceState.from_mapping(
+            dict(native_payload["long_variance_state"]),
+            field_path="long_variance_state",
+            error_factory=calibration_error,
         ),
         mean_reversion_boundary_state=MeanReversionBoundaryState.from_mapping(
             dict(native_payload["mean_reversion_boundary_state"]),

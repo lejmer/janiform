@@ -27,6 +27,7 @@ use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTer
 use crate::stages::joint_refinement::option_surface_tiering::{
     JointRefinementOptionSurfaceTierKind, JointRefinementOptionSurfaceTierSet,
 };
+use crate::stages::long_variance::metrics::LongVarianceHorizonMomentSummary;
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, ReturnComponentsStageContinuousReturnCalibrationSample,
@@ -40,7 +41,7 @@ use super::option_refinement::objective_gradient::{
 use super::option_refinement::reduced_model::JointRefinementOptionReducedModelArtifact;
 
 pub(crate) const JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
-pub(crate) const JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT: usize = 5;
+pub(crate) const JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT: usize = 6;
 pub(crate) const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 
 type JointRefinementSeedSummaryCache = Arc<
@@ -448,6 +449,7 @@ pub(crate) struct JointRefinementActiveParameterLayout {
     pub(crate) hawkes_block: Vec<usize>,
     pub(crate) nig_block: Vec<usize>,
     pub(crate) return_clock_block: Vec<usize>,
+    pub(crate) long_variance_block: Vec<usize>,
     pub(crate) option_pricing_kernel_block: Vec<usize>,
     pub(crate) coupling_block: Vec<usize>,
     pub(crate) log_stationary_event_rate_scale_index: usize,
@@ -456,6 +458,10 @@ pub(crate) struct JointRefinementActiveParameterLayout {
     pub(crate) log_cross_excitation_scale_index: usize,
     pub(crate) log_buy_excitation_return_clock_scale_index: usize,
     pub(crate) log_sell_excitation_return_clock_scale_index: usize,
+    pub(crate) log_long_variance_mean_reversion_rate_scale_index: usize,
+    pub(crate) long_variance_vol_of_vol_index: usize,
+    pub(crate) long_variance_buy_event_loading_index: usize,
+    pub(crate) long_variance_sell_event_loading_index: usize,
     pub(crate) option_pricing_log_buy_activity_premium_index: usize,
     pub(crate) option_pricing_log_sell_activity_premium_index: usize,
     pub(crate) known_activity_scale_index: Option<usize>,
@@ -492,6 +498,7 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) observed_15m_intraday_mean_absolute_returns: Vec<f64>,
     pub(crate) observed_hourly_tick_counts: Vec<f64>,
     pub(crate) observed_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
+    pub(crate) observed_long_variance_horizon_summaries: Vec<LongVarianceHorizonMomentSummary>,
     pub(crate) hourly_simulation_start_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_end_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_interval_count: usize,
@@ -658,6 +665,7 @@ pub(crate) struct JointRefinementRawAdmissibilityMetrics {
     pub(crate) activity_shape_fit: f64,
     pub(crate) activity_level_fit: f64,
     pub(crate) rv_activity_coupling_fit: f64,
+    pub(crate) long_variance_horizon_fit: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -726,4 +734,5 @@ pub struct JointRefinementSeedSummary {
     pub simulated_15m_intraday_mean_absolute_returns: Vec<f64>,
     pub simulated_hourly_tick_counts: Vec<f64>,
     pub simulated_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
+    pub(crate) simulated_long_variance_horizon_summaries: Vec<LongVarianceHorizonMomentSummary>,
 }

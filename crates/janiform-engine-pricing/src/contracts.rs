@@ -7,10 +7,15 @@ use serde::Serialize;
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
 };
-use janiform_foundations::numeric::{validate_finite_number, validate_positive_number};
+use janiform_foundations::numeric::{
+    validate_finite_number, validate_non_negative_number, validate_positive_number,
+};
 use janiform_foundations::time::duration_hours_to_nanos;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelParameterError, HawkesKernelParameters,
+};
+use janiform_model_kernels::long_variance::{
+    LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
 };
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
@@ -382,6 +387,7 @@ pub struct VanillaOptionPricingModelParameters {
     pub news_process_configuration: NewsProcessConfiguration,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub long_variance_parameters: LongVarianceParameters,
     pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
@@ -391,6 +397,7 @@ impl VanillaOptionPricingModelParameters {
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
+        long_variance_parameters: LongVarianceParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Self {
         Self {
@@ -398,6 +405,7 @@ impl VanillaOptionPricingModelParameters {
             news_process_configuration,
             nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters,
+            long_variance_parameters,
             pricing_kernel_parameters,
         }
     }
@@ -407,6 +415,7 @@ impl VanillaOptionPricingModelParameters {
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
+        long_variance_parameters: LongVarianceParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Result<Self, VanillaOptionPricingModelParametersError> {
         let model_parameters = Self::new(
@@ -414,6 +423,7 @@ impl VanillaOptionPricingModelParameters {
             news_process_configuration,
             nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters,
+            long_variance_parameters,
             pricing_kernel_parameters,
         );
 
@@ -455,6 +465,10 @@ impl VanillaOptionPricingModelParameters {
                 }
             })?;
 
+        self.long_variance_parameters.validate().map_err(|source| {
+            VanillaOptionPricingModelParametersError::InvalidLongVarianceParameters { source }
+        })?;
+
         self.pricing_kernel_parameters
             .validate()
             .map_err(|source| {
@@ -480,6 +494,9 @@ pub enum VanillaOptionPricingModelParametersError {
     InvalidReturnClockExposureParameters {
         source: ReturnClockExposureParametersError,
     },
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
     InvalidPricingKernelParameters {
         source: VanillaOptionPricingKernelParametersError,
     },
@@ -504,6 +521,10 @@ impl Display for VanillaOptionPricingModelParametersError {
                 formatter,
                 "model_parameters.return_clock_exposure_parameters are invalid: {source}"
             ),
+            Self::InvalidLongVarianceParameters { source } => write!(
+                formatter,
+                "model_parameters.long_variance_parameters are invalid: {source}"
+            ),
             Self::InvalidPricingKernelParameters { source } => write!(
                 formatter,
                 "model_parameters.pricing_kernel_parameters is invalid: {source}"
@@ -519,6 +540,7 @@ impl Error for VanillaOptionPricingModelParametersError {
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
             Self::InvalidReturnClockExposureParameters { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidPricingKernelParameters { source } => Some(source),
         }
     }
@@ -529,6 +551,7 @@ impl Error for VanillaOptionPricingModelParametersError {
 pub struct AnchoredVanillaOptionPricingBoundaryInput {
     pub interval_index: usize,
     pub hawkes_boundary_state: HawkesExcitationState,
+    pub long_variance_boundary_state: LongVarianceState,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     pub interval_delta: f64,
     pub observed_boundary_state: MeanReversionBoundaryState,
@@ -538,6 +561,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
     pub const fn new(
         interval_index: usize,
         hawkes_boundary_state: HawkesExcitationState,
+        long_variance_boundary_state: LongVarianceState,
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
         interval_delta: f64,
         observed_boundary_state: MeanReversionBoundaryState,
@@ -545,6 +569,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
         Self {
             interval_index,
             hawkes_boundary_state,
+            long_variance_boundary_state,
             mean_reversion_fitted_parameters,
             interval_delta,
             observed_boundary_state,
@@ -554,6 +579,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
     pub fn try_new(
         interval_index: usize,
         hawkes_boundary_state: HawkesExcitationState,
+        long_variance_boundary_state: LongVarianceState,
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
         interval_delta: f64,
         observed_boundary_state: MeanReversionBoundaryState,
@@ -561,6 +587,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
         let boundary_input = Self::new(
             interval_index,
             hawkes_boundary_state,
+            long_variance_boundary_state,
             mean_reversion_fitted_parameters,
             interval_delta,
             observed_boundary_state,
@@ -578,6 +605,14 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
                 value,
             }
         })?;
+
+        self.long_variance_boundary_state
+            .validate()
+            .map_err(|source| {
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidLongVarianceBoundaryState {
+                    source,
+                }
+            })?;
 
         self.mean_reversion_fitted_parameters
             .validate()
@@ -647,6 +682,9 @@ pub enum AnchoredVanillaOptionPricingBoundaryInputError {
         field: &'static str,
         value: f64,
     },
+    InvalidLongVarianceBoundaryState {
+        source: LongVarianceStateError,
+    },
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
     },
@@ -664,6 +702,10 @@ impl Display for AnchoredVanillaOptionPricingBoundaryInputError {
             Self::InvalidHawkesBoundaryStateComponent { field, value } => write!(
                 formatter,
                 "boundary_input.hawkes_boundary_state.{field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidLongVarianceBoundaryState { source } => write!(
+                formatter,
+                "boundary_input.long_variance_boundary_state is invalid: {source}"
             ),
             Self::InvalidMeanReversionFittedParameters { source } => write!(
                 formatter,
@@ -684,6 +726,7 @@ impl Display for AnchoredVanillaOptionPricingBoundaryInputError {
 impl Error for AnchoredVanillaOptionPricingBoundaryInputError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::InvalidLongVarianceBoundaryState { source } => Some(source),
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
             Self::InvalidObservedBoundaryState { source } => Some(source),
             _ => None,
@@ -810,6 +853,137 @@ impl SpectralPricingIntervalDiagnostics {
     }
 }
 
+/// Terminal affine measure-change diagnostics for one valuation and maturity.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalAffineMeasureChangeDiagnostics {
+    pub terminal_cumulant_status: TerminalAffineCumulantStatus,
+    pub theta: f64,
+    pub target_log_moment_exponent: f64,
+    pub observed_log_moment_exponent: f64,
+    pub martingale_residual: f64,
+    pub absolute_martingale_residual: f64,
+    pub martingale_tolerance: f64,
+    pub long_variance_boundary_state: LongVarianceState,
+    pub long_variance_stationary_mean_reversion_level: f64,
+    pub option_smile_contribution: TerminalAffineOptionSmileContributionDiagnostics,
+}
+
+impl TerminalAffineMeasureChangeDiagnostics {
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        terminal_cumulant_status: TerminalAffineCumulantStatus,
+        theta: f64,
+        target_log_moment_exponent: f64,
+        observed_log_moment_exponent: f64,
+        martingale_residual: f64,
+        martingale_tolerance: f64,
+        long_variance_boundary_state: LongVarianceState,
+        long_variance_stationary_mean_reversion_level: f64,
+        option_smile_contribution: TerminalAffineOptionSmileContributionDiagnostics,
+    ) -> Result<Self, SpectralPricingDiagnosticsError> {
+        let diagnostics = Self {
+            terminal_cumulant_status,
+            theta,
+            target_log_moment_exponent,
+            observed_log_moment_exponent,
+            martingale_residual,
+            absolute_martingale_residual: martingale_residual.abs(),
+            martingale_tolerance,
+            long_variance_boundary_state,
+            long_variance_stationary_mean_reversion_level,
+            option_smile_contribution,
+        };
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(self) -> Result<(), SpectralPricingDiagnosticsError> {
+        validate_finite_field(self.theta, "theta")?;
+        validate_finite_field(
+            self.target_log_moment_exponent,
+            "target_log_moment_exponent",
+        )?;
+        validate_finite_field(
+            self.observed_log_moment_exponent,
+            "observed_log_moment_exponent",
+        )?;
+        validate_finite_field(self.martingale_residual, "martingale_residual")?;
+        validate_non_negative_field(
+            self.absolute_martingale_residual,
+            "absolute_martingale_residual",
+        )?;
+        validate_positive_field(self.martingale_tolerance, "martingale_tolerance")?;
+        self.long_variance_boundary_state
+            .validate()
+            .map_err(|source| {
+                SpectralPricingDiagnosticsError::InvalidLongVarianceBoundaryState { source }
+            })?;
+        validate_positive_field(
+            self.long_variance_stationary_mean_reversion_level,
+            "long_variance_stationary_mean_reversion_level",
+        )?;
+        self.option_smile_contribution.validate()?;
+
+        Ok(())
+    }
+}
+
+/// Terminal cumulant status for a successful terminal affine maturity solve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalAffineCumulantStatus {
+    Succeeded,
+}
+
+/// Long-variance inputs that can contribute terminal smile curvature.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalAffineOptionSmileContributionDiagnostics {
+    pub boundary_level_to_stationary_level_ratio: f64,
+    pub vol_of_vol: f64,
+    pub buy_event_loading: f64,
+    pub sell_event_loading: f64,
+    pub stochastic_long_variance_enabled: bool,
+    pub event_feedback_enabled: bool,
+}
+
+impl TerminalAffineOptionSmileContributionDiagnostics {
+    pub fn try_new(
+        boundary_level_to_stationary_level_ratio: f64,
+        vol_of_vol: f64,
+        buy_event_loading: f64,
+        sell_event_loading: f64,
+    ) -> Result<Self, SpectralPricingDiagnosticsError> {
+        let diagnostics = Self {
+            boundary_level_to_stationary_level_ratio,
+            vol_of_vol,
+            buy_event_loading,
+            sell_event_loading,
+            stochastic_long_variance_enabled: vol_of_vol > 0.0,
+            event_feedback_enabled: buy_event_loading > 0.0 || sell_event_loading > 0.0,
+        };
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(self) -> Result<(), SpectralPricingDiagnosticsError> {
+        validate_positive_field(
+            self.boundary_level_to_stationary_level_ratio,
+            "boundary_level_to_stationary_level_ratio",
+        )?;
+        validate_non_negative_field(self.vol_of_vol, "vol_of_vol")?;
+        validate_non_negative_field(self.buy_event_loading, "buy_event_loading")?;
+        validate_non_negative_field(self.sell_event_loading, "sell_event_loading")?;
+
+        Ok(())
+    }
+}
+
 /// Deterministic diagnostics for the canonical spectral continuation engine.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -820,6 +994,7 @@ pub struct SpectralPricingDiagnostics {
     pub deviation_domain_lower_bound: f64,
     pub deviation_domain_upper_bound: f64,
     pub collocation_node_count: usize,
+    pub terminal_affine_measure_change: Option<TerminalAffineMeasureChangeDiagnostics>,
     pub interval_diagnostics: Vec<SpectralPricingIntervalDiagnostics>,
 }
 
@@ -828,6 +1003,7 @@ impl SpectralPricingDiagnostics {
         deviation_domain_lower_bound: f64,
         deviation_domain_upper_bound: f64,
         collocation_node_count: usize,
+        terminal_affine_measure_change: Option<TerminalAffineMeasureChangeDiagnostics>,
         interval_diagnostics: Vec<SpectralPricingIntervalDiagnostics>,
     ) -> Result<Self, SpectralPricingDiagnosticsError> {
         let diagnostics = Self {
@@ -837,6 +1013,7 @@ impl SpectralPricingDiagnostics {
             deviation_domain_lower_bound,
             deviation_domain_upper_bound,
             collocation_node_count,
+            terminal_affine_measure_change,
             interval_diagnostics,
         };
 
@@ -886,6 +1063,10 @@ impl SpectralPricingDiagnostics {
             );
         }
 
+        if let Some(terminal_affine_measure_change) = self.terminal_affine_measure_change {
+            terminal_affine_measure_change.validate()?;
+        }
+
         if self.interval_diagnostics.is_empty() {
             return Err(SpectralPricingDiagnosticsError::EmptyIntervalDiagnostics);
         }
@@ -903,6 +1084,9 @@ pub enum SpectralPricingDiagnosticsError {
     InvalidExpectedHawkesBoundaryState {
         field: &'static str,
         value: f64,
+    },
+    InvalidLongVarianceBoundaryState {
+        source: LongVarianceStateError,
     },
     InvalidFiniteField {
         field: &'static str,
@@ -939,6 +1123,10 @@ impl Display for SpectralPricingDiagnosticsError {
             Self::InvalidExpectedHawkesBoundaryState { field, value } => write!(
                 formatter,
                 "spectral pricing expected Hawkes boundary state component {field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidLongVarianceBoundaryState { source } => write!(
+                formatter,
+                "spectral pricing long-variance boundary state is invalid: {source}"
             ),
             Self::InvalidFiniteField { field, value } => {
                 write!(formatter, "{field} must be finite, found {value}")
@@ -2201,6 +2389,18 @@ fn validate_positive_field(
     })
 }
 
+fn validate_non_negative_field(
+    value: f64,
+    field: &'static str,
+) -> Result<(), SpectralPricingDiagnosticsError> {
+    validate_non_negative_number(value, field).map_err(|source| {
+        SpectralPricingDiagnosticsError::InvalidNonNegativeField {
+            field: source.field,
+            value: source.value,
+        }
+    })
+}
+
 fn validate_interval_delta(interval_delta: f64) -> Result<i64, VanillaOptionPricingRequestError> {
     duration_hours_to_nanos(interval_delta).map_err(|_| {
         VanillaOptionPricingRequestError::InvalidIntervalDelta {
@@ -2272,6 +2472,7 @@ struct VanillaOptionPricingModelParametersPayload {
     news_process_configuration: NewsProcessConfiguration,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
+    long_variance_parameters: LongVarianceParameters,
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
@@ -2287,6 +2488,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
             payload.news_process_configuration,
             payload.nig_shared_plus_shift_configuration,
             payload.return_clock_exposure_parameters,
+            payload.long_variance_parameters,
             payload.pricing_kernel_parameters,
         )
         .map_err(serde::de::Error::custom)
@@ -2298,6 +2500,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
 struct AnchoredVanillaOptionPricingBoundaryInputPayload {
     interval_index: usize,
     hawkes_boundary_state: HawkesExcitationState,
+    long_variance_boundary_state: LongVarianceState,
     mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     interval_delta: f64,
     observed_boundary_state: MeanReversionBoundaryState,
@@ -2313,6 +2516,7 @@ impl<'de> Deserialize<'de> for AnchoredVanillaOptionPricingBoundaryInput {
         Self::try_new(
             payload.interval_index,
             payload.hawkes_boundary_state,
+            payload.long_variance_boundary_state,
             payload.mean_reversion_fitted_parameters,
             payload.interval_delta,
             payload.observed_boundary_state,

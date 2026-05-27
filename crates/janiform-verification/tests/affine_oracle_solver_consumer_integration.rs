@@ -261,6 +261,7 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         )
         .expect("pricing fixture NIG configuration should construct"),
         ReturnClockExposureParameters::neutral(),
+        janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing fixture model parameters should construct");
@@ -274,6 +275,7 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         AnchoredVanillaOptionPricingBoundaryInput::try_new(
             0,
             boundary_state,
+            janiform_model_kernels::long_variance::LongVarianceState::unit(),
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-kappa endogenous fitted parameters should construct"),
             interval_delta,

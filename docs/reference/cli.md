@@ -301,6 +301,8 @@ Disk execution writes a run directory with the fitted model, fit report, progres
     Resume from the Hawkes activity stage.
   - `return-components`:
     Resume from the return-component stage.
+  - `long-variance`:
+    Resume from the long-variance stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
@@ -612,6 +614,8 @@ This advanced command is useful when a separate process prepares calibration inp
     Resume from the Hawkes activity stage.
   - `return-components`:
     Resume from the return-component stage.
+  - `long-variance`:
+    Resume from the long-variance stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
@@ -778,6 +782,8 @@ This command runs a prepared calibration input file. Disk runs write the fitted 
     Resume from the Hawkes activity stage.
   - `return-components`:
     Resume from the return-component stage.
+  - `long-variance`:
+    Resume from the long-variance stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:

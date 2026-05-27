@@ -2004,13 +2004,15 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarsesimulationmodelinputs) | contract_model | 6 fields |
+| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarsesimulationmodelinputs) | contract_model | 8 fields |
 | [`CoarseSimulationPath`](#python-api-symbol-janiform-simulation-coarsesimulationpath) | contract_model | 13 fields |
 | [`CoarseSimulationRunRequest`](#python-api-symbol-janiform-simulation-coarsesimulationrunrequest) | contract_model | 7 fields |
 | [`HawkesExcitationState`](#python-api-symbol-janiform-simulation-hawkesexcitationstate) | contract_model | 4 fields |
 | [`HawkesKernelLoadings`](#python-api-symbol-janiform-simulation-hawkeskernelloadings) | contract_model | 4 fields |
 | [`HawkesKernelParameters`](#python-api-symbol-janiform-simulation-hawkeskernelparameters) | contract_model | 4 fields |
 | [`JaniformSimulationResult`](#python-api-symbol-janiform-simulation-janiformsimulationresult) | contract_model | 5 fields |
+| [`LongVarianceParameters`](#python-api-symbol-janiform-simulation-longvarianceparameters) | contract_model | 4 fields |
+| [`LongVarianceState`](#python-api-symbol-janiform-simulation-longvariancestate) | contract_model | 1 fields |
 | [`MeanReversionAnchorModel`](#python-api-symbol-janiform-simulation-meanreversionanchormodel) | contract_model | 3 fields |
 | [`MeanReversionBoundaryState`](#python-api-symbol-janiform-simulation-meanreversionboundarystate) | contract_model | 4 fields |
 | [`MeanReversionFittedParameters`](#python-api-symbol-janiform-simulation-meanreversionfittedparameters) | contract_model | 2 fields |
@@ -2019,7 +2021,7 @@
 | [`SeededTickEventSide`](#python-api-symbol-janiform-simulation-seededtickeventside) | enum | 2 members |
 | [`SeededTickEventStateSnapshotCapture`](#python-api-symbol-janiform-simulation-seededtickeventstatesnapshotcapture) | enum | 2 members |
 | [`SeededTickSimulationHourlyFactorSummary`](#python-api-symbol-janiform-simulation-seededticksimulationhourlyfactorsummary) | contract_model | 8 fields |
-| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 17 fields |
+| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 19 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationfailure) | contract_model | 6 fields |
@@ -2032,8 +2034,8 @@
 ### `CoarseSimulationModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
-- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
+- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
+- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
 <a id="python-api-symbol-janiform-simulation-coarsesimulationpath"></a>
 ### `CoarseSimulationPath`
@@ -2076,6 +2078,20 @@
 - Kind: `contract_model`
 - Signature: `(simulation_kind: 'SimulationKind', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'`
 - Fields: `simulation_kind`, `metadata`, `provenance`, `diagnostics`, `raw_result`
+
+<a id="python-api-symbol-janiform-simulation-longvarianceparameters"></a>
+### `LongVarianceParameters`
+
+- Kind: `contract_model`
+- Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
+- Fields: `mean_reversion_rate`, `vol_of_vol`, `buy_event_loading`, `sell_event_loading`
+
+<a id="python-api-symbol-janiform-simulation-longvariancestate"></a>
+### `LongVarianceState`
+
+- Kind: `contract_model`
+- Signature: `(level: 'float') -> 'None'`
+- Fields: `level`
 
 <a id="python-api-symbol-janiform-simulation-meanreversionanchormodel"></a>
 ### `MeanReversionAnchorModel`
@@ -2143,8 +2159,8 @@
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 <a id="python-api-symbol-janiform-simulation-seededticksimulationresponse"></a>
 ### `SeededTickSimulationResponse`
@@ -2226,7 +2242,7 @@
 | [`COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-path-record-schema-version) | constant | constant value |
 | [`COARSE_SIMULATION_PATH_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-path-schema-version) | constant | constant value |
 | [`COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-run-request-schema-version) | constant | constant value |
-| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationmodelinputs) | contract_model | 6 fields |
+| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationmodelinputs) | contract_model | 8 fields |
 | [`CoarseSimulationPath`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpath) | contract_model | 13 fields |
 | [`CoarseSimulationPathDiagnostics`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathdiagnostics) | contract_model | 19 fields |
 | [`CoarseSimulationPathOutputSchemaMetadata`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathoutputschemametadata) | contract_model | 9 fields |
@@ -2326,8 +2342,8 @@
 ### `CoarseSimulationModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
-- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
+- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
+- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
 <a id="python-api-symbol-janiform-simulation-coarse-coarsesimulationpath"></a>
 ### `CoarseSimulationPath`
@@ -2503,6 +2519,8 @@
 | [`HawkesExcitationState`](#python-api-symbol-janiform-simulation-seeded-hawkesexcitationstate) | contract_model | 4 fields |
 | [`HawkesKernelLoadings`](#python-api-symbol-janiform-simulation-seeded-hawkeskernelloadings) | contract_model | 4 fields |
 | [`HawkesKernelParameters`](#python-api-symbol-janiform-simulation-seeded-hawkeskernelparameters) | contract_model | 4 fields |
+| [`LongVarianceParameters`](#python-api-symbol-janiform-simulation-seeded-longvarianceparameters) | contract_model | 4 fields |
+| [`LongVarianceState`](#python-api-symbol-janiform-simulation-seeded-longvariancestate) | contract_model | 1 fields |
 | [`SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-boundary-transport-policy) | constant | constant value |
 | [`SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-diagnostics-schema-version) | constant | constant value |
 | [`SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-native-chunk-record-count) | constant | constant value |
@@ -2520,7 +2538,7 @@
 | [`SeededTickEventTapeView`](#python-api-symbol-janiform-simulation-seeded-seededtickeventtapeview) | class | janiform.simulation.seeded.response |
 | [`SeededTickSimulationDiagnostics`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationdiagnostics) | contract_model | 12 fields |
 | [`SeededTickSimulationHourlyFactorSummary`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationhourlyfactorsummary) | contract_model | 8 fields |
-| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 17 fields |
+| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 19 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationfailure) | contract_model | 6 fields |
@@ -2550,6 +2568,20 @@
 - Kind: `contract_model`
 - Signature: `(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'`
 - Fields: `lambda_bar`, `beta`, `alpha`, `rho`
+
+<a id="python-api-symbol-janiform-simulation-seeded-longvarianceparameters"></a>
+### `LongVarianceParameters`
+
+- Kind: `contract_model`
+- Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
+- Fields: `mean_reversion_rate`, `vol_of_vol`, `buy_event_loading`, `sell_event_loading`
+
+<a id="python-api-symbol-janiform-simulation-seeded-longvariancestate"></a>
+### `LongVarianceState`
+
+- Kind: `contract_model`
+- Signature: `(level: 'float') -> 'None'`
+- Fields: `level`
 
 <a id="python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-boundary-transport-policy"></a>
 ### `SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY`
@@ -2688,8 +2720,8 @@
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse"></a>
 ### `SeededTickSimulationResponse`
@@ -2874,10 +2906,10 @@
 | [`VanillaOptionPricingDiagnostics`](#python-api-symbol-janiform-pricing-vanillaoptionpricingdiagnostics) | contract_model | 4 fields |
 | [`VanillaOptionPricingExecutionInput`](#python-api-symbol-janiform-pricing-vanillaoptionpricingexecutioninput) | contract_model | 4 fields |
 | [`VanillaOptionPricingFailureDiagnostic`](#python-api-symbol-janiform-pricing-vanillaoptionpricingfailurediagnostic) | contract_model | 2 fields |
-| [`VanillaOptionPricingFailureStage`](#python-api-symbol-janiform-pricing-vanillaoptionpricingfailurestage) | enum | 17 members |
+| [`VanillaOptionPricingFailureStage`](#python-api-symbol-janiform-pricing-vanillaoptionpricingfailurestage) | enum | 9 members |
 | [`VanillaOptionPricingKernelParameters`](#python-api-symbol-janiform-pricing-vanillaoptionpricingkernelparameters) | contract_model | 2 fields |
 | [`VanillaOptionPricingMarketInputs`](#python-api-symbol-janiform-pricing-vanillaoptionpricingmarketinputs) | contract_model | 5 fields |
-| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-vanillaoptionpricingmodelparameters) | contract_model | 5 fields |
+| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-vanillaoptionpricingmodelparameters) | contract_model | 6 fields |
 | [`VanillaOptionPricingOptionalOutputSelection`](#python-api-symbol-janiform-pricing-vanillaoptionpricingoptionaloutputselection) | contract_model | 3 fields |
 | [`VanillaOptionPricingRequest`](#python-api-symbol-janiform-pricing-vanillaoptionpricingrequest) | contract_model | 5 fields |
 | [`VanillaOptionPricingResponse`](#python-api-symbol-janiform-pricing-vanillaoptionpricingresponse) | contract_model | 6 fields |
@@ -3106,8 +3138,8 @@
 ### `VanillaOptionPricingModelParameters`
 
 - Kind: `contract_model`
-- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
-- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `return_clock_exposure_parameters`, `pricing_kernel_parameters`
+- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
+- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `pricing_kernel_parameters`
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingoptionaloutputselection"></a>
 ### `VanillaOptionPricingOptionalOutputSelection`
@@ -3267,9 +3299,9 @@
 | [`VanillaOptionPricingDiagnostics`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingdiagnostics) | contract_model | 4 fields |
 | [`VanillaOptionPricingExecutionInput`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingexecutioninput) | contract_model | 4 fields |
 | [`VanillaOptionPricingFailureDiagnostic`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingfailurediagnostic) | contract_model | 2 fields |
-| [`VanillaOptionPricingFailureStage`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingfailurestage) | enum | 17 members |
+| [`VanillaOptionPricingFailureStage`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingfailurestage) | enum | 9 members |
 | [`VanillaOptionPricingMarketInputs`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingmarketinputs) | contract_model | 5 fields |
-| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingmodelparameters) | contract_model | 5 fields |
+| [`VanillaOptionPricingModelParameters`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingmodelparameters) | contract_model | 6 fields |
 | [`VanillaOptionPricingOptionalOutputSelection`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingoptionaloutputselection) | contract_model | 3 fields |
 | [`VanillaOptionPricingRequest`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingrequest) | contract_model | 5 fields |
 | [`VanillaOptionPricingResponse`](#python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingresponse) | contract_model | 6 fields |
@@ -3488,8 +3520,8 @@
 ### `VanillaOptionPricingModelParameters`
 
 - Kind: `contract_model`
-- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
-- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `return_clock_exposure_parameters`, `pricing_kernel_parameters`
+- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
+- Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `pricing_kernel_parameters`
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingoptionaloutputselection"></a>
 ### `VanillaOptionPricingOptionalOutputSelection`
@@ -3604,7 +3636,7 @@
 | [`JaniformVanillaOptionGridBatchPricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongridbatchpricingresult) | contract_model | 3 fields |
 | [`JaniformVanillaOptionGridPricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongridpricingresult) | contract_model | 16 fields |
 | [`JaniformVanillaOptionMaturityIntervalSummary`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionmaturityintervalsummary) | contract_model | 8 fields |
-| [`JaniformVanillaOptionMaturitySummary`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionmaturitysummary) | contract_model | 9 fields |
+| [`JaniformVanillaOptionMaturitySummary`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionmaturitysummary) | contract_model | 8 fields |
 | [`JaniformVanillaOptionSurface`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionsurface) | contract_model | 8 fields |
 | [`JaniformVanillaOptionSurfacePricingResult`](#python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionsurfacepricingresult) | contract_model | 18 fields |
 | [`ObservedOptionsPhysicalDistributionDiagnosticsNode`](#python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsnode) | contract_model | 20 fields |
@@ -3825,7 +3857,7 @@
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`JaniformVanillaOptionMaturityIntervalSummary`](#python-api-symbol-janiform-pricing-fitted-summaries-janiformvanillaoptionmaturityintervalsummary) | contract_model | 8 fields |
-| [`JaniformVanillaOptionMaturitySummary`](#python-api-symbol-janiform-pricing-fitted-summaries-janiformvanillaoptionmaturitysummary) | contract_model | 9 fields |
+| [`JaniformVanillaOptionMaturitySummary`](#python-api-symbol-janiform-pricing-fitted-summaries-janiformvanillaoptionmaturitysummary) | contract_model | 8 fields |
 
 <a id="python-api-symbol-janiform-pricing-fitted-summaries-janiformvanillaoptionmaturityintervalsummary"></a>
 ### `JaniformVanillaOptionMaturityIntervalSummary`
@@ -3880,9 +3912,9 @@
 | [`SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-sufficient-statistics-path-diagnostics-schema-version) | constant | constant value |
 | [`SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-sufficient-statistics-path-output-schema-metadata-version) | constant | constant value |
 | [`SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-sufficient-statistics-path-provenance-schema-version) | constant | constant value |
-| [`SufficientStatisticsEquationSpecification`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsequationspecification) | contract_model | 2 fields |
+| [`SufficientStatisticsEquationSpecification`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsequationspecification) | contract_model | 3 fields |
 | [`SufficientStatisticsIntervalStatistics`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsintervalstatistics) | contract_model | 8 fields |
-| [`SufficientStatisticsModelInputs`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsmodelinputs) | contract_model | 6 fields |
+| [`SufficientStatisticsModelInputs`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsmodelinputs) | contract_model | 7 fields |
 | [`SufficientStatisticsPath`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticspath) | contract_model | 11 fields |
 | [`SufficientStatisticsPathDiagnostics`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticspathdiagnostics) | contract_model | 17 fields |
 | [`SufficientStatisticsPathOutputSchemaMetadata`](#python-api-symbol-janiform-sufficient-statistics-sufficientstatisticspathoutputschemametadata) | contract_model | 8 fields |
@@ -3926,8 +3958,8 @@
 ### `SufficientStatisticsEquationSpecification`
 
 - Kind: `contract_model`
-- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'`
-- Fields: `hawkes_kernel_parameters`, `gamma_severity_mark_configuration`
+- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'`
+- Fields: `hawkes_kernel_parameters`, `gamma_severity_mark_configuration`, `long_variance_parameters`
 
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsintervalstatistics"></a>
 ### `SufficientStatisticsIntervalStatistics`
@@ -3940,8 +3972,8 @@
 ### `SufficientStatisticsModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
-- Fields: `equation_specification`, `nig_shared_plus_shift_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`
+- Signature: `(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
+- Fields: `equation_specification`, `nig_shared_plus_shift_configuration`, `initial_excitation_state`, `initial_long_variance_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`
 
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticspath"></a>
 ### `SufficientStatisticsPath`
@@ -4057,9 +4089,9 @@
 | [`SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficient-statistics-path-diagnostics-schema-version) | constant | constant value |
 | [`SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficient-statistics-path-output-schema-metadata-version) | constant | constant value |
 | [`SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficient-statistics-path-provenance-schema-version) | constant | constant value |
-| [`SufficientStatisticsEquationSpecification`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsequationspecification) | contract_model | 2 fields |
+| [`SufficientStatisticsEquationSpecification`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsequationspecification) | contract_model | 3 fields |
 | [`SufficientStatisticsIntervalStatistics`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsintervalstatistics) | contract_model | 8 fields |
-| [`SufficientStatisticsModelInputs`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsmodelinputs) | contract_model | 6 fields |
+| [`SufficientStatisticsModelInputs`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsmodelinputs) | contract_model | 7 fields |
 | [`SufficientStatisticsPath`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticspath) | contract_model | 11 fields |
 | [`SufficientStatisticsPathDiagnostics`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticspathdiagnostics) | contract_model | 17 fields |
 | [`SufficientStatisticsPathOutputSchemaMetadata`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticspathoutputschemametadata) | contract_model | 8 fields |
@@ -4096,8 +4128,8 @@
 ### `SufficientStatisticsEquationSpecification`
 
 - Kind: `contract_model`
-- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'`
-- Fields: `hawkes_kernel_parameters`, `gamma_severity_mark_configuration`
+- Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'`
+- Fields: `hawkes_kernel_parameters`, `gamma_severity_mark_configuration`, `long_variance_parameters`
 
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsintervalstatistics"></a>
 ### `SufficientStatisticsIntervalStatistics`
@@ -4110,8 +4142,8 @@
 ### `SufficientStatisticsModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
-- Fields: `equation_specification`, `nig_shared_plus_shift_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`
+- Signature: `(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
+- Fields: `equation_specification`, `nig_shared_plus_shift_configuration`, `initial_excitation_state`, `initial_long_variance_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`
 
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticspath"></a>
 ### `SufficientStatisticsPath`
@@ -6099,7 +6131,7 @@
 | [`CalibrationResumeSource`](#python-api-symbol-janiform-calibration-staged-calibrationresumesource) | enum | 2 members |
 | [`CalibrationRunDataInputs`](#python-api-symbol-janiform-calibration-staged-calibrationrundatainputs) | contract_model | 3 fields |
 | [`CalibrationRunSeedSettings`](#python-api-symbol-janiform-calibration-staged-calibrationrunseedsettings) | contract_model | 2 fields |
-| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-calibrationstage) | enum | 7 members |
+| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-calibrationstage) | enum | 8 members |
 | [`CalibrationStageExecutionStatus`](#python-api-symbol-janiform-calibration-staged-calibrationstageexecutionstatus) | enum | 3 members |
 | [`CalibrationStageHandoff`](#python-api-symbol-janiform-calibration-staged-calibrationstagehandoff) | contract_model | 4 fields |
 | [`CalibrationStageReport`](#python-api-symbol-janiform-calibration-staged-calibrationstagereport) | contract_model | 7 fields |
@@ -6248,6 +6280,7 @@
 | `SEASONALITY` | `seasonality` |
 | `HAWKES` | `hawkes` |
 | `RETURN_COMPONENTS` | `return_components` |
+| `LONG_VARIANCE` | `long_variance` |
 | `MEAN_REVERSION` | `mean_reversion` |
 | `JOINT_REFINEMENT` | `joint_refinement` |
 | `OPTION_REFINEMENT` | `option_refinement` |
@@ -6444,7 +6477,7 @@
 | [`CalibrationResumeSource`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationresumesource) | enum | 2 members |
 | [`CalibrationRunDataInputs`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationrundatainputs) | contract_model | 3 fields |
 | [`CalibrationRunSeedSettings`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationrunseedsettings) | contract_model | 2 fields |
-| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstage) | enum | 7 members |
+| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstage) | enum | 8 members |
 | [`CalibrationStageExecutionStatus`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstageexecutionstatus) | enum | 3 members |
 | [`CalibrationStageHandoff`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstagehandoff) | contract_model | 4 fields |
 | [`CalibrationStageSeedOverride`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstageseedoverride) | contract_model | 2 fields |
@@ -6544,6 +6577,7 @@
 | `SEASONALITY` | `seasonality` |
 | `HAWKES` | `hawkes` |
 | `RETURN_COMPONENTS` | `return_components` |
+| `LONG_VARIANCE` | `long_variance` |
 | `MEAN_REVERSION` | `mean_reversion` |
 | `JOINT_REFINEMENT` | `joint_refinement` |
 | `OPTION_REFINEMENT` | `option_refinement` |

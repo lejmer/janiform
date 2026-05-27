@@ -6,10 +6,11 @@ use super::super::{
     CalibrationStagedRunObserverEvent, CalibrationStagedRunStageProgressEvent,
     CalibrationStagedRunStageReport, ExchangeCalendarRegistry, HawkesStageExecutionInput,
     HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
+    LongVarianceStageExecutionInput, LongVarianceStageReturnComponentsInput,
     MeanReversionStageReturnComponentsInput, ReturnComponentsStageActivityInput,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageProgressUpdate,
-    run_hawkes_calibration_stage, run_mean_reversion_calibration_stage,
-    run_return_components_calibration_stage,
+    run_hawkes_calibration_stage, run_long_variance_calibration_stage,
+    run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
     run_return_components_calibration_stage_with_progress_observer,
     run_seasonality_calibration_stage,
 };
@@ -29,6 +30,7 @@ pub(in crate::staged_runner) fn run_stage_for_staged_execution(
         CalibrationStage::Seasonality => run_seasonality_staged_execution_stage(input),
         CalibrationStage::Hawkes => run_hawkes_staged_execution_stage(input),
         CalibrationStage::ReturnComponents => run_return_components_staged_execution_stage(input),
+        CalibrationStage::LongVariance => run_long_variance_staged_execution_stage(input),
         CalibrationStage::MeanReversion => run_mean_reversion_staged_execution_stage(input),
         CalibrationStage::JointRefinement
         | CalibrationStage::OptionRefinement
@@ -244,6 +246,70 @@ fn forward_return_components_stage_progress(
                 current_convergence_ratio: progress_update.current_convergence_ratio,
             },
         )));
+    }
+}
+
+fn run_long_variance_staged_execution_stage(
+    input: RunStageForStagedExecutionInput<'_, '_>,
+) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
+    let stage_input = LongVarianceStageExecutionInput {
+        return_components_input: Some(long_variance_return_components_input(
+            input.run_spec,
+            input.payload_state,
+        )?),
+        return_components_stage_payload: input
+            .payload_state
+            .return_components_stage_payload
+            .clone(),
+        // Intentional copy because return-component observations are reused by
+        // later stages after the long-variance stage consumes its input value.
+        candidate_generation_input: input
+            .staged_run_inputs
+            .return_components_candidate_generation_input
+            .clone(),
+    };
+
+    Ok(CalibrationStagedRunStageReport::LongVariance(Box::new(
+        run_long_variance_calibration_stage(input.run_spec, input.calendar_registry, stage_input),
+    )))
+}
+
+fn long_variance_return_components_input(
+    run_spec: &CalibrationRunSpec,
+    payload_state: &CalibrationInMemoryStagePayloadState,
+) -> Result<LongVarianceStageReturnComponentsInput, CalibrationStagedRunFailure> {
+    match expected_stage_handoff_transport(
+        run_spec,
+        CalibrationStage::ReturnComponents,
+        CalibrationStage::LongVariance,
+    ) {
+        CalibrationStageHandoffTransport::InMemoryOutput => {
+            let Some(return_components_stage_payload) =
+                payload_state.return_components_stage_payload.as_ref()
+            else {
+                return Err(
+                    CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                        required_stage: CalibrationStage::ReturnComponents,
+                        consuming_stage: CalibrationStage::LongVariance,
+                    },
+                );
+            };
+
+            Ok(LongVarianceStageReturnComponentsInput::InMemoryOutput {
+                selected_candidate_id: return_components_stage_payload
+                    .selected_candidate_id
+                    .clone(),
+            })
+        }
+        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
+            LongVarianceStageReturnComponentsInput::PersistedArtifactReference {
+                artifact_reference: expected_stage_handoff_artifact_reference(
+                    run_spec,
+                    CalibrationStage::ReturnComponents,
+                    CalibrationStage::LongVariance,
+                ),
+            },
+        ),
     }
 }
 

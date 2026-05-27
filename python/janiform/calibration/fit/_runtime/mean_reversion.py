@@ -75,6 +75,7 @@ def materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
         runtime_factors.kernel_parameters.to_payload(),
         runtime_factors.nig_shared_plus_shift_configuration.to_payload(),
         runtime_factors.news_process_configuration.to_payload(),
+        runtime_factors.long_variance_parameters.to_payload(),
         initial_excitation_state.to_payload(),
         fitted_parameters.to_payload(),
         interval_alignment_policy,

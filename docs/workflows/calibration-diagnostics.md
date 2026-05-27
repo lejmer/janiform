@@ -60,6 +60,11 @@ Full calibration reports separate the final pipeline into the stages users see i
 
 | Stage                | When it appears       | What it does                                                                 |
 |----------------------|-----------------------|-------------------------------------------------------------------------------|
+| `Fit seasonality`    | Full runs             | Fits deterministic baseline activity seasonality.                             |
+| `Fit event activity` | Full runs             | Fits Hawkes activity dynamics.                                                |
+| `Fit return distribution` | Full runs        | Fits baseline return-shape and return-clock contracts.                        |
+| `Fit long variance` | Full runs             | Initializes persistent variance parameters and reports horizon diagnostics.    |
+| `Fit mean reversion` | Full runs            | Fits anchor/pressure mean-reversion behavior.                                 |
 | `Refine dynamics`    | Full runs             | Searches restart candidates for the physical dynamics fitted to underlying data. |
 | `Fit option surface` | Full runs with options | Fits the option pricing block from the selected dynamics frontier.             |
 | `Finalize model`     | Full runs             | Builds final diagnostics and writes the canonical final fitted model payload.   |
@@ -112,7 +117,6 @@ Also avoid reading one number by itself. A useful fit is usually balanced: activ
 | `return_shape`               | Do returns have similar center, spread, skew, and tail shape?                   |
 | `return_scale`               | Are tick-level and interval-level price changes about the right size?           |
 | `business_time_return_scale` | Does return size change reasonably between quiet and active periods?            |
-| `intraday_return_level`      | Does return size vary across the day in a similar way?                          |
 | `activity_level_timing`      | Does the model produce the right amount and coarse timing of activity?          |
 | `activity_shape`             | Does the intraday activity profile have similar shape to the training data?     |
 | `rv_activity_coupling`       | Does higher activity tend to come with higher price variation in the same way?  |
@@ -192,13 +196,13 @@ Activity seasonality means the regular time-of-day or time-of-week pattern in ho
 
 Janiform uses this as a baseline activity pattern. It changes the regular event rate for a given hour, but it is separate from self-exciting activity bursts, where recent events make more events likely soon after.
 
-### Return-size seasonality
+### Long variance and return clocks
 
-The report may call this return-mark seasonality. It means the regular time-of-week pattern in the size of tick returns.
+Long variance is the persistent stochastic volatility state used by return clocks. Calendar seasonality changes baseline event opportunity, while long variance and Hawkes excitation determine how much stochastic return clock accumulates along a path.
 
-This is separate from activity seasonality. A market can have many ticks at one time of day, but those ticks do not necessarily have larger price changes. Janiform stores 168 hourly factors, one for each local hour of the week, so simulation can reflect both patterns.
+The neutral long-variance level is `1.0`. Long-variance parameters control persistence, volatility of volatility, and buy/sell event feedback into future variance. Return-clock exposure parameters control how strongly Hawkes excitation contributes to buy-side and sell-side return clocks.
 
-The neutral factor is `1.0`, which means "use the average return scale." Values above `1.0` mean larger-than-average tick returns for that local hour. Values below `1.0` mean smaller-than-average tick returns.
+The `Fit long variance` stage estimates an initial persistent variance state from observed squared-return persistence, side activity relation to squared returns, and normalized squared-return dispersion. The dispersion initializer is projected into the standard unit-stationary CIR variance boundary before restart optimization so the handoff point is inside the same parameter domain that restart search uses. Its report contains observed horizon diagnostics at `5min`, `1h`, `1d`, and `1w`: realized variance, variance-of-variance, return skewness, return excess kurtosis, activity/variance correlation, signed-activity relation to next-interval variance, temporal block standard errors where a coarser configured horizon is available, and delete-one jackknife standard errors for skewness and excess kurtosis. Joint refinement scores the horizon diagnostics with available sampling uncertainty under the `long_variance` objective family so restart optimization can move the long-variance parameters when those persistent variance targets support it.
 
 ### Business time for returns
 
@@ -238,7 +242,7 @@ The report may mention these restarts because they explain how Janiform searched
 
 Option refinement uses option quote residual scores, not the restart optimization pseudo-likelihood loss. The option score is the maturity-weighted root-mean-square of option quote residuals after each residual has been scaled by its quote spread. A score near `1.0` means the model is typically about one quoted spread away from the observed mid-price on the tier being evaluated. Smaller is better.
 
-The option search tier first prices an exact sensitivity baseline, then validates pricing-block proposals with search-tier operator approximation. The default search budget is deterministic: one exact baseline evaluation plus one proposal evaluation per active pricing-block search coordinate. If `joint_refinement_option_refinement_wall_clock_budget_millis` is provided, it acts as an explicit wall-clock guard around that deterministic search work. Selection and audit tier pricing remain exact.
+The option search tier first prices an exact sensitivity baseline, then validates pricing-measure proposals with the same terminal-affine pricing semantics used by selection and audit. The default search budget is deterministic: one exact baseline evaluation plus one proposal evaluation per active pricing coordinate. If `joint_refinement_option_refinement_wall_clock_budget_millis` is provided, it acts as an explicit wall-clock guard around that deterministic search work.
 
 In option progress tables, `Cur. loss` is the latest option residual score known for the running candidate. During a pricing call this can be the score from the previous completed evaluation for that candidate, because the current pricing call has not produced a score yet. `Best loss` is the best option score seen inside the active option phase. `Final loss` is the option score recorded when that candidate finishes the phase. These columns are not numerically comparable with restart `Trial loss`, `Accepted loss`, or `Final loss`, because those restart columns come from the joint underlying-data objective.
 

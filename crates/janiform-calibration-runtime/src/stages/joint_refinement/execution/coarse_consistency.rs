@@ -14,6 +14,7 @@ use janiform_market_time::hourly_factors::{
     HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::LongVarianceState;
 use janiform_work_scheduler::{DynamicWorkPoolStatus, StaticWorkPoolInput, run_static_work_pool};
 use serde::{Deserialize, Serialize};
 
@@ -734,12 +735,19 @@ fn build_joint_coarse_model_inputs(
                 .news_process_configuration
                 .shared_mark_law
                 .gamma_severity_marks,
+            fitted_parameters
+                .return_components_fitted_parameters
+                .long_variance_parameters,
         )
         .map_err(|source| format!("invalid coarse equation specification: {source}"))?,
         fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
         initial_excitation_state,
+        fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        LongVarianceState::unit(),
         fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
@@ -758,6 +766,10 @@ fn build_joint_coarse_model_inputs(
         fitted_parameters
             .return_components_fitted_parameters
             .return_clock_exposure_parameters,
+        fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        LongVarianceState::unit(),
         fitted_parameters
             .return_components_fitted_parameters
             .tick_grid_observation_model

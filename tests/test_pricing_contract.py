@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from janiform.contracts import parse_json_object
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import (
     AnchoredLocalTiltAdmissibilityStatus,
     AnchoredLocalTiltBoundaryStateSummary,
@@ -430,6 +431,7 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
             y_minus_plus=0.2,
             y_minus_minus=0.3,
         ),
+        long_variance_boundary_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.4,
             anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
@@ -755,6 +757,7 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                 delta_beta=-0.2,
             ),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+            long_variance_parameters=LongVarianceParameters.neutral(),
             pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
         ),
         interval_delta=1.0,
@@ -878,6 +881,7 @@ def _disabled_boundary_input(
     return AnchoredVanillaOptionPricingBoundaryInput(
         interval_index=0,
         hawkes_boundary_state=hawkes_boundary_state,
+        long_variance_boundary_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.0,
             anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),

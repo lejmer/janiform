@@ -9,6 +9,7 @@ use super::{
     CalibrationStageSeedSource, HawkesStageCandidateInput, HawkesStageExecutionMetadata,
     HawkesStageExecutionReport, JointRefinementStageExecutionMetadata,
     JointRefinementStageExecutionReport, JointRefinementStageProgressPhase,
+    LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
     MeanReversionStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
@@ -45,6 +46,7 @@ pub enum CalibrationStagedRunStageReport {
     Seasonality(Box<SeasonalityStageExecutionReport>),
     Hawkes(Box<HawkesStageExecutionReport>),
     ReturnComponents(Box<ReturnComponentsStageExecutionReport>),
+    LongVariance(Box<LongVarianceStageExecutionReport>),
     MeanReversion(Box<MeanReversionStageExecutionReport>),
     JointRefinement(Box<JointRefinementStageExecutionReport>),
     OptionRefinement(Box<JointRefinementStageExecutionReport>),
@@ -148,6 +150,32 @@ impl CalibrationStageExecutionMetadataForCheckpoint for ReturnComponentsStageExe
     }
 }
 
+impl CalibrationStageExecutionMetadataForCheckpoint for LongVarianceStageExecutionMetadata {
+    fn stage_output_schema_version(&self) -> &'static str {
+        self.stage_output_schema_version
+    }
+
+    fn run_global_seed(&self) -> u64 {
+        self.run_global_seed
+    }
+
+    fn stage_seed(&self) -> u64 {
+        self.stage_seed
+    }
+
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
+        self.stage_seed_source
+    }
+
+    fn stage_seed_derivation_policy(&self) -> &'static str {
+        self.stage_seed_derivation_policy
+    }
+
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
+        &self.solver_settings
+    }
+}
+
 impl CalibrationStageExecutionMetadataForCheckpoint for JointRefinementStageExecutionMetadata {
     fn stage_output_schema_version(&self) -> &'static str {
         self.stage_output_schema_version
@@ -219,6 +247,7 @@ impl CalibrationStagedRunStageReport {
             Self::Seasonality(_) => CalibrationStage::Seasonality,
             Self::Hawkes(_) => CalibrationStage::Hawkes,
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
+            Self::LongVariance(_) => CalibrationStage::LongVariance,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
             Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
@@ -231,6 +260,7 @@ impl CalibrationStagedRunStageReport {
             Self::Seasonality(report) => report.status,
             Self::Hawkes(report) => report.status,
             Self::ReturnComponents(report) => report.status,
+            Self::LongVariance(report) => report.status,
             Self::MeanReversion(report) => report.status,
             Self::JointRefinement(report) => report.status,
             Self::OptionRefinement(report) => report.status,
@@ -245,6 +275,9 @@ impl CalibrationStagedRunStageReport {
             }
             Self::Hawkes(report) => checkpoint_components_from_metadata(report.metadata.as_ref()),
             Self::ReturnComponents(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::LongVariance(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::MeanReversion(report) => {

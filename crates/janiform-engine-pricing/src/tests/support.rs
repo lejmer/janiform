@@ -22,6 +22,7 @@ use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -33,7 +34,7 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
-pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
+pub(crate) fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
     VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 0.02, 0.01)
             .expect("market inputs should construct"),
@@ -119,6 +120,7 @@ pub(super) fn endogenous_boundary_input(
     AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         hawkes_boundary_state,
+        LongVarianceState::unit(),
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-gain mean reversion parameters should construct"),
         interval_delta,
@@ -183,6 +185,7 @@ pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        LongVarianceParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")

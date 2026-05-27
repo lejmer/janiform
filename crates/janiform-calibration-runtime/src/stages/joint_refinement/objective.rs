@@ -6,8 +6,9 @@ use std::sync::mpsc::Sender;
 use janiform_foundations::numeric::{
     arithmetic_mean_or_zero, bowley_skewness_from_sorted, central_skewness_or_zero,
     compute_sorted_quantile_or_zero, l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted,
-    relative_rmse, sample_standard_deviation, sample_variance, sorted_finite_values,
-    standardized_path_distance, winsorized_sample_standard_deviation_from_sorted,
+    mean_estimate_from_standard_errors, relative_rmse, sample_standard_deviation, sample_variance,
+    sorted_finite_values, standardized_path_distance,
+    winsorized_sample_standard_deviation_from_sorted,
 };
 use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, duration_nanos_to_hours};
 
@@ -34,6 +35,7 @@ use crate::stages::joint_metrics::{
     return_scale_summary_from_returns, rolling_variance_activity_metric, scale_normalized_returns,
     tick_count_series,
 };
+use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     build_continuous_return_optimizer_context,
@@ -55,6 +57,8 @@ use super::contracts::{
 };
 
 pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
+
+mod long_variance;
 
 const ACTIVITY_PROFILE_SESSION_HOURS: usize = 24;
 const RETURN_SHAPE_WINSORIZED_VOLATILITY_LOWER_QUANTILE: f64 = 0.05;
@@ -399,6 +403,10 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
                 context.observed_data.observed_15m_rv_activity_metric,
             )
         }));
+    let raw_long_variance_horizon_fit =
+        average_seed_score(resolved_seed_summaries.iter().map(|seed_summary| {
+            long_variance::long_variance_horizon_fit(seed_summary, &context.observed_data)
+        }));
 
     context
         .profiling_state
@@ -424,6 +432,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         activity_shape_fit: raw_activity_shape_fit,
         activity_level_fit: raw_activity_level_fit,
         rv_activity_coupling_fit: raw_rv_activity_coupling_fit,
+        long_variance_horizon_fit: raw_long_variance_horizon_fit,
     };
 
     let loss_build_started_at = std::time::Instant::now();
@@ -622,6 +631,10 @@ fn build_coarse_search_seed_summary(
         simulated_hourly_tick_counts: tick_count_series(simulated_hourly_intervals.as_slice()),
         simulated_15m_rv_activity_metric: rolling_variance_activity_metric(
             simulated_15m_intervals.as_slice(),
+        ),
+        simulated_long_variance_horizon_summaries: long_variance_horizon_summaries(
+            simulated_5m_intervals.as_slice(),
+            simulated_hourly_intervals.as_slice(),
         ),
     })
 }
@@ -843,6 +856,7 @@ pub(crate) fn invalid_candidate_evaluation(
             activity_shape_fit: 100.0,
             activity_level_fit: 100.0,
             rv_activity_coupling_fit: 100.0,
+            long_variance_horizon_fit: 100.0,
         },
         exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts::default(),
         objective_terms: breakdown.term_diagnostics.clone(),
@@ -1593,6 +1607,7 @@ fn build_joint_loss_evaluation(
             observed_data,
         );
         add_rv_activity_coupling_terms(&mut builder, seed_summaries, observed_data);
+        long_variance::add_long_variance_horizon_terms(&mut builder, seed_summaries, observed_data);
     }
 
     builder.build()
@@ -1623,6 +1638,7 @@ fn build_joint_coarse_search_loss_evaluation(
         add_business_time_return_scale_terms(&mut builder, seed_summaries, observed_data);
         add_coarse_intraday_return_level_terms(&mut builder, seed_summaries, observed_data);
         add_rv_activity_coupling_terms(&mut builder, seed_summaries, observed_data);
+        long_variance::add_long_variance_horizon_terms(&mut builder, seed_summaries, observed_data);
     }
 
     builder.build()
@@ -2424,23 +2440,17 @@ fn average_seed_statistic_estimate(
         .iter()
         .map(|estimate| estimate.value)
         .collect::<Vec<_>>();
-
-    let standard_error_variance = estimates
+    let standard_errors = estimates
         .iter()
-        .map(|estimate| estimate.standard_error * estimate.standard_error)
-        .sum::<f64>()
-        / estimates.len() as f64;
-
-    let between_seed_variance = if estimates.len() > 1 {
-        sample_variance(values.as_slice()).unwrap_or(0.0) / estimates.len() as f64
-    } else {
-        0.0
-    };
+        .map(|estimate| estimate.standard_error)
+        .collect::<Vec<_>>();
+    let pooled_estimate =
+        mean_estimate_from_standard_errors(values.as_slice(), standard_errors.as_slice())?;
 
     Some(JointRefinementReturnShapeStatisticEstimate {
         metric_name: estimates[0].metric_name,
-        value: arithmetic_mean_or_zero(values.as_slice()),
-        standard_error: (standard_error_variance + between_seed_variance).sqrt(),
+        value: pooled_estimate.value,
+        standard_error: pooled_estimate.standard_error,
     })
 }
 

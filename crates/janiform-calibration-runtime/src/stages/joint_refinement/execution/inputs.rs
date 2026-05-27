@@ -13,6 +13,7 @@ use crate::stages::joint_metrics::{
     sampled_return_values, scale_normalized_returns, tick_count_series,
     zeroed_interval_observation_template,
 };
+use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageContinuousReturnCalibrationSample,
@@ -67,6 +68,10 @@ pub(crate) fn build_observed_data(
             .observed_open_session_returns
             .as_slice(),
         NANOS_PER_HOUR,
+    );
+    let observed_long_variance_horizon_summaries = long_variance_horizon_summaries(
+        observed_5m_intervals.as_slice(),
+        observed_hourly_intervals.as_slice(),
     );
 
     let hourly_simulation_start_utc_nanos =
@@ -210,6 +215,7 @@ pub(crate) fn build_observed_data(
         observed_15m_intraday_mean_absolute_returns,
         observed_hourly_tick_counts,
         observed_15m_rv_activity_metric,
+        observed_long_variance_horizon_summaries,
         hourly_simulation_start_utc,
         hourly_simulation_end_utc,
         hourly_simulation_interval_count,

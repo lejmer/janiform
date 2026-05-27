@@ -2,13 +2,15 @@ use janiform_foundations::complex_math::{
     ComplexScalar, complex_exponential, complex_multiply, complex_pow_real_exponent_principal,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::{
+    LongVarianceState, LongVarianceStationaryLevelForHawkesKernelError,
+};
 
 use super::super::EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION;
 use super::super::contracts::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformInput,
     ExponentialAffineTransformOutputError,
 };
-use super::super::rhs::evaluate_exponential_affine_transform_ode_rhs;
 use super::super::runge_kutta::{combine_complex_runge_kutta, combine_d_vector_runge_kutta};
 use super::super::solver::{
     ExponentialAffineTransformGuardFailure, ExponentialAffineTransformGuardFailureCode,
@@ -65,16 +67,18 @@ pub fn solve_exponential_affine_schedule_cumulant_with_progress(
     }
 
     let output = ExponentialAffineScheduleCumulantOutput {
-        exponent: exponent.base.evaluated_at(request.initial_state),
+        exponent: exponent
+            .base
+            .evaluated_at(request.initial_state, request.initial_long_variance_state),
         argument_derivative: exponent
             .argument_tangent
-            .evaluated_at(request.initial_state),
+            .evaluated_at(request.initial_state, request.initial_long_variance_state),
         buy_activity_premium_derivative: exponent
             .buy_activity_premium_tangent
-            .evaluated_at(request.initial_state),
+            .evaluated_at(request.initial_state, request.initial_long_variance_state),
         sell_activity_premium_derivative: exponent
             .sell_activity_premium_tangent
-            .evaluated_at(request.initial_state),
+            .evaluated_at(request.initial_state, request.initial_long_variance_state),
         interval_count: request.intervals.len(),
         completed_step_count,
         rhs_evaluation_count,
@@ -111,6 +115,7 @@ fn emit_schedule_cumulant_progress(
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct AffineState {
     d_vector: ExponentialAffineTransformDVector,
+    long_variance_loading: ComplexScalar,
     c_value: ComplexScalar,
 }
 
@@ -118,6 +123,7 @@ impl AffineState {
     fn zero() -> Self {
         Self {
             d_vector: ExponentialAffineTransformDVector::zero(),
+            long_variance_loading: ComplexScalar::new(0.0, 0.0),
             c_value: ComplexScalar::new(0.0, 0.0),
         }
     }
@@ -125,12 +131,21 @@ impl AffineState {
     fn add_scaled_rhs(self, rhs: AffineState, scale: f64) -> Self {
         Self {
             d_vector: self.d_vector.plus(rhs.d_vector.scale(scale)),
+            long_variance_loading: self
+                .long_variance_loading
+                .plus(rhs.long_variance_loading.scale(scale)),
             c_value: self.c_value.plus(rhs.c_value.scale(scale)),
         }
     }
 
-    fn evaluated_at(self, state: HawkesExcitationState) -> ComplexScalar {
-        self.c_value.plus(self.d_vector.dot_state(state))
+    fn evaluated_at(
+        self,
+        hawkes_state: HawkesExcitationState,
+        long_variance_state: LongVarianceState,
+    ) -> ComplexScalar {
+        self.c_value
+            .plus(self.d_vector.dot_state(hawkes_state))
+            .plus(self.long_variance_loading.scale(long_variance_state.level))
     }
 }
 
@@ -156,10 +171,12 @@ impl ScheduleExponent {
         Self {
             base: AffineState {
                 d_vector: interval_output.base.d_vector,
+                long_variance_loading: interval_output.base.long_variance_loading,
                 c_value: self.base.c_value.plus(interval_output.base.c_value),
             },
             argument_tangent: AffineState {
                 d_vector: interval_output.argument_tangent.d_vector,
+                long_variance_loading: interval_output.argument_tangent.long_variance_loading,
                 c_value: self
                     .argument_tangent
                     .c_value
@@ -167,6 +184,9 @@ impl ScheduleExponent {
             },
             buy_activity_premium_tangent: AffineState {
                 d_vector: interval_output.buy_activity_premium_tangent.d_vector,
+                long_variance_loading: interval_output
+                    .buy_activity_premium_tangent
+                    .long_variance_loading,
                 c_value: self
                     .buy_activity_premium_tangent
                     .c_value
@@ -174,6 +194,9 @@ impl ScheduleExponent {
             },
             sell_activity_premium_tangent: AffineState {
                 d_vector: interval_output.sell_activity_premium_tangent.d_vector,
+                long_variance_loading: interval_output
+                    .sell_activity_premium_tangent
+                    .long_variance_loading,
                 c_value: self
                     .sell_activity_premium_tangent
                     .c_value
@@ -212,21 +235,30 @@ fn integrate_schedule_interval(
     })?;
 
     let step_size = interval.transform_input.delta / solver_settings.step_count as f64;
+
     let mut state = ScheduleExponent {
         base: AffineState {
             d_vector: terminal_exponent.base.d_vector,
+            long_variance_loading: terminal_exponent.base.long_variance_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
         argument_tangent: AffineState {
             d_vector: terminal_exponent.argument_tangent.d_vector,
+            long_variance_loading: terminal_exponent.argument_tangent.long_variance_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
         buy_activity_premium_tangent: AffineState {
             d_vector: terminal_exponent.buy_activity_premium_tangent.d_vector,
+            long_variance_loading: terminal_exponent
+                .buy_activity_premium_tangent
+                .long_variance_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
         sell_activity_premium_tangent: AffineState {
             d_vector: terminal_exponent.sell_activity_premium_tangent.d_vector,
+            long_variance_loading: terminal_exponent
+                .sell_activity_premium_tangent
+                .long_variance_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
     };
@@ -249,7 +281,7 @@ fn integrate_schedule_interval(
             state,
             step_size,
             solver_settings.integrator_method,
-        );
+        )?;
 
         completed_step_count = completed_step_count.saturating_add(1);
         rhs_evaluation_count =
@@ -303,20 +335,22 @@ fn advance_schedule_state(
     state: ScheduleExponent,
     step_size: f64,
     integrator_method: ExponentialAffineTransformIntegratorMethod,
-) -> ScheduleExponent {
-    match integrator_method {
+) -> Result<ScheduleExponent, ExponentialAffineScheduleCumulantError> {
+    let next_state = match integrator_method {
         ExponentialAffineTransformIntegratorMethod::ForwardEuler => {
-            state.add_scaled_rhs(evaluate_schedule_rhs(interval, state), step_size)
+            state.add_scaled_rhs(evaluate_schedule_rhs(interval, state)?, step_size)
         }
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta => {
-            let k1 = evaluate_schedule_rhs(interval, state);
-            let k2 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k1, 0.5 * step_size));
-            let k3 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k2, 0.5 * step_size));
-            let k4 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k3, step_size));
+            let k1 = evaluate_schedule_rhs(interval, state)?;
+            let k2 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k1, 0.5 * step_size))?;
+            let k3 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k2, 0.5 * step_size))?;
+            let k4 = evaluate_schedule_rhs(interval, state.add_scaled_rhs(k3, step_size))?;
 
             state.add_scaled_rhs(combine_schedule_runge_kutta_rhs(k1, k2, k3, k4), step_size)
         }
-    }
+    };
+
+    Ok(next_state)
 }
 
 impl ScheduleExponent {
@@ -373,6 +407,12 @@ fn combine_affine_runge_kutta(
 ) -> AffineState {
     AffineState {
         d_vector: combine_d_vector_runge_kutta(k1.d_vector, k2.d_vector, k3.d_vector, k4.d_vector),
+        long_variance_loading: combine_complex_runge_kutta(
+            k1.long_variance_loading,
+            k2.long_variance_loading,
+            k3.long_variance_loading,
+            k4.long_variance_loading,
+        ),
         c_value: combine_complex_runge_kutta(k1.c_value, k2.c_value, k3.c_value, k4.c_value),
     }
 }
@@ -380,64 +420,163 @@ fn combine_affine_runge_kutta(
 fn evaluate_schedule_rhs(
     interval: ExponentialAffineScheduleIntervalInput,
     state: ScheduleExponent,
-) -> ScheduleExponent {
-    let base_rhs = evaluate_exponential_affine_transform_ode_rhs(
-        interval.transform_input,
-        state.base.d_vector,
-    );
+) -> Result<ScheduleExponent, ExponentialAffineScheduleCumulantError> {
+    let base_rhs = evaluate_schedule_base_rhs(interval.transform_input, state.base)?;
 
-    ScheduleExponent {
+    Ok(ScheduleExponent {
         base: AffineState {
             d_vector: base_rhs.d_derivative,
+            long_variance_loading: base_rhs.long_variance_derivative,
             c_value: base_rhs.c_derivative,
         },
         argument_tangent: evaluate_schedule_tangent_rhs(
             interval.transform_input,
-            state.base.d_vector,
+            state.base,
             state.argument_tangent,
             interval.argument_tangent,
-        ),
+        )?,
         buy_activity_premium_tangent: evaluate_schedule_tangent_rhs(
             interval.transform_input,
-            state.base.d_vector,
+            state.base,
             state.buy_activity_premium_tangent,
             interval.buy_activity_premium_tangent,
-        ),
+        )?,
         sell_activity_premium_tangent: evaluate_schedule_tangent_rhs(
             interval.transform_input,
-            state.base.d_vector,
+            state.base,
             state.sell_activity_premium_tangent,
             interval.sell_activity_premium_tangent,
-        ),
-    }
+        )?,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ScheduleAffineRhs {
+    d_derivative: ExponentialAffineTransformDVector,
+    long_variance_derivative: ComplexScalar,
+    c_derivative: ComplexScalar,
+}
+
+fn evaluate_schedule_base_rhs(
+    transform_input: ExponentialAffineTransformInput,
+    base_state: AffineState,
+) -> Result<ScheduleAffineRhs, ExponentialAffineScheduleCumulantError> {
+    let equation_specification = transform_input.equation_specification;
+    let beta = equation_specification.hawkes_kernel_parameters.beta;
+
+    let hamiltonians = evaluate_long_variance_schedule_hamiltonians(transform_input, base_state);
+
+    let long_variance_level = stationary_long_variance_level(transform_input)?;
+
+    let d_derivative = ExponentialAffineTransformDVector::new(
+        base_state
+            .d_vector
+            .plus_plus
+            .scale(-beta)
+            .plus(hamiltonians.h_plus_endogenous),
+        base_state
+            .d_vector
+            .plus_minus
+            .scale(-beta)
+            .plus(hamiltonians.h_plus_endogenous),
+        base_state
+            .d_vector
+            .minus_plus
+            .scale(-beta)
+            .plus(hamiltonians.h_minus_endogenous),
+        base_state
+            .d_vector
+            .minus_minus
+            .scale(-beta)
+            .plus(hamiltonians.h_minus_endogenous),
+    );
+
+    let long_variance_parameters = equation_specification.long_variance_parameters;
+
+    let baseline_rate =
+        transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar;
+
+    let long_variance_derivative = base_state
+        .long_variance_loading
+        .scale(-long_variance_parameters.mean_reversion_rate)
+        .plus(
+            base_state
+                .long_variance_loading
+                .square()
+                .scale(0.5 * long_variance_parameters.vol_of_vol.powi(2)),
+        )
+        .plus(
+            hamiltonians
+                .h_plus_baseline
+                .plus(hamiltonians.h_minus_baseline)
+                .scale(baseline_rate),
+        );
+
+    let c_derivative = base_state
+        .long_variance_loading
+        .scale(long_variance_parameters.mean_reversion_rate * long_variance_level)
+        .plus(evaluate_news_base_rhs(transform_input, base_state.d_vector));
+
+    Ok(ScheduleAffineRhs {
+        d_derivative,
+        long_variance_derivative,
+        c_derivative,
+    })
 }
 
 fn evaluate_schedule_tangent_rhs(
     transform_input: ExponentialAffineTransformInput,
-    base_d_vector: ExponentialAffineTransformDVector,
+    base_state: AffineState,
     tangent_state: AffineState,
     direct_tangent: ExponentialAffineTransformInputTangent,
-) -> AffineState {
+) -> Result<AffineState, ExponentialAffineScheduleCumulantError> {
     let equation_specification = transform_input.equation_specification;
     let beta = equation_specification.hawkes_kernel_parameters.beta;
+    let long_variance_parameters = equation_specification.long_variance_parameters;
+
+    let long_variance_level = stationary_long_variance_level(transform_input)?;
 
     let k_plus = equation_specification.k_plus();
     let k_minus = equation_specification.k_minus();
 
-    let exp_d_dot_k_plus =
-        complex_exponential(base_d_vector.dot_loadings(equation_specification.k_plus()));
+    let exp_plus_argument = base_state
+        .d_vector
+        .dot_loadings(equation_specification.k_plus())
+        .plus(
+            base_state
+                .long_variance_loading
+                .scale(long_variance_parameters.buy_event_loading),
+        );
 
-    let exp_d_dot_k_minus =
-        complex_exponential(base_d_vector.dot_loadings(equation_specification.k_minus()));
+    let exp_minus_argument = base_state
+        .d_vector
+        .dot_loadings(equation_specification.k_minus())
+        .plus(
+            base_state
+                .long_variance_loading
+                .scale(long_variance_parameters.sell_event_loading),
+        );
+
+    let exp_d_dot_k_plus = complex_exponential(exp_plus_argument);
+    let exp_d_dot_k_minus = complex_exponential(exp_minus_argument);
 
     let plus_factor = complex_multiply(transform_input.z_plus, exp_d_dot_k_plus);
     let minus_factor = complex_multiply(transform_input.z_minus, exp_d_dot_k_minus);
 
-    let plus_state_derivative =
-        complex_multiply(plus_factor, tangent_state.d_vector.dot_loadings(k_plus));
+    let plus_loading_derivative = tangent_state.d_vector.dot_loadings(k_plus).plus(
+        tangent_state
+            .long_variance_loading
+            .scale(long_variance_parameters.buy_event_loading),
+    );
 
-    let minus_state_derivative =
-        complex_multiply(minus_factor, tangent_state.d_vector.dot_loadings(k_minus));
+    let minus_loading_derivative = tangent_state.d_vector.dot_loadings(k_minus).plus(
+        tangent_state
+            .long_variance_loading
+            .scale(long_variance_parameters.sell_event_loading),
+    );
+
+    let plus_state_derivative = complex_multiply(plus_factor, plus_loading_derivative);
+    let minus_state_derivative = complex_multiply(minus_factor, minus_loading_derivative);
 
     let direct = direct_tangent.activity_loadings;
 
@@ -458,9 +597,12 @@ fn evaluate_schedule_tangent_rhs(
         .subtract(direct.u_minus_endogenous);
 
     let news_derivative =
-        evaluate_news_tangent_rhs(transform_input, base_d_vector, tangent_state.d_vector);
+        evaluate_news_tangent_rhs(transform_input, base_state.d_vector, tangent_state.d_vector);
 
-    AffineState {
+    let baseline_rate =
+        transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar;
+
+    Ok(AffineState {
         d_vector: ExponentialAffineTransformDVector::new(
             tangent_state
                 .d_vector
@@ -483,11 +625,116 @@ fn evaluate_schedule_tangent_rhs(
                 .scale(-beta)
                 .plus(h_minus_endogenous_derivative),
         ),
-        c_value: h_plus_baseline_derivative
-            .plus(h_minus_baseline_derivative)
-            .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar)
+        long_variance_loading: tangent_state
+            .long_variance_loading
+            .scale(-long_variance_parameters.mean_reversion_rate)
+            .plus(
+                complex_multiply(
+                    base_state.long_variance_loading,
+                    tangent_state.long_variance_loading,
+                )
+                .scale(long_variance_parameters.vol_of_vol.powi(2)),
+            )
+            .plus(
+                h_plus_baseline_derivative
+                    .plus(h_minus_baseline_derivative)
+                    .scale(baseline_rate),
+            ),
+        c_value: tangent_state
+            .long_variance_loading
+            .scale(long_variance_parameters.mean_reversion_rate * long_variance_level)
             .plus(news_derivative),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ScheduleHamiltonians {
+    h_plus_baseline: ComplexScalar,
+    h_plus_endogenous: ComplexScalar,
+    h_minus_baseline: ComplexScalar,
+    h_minus_endogenous: ComplexScalar,
+}
+
+fn evaluate_long_variance_schedule_hamiltonians(
+    transform_input: ExponentialAffineTransformInput,
+    state: AffineState,
+) -> ScheduleHamiltonians {
+    let equation_specification = transform_input.equation_specification;
+    let activity_loadings = transform_input.activity_loadings;
+    let long_variance_parameters = equation_specification.long_variance_parameters;
+
+    let plus_argument = state
+        .d_vector
+        .dot_loadings(equation_specification.k_plus())
+        .plus(
+            state
+                .long_variance_loading
+                .scale(long_variance_parameters.buy_event_loading),
+        );
+
+    let minus_argument = state
+        .d_vector
+        .dot_loadings(equation_specification.k_minus())
+        .plus(
+            state
+                .long_variance_loading
+                .scale(long_variance_parameters.sell_event_loading),
+        );
+
+    ScheduleHamiltonians {
+        h_plus_baseline: evaluate_schedule_hamiltonian_component(
+            activity_loadings.u_plus_baseline,
+            transform_input.z_plus,
+            plus_argument,
+        ),
+        h_plus_endogenous: evaluate_schedule_hamiltonian_component(
+            activity_loadings.u_plus_endogenous,
+            transform_input.z_plus,
+            plus_argument,
+        ),
+        h_minus_baseline: evaluate_schedule_hamiltonian_component(
+            activity_loadings.u_minus_baseline,
+            transform_input.z_minus,
+            minus_argument,
+        ),
+        h_minus_endogenous: evaluate_schedule_hamiltonian_component(
+            activity_loadings.u_minus_endogenous,
+            transform_input.z_minus,
+            minus_argument,
+        ),
     }
+}
+
+fn evaluate_schedule_hamiltonian_component(
+    activity_loading: ComplexScalar,
+    event_loading: ComplexScalar,
+    exponent_argument: ComplexScalar,
+) -> ComplexScalar {
+    complex_multiply(event_loading, complex_exponential(exponent_argument))
+        .subtract(ComplexScalar::new(1.0, 0.0))
+        .subtract(activity_loading)
+}
+
+fn stationary_long_variance_level(
+    transform_input: ExponentialAffineTransformInput,
+) -> Result<f64, ExponentialAffineScheduleCumulantError> {
+    let equation_specification = transform_input.equation_specification;
+
+    equation_specification
+        .long_variance_parameters
+        .stationary_mean_reversion_level_for_hawkes_kernel(
+            equation_specification.hawkes_kernel_parameters,
+        )
+        .map_err(|source| match source {
+            LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryIntensityMultipliers => {
+                ExponentialAffineScheduleCumulantError::InvalidStationaryIntensityMultipliers
+            }
+            LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryLevel {
+                source,
+            } => ExponentialAffineScheduleCumulantError::InvalidLongVarianceStationaryLevel {
+                source,
+            },
+        })
 }
 
 fn evaluate_news_tangent_rhs(
@@ -519,6 +766,24 @@ fn evaluate_news_tangent_rhs(
     )
 }
 
+fn evaluate_news_base_rhs(
+    transform_input: ExponentialAffineTransformInput,
+    base_d_vector: ExponentialAffineTransformDVector,
+) -> ComplexScalar {
+    let equation_specification = transform_input.equation_specification;
+    let gamma_configuration = equation_specification.gamma_severity_mark_configuration;
+
+    let one_minus_theta_d_dot_r = ComplexScalar::new(1.0, 0.0).subtract(
+        base_d_vector
+            .dot_loadings(equation_specification.r())
+            .scale(gamma_configuration.scale_theta),
+    );
+
+    complex_pow_real_exponent_principal(one_minus_theta_d_dot_r, -gamma_configuration.shape_k)
+        .subtract(ComplexScalar::new(1.0, 0.0))
+        .scale(transform_input.news_intensity.total_nu_h())
+}
+
 fn evaluate_schedule_guard_checkpoint(
     transform_input: ExponentialAffineTransformInput,
     state: AffineState,
@@ -537,7 +802,10 @@ fn evaluate_schedule_guard_checkpoint(
             .gamma_severity_mark_configuration
             .scale_theta;
 
-    if !state.c_value.is_finite() || !d_vector_is_finite(state.d_vector) {
+    if !state.c_value.is_finite()
+        || !state.long_variance_loading.is_finite()
+        || !d_vector_is_finite(state.d_vector)
+    {
         return Some(build_schedule_guard_failure(
             ExponentialAffineTransformGuardFailureCode::NonFiniteState,
             completed_step_count,
@@ -611,6 +879,7 @@ mod tests {
         standard_initial_state, valid_equation_specification,
     };
     use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
+    use janiform_model_kernels::long_variance::LongVarianceState;
 
     fn transform_input(
         activity_loadings: ExponentialAffineTransformActivityLoadings,
@@ -656,6 +925,7 @@ mod tests {
     ) -> ComplexScalar {
         solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
             initial_state: standard_initial_state(),
+            initial_long_variance_state: LongVarianceState::unit(),
             intervals: vec![interval_input(activity_loadings, argument_tangent)],
         })
         .expect("schedule cumulant should solve")
@@ -667,6 +937,7 @@ mod tests {
         let schedule_output =
             solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
                 initial_state: standard_initial_state(),
+                initial_long_variance_state: LongVarianceState::unit(),
                 intervals: vec![interval_input(
                     base_loadings(),
                     ExponentialAffineTransformInputTangent::zero(),
@@ -706,6 +977,7 @@ mod tests {
         let analytic =
             solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
                 initial_state: standard_initial_state(),
+                initial_long_variance_state: LongVarianceState::unit(),
                 intervals: vec![interval_input(base_loadings(), tangent)],
             })
             .expect("schedule cumulant should solve")
@@ -735,6 +1007,7 @@ mod tests {
         solve_exponential_affine_schedule_cumulant_with_progress(
             &ExponentialAffineScheduleCumulantRequest {
                 initial_state: standard_initial_state(),
+                initial_long_variance_state: LongVarianceState::unit(),
                 intervals: vec![
                     interval_input(
                         base_loadings(),

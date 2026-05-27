@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use janiform_calibration_artifacts::{
     CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationStage, CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
@@ -455,6 +456,11 @@ fn apply_stage_reports_to_model_parameters(
                         Some(return_components_parameters(payload)?);
                 }
             }
+            CalibrationStagedRunStageReport::LongVariance(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    stage_parameters.long_variance = Some(long_variance_parameters(payload)?);
+                }
+            }
             CalibrationStagedRunStageReport::MeanReversion(report) => {
                 if let Some(payload) = &report.fitted_stage_payload {
                     stage_parameters.mean_reversion = Some(mean_reversion_parameters(payload)?);
@@ -487,6 +493,7 @@ fn stage_report_stage(stage_report: &CalibrationStagedRunStageReport) -> Calibra
         CalibrationStagedRunStageReport::Seasonality(_) => CalibrationStage::Seasonality,
         CalibrationStagedRunStageReport::Hawkes(_) => CalibrationStage::Hawkes,
         CalibrationStagedRunStageReport::ReturnComponents(_) => CalibrationStage::ReturnComponents,
+        CalibrationStagedRunStageReport::LongVariance(_) => CalibrationStage::LongVariance,
         CalibrationStagedRunStageReport::MeanReversion(_) => CalibrationStage::MeanReversion,
         CalibrationStagedRunStageReport::JointRefinement(_) => CalibrationStage::JointRefinement,
         CalibrationStagedRunStageReport::OptionRefinement(_) => CalibrationStage::OptionRefinement,
@@ -508,6 +515,9 @@ fn apply_stage_parameter_artifact_to_model_parameters(
         CalibrationStageParameterPayload::ReturnComponents(payload) => {
             stage_parameters.return_components =
                 Some(return_components_parameters_from_artifact(payload)?);
+        }
+        CalibrationStageParameterPayload::LongVariance(payload) => {
+            stage_parameters.long_variance = Some(long_variance_parameters_from_artifact(payload)?);
         }
         CalibrationStageParameterPayload::MeanReversion(payload) => {
             stage_parameters.mean_reversion =
@@ -535,6 +545,7 @@ struct ModelStageParameters {
     seasonality: Option<Value>,
     hawkes: Option<Value>,
     return_components: Option<Value>,
+    long_variance: Option<Value>,
     mean_reversion: Option<Value>,
     joint_refinement: Option<Value>,
     option_refinement: Option<Value>,
@@ -573,6 +584,10 @@ impl ModelStageParameters {
 
         if let Some(return_components) = self.return_components {
             parameters.insert("return_components".to_string(), return_components);
+        }
+
+        if let Some(long_variance) = self.long_variance {
+            parameters.insert("long_variance".to_string(), long_variance);
         }
 
         if let Some(mean_reversion) = self.mean_reversion {
@@ -656,6 +671,32 @@ fn return_components_parameters_from_artifact(
     }))
 }
 
+fn long_variance_parameters(
+    payload: &janiform_calibration_runtime::LongVarianceStageFittedPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": payload.schema_version,
+        "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
+        "diagnostics": serialize_payload(&payload.diagnostics)?,
+        "return_components_input_transport": payload.return_components_input_transport,
+        "return_components_selected_candidate_id": payload.return_components_selected_candidate_id,
+        "return_components_artifact_reference": payload.return_components_artifact_reference,
+    }))
+}
+
+fn long_variance_parameters_from_artifact(
+    payload: &janiform_calibration_artifacts::LongVarianceStageParameterPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
+        "fitted_parameters": serialize_payload(&payload.fitted_parameters)?,
+        "diagnostics": serialize_payload(&payload.diagnostics)?,
+        "return_components_input_transport": payload.return_components_input_transport,
+        "return_components_selected_candidate_id": payload.return_components_selected_candidate_id,
+        "return_components_artifact_reference": payload.return_components_artifact_reference,
+    }))
+}
+
 fn mean_reversion_parameters_from_artifact(
     payload: &janiform_calibration_artifacts::MeanReversionStageParameterPayload,
 ) -> Result<Value, WorkflowError> {
@@ -721,6 +762,9 @@ fn stage_statuses(report: &CalibrationStagedRunReport) -> Vec<Value> {
             CalibrationStagedRunStageReport::ReturnComponents(report) => {
                 json!({"stage": "return_components", "status": report.status})
             }
+            CalibrationStagedRunStageReport::LongVariance(report) => {
+                json!({"stage": "long_variance", "status": report.status})
+            }
             CalibrationStagedRunStageReport::MeanReversion(report) => {
                 json!({"stage": "mean_reversion", "status": report.status})
             }
@@ -766,6 +810,14 @@ fn selected_candidate_ids(report: &CalibrationStagedRunReport) -> Value {
                     selected.insert(
                         "return_components".to_string(),
                         Value::String(payload.selected_candidate_id.to_owned()),
+                    );
+                }
+            }
+            CalibrationStagedRunStageReport::LongVariance(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    selected.insert(
+                        "long_variance".to_string(),
+                        Value::String(payload.diagnostics.selected_candidate_id.to_owned()),
                     );
                 }
             }

@@ -41,6 +41,15 @@ def build_neutral_return_clock_exposure_parameters_payload() -> dict[str, Any]:
     }
 
 
+def build_neutral_long_variance_parameters_payload() -> dict[str, Any]:
+    return {
+        "mean_reversion_rate": 1.0,
+        "vol_of_vol": 0.0,
+        "buy_event_loading": 0.0,
+        "sell_event_loading": 0.0,
+    }
+
+
 def build_nominal_tick_grid_observation_model_payload() -> dict[str, Any]:
     return {
         "tick_size": None,

@@ -212,6 +212,7 @@ pub(crate) fn build_option_pricing_context(
     let current_state_estimation_output = estimate_option_pricing_current_state(
         &cleaned_option_pricing_input,
         hawkes_payload,
+        return_components_payload,
         mean_reversion_payload,
     )?;
 
@@ -314,11 +315,15 @@ pub(crate) fn build_option_pricing_context(
 fn estimate_option_pricing_current_state(
     option_pricing_input: &JointRefinementStageOptionPricingInput,
     hawkes_payload: &crate::stages::hawkes::HawkesStageFittedPayload,
+    return_components_payload: &crate::stages::return_components::ReturnComponentsStageFittedPayload,
     mean_reversion_payload: &crate::stages::mean_reversion::MeanReversionStageFittedPayload,
 ) -> Result<crate::current_state::CurrentStateEstimationOutput, JointRefinementStageExecutionFailure>
 {
     estimate_current_state_from_observed_data(CurrentStateEstimationInput {
         kernel_parameters: hawkes_payload.fitted_parameters.kernel_parameters,
+        long_variance_parameters: return_components_payload
+            .fitted_parameters
+            .long_variance_parameters,
         // Intentional clone so pricing-context preparation does not consume the shared stage payload.
         mean_reversion_fitted_parameters: mean_reversion_payload.fitted_parameters.clone(),
         state_time_utc_nanos: option_pricing_input
@@ -571,6 +576,7 @@ fn build_option_boundary_input(
     AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         current_state_estimation_output.hawkes_excitation_state,
+        current_state_estimation_output.long_variance_state,
         // Intentional clone so the shared fitted payload remains available for later reporting.
         mean_reversion_payload.fitted_parameters.clone(),
         runtime_interval_schedule.interval_deltas_hours[0],
@@ -824,6 +830,9 @@ fn run_option_grid_batch_pricing(
             fitted_parameters
                 .return_components_fitted_parameters
                 .return_clock_exposure_parameters,
+            fitted_parameters
+                .return_components_fitted_parameters
+                .long_variance_parameters,
             fitted_parameters.pricing_kernel_parameters(),
         ),
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
@@ -2601,6 +2610,7 @@ mod tests {
                 deviation_domain_lower_bound: -1.0,
                 deviation_domain_upper_bound: 1.0,
                 collocation_node_count: 7,
+                terminal_affine_measure_change: None,
                 collocation_nodes: Vec::new(),
                 interval_summaries: Vec::new(),
                 integration_quality: None,
@@ -2910,6 +2920,7 @@ mod tests {
         let current_state_estimation_output = estimate_option_pricing_current_state(
             &option_pricing_input,
             &hawkes_payload,
+            &return_components_payload,
             &mean_reversion_payload,
         )
         .expect("current-state estimation should succeed");
@@ -3042,6 +3053,7 @@ mod tests {
                     .clone(),
                 return_components_fitted_parameters.nig_shared_plus_shift_configuration,
                 return_components_fitted_parameters.return_clock_exposure_parameters,
+                return_components_fitted_parameters.long_variance_parameters,
                 janiform_engine_pricing::VanillaOptionPricingKernelParameters::identity(),
             ),
             runtime_interval_schedule: horizon,

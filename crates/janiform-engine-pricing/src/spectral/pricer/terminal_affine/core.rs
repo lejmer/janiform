@@ -12,13 +12,15 @@ use crate::characteristic::{
 use super::super::domain::{SpectralDomain, build_spectral_domain_from_anchor_span};
 use super::super::maturity_law::SolvedMaturityLaw;
 use super::super::{
-    NodePriceSharedPlusShiftComplexSensitivity, SpectralPricingIntervalDiagnostics,
-    SpectralThetaWarmStartKey, SpectralThetaWarmStartState, VanillaOptionPayoffType,
-    VanillaOptionPricingIntervalFactors, VanillaOptionPricingRequest, VanillaOptionPricingRunError,
-    install_pricing_parallelism,
+    NodePriceSharedPlusShiftComplexSensitivity, SpectralThetaWarmStartKey,
+    SpectralThetaWarmStartState, VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
+    VanillaOptionPricingRequest, VanillaOptionPricingRunError, install_pricing_parallelism,
 };
 use super::cumulant::{
     TerminalAffineCumulantArgument, TerminalAffineCumulantCache, TerminalAffineCumulantEvaluation,
+};
+use super::diagnostics::{
+    build_terminal_affine_interval_summaries, build_terminal_affine_measure_change_diagnostics,
 };
 use super::mean_reversion::{
     TerminalAffineMeanReversionPath, build_terminal_affine_mean_reversion_path,
@@ -32,9 +34,13 @@ struct TerminalAffineFrequencyOutput {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct TerminalAffineThetaSolution {
-    theta: f64,
+pub(super) struct TerminalAffineThetaSolution {
+    pub(super) theta: f64,
     denominator: TerminalAffineCumulantEvaluation,
+    pub(super) target_log_moment_exponent: f64,
+    pub(super) observed_log_moment_exponent: f64,
+    pub(super) martingale_residual: f64,
+    pub(super) martingale_tolerance: f64,
     buy_activity_premium_theta_derivative: f64,
     sell_activity_premium_theta_derivative: f64,
 }
@@ -102,7 +108,7 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
 
     let theta_solution =
         solve_terminal_affine_martingale_theta(&context, preferred_theta, progress_observer)?;
-    
+
     let frequency_outputs = solve_terminal_affine_frequency_outputs(
         &context,
         theta_solution,
@@ -145,6 +151,10 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
             .map(|output| output.characteristic_value)
             .collect(),
         characteristic_function_sensitivities,
+        terminal_affine_measure_change: Some(build_terminal_affine_measure_change_diagnostics(
+            &context,
+            theta_solution,
+        )?),
         interval_summaries: build_terminal_affine_interval_summaries(
             pricing_request,
             interval_deltas,
@@ -192,11 +202,12 @@ fn solve_terminal_affine_martingale_theta(
 
     let mut cache = TerminalAffineCumulantCache::default();
 
-    let (theta, _) =
+    let martingale_tolerance = terminal_affine_martingale_root_tolerance();
+    let (theta, root_evaluation) =
         build_local_tilt_bracket_with_search_domain_preferred_theta_and_residual_evaluator(
             search_domain,
             target_log_moment_exponent,
-            terminal_affine_martingale_root_tolerance(),
+            martingale_tolerance,
             preferred_theta,
             |theta| {
                 evaluate_terminal_affine_martingale_residual(
@@ -218,7 +229,7 @@ fn solve_terminal_affine_martingale_theta(
     let denominator = cache
         .evaluate(context, TerminalAffineCumulantArgument::from_theta(theta))
         .map_err(|source| terminal_affine_measure_change_failure(context, source.to_string()))?;
-    
+
     let numerator = cache
         .evaluate(
             context,
@@ -245,7 +256,7 @@ fn solve_terminal_affine_martingale_theta(
         .buy_activity_premium_derivative
         .subtract(denominator.buy_activity_premium_derivative)
         .real;
-    
+
     let sell_residual_derivative = numerator
         .sell_activity_premium_derivative
         .subtract(denominator.sell_activity_premium_derivative)
@@ -254,6 +265,10 @@ fn solve_terminal_affine_martingale_theta(
     Ok(TerminalAffineThetaSolution {
         theta,
         denominator,
+        target_log_moment_exponent,
+        observed_log_moment_exponent: root_evaluation.observed_log_moment_exponent,
+        martingale_residual: root_evaluation.residual,
+        martingale_tolerance,
         buy_activity_premium_theta_derivative: -buy_residual_derivative / residual_theta_derivative,
         sell_activity_premium_theta_derivative: -sell_residual_derivative
             / residual_theta_derivative,
@@ -280,7 +295,7 @@ fn evaluate_terminal_affine_martingale_residual(
             ),
             progress_observer,
         )
-        .map_err(|source| terminal_affine_tilt_error(theta, source))?;
+        .map_err(|source| terminal_affine_residual_error(theta, source))?;
 
     let denominator = cache
         .evaluate_with_progress(
@@ -288,10 +303,10 @@ fn evaluate_terminal_affine_martingale_residual(
             TerminalAffineCumulantArgument::from_theta(theta),
             progress_observer,
         )
-        .map_err(|source| terminal_affine_tilt_error(theta, source))?;
+        .map_err(|source| terminal_affine_residual_error(theta, source))?;
 
     let log_moment = numerator.exponent.subtract(denominator.exponent).real;
-    
+
     let log_moment = context
         .mean_reversion_path
         .terminal_deterministic_log_return
@@ -323,8 +338,43 @@ fn terminal_affine_measure_change_failure(
 
 fn terminal_affine_martingale_error_message(source: &AnchoredLocalTiltSolveError) -> String {
     match source {
+        AnchoredLocalTiltSolveError::InvalidPricingRequest { source } => {
+            format!("terminal affine pricing request is invalid: {source}")
+        }
+        AnchoredLocalTiltSolveError::InvalidReturnDecomposition { source } => {
+            format!("terminal affine return decomposition is invalid: {source}")
+        }
+        AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure { theta, source } => {
+            format!("terminal affine buy-side transform failed at theta={theta}: {source}")
+        }
+        AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure { theta, source } => {
+            format!("terminal affine sell-side transform failed at theta={theta}: {source}")
+        }
+        AnchoredLocalTiltSolveError::NonFiniteTransformInput { theta, value } => {
+            format!(
+                "terminal affine martingale solve produced a non-finite transform input at theta={theta}: {value:?}"
+            )
+        }
         AnchoredLocalTiltSolveError::TransformEvaluationFailure { theta, message } => {
             format!("terminal affine cumulant could not be evaluated at theta={theta}: {message}")
+        }
+        AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent { theta, value } => {
+            format!(
+                "terminal affine martingale solve produced a non-real observed log moment exponent at theta={theta}: {value:?}"
+            )
+        }
+        AnchoredLocalTiltSolveError::OutOfDomainStateRequest {
+            theta,
+            argument_imaginary,
+            lower_theta_exclusive,
+            upper_theta_exclusive,
+        } => format!(
+            "terminal affine martingale solve requested an out-of-domain state at theta={theta} for argument_imaginary={argument_imaginary} with admissible_theta_interval=({lower_theta_exclusive}, {upper_theta_exclusive})"
+        ),
+        AnchoredLocalTiltSolveError::InvalidTolerance { value } => {
+            format!(
+                "terminal affine martingale solve tolerance must be finite and strictly positive, found {value}"
+            )
         }
         AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
             target_log_moment_exponent,
@@ -335,11 +385,16 @@ fn terminal_affine_martingale_error_message(source: &AnchoredLocalTiltSolveError
         } => format!(
             "terminal affine martingale solve found no admissible theta for target={target_log_moment_exponent} across [{lower_theta}, {upper_theta}] with residuals [{lower_residual}, {upper_residual}]"
         ),
-        other => other.to_string(),
+        AnchoredLocalTiltSolveError::UndefinedImplicitThetaSensitivity {
+            theta,
+            residual_theta_derivative,
+        } => format!(
+            "terminal affine martingale implicit sensitivity is undefined at theta={theta} because residual_theta_derivative={residual_theta_derivative}"
+        ),
     }
 }
 
-fn terminal_affine_tilt_error(
+fn terminal_affine_residual_error(
     theta: f64,
     source: VanillaOptionPricingRunError,
 ) -> AnchoredLocalTiltSolveError {
@@ -392,12 +447,12 @@ fn solve_terminal_affine_frequency_output(
     let frequency = context.spectral_domain.basis_frequency(frequency_index);
 
     let mut cache = TerminalAffineCumulantCache::default();
-    
+
     let numerator = cache.evaluate(
         context,
         TerminalAffineCumulantArgument::from_theta_and_frequency(theta_solution.theta, frequency),
     )?;
-    
+
     let denominator = theta_solution.denominator;
 
     let stochastic_exponent = numerator.exponent.subtract(denominator.exponent);
@@ -442,7 +497,7 @@ fn terminal_affine_frequency_sensitivity(
     let numerator_minus_denominator_argument_derivative = numerator
         .argument_derivative
         .subtract(denominator.argument_derivative);
-    
+
     let buy_log_derivative = numerator
         .buy_activity_premium_derivative
         .subtract(denominator.buy_activity_premium_derivative)
@@ -450,7 +505,7 @@ fn terminal_affine_frequency_sensitivity(
             numerator_minus_denominator_argument_derivative
                 .scale(theta_solution.buy_activity_premium_theta_derivative),
         );
-    
+
     let sell_log_derivative = numerator
         .sell_activity_premium_derivative
         .subtract(denominator.sell_activity_premium_derivative)
@@ -472,26 +527,105 @@ fn terminal_affine_frequency_sensitivity(
     }
 }
 
-fn build_terminal_affine_interval_summaries(
-    pricing_request: &VanillaOptionPricingRequest,
-    interval_deltas: &[f64],
-    maturity_count: usize,
-    theta: f64,
-    mean_reversion_path: &TerminalAffineMeanReversionPath,
-) -> Vec<SpectralPricingIntervalDiagnostics> {
-    (0..maturity_count)
-        .map(|interval_offset| SpectralPricingIntervalDiagnostics {
-            interval_index: pricing_request.boundary_input.interval_index + interval_offset,
-            current_anchor_value: mean_reversion_path.interval_anchor_values_before
-                [interval_offset],
-            next_anchor_value: mean_reversion_path.interval_anchor_values_after[interval_offset],
-            interval_delta: interval_deltas[interval_offset],
-            expected_hawkes_boundary_state_before: mean_reversion_path
-                .interval_hawkes_states_before[interval_offset],
-            expected_hawkes_boundary_state_after: mean_reversion_path.interval_hawkes_states_after
-                [interval_offset],
-            minimum_solved_theta: theta,
-            maximum_solved_theta: theta,
-        })
-        .collect()
+#[cfg(test)]
+mod tests {
+    use janiform_foundations::numeric::square_root_machine_epsilon;
+    use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+
+    use super::solve_terminal_affine_maturity_law;
+    use crate::tests::support::build_valid_vanilla_option_request;
+    use crate::{
+        VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
+        VanillaOptionPricingModelParameters,
+    };
+
+    #[test]
+    fn terminal_affine_measure_change_normalizes_characteristic_and_martingale() {
+        let pricing_request = build_valid_vanilla_option_request();
+        let solved_maturity = solve_test_maturity_law(pricing_request);
+
+        let zero_frequency_characteristic = solved_maturity.characteristic_function_values[0];
+        assert!((zero_frequency_characteristic.real - 1.0).abs() <= square_root_machine_epsilon());
+        assert!(zero_frequency_characteristic.imaginary.abs() <= square_root_machine_epsilon());
+
+        let measure_change = solved_maturity
+            .terminal_affine_measure_change
+            .expect("terminal affine measure-change diagnostics should be present");
+        assert!(measure_change.absolute_martingale_residual <= measure_change.martingale_tolerance);
+    }
+
+    #[test]
+    fn long_variance_state_changes_terminal_affine_characteristic_function() {
+        let mut unit_state_request = build_valid_vanilla_option_request();
+        unit_state_request.model_parameters =
+            model_parameters_with_long_variance(active_long_variance_parameters());
+
+        let mut elevated_state_request = unit_state_request.clone();
+        elevated_state_request
+            .boundary_input
+            .long_variance_boundary_state =
+            LongVarianceState::try_new(1.5).expect("elevated long-variance state should construct");
+
+        let unit_state_solution = solve_test_maturity_law(unit_state_request);
+        let elevated_state_solution = solve_test_maturity_law(elevated_state_request);
+
+        assert_ne!(
+            unit_state_solution.characteristic_function_values[1],
+            elevated_state_solution.characteristic_function_values[1]
+        );
+    }
+
+    fn solve_test_maturity_law(
+        pricing_request: crate::VanillaOptionPricingRequest,
+    ) -> super::SolvedMaturityLaw {
+        let interval_factors = [VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+            .expect("interval factors should construct")];
+        let interval_deltas = [1.0_f64];
+        let payoff_types = [VanillaOptionPayoffType::Call];
+        let driver_parameters = pricing_request
+            .model_parameters
+            .nig_shared_plus_shift_configuration
+            .derive_driver_parameters()
+            .expect("NIG driver parameters should derive");
+        let mut progress_observer = None;
+
+        solve_terminal_affine_maturity_law(
+            &pricing_request,
+            1,
+            1.0,
+            pricing_request.market_inputs.strikes.as_slice(),
+            &payoff_types,
+            Some(257),
+            &interval_deltas,
+            &interval_factors,
+            driver_parameters,
+            false,
+            None,
+            None,
+            super::SpectralThetaWarmStartKey::new(0.02_f64.to_bits(), 0.01_f64.to_bits(), 1),
+            &mut progress_observer,
+        )
+        .expect("terminal affine maturity law should solve")
+    }
+
+    fn model_parameters_with_long_variance(
+        long_variance_parameters: LongVarianceParameters,
+    ) -> VanillaOptionPricingModelParameters {
+        let base_parameters = build_valid_vanilla_option_request().model_parameters;
+
+        VanillaOptionPricingModelParameters::try_new(
+            base_parameters.hawkes_kernel_parameters,
+            base_parameters.news_process_configuration,
+            base_parameters.nig_shared_plus_shift_configuration,
+            base_parameters.return_clock_exposure_parameters,
+            long_variance_parameters,
+            base_parameters.pricing_kernel_parameters,
+        )
+        .expect("model parameters should construct")
+    }
+
+    fn active_long_variance_parameters() -> LongVarianceParameters {
+        LongVarianceParameters::try_new(5.0, 0.35, 0.03, 0.04)
+            .expect("active long-variance parameters should construct")
+    }
 }

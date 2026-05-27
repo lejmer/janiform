@@ -265,6 +265,7 @@ fn prepare_pricing_input(
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         boundary_state.excitation_state,
+        boundary_state.long_variance_state,
         context
             .fitted_parameters
             .return_components_fitted_parameters

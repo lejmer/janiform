@@ -224,6 +224,10 @@ pub(crate) fn estimate_current_state_from_observation_data(
             .fitted_parameters
             .hawkes_fitted_parameters
             .kernel_parameters,
+        long_variance_parameters: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
         // Intentional copy because current-state estimation owns the fitted
         // payload while the runtime context remains available to request builders.
         mean_reversion_fitted_parameters: context

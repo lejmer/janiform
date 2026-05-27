@@ -296,6 +296,7 @@ pub(super) fn build_maturity_summary(
                 solved_maturity.deviation_lower_bound,
                 solved_maturity.deviation_upper_bound,
                 solved_maturity.node_count,
+                solved_maturity.terminal_affine_measure_change,
                 solved_maturity.interval_summaries.clone(),
             )
             .map_err(|source| {
@@ -325,6 +326,7 @@ pub(super) fn build_maturity_summary(
         deviation_domain_lower_bound: solved_maturity.deviation_lower_bound,
         deviation_domain_upper_bound: solved_maturity.deviation_upper_bound,
         collocation_node_count: solved_maturity.node_count,
+        terminal_affine_measure_change: solved_maturity.terminal_affine_measure_change,
         collocation_nodes: SpectralDomain {
             deviation_lower_bound: solved_maturity.deviation_lower_bound,
             deviation_upper_bound: solved_maturity.deviation_upper_bound,

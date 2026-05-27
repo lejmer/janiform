@@ -26,6 +26,11 @@ pub(super) use crate::stages::joint_refinement::{
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,
 };
+pub(super) use crate::stages::long_variance::{
+    LongVarianceStageExecutionInput, LongVarianceStageExecutionMetadata,
+    LongVarianceStageExecutionReport, LongVarianceStageReturnComponentsInput,
+    run_long_variance_calibration_stage,
+};
 pub(super) use crate::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
     MeanReversionStageExecutionReport, MeanReversionStageReturnComponentsInput,
@@ -46,6 +51,7 @@ pub(super) use crate::stages::seasonality::{
 pub(super) use janiform_calibration_artifacts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY,
     CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,

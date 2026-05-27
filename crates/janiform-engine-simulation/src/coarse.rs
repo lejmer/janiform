@@ -25,6 +25,9 @@ use janiform_market_time::calendar::{
     ExchangeCalendarRegistryLookupError,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::{
+    LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
+};
 use janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateValidationError;
 use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 use janiform_model_kernels::return_clock::{
@@ -131,6 +134,8 @@ pub struct CoarseSimulationModelInputs {
     pub sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     pub news_process_configuration: NewsProcessConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub long_variance_parameters: LongVarianceParameters,
+    pub initial_long_variance_state: LongVarianceState,
     pub observed_price_tick_size: Option<f64>,
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub exchange_code: String,
@@ -141,6 +146,8 @@ impl CoarseSimulationModelInputs {
         sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
         news_process_configuration: NewsProcessConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
+        long_variance_parameters: LongVarianceParameters,
+        initial_long_variance_state: LongVarianceState,
         observed_price_tick_size: Option<f64>,
         calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
         exchange_code: impl Into<String>,
@@ -149,6 +156,8 @@ impl CoarseSimulationModelInputs {
             sufficient_statistics_model_inputs,
             news_process_configuration,
             return_clock_exposure_parameters,
+            long_variance_parameters,
+            initial_long_variance_state,
             observed_price_tick_size,
             calendar_registry_artifact,
             exchange_code: exchange_code.into(),
@@ -176,6 +185,16 @@ impl CoarseSimulationModelInputs {
             .validate()
             .map_err(|source| {
                 CoarseSimulationModelInputsError::InvalidReturnClockExposureParameters { source }
+            })?;
+
+        self.long_variance_parameters.validate().map_err(|source| {
+            CoarseSimulationModelInputsError::InvalidLongVarianceParameters { source }
+        })?;
+
+        self.initial_long_variance_state
+            .validate()
+            .map_err(|source| {
+                CoarseSimulationModelInputsError::InvalidInitialLongVarianceState { source }
             })?;
 
         if let Some(tick_size) = self.observed_price_tick_size
@@ -226,6 +245,12 @@ pub enum CoarseSimulationModelInputsError {
     InvalidReturnClockExposureParameters {
         source: ReturnClockExposureParametersError,
     },
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
+    InvalidInitialLongVarianceState {
+        source: LongVarianceStateError,
+    },
     InvalidObservedPriceTickSize {
         value: f64,
     },
@@ -259,6 +284,15 @@ impl Display for CoarseSimulationModelInputsError {
                     "return_clock_exposure_parameters are invalid: {source}"
                 )
             }
+            Self::InvalidLongVarianceParameters { source } => {
+                write!(formatter, "long_variance_parameters are invalid: {source}")
+            }
+            Self::InvalidInitialLongVarianceState { source } => {
+                write!(
+                    formatter,
+                    "initial_long_variance_state is invalid: {source}"
+                )
+            }
             Self::InvalidObservedPriceTickSize { value } => write!(
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
@@ -289,6 +323,8 @@ impl Error for CoarseSimulationModelInputsError {
             Self::InvalidSufficientStatisticsModelInputs { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidReturnClockExposureParameters { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidInitialLongVarianceState { source } => Some(source),
             Self::InvalidCalendarRegistry { source } => Some(source),
             Self::ExchangeCodeMissingFromCalendarRegistry { source, .. } => Some(source),
             Self::InvalidObservedPriceTickSize { .. } | Self::InvalidExchangeCode { .. } => None,
@@ -302,6 +338,8 @@ struct CoarseSimulationModelInputsPayload {
     sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     news_process_configuration: NewsProcessConfiguration,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
+    long_variance_parameters: LongVarianceParameters,
+    initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
     calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     exchange_code: String,
@@ -317,6 +355,8 @@ impl<'de> Deserialize<'de> for CoarseSimulationModelInputs {
             payload.sufficient_statistics_model_inputs,
             payload.news_process_configuration,
             payload.return_clock_exposure_parameters,
+            payload.long_variance_parameters,
+            payload.initial_long_variance_state,
             payload.observed_price_tick_size,
             payload.calendar_registry_artifact,
             payload.exchange_code,
@@ -1964,8 +2004,10 @@ mod tests {
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
         RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
     };
-    use janiform_model_kernels::hawkes::HawkesExcitationState;
-    use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+    use janiform_model_kernels::hawkes::{
+        HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+    };
+    use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
     use janiform_model_kernels::mean_reversion::{
         MeanReversionBoundaryState, MeanReversionFittedParameters,
         MeanReversionRuntimeIntervalAnchors,
@@ -2341,6 +2383,7 @@ mod tests {
             hawkes_kernel_parameters,
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("gamma marks should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct");
 
@@ -2349,6 +2392,8 @@ mod tests {
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should construct"),
             build_initial_state(),
+            LongVarianceParameters::neutral(),
+            LongVarianceState::unit(),
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-gain mean reversion should construct"),
             MeanReversionRuntimeIntervalAnchors::try_new(
@@ -2369,6 +2414,8 @@ mod tests {
             sufficient_statistics_model_inputs,
             build_news_process_configuration(),
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            LongVarianceParameters::neutral(),
+            LongVarianceState::unit(),
             None,
             build_calendar_registry_artifact(),
             "XNYS",

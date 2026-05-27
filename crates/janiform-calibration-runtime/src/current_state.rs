@@ -5,6 +5,10 @@ use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{
+    LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
+    LongVarianceStateTransitionError, LongVarianceStationaryLevelError,
+};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
     MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
@@ -15,6 +19,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, PartialEq)]
 pub struct CurrentStateEstimationInput {
     pub kernel_parameters: HawkesKernelParameters,
+    pub long_variance_parameters: LongVarianceParameters,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     pub state_time_utc_nanos: i64,
     pub observed_log_return: f64,
@@ -27,6 +32,7 @@ pub struct CurrentStateEstimationInput {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CurrentStateEstimationBatchInput {
     pub kernel_parameters: HawkesKernelParameters,
+    pub long_variance_parameters: LongVarianceParameters,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     pub reference_price: f64,
     pub state_times_utc_nanos: Vec<i64>,
@@ -39,6 +45,7 @@ pub struct CurrentStateEstimationBatchInput {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CurrentStateEstimationOutput {
     pub hawkes_excitation_state: HawkesExcitationState,
+    pub long_variance_state: LongVarianceState,
     pub mean_reversion_boundary_state: MeanReversionBoundaryState,
 }
 
@@ -100,6 +107,19 @@ pub enum CurrentStateEstimationError {
     },
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
+    },
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
+    InvalidLongVarianceStationaryIntensityMultipliers,
+    InvalidLongVarianceStationaryLevel {
+        source: LongVarianceStationaryLevelError,
+    },
+    InvalidLongVarianceStateTransition {
+        source: LongVarianceStateTransitionError,
+    },
+    InvalidLongVarianceBoundaryState {
+        source: LongVarianceStateError,
     },
     InvalidMeanReversionBoundaryState {
         source: MeanReversionBoundaryStateValidationError,
@@ -180,6 +200,26 @@ impl Display for CurrentStateEstimationError {
                 formatter,
                 "current-state estimation received invalid mean-reversion fitted parameters: {source}"
             ),
+            Self::InvalidLongVarianceParameters { source } => write!(
+                formatter,
+                "current-state estimation received invalid long-variance parameters: {source}"
+            ),
+            Self::InvalidLongVarianceStationaryIntensityMultipliers => write!(
+                formatter,
+                "current-state estimation could not derive stationary Hawkes intensity multipliers for long-variance normalization"
+            ),
+            Self::InvalidLongVarianceStationaryLevel { source } => write!(
+                formatter,
+                "current-state estimation could not derive the long-variance stationary mean-reversion level: {source}"
+            ),
+            Self::InvalidLongVarianceStateTransition { source } => write!(
+                formatter,
+                "current-state estimation failed to replay long-variance state: {source}"
+            ),
+            Self::InvalidLongVarianceBoundaryState { source } => write!(
+                formatter,
+                "current-state estimation produced an invalid long-variance boundary state: {source}"
+            ),
             Self::InvalidMeanReversionBoundaryState { source } => write!(
                 formatter,
                 "current-state estimation produced an invalid mean-reversion boundary state: {source}"
@@ -192,6 +232,10 @@ impl Error for CurrentStateEstimationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidLongVarianceStationaryLevel { source } => Some(source),
+            Self::InvalidLongVarianceStateTransition { source } => Some(source),
+            Self::InvalidLongVarianceBoundaryState { source } => Some(source),
             Self::InvalidMeanReversionBoundaryState { source } => Some(source),
             Self::EmptyObservations
             | Self::EmptyStateTimes
@@ -202,7 +246,8 @@ impl Error for CurrentStateEstimationError {
             | Self::InvalidReferencePrice { .. }
             | Self::InvalidObservationTradePrice { .. }
             | Self::ObservationTimestampOutOfOrder { .. }
-            | Self::ObservationAfterStateTime { .. } => None,
+            | Self::ObservationAfterStateTime { .. }
+            | Self::InvalidLongVarianceStationaryIntensityMultipliers => None,
         }
     }
 }
@@ -216,6 +261,10 @@ pub fn estimate_current_state_from_observed_data(
         .map_err(
             |source| CurrentStateEstimationError::InvalidMeanReversionFittedParameters { source },
         )?;
+    input
+        .long_variance_parameters
+        .validate()
+        .map_err(|source| CurrentStateEstimationError::InvalidLongVarianceParameters { source })?;
 
     if input.observation_timestamp_utc_nanos.is_empty() {
         return Err(CurrentStateEstimationError::EmptyObservations);
@@ -249,6 +298,13 @@ pub fn estimate_current_state_from_observed_data(
         &input.observation_timestamp_utc_nanos,
         &input.observation_trade_sides,
     );
+    let long_variance_state = replay_long_variance_state(
+        input.kernel_parameters,
+        input.long_variance_parameters,
+        input.state_time_utc_nanos,
+        &input.observation_timestamp_utc_nanos,
+        &input.observation_trade_sides,
+    )?;
 
     let mean_reversion_boundary_state = MeanReversionBoundaryState::try_new(
         input.observed_log_return,
@@ -260,6 +316,7 @@ pub fn estimate_current_state_from_observed_data(
 
     Ok(CurrentStateEstimationOutput {
         hawkes_excitation_state,
+        long_variance_state,
         mean_reversion_boundary_state,
     })
 }
@@ -280,6 +337,10 @@ pub fn estimate_current_states_from_observed_data_with_observer(
         .map_err(
             |source| CurrentStateEstimationError::InvalidMeanReversionFittedParameters { source },
         )?;
+    input
+        .long_variance_parameters
+        .validate()
+        .map_err(|source| CurrentStateEstimationError::InvalidLongVarianceParameters { source })?;
 
     if input.state_times_utc_nanos.is_empty() {
         return Err(CurrentStateEstimationError::EmptyStateTimes);
@@ -344,6 +405,11 @@ pub fn estimate_current_states_from_observed_data_with_observer(
         y_minus_plus: 0.0,
         y_minus_minus: 0.0,
     };
+    let mut current_long_variance_state = LongVarianceState::unit();
+    let stationary_long_variance_level = long_variance_stationary_mean_reversion_level(
+        input.kernel_parameters,
+        input.long_variance_parameters,
+    )?;
     let mut previous_timestamp_utc_nanos = input.observation_timestamp_utc_nanos[0];
     let mut observation_index = 0usize;
     let mut observed_price = None::<f64>;
@@ -363,6 +429,21 @@ pub fn estimate_current_states_from_observed_data_with_observer(
                 input.observation_trade_sides[observation_index],
                 input.kernel_parameters.alpha,
             );
+            current_long_variance_state = current_long_variance_state
+                .apply_mean_reversion_drift(
+                    input.long_variance_parameters,
+                    stationary_long_variance_level,
+                    delta_hours,
+                )
+                .and_then(|state| {
+                    state.apply_event_jump(
+                        input.long_variance_parameters,
+                        input.observation_trade_sides[observation_index],
+                    )
+                })
+                .map_err(|source| {
+                    CurrentStateEstimationError::InvalidLongVarianceStateTransition { source }
+                })?;
 
             previous_timestamp_utc_nanos = timestamp_utc_nanos;
             observed_price = Some(input.observation_trade_prices[observation_index]);
@@ -391,6 +472,15 @@ pub fn estimate_current_states_from_observed_data_with_observer(
             duration_nanos_to_hours(state_time_utc_nanos - previous_timestamp_utc_nanos);
         let hawkes_excitation_state = current_state
             .apply_shared_decay_drift(input.kernel_parameters.beta, trailing_delta_hours);
+        let long_variance_state = current_long_variance_state
+            .apply_mean_reversion_drift(
+                input.long_variance_parameters,
+                stationary_long_variance_level,
+                trailing_delta_hours,
+            )
+            .map_err(
+                |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
+            )?;
 
         let mean_reversion_boundary_state =
             MeanReversionBoundaryState::try_new(observed_log_return, observed_log_return, 0.0, 0.0)
@@ -403,6 +493,7 @@ pub fn estimate_current_states_from_observed_data_with_observer(
             observed_price,
             state: CurrentStateEstimationOutput {
                 hawkes_excitation_state,
+                long_variance_state,
                 mean_reversion_boundary_state,
             },
         });
@@ -531,9 +622,74 @@ fn replay_hawkes_state(
     current_state.apply_shared_decay_drift(kernel_parameters.beta, trailing_delta_hours)
 }
 
+fn replay_long_variance_state(
+    kernel_parameters: HawkesKernelParameters,
+    long_variance_parameters: LongVarianceParameters,
+    state_time_utc_nanos: i64,
+    observation_timestamp_utc_nanos: &[i64],
+    observation_trade_sides: &[HawkesEventSide],
+) -> Result<LongVarianceState, CurrentStateEstimationError> {
+    let stationary_long_variance_level =
+        long_variance_stationary_mean_reversion_level(kernel_parameters, long_variance_parameters)?;
+
+    let mut current_state = LongVarianceState::unit();
+    let mut previous_timestamp_utc_nanos = observation_timestamp_utc_nanos[0];
+
+    for (&timestamp_utc_nanos, &trade_side) in observation_timestamp_utc_nanos
+        .iter()
+        .zip(observation_trade_sides.iter())
+    {
+        let delta_hours =
+            duration_nanos_to_hours(timestamp_utc_nanos - previous_timestamp_utc_nanos);
+
+        current_state = current_state
+            .apply_mean_reversion_drift(
+                long_variance_parameters,
+                stationary_long_variance_level,
+                delta_hours,
+            )
+            .and_then(|state| state.apply_event_jump(long_variance_parameters, trade_side))
+            .map_err(
+                |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
+            )?;
+
+        previous_timestamp_utc_nanos = timestamp_utc_nanos;
+    }
+
+    let trailing_delta_hours =
+        duration_nanos_to_hours(state_time_utc_nanos - previous_timestamp_utc_nanos);
+
+    current_state
+        .apply_mean_reversion_drift(
+            long_variance_parameters,
+            stationary_long_variance_level,
+            trailing_delta_hours,
+        )
+        .map_err(
+            |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
+        )
+}
+
+fn long_variance_stationary_mean_reversion_level(
+    kernel_parameters: HawkesKernelParameters,
+    long_variance_parameters: LongVarianceParameters,
+) -> Result<f64, CurrentStateEstimationError> {
+    long_variance_parameters
+        .stationary_mean_reversion_level_for_hawkes_kernel(kernel_parameters)
+        .map_err(|source| match source {
+            janiform_model_kernels::long_variance::LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryIntensityMultipliers => {
+                CurrentStateEstimationError::InvalidLongVarianceStationaryIntensityMultipliers
+            }
+            janiform_model_kernels::long_variance::LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryLevel { source } => {
+                CurrentStateEstimationError::InvalidLongVarianceStationaryLevel { source }
+            }
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+    use janiform_model_kernels::long_variance::LongVarianceParameters;
     use janiform_model_kernels::mean_reversion::{
         MeanReversionAnchorModel, MeanReversionFittedParameters,
     };
@@ -568,6 +724,7 @@ mod tests {
 
                 estimate_current_state_from_observed_data(CurrentStateEstimationInput {
                     kernel_parameters: input.kernel_parameters,
+                    long_variance_parameters: input.long_variance_parameters,
                     mean_reversion_fitted_parameters: input
                         .mean_reversion_fitted_parameters
                         .clone(),
@@ -659,6 +816,7 @@ mod tests {
                 },
             )
             .expect("test kernel parameters should validate"),
+            long_variance_parameters: LongVarianceParameters::neutral(),
             mean_reversion_fitted_parameters: MeanReversionFittedParameters::try_new(
                 0.25,
                 MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),

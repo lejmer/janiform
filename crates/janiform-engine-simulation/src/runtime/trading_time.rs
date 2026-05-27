@@ -36,6 +36,7 @@ pub(crate) struct TransitionTradingTimeReturnInput<'a, R> {
     pub(crate) beta: f64,
     pub(crate) seasonality_factor: f64,
     pub(crate) return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub(crate) baseline_long_variance_clock_scale: f64,
     pub(crate) interval_open_market_segments: &'a [(i64, i64)],
     pub(crate) previous_timestamp_utc_nanos: i64,
     pub(crate) timestamp_utc_nanos: i64,
@@ -56,6 +57,7 @@ where
         beta,
         seasonality_factor,
         return_clock_exposure_parameters,
+        baseline_long_variance_clock_scale,
         interval_open_market_segments,
         previous_timestamp_utc_nanos,
         timestamp_utc_nanos,
@@ -112,8 +114,14 @@ where
 
     let effective_return_clocks = compute_effective_return_clocks(
         return_clock_exposure_parameters,
-        integrated_buy_activity,
-        integrated_sell_activity,
+        IntegratedSideActivityDecomposition::new(
+            integrated_buy_activity.baseline_activity * baseline_long_variance_clock_scale,
+            integrated_buy_activity.endogenous_activity,
+        ),
+        IntegratedSideActivityDecomposition::new(
+            integrated_sell_activity.baseline_activity * baseline_long_variance_clock_scale,
+            integrated_sell_activity.endogenous_activity,
+        ),
     )
     .map_err(
         |source| SeededTickSimulationRunError::EffectiveReturnClockBuildFailure {

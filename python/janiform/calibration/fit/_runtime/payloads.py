@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, NoReturn, cast
 from ...._timestamps import nanoseconds_to_hours
 from ....calendar import CalendarRegistry
 from ....hourly_factors.workflow import _parse_interval_duration_nanos
+from ....long_variance import LongVarianceParameters
 from ....mean_reversion import MeanReversionFittedParameters
 from ....pricing import (
     GammaSeverityMarkConfiguration,
@@ -134,6 +135,15 @@ def prepare_model_runtime_factors_for_model(
             field_path="return_components.fitted_parameters.return_clock_exposure_parameters",
             error_factory=calibration_error,
         ),
+        long_variance_parameters=LongVarianceParameters.from_mapping(
+            require_payload_mapping(
+                return_components_fitted_parameters,
+                "long_variance_parameters",
+                "return_components.fitted_parameters.long_variance_parameters",
+            ),
+            field_path="return_components.fitted_parameters.long_variance_parameters",
+            error_factory=calibration_error,
+        ),
     )
 
 
@@ -151,6 +161,18 @@ def hawkes_kernel_parameters_for_model(model: JaniformModel) -> HawkesKernelPara
     return HawkesKernelParameters.from_mapping(
         hawkes_kernel_parameters_payload(model),
         field_path="hawkes.fitted_parameters.kernel_parameters",
+    )
+
+
+def long_variance_parameters_for_model(model: JaniformModel) -> LongVarianceParameters:
+    return LongVarianceParameters.from_mapping(
+        require_payload_mapping(
+            return_components_fitted_parameters_payload(model),
+            "long_variance_parameters",
+            "return_components.fitted_parameters.long_variance_parameters",
+        ),
+        field_path="return_components.fitted_parameters.long_variance_parameters",
+        error_factory=calibration_error,
     )
 
 

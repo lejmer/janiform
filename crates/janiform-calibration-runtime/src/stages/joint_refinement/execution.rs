@@ -43,9 +43,8 @@ pub(crate) use optimization::joint_refinement_restart_full_vector_direct_search_
 pub(crate) use optimization::{
     SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
-    joint_refinement_restart_full_vector_initial_mesh_divisor, optimize_restart_seeds,
-    precheck_seed_summary_workload, sensitivity_repair_screening_evaluation_budget,
-    sensitivity_repair_seed_candidates,
+    optimize_restart_seeds, precheck_seed_summary_workload,
+    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
 };
 pub(crate) use option_refinement::{
     desired_joint_refinement_option_refinement_candidate_count,

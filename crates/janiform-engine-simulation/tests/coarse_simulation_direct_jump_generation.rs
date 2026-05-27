@@ -13,6 +13,7 @@ use janiform_market_time::calendar::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
@@ -439,6 +440,8 @@ fn build_model_inputs_with_components(
         sufficient_statistics_model_inputs,
         news_process_configuration,
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        LongVarianceParameters::neutral(),
+        LongVarianceState::unit(),
         None,
         build_calendar_registry_artifact(),
         "XNYS",
@@ -456,11 +459,14 @@ fn build_sufficient_statistics_model_inputs(
         ExponentialAffineTransformEquationSpecification::try_new(
             kernel_parameters,
             gamma_severity_configuration,
+            LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should construct"),
         default_initial_excitation_state(),
+        LongVarianceParameters::neutral(),
+        LongVarianceState::unit(),
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-gain mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(

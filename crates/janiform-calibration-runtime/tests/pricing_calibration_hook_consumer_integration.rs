@@ -148,6 +148,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing model parameters should construct");
@@ -165,6 +166,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
                 y_minus_plus: 0.3,
                 y_minus_minus: 0.4,
             },
+            janiform_model_kernels::long_variance::LongVarianceState::unit(),
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-gain mean reversion parameters should construct"),
             1.0,

@@ -7,6 +7,7 @@ from janiform.calibration.staged import (
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
     build_nominal_tick_grid_observation_model_payload,
+    build_neutral_long_variance_parameters_payload,
     build_neutral_return_clock_exposure_parameters_payload,
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
 )
@@ -137,6 +138,9 @@ def successful_full_model_staged_runner_payload(
                         },
                         "return_clock_exposure_parameters": (
                             build_neutral_return_clock_exposure_parameters_payload()
+                        ),
+                        "long_variance_parameters": (
+                            build_neutral_long_variance_parameters_payload()
                         ),
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()
@@ -317,6 +321,9 @@ def successful_full_model_staged_runner_payload(
                             "return_clock_exposure_parameters": (
                                 build_neutral_return_clock_exposure_parameters_payload()
                             ),
+                            "long_variance_parameters": (
+                                build_neutral_long_variance_parameters_payload()
+                            ),
                             "tick_grid_observation_model": (
                                 build_nominal_tick_grid_observation_model_payload()
                             ),
@@ -415,6 +422,9 @@ def successful_full_model_staged_runner_payload(
                         },
                         "return_clock_exposure_parameters": (
                             build_neutral_return_clock_exposure_parameters_payload()
+                        ),
+                        "long_variance_parameters": (
+                            build_neutral_long_variance_parameters_payload()
                         ),
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()

@@ -76,6 +76,10 @@ pub(super) fn prepare_observed_snapshots(
                 .fitted_parameters
                 .hawkes_fitted_parameters
                 .kernel_parameters,
+            long_variance_parameters: context
+                .fitted_parameters
+                .return_components_fitted_parameters
+                .long_variance_parameters,
             // Intentional copy because the batch estimator owns validated
             // fitted parameters while the workflow context remains reusable.
             mean_reversion_fitted_parameters: context

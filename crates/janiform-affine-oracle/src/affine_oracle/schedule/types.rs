@@ -3,6 +3,9 @@ use std::fmt::{Display, Formatter};
 
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::{
+    LongVarianceState, LongVarianceStateError, LongVarianceStationaryLevelError,
+};
 
 use super::super::contracts::{
     ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformActivityLoadingsError,
@@ -133,6 +136,7 @@ impl ExponentialAffineScheduleIntervalInput {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExponentialAffineScheduleCumulantRequest {
     pub initial_state: HawkesExcitationState,
+    pub initial_long_variance_state: LongVarianceState,
     pub intervals: Vec<ExponentialAffineScheduleIntervalInput>,
 }
 
@@ -140,6 +144,12 @@ impl ExponentialAffineScheduleCumulantRequest {
     /// Validates the initial state and interval schedule.
     pub fn validate(&self) -> Result<(), ExponentialAffineScheduleCumulantError> {
         validate_initial_state(self.initial_state)?;
+
+        self.initial_long_variance_state
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineScheduleCumulantError::InvalidInitialLongVarianceState { source }
+            })?;
 
         if self.intervals.is_empty() {
             return Err(ExponentialAffineScheduleCumulantError::EmptySchedule);
@@ -181,6 +191,13 @@ pub enum ExponentialAffineScheduleCumulantError {
         field: &'static str,
         value: f64,
     },
+    InvalidInitialLongVarianceState {
+        source: LongVarianceStateError,
+    },
+    InvalidStationaryIntensityMultipliers,
+    InvalidLongVarianceStationaryLevel {
+        source: LongVarianceStationaryLevelError,
+    },
     InvalidInput {
         source: ExponentialAffineTransformInputError,
     },
@@ -214,6 +231,18 @@ impl Display for ExponentialAffineScheduleCumulantError {
             Self::InvalidInitialStateComponent { field, value } => write!(
                 formatter,
                 "initial_state.{field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidInitialLongVarianceState { source } => write!(
+                formatter,
+                "initial_long_variance_state is invalid: {source}"
+            ),
+            Self::InvalidStationaryIntensityMultipliers => write!(
+                formatter,
+                "schedule Hawkes kernel does not admit stationary intensity multipliers"
+            ),
+            Self::InvalidLongVarianceStationaryLevel { source } => write!(
+                formatter,
+                "schedule long-variance stationary level is invalid: {source}"
             ),
             Self::InvalidInput { source } => {
                 write!(formatter, "schedule interval input is invalid: {source}")
@@ -256,6 +285,8 @@ impl Error for ExponentialAffineScheduleCumulantError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidInput { source } => Some(source),
+            Self::InvalidInitialLongVarianceState { source } => Some(source),
+            Self::InvalidLongVarianceStationaryLevel { source } => Some(source),
             Self::InvalidInputTangent { source, .. } => Some(source),
             Self::InvalidSolverSettings { source } => Some(source),
             Self::InvalidTerminalLoading { source } => Some(source),

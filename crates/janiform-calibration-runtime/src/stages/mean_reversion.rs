@@ -742,6 +742,9 @@ fn build_endogenous_mean_reversion_calibration_context(
                 .news_process_configuration
                 .shared_mark_law
                 .gamma_severity_marks,
+            return_components_payload
+                .fitted_parameters
+                .long_variance_parameters,
         ),
         return_components_payload
             .fitted_parameters
@@ -919,11 +922,7 @@ fn evaluate_pressure_to_level_without_mean_reversion_candidate(
         interval_deltas,
     )?;
 
-    let response = observation_levels
-        .iter()
-        .zip(observation_levels.iter().skip(1))
-        .map(|(current_observation, next_observation)| next_observation - current_observation)
-        .collect::<Vec<_>>();
+    let response = adjacent_observation_level_differences(observation_levels);
 
     let pressure_column = pressure_state_path
         .iter()
@@ -1011,13 +1010,11 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
         .map(|observation| observation - anchor_value)
         .collect::<Vec<_>>();
 
-    let residuals = response
-        .iter()
-        .zip(intercept_column.iter())
-        .map(|(current_response, intercept_term)| {
-            current_response - least_squares_solution.first_coefficient * intercept_term
-        })
-        .collect::<Vec<_>>();
+    let residuals = remove_intercept_contribution(
+        response.as_slice(),
+        intercept_column.as_slice(),
+        least_squares_solution.first_coefficient,
+    );
 
     let residual_sum_of_squares = residuals
         .iter()
@@ -1058,11 +1055,7 @@ fn evaluate_random_walk_null_candidate(
     observation_levels: &[f64],
     calibration_grid_interval_hours: f64,
 ) -> MeanReversionStageCandidateEvaluation {
-    let residuals = observation_levels
-        .iter()
-        .zip(observation_levels.iter().skip(1))
-        .map(|(current_observation, next_observation)| next_observation - current_observation)
-        .collect::<Vec<_>>();
+    let residuals = adjacent_observation_level_differences(observation_levels);
 
     let residual_sum_of_squares = residuals
         .iter()
@@ -1253,6 +1246,42 @@ struct TransitionTerms {
     pressure_column: Vec<f64>,
 }
 
+fn adjacent_observation_level_differences(observation_levels: &[f64]) -> Vec<f64> {
+    observation_levels
+        .iter()
+        .zip(observation_levels.iter().skip(1))
+        .map(|(current_observation, next_observation)| next_observation - current_observation)
+        .collect::<Vec<_>>()
+}
+
+fn remove_intercept_contribution(
+    response: &[f64],
+    intercept_column: &[f64],
+    anchor_origin_level_value: f64,
+) -> Vec<f64> {
+    response
+        .iter()
+        .zip(intercept_column.iter())
+        .map(|(current_response, intercept_term)| {
+            current_response - anchor_origin_level_value * intercept_term
+        })
+        .collect::<Vec<_>>()
+}
+
+fn remove_pressure_contribution(
+    response: &[f64],
+    pressure_column: &[f64],
+    pressure_level_gain: f64,
+) -> Vec<f64> {
+    response
+        .iter()
+        .zip(pressure_column.iter())
+        .map(|(current_response, current_pressure_term)| {
+            current_response - pressure_level_gain * current_pressure_term
+        })
+        .collect::<Vec<_>>()
+}
+
 fn build_transition_terms(
     observation_levels: &[f64],
     pressure_state_path: &[f64],
@@ -1315,13 +1344,11 @@ fn assemble_candidate_evaluation(
         anchor_model.pressure_persistence_per_reference_interval;
 
     let residuals = match (pressure_column, intercept_column.is_empty()) {
-        (Some(pressure_column), true) => response
-            .iter()
-            .zip(pressure_column.iter())
-            .map(|(current_response, current_pressure_term)| {
-                current_response - anchor_model.pressure_level_gain * current_pressure_term
-            })
-            .collect::<Vec<_>>(),
+        (Some(pressure_column), true) => remove_pressure_contribution(
+            response,
+            pressure_column,
+            anchor_model.pressure_level_gain,
+        ),
         (Some(pressure_column), false) => response
             .iter()
             .zip(intercept_column.iter())
@@ -1334,13 +1361,9 @@ fn assemble_candidate_evaluation(
                 },
             )
             .collect::<Vec<_>>(),
-        (None, _) => response
-            .iter()
-            .zip(intercept_column.iter())
-            .map(|(current_response, intercept_term)| {
-                current_response - anchor_origin_level_value * intercept_term
-            })
-            .collect::<Vec<_>>(),
+        (None, _) => {
+            remove_intercept_contribution(response, intercept_column, anchor_origin_level_value)
+        }
     };
 
     let residual_sum_of_squares = residuals
@@ -1670,13 +1693,8 @@ fn solve_full_pressure_to_level_least_squares_at_fixed_gain(
     response: &[f64],
     pressure_level_gain: f64,
 ) -> MeanReversionLeastSquaresSolution {
-    let adjusted_response = response
-        .iter()
-        .zip(pressure_column.iter())
-        .map(|(response_value, pressure_value)| {
-            response_value - pressure_level_gain * pressure_value
-        })
-        .collect::<Vec<_>>();
+    let adjusted_response =
+        remove_pressure_contribution(response, pressure_column, pressure_level_gain);
 
     let intercept_solution =
         solve_one_column_least_squares(intercept_column, adjusted_response.as_slice());

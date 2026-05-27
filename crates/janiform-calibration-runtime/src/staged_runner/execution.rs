@@ -1020,6 +1020,9 @@ fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport)
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             return_components_failure_error_message(report.failure.as_ref())
         }
+        CalibrationStagedRunStageReport::LongVariance(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }

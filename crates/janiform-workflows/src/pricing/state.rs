@@ -1,5 +1,6 @@
 use janiform::model::factors::hourly::HourlyFactorContractOutput;
 use janiform::model::hawkes::HawkesExcitationState;
+use janiform::model::long_variance::LongVarianceState;
 use janiform::simulation::MeanReversionBoundaryState;
 
 use crate::error::WorkflowError;
@@ -12,6 +13,7 @@ use super::FittedModelSingleOptionPricingRequest;
 
 pub(super) struct PricingBoundaryState {
     pub(super) excitation_state: HawkesExcitationState,
+    pub(super) long_variance_state: LongVarianceState,
     pub(super) mean_reversion_boundary_state: MeanReversionBoundaryState,
 }
 
@@ -33,6 +35,7 @@ pub(super) fn resolve_pricing_boundary_state(
 
         return Ok(PricingBoundaryState {
             excitation_state,
+            long_variance_state: LongVarianceState::unit(),
             mean_reversion_boundary_state,
         });
     }
@@ -47,6 +50,7 @@ pub(super) fn resolve_pricing_boundary_state(
 
         return Ok(PricingBoundaryState {
             excitation_state: estimated_state.hawkes_excitation_state,
+            long_variance_state: estimated_state.long_variance_state,
             mean_reversion_boundary_state: estimated_state.mean_reversion_boundary_state,
         });
     }
@@ -68,6 +72,7 @@ pub(super) fn resolve_pricing_boundary_state(
 
     Ok(PricingBoundaryState {
         excitation_state,
+        long_variance_state: LongVarianceState::unit(),
         mean_reversion_boundary_state,
     })
 }

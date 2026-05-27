@@ -72,6 +72,7 @@ pub(super) fn run_joint_refinement_like_stage(
         CalibrationStage::Seasonality
         | CalibrationStage::Hawkes
         | CalibrationStage::ReturnComponents
+        | CalibrationStage::LongVariance
         | CalibrationStage::MeanReversion => {
             Err(CalibrationStagedRunFailure::MissingStageInput { stage })
         }
@@ -346,6 +347,7 @@ fn option_refinement_dispatch_settings(
         CalibrationStage::Seasonality
         | CalibrationStage::Hawkes
         | CalibrationStage::ReturnComponents
+        | CalibrationStage::LongVariance
         | CalibrationStage::MeanReversion => Err(CalibrationStagedRunFailure::MissingStageInput {
             stage: consuming_stage,
         }),

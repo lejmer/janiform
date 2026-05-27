@@ -17,6 +17,7 @@ use janiform_foundations::time::{ceil_to_interval_utc_nanos, floor_to_interval_u
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
 
 pub(crate) const JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT: usize = 96;
+pub(crate) const JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY: f64 = 0.5;
 const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 const JOINT_REFINEMENT_RETURN_SCALE_QUANTILE_Q90: f64 = 0.90;
 const JOINT_REFINEMENT_BUSINESS_TIME_BUCKET_COUNT: usize = 4;
@@ -97,7 +98,7 @@ pub(crate) fn build_observed_open_session_interval_observations(
         );
     }
 
-    finalize_sell_share_proxies(&mut intervals, 0.5);
+    finalize_sell_share_proxies(&mut intervals, JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY);
     intervals
 }
 
@@ -160,7 +161,7 @@ pub(crate) fn aggregate_simulated_path_to_interval_template(
         );
     }
 
-    finalize_sell_share_proxies(&mut intervals, 0.5);
+    finalize_sell_share_proxies(&mut intervals, JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY);
 
     intervals
 }

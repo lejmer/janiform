@@ -31,6 +31,7 @@ from ..shared.errors import (
     _simulation_error,
 )
 from ...mean_reversion import MeanReversionBoundaryState
+from ...long_variance import LongVarianceParameters, LongVarianceState
 from ...return_clock import ReturnClockExposureParameters
 from ...contracts.base import (
     ContractModel,
@@ -72,6 +73,8 @@ class CoarseSimulationModelInputs(ContractModel):
     sufficient_statistics_model_inputs: Any
     news_process_configuration: NewsProcessConfiguration
     return_clock_exposure_parameters: ReturnClockExposureParameters
+    long_variance_parameters: LongVarianceParameters
+    initial_long_variance_state: LongVarianceState
     observed_price_tick_size: Optional[float]
     calendar_registry_artifact: dict[str, Any]
     exchange_code: str
@@ -84,6 +87,18 @@ class CoarseSimulationModelInputs(ContractModel):
             raise _simulation_error(
                 "return_clock_exposure_parameters",
                 "must be a ReturnClockExposureParameters",
+            )
+
+        if not isinstance(self.long_variance_parameters, LongVarianceParameters):
+            raise _simulation_error(
+                "long_variance_parameters",
+                "must be a LongVarianceParameters",
+            )
+
+        if not isinstance(self.initial_long_variance_state, LongVarianceState):
+            raise _simulation_error(
+                "initial_long_variance_state",
+                "must be a LongVarianceState",
             )
 
         if self.observed_price_tick_size is not None and (
@@ -151,6 +166,26 @@ class CoarseSimulationModelInputs(ContractModel):
                     SIMULATION_ERROR_FACTORY,
                 ),
                 field_path=f"{field_path}.return_clock_exposure_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
+            ),
+            long_variance_parameters=LongVarianceParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "long_variance_parameters",
+                    f"{field_path}.long_variance_parameters",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.long_variance_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
+            ),
+            initial_long_variance_state=LongVarianceState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "initial_long_variance_state",
+                    f"{field_path}.initial_long_variance_state",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.initial_long_variance_state",
                 error_factory=SIMULATION_ERROR_FACTORY,
             ),
             observed_price_tick_size=(
@@ -282,6 +317,8 @@ class CoarseSimulationRunRequest(ContractModel):
         hourly_factor_contract: HourlyFactorContract,
         news_process_configuration: NewsProcessConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
+        long_variance_parameters: LongVarianceParameters,
+        initial_long_variance_state: LongVarianceState,
         observed_price_tick_size: Optional[float],
         calendar_registry: CalendarRegistry,
         exchange_code: str,
@@ -302,6 +339,8 @@ class CoarseSimulationRunRequest(ContractModel):
                 sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
                 news_process_configuration=news_process_configuration,
                 return_clock_exposure_parameters=return_clock_exposure_parameters,
+                long_variance_parameters=long_variance_parameters,
+                initial_long_variance_state=initial_long_variance_state,
                 observed_price_tick_size=observed_price_tick_size,
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,

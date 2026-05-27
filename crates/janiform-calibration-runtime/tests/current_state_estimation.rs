@@ -6,6 +6,7 @@ use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 
 #[test]
@@ -31,12 +32,15 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
     let mean_reversion_fitted_parameters =
         MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.0, 0.0)
             .expect("test mean-reversion fitted parameters should be valid");
+    let long_variance_parameters = LongVarianceParameters::try_new(2.0, 0.0, 0.25, 0.50)
+        .expect("test long-variance parameters should be valid");
 
     let state_time_utc_nanos = 15 * NANOS_PER_HOUR;
 
     let estimation_output =
         estimate_current_state_from_observed_data(CurrentStateEstimationInput {
             kernel_parameters,
+            long_variance_parameters,
             mean_reversion_fitted_parameters,
             state_time_utc_nanos,
             observed_log_return: 0.05,
@@ -62,6 +66,25 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
     assert_eq!(
         estimation_output.hawkes_excitation_state.y_minus_minus,
         0.25 * decay_factor
+    );
+
+    let stationary_level = long_variance_parameters
+        .stationary_mean_reversion_level_for_hawkes_kernel(kernel_parameters)
+        .expect("stationary level should build");
+    let expected_long_variance_state = LongVarianceState::unit()
+        .apply_event_jump(long_variance_parameters, HawkesEventSide::Buy)
+        .and_then(|state| {
+            state.apply_mean_reversion_drift(long_variance_parameters, stationary_level, 1.0)
+        })
+        .and_then(|state| state.apply_event_jump(long_variance_parameters, HawkesEventSide::Sell))
+        .and_then(|state| {
+            state.apply_mean_reversion_drift(long_variance_parameters, stationary_level, 1.0)
+        })
+        .expect("expected long-variance state should evolve");
+
+    assert_eq!(
+        estimation_output.long_variance_state.level,
+        expected_long_variance_state.level
     );
     assert_eq!(
         estimation_output
@@ -111,6 +134,7 @@ fn current_state_estimation_rejects_observation_after_requested_state_time() {
 
     let error = estimate_current_state_from_observed_data(CurrentStateEstimationInput {
         kernel_parameters,
+        long_variance_parameters: LongVarianceParameters::neutral(),
         mean_reversion_fitted_parameters,
         state_time_utc_nanos: 14 * NANOS_PER_HOUR,
         observed_log_return: 0.05,

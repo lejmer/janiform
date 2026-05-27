@@ -1,4 +1,5 @@
 mod core;
+mod long_variance_search;
 mod return_clock_restart_seeds;
 
 pub(super) use core::{

@@ -33,6 +33,8 @@ pub(crate) enum CalibrationStageOption {
     Hawkes,
     #[value(help = "Resume from the return-component stage.")]
     ReturnComponents,
+    #[value(help = "Resume from the long-variance stage.")]
+    LongVariance,
     #[value(help = "Resume from the mean-reversion stage.")]
     MeanReversion,
     #[value(help = "Resume from the joint-refinement stage.")]

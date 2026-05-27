@@ -1,0 +1,518 @@
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
+use janiform_foundations::numeric::{
+    validate_finite_number, validate_non_negative_number, validate_positive_number,
+};
+
+use crate::hawkes::{
+    HawkesEventSide, HawkesKernelParameters, HawkesStationaryIntensityMultipliers,
+    stationary_intensity_multipliers,
+};
+
+// With zero diffusion and zero event loadings, unit initial state remains fixed for any
+// positive mean-reversion rate. The neutral contract uses one inverse hour as its valid
+// inert rate.
+const NEUTRAL_LONG_VARIANCE_MEAN_REVERSION_RATE: f64 = 1.0;
+
+/// Physical long-variance parameters for the return-clock activity state.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LongVarianceParameters {
+    pub mean_reversion_rate: f64,
+    pub vol_of_vol: f64,
+    pub buy_event_loading: f64,
+    pub sell_event_loading: f64,
+}
+
+impl LongVarianceParameters {
+    /// Return the neutral unit-variance configuration.
+    pub const fn neutral() -> Self {
+        Self {
+            mean_reversion_rate: NEUTRAL_LONG_VARIANCE_MEAN_REVERSION_RATE,
+            vol_of_vol: 0.0,
+            buy_event_loading: 0.0,
+            sell_event_loading: 0.0,
+        }
+    }
+
+    /// Construct parameters without validation.
+    pub const fn new(
+        mean_reversion_rate: f64,
+        vol_of_vol: f64,
+        buy_event_loading: f64,
+        sell_event_loading: f64,
+    ) -> Self {
+        Self {
+            mean_reversion_rate,
+            vol_of_vol,
+            buy_event_loading,
+            sell_event_loading,
+        }
+    }
+
+    /// Construct validated parameters.
+    pub fn try_new(
+        mean_reversion_rate: f64,
+        vol_of_vol: f64,
+        buy_event_loading: f64,
+        sell_event_loading: f64,
+    ) -> Result<Self, LongVarianceParametersError> {
+        let parameters = Self::new(
+            mean_reversion_rate,
+            vol_of_vol,
+            buy_event_loading,
+            sell_event_loading,
+        );
+        parameters.validate()?;
+
+        Ok(parameters)
+    }
+
+    /// Validate physical parameter constraints.
+    pub fn validate(self) -> Result<(), LongVarianceParametersError> {
+        validate_positive_number(self.mean_reversion_rate, "mean_reversion_rate").map_err(
+            |source| LongVarianceParametersError::InvalidPositiveParameter {
+                field: "mean_reversion_rate",
+                source,
+            },
+        )?;
+
+        validate_non_negative_number(self.vol_of_vol, "vol_of_vol").map_err(|source| {
+            LongVarianceParametersError::InvalidNonNegativeParameter {
+                field: "vol_of_vol",
+                source,
+            }
+        })?;
+
+        validate_non_negative_number(self.buy_event_loading, "buy_event_loading").map_err(
+            |source| LongVarianceParametersError::InvalidNonNegativeParameter {
+                field: "buy_event_loading",
+                source,
+            },
+        )?;
+
+        validate_non_negative_number(self.sell_event_loading, "sell_event_loading").map_err(
+            |source| LongVarianceParametersError::InvalidNonNegativeParameter {
+                field: "sell_event_loading",
+                source,
+            },
+        )?;
+
+        Ok(())
+    }
+
+    /// Derive the CIR mean-reversion level that keeps `E[Z] = 1`.
+    pub fn stationary_mean_reversion_level(
+        self,
+        baseline_intensity: f64,
+        stationary_intensity_multipliers: HawkesStationaryIntensityMultipliers,
+    ) -> Result<f64, LongVarianceStationaryLevelError> {
+        self.validate().map_err(|source| {
+            LongVarianceStationaryLevelError::InvalidLongVarianceParameters { source }
+        })?;
+
+        validate_positive_number(baseline_intensity, "baseline_intensity").map_err(|source| {
+            LongVarianceStationaryLevelError::InvalidBaselineIntensity { source }
+        })?;
+
+        let stationary_buy_rate =
+            baseline_intensity * stationary_intensity_multipliers.buy_intensity_multiplier;
+        let stationary_sell_rate =
+            baseline_intensity * stationary_intensity_multipliers.sell_intensity_multiplier;
+
+        validate_non_negative_number(stationary_buy_rate, "stationary_buy_event_rate").map_err(
+            |source| LongVarianceStationaryLevelError::InvalidStationaryEventRate {
+                field: "stationary_buy_event_rate",
+                source,
+            },
+        )?;
+
+        validate_non_negative_number(stationary_sell_rate, "stationary_sell_event_rate").map_err(
+            |source| LongVarianceStationaryLevelError::InvalidStationaryEventRate {
+                field: "stationary_sell_event_rate",
+                source,
+            },
+        )?;
+
+        let event_loading_drift = self.buy_event_loading * stationary_buy_rate
+            + self.sell_event_loading * stationary_sell_rate;
+
+        let level = 1.0 - event_loading_drift / self.mean_reversion_rate;
+
+        validate_positive_number(level, "stationary_mean_reversion_level").map_err(|source| {
+            LongVarianceStationaryLevelError::InvalidDerivedMeanReversionLevel { source }
+        })?;
+
+        Ok(level)
+    }
+
+    /// Derive the stationary mean-reversion level from a mean-normalized Hawkes kernel.
+    pub fn stationary_mean_reversion_level_for_hawkes_kernel(
+        self,
+        kernel_parameters: HawkesKernelParameters,
+    ) -> Result<f64, LongVarianceStationaryLevelForHawkesKernelError> {
+        let stationary_multipliers = stationary_intensity_multipliers(
+            kernel_parameters.alpha,
+            kernel_parameters.beta,
+        )
+        .ok_or(
+            LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryIntensityMultipliers,
+        )?;
+
+        self.stationary_mean_reversion_level(kernel_parameters.lambda_bar, stationary_multipliers)
+            .map_err(|source| {
+                LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryLevel { source }
+            })
+    }
+}
+
+/// Boundary state for the physical long-variance factor.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LongVarianceState {
+    pub level: f64,
+}
+
+impl LongVarianceState {
+    /// Return the unit stationary state.
+    pub const fn unit() -> Self {
+        Self { level: 1.0 }
+    }
+
+    /// Construct a state without validation.
+    pub const fn new(level: f64) -> Self {
+        Self { level }
+    }
+
+    /// Construct a validated state.
+    pub fn try_new(level: f64) -> Result<Self, LongVarianceStateError> {
+        let state = Self::new(level);
+        state.validate()?;
+
+        Ok(state)
+    }
+
+    /// Validate state positivity.
+    pub fn validate(self) -> Result<(), LongVarianceStateError> {
+        validate_positive_number(self.level, "level")
+            .map_err(|source| LongVarianceStateError::InvalidLevel { source })
+    }
+
+    /// Advance the conditional mean state across elapsed clock time.
+    pub fn apply_mean_reversion_drift(
+        self,
+        parameters: LongVarianceParameters,
+        stationary_mean_reversion_level: f64,
+        delta_hours: f64,
+    ) -> Result<Self, LongVarianceStateTransitionError> {
+        self.validate()
+            .map_err(|source| LongVarianceStateTransitionError::InvalidInitialState { source })?;
+
+        parameters.validate().map_err(|source| {
+            LongVarianceStateTransitionError::InvalidLongVarianceParameters { source }
+        })?;
+
+        validate_positive_number(
+            stationary_mean_reversion_level,
+            "stationary_mean_reversion_level",
+        )
+        .map_err(|source| {
+            LongVarianceStateTransitionError::InvalidStationaryMeanReversionLevel { source }
+        })?;
+
+        validate_finite_number(delta_hours, "delta_hours")
+            .map_err(|source| LongVarianceStateTransitionError::InvalidElapsedHours { source })?;
+
+        if delta_hours < 0.0 {
+            return Err(LongVarianceStateTransitionError::NegativeElapsedHours {
+                value: delta_hours,
+            });
+        }
+
+        let decay = (-parameters.mean_reversion_rate * delta_hours).exp();
+        let next_level = stationary_mean_reversion_level
+            + (self.level - stationary_mean_reversion_level) * decay;
+
+        Self::try_new(next_level)
+            .map_err(|source| LongVarianceStateTransitionError::InvalidTransitionState { source })
+    }
+
+    /// Apply the uncompensated long-variance jump from one observed event.
+    pub fn apply_event_jump(
+        self,
+        parameters: LongVarianceParameters,
+        event_side: HawkesEventSide,
+    ) -> Result<Self, LongVarianceStateTransitionError> {
+        self.validate()
+            .map_err(|source| LongVarianceStateTransitionError::InvalidInitialState { source })?;
+
+        parameters.validate().map_err(|source| {
+            LongVarianceStateTransitionError::InvalidLongVarianceParameters { source }
+        })?;
+
+        let loading = match event_side {
+            HawkesEventSide::Buy => parameters.buy_event_loading,
+            HawkesEventSide::Sell => parameters.sell_event_loading,
+        };
+
+        Self::try_new(self.level + loading)
+            .map_err(|source| LongVarianceStateTransitionError::InvalidTransitionState { source })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LongVarianceParametersError {
+    InvalidPositiveParameter {
+        field: &'static str,
+        source: janiform_foundations::numeric::PositiveNumberValidationError,
+    },
+    InvalidNonNegativeParameter {
+        field: &'static str,
+        source: janiform_foundations::numeric::NonNegativeNumberValidationError,
+    },
+}
+
+impl Display for LongVarianceParametersError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidPositiveParameter { field, source } => {
+                write!(formatter, "{field} is invalid: {source}")
+            }
+            Self::InvalidNonNegativeParameter { field, source } => {
+                write!(formatter, "{field} is invalid: {source}")
+            }
+        }
+    }
+}
+
+impl Error for LongVarianceParametersError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidPositiveParameter { source, .. } => Some(source),
+            Self::InvalidNonNegativeParameter { source, .. } => Some(source),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LongVarianceStateError {
+    InvalidLevel {
+        source: janiform_foundations::numeric::PositiveNumberValidationError,
+    },
+}
+
+impl Display for LongVarianceStateError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidLevel { source } => write!(formatter, "level is invalid: {source}"),
+        }
+    }
+}
+
+impl Error for LongVarianceStateError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidLevel { source } => Some(source),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LongVarianceStateTransitionError {
+    InvalidInitialState {
+        source: LongVarianceStateError,
+    },
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
+    InvalidStationaryMeanReversionLevel {
+        source: janiform_foundations::numeric::PositiveNumberValidationError,
+    },
+    InvalidElapsedHours {
+        source: janiform_foundations::numeric::FiniteNumberValidationError,
+    },
+    NegativeElapsedHours {
+        value: f64,
+    },
+    InvalidTransitionState {
+        source: LongVarianceStateError,
+    },
+}
+
+impl Display for LongVarianceStateTransitionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidInitialState { source } => {
+                write!(
+                    formatter,
+                    "initial long-variance state is invalid: {source}"
+                )
+            }
+            Self::InvalidLongVarianceParameters { source } => {
+                write!(formatter, "long-variance parameters are invalid: {source}")
+            }
+            Self::InvalidStationaryMeanReversionLevel { source } => write!(
+                formatter,
+                "stationary_mean_reversion_level is invalid: {source}"
+            ),
+            Self::InvalidElapsedHours { source } => {
+                write!(formatter, "delta_hours is invalid: {source}")
+            }
+            Self::NegativeElapsedHours { value } => {
+                write!(formatter, "delta_hours must be non-negative, found {value}")
+            }
+            Self::InvalidTransitionState { source } => {
+                write!(
+                    formatter,
+                    "transitioned long-variance state is invalid: {source}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for LongVarianceStateTransitionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidInitialState { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidStationaryMeanReversionLevel { source } => Some(source),
+            Self::InvalidElapsedHours { source } => Some(source),
+            Self::InvalidTransitionState { source } => Some(source),
+            Self::NegativeElapsedHours { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LongVarianceStationaryLevelError {
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
+    InvalidBaselineIntensity {
+        source: janiform_foundations::numeric::PositiveNumberValidationError,
+    },
+    InvalidStationaryEventRate {
+        field: &'static str,
+        source: janiform_foundations::numeric::NonNegativeNumberValidationError,
+    },
+    InvalidDerivedMeanReversionLevel {
+        source: janiform_foundations::numeric::PositiveNumberValidationError,
+    },
+}
+
+impl Display for LongVarianceStationaryLevelError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidLongVarianceParameters { source } => {
+                write!(formatter, "long-variance parameters are invalid: {source}")
+            }
+            Self::InvalidBaselineIntensity { source } => {
+                write!(formatter, "baseline_intensity is invalid: {source}")
+            }
+            Self::InvalidStationaryEventRate { field, source } => {
+                write!(formatter, "{field} is invalid: {source}")
+            }
+            Self::InvalidDerivedMeanReversionLevel { source } => write!(
+                formatter,
+                "derived stationary mean-reversion level is invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for LongVarianceStationaryLevelError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidBaselineIntensity { source } => Some(source),
+            Self::InvalidStationaryEventRate { source, .. } => Some(source),
+            Self::InvalidDerivedMeanReversionLevel { source } => Some(source),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LongVarianceStationaryLevelForHawkesKernelError {
+    InvalidStationaryIntensityMultipliers,
+    InvalidStationaryLevel {
+        source: LongVarianceStationaryLevelError,
+    },
+}
+
+impl Display for LongVarianceStationaryLevelForHawkesKernelError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidStationaryIntensityMultipliers => write!(
+                formatter,
+                "stationary Hawkes intensity multipliers could not be derived"
+            ),
+            Self::InvalidStationaryLevel { source } => write!(
+                formatter,
+                "long-variance stationary mean-reversion level is invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for LongVarianceStationaryLevelForHawkesKernelError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidStationaryLevel { source } => Some(source),
+            Self::InvalidStationaryIntensityMultipliers => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::hawkes::{HawkesEventSide, HawkesStationaryIntensityMultipliers};
+
+    use super::{LongVarianceParameters, LongVarianceState};
+
+    #[test]
+    fn stationary_mean_reversion_level_offsets_event_feedback_drift() {
+        let parameters =
+            LongVarianceParameters::try_new(4.0, 0.5, 0.10, 0.20).expect("parameters should build");
+
+        let level = parameters
+            .stationary_mean_reversion_level(
+                2.0,
+                HawkesStationaryIntensityMultipliers {
+                    buy_intensity_multiplier: 0.5,
+                    sell_intensity_multiplier: 0.75,
+                },
+            )
+            .expect("stationary level should build");
+
+        assert_eq!(level, 1.0 - (0.10 * 1.0 + 0.20 * 1.5) / 4.0);
+    }
+
+    #[test]
+    fn long_variance_state_replay_applies_drift_and_observed_event_jumps() {
+        let parameters =
+            LongVarianceParameters::try_new(2.0, 0.0, 0.25, 0.50).expect("parameters should build");
+
+        let initial_state = LongVarianceState::unit();
+
+        let after_buy = initial_state
+            .apply_event_jump(parameters, HawkesEventSide::Buy)
+            .expect("buy jump should apply");
+
+        let after_drift = after_buy
+            .apply_mean_reversion_drift(parameters, 0.75, 1.0)
+            .expect("drift should apply");
+
+        let after_sell = after_drift
+            .apply_event_jump(parameters, HawkesEventSide::Sell)
+            .expect("sell jump should apply");
+
+        let expected_after_drift = 0.75 + (1.25 - 0.75) * (-2.0_f64).exp();
+
+        assert_eq!(after_drift.level, expected_after_drift);
+        assert_eq!(after_sell.level, expected_after_drift + 0.50);
+    }
+}

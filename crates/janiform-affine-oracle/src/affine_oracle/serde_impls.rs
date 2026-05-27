@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
+use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::{
@@ -15,6 +16,7 @@ use super::{
 struct ExponentialAffineTransformEquationSpecificationPayload {
     hawkes_kernel_parameters: HawkesKernelParameters,
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+    long_variance_parameters: LongVarianceParameters,
 }
 
 impl<'de> Deserialize<'de> for ExponentialAffineTransformEquationSpecification {
@@ -27,6 +29,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformEquationSpecification {
         Self::try_new(
             payload.hawkes_kernel_parameters,
             payload.gamma_severity_mark_configuration,
+            payload.long_variance_parameters,
         )
         .map_err(serde::de::Error::custom)
     }

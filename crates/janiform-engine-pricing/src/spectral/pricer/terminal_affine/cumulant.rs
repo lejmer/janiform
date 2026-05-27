@@ -113,6 +113,10 @@ fn evaluate_terminal_affine_cumulant(
 
     let request = ExponentialAffineScheduleCumulantRequest {
         initial_state: context.pricing_request.boundary_input.hawkes_boundary_state,
+        initial_long_variance_state: context
+            .pricing_request
+            .boundary_input
+            .long_variance_boundary_state,
         intervals,
     };
 

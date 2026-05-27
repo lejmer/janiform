@@ -51,6 +51,11 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
             .fitted_parameters
             .return_components_fitted_parameters
             .return_clock_exposure_parameters,
+        long_variance_parameters: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        initial_long_variance_state: janiform::model::long_variance::LongVarianceState::unit(),
         observed_price_tick_size: context
             .fitted_parameters
             .return_components_fitted_parameters
@@ -79,6 +84,10 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
             .news_process_configuration
             .shared_mark_law
             .gamma_severity_marks,
+        context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
     )
     .map_err(|source| validation_error("equation_specification", source.to_string()))?;
 
@@ -89,6 +98,11 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
         initial_excitation_state,
+        context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        janiform::model::long_variance::LongVarianceState::unit(),
         // Intentional copy because the sufficient-statistics contract owns
         // validated fitted parameters independent of the shared workflow context.
         context
@@ -119,6 +133,11 @@ pub(crate) fn build_coarse_simulation_model_inputs(
             .fitted_parameters
             .return_components_fitted_parameters
             .return_clock_exposure_parameters,
+        context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        janiform::model::long_variance::LongVarianceState::unit(),
         context
             .fitted_parameters
             .return_components_fitted_parameters

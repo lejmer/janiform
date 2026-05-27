@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
@@ -138,6 +139,12 @@ pub struct SeededTickSimulationModelInputs {
     /// Exposure parameters mapping endogenous activity into return-clock time.
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
 
+    /// Physical long-variance dynamics used by the return-clock baseline.
+    pub long_variance_parameters: LongVarianceParameters,
+
+    /// Long-variance state carried into the first simulated interval.
+    pub initial_long_variance_state: LongVarianceState,
+
     /// Optional reference-price-normalized observed-price tick size for tick-grid rounding.
     pub observed_price_tick_size: Option<f64>,
 
@@ -246,6 +253,24 @@ impl SeededTickSimulationRunConfig {
                     source: Box::new(source),
                 }
             })?;
+
+        self.model_inputs
+            .long_variance_parameters
+            .validate()
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidLongVarianceParameters {
+                    source: Box::new(source),
+                },
+            )?;
+
+        self.model_inputs
+            .initial_long_variance_state
+            .validate()
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidInitialLongVarianceState {
+                    source: Box::new(source),
+                },
+            )?;
 
         if let Some(tick_size) = self.model_inputs.observed_price_tick_size
             && !super::runtime::is_valid_observed_price_tick_size(tick_size)

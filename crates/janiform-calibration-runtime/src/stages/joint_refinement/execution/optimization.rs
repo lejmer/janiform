@@ -10,8 +10,7 @@ pub(crate) use sensitivity_repair::{
 pub(crate) use workflow::{
     JointRefinementBudgetSchedule, JointRefinementRestartOptimizationOutput,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
-    joint_refinement_restart_full_vector_initial_mesh_divisor, optimize_restart_seeds,
-    precheck_seed_summary_workload,
+    optimize_restart_seeds, precheck_seed_summary_workload,
 };
 
 #[cfg(test)]

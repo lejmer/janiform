@@ -178,6 +178,7 @@ fn build_grid_batch_execution_input(
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         estimated_state.hawkes_excitation_state,
+        estimated_state.long_variance_state,
         context
             .fitted_parameters
             .return_components_fitted_parameters

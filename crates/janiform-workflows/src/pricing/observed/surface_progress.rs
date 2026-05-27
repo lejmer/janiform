@@ -159,11 +159,11 @@ impl SurfaceWorkerState {
         );
 
         self.interval_units = surface_worker_interval_units(event);
-        
+
         let current_sweep_number = self
             .has_interval_pass_progress
             .then_some(self.completed_interval_sweep_count.saturating_add(1));
-        
+
         self.sweep_units = surface_worker_sweep_units(event.phase, current_sweep_number);
         self.phase = pricing_progress_phase_label(event.phase).to_string();
     }

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import pytest
 
 from janiform._native_api import native_module
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.sufficient_statistics import (
@@ -217,6 +218,8 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
             ),
         ),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",

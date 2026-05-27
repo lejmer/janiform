@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use janiform_calibration_runtime::{
     CalibrationMarketDataPreparationRequest, CalibrationStageExecutionStatus,
-    CalibrationStagedExecutionInput, CalibrationStagedRunReport,
+    CalibrationStagedExecutionInput, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
 };
 use janiform_terminal_ui::{
     CompletionSummary, CompletionSummaryStatus, FailureBlock, KeyValueRow, StartSummary,
@@ -88,6 +88,8 @@ pub fn fit_completion_json_payload(
     paths: &FitWorkflowPaths,
     event_log_path: &Path,
 ) -> Value {
+    let warnings = fit_warning_messages(report);
+
     json!({
         "schema_version": FIT_RUN_SCHEMA_VERSION,
         "command_id": FIT_RUN_COMMAND_ID,
@@ -103,6 +105,7 @@ pub fn fit_completion_json_payload(
             "started_from_stage": report.started_from_stage,
         },
         "failure": report.failure,
+        "warnings": warnings,
     })
 }
 
@@ -135,6 +138,19 @@ fn success_summary(
     event_log_path: &Path,
     execution_duration: Duration,
 ) -> CompletionSummary {
+    let warning_messages = fit_warning_messages(report);
+    let mut rows = vec![
+        KeyValueRow::new("Model", format_artifact_path(paths.model_path.as_path())),
+        KeyValueRow::new("Report", format_artifact_path(paths.report_path.as_path())),
+        KeyValueRow::new("Events", format_artifact_path(event_log_path)),
+        KeyValueRow::new("Checkpoints", report.emitted_checkpoints.len().to_string()),
+        KeyValueRow::new("Resume", resume_availability(report)),
+    ];
+
+    if !warning_messages.is_empty() {
+        rows.push(KeyValueRow::block("Warnings", warning_messages.join("\n")));
+    }
+
     CompletionSummary {
         status: if report.status == CalibrationStageExecutionStatus::SuccessWithWarnings {
             CompletionSummaryStatus::SucceededWithWarnings
@@ -145,13 +161,34 @@ fn success_summary(
             "Fit completed in {}",
             format_elapsed_label(execution_duration)
         ),
-        rows: vec![
-            KeyValueRow::new("Model", format_artifact_path(paths.model_path.as_path())),
-            KeyValueRow::new("Report", format_artifact_path(paths.report_path.as_path())),
-            KeyValueRow::new("Events", format_artifact_path(event_log_path)),
-            KeyValueRow::new("Checkpoints", report.emitted_checkpoints.len().to_string()),
-            KeyValueRow::new("Resume", resume_availability(report)),
-        ],
+        rows,
+    }
+}
+
+fn fit_warning_messages(report: &CalibrationStagedRunReport) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    for stage_report in &report.stage_reports {
+        for warning in stage_report_warning_messages(stage_report) {
+            if !warnings.contains(warning) {
+                warnings.push(warning.clone());
+            }
+        }
+    }
+
+    warnings
+}
+
+fn stage_report_warning_messages(stage_report: &CalibrationStagedRunStageReport) -> &[String] {
+    match stage_report {
+        CalibrationStagedRunStageReport::JointRefinement(report)
+        | CalibrationStagedRunStageReport::OptionRefinement(report)
+        | CalibrationStagedRunStageReport::Finalization(report) => report.warnings.as_slice(),
+        CalibrationStagedRunStageReport::Seasonality(_)
+        | CalibrationStagedRunStageReport::Hawkes(_)
+        | CalibrationStagedRunStageReport::ReturnComponents(_)
+        | CalibrationStagedRunStageReport::LongVariance(_)
+        | CalibrationStagedRunStageReport::MeanReversion(_) => &[],
     }
 }
 
