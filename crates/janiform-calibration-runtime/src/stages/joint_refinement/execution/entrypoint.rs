@@ -78,23 +78,27 @@ pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and
     )
 }
 
+pub(crate) struct FinalizationCalibrationStageEntrypointInput<'a> {
+    pub(crate) run_spec: &'a CalibrationRunSpec,
+    pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
+    pub(crate) stage_input: JointRefinementStageExecutionInput,
+    pub(crate) upstream_joint_refinement_handoff: Option<&'a JointRefinementStageRuntimeHandoff>,
+    pub(crate) upstream_option_refinement_handoff: Option<&'a JointRefinementStageRuntimeHandoff>,
+    pub(crate) disk_checkpoint_directory: Option<&'a Path>,
+    pub(crate) load_current_stage_resume_state: bool,
+}
+
 pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_persistence(
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    stage_input: JointRefinementStageExecutionInput,
-    upstream_joint_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
-    upstream_option_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
+    input: FinalizationCalibrationStageEntrypointInput<'_>,
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
-    disk_checkpoint_directory: Option<&Path>,
-    load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
     run_pipeline_stage_with_progress_observer_and_persistence(
-        run_spec,
-        calendar_registry,
-        stage_input,
+        input.run_spec,
+        input.calendar_registry,
+        input.stage_input,
         progress_observer,
-        disk_checkpoint_directory,
-        load_current_stage_resume_state,
+        input.disk_checkpoint_directory,
+        input.load_current_stage_resume_state,
         move |run_spec,
               calendar_registry,
               stage_input,
@@ -102,14 +106,16 @@ pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_pers
               disk_checkpoint_directory,
               load_current_stage_resume_state| {
             super::pipeline::run_finalization_calibration_stage_internal(
-                run_spec,
-                calendar_registry,
-                stage_input,
-                upstream_joint_refinement_handoff,
-                upstream_option_refinement_handoff,
-                progress_sender,
-                disk_checkpoint_directory,
-                load_current_stage_resume_state,
+                super::pipeline::FinalizationPipelineStageRunInput {
+                    run_spec,
+                    calendar_registry,
+                    stage_input,
+                    upstream_joint_refinement_handoff: input.upstream_joint_refinement_handoff,
+                    upstream_option_refinement_handoff: input.upstream_option_refinement_handoff,
+                    progress_sender,
+                    disk_checkpoint_directory,
+                    load_current_stage_resume_state,
+                },
             )
         },
     )

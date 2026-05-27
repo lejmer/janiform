@@ -8,7 +8,9 @@ from janiform.hourly_factors import (
     HourlySeasonalityProviderExplicitSource,
     provide_hourly_factor_contract,
 )
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
@@ -24,12 +26,12 @@ from janiform.simulation.seeded import (
     SeededTickSimulationResponse,
     run_seeded_tick_event_simulation,
 )
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 from janiform.simulation.shared import (
     HawkesExcitationState,
     HawkesKernelParameters,
-)
-from janiform.simulation.seeded.contracts import (
-    build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 
 START_TIME_UTC: datetime = datetime(2026, 2, 2, tzinfo=UTC)
@@ -374,6 +376,9 @@ def _run_seeded_case(
             "y_minus_minus": 0.0,
         }),
         hourly_factor_contract=hourly_factor_contract,
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

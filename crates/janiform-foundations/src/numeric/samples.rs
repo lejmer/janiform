@@ -106,6 +106,7 @@ pub fn sample_standard_deviation(values: &[f64]) -> f64 {
     }
 
     let sample_mean = finite_arithmetic_mean_or_zero(finite_values.as_slice());
+
     let sum_squared_deviation = finite_values
         .iter()
         .map(|value| {
@@ -131,6 +132,7 @@ pub fn winsorized_sample_standard_deviation_from_sorted(
 
     let lower_bound = compute_sorted_quantile_or_zero(sorted_values, lower_quantile);
     let upper_bound = compute_sorted_quantile_or_zero(sorted_values, upper_quantile);
+
     if lower_bound > upper_bound {
         return f64::NAN;
     }
@@ -156,6 +158,7 @@ pub fn sample_variance(values: &[f64]) -> Option<f64> {
     }
 
     let sample_mean = finite_arithmetic_mean_or_zero(finite_values.as_slice());
+
     let sum_squared_deviation = finite_values
         .iter()
         .map(|value| {
@@ -166,6 +169,94 @@ pub fn sample_variance(values: &[f64]) -> Option<f64> {
 
     let variance = sum_squared_deviation / (finite_values.len() - 1) as f64;
     variance.is_finite().then_some(variance)
+}
+
+/// Estimated mean and standard error for aligned independent estimates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeanEstimate {
+    pub value: f64,
+    pub standard_error: f64,
+}
+
+/// Pool independent estimate standard errors and between-estimate dispersion.
+pub fn mean_estimate_from_standard_errors(
+    values: &[f64],
+    standard_errors: &[f64],
+) -> Option<MeanEstimate> {
+    if values.is_empty() || values.len() != standard_errors.len() {
+        return None;
+    }
+
+    if values.iter().any(|value| !value.is_finite())
+        || standard_errors
+            .iter()
+            .any(|standard_error| !standard_error.is_finite() || *standard_error < 0.0)
+    {
+        return None;
+    }
+
+    let standard_error_variance = standard_errors
+        .iter()
+        .map(|standard_error| standard_error * standard_error)
+        .sum::<f64>()
+        / standard_errors.len() as f64;
+
+    let between_estimate_variance = if values.len() > 1 {
+        sample_variance(values).unwrap_or(0.0) / values.len() as f64
+    } else {
+        0.0
+    };
+
+    let standard_error = (standard_error_variance + between_estimate_variance).sqrt();
+
+    standard_error.is_finite().then_some(MeanEstimate {
+        value: arithmetic_mean_or_zero(values),
+        standard_error,
+    })
+}
+
+/// Estimate a metric's standard error with delete-one jackknife resampling.
+pub fn jackknife_standard_error(
+    values: &[f64],
+    compute_metric: fn(&[f64]) -> Option<f64>,
+) -> Option<f64> {
+    if values.len() < 2 {
+        return None;
+    }
+
+    let mut leave_one_out_values = Vec::with_capacity(values.len());
+
+    for omitted_position in 0..values.len() {
+        let sample = values
+            .iter()
+            .enumerate()
+            .filter_map(|(value_position, value)| {
+                (value_position != omitted_position).then_some(*value)
+            })
+            .collect::<Vec<_>>();
+
+        let metric_value = compute_metric(sample.as_slice())?;
+        if !metric_value.is_finite() {
+            return None;
+        }
+
+        leave_one_out_values.push(metric_value);
+    }
+
+    let jackknife_mean = arithmetic_mean_or_zero(leave_one_out_values.as_slice());
+
+    let squared_deviation_sum = leave_one_out_values
+        .iter()
+        .map(|value| {
+            let deviation = value - jackknife_mean;
+            deviation * deviation
+        })
+        .sum::<f64>();
+
+    let variance = (values.len() - 1) as f64 / values.len() as f64 * squared_deviation_sum;
+    let standard_error = variance.sqrt();
+
+    (standard_error.is_finite() && standard_error > 0.0).then_some(standard_error)
 }
 
 /// Compute the standardized third central moment after discarding non-finite observations.
@@ -180,10 +271,12 @@ pub fn central_skewness_or_zero(values: &[f64], minimum_scale: f64) -> f64 {
     }
 
     let mean = finite_arithmetic_mean_or_zero(finite_values.as_slice());
+
     let centered_values = finite_values
         .iter()
         .map(|value| *value - mean)
         .collect::<Vec<_>>();
+
     let variance = centered_values
         .iter()
         .map(|value| value * value)
@@ -209,12 +302,14 @@ pub fn sample_adjusted_skewness(values: &[f64]) -> Option<f64> {
         .copied()
         .filter(|value| value.is_finite())
         .collect();
+
     let sample_count = finite_values.len();
     if sample_count < 3 {
         return None;
     }
 
     let sample_mean = finite_arithmetic_mean_or_zero(finite_values.as_slice());
+
     let (sum_squared_deviation, sum_cubed_deviation) =
         finite_values
             .iter()
@@ -225,6 +320,7 @@ pub fn sample_adjusted_skewness(values: &[f64]) -> Option<f64> {
                     running_sum3 + centered_value * centered_value * centered_value,
                 )
             });
+
     let variance_population = sum_squared_deviation / sample_count as f64;
     if !variance_population.is_finite() || variance_population <= 1.0e-12 {
         return Some(0.0);
@@ -339,6 +435,7 @@ pub fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
 /// Compute z-scores for one series, returning zeros when the scale collapses.
 pub fn z_score(values: &[f64]) -> Vec<f64> {
     let mean_value = arithmetic_mean_or_zero(values);
+
     let variance = values
         .iter()
         .map(|value| {
@@ -380,10 +477,11 @@ pub fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
 mod tests {
     use super::{
         arithmetic_mean, arithmetic_mean_or_zero, central_skewness_or_zero,
-        coefficient_of_variation, finite_arithmetic_mean_or_zero, pearson_correlation,
-        relative_rmse, rolling_sum, root_mean_square_or_infinity, sample_adjusted_excess_kurtosis,
-        sample_adjusted_skewness, sample_standard_deviation, sample_variance,
-        standardized_path_distance, winsorized_sample_standard_deviation_from_sorted, z_score,
+        coefficient_of_variation, finite_arithmetic_mean_or_zero, jackknife_standard_error,
+        mean_estimate_from_standard_errors, pearson_correlation, relative_rmse, rolling_sum,
+        root_mean_square_or_infinity, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
+        sample_standard_deviation, sample_variance, standardized_path_distance,
+        winsorized_sample_standard_deviation_from_sorted, z_score,
     };
 
     #[test]
@@ -414,5 +512,22 @@ mod tests {
         );
         assert_eq!(sample_adjusted_skewness(&[1.0, 2.0]), None);
         assert_eq!(sample_adjusted_excess_kurtosis(&[1.0, 2.0, 3.0]), None);
+    }
+
+    #[test]
+    fn mean_estimate_from_standard_errors_pools_within_and_between_estimate_variance() {
+        let estimate = mean_estimate_from_standard_errors(&[2.0, 4.0], &[1.0, 1.0])
+            .expect("aligned finite estimates should pool");
+
+        assert_eq!(estimate.value, 3.0);
+        assert_eq!(estimate.standard_error, 2.0_f64.sqrt());
+    }
+
+    #[test]
+    fn jackknife_standard_error_resamples_delete_one_metric() {
+        let standard_error = jackknife_standard_error(&[1.0, 2.0, 4.0], arithmetic_mean)
+            .expect("finite delete-one estimates should produce a standard error");
+
+        assert!((standard_error - (7.0 / 9.0_f64).sqrt()).abs() <= 1.0e-12);
     }
 }

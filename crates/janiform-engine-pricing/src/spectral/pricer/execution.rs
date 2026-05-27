@@ -18,7 +18,9 @@ use crate::thread_pool::build_pricing_thread_pool;
 use super::domain::build_maturity_summary;
 use super::maturity_law::SolvedMaturityLaw;
 use super::strike::{StrikeRowPricingInput, price_strike_row};
-use super::terminal_affine::solve_terminal_affine_maturity_law;
+use super::terminal_affine::{
+    TerminalAffineMaturitySolveInput, solve_terminal_affine_maturity_law,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::spectral::pricer) struct PricingGroupKey {
@@ -55,6 +57,17 @@ struct PricingGroupMembers {
 #[derive(Debug, Clone)]
 struct PricingGroupSolveContext {
     maturity_laws: BTreeMap<usize, SolvedMaturityLaw>,
+}
+
+struct TerminalAffineGroupSolveInput<'a> {
+    execution_input: &'a VanillaOptionGridBatchPricingExecutionInput,
+    base_request: &'a VanillaOptionPricingRequest,
+    unique_maturity_counts: BTreeSet<usize>,
+    strikes: &'a [f64],
+    payoff_types: &'a [VanillaOptionPayoffType],
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&'a rayon::ThreadPool>,
+    pricing_group_key: PricingGroupKey,
 }
 
 #[derive(Debug, Clone)]
@@ -250,6 +263,7 @@ pub(crate) fn run_single_option_pricing(
         maturity_summary.deviation_domain_lower_bound,
         maturity_summary.deviation_domain_upper_bound,
         maturity_summary.collocation_node_count,
+        maturity_summary.terminal_affine_measure_change,
         maturity_summary.interval_summaries.clone(),
     )
     .map_err(
@@ -347,16 +361,18 @@ fn prepare_pricing_group_contexts(
             resolve_unique_maturity_counts(execution_input, pricing_group_key)?;
 
         let maturity_laws = solve_terminal_affine_maturity_laws(
-            execution_input,
-            &base_request,
-            unique_maturity_counts,
-            union_strikes.as_slice(),
-            payoff_types.as_slice(),
-            driver_parameters,
-            pricing_thread_pool,
+            TerminalAffineGroupSolveInput {
+                execution_input,
+                base_request: &base_request,
+                unique_maturity_counts,
+                strikes: union_strikes.as_slice(),
+                payoff_types: payoff_types.as_slice(),
+                driver_parameters,
+                pricing_thread_pool,
+                pricing_group_key,
+            },
             observer,
             theta_warm_start_state.as_deref_mut(),
-            pricing_group_key,
         )?;
 
         pricing_groups.insert(
@@ -390,18 +406,11 @@ fn resolve_unique_maturity_counts(
 }
 
 fn solve_terminal_affine_maturity_laws(
-    execution_input: &VanillaOptionGridBatchPricingExecutionInput,
-    base_request: &VanillaOptionPricingRequest,
-    unique_maturity_counts: BTreeSet<usize>,
-    strikes: &[f64],
-    payoff_types: &[VanillaOptionPayoffType],
-    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    solve_input: TerminalAffineGroupSolveInput<'_>,
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
     mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
-    pricing_group_key: PricingGroupKey,
 ) -> Result<BTreeMap<usize, SolvedMaturityLaw>, String> {
-    let total_maturity_solves = unique_maturity_counts.len();
+    let total_maturity_solves = solve_input.unique_maturity_counts.len();
     if total_maturity_solves > 0 {
         emit_pricing_progress(
             observer,
@@ -416,31 +425,42 @@ fn solve_terminal_affine_maturity_laws(
 
     let mut maturity_laws = BTreeMap::new();
 
-    for (maturity_position, maturity_count) in unique_maturity_counts.into_iter().enumerate() {
-        let maturity_interval = execution_input
+    for (maturity_position, maturity_count) in
+        solve_input.unique_maturity_counts.into_iter().enumerate()
+    {
+        let maturity_interval = solve_input
+            .execution_input
             .runtime_interval_schedule
             .maturity_interval_hours(maturity_count - 1)
             .map_err(|source| source.to_string())?;
 
         let solved_maturity_law = solve_terminal_affine_maturity_law(
-            base_request,
-            maturity_count,
-            maturity_interval,
-            strikes,
-            payoff_types,
-            execution_input.spectral_collocation_node_count_override,
-            execution_input
-                .runtime_interval_schedule
-                .interval_deltas_hours
-                .as_slice(),
-            execution_input.interval_factors.as_slice(),
-            driver_parameters,
-            execution_input
-                .optional_output_selection
-                .include_node_price_sensitivities,
-            pricing_thread_pool,
+            TerminalAffineMaturitySolveInput {
+                pricing_request: solve_input.base_request,
+                maturity_count,
+                maturity_interval,
+                strikes: solve_input.strikes,
+                payoff_types: solve_input.payoff_types,
+                collocation_node_count_override: solve_input
+                    .execution_input
+                    .spectral_collocation_node_count_override,
+                interval_deltas: solve_input
+                    .execution_input
+                    .runtime_interval_schedule
+                    .interval_deltas_hours
+                    .as_slice(),
+                interval_factors: solve_input.execution_input.interval_factors.as_slice(),
+                driver_parameters: solve_input.driver_parameters,
+                include_node_price_sensitivities: solve_input
+                    .execution_input
+                    .optional_output_selection
+                    .include_node_price_sensitivities,
+                pricing_thread_pool: solve_input.pricing_thread_pool,
+                theta_warm_start_key: solve_input
+                    .pricing_group_key
+                    .theta_warm_start_key(maturity_count),
+            },
             theta_warm_start_state.as_deref_mut(),
-            pricing_group_key.theta_warm_start_key(maturity_count),
             observer,
         )
         .map_err(|source| format!("terminal affine maturity solve failed: {source}"))?;
@@ -725,6 +745,7 @@ mod tests {
             observed_log_price,
             characteristic_function_values,
             characteristic_function_sensitivities: None,
+            terminal_affine_measure_change: None,
             interval_summaries: Vec::new(),
         };
 

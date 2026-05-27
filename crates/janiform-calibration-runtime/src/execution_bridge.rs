@@ -774,6 +774,10 @@ fn canonical_stage_graph_for_selected_stages(
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::LongVariance,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::Hawkes,
         },
@@ -783,7 +787,11 @@ fn canonical_stage_graph_for_selected_stages(
         },
         CalibrationStageDependency {
             stage: CalibrationStage::MeanReversion,
-            depends_on: CalibrationStage::ReturnComponents,
+            depends_on: CalibrationStage::LongVariance,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::LongVariance,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
@@ -1515,9 +1523,9 @@ mod tests {
             plan.run_contract.execution_stage_order,
             vec![
                 CalibrationStage::Seasonality,
+                CalibrationStage::MeanReversion,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
-                CalibrationStage::MeanReversion,
             ]
         );
         assert_eq!(

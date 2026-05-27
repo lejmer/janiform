@@ -113,7 +113,6 @@ def render_python_api_reference_page() -> str:
                 render_python_module(snapshot["public_modules"][module_name])
                 for module_name in PUBLIC_CONTRACT_MODULE_NAMES
             ],
-            "",
         ]
     )
 

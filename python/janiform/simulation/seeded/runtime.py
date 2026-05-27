@@ -51,6 +51,8 @@ def run_seeded_tick_event_simulation(
         initial_mean_reversion_boundary_state=request.initial_mean_reversion_boundary_state,
         hourly_factor_summary=request.hourly_factor_summary,
         return_clock_exposure_parameters=request.return_clock_exposure_parameters,
+        long_variance_parameters=request.long_variance_parameters,
+        initial_long_variance_state=request.initial_long_variance_state,
         observed_price_tick_size=request.observed_price_tick_size,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,
@@ -106,6 +108,14 @@ def run_seeded_tick_event_simulation(
                 "initial_mean_reversion_boundary_state": (
                     normalized_request.initial_mean_reversion_boundary_state.to_payload()
                 ),
+                "return_clock_exposure_parameters": (
+                    normalized_request.return_clock_exposure_parameters.to_payload()
+                ),
+                "long_variance_parameters": normalized_request.long_variance_parameters.to_payload(),
+                "initial_long_variance_state": (
+                    normalized_request.initial_long_variance_state.to_payload()
+                ),
+                "observed_price_tick_size": normalized_request.observed_price_tick_size,
                 "debug_trace_enabled": normalized_request.debug_trace_enabled,
                 "sample_every_nth_transition": normalized_request.sample_every_nth_transition,
                 "max_records_per_chunk": normalized_request.max_records_per_chunk,

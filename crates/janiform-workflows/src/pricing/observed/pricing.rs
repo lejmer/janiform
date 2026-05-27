@@ -178,6 +178,7 @@ fn build_grid_batch_execution_input(
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         estimated_state.hawkes_excitation_state,
+        estimated_state.long_variance_state,
         context
             .fitted_parameters
             .return_components_fitted_parameters
@@ -262,10 +263,7 @@ fn resolve_prepared_snapshot_progress_plan(
         request.pricing_interval_schedule_policy,
         PricingIntervalSchedulePolicy::AutoActivityCompressed
     ) {
-        return Ok(surface_task_progress_plan_from_resolution(
-            prepared_snapshot,
-            &maturity_resolution,
-        )?);
+        return surface_task_progress_plan_from_resolution(prepared_snapshot, &maturity_resolution);
     }
 
     let context = fitted_model_context(

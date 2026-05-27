@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "2bceb609277aebc6034e14f39336e0905322cec11c28dcd13b6728e6141756a2",
+  "approved_snapshot_sha256": "e21b853b8900ff2dc7231ab2a9891e44260148a9186139747ba69fa34bed23bf",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1468,6 +1468,27 @@
         "janiform.pricing",
         "janiform.pricing.contracts",
         "janiform.return_clock",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-27",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "design/janiform_compact_model_spec.tex"
+      ],
+      "rationale": "Long variance is now a first-class public runtime state and parameter contract across calibration, simulation, and pricing, and terminal-affine option pricing reports terminal-affine diagnostics instead of the prior transform-stage diagnostic fields.",
+      "snapshot_sha256": "e21b853b8900ff2dc7231ab2a9891e44260148a9186139747ba69fa34bed23bf",
+      "summary": "Approve public long-variance runtime contracts and terminal-affine pricing diagnostics.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.staged",
+        "janiform.long_variance",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded"

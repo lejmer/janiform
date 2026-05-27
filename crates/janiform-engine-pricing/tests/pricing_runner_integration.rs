@@ -16,6 +16,7 @@ use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -44,6 +45,7 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
                     y_minus_plus: 0.0,
                     y_minus_minus: 0.0,
                 },
+                LongVarianceState::unit(),
                 MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                     .expect("zero-gain mean reversion fit should construct"),
                 1.0,
@@ -94,6 +96,20 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
     assert!(run_diagnostics.transform.is_none());
     assert!(run_diagnostics.integration_quality.is_some());
 
+    let terminal_measure_change = run_diagnostics
+        .spectral
+        .expect("spectral diagnostics should be present")
+        .terminal_affine_measure_change
+        .expect("terminal affine measure-change diagnostics should be present");
+    assert_eq!(
+        terminal_measure_change.long_variance_boundary_state,
+        LongVarianceState::unit()
+    );
+    assert!(
+        terminal_measure_change.absolute_martingale_residual
+            <= terminal_measure_change.martingale_tolerance
+    );
+
     let calibration_hooks = run_result
         .calibration_hooks
         .expect("calibration hooks should be present");
@@ -136,6 +152,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         AnchoredVanillaOptionPricingBoundaryInput::try_new(
             0,
             hawkes_boundary_state,
+            LongVarianceState::unit(),
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-gain mean reversion fit should construct"),
             1.0,
@@ -154,6 +171,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         AnchoredVanillaOptionPricingBoundaryInput::try_new(
             0,
             hawkes_boundary_state,
+            LongVarianceState::unit(),
             MeanReversionFittedParameters::try_new(
                 0.0,
                 MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
@@ -217,6 +235,7 @@ fn vanilla_option_grid_batch_pricing_populates_shared_grids() {
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
+        LongVarianceState::unit(),
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-gain mean reversion fit should construct"),
         1.0,
@@ -290,6 +309,7 @@ fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids(
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
+        LongVarianceState::unit(),
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-gain mean reversion fit should construct"),
         1.0,
@@ -364,6 +384,7 @@ fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
+        LongVarianceState::unit(),
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-gain mean reversion fit should construct"),
         24.0,
@@ -433,6 +454,63 @@ fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
 }
 
 #[test]
+fn vanilla_option_grid_batch_pricing_reuses_one_terminal_measure_change_per_maturity() {
+    let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
+        0,
+        HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        },
+        LongVarianceState::unit(),
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+            .expect("zero-gain mean reversion fit should construct"),
+        1.0,
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+            .expect("zero observed boundary state should construct"),
+    )
+    .expect("boundary input should construct");
+
+    let result =
+        run_vanilla_option_grid_batch_pricing(VanillaOptionGridBatchPricingExecutionInput {
+            request: VanillaOptionGridBatchPricingRequest {
+                spot: 101.0,
+                grids: vec![VanillaOptionGridRequest {
+                    payoff_type: VanillaOptionPayoffType::Call,
+                    risk_free_rate: 0.01,
+                    dividend_yield: 0.0,
+                    strikes: vec![90.0, 100.0, 110.0],
+                    maturity_intervals: vec![1.0],
+                }],
+            },
+            boundary_input,
+            model_parameters: valid_model_parameters(),
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
+            interval_delta: 1.0,
+            interval_factors: vec![
+                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                    .expect("interval factors should construct"),
+            ],
+            optional_output_selection: VanillaOptionPricingOptionalOutputSelection::new(
+                false, true, false,
+            ),
+            spectral_collocation_node_count_override: Some(257),
+            cpu_count: Some(1),
+        })
+        .expect("grid batch pricing should succeed");
+
+    assert_eq!(result.grids[0].maturity_summaries.len(), 1);
+    assert!(
+        result.grids[0].maturity_summaries[0]
+            .as_ref()
+            .expect("maturity summary should be present")
+            .terminal_affine_measure_change
+            .is_some()
+    );
+}
+
+#[test]
 fn vanilla_option_surface_pricing_populates_shared_grid() {
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
@@ -442,6 +520,7 @@ fn vanilla_option_surface_pricing_populates_shared_grid() {
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
+        LongVarianceState::unit(),
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-gain mean reversion fit should construct"),
         1.0,
@@ -620,6 +699,7 @@ fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        LongVarianceParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")

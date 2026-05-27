@@ -36,6 +36,12 @@ pub const CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION: &str =
     "calibration.orchestration.stage_output.return_components.v1";
 pub const CALIBRATION_RETURN_COMPONENTS_STAGE_HANDOFF_POLICY: &str =
     "explicit_run_spec_handoffs_mode_aware_transport.v1";
+pub const CALIBRATION_LONG_VARIANCE_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_execution.long_variance.report.v1";
+pub const CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_output.long_variance.v1";
+pub const CALIBRATION_LONG_VARIANCE_STAGE_HANDOFF_POLICY: &str =
+    "explicit_run_spec_handoffs_mode_aware_transport.v1";
 pub const CALIBRATION_MEAN_REVERSION_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
     "calibration.orchestration.stage_execution.mean_reversion.report.v1";
 pub const CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION: &str =

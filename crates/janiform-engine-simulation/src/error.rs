@@ -5,9 +5,12 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 
+use crate::long_variance::LongVarianceTransitionSamplingError;
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnComponentsError;
 use janiform_market_time::calendar::ExchangeCalendarResolveError;
 use janiform_model_kernels::hawkes::HawkesTransitionError;
+use janiform_model_kernels::long_variance::LongVarianceStationaryLevelForHawkesKernelError;
+use janiform_model_kernels::long_variance::{LongVarianceParametersError, LongVarianceStateError};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryStateValidationError, MeanReversionFittedParametersValidationError,
     MeanReversionRuntimeIntervalAnchorsValidationError,
@@ -69,6 +72,15 @@ pub enum SeededTickSimulationRunError {
     },
     InvalidReturnClockExposureParameters {
         source: Box<ReturnClockExposureParametersError>,
+    },
+    InvalidLongVarianceParameters {
+        source: Box<LongVarianceParametersError>,
+    },
+    InvalidInitialLongVarianceState {
+        source: Box<LongVarianceStateError>,
+    },
+    InvalidLongVarianceStationaryLevel {
+        source: Box<LongVarianceStationaryLevelForHawkesKernelError>,
     },
     InvalidObservedPriceTickSize {
         value: f64,
@@ -164,6 +176,10 @@ pub enum SeededTickSimulationRunError {
         interval_index: usize,
         source: Box<EffectiveReturnClocksBuildError>,
     },
+    LongVarianceTransitionFailure {
+        interval_index: usize,
+        source: Box<LongVarianceTransitionSamplingError>,
+    },
     InvalidReturnComponents {
         interval_index: usize,
         source: Box<SufficientStatisticsReturnComponentsError>,
@@ -258,6 +274,19 @@ impl Display for SeededTickSimulationRunError {
                     "return_clock_exposure_parameters are invalid: {source}"
                 )
             }
+            Self::InvalidLongVarianceParameters { source } => {
+                write!(formatter, "long_variance_parameters are invalid: {source}")
+            }
+            Self::InvalidInitialLongVarianceState { source } => {
+                write!(
+                    formatter,
+                    "initial_long_variance_state is invalid: {source}"
+                )
+            }
+            Self::InvalidLongVarianceStationaryLevel { source } => write!(
+                formatter,
+                "long_variance_parameters imply an invalid stationary mean-reversion level: {source}"
+            ),
             Self::InvalidObservedPriceTickSize { value } => write!(
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
@@ -401,6 +430,13 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "interval {interval_index} effective return-clock construction failed: {source}"
             ),
+            Self::LongVarianceTransitionFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} long-variance transition failed: {source}"
+            ),
             Self::InvalidReturnComponents {
                 interval_index,
                 source,
@@ -433,12 +469,16 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source.as_ref()),
             Self::InvalidNewsProcessConfiguration { source } => Some(source.as_ref()),
             Self::InvalidReturnClockExposureParameters { source } => Some(source.as_ref()),
+            Self::InvalidLongVarianceParameters { source } => Some(source.as_ref()),
+            Self::InvalidInitialLongVarianceState { source } => Some(source.as_ref()),
+            Self::InvalidLongVarianceStationaryLevel { source } => Some(source.as_ref()),
             Self::NewsMarkSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
             Self::NewsMarketStateResolutionFailed { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
             Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::EffectiveReturnClockBuildFailure { source, .. } => Some(source.as_ref()),
+            Self::LongVarianceTransitionFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
             Self::InvalidTransitionStep { source } => Some(source.as_ref()),
             Self::CalendarSessionBoundaryResolutionFailed { .. } => None,

@@ -30,6 +30,7 @@ pub enum SimulationRandomnessSubstreamDomain {
     CoarseStatisticsSampling = 12,
     StylizedFactsValidationSimulationPath = 13,
     ObservedOptionsPhysicalDistributionPath = 14,
+    LongVarianceDiffusion = 15,
 }
 
 impl SimulationRandomnessSubstreamDomain {
@@ -67,6 +68,84 @@ pub trait SimulationRandomnessStream {
         let most_significant_bits = self.next_u64() >> 11;
         (most_significant_bits as f64) * UNIT_INTERVAL_NORMALIZATION
     }
+}
+
+/// Adapter that exposes a simulation randomness stream as a `rand` RNG.
+pub struct SimulationRandomnessRng<'a, R>
+where
+    R: SimulationRandomnessStream + ?Sized,
+{
+    randomness_stream: &'a mut R,
+}
+
+impl<'a, R> SimulationRandomnessRng<'a, R>
+where
+    R: SimulationRandomnessStream + ?Sized,
+{
+    /// Wrap a simulation stream for APIs that expect `rand::RngCore`.
+    pub fn new(randomness_stream: &'a mut R) -> Self {
+        Self { randomness_stream }
+    }
+}
+
+impl<R> rand::RngCore for SimulationRandomnessRng<'_, R>
+where
+    R: SimulationRandomnessStream + ?Sized,
+{
+    fn next_u32(&mut self) -> u32 {
+        self.randomness_stream.next_u64() as u32
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.randomness_stream.next_u64()
+    }
+
+    fn fill_bytes(&mut self, destination: &mut [u8]) {
+        let mut exact_chunks = destination.chunks_exact_mut(std::mem::size_of::<u64>());
+
+        for chunk in &mut exact_chunks {
+            chunk.copy_from_slice(&self.next_u64().to_le_bytes());
+        }
+
+        let remainder = exact_chunks.into_remainder();
+        if remainder.is_empty() {
+            return;
+        }
+
+        let next_bytes = self.next_u64().to_le_bytes();
+        remainder.copy_from_slice(&next_bytes[..remainder.len()]);
+    }
+
+    fn try_fill_bytes(&mut self, destination: &mut [u8]) -> Result<(), rand::Error> {
+        self.fill_bytes(destination);
+
+        Ok(())
+    }
+}
+
+/// Draw one standard normal variate using the shared simulation randomness stream.
+pub fn sample_standard_normal_draw<R>(randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream + ?Sized,
+{
+    let first_uniform_draw = randomness_stream.next_unit_interval_f64();
+    let second_uniform_draw = randomness_stream.next_unit_interval_f64();
+
+    standard_normal_draw_from_unit_interval_draws(first_uniform_draw, second_uniform_draw)
+}
+
+/// Map two unit-interval draws into one standard normal variate.
+pub fn standard_normal_draw_from_unit_interval_draws(
+    first_unit_interval_draw: f64,
+    second_unit_interval_draw: f64,
+) -> f64 {
+    let first_uniform_draw = first_unit_interval_draw.clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+    let second_uniform_draw = second_unit_interval_draw.clamp(0.0, 1.0 - f64::EPSILON);
+
+    let radius = (-2.0 * first_uniform_draw.ln()).sqrt();
+    let angle = 2.0 * std::f64::consts::PI * second_uniform_draw;
+
+    radius * angle.cos()
 }
 
 /// Factory abstraction used to derive deterministic domain substreams from one root seed.
@@ -132,10 +211,11 @@ pub const fn splitmix64_output_mixer(mut value: u64) -> u64 {
 mod tests {
     use super::{
         SIMULATION_RANDOMNESS_STREAM_POLICY, SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
-        SimulationRandomnessFactory, SimulationRandomnessStream,
+        SimulationRandomnessFactory, SimulationRandomnessRng, SimulationRandomnessStream,
         SimulationRandomnessSubstreamDomain, SplitMix64SimulationRandomnessFactory,
-        derive_simulation_substream_seed,
+        SplitMix64SimulationRandomnessStream, derive_simulation_substream_seed,
     };
+    use rand::RngCore;
 
     #[test]
     fn splitmix64_stream_reports_policy_constants() {
@@ -211,5 +291,15 @@ mod tests {
         ];
 
         assert_eq!(first_draws, second_draws);
+    }
+
+    #[test]
+    fn simulation_randomness_rng_delegates_to_wrapped_stream() {
+        let mut reference_stream = SplitMix64SimulationRandomnessStream::from_seed(17);
+        let mut wrapped_stream = SplitMix64SimulationRandomnessStream::from_seed(17);
+        let mut rng = SimulationRandomnessRng::new(&mut wrapped_stream);
+
+        assert_eq!(rng.next_u64(), reference_stream.next_u64());
+        assert_eq!(rng.next_u64(), reference_stream.next_u64());
     }
 }

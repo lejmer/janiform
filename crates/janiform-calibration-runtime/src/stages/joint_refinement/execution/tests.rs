@@ -8,9 +8,10 @@ use super::super::objective::{
     joint_primary_metrics_from_breakdown, return_asymmetry_horizon_fit, root_mean_square,
 };
 use super::super::setup::{
-    RestartSeedsWithHaltonAcceptanceBuildInput, build_baseline_parameter_vector,
-    build_parameter_bounds, build_restart_seeds_with_halton_acceptance,
-    parameter_vector_to_nig_search_point, project_basin_diagnostic_into_joint_nig_coordinates,
+    ParameterBoundsBuildInput, RestartSeedsWithHaltonAcceptanceBuildInput,
+    build_active_parameter_layout, build_baseline_parameter_vector, build_parameter_bounds,
+    build_restart_seeds_with_halton_acceptance, parameter_vector_to_nig_search_point,
+    project_basin_diagnostic_into_joint_nig_coordinates,
     restart_candidate_screening_max_parallelism_for_test,
 };
 use super::{
@@ -33,6 +34,7 @@ use crate::stages::joint_metrics::{
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageObjectiveTermDiagnostic,
 };
+use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, NigShapeSearchPoint,
     ReturnComponentsObservedOpenSessionReturn,
@@ -60,7 +62,8 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
         hawkes_block: vec![0, 1, 2, 3],
         nig_block: vec![4, 5, 6, 7],
         return_clock_block: vec![11, 12],
-        option_pricing_kernel_block: vec![13, 14],
+        long_variance_block: vec![13, 14, 15, 16],
+        option_pricing_kernel_block: vec![17, 18],
         coupling_block: vec![8, 9, 10],
         log_stationary_event_rate_scale_index: 0,
         log_beta_scale_index: 1,
@@ -68,8 +71,12 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
         log_cross_excitation_scale_index: 3,
         log_buy_excitation_return_clock_scale_index: 11,
         log_sell_excitation_return_clock_scale_index: 12,
-        option_pricing_log_buy_activity_premium_index: 13,
-        option_pricing_log_sell_activity_premium_index: 14,
+        log_long_variance_mean_reversion_rate_scale_index: 13,
+        long_variance_vol_of_vol_index: 14,
+        long_variance_buy_event_loading_index: 15,
+        long_variance_sell_event_loading_index: 16,
+        option_pricing_log_buy_activity_premium_index: 17,
+        option_pricing_log_sell_activity_premium_index: 18,
         known_activity_scale_index: Some(8),
         surprise_activity_scale_index: Some(9),
         surprise_baseline_scale_index: Some(10),
@@ -192,6 +199,16 @@ fn build_test_observed_data() -> JointRefinementObservedData {
             correlation: 0.0,
             standardized_path_distance: 0.0,
         },
+        observed_long_variance_horizon_summaries: long_variance_horizon_summaries(
+            &[
+                build_test_interval_observation(0, 300, 0.012, 2, 0.5),
+                build_test_interval_observation(300, 600, -0.009, 2, 0.5),
+            ],
+            &[
+                build_test_interval_observation(0, 900, 0.018, 6, 0.5),
+                build_test_interval_observation(900, 1800, -0.012, 5, 0.5),
+            ],
+        ),
         hourly_simulation_start_utc: DateTime::<Utc>::from_timestamp_nanos(0),
         hourly_simulation_end_utc: DateTime::<Utc>::from_timestamp_nanos(24 * 3_600_000_000_000),
         hourly_simulation_interval_count: 24,
@@ -254,6 +271,7 @@ fn build_test_joint_breakdown(
         ("activity_shape_fit", 1.0),
         ("activity_level_fit", 1.0),
         ("rv_activity_coupling_fit", 1.0),
+        ("long_variance_horizon_fit", 1.0),
     ]
     .into_iter()
     .map(|(family_id, loss)| CalibrationLossFamilyDiagnostic {
@@ -324,6 +342,7 @@ fn build_test_raw_admissibility_metrics(
         activity_shape_fit: family_loss("activity_shape_fit"),
         activity_level_fit: family_loss("activity_level_fit"),
         rv_activity_coupling_fit: family_loss("rv_activity_coupling_fit"),
+        long_variance_horizon_fit: family_loss("long_variance_horizon_fit"),
     }
 }
 
@@ -372,6 +391,11 @@ fn build_test_seed_summary(
     simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
     simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,
 ) -> JointRefinementSeedSummary {
+    let simulated_long_variance_horizon_summaries = long_variance_horizon_summaries(
+        simulated_5m_intervals.as_slice(),
+        simulated_15m_intervals.as_slice(),
+    );
+
     JointRefinementSeedSummary {
         simulated_5m_intervals,
         simulated_15m_intervals,
@@ -401,6 +425,7 @@ fn build_test_seed_summary(
             correlation: 0.0,
             standardized_path_distance: 0.0,
         },
+        simulated_long_variance_horizon_summaries,
     }
 }
 
@@ -435,7 +460,7 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
     let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15, None);
 
     assert_eq!(default_frontier_schedule.restart_count, 15);
-    assert_eq!(default_frontier_schedule.outer_cycle_count, 1);
+    assert_eq!(default_frontier_schedule.outer_cycle_count, 2);
 
     let broad_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 50, None);
 
@@ -549,16 +574,22 @@ fn joint_refinement_nig_bounds_include_selected_return_nig_outside_theoretical_r
     )
     .expect("representable selected NIG should build a baseline vector");
 
-    let (lower_bounds, upper_bounds) = build_parameter_bounds(
-        &active_parameter_layout,
-        baseline_parameter_vector.as_slice(),
-        &baseline_15m_calibration_sample,
-        selected_nig,
-        &[],
-        &build_test_observed_data(),
-        1.0,
-        &solver_settings,
-    )
+    let (lower_bounds, upper_bounds) = build_parameter_bounds(ParameterBoundsBuildInput {
+        active_parameter_layout: &active_parameter_layout,
+        baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+        baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+        selected_return_nig_configuration: selected_nig,
+        return_component_basin_diagnostics: &[],
+        baseline_hawkes_kernel_parameters: test_joint_fitted_parameters()
+            .hawkes_fitted_parameters
+            .kernel_parameters,
+        baseline_long_variance_parameters: test_joint_fitted_parameters()
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        observed_data: &build_test_observed_data(),
+        baseline_modeled_open_event_rate_per_hour: 1.0,
+        solver_settings: &solver_settings,
+    })
     .expect("bounds should include selected return-stage NIG");
 
     for parameter_index in &active_parameter_layout.nig_block {
@@ -575,10 +606,13 @@ fn joint_refinement_nig_bounds_include_selected_return_nig_outside_theoretical_r
 #[test]
 fn joint_refinement_bounds_allow_option_pricing_kernel_activity_premia() {
     let active_parameter_layout = build_test_active_parameter_layout();
+
     let baseline_15m_calibration_sample = build_test_calibration_sample();
+
     let selected_nig = test_joint_fitted_parameters()
         .return_components_fitted_parameters
         .nig_shared_plus_shift_configuration;
+
     let baseline_parameter_vector = build_baseline_parameter_vector(
         &active_parameter_layout,
         &test_joint_fitted_parameters().hawkes_fitted_parameters,
@@ -587,16 +621,22 @@ fn joint_refinement_bounds_allow_option_pricing_kernel_activity_premia() {
     )
     .expect("baseline vector should build");
 
-    let (lower_bounds, upper_bounds) = build_parameter_bounds(
-        &active_parameter_layout,
-        baseline_parameter_vector.as_slice(),
-        &baseline_15m_calibration_sample,
-        selected_nig,
-        &[],
-        &build_test_observed_data(),
-        1.0,
-        &build_test_solver_settings(1),
-    )
+    let (lower_bounds, upper_bounds) = build_parameter_bounds(ParameterBoundsBuildInput {
+        active_parameter_layout: &active_parameter_layout,
+        baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+        baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+        selected_return_nig_configuration: selected_nig,
+        return_component_basin_diagnostics: &[],
+        baseline_hawkes_kernel_parameters: test_joint_fitted_parameters()
+            .hawkes_fitted_parameters
+            .kernel_parameters,
+        baseline_long_variance_parameters: test_joint_fitted_parameters()
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        observed_data: &build_test_observed_data(),
+        baseline_modeled_open_event_rate_per_hour: 1.0,
+        solver_settings: &build_test_solver_settings(1),
+    })
     .expect("bounds should build");
 
     for parameter_index in &active_parameter_layout.option_pricing_kernel_block {
@@ -609,6 +649,123 @@ fn joint_refinement_bounds_allow_option_pricing_kernel_activity_premia() {
             JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND
         );
     }
+}
+
+#[test]
+fn joint_refinement_active_layout_includes_long_variance_coordinates() {
+    let active_parameter_layout = build_active_parameter_layout(
+        &test_joint_fitted_parameters().return_components_fitted_parameters,
+    );
+
+    assert_eq!(active_parameter_layout.long_variance_block.len(), 4);
+    assert_eq!(
+        active_parameter_layout.long_variance_block,
+        vec![
+            active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index,
+            active_parameter_layout.long_variance_vol_of_vol_index,
+            active_parameter_layout.long_variance_buy_event_loading_index,
+            active_parameter_layout.long_variance_sell_event_loading_index,
+        ]
+    );
+}
+
+#[test]
+fn joint_refinement_baseline_parameter_vector_encodes_long_variance_parameters() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+
+    let mut fitted_parameters = test_joint_fitted_parameters().return_components_fitted_parameters;
+
+    fitted_parameters.long_variance_parameters =
+        janiform_model_kernels::long_variance::LongVarianceParameters::try_new(
+            2.0, 0.4, 0.01, 0.02,
+        )
+        .expect("test long variance parameters should construct");
+
+    let baseline_parameter_vector = build_baseline_parameter_vector(
+        &active_parameter_layout,
+        &test_joint_fitted_parameters().hawkes_fitted_parameters,
+        &fitted_parameters,
+        &baseline_15m_calibration_sample,
+    )
+    .expect("baseline vector should build");
+
+    assert_eq!(
+        baseline_parameter_vector
+            [active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index],
+        0.0
+    );
+    assert_eq!(
+        baseline_parameter_vector[active_parameter_layout.long_variance_vol_of_vol_index],
+        0.4
+    );
+    assert_eq!(
+        baseline_parameter_vector[active_parameter_layout.long_variance_buy_event_loading_index],
+        0.01
+    );
+    assert_eq!(
+        baseline_parameter_vector[active_parameter_layout.long_variance_sell_event_loading_index],
+        0.02
+    );
+}
+
+#[test]
+fn joint_refinement_bounds_allow_long_variance_search_coordinates() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+
+    let selected_nig = test_joint_fitted_parameters()
+        .return_components_fitted_parameters
+        .nig_shared_plus_shift_configuration;
+
+    let baseline_parameter_vector = build_baseline_parameter_vector(
+        &active_parameter_layout,
+        &test_joint_fitted_parameters().hawkes_fitted_parameters,
+        &test_joint_fitted_parameters().return_components_fitted_parameters,
+        &baseline_15m_calibration_sample,
+    )
+    .expect("baseline vector should build");
+
+    let (lower_bounds, upper_bounds) = build_parameter_bounds(ParameterBoundsBuildInput {
+        active_parameter_layout: &active_parameter_layout,
+        baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+        baseline_15m_calibration_sample: &baseline_15m_calibration_sample,
+        selected_return_nig_configuration: selected_nig,
+        return_component_basin_diagnostics: &[],
+        baseline_hawkes_kernel_parameters: test_joint_fitted_parameters()
+            .hawkes_fitted_parameters
+            .kernel_parameters,
+        baseline_long_variance_parameters: test_joint_fitted_parameters()
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        observed_data: &build_test_observed_data(),
+        baseline_modeled_open_event_rate_per_hour: 1.0,
+        solver_settings: &build_test_solver_settings(1),
+    })
+    .expect("bounds should build");
+
+    for parameter_index in &active_parameter_layout.long_variance_block {
+        assert!(
+            baseline_parameter_vector[*parameter_index] >= lower_bounds[*parameter_index]
+                && baseline_parameter_vector[*parameter_index] <= upper_bounds[*parameter_index]
+        );
+    }
+
+    assert_eq!(
+        lower_bounds[active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index],
+        -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND
+    );
+    assert_eq!(
+        upper_bounds[active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index],
+        JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND
+    );
+    assert_eq!(
+        lower_bounds[active_parameter_layout.long_variance_vol_of_vol_index],
+        0.0
+    );
+    assert!(upper_bounds[active_parameter_layout.long_variance_vol_of_vol_index] > 0.0);
 }
 
 fn restart_seed_ids(restart_seeds: &[(String, Vec<f64>)]) -> Vec<&str> {
@@ -650,7 +807,7 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 8,
+            restart_candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| true),
         });
 
@@ -664,15 +821,16 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 8,
+            restart_candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| true),
         });
 
     assert_eq!(first_restart_seeds, second_restart_seeds);
-    assert_eq!(first_restart_seeds.len(), 8);
+    assert_eq!(first_restart_seeds.len(), 12);
     assert_eq!(first_restart_seeds[0].0, "incumbent_local_search");
 
     let restart_seed_ids = restart_seed_ids(first_restart_seeds.as_slice());
+
     assert!(restart_seed_ids.contains(&"activity_aligned"));
     assert!(restart_seed_ids.contains(&"midpoint"));
     assert!(
@@ -692,6 +850,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
 
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+
     let baseline_final_objective_terms = vec![
         build_test_objective_term("return_scale.15m.mean_absolute_return", 1.0, 2.0),
         build_test_objective_term("return_scale.tick.realized_variance", 4.0, 25.0),
@@ -707,29 +866,35 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: baseline_final_objective_terms.as_slice(),
             activity_log_shift: 0.25,
-            restart_candidate_budget: 8,
+            restart_candidate_budget: 18,
             halton_seed_is_accepted: Box::new(|_| false),
         });
 
     let log_stationary_event_rate_index =
         active_parameter_layout.log_stationary_event_rate_scale_index;
+
     let log_delta_offset_index = active_parameter_layout.nig_block[3];
+
     let mean_absolute_return_delta_shift = 0.5f64.ln();
     let tick_realized_variance_delta_shift = 0.4f64.ln();
 
-    assert_eq!(restart_seeds.len(), 7);
+    assert_eq!(restart_seeds.len(), 13);
+
     let mean_absolute_return_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
         "return_scale_mean_absolute_return_15m",
     );
+
     assert_eq!(
         mean_absolute_return_seed[log_delta_offset_index],
         mean_absolute_return_delta_shift
     );
+
     let mean_absolute_return_activity_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
         "return_scale_mean_absolute_return_15m_activity_aligned",
     );
+
     assert_eq!(
         mean_absolute_return_activity_seed[log_delta_offset_index],
         mean_absolute_return_delta_shift
@@ -743,6 +908,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
         restart_seeds.as_slice(),
         "return_scale_tick_realized_variance",
     );
+
     assert_eq!(
         tick_realized_variance_seed[log_delta_offset_index],
         tick_realized_variance_delta_shift
@@ -772,18 +938,30 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 6,
+            restart_candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| {
                 score_call_count += 1;
                 score_call_count.is_multiple_of(3)
             }),
         });
 
-    assert_eq!(restart_seeds.len(), 5);
+    assert_eq!(restart_seeds.len(), 12);
+
     let restart_seed_ids = restart_seed_ids(restart_seeds.as_slice());
-    assert!(restart_seed_ids.contains(&"halton_03"));
-    assert!(restart_seed_ids.contains(&"halton_06"));
-    assert_eq!(score_call_count, 6);
+    let halton_restart_seed_ids = restart_seed_ids
+        .iter()
+        .copied()
+        .filter(|restart_id| restart_id.starts_with("halton_"))
+        .collect::<Vec<_>>();
+
+    assert!(!halton_restart_seed_ids.is_empty());
+    assert!(halton_restart_seed_ids.iter().all(|restart_id| {
+        restart_id
+            .strip_prefix("halton_")
+            .and_then(|suffix| suffix.parse::<usize>().ok())
+            .is_some_and(|halton_position| halton_position.is_multiple_of(3))
+    }));
+    assert!(score_call_count >= 9);
 }
 
 #[test]
@@ -809,15 +987,19 @@ fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_b
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 6,
+            restart_candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| {
                 score_call_count += 1;
                 false
             }),
         });
 
-    assert_eq!(restart_seeds.len(), 3);
-    assert_eq!(score_call_count, 6);
+    assert_eq!(restart_seeds.len(), 9);
+    assert_eq!(score_call_count, 12);
+
+    let restart_seed_ids = restart_seed_ids(restart_seeds.as_slice());
+
+    assert!(restart_seed_ids.contains(&"long_variance_vol_of_vol_up"));
 }
 
 #[test]
@@ -856,7 +1038,7 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
             return_component_basin_diagnostics: basin_diagnostics.as_slice(),
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 8,
+            restart_candidate_budget: 18,
             halton_seed_is_accepted: Box::new(|_| true),
         });
 
@@ -886,10 +1068,12 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
     ];
 
     let nig_basin_seed = restart_seed_by_id(restart_seeds.as_slice(), "nig_basin_skew_heavy");
+
     let nig_basin_activity_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
         "nig_basin_skew_heavy_activity_aligned",
     );
+
     assert_eq!(
         nig_basin_seed[active_parameter_layout.nig_block[0]],
         clamped_projected_coordinates[0]
@@ -931,10 +1115,12 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
 
     let nig_alpha_delta_seed =
         restart_seed_by_id(restart_seeds.as_slice(), "nig_alpha_delta_skew_heavy");
+
     let nig_alpha_delta_activity_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
         "nig_alpha_delta_skew_heavy_activity_aligned",
     );
+
     assert_eq!(
         nig_alpha_delta_seed[active_parameter_layout.nig_block[0]],
         clamped_projected_coordinates[0]
@@ -1152,7 +1338,7 @@ fn joint_primary_metrics_include_direct_tick_distribution_terms() {
 
     let primary_metrics = joint_primary_metrics_from_breakdown(&breakdown);
 
-    assert_eq!(primary_metrics.len(), 11);
+    assert_eq!(primary_metrics.len(), 12);
     assert_eq!(primary_metrics[3], 1.7);
     assert_eq!(primary_metrics[5], 1.9);
 }

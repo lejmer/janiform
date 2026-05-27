@@ -26,6 +26,7 @@ use janiform_market_time::hourly_factors::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -1301,6 +1302,8 @@ fn build_run_config_with_options(
             hourly_factor_contract,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            long_variance_parameters: LongVarianceParameters::neutral(),
+            initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -1531,6 +1534,8 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         hourly_factor_contract,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -1581,6 +1586,8 @@ fn build_one_interval_ordering_model_inputs(
         hourly_factor_contract,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -1630,6 +1637,8 @@ fn build_two_interval_boundary_adjacent_model_inputs(
         hourly_factor_contract,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -1905,6 +1914,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
                 self.combined_news_mark_draws()
             }
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
@@ -1971,6 +1981,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment

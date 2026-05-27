@@ -81,15 +81,31 @@
           "gamma_severity_mark_configuration": {
             "shape_k": 1.8,
             "scale_theta": 0.9
+          },
+          "long_variance_parameters": {
+            "mean_reversion_rate": 1.0,
+            "vol_of_vol": 0.0,
+            "buy_event_loading": 0.0,
+            "sell_event_loading": 0.0
           }
         },
-        "u_plus": {
-          "real": 0.2,
-          "imaginary": -0.1
-        },
-        "u_minus": {
-          "real": 0.3,
-          "imaginary": 0.05
+        "activity_loadings": {
+          "u_plus_baseline": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_plus_endogenous": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_minus_baseline": {
+            "real": 0.3,
+            "imaginary": 0.05
+          },
+          "u_minus_endogenous": {
+            "real": 0.3,
+            "imaginary": 0.05
+          }
         },
         "z_plus": {
           "real": 1.0,
@@ -178,15 +194,31 @@
           "gamma_severity_mark_configuration": {
             "shape_k": 1.8,
             "scale_theta": 0.9
+          },
+          "long_variance_parameters": {
+            "mean_reversion_rate": 1.0,
+            "vol_of_vol": 0.0,
+            "buy_event_loading": 0.0,
+            "sell_event_loading": 0.0
           }
         },
-        "u_plus": {
-          "real": 0.2,
-          "imaginary": -0.1
-        },
-        "u_minus": {
-          "real": 0.3,
-          "imaginary": 0.05
+        "activity_loadings": {
+          "u_plus_baseline": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_plus_endogenous": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_minus_baseline": {
+            "real": 0.3,
+            "imaginary": 0.05
+          },
+          "u_minus_endogenous": {
+            "real": 0.3,
+            "imaginary": 0.05
+          }
         },
         "z_plus": {
           "real": 1.0,

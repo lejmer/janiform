@@ -59,7 +59,7 @@ impl BoundedTickShapeReturnSampler {
         let return_position = self.seen_return_count;
         self.seen_return_count = self.seen_return_count.saturating_add(1);
 
-        if return_position % self.retention_stride != 0 {
+        if !return_position.is_multiple_of(self.retention_stride) {
             return;
         }
 
@@ -83,7 +83,7 @@ impl BoundedTickShapeReturnSampler {
         let mut retained_position = 0usize;
 
         self.retained_returns.retain(|_| {
-            let keep = retained_position % 2 == 0;
+            let keep = retained_position.is_multiple_of(2);
             retained_position = retained_position.saturating_add(1);
             keep
         });

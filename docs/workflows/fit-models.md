@@ -249,12 +249,15 @@ Resume runs stage a copy of the committed artifact set, update it during executi
 | `seasonality`       | Resume from the checkpoint written after seasonality calibration.         |
 | `hawkes`            | Resume from the checkpoint written after event-activity calibration.      |
 | `return_components` | Resume from the checkpoint written after return-distribution calibration. |
+| `long_variance`     | Resume from the checkpoint written after long-variance calibration.       |
 | `mean_reversion`    | Resume from the checkpoint written after mean-reversion calibration.      |
 | `joint_refinement`  | Resume from the checkpoint written after final dynamics refinement.       |
+| `option_refinement` | Resume from the checkpoint written after option-surface calibration.      |
+| `finalization`      | Resume from the checkpoint written after final model assembly.            |
 
 A stage token is valid only after that stage has completed and written its checkpoint. For most resumes, use `last-success` unless you need to force a specific earlier checkpoint.
 
-When adding an option surface to a completed tick-only fit, resume from `mean_reversion` and start at `joint-refinement`. The earlier tick-data stages are reused, while joint refinement reuses persisted dynamics restart outcomes and recomputes option-dependent selection and option-pricing tiers for the supplied option surface:
+When adding an option surface to a completed tick-only fit, resume from `joint_refinement` and start at `option-refinement`. The earlier tick-data stages and selected dynamics frontier are reused, while option refinement fits the option-surface pricing block for the supplied option snapshot:
 
 ```bash
 janiform fit data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet \
@@ -262,11 +265,11 @@ janiform fit data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parqu
   --option-surface-valuation-time-utc 2026-04-01T23:59:00Z \
   --market-profile es_futures_globex \
   --run-id es_continuous_20260507T195059Z \
-  --resume-checkpoint-reference checkpoint://es_continuous_20260507T195059Z/mean_reversion \
-  --resume-from-stage joint-refinement
+  --resume-checkpoint-reference checkpoint://es_continuous_20260507T195059Z/joint_refinement \
+  --resume-from-stage option-refinement
 ```
 
-Joint-refinement resume state is finer grained than the top-level stage checkpoint. Dynamics restart outcomes are reusable across tick-only and option-aware joint refinement when the run id and stage seed match. Restart selection is reused only when it was built for the same option-pricing context and has enough candidate frontier width. Option search, selection, and audit tier pricing artifacts are scoped to a fingerprint of the option-pricing context so changing the option surface recomputes only the option-dependent work.
+Joint-refinement resume state is finer grained than the top-level stage checkpoint. Dynamics restart outcomes are reusable across tick-only and option-aware runs when the run id and stage seed match. Option search, selection, and audit tier pricing artifacts are scoped to a fingerprint of the option-pricing context so changing the option surface recomputes only the option-dependent work.
 
 The same resume flow is available from Python. Use disk output preferences, pass `output_dir` as the directory that contains the run folders, and point `disk_checkpoint_directory` at the run directory. For the CLI default layout, `output_dir` is `.janiform/runs` and `disk_checkpoint_directory` is `.janiform/runs/<run-id>`:
 

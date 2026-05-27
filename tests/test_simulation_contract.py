@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation import (
@@ -71,6 +72,8 @@ def test_simulation_request_model_validates_construction() -> None:
             y_minus_plus=0.0,
             y_minus_minus=0.0,
         ),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -98,6 +101,8 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
             nig_shared_plus_shift_configuration=_valid_nig_shared_plus_shift_configuration(),
             news_process_configuration=_valid_news_process_configuration(),
             initial_excitation_state=_valid_excitation_state(),
+            long_variance_parameters=LongVarianceParameters.neutral(),
+            initial_long_variance_state=LongVarianceState.unit(),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -180,6 +185,8 @@ def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_han
         nig_shared_plus_shift_configuration=_valid_nig_shared_plus_shift_configuration(),
         news_process_configuration=_valid_news_process_configuration(),
         initial_excitation_state=_valid_excitation_state(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

@@ -30,6 +30,7 @@ use janiform_market_time::hourly_factors::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -584,14 +585,22 @@ fn build_coarse_model_inputs(
     interval_count: usize,
     interval_delta: f64,
 ) -> CoarseSimulationModelInputs {
-    CoarseSimulationModelInputs::try_new(
-        build_sufficient_statistics_model_inputs(interval_count, interval_delta),
-        build_news_process_configuration(known_news_timestamps_utc_nanos),
-        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-        None,
-        build_calendar_registry_artifact(),
-        "XNYS",
-    )
+    CoarseSimulationModelInputs::try_new(CoarseSimulationModelInputs {
+        sufficient_statistics_model_inputs: build_sufficient_statistics_model_inputs(
+            interval_count,
+            interval_delta,
+        ),
+        news_process_configuration: build_news_process_configuration(
+            known_news_timestamps_utc_nanos,
+        ),
+        return_clock_exposure_parameters:
+            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
+        observed_price_tick_size: None,
+        calendar_registry_artifact: build_calendar_registry_artifact(),
+        exchange_code: "XNYS".to_string(),
+    })
     .expect("coarse model inputs should construct")
 }
 
@@ -614,6 +623,8 @@ fn build_seeded_model_inputs(
         hourly_factor_contract,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
         calendar_registry: ExchangeCalendarRegistry::from_artifact(
             build_calendar_registry_artifact(),
@@ -660,19 +671,25 @@ fn build_sufficient_statistics_model_inputs(
     interval_count: usize,
     interval_delta: f64,
 ) -> SufficientStatisticsModelInputs {
-    SufficientStatisticsModelInputs::try_new(
-        ExponentialAffineTransformEquationSpecification::try_new(
+    SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
+        equation_specification: ExponentialAffineTransformEquationSpecification::try_new(
             build_kernel_parameters(),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("sufficient-statistics gamma severity configuration should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct"),
-        NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-            .expect("nig configuration should construct"),
-        default_initial_excitation_state(),
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
-        MeanReversionRuntimeIntervalAnchors::try_new(
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+            2.3, -0.8, 0.7, 0.1, -0.2,
+        )
+        .expect("nig configuration should construct"),
+        initial_excitation_state: default_initial_excitation_state(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
+        mean_reversion_fitted_parameters:
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-kappa endogenous mean reversion should construct"),
+        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
             0.0,
@@ -681,9 +698,11 @@ fn build_sufficient_statistics_model_inputs(
             vec![interval_delta; interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
-            .expect("disabled mean-reversion boundary state should construct"),
-    )
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+            0.0, 0.0, 0.0, 0.0,
+        )
+        .expect("disabled mean-reversion boundary state should construct"),
+    })
     .expect("sufficient-statistics model inputs should construct")
 }
 

@@ -45,6 +45,7 @@ use janiform_market_time::hourly_factors::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalComponent,
@@ -2968,6 +2969,9 @@ impl SimulationRandomnessStream for FixtureRandomnessStream {
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
+            SimulationRandomnessSubstreamDomain::LongVarianceDiffusion => {
+                self.substream_index.wrapping_add(self.draw_count)
+            }
             SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
@@ -3109,6 +3113,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             }
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
@@ -3175,6 +3180,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
@@ -3266,6 +3272,8 @@ fn one_interval_model_inputs(
         hourly_factor_contract,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -3555,6 +3563,8 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         hourly_factor_contract,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),

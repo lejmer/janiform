@@ -46,8 +46,10 @@
         "seasonality",
         "hawkes",
         "return_components",
+        "long_variance",
         "mean_reversion",
-        "joint_refinement"
+        "joint_refinement",
+        "finalization"
       ],
       "expect_experiment_index_record": true,
       "description": "Full persisted calibration artifact set remains stable across write, load, reload, and experiment-index lookup paths."

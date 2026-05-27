@@ -6,6 +6,7 @@ use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
+use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionFittedParameters,
 };
@@ -56,8 +57,36 @@ pub struct ReturnComponentsStageFittedParameters {
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub long_variance_parameters: LongVarianceParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LongVarianceStageHorizonDiagnostic {
+    pub horizon_label: String,
+    pub horizon_hours: f64,
+    pub sample_count: usize,
+    pub realized_variance: Option<f64>,
+    pub variance_of_variance: Option<f64>,
+    pub return_skewness: Option<f64>,
+    pub return_excess_kurtosis: Option<f64>,
+    pub activity_variance_correlation: Option<f64>,
+    pub signed_activity_future_variance_relation: Option<f64>,
+    pub realized_variance_standard_error: Option<f64>,
+    pub variance_of_variance_standard_error: Option<f64>,
+    pub return_skewness_standard_error: Option<f64>,
+    pub return_excess_kurtosis_standard_error: Option<f64>,
+    pub activity_variance_correlation_standard_error: Option<f64>,
+    pub signed_activity_future_variance_relation_standard_error: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LongVarianceStageDiagnostics {
+    pub estimation_policy: String,
+    pub stationary_normalization_policy: String,
+    pub selected_candidate_id: String,
+    pub horizon_diagnostics: Vec<LongVarianceStageHorizonDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

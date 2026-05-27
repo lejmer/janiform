@@ -19,15 +19,19 @@ const PHYSICAL_DISTRIBUTION_NODES_FILE_NAME: &str = "physical_distribution_nodes
 const PHYSICAL_DISTRIBUTION_REPORT_FILE_NAME: &str = "physical_distribution_report.json";
 
 pub(super) fn write_observed_artifacts_if_requested(
-    output_path: Option<&PathBuf>,
-    run_id: &str,
-    scope: ObservedOptionsPricingScope,
-    valuation_time_utc: DateTime<Utc>,
-    nodes: &[ObservedOptionsPricingNode],
-    snapshot_results: &[ObservedOptionsSnapshotResult],
-    physical_distribution: Option<&ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
-    execution_duration: Duration,
+    input: ObservedArtifactWriteInput<'_>,
 ) -> Result<Option<PricingArtifactPaths>, WorkflowError> {
+    let ObservedArtifactWriteInput {
+        output_path,
+        run_id,
+        scope,
+        valuation_time_utc,
+        nodes,
+        snapshot_results,
+        physical_distribution,
+        execution_duration,
+    } = input;
+
     let Some(output_path) = output_path else {
         return Ok(None);
     };
@@ -118,6 +122,18 @@ pub(super) fn write_observed_artifacts_if_requested(
     )?;
 
     Ok(Some(paths))
+}
+
+pub(super) struct ObservedArtifactWriteInput<'a> {
+    pub(super) output_path: Option<&'a PathBuf>,
+    pub(super) run_id: &'a str,
+    pub(super) scope: ObservedOptionsPricingScope,
+    pub(super) valuation_time_utc: DateTime<Utc>,
+    pub(super) nodes: &'a [ObservedOptionsPricingNode],
+    pub(super) snapshot_results: &'a [ObservedOptionsSnapshotResult],
+    pub(super) physical_distribution:
+        Option<&'a ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
+    pub(super) execution_duration: Duration,
 }
 
 pub(super) fn observed_options_start_summary(

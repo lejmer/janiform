@@ -12,17 +12,18 @@ import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
 from janiform._timestamps import NANOS_PER_HOUR
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import run_staged_calibration
-from janiform.mean_reversion import (
-    MeanReversionAnchorModel,
-    MeanReversionBoundaryState,
-    MeanReversionFittedParameters,
-)
 from janiform.errors import JaniformExecutionError, JaniformIntegrationError
 from janiform.hourly_factors import (
     HourlyFactorContract,
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
     provide_hourly_factor_contract,
+)
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
+from janiform.mean_reversion import (
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
 )
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
@@ -60,13 +61,13 @@ from janiform.simulation.coarse import (
     run_coarse_simulation,
 )
 from janiform.simulation.seeded import SeededTickSimulationRequest
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 from janiform.simulation.shared import (
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
-)
-from janiform.simulation.seeded.contracts import (
-    build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from tests.support.calibration import build_valid_execution_input_model
 from tests.support.pricing import (
@@ -131,6 +132,8 @@ def test_validation_error_string_format_is_stable() -> None:
                 ),
             ),
             initial_excitation_state=_valid_excitation_state(),
+            long_variance_parameters=LongVarianceParameters.neutral(),
+            initial_long_variance_state=LongVarianceState.unit(),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -685,6 +688,8 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
         initial_excitation_state=_valid_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -713,6 +718,7 @@ def _valid_coarse_simulation_request(
                     shape_k=1.5,
                     scale_theta=0.9,
                 ),
+                long_variance_parameters=LongVarianceParameters.neutral(),
             ),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
@@ -722,6 +728,8 @@ def _valid_coarse_simulation_request(
                 delta_beta=-0.2,
             ),
             initial_excitation_state=_valid_excitation_state(),
+            long_variance_parameters=LongVarianceParameters.neutral(),
+            initial_long_variance_state=LongVarianceState.unit(),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -729,6 +737,8 @@ def _valid_coarse_simulation_request(
         hourly_factor_contract=hourly_factor_contract,
         news_process_configuration=_valid_news_process_configuration(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",

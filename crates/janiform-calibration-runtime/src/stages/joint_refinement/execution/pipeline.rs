@@ -241,17 +241,17 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     disk_checkpoint_directory: Option<&Path>,
     load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
-    run_joint_refinement_pipeline_stage_internal(
+    run_joint_refinement_pipeline_stage_internal(JointRefinementPipelineStageRunInput {
         run_spec,
         calendar_registry,
         stage_input,
-        None,
-        None,
+        upstream_joint_refinement_handoff: None,
+        upstream_option_refinement_handoff: None,
         progress_sender,
         disk_checkpoint_directory,
         load_current_stage_resume_state,
-        JointRefinementPipelineStage::JointRefinement,
-    )
+        pipeline_stage: JointRefinementPipelineStage::JointRefinement,
+    })
 }
 
 pub(super) fn run_option_refinement_calibration_stage_internal(
@@ -263,54 +263,74 @@ pub(super) fn run_option_refinement_calibration_stage_internal(
     disk_checkpoint_directory: Option<&Path>,
     load_current_stage_resume_state: bool,
 ) -> JointRefinementStageExecutionReport {
-    run_joint_refinement_pipeline_stage_internal(
+    run_joint_refinement_pipeline_stage_internal(JointRefinementPipelineStageRunInput {
         run_spec,
         calendar_registry,
         stage_input,
         upstream_joint_refinement_handoff,
-        None,
+        upstream_option_refinement_handoff: None,
         progress_sender,
         disk_checkpoint_directory,
         load_current_stage_resume_state,
-        JointRefinementPipelineStage::OptionRefinement,
-    )
+        pipeline_stage: JointRefinementPipelineStage::OptionRefinement,
+    })
+}
+
+pub(crate) struct FinalizationPipelineStageRunInput<'a> {
+    pub(crate) run_spec: &'a CalibrationRunSpec,
+    pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
+    pub(crate) stage_input: JointRefinementStageExecutionInput,
+    pub(crate) upstream_joint_refinement_handoff:
+        Option<&'a super::state::JointRefinementStageRuntimeHandoff>,
+    pub(crate) upstream_option_refinement_handoff:
+        Option<&'a super::state::JointRefinementStageRuntimeHandoff>,
+    pub(crate) progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
+    pub(crate) disk_checkpoint_directory: Option<&'a Path>,
+    pub(crate) load_current_stage_resume_state: bool,
 }
 
 pub(super) fn run_finalization_calibration_stage_internal(
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    stage_input: JointRefinementStageExecutionInput,
-    upstream_joint_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
-    upstream_option_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
-    progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
-    disk_checkpoint_directory: Option<&Path>,
-    load_current_stage_resume_state: bool,
+    input: FinalizationPipelineStageRunInput<'_>,
 ) -> JointRefinementStageExecutionReport {
-    run_joint_refinement_pipeline_stage_internal(
-        run_spec,
-        calendar_registry,
-        stage_input,
-        upstream_joint_refinement_handoff,
-        upstream_option_refinement_handoff,
-        progress_sender,
-        disk_checkpoint_directory,
-        load_current_stage_resume_state,
-        JointRefinementPipelineStage::Finalization,
-    )
+    run_joint_refinement_pipeline_stage_internal(JointRefinementPipelineStageRunInput {
+        run_spec: input.run_spec,
+        calendar_registry: input.calendar_registry,
+        stage_input: input.stage_input,
+        upstream_joint_refinement_handoff: input.upstream_joint_refinement_handoff,
+        upstream_option_refinement_handoff: input.upstream_option_refinement_handoff,
+        progress_sender: input.progress_sender,
+        disk_checkpoint_directory: input.disk_checkpoint_directory,
+        load_current_stage_resume_state: input.load_current_stage_resume_state,
+        pipeline_stage: JointRefinementPipelineStage::Finalization,
+    })
+}
+
+struct JointRefinementPipelineStageRunInput<'a> {
+    run_spec: &'a CalibrationRunSpec,
+    calendar_registry: &'a ExchangeCalendarRegistry,
+    stage_input: JointRefinementStageExecutionInput,
+    upstream_joint_refinement_handoff: Option<&'a super::state::JointRefinementStageRuntimeHandoff>,
+    upstream_option_refinement_handoff:
+        Option<&'a super::state::JointRefinementStageRuntimeHandoff>,
+    progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
+    disk_checkpoint_directory: Option<&'a Path>,
+    load_current_stage_resume_state: bool,
+    pipeline_stage: JointRefinementPipelineStage,
 }
 
 fn run_joint_refinement_pipeline_stage_internal(
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    stage_input: JointRefinementStageExecutionInput,
-    upstream_joint_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
-    upstream_option_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
-    progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
-    disk_checkpoint_directory: Option<&Path>,
-    load_current_stage_resume_state: bool,
-    pipeline_stage: JointRefinementPipelineStage,
+    input: JointRefinementPipelineStageRunInput<'_>,
 ) -> JointRefinementStageExecutionReport {
     let stage_started_at = Instant::now();
+    let run_spec = input.run_spec;
+    let calendar_registry = input.calendar_registry;
+    let stage_input = input.stage_input;
+    let upstream_joint_refinement_handoff = input.upstream_joint_refinement_handoff;
+    let upstream_option_refinement_handoff = input.upstream_option_refinement_handoff;
+    let progress_sender = input.progress_sender;
+    let disk_checkpoint_directory = input.disk_checkpoint_directory;
+    let load_current_stage_resume_state = input.load_current_stage_resume_state;
+    let pipeline_stage = input.pipeline_stage;
 
     if stage_input.restart_candidate_budget_override == Some(0) {
         return build_stage_failure_report(
@@ -812,15 +832,18 @@ fn prepare_parameterization(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
     })?;
 
-    let (mut lower_bounds, mut upper_bounds) = build_parameter_bounds(
-        &active_parameter_layout,
-        baseline_parameter_vector.as_slice(),
-        baseline_15m_calibration_sample,
-        resolved_stage_payloads
-            .return_components_payload
-            .fitted_parameters
-            .nig_shared_plus_shift_configuration,
-        selected_return_components_candidate(resolved_stage_payloads.return_components_payload)
+    let (mut lower_bounds, mut upper_bounds) =
+        build_parameter_bounds(super::super::setup::ParameterBoundsBuildInput {
+            active_parameter_layout: &active_parameter_layout,
+            baseline_parameter_vector: baseline_parameter_vector.as_slice(),
+            baseline_15m_calibration_sample,
+            selected_return_nig_configuration: resolved_stage_payloads
+                .return_components_payload
+                .fitted_parameters
+                .nig_shared_plus_shift_configuration,
+            return_component_basin_diagnostics: selected_return_components_candidate(
+                resolved_stage_payloads.return_components_payload,
+            )
             .map(|candidate| {
                 candidate
                     .continuous_distribution_fit_breakdown
@@ -828,13 +851,22 @@ fn prepare_parameterization(
                     .as_slice()
             })
             .unwrap_or(&[]),
-        observed_data,
-        resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
-        &resolved_stage_payloads.stage_solver_settings,
-    )
-    .map_err(|error_message| {
-        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
-    })?;
+            baseline_hawkes_kernel_parameters: resolved_stage_payloads
+                .hawkes_payload
+                .fitted_parameters
+                .kernel_parameters,
+            baseline_long_variance_parameters: resolved_stage_payloads
+                .return_components_payload
+                .fitted_parameters
+                .long_variance_parameters,
+            observed_data,
+            baseline_modeled_open_event_rate_per_hour: resolved_stage_payloads
+                .baseline_modeled_open_event_rate_per_hour,
+            solver_settings: &resolved_stage_payloads.stage_solver_settings,
+        })
+        .map_err(|error_message| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+        })?;
 
     let option_pricing_refinement_enabled = false;
 
@@ -848,7 +880,7 @@ fn prepare_parameterization(
         resolved_stage_payloads.stage_solver_settings.cpu_count,
     )?;
 
-    freeze_hawkes_and_coupling_bounds_for_option_pricing(
+    freeze_physical_parameter_bounds_for_option_pricing(
         &active_parameter_layout,
         baseline_parameter_vector.as_slice(),
         lower_bounds.as_mut_slice(),
@@ -1059,7 +1091,7 @@ fn runtime_hourly_seasonality_range(
     Ok((range_start_utc_nanos, range_end_utc_nanos))
 }
 
-fn freeze_hawkes_and_coupling_bounds_for_option_pricing(
+fn freeze_physical_parameter_bounds_for_option_pricing(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     baseline_parameter_vector: &[f64],
     lower_bounds: &mut [f64],
@@ -1073,6 +1105,9 @@ fn freeze_hawkes_and_coupling_bounds_for_option_pricing(
     for parameter_index in active_parameter_layout
         .hawkes_block
         .iter()
+        .chain(active_parameter_layout.nig_block.iter())
+        .chain(active_parameter_layout.return_clock_block.iter())
+        .chain(active_parameter_layout.long_variance_block.iter())
         .chain(active_parameter_layout.coupling_block.iter())
     {
         lower_bounds[*parameter_index] = baseline_parameter_vector[*parameter_index];
@@ -1584,8 +1619,7 @@ fn resolve_restart_search_artifacts_for_stage(
         JointRefinementPipelineStage::Finalization => {
             if run_spec
                 .selected_stages
-                .iter()
-                .any(|stage| *stage == CalibrationStage::OptionRefinement)
+                .contains(&CalibrationStage::OptionRefinement)
             {
                 return restart_search_artifacts_from_upstream_or_resume(
                     run_spec,

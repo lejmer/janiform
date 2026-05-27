@@ -728,6 +728,7 @@ mod tests {
     };
     use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+    use janiform_model_kernels::long_variance::LongVarianceParameters;
     use janiform_model_kernels::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -758,6 +759,7 @@ mod tests {
             .expect("hawkes parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
                 .expect("gamma configuration should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct");
 
@@ -837,6 +839,7 @@ mod tests {
             .expect("hawkes parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(4.0, 0.25)
                 .expect("gamma configuration should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct");
 
@@ -936,6 +939,7 @@ mod tests {
             .expect("hawkes parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
                 .expect("gamma configuration should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct");
 

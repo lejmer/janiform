@@ -454,16 +454,17 @@ fn average_negative_log_likelihood_with_failures(
     let log_density_resolution =
         average_negative_log_likelihood_resolution_for_weight_sum(member_weight_sum);
 
-    let block_contributions = exact_likelihood_block_contributions(
-        configuration,
-        driver_parameters,
-        optimizer_context,
-        member_indices,
-        scope,
-        scale_bucket_index,
-        log_density_resolution,
-        exact_block_cache,
-    );
+    let block_contributions =
+        exact_likelihood_block_contributions(ExactLikelihoodBlockContributionsInput {
+            configuration,
+            driver_parameters,
+            optimizer_context,
+            member_indices,
+            scope,
+            scale_bucket_index,
+            log_density_resolution,
+            exact_block_cache,
+        });
 
     let mut weighted_log_likelihood_sum = 0.0;
     let mut weighted_log_likelihood_error_upper_bound_sum = 0.0;
@@ -592,105 +593,121 @@ fn average_negative_log_likelihood_with_failures(
     Ok(scope_evaluation)
 }
 
-fn exact_likelihood_block_contributions(
+struct ExactLikelihoodBlockContributionsInput<'a> {
     configuration: NigSharedPlusShiftConfiguration,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
-    optimizer_context: &ContinuousReturnOptimizerContext,
-    member_indices: &[usize],
+    optimizer_context: &'a ContinuousReturnOptimizerContext,
+    member_indices: &'a [usize],
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
     log_density_resolution: f64,
-    exact_block_cache: Option<&ExactBlockEvaluationCache>,
+    exact_block_cache: Option<&'a ExactBlockEvaluationCache>,
+}
+
+fn exact_likelihood_block_contributions(
+    input: ExactLikelihoodBlockContributionsInput<'_>,
 ) -> Vec<Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure>> {
     let evaluate_member = |member_index: &usize| {
-        exact_likelihood_block_contribution(
-            configuration,
-            driver_parameters,
-            optimizer_context,
-            *member_index,
-            scope,
-            scale_bucket_index,
-            log_density_resolution,
-            exact_block_cache,
-        )
+        exact_likelihood_block_contribution(ExactLikelihoodBlockContributionInput {
+            configuration: input.configuration,
+            driver_parameters: input.driver_parameters,
+            optimizer_context: input.optimizer_context,
+            member_index: *member_index,
+            scope: input.scope,
+            scale_bucket_index: input.scale_bucket_index,
+            log_density_resolution: input.log_density_resolution,
+            exact_block_cache: input.exact_block_cache,
+        })
     };
 
-    if member_indices.len() > 1 {
-        let parallel_chunk_len = member_indices
+    if input.member_indices.len() > 1 {
+        let parallel_chunk_len = input
+            .member_indices
             .len()
             .div_ceil(rayon::current_num_threads().max(1))
             .max(1);
 
-        return member_indices
+        return input
+            .member_indices
             .par_iter()
             .with_min_len(parallel_chunk_len)
             .map(evaluate_member)
             .collect();
     }
 
-    member_indices.iter().map(evaluate_member).collect()
+    input.member_indices.iter().map(evaluate_member).collect()
 }
 
-fn exact_likelihood_block_contribution(
+struct ExactLikelihoodBlockContributionInput<'a> {
     configuration: NigSharedPlusShiftConfiguration,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
-    optimizer_context: &ContinuousReturnOptimizerContext,
+    optimizer_context: &'a ContinuousReturnOptimizerContext,
     member_index: usize,
     scope: ReturnComponentsStageExactLikelihoodFailureScope,
     scale_bucket_index: Option<usize>,
     log_density_resolution: f64,
-    exact_block_cache: Option<&ExactBlockEvaluationCache>,
+    exact_block_cache: Option<&'a ExactBlockEvaluationCache>,
+}
+
+fn exact_likelihood_block_contribution(
+    input: ExactLikelihoodBlockContributionInput<'_>,
 ) -> Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure> {
     let observed_return = exact_likelihood_member_value(
-        optimizer_context.observed_returns.as_slice(),
-        member_index,
-        scope,
-        scale_bucket_index,
+        input.optimizer_context.observed_returns.as_slice(),
+        input.member_index,
+        input.scope,
+        input.scale_bucket_index,
     )?;
 
     let business_time_scale = exact_likelihood_member_value(
-        optimizer_context.business_time_scales.as_slice(),
-        member_index,
-        scope,
-        scale_bucket_index,
+        input.optimizer_context.business_time_scales.as_slice(),
+        input.member_index,
+        input.scope,
+        input.scale_bucket_index,
     )?;
 
     let sell_share_proxy = exact_likelihood_member_value(
-        optimizer_context.sell_share_proxies.as_slice(),
-        member_index,
-        scope,
-        scale_bucket_index,
+        input.optimizer_context.sell_share_proxies.as_slice(),
+        input.member_index,
+        input.scope,
+        input.scale_bucket_index,
     )?;
 
     let integrated_buy_intensity = exact_likelihood_member_value(
-        optimizer_context.integrated_buy_intensities.as_slice(),
-        member_index,
-        scope,
-        scale_bucket_index,
+        input
+            .optimizer_context
+            .integrated_buy_intensities
+            .as_slice(),
+        input.member_index,
+        input.scope,
+        input.scale_bucket_index,
     )?;
 
     let integrated_sell_intensity = exact_likelihood_member_value(
-        optimizer_context.integrated_sell_intensities.as_slice(),
-        member_index,
-        scope,
-        scale_bucket_index,
+        input
+            .optimizer_context
+            .integrated_sell_intensities
+            .as_slice(),
+        input.member_index,
+        input.scope,
+        input.scale_bucket_index,
     )?;
 
     let block_input = build_exact_block_input(ExactBlockInputBuildInput {
-        configuration,
+        configuration: input.configuration,
         observed_return,
         business_time_scale,
         sell_share_proxy,
         integrated_buy_intensity,
         integrated_sell_intensity,
-        block_member_index: member_index,
-        log_density_resolution,
+        block_member_index: input.member_index,
+        log_density_resolution: input.log_density_resolution,
     })
     .map_err(|failure| {
         ExactLikelihoodScopeFailure::Structural(Box::new(
             build_exact_likelihood_failure_diagnostic(
-                scope,
-                scale_bucket_index,
+                input.scope,
+                input.scale_bucket_index,
                 Some(failure.block_member_index),
                 failure.failure_reason,
                 Some(*failure.context),
@@ -699,30 +716,37 @@ fn exact_likelihood_block_contribution(
         ))
     })?;
 
-    let cache_key =
-        exact_block_cache.map(|_| ExactBlockEvaluationCacheKey::from_block_input(&block_input));
-    if let (Some(exact_block_cache), Some(cache_key)) = (exact_block_cache, cache_key)
-        && let Some(block_evaluation) =
-            cached_exact_block_evaluation(exact_block_cache, cache_key, log_density_resolution)
+    let cache_key = input
+        .exact_block_cache
+        .map(|_| ExactBlockEvaluationCacheKey::from_block_input(&block_input));
+    if let (Some(exact_block_cache), Some(cache_key)) = (input.exact_block_cache, cache_key)
+        && let Some(block_evaluation) = cached_exact_block_evaluation(
+            exact_block_cache,
+            cache_key,
+            input.log_density_resolution,
+        )
     {
         return Ok(ExactLikelihoodBlockContribution {
-            member_index,
-            member_weight: exact_likelihood_member_weight(optimizer_context, member_index),
+            member_index: input.member_index,
+            member_weight: exact_likelihood_member_weight(
+                input.optimizer_context,
+                input.member_index,
+            ),
             block_evaluation,
         });
     }
 
     let block_evaluation = evaluate_exact_block_likelihood(
-        configuration,
-        driver_parameters,
+        input.configuration,
+        input.driver_parameters,
         block_input,
-        log_density_resolution,
+        input.log_density_resolution,
     )
     .map_err(|failure| {
         ExactLikelihoodScopeFailure::Structural(Box::new(
             build_exact_likelihood_failure_diagnostic(
-                scope,
-                scale_bucket_index,
+                input.scope,
+                input.scale_bucket_index,
                 Some(failure.block_member_index),
                 failure.failure_reason,
                 Some(*failure.context),
@@ -731,13 +755,13 @@ fn exact_likelihood_block_contribution(
         ))
     })?;
 
-    if let (Some(exact_block_cache), Some(cache_key)) = (exact_block_cache, cache_key) {
+    if let (Some(exact_block_cache), Some(cache_key)) = (input.exact_block_cache, cache_key) {
         record_exact_block_evaluation(exact_block_cache, cache_key, block_evaluation);
     }
 
     Ok(ExactLikelihoodBlockContribution {
-        member_index,
-        member_weight: exact_likelihood_member_weight(optimizer_context, member_index),
+        member_index: input.member_index,
+        member_weight: exact_likelihood_member_weight(input.optimizer_context, input.member_index),
         block_evaluation,
     })
 }

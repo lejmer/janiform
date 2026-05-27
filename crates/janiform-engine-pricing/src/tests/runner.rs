@@ -10,6 +10,7 @@ use crate::{
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::LongVarianceState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -144,6 +145,7 @@ fn single_option_pricing_execution_input_validates_single_maturity_interval() {
                 y_minus_plus: 0.0,
                 y_minus_minus: 0.0,
             },
+            LongVarianceState::unit(),
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-gain mean reversion should construct"),
             1.0,

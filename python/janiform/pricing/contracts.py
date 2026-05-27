@@ -8,6 +8,48 @@ from math import exp
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from .._pricing_field_names import (
+    BOUNDARY_STATE_NORM_FIELD_NAME,
+    DISCOUNT_FACTOR_FIELD_NAME,
+    FORWARD_PRICE_FIELD_NAME,
+    IMPLIED_VOLATILITY_FIELD_NAME,
+    IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
+    MATURITY_INTERVAL_FIELD_NAME,
+    PRICING_STATUS_FIELD_NAME,
+)
+from .._timestamps import NANOS_PER_HOUR, hours_to_exact_nanoseconds
+from ..contracts import (
+    ContractModel,
+    serialize_pretty_json,
+    validate_exact_string,
+    validate_required_field_list,
+)
+from ..contracts.base import (
+    require_boolean,
+    require_finite_number,
+    require_mapping,
+    require_negative_finite_number,
+    require_non_negative_finite_number,
+    require_non_negative_integer,
+    require_optional_boolean_value,
+    require_optional_finite_number,
+    require_optional_mapping_value,
+    require_optional_string_value,
+    require_positive_finite_number,
+    require_positive_finite_scalar,
+    require_sequence,
+    require_str_enum_value,
+    require_string,
+)
+from ..errors import JaniformValidationError
+from ..hourly_factors import HourlyFactorContract
+from ..long_variance import LongVarianceParameters, LongVarianceState
+from ..mean_reversion import (
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+)
+from ..return_clock import ReturnClockExposureParameters
 from ._contract_field_names import (
     DIAGNOSTICS_FIELD_NAME,
     FORWARD_MONEYNESS_FIELD_NAME,
@@ -24,51 +66,8 @@ from ._contract_field_names import (
     TRANSFORM_STATUS_FIELD_NAME,
     VANILLA_OPTION_PRICING_RESPONSE_FIELD_PATH,
 )
-from .._pricing_field_names import (
-    BOUNDARY_STATE_NORM_FIELD_NAME,
-    DISCOUNT_FACTOR_FIELD_NAME,
-    FORWARD_PRICE_FIELD_NAME,
-    IMPLIED_VOLATILITY_FIELD_NAME,
-    IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
-    MATURITY_INTERVAL_FIELD_NAME,
-    PRICING_STATUS_FIELD_NAME,
-)
 from ._moneyness import calculate_log_forward_moneyness
 from .errors import PRICING_ERROR_FACTORY, _pricing_error
-from ..return_clock import ReturnClockExposureParameters
-from ..contracts.base import (
-    require_boolean,
-    require_optional_finite_number,
-    require_optional_boolean_value,
-    require_optional_mapping_value,
-    require_optional_string_value,
-    require_str_enum_value,
-)
-from ..mean_reversion import (
-    MeanReversionAnchorModel,
-    MeanReversionBoundaryState,
-    MeanReversionFittedParameters,
-)
-from ..contracts import (
-    ContractModel,
-    serialize_pretty_json,
-    validate_exact_string,
-    validate_required_field_list,
-)
-from ..contracts.base import (
-    require_finite_number,
-    require_mapping,
-    require_negative_finite_number,
-    require_non_negative_finite_number,
-    require_non_negative_integer,
-    require_positive_finite_number,
-    require_positive_finite_scalar,
-    require_sequence,
-    require_string,
-)
-from ..errors import JaniformValidationError
-from ..hourly_factors import HourlyFactorContract
-from .._timestamps import NANOS_PER_HOUR, hours_to_exact_nanoseconds
 
 if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
@@ -565,6 +564,7 @@ class VanillaOptionPricingModelParameters(ContractModel):
     news_process_configuration: NewsProcessConfiguration
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     return_clock_exposure_parameters: ReturnClockExposureParameters
+    long_variance_parameters: LongVarianceParameters
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters
 
     def __post_init__(self) -> None:
@@ -599,6 +599,15 @@ class VanillaOptionPricingModelParameters(ContractModel):
             raise _pricing_error(
                 "model_parameters.return_clock_exposure_parameters",
                 "must be a ReturnClockExposureParameters",
+            )
+
+        if not isinstance(
+            self.long_variance_parameters,
+            LongVarianceParameters,
+        ):
+            raise _pricing_error(
+                "model_parameters.long_variance_parameters",
+                "must be a LongVarianceParameters",
             )
 
         if not isinstance(
@@ -658,6 +667,16 @@ class VanillaOptionPricingModelParameters(ContractModel):
                     field_path=f"{field_path}.return_clock_exposure_parameters",
                     error_factory=PRICING_ERROR_FACTORY,
                 ),
+                long_variance_parameters=LongVarianceParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "long_variance_parameters",
+                        f"{field_path}.long_variance_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.long_variance_parameters",
+                    error_factory=PRICING_ERROR_FACTORY,
+                ),
                 pricing_kernel_parameters=VanillaOptionPricingKernelParameters.from_mapping(
                     require_mapping(
                         raw_payload,
@@ -676,6 +695,7 @@ class VanillaOptionPricingModelParameters(ContractModel):
 class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
     interval_index: int
     hawkes_boundary_state: HawkesExcitationState
+    long_variance_boundary_state: LongVarianceState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     interval_delta: float
     observed_boundary_state: MeanReversionBoundaryState
@@ -687,6 +707,12 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
             raise _pricing_error(
                 "boundary_input.hawkes_boundary_state",
                 "must be a HawkesExcitationState",
+            )
+
+        if not isinstance(self.long_variance_boundary_state, LongVarianceState):
+            raise _pricing_error(
+                "boundary_input.long_variance_boundary_state",
+                "must be a LongVarianceState",
             )
 
         if not isinstance(
@@ -750,6 +776,16 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
                         PRICING_ERROR_FACTORY,
                     ),
                     field_path=f"{field_path}.hawkes_boundary_state",
+                ),
+                long_variance_boundary_state=LongVarianceState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "long_variance_boundary_state",
+                        f"{field_path}.long_variance_boundary_state",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.long_variance_boundary_state",
+                    error_factory=PRICING_ERROR_FACTORY,
                 ),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters.from_mapping(
                     require_mapping(

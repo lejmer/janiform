@@ -21,6 +21,7 @@ use janiform_affine_oracle::affine_oracle::{
 };
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::LongVarianceState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -750,6 +751,7 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_zero_deviation() {
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
+        LongVarianceState::unit(),
         MeanReversionFittedParameters::try_new(
             0.7,
             MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
@@ -810,6 +812,7 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
                 y_minus_plus: 0.0,
                 y_minus_minus: 0.1,
             },
+            LongVarianceState::unit(),
             MeanReversionFittedParameters::try_new(
                 kappa,
                 MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
@@ -901,6 +904,7 @@ fn anchored_local_tilt_implicit_root_sensitivity_matches_finite_difference() {
                 y_minus_plus: 0.0,
                 y_minus_minus: 0.1,
             },
+            LongVarianceState::unit(),
             MeanReversionFittedParameters::try_new(
                 0.8,
                 MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),

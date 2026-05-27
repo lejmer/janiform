@@ -2,7 +2,8 @@ use chrono_tz::Tz;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::calendar_exposure::{
-    RuntimeSeasonalityIntervalContribution, runtime_seasonality_interval_contribution,
+    RuntimeSeasonalityIntervalContribution, RuntimeSeasonalityIntervalContributionInput,
+    runtime_seasonality_interval_contribution,
 };
 use super::components::validate_runtime_seasonality_components;
 
@@ -58,14 +59,16 @@ pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
             .min(range_end_utc_nanos);
 
         interval_contributions.push(runtime_seasonality_interval_contribution(
-            calendar_definition,
-            timezone,
-            intraday_minutes_per_bin,
-            intraday_factor_by_bin,
-            day_of_week_factor,
-            day_of_year_factor,
-            interval_start_utc_nanos,
-            interval_end_utc_nanos,
+            RuntimeSeasonalityIntervalContributionInput {
+                calendar_definition,
+                timezone,
+                intraday_minutes_per_bin,
+                intraday_factor_by_bin,
+                day_of_week_factor,
+                day_of_year_factor,
+                interval_start_utc_nanos,
+                interval_end_utc_nanos,
+            },
         )?);
 
         interval_start_utc_nanos = interval_start_utc_nanos

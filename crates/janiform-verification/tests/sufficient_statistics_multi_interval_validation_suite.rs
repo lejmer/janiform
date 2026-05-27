@@ -6,6 +6,7 @@ use janiform_engine_sufficient_statistics::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
@@ -273,22 +274,28 @@ fn build_run_request(seed: u64, horizon_interval_count: usize) -> SufficientStat
         kernel_parameters,
         GammaSeverityMarkConfiguration::try_new(1.7, 0.8)
             .expect("fixture gamma mark configuration should construct"),
+        LongVarianceParameters::neutral(),
     )
     .expect("fixture equation specification should construct");
 
-    let model_inputs = SufficientStatisticsModelInputs::try_new(
+    let model_inputs = SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
         equation_specification,
-        NigSharedPlusShiftConfiguration::try_new(2.4, -0.75, 0.8, 0.12, -0.18)
-            .expect("fixture NIG configuration should construct"),
-        HawkesExcitationState {
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+            2.4, -0.75, 0.8, 0.12, -0.18,
+        )
+        .expect("fixture NIG configuration should construct"),
+        initial_excitation_state: HawkesExcitationState {
             y_plus_plus: 0.45,
             y_plus_minus: 0.16,
             y_minus_plus: 0.26,
             y_minus_minus: 0.37,
         },
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
-        MeanReversionRuntimeIntervalAnchors::try_new(
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
+        mean_reversion_fitted_parameters:
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-kappa endogenous mean reversion should construct"),
+        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
             0.0,
@@ -297,9 +304,11 @@ fn build_run_request(seed: u64, horizon_interval_count: usize) -> SufficientStat
             vec![1.0; horizon_interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
-            .expect("disabled mean-reversion boundary state should construct"),
-    )
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+            0.0, 0.0, 0.0, 0.0,
+        )
+        .expect("disabled mean-reversion boundary state should construct"),
+    })
     .expect("fixture model inputs should construct");
 
     let (s_h, nu_h_known, nu_h_surprise) = build_interval_factors(horizon_interval_count);

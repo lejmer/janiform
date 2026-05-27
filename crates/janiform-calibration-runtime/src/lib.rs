@@ -170,6 +170,12 @@ pub use stages::joint_refinement::{
     run_joint_refinement_calibration_stage, run_joint_refinement_candidate_in_session,
     simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
 };
+pub use stages::long_variance::{
+    LongVarianceStageExecutionFailure, LongVarianceStageExecutionInput,
+    LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
+    LongVarianceStageFittedPayload, LongVarianceStageReturnComponentsInput,
+    run_long_variance_calibration_stage,
+};
 pub use stages::mean_reversion::{
     MeanReversionStageExecutionFailure, MeanReversionStageExecutionInput,
     MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,

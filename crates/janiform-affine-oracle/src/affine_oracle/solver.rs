@@ -29,7 +29,7 @@ const DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT: usize = 64;
 // For the linear Hawkes decay subproblem D' = -beta D, RK4 has stability
 // polynomial R(-x) = 1 - x + x^2/2 - x^3/6 + x^4/24. The positive
 // stability boundary solves R(-x) = 1, or x^3 - 4x^2 + 12x - 24 = 0.
-const FOURTH_ORDER_RUNGE_KUTTA_NEGATIVE_REAL_STABILITY_LIMIT: f64 = 2.7852935634052816;
+const FOURTH_ORDER_RUNGE_KUTTA_NEGATIVE_REAL_STABILITY_LIMIT: f64 = 2.785_293_563_405_282;
 // Forward Euler has R(-x) = 1 - x and remains stable for 0 <= x <= 2.
 const FORWARD_EULER_NEGATIVE_REAL_STABILITY_LIMIT: f64 = 2.0;
 

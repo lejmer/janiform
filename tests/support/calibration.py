@@ -41,6 +41,15 @@ def build_neutral_return_clock_exposure_parameters_payload() -> dict[str, Any]:
     }
 
 
+def build_neutral_long_variance_parameters_payload() -> dict[str, Any]:
+    return {
+        "mean_reversion_rate": 1.0,
+        "vol_of_vol": 0.0,
+        "buy_event_loading": 0.0,
+        "sell_event_loading": 0.0,
+    }
+
+
 def build_nominal_tick_grid_observation_model_payload() -> dict[str, Any]:
     return {
         "tick_size": None,
@@ -147,6 +156,7 @@ def build_valid_execution_input_model(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.LONG_VARIANCE,
                 CalibrationStage.MEAN_REVERSION,
             ),
             seed_settings=CalibrationRunSeedSettings(
@@ -162,6 +172,7 @@ def build_valid_execution_input_model(
                 _solver_settings(CalibrationStage.SEASONALITY),
                 _solver_settings(CalibrationStage.HAWKES),
                 _solver_settings(CalibrationStage.RETURN_COMPONENTS),
+                _solver_settings(CalibrationStage.LONG_VARIANCE),
                 _solver_settings(CalibrationStage.MEAN_REVERSION),
             ),
         ),

@@ -1,4 +1,4 @@
-use nalgebra::{DMatrix, DVector, SMatrix, SVector};
+use nalgebra::{DMatrix, DVector, Matrix2, SMatrix, SVector, Vector2};
 
 /// Computes a damped least-squares step for a residual linearization.
 ///
@@ -120,6 +120,55 @@ pub fn mean_diagonal_damped_least_squares_step_4(
     ])
 }
 
+/// Solve a two-coordinate least-squares fit with non-negative coefficients.
+pub fn non_negative_least_squares_2(rows: &[[f64; 2]], response: &[f64]) -> Option<[f64; 2]> {
+    if rows.len() != response.len() || rows.is_empty() {
+        return None;
+    }
+
+    let mut normal_matrix = Matrix2::<f64>::zeros();
+    let mut normal_rhs = Vector2::<f64>::zeros();
+
+    for (row, current_response) in rows.iter().zip(response.iter()) {
+        if !current_response.is_finite() || row.iter().any(|value| !value.is_finite()) {
+            return None;
+        }
+
+        for left_position in 0..2 {
+            normal_rhs[left_position] += row[left_position] * current_response;
+
+            for right_position in 0..2 {
+                normal_matrix[(left_position, right_position)] +=
+                    row[left_position] * row[right_position];
+            }
+        }
+    }
+
+    let mut candidates = vec![[0.0, 0.0]];
+    if let Some(unconstrained_solution) = normal_matrix.lu().solve(&normal_rhs)
+        && unconstrained_solution[0] >= 0.0
+        && unconstrained_solution[1] >= 0.0
+        && unconstrained_solution[0].is_finite()
+        && unconstrained_solution[1].is_finite()
+    {
+        candidates.push([unconstrained_solution[0], unconstrained_solution[1]]);
+    }
+
+    if let Some(first_coordinate_solution) = single_coordinate_solution(rows, response, 0) {
+        candidates.push([first_coordinate_solution, 0.0]);
+    }
+    if let Some(second_coordinate_solution) = single_coordinate_solution(rows, response, 1) {
+        candidates.push([0.0, second_coordinate_solution]);
+    }
+
+    candidates
+        .into_iter()
+        .min_by(|left_candidate, right_candidate| {
+            squared_residual_norm_2(rows, response, left_candidate)
+                .total_cmp(&squared_residual_norm_2(rows, response, right_candidate))
+        })
+}
+
 fn mean_matrix_diagonal(matrix: &DMatrix<f64>) -> f64 {
     let diagonal_sum = (0..matrix.nrows())
         .map(|position| matrix[(position, position)])
@@ -128,10 +177,47 @@ fn mean_matrix_diagonal(matrix: &DMatrix<f64>) -> f64 {
     diagonal_sum / matrix.nrows().max(1) as f64
 }
 
+fn single_coordinate_solution(
+    rows: &[[f64; 2]],
+    response: &[f64],
+    coordinate_position: usize,
+) -> Option<f64> {
+    let mut denominator = 0.0;
+    let mut numerator = 0.0;
+
+    for (row, current_response) in rows.iter().zip(response.iter()) {
+        denominator += row[coordinate_position] * row[coordinate_position];
+        numerator += row[coordinate_position] * current_response;
+    }
+
+    if denominator <= 0.0 || !denominator.is_finite() || !numerator.is_finite() {
+        return None;
+    }
+
+    Some((numerator / denominator).max(0.0))
+}
+
+fn squared_residual_norm_2(rows: &[[f64; 2]], response: &[f64], coefficients: &[f64; 2]) -> f64 {
+    rows.iter()
+        .zip(response.iter())
+        .map(|(row, current_response)| {
+            let residual = current_response
+                - row
+                    .iter()
+                    .zip(coefficients.iter())
+                    .map(|(sensitivity, coefficient)| sensitivity * coefficient)
+                    .sum::<f64>();
+
+            residual * residual
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         mean_diagonal_damped_least_squares_step, mean_diagonal_damped_least_squares_step_4,
+        non_negative_least_squares_2,
     };
 
     #[test]
@@ -191,6 +277,29 @@ mod tests {
         );
 
         assert!(stepped_norm < baseline_norm);
+    }
+
+    #[test]
+    fn non_negative_least_squares_keeps_positive_two_coordinate_solution() {
+        let rows = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+        let response = [2.0, 3.0, 5.0];
+
+        let coefficients = non_negative_least_squares_2(rows.as_slice(), response.as_slice())
+            .expect("constrained least-squares fit should solve");
+
+        assert_eq!(coefficients, [2.0, 3.0]);
+    }
+
+    #[test]
+    fn non_negative_least_squares_uses_boundary_when_unconstrained_fit_is_negative() {
+        let rows = [[1.0, 0.0], [0.0, 1.0], [1.0, -1.0]];
+        let response = [2.0, -1.0, 3.0];
+
+        let coefficients = non_negative_least_squares_2(rows.as_slice(), response.as_slice())
+            .expect("constrained least-squares fit should solve");
+
+        assert_eq!(coefficients[0], 2.5);
+        assert_eq!(coefficients[1], 0.0);
     }
 
     fn squared_residual_norm(

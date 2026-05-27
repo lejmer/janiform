@@ -26,6 +26,7 @@ from .response import (
     validate_seeded_tick_simulation_response,
 )
 from .runtime import run_seeded_tick_event_simulation
+from ...long_variance import LongVarianceParameters, LongVarianceState
 from ..shared import (
     HawkesExcitationState,
     HawkesKernelLoadings,
@@ -44,6 +45,8 @@ __all__ = [
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
+    "LongVarianceParameters",
+    "LongVarianceState",
     "SeededFinePathMetadata",
     "SeededFinePathNewsArrivalComponent",
     "SeededFinePathRecord",

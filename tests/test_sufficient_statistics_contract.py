@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.sufficient_statistics import (
     SufficientStatisticsIntervalStatistics,
@@ -272,6 +273,7 @@ def _valid_run_request_model() -> SufficientStatisticsRunRequest:
                     shape_k=1.8,
                     scale_theta=0.7,
                 ),
+                long_variance_parameters=LongVarianceParameters.neutral(),
             ),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
@@ -286,6 +288,8 @@ def _valid_run_request_model() -> SufficientStatisticsRunRequest:
                 y_minus_plus=0.3,
                 y_minus_minus=0.4,
             ),
+            long_variance_parameters=LongVarianceParameters.neutral(),
+            initial_long_variance_state=LongVarianceState.unit(),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

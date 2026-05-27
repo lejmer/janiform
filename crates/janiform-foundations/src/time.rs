@@ -30,6 +30,8 @@ pub const HOURS_PER_NANOSECOND: f64 = 1.0 / NANOS_PER_HOUR_F64;
 
 /// Exact nanoseconds per day.
 pub const NANOS_PER_DAY: i64 = 24 * NANOS_PER_HOUR;
+/// Exact nanoseconds per seven-day week.
+pub const NANOS_PER_WEEK: i64 = 7 * NANOS_PER_DAY;
 
 /// Error returned when a duration spec cannot be represented as UTC nanoseconds.
 #[derive(Clone, Debug, Eq, PartialEq)]

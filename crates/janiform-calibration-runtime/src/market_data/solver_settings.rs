@@ -6,6 +6,10 @@ use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
 
 use crate::information_depth::support_information_depth;
 use crate::stages::joint_refinement::pricing_block_search_coordinate_count;
+use crate::stages::long_variance::{
+    LONG_VARIANCE_ACTIVE_PARAMETER_COUNT, LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT,
+    LONG_VARIANCE_OBJECTIVE_TERM_COUNT,
+};
 
 use super::loading::MarketDataLoadingOutput;
 
@@ -109,6 +113,7 @@ fn calibration_stage_name(stage: CalibrationStage) -> &'static str {
         CalibrationStage::Seasonality => "seasonality",
         CalibrationStage::Hawkes => "hawkes",
         CalibrationStage::ReturnComponents => "return_components",
+        CalibrationStage::LongVariance => "long_variance",
         CalibrationStage::MeanReversion => "mean_reversion",
         CalibrationStage::JointRefinement => "joint_refinement",
         CalibrationStage::OptionRefinement => "option_refinement",
@@ -217,6 +222,22 @@ fn stage_solver_geometry(
                 support_count: observations.len(),
                 candidate_geometry_count: 4,
                 scale_reference,
+            }
+        }
+        CalibrationStage::LongVariance => {
+            let candidate_generation_input = loading_output
+                .preprocessing_output
+                .return_components_candidate_generation_input
+                .as_ref();
+
+            let support_count = joint_refinement_return_support_count(candidate_generation_input);
+
+            StageSolverGeometry {
+                parameter_dimension: LONG_VARIANCE_ACTIVE_PARAMETER_COUNT,
+                objective_term_count: LONG_VARIANCE_OBJECTIVE_TERM_COUNT,
+                support_count,
+                candidate_geometry_count: LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT,
+                scale_reference: 1.0,
             }
         }
         CalibrationStage::JointRefinement => {

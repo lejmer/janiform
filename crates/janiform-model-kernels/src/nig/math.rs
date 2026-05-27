@@ -1,6 +1,5 @@
-use janiform_foundations::randomness::SimulationRandomnessStream;
-
 use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::randomness::{SimulationRandomnessStream, sample_standard_normal_draw};
 
 pub(crate) fn stable_gamma(alpha: f64, beta: f64) -> f64 {
     ((alpha - beta.abs()) * (alpha + beta.abs())).sqrt()
@@ -83,21 +82,4 @@ where
     } else {
         None
     }
-}
-
-pub(crate) fn sample_standard_normal_draw<R>(randomness_stream: &mut R) -> f64
-where
-    R: SimulationRandomnessStream,
-{
-    let first_uniform_draw = randomness_stream
-        .next_unit_interval_f64()
-        .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
-    let second_uniform_draw = randomness_stream
-        .next_unit_interval_f64()
-        .clamp(0.0, 1.0 - f64::EPSILON);
-
-    let radius = (-2.0 * first_uniform_draw.ln()).sqrt();
-    let angle = 2.0 * std::f64::consts::PI * second_uniform_draw;
-
-    radius * angle.cos()
 }

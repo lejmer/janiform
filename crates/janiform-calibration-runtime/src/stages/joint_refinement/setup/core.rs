@@ -13,6 +13,7 @@ use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameters, baseline_intensity_for_stationary_total_intensity,
 };
+use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
@@ -51,14 +52,21 @@ use super::super::objective::{
     evaluate_joint_fitted_candidate_restart_admission_diagnostics,
 };
 use super::super::worker_runtime::JointRefinementSeedSummaryAcquisitionError;
+use super::long_variance_search::{
+    apply_long_variance_parameter_bounds, joint_long_variance_restart_seeds,
+};
 use super::return_clock_restart_seeds::{
     JointReturnClockExposureSeedsBuildInput, ReturnClockExposureRestartSeedProfile,
     joint_return_clock_exposure_restart_seeds, return_clock_exposure_restart_seed_profile,
 };
+use crate::stages::long_variance::policy::long_variance_retained_stationary_level_floor;
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
     JointRefinementStagePricingBlockFittedParameters, ReturnComponentsStageFittedParameters,
 };
+
+type RestartSeedCandidate = (String, Vec<f64>);
+type RestartSeedCandidateBatch = Vec<RestartSeedCandidate>;
 
 const RETURN_SCALE_REALIZED_VARIANCE_15M_METRIC_ID: &str = "return_scale.15m.realized_variance";
 const RETURN_SCALE_MEAN_ABSOLUTE_RETURN_15M_METRIC_ID: &str =
@@ -264,6 +272,35 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
             )
             .ok()?;
 
+            let baseline_long_variance_parameters = context
+                .baseline_return_components_fitted_parameters
+                .long_variance_parameters;
+            let long_variance_parameters = LongVarianceParameters::try_new(
+                baseline_long_variance_parameters.mean_reversion_rate
+                    * parameter_vector[context
+                        .active_parameter_layout
+                        .log_long_variance_mean_reversion_rate_scale_index]
+                        .exp(),
+                parameter_vector[context
+                    .active_parameter_layout
+                    .long_variance_vol_of_vol_index],
+                parameter_vector[context
+                    .active_parameter_layout
+                    .long_variance_buy_event_loading_index],
+                parameter_vector[context
+                    .active_parameter_layout
+                    .long_variance_sell_event_loading_index],
+            )
+            .ok()?;
+            let stationary_long_variance_level = long_variance_parameters
+                .stationary_mean_reversion_level_for_hawkes_kernel(
+                    hawkes_fitted_parameters.kernel_parameters,
+                )
+                .ok()?;
+            if stationary_long_variance_level < long_variance_retained_stationary_level_floor() {
+                return None;
+            }
+
             let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
                 nig_shared_plus_shift_configuration,
                 news_process_configuration,
@@ -272,6 +309,7 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
                     .surprise_deterministic_intensity_profile
                     .clone(),
                 return_clock_exposure_parameters,
+                long_variance_parameters,
                 tick_grid_observation_model: context
                     .baseline_return_components_fitted_parameters
                     .tick_grid_observation_model
@@ -364,6 +402,16 @@ pub(in crate::stages::joint_refinement) fn build_baseline_parameter_vector(
     parameter_vector[active_parameter_layout.log_buy_excitation_return_clock_scale_index] = 0.0;
     parameter_vector[active_parameter_layout.log_sell_excitation_return_clock_scale_index] = 0.0;
 
+    let long_variance_parameters = return_components_fitted_parameters.long_variance_parameters;
+    parameter_vector[active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index] =
+        0.0;
+    parameter_vector[active_parameter_layout.long_variance_vol_of_vol_index] =
+        long_variance_parameters.vol_of_vol;
+    parameter_vector[active_parameter_layout.long_variance_buy_event_loading_index] =
+        long_variance_parameters.buy_event_loading;
+    parameter_vector[active_parameter_layout.long_variance_sell_event_loading_index] =
+        long_variance_parameters.sell_event_loading;
+
     Ok(parameter_vector)
 }
 
@@ -449,6 +497,25 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
         log_sell_excitation_return_clock_scale_index,
     ];
 
+    let log_long_variance_mean_reversion_rate_scale_index = next_index;
+    next_index += 1;
+
+    let long_variance_vol_of_vol_index = next_index;
+    next_index += 1;
+
+    let long_variance_buy_event_loading_index = next_index;
+    next_index += 1;
+
+    let long_variance_sell_event_loading_index = next_index;
+    next_index += 1;
+
+    let long_variance_block = vec![
+        log_long_variance_mean_reversion_rate_scale_index,
+        long_variance_vol_of_vol_index,
+        long_variance_buy_event_loading_index,
+        long_variance_sell_event_loading_index,
+    ];
+
     let option_pricing_log_buy_activity_premium_index = next_index;
     next_index += 1;
 
@@ -463,6 +530,7 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
         hawkes_block,
         nig_block,
         return_clock_block,
+        long_variance_block,
         option_pricing_kernel_block,
         coupling_block,
         log_stationary_event_rate_scale_index,
@@ -471,6 +539,10 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
         log_cross_excitation_scale_index,
         log_buy_excitation_return_clock_scale_index,
         log_sell_excitation_return_clock_scale_index,
+        log_long_variance_mean_reversion_rate_scale_index,
+        long_variance_vol_of_vol_index,
+        long_variance_buy_event_loading_index,
+        long_variance_sell_event_loading_index,
         option_pricing_log_buy_activity_premium_index,
         option_pricing_log_sell_activity_premium_index,
         known_activity_scale_index,
@@ -487,6 +559,7 @@ impl JointRefinementActiveParameterLayout {
             .chain(self.nig_block.iter().copied())
             .chain(self.hawkes_block.iter().copied())
             .chain(self.return_clock_block.iter().copied())
+            .chain(self.long_variance_block.iter().copied())
             .chain(self.option_pricing_kernel_block.iter().copied())
             .max()
             .map(|index| index + 1)
@@ -494,16 +567,42 @@ impl JointRefinementActiveParameterLayout {
     }
 }
 
+pub(in crate::stages::joint_refinement) struct ParameterBoundsBuildInput<'a> {
+    pub(in crate::stages::joint_refinement) active_parameter_layout:
+        &'a JointRefinementActiveParameterLayout,
+    pub(in crate::stages::joint_refinement) baseline_parameter_vector: &'a [f64],
+    pub(in crate::stages::joint_refinement) baseline_15m_calibration_sample:
+        &'a ReturnComponentsStageContinuousReturnCalibrationSample,
+    pub(in crate::stages::joint_refinement) selected_return_nig_configuration:
+        NigSharedPlusShiftConfiguration,
+    pub(in crate::stages::joint_refinement) return_component_basin_diagnostics:
+        &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    pub(in crate::stages::joint_refinement) baseline_hawkes_kernel_parameters:
+        HawkesKernelParameters,
+    pub(in crate::stages::joint_refinement) baseline_long_variance_parameters:
+        LongVarianceParameters,
+    pub(in crate::stages::joint_refinement) observed_data:
+        &'a super::super::execution::JointRefinementObservedData,
+    pub(in crate::stages::joint_refinement) baseline_modeled_open_event_rate_per_hour: f64,
+    pub(in crate::stages::joint_refinement) solver_settings: &'a CalibrationOptimizerSettings,
+}
+
 pub(in crate::stages::joint_refinement) fn build_parameter_bounds(
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    baseline_parameter_vector: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    selected_return_nig_configuration: NigSharedPlusShiftConfiguration,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
-    observed_data: &super::super::execution::JointRefinementObservedData,
-    baseline_modeled_open_event_rate_per_hour: f64,
-    solver_settings: &CalibrationOptimizerSettings,
+    input: ParameterBoundsBuildInput<'_>,
 ) -> Result<(Vec<f64>, Vec<f64>), String> {
+    let ParameterBoundsBuildInput {
+        active_parameter_layout,
+        baseline_parameter_vector,
+        baseline_15m_calibration_sample,
+        selected_return_nig_configuration,
+        return_component_basin_diagnostics,
+        baseline_hawkes_kernel_parameters,
+        baseline_long_variance_parameters,
+        observed_data,
+        baseline_modeled_open_event_rate_per_hour,
+        solver_settings,
+    } = input;
+
     let mut lower_bounds = vec![0.0; baseline_parameter_vector.len()];
     let mut upper_bounds = vec![0.0; baseline_parameter_vector.len()];
 
@@ -537,6 +636,14 @@ pub(in crate::stages::joint_refinement) fn build_parameter_bounds(
         lower_bounds[*index] = -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
         upper_bounds[*index] = JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
     }
+
+    apply_long_variance_parameter_bounds(
+        active_parameter_layout,
+        &mut lower_bounds,
+        &mut upper_bounds,
+        baseline_hawkes_kernel_parameters,
+        baseline_long_variance_parameters,
+    )?;
 
     apply_option_pricing_kernel_bounds(
         active_parameter_layout,
@@ -751,17 +858,18 @@ pub(in crate::stages::joint_refinement) fn build_restart_seeds(
 
     let return_clock_seed_profile = return_clock_exposure_restart_seed_profile(joint_context);
 
-    let mut restart_candidates = build_core_restart_seed_candidates(
-        baseline_parameter_vector,
-        active_parameter_layout,
-        lower_bounds,
-        upper_bounds,
-        baseline_15m_calibration_sample,
-        return_component_basin_diagnostics,
-        baseline_final_objective_terms,
-        activity_log_shift,
-        return_clock_seed_profile,
-    );
+    let mut restart_candidates =
+        build_core_restart_seed_candidates(CoreRestartSeedCandidatesInput {
+            baseline_parameter_vector,
+            active_parameter_layout,
+            lower_bounds,
+            upper_bounds,
+            baseline_15m_calibration_sample,
+            return_component_basin_diagnostics,
+            baseline_final_objective_terms,
+            activity_log_shift,
+            return_clock_seed_profile,
+        });
 
     emit_restart_seed_generation_progress(
         progress_sender,
@@ -843,7 +951,7 @@ pub(in crate::stages::joint_refinement) fn build_restart_seeds_with_halton_accep
 
     let halton_seed_is_accepted = Mutex::new(halton_seed_is_accepted);
 
-    let restart_candidates = build_core_restart_seed_candidates(
+    let restart_candidates = build_core_restart_seed_candidates(CoreRestartSeedCandidatesInput {
         baseline_parameter_vector,
         active_parameter_layout,
         lower_bounds,
@@ -852,8 +960,8 @@ pub(in crate::stages::joint_refinement) fn build_restart_seeds_with_halton_accep
         return_component_basin_diagnostics,
         baseline_final_objective_terms,
         activity_log_shift,
-        None,
-    );
+        return_clock_seed_profile: None,
+    });
 
     let restart_seed_score = |restart_id: &str, restart_seed: &[f64]| {
         if !restart_id.starts_with("halton_") {
@@ -905,17 +1013,34 @@ pub(in crate::stages::joint_refinement) struct RestartSeedsWithHaltonAcceptanceB
         HaltonSeedAcceptancePredicate<'a>,
 }
 
-fn build_core_restart_seed_candidates(
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
-    baseline_final_objective_terms: &[JointRefinementStageObjectiveTermDiagnostic],
+struct CoreRestartSeedCandidatesInput<'a> {
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
+    baseline_15m_calibration_sample: &'a ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics:
+        &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    baseline_final_objective_terms: &'a [JointRefinementStageObjectiveTermDiagnostic],
     activity_log_shift: f64,
     return_clock_seed_profile: Option<ReturnClockExposureRestartSeedProfile>,
+}
+
+fn build_core_restart_seed_candidates(
+    input: CoreRestartSeedCandidatesInput<'_>,
 ) -> Vec<(String, Vec<f64>)> {
+    let CoreRestartSeedCandidatesInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        baseline_final_objective_terms,
+        activity_log_shift,
+        return_clock_seed_profile,
+    } = input;
+
     let mut incumbent_local_search = baseline_parameter_vector.to_vec();
 
     clamp_in_place(
@@ -1001,6 +1126,13 @@ fn build_core_restart_seed_candidates(
             activity_log_shift,
             maximum_seed_count: 2,
         },
+    ));
+
+    restart_candidates.extend(joint_long_variance_restart_seeds(
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
     ));
 
     restart_candidates
@@ -1315,7 +1447,7 @@ fn build_sensitivity_repair_restart_candidates(
     let mut anchor_candidates = screened_restart_candidates.iter().collect::<Vec<_>>();
 
     anchor_candidates
-        .sort_by(|left, right| compare_screened_restart_candidates_by_score(*left, *right));
+        .sort_by(|left, right| compare_screened_restart_candidates_by_score(left, right));
     anchor_candidates.truncate(policy.active_anchor_count);
 
     let sensitivity_evaluator = |parameter_vector: &[f64]| {
@@ -1339,7 +1471,7 @@ fn build_sensitivity_repair_restart_candidates(
 
     let mut repair_candidate_batches = std::iter::repeat_with(|| None)
         .take(anchor_jobs.len())
-        .collect::<Vec<Option<Vec<(String, Vec<f64>)>>>>();
+        .collect::<Vec<Option<RestartSeedCandidateBatch>>>();
 
     run_static_work_pool(
         joint_context.stage_thread_pool.as_deref(),
@@ -1364,7 +1496,7 @@ fn build_sensitivity_repair_restart_candidates(
                     .collect(),
                 }
             },
-            |repair_candidate_batches: &mut Vec<Option<Vec<(String, Vec<f64>)>>>,
+            |repair_candidate_batches: &mut Vec<Option<RestartSeedCandidateBatch>>,
              batch: SensitivityRepairRestartCandidateBatch,
              _status| {
                 if let Some(batch_slot) = repair_candidate_batches.get_mut(batch.anchor_position) {

@@ -108,6 +108,7 @@ fn parse_calibration_stage(raw_stage: &str) -> PyResult<CalibrationStage> {
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
+                CalibrationStage::LongVariance,
                 CalibrationStage::MeanReversion,
                 CalibrationStage::JointRefinement,
                 CalibrationStage::OptionRefinement,

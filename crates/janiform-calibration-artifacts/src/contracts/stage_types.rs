@@ -6,6 +6,7 @@ pub enum CalibrationStage {
     Seasonality,
     Hawkes,
     ReturnComponents,
+    LongVariance,
     MeanReversion,
     JointRefinement,
     OptionRefinement,

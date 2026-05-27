@@ -5,6 +5,9 @@ use crate::affine_oracle::{
 };
 use janiform_foundations::time::duration_hours_to_nanos;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::{
+    LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
+};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
     MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
@@ -319,6 +322,12 @@ pub enum SufficientStatisticsModelInputsError {
         field: &'static str,
         value: f64,
     },
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
+    InvalidInitialLongVarianceState {
+        source: LongVarianceStateError,
+    },
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
     },
@@ -351,6 +360,16 @@ impl std::fmt::Display for SufficientStatisticsModelInputsError {
                 formatter,
                 "model_inputs.initial_excitation_state.{field} must be finite and non-negative, found {value}"
             ),
+            Self::InvalidLongVarianceParameters { source } => {
+                write!(
+                    formatter,
+                    "model_inputs.long_variance_parameters is invalid: {source}"
+                )
+            }
+            Self::InvalidInitialLongVarianceState { source } => write!(
+                formatter,
+                "model_inputs.initial_long_variance_state is invalid: {source}"
+            ),
             Self::InvalidMeanReversionFittedParameters { source } => write!(
                 formatter,
                 "model_inputs.mean_reversion_fitted_parameters is invalid: {source}"
@@ -379,6 +398,8 @@ impl std::error::Error for SufficientStatisticsModelInputsError {
         match self {
             Self::InvalidEquationSpecification { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidInitialLongVarianceState { source } => Some(source),
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
             Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source),
             Self::InvalidMeanReversionBoundaryState { source } => Some(source),
@@ -392,29 +413,15 @@ pub struct SufficientStatisticsModelInputs {
     pub equation_specification: ExponentialAffineTransformEquationSpecification,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub initial_excitation_state: HawkesExcitationState,
+    pub long_variance_parameters: LongVarianceParameters,
+    pub initial_long_variance_state: LongVarianceState,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     pub mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     pub initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 }
 
 impl SufficientStatisticsModelInputs {
-    pub fn try_new(
-        equation_specification: ExponentialAffineTransformEquationSpecification,
-        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
-        initial_excitation_state: HawkesExcitationState,
-        mean_reversion_fitted_parameters: MeanReversionFittedParameters,
-        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
-        initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
-    ) -> Result<Self, SufficientStatisticsModelInputsError> {
-        let model_inputs = Self {
-            equation_specification,
-            nig_shared_plus_shift_configuration,
-            initial_excitation_state,
-            mean_reversion_fitted_parameters,
-            mean_reversion_runtime_interval_anchors,
-            initial_mean_reversion_boundary_state,
-        };
-
+    pub fn try_new(model_inputs: Self) -> Result<Self, SufficientStatisticsModelInputsError> {
         model_inputs.validate()?;
 
         Ok(model_inputs)
@@ -437,6 +444,16 @@ impl SufficientStatisticsModelInputs {
             SufficientStatisticsModelInputsError::InvalidInitialState { field, value }
         })?;
 
+        self.long_variance_parameters.validate().map_err(|source| {
+            SufficientStatisticsModelInputsError::InvalidLongVarianceParameters { source }
+        })?;
+
+        self.initial_long_variance_state
+            .validate()
+            .map_err(|source| {
+                SufficientStatisticsModelInputsError::InvalidInitialLongVarianceState { source }
+            })?;
+
         self.mean_reversion_fitted_parameters
             .validate()
             .map_err(|source| {
@@ -444,6 +461,7 @@ impl SufficientStatisticsModelInputs {
                     source,
                 }
             })?;
+
         self.mean_reversion_runtime_interval_anchors
             .validate()
             .map_err(|source| {
@@ -451,6 +469,7 @@ impl SufficientStatisticsModelInputs {
                     source,
                 }
             })?;
+
         self.initial_mean_reversion_boundary_state
             .validate()
             .map_err(|source| {
@@ -471,6 +490,7 @@ impl SufficientStatisticsModelInputs {
                 },
             );
         }
+
         if self.initial_mean_reversion_boundary_state.pressure_state
             != self
                 .mean_reversion_runtime_interval_anchors
@@ -523,6 +543,8 @@ struct SufficientStatisticsModelInputsPayload {
     equation_specification: ExponentialAffineTransformEquationSpecification,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     initial_excitation_state: HawkesExcitationState,
+    long_variance_parameters: LongVarianceParameters,
+    initial_long_variance_state: LongVarianceState,
     mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
@@ -535,14 +557,17 @@ impl<'de> Deserialize<'de> for SufficientStatisticsModelInputs {
     {
         let payload = SufficientStatisticsModelInputsPayload::deserialize(deserializer)?;
 
-        Self::try_new(
-            payload.equation_specification,
-            payload.nig_shared_plus_shift_configuration,
-            payload.initial_excitation_state,
-            payload.mean_reversion_fitted_parameters,
-            payload.mean_reversion_runtime_interval_anchors,
-            payload.initial_mean_reversion_boundary_state,
-        )
+        Self::try_new(Self {
+            equation_specification: payload.equation_specification,
+            nig_shared_plus_shift_configuration: payload.nig_shared_plus_shift_configuration,
+            initial_excitation_state: payload.initial_excitation_state,
+            long_variance_parameters: payload.long_variance_parameters,
+            initial_long_variance_state: payload.initial_long_variance_state,
+            mean_reversion_fitted_parameters: payload.mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors: payload
+                .mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state: payload.initial_mean_reversion_boundary_state,
+        })
         .map_err(serde::de::Error::custom)
     }
 }

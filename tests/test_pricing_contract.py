@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from janiform.contracts import parse_json_object
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import (
     AnchoredLocalTiltAdmissibilityStatus,
     AnchoredLocalTiltBoundaryStateSummary,
@@ -430,6 +431,7 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
             y_minus_plus=0.2,
             y_minus_minus=0.3,
         ),
+        long_variance_boundary_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.4,
             anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
@@ -577,9 +579,10 @@ def test_run_vanilla_option_pricing_executes_native_workflow_with_optional_outpu
     )
     assert run_result.response.diagnostics.forward_price > 0.0
     assert run_result.run_diagnostics is not None
-    assert run_result.run_diagnostics.transform is not None
+    assert run_result.run_diagnostics.transform is None
     assert run_result.run_diagnostics.integration_quality is not None
     assert run_result.calibration_hooks is not None
+    assert run_result.calibration_hooks.transform_status is None
     assert run_result.calibration_hooks.option_price == pytest.approx(run_result.response.price)
 
 
@@ -755,6 +758,7 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                 delta_beta=-0.2,
             ),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+            long_variance_parameters=LongVarianceParameters.neutral(),
             pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
         ),
         interval_delta=1.0,
@@ -805,7 +809,7 @@ def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
             surprise_component_nu_h=(0.05,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         ),
@@ -843,7 +847,7 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
             surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         ),
@@ -878,6 +882,7 @@ def _disabled_boundary_input(
     return AnchoredVanillaOptionPricingBoundaryInput(
         interval_index=0,
         hawkes_boundary_state=hawkes_boundary_state,
+        long_variance_boundary_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.0,
             anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),

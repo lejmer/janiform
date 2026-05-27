@@ -16,6 +16,7 @@ from ..shared import (
 )
 from ..shared.contracts import _parse_seeded_tick_state_snapshot_capture
 from ..shared.errors import SIMULATION_ERROR_FACTORY, _simulation_error
+from ...long_variance import LongVarianceParameters, LongVarianceState
 from ...mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
@@ -50,8 +51,6 @@ def _parse_nig_shared_plus_shift_configuration(
     from ...pricing import NigSharedPlusShiftConfiguration
 
     return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
-
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +259,8 @@ class SeededTickSimulationRequest(ContractModel):
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState
     hourly_factor_summary: SeededTickSimulationHourlyFactorSummary
     return_clock_exposure_parameters: ReturnClockExposureParameters
+    long_variance_parameters: LongVarianceParameters
+    initial_long_variance_state: LongVarianceState
     observed_price_tick_size: Optional[float] = None
     debug_trace_enabled: bool = False
     sample_every_nth_transition: int = 1
@@ -299,6 +300,18 @@ class SeededTickSimulationRequest(ContractModel):
             raise _simulation_error(
                 "return_clock_exposure_parameters",
                 "must be a ReturnClockExposureParameters",
+            )
+
+        if not isinstance(self.long_variance_parameters, LongVarianceParameters):
+            raise _simulation_error(
+                "long_variance_parameters",
+                "must be a LongVarianceParameters",
+            )
+
+        if not isinstance(self.initial_long_variance_state, LongVarianceState):
+            raise _simulation_error(
+                "initial_long_variance_state",
+                "must be a LongVarianceState",
             )
 
         if self.observed_price_tick_size is not None and (
@@ -362,6 +375,8 @@ class SeededTickSimulationRequest(ContractModel):
         initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
         hourly_factor_contract: HourlyFactorContract,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
+        long_variance_parameters: LongVarianceParameters,
+        initial_long_variance_state: LongVarianceState,
         observed_price_tick_size: Optional[float] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
@@ -386,6 +401,8 @@ class SeededTickSimulationRequest(ContractModel):
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract),
             return_clock_exposure_parameters=return_clock_exposure_parameters,
+            long_variance_parameters=long_variance_parameters,
+            initial_long_variance_state=initial_long_variance_state,
             observed_price_tick_size=observed_price_tick_size,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
@@ -536,6 +553,26 @@ class SeededTickSimulationRequest(ContractModel):
                     SIMULATION_ERROR_FACTORY,
                 ),
                 field_path="return_clock_exposure_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
+            ),
+            long_variance_parameters=LongVarianceParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "long_variance_parameters",
+                    "long_variance_parameters",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="long_variance_parameters",
+                error_factory=SIMULATION_ERROR_FACTORY,
+            ),
+            initial_long_variance_state=LongVarianceState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "initial_long_variance_state",
+                    "initial_long_variance_state",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="initial_long_variance_state",
                 error_factory=SIMULATION_ERROR_FACTORY,
             ),
             observed_price_tick_size=(

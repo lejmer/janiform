@@ -69,6 +69,9 @@ pub(super) fn materialize_joint_refinement_mean_reversion_runtime_inputs(
                 .news_process_configuration
                 .shared_mark_law
                 .gamma_severity_marks,
+            fitted_parameters
+                .return_components_fitted_parameters
+                .long_variance_parameters,
         )
         .map_err(|source| source.to_string())?,
         fitted_parameters

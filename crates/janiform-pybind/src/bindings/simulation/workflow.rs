@@ -2,6 +2,7 @@ use janiform::model::affine_oracle::{
     EndogenousAnchorIntervalFactors, ExponentialAffineTransformEquationSpecification,
     materialize_endogenous_anchor_path,
 };
+use janiform::model::long_variance::LongVarianceParameters;
 use janiform::model::news::NewsProcessConfiguration;
 use janiform::simulation::{
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
@@ -88,7 +89,7 @@ fn run_simulation_from_model_artifact(
 }
 
 #[pyfunction]
-#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
+#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, long_variance_parameters, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
 #[expect(
     clippy::too_many_arguments,
     reason = "PyO3 boundary mirrors the public Python keyword API."
@@ -98,6 +99,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     kernel_parameters: &Bound<'_, PyAny>,
     nig_shared_plus_shift_configuration: &Bound<'_, PyAny>,
     news_process_configuration: &Bound<'_, PyAny>,
+    long_variance_parameters: &Bound<'_, PyAny>,
     initial_excitation_state: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
     interval_alignment_policy: &str,
@@ -120,6 +122,15 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     .map_err(|source| {
         SeasonalityInputValidationError::new_err(format!(
             "news_process_configuration failed to deserialize: {source}"
+        ))
+    })?;
+
+    let parsed_long_variance_parameters = serde_json::from_value::<LongVarianceParameters>(
+        py_any_to_json_value(long_variance_parameters)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "long_variance_parameters failed to deserialize: {source}"
         ))
     })?;
 
@@ -178,6 +189,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
             parsed_news_process_configuration
                 .shared_mark_law
                 .gamma_severity_marks,
+            parsed_long_variance_parameters,
         ),
         parsed_nig_shared_plus_shift_configuration,
         &parsed_news_process_configuration,

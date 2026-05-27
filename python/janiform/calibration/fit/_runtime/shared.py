@@ -5,6 +5,7 @@ from datetime import datetime
 
 from ....calendar import CalendarRegistry
 from ....hourly_factors import HourlyFactorContract
+from ....long_variance import LongVarianceParameters, LongVarianceState
 from ....mean_reversion import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
@@ -38,6 +39,7 @@ class PreparedModelRuntimeFactors:
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
     return_clock_exposure_parameters: ReturnClockExposureParameters
+    long_variance_parameters: LongVarianceParameters
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +47,7 @@ class PreparedModelPricingRuntimeInput:
     runtime_factors: PreparedModelRuntimeFactors
     hourly_factor_contract: HourlyFactorContract
     effective_boundary_state: HawkesExcitationState
+    effective_long_variance_state: LongVarianceState
     effective_observed_boundary_state: MeanReversionBoundaryState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     model_parameters: VanillaOptionPricingModelParameters

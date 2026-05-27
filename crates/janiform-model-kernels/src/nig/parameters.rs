@@ -1,6 +1,7 @@
 use serde::Serialize;
 
-use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::randomness::{SimulationRandomnessStream, sample_standard_normal_draw};
 
 use super::constants::{
     NIG_CANCELLATION_WARNING_THRESHOLD, NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY,
@@ -14,15 +15,11 @@ use super::guardrails::{
     NigNumericalGuardrailStatus, alpha_beta_margin_warning_threshold,
     collect_non_finite_guardrail_event, compute_radicand_warning_threshold, push_guardrail_event,
 };
-use super::math::{
-    principal_branch_square_root, sample_inverse_gaussian_increment, sample_standard_normal_draw,
-    stable_gamma,
-};
+use super::math::{principal_branch_square_root, sample_inverse_gaussian_increment, stable_gamma};
 use super::validation::{
     NigParameterConstraint, NigParameterValidationReport, NigParameterViolation,
     collect_finite_violation, collect_positive_violation,
 };
-use janiform_foundations::complex_math::ComplexScalar;
 
 /// Canonical NIG parameter payload used by pricing and simulation drivers.
 ///

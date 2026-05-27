@@ -13,8 +13,8 @@ use super::super::contracts::{
 use super::super::{
     HawkesStageFittedParameters, JointRefinementStageFittedParameters,
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    MeanReversionStageDiagnostics, ReturnComponentsStageFittedParameters,
-    SeasonalityStageNormalizationMetadata,
+    LongVarianceStageDiagnostics, MeanReversionStageDiagnostics,
+    ReturnComponentsStageFittedParameters, SeasonalityStageNormalizationMetadata,
 };
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::shared::{
@@ -166,6 +166,18 @@ pub struct ReturnComponentsStageParameterPayload {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct LongVarianceStageParameterPayload {
+    pub fitted_parameters: janiform_model_kernels::long_variance::LongVarianceParameters,
+    pub diagnostics: LongVarianceStageDiagnostics,
+    pub return_components_input_transport: CalibrationStageHandoffTransport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_components_selected_candidate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_components_artifact_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MeanReversionStageParameterPayload {
     pub fitted_parameters: janiform_model_kernels::mean_reversion::MeanReversionFittedParameters,
     pub diagnostics: MeanReversionStageDiagnostics,
@@ -193,6 +205,7 @@ pub enum CalibrationStageParameterPayload {
     Seasonality(Box<SeasonalityStageParameterPayload>),
     Hawkes(Box<HawkesStageParameterPayload>),
     ReturnComponents(Box<ReturnComponentsStageParameterPayload>),
+    LongVariance(Box<LongVarianceStageParameterPayload>),
     MeanReversion(Box<MeanReversionStageParameterPayload>),
     JointRefinement(Box<JointRefinementStageParameterPayload>),
     OptionRefinement(Box<JointRefinementStageParameterPayload>),
@@ -205,6 +218,7 @@ impl CalibrationStageParameterPayload {
             Self::Seasonality(_) => CalibrationStage::Seasonality,
             Self::Hawkes(_) => CalibrationStage::Hawkes,
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
+            Self::LongVariance(_) => CalibrationStage::LongVariance,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
             Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
@@ -437,6 +451,24 @@ impl CalibrationStageParameterArtifact {
                     })?;
 
                 validate_optimizer_state_presence(self.stage, self.optimizer_state.as_ref())?;
+            }
+            CalibrationStageParameterPayload::LongVariance(payload) => {
+                payload.fitted_parameters.validate().map_err(|source| {
+                    CalibrationStageParameterArtifactValidationError::InvalidLongVarianceParameters {
+                        stage: self.stage,
+                        error_message: source.to_string(),
+                    }
+                })?;
+
+                validate_long_variance_stage_parameter_boundary(payload)?;
+
+                if self.optimizer_state.is_some() {
+                    return Err(
+                        CalibrationStageParameterArtifactValidationError::UnexpectedOptimizerState {
+                            stage: self.stage,
+                        },
+                    );
+                }
             }
             CalibrationStageParameterPayload::JointRefinement(payload)
             | CalibrationStageParameterPayload::OptionRefinement(payload)
@@ -673,6 +705,16 @@ pub struct ReturnComponentsStageParameterArtifactInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct LongVarianceStageParameterArtifactInput {
+    pub metadata: CalibrationStageParameterBuildMetadata,
+    pub fitted_parameters: janiform_model_kernels::long_variance::LongVarianceParameters,
+    pub diagnostics: LongVarianceStageDiagnostics,
+    pub return_components_input_transport: CalibrationStageHandoffTransport,
+    pub return_components_selected_candidate_id: Option<String>,
+    pub return_components_artifact_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageParameterArtifactInput {
     pub metadata: CalibrationStageParameterBuildMetadata,
     pub optimizer_state: CalibrationStageParameterOptimizerStateInput,
@@ -699,6 +741,7 @@ pub enum CalibrationStageParameterArtifactInput {
     Seasonality(Box<SeasonalityStageParameterArtifactInput>),
     Hawkes(Box<HawkesStageParameterArtifactInput>),
     ReturnComponents(Box<ReturnComponentsStageParameterArtifactInput>),
+    LongVariance(Box<LongVarianceStageParameterArtifactInput>),
     MeanReversion(Box<MeanReversionStageParameterArtifactInput>),
     JointRefinement(Box<JointRefinementStageParameterArtifactInput>),
     OptionRefinement(Box<JointRefinementStageParameterArtifactInput>),
@@ -724,6 +767,7 @@ pub fn build_calibration_stage_parameter_artifact(
         CalibrationStageParameterArtifactInput::ReturnComponents(_) => {
             CalibrationStage::ReturnComponents
         }
+        CalibrationStageParameterArtifactInput::LongVariance(_) => CalibrationStage::LongVariance,
         CalibrationStageParameterArtifactInput::MeanReversion(_) => CalibrationStage::MeanReversion,
         CalibrationStageParameterArtifactInput::JointRefinement(_) => {
             CalibrationStage::JointRefinement
@@ -755,6 +799,14 @@ pub fn build_calibration_stage_parameter_artifact(
         }
         CalibrationStageParameterArtifactInput::ReturnComponents(input) => {
             build_return_components_stage_parameter_artifact(
+                run_contract.run_spec.run_id.as_str(),
+                run_contract.run_spec.execution_mode,
+                *input,
+                artifact_reference,
+            )
+        }
+        CalibrationStageParameterArtifactInput::LongVariance(input) => {
+            build_long_variance_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
                 *input,
@@ -989,6 +1041,10 @@ pub enum CalibrationStageParameterArtifactValidationError {
         stage: CalibrationStage,
         error_message: String,
     },
+    InvalidLongVarianceParameters {
+        stage: CalibrationStage,
+        error_message: String,
+    },
     HawkesBoundaryMismatch {
         expected_transport: &'static str,
     },
@@ -996,6 +1052,9 @@ pub enum CalibrationStageParameterArtifactValidationError {
         expected_transport: &'static str,
     },
     MeanReversionBoundaryMismatch {
+        expected_transport: &'static str,
+    },
+    LongVarianceBoundaryMismatch {
         expected_transport: &'static str,
     },
 }
@@ -1077,6 +1136,13 @@ impl Display for CalibrationStageParameterArtifactValidationError {
                 formatter,
                 "stage parameter artifact for `{stage:?}` uses invalid mean_reversion_fitted_parameters: {error_message}"
             ),
+            Self::InvalidLongVarianceParameters {
+                stage,
+                error_message,
+            } => write!(
+                formatter,
+                "stage parameter artifact for `{stage:?}` uses invalid long_variance_parameters: {error_message}"
+            ),
             Self::HawkesBoundaryMismatch { expected_transport } => write!(
                 formatter,
                 "hawkes stage parameter boundary does not match expected `{expected_transport}` transport contract"
@@ -1088,6 +1154,10 @@ impl Display for CalibrationStageParameterArtifactValidationError {
             Self::MeanReversionBoundaryMismatch { expected_transport } => write!(
                 formatter,
                 "mean-reversion stage parameter boundary does not match expected `{expected_transport}` transport contract"
+            ),
+            Self::LongVarianceBoundaryMismatch { expected_transport } => write!(
+                formatter,
+                "long-variance stage parameter boundary does not match expected `{expected_transport}` transport contract"
             ),
         }
     }
@@ -1281,6 +1351,47 @@ fn build_return_components_stage_parameter_artifact(
                 activity_input_transport: input.activity_input_transport,
                 activity_selected_hawkes_candidate_id: input.activity_selected_hawkes_candidate_id,
                 activity_artifact_reference: input.activity_artifact_reference,
+            },
+        )),
+    })
+}
+
+fn build_long_variance_stage_parameter_artifact(
+    run_id: &str,
+    execution_mode: CalibrationExecutionMode,
+    input: LongVarianceStageParameterArtifactInput,
+    artifact_reference: String,
+) -> Result<CalibrationStageParameterArtifact, CalibrationStageParameterArtifactBuildError> {
+    Ok(CalibrationStageParameterArtifact {
+        schema_version: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION.to_string(),
+        run_id: run_id.to_string(),
+        execution_mode,
+        stage: CalibrationStage::LongVariance,
+        artifact_reference,
+        schema_metadata: CalibrationStageParameterSchemaMetadata {
+            schema_family: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_FAMILY.to_string(),
+            schema_generation: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_GENERATION.to_string(),
+            forward_extension_policy: CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY
+                .to_string(),
+        },
+        output_schema_metadata: build_stage_parameter_output_schema_metadata(),
+        stage_output_schema_version: input.metadata.stage_output_schema_version,
+        seed_metadata: build_stage_parameter_seed_metadata(
+            input.metadata.run_global_seed,
+            input.metadata.stage_seed,
+            input.metadata.stage_seed_source,
+            input.metadata.stage_seed_derivation_policy.as_str(),
+        ),
+        solver_settings: input.metadata.solver_settings,
+        optimizer_state: None,
+        stage_parameters: CalibrationStageParameterPayload::LongVariance(Box::new(
+            LongVarianceStageParameterPayload {
+                fitted_parameters: input.fitted_parameters,
+                diagnostics: input.diagnostics,
+                return_components_input_transport: input.return_components_input_transport,
+                return_components_selected_candidate_id: input
+                    .return_components_selected_candidate_id,
+                return_components_artifact_reference: input.return_components_artifact_reference,
             },
         )),
     })
@@ -1582,6 +1693,43 @@ fn validate_mean_reversion_stage_parameter_boundary(
             {
                 return Err(
                     CalibrationStageParameterArtifactValidationError::MeanReversionBoundaryMismatch {
+                        expected_transport: "persisted_artifact_reference",
+                    },
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_long_variance_stage_parameter_boundary(
+    payload: &LongVarianceStageParameterPayload,
+) -> Result<(), CalibrationStageParameterArtifactValidationError> {
+    match payload.return_components_input_transport {
+        CalibrationStageHandoffTransport::InMemoryOutput => {
+            if payload
+                .return_components_selected_candidate_id
+                .as_ref()
+                .is_none_or(|value| !is_non_empty_string(value))
+                || payload.return_components_artifact_reference.is_some()
+            {
+                return Err(
+                    CalibrationStageParameterArtifactValidationError::LongVarianceBoundaryMismatch {
+                        expected_transport: "in_memory_output",
+                    },
+                );
+            }
+        }
+        CalibrationStageHandoffTransport::PersistedArtifactReference => {
+            if payload
+                .return_components_artifact_reference
+                .as_ref()
+                .is_none_or(|value| !is_non_empty_string(value))
+                || payload.return_components_selected_candidate_id.is_some()
+            {
+                return Err(
+                    CalibrationStageParameterArtifactValidationError::LongVarianceBoundaryMismatch {
                         expected_transport: "persisted_artifact_reference",
                     },
                 );

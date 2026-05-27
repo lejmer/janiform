@@ -1,5 +1,6 @@
 from math import log
 
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
@@ -57,6 +58,7 @@ def build_anchored_request_model() -> VanillaOptionPricingRequest:
                 y_minus_plus=0.0,
                 y_minus_minus=0.0,
             ),
+            long_variance_boundary_state=LongVarianceState.unit(),
             mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                 kappa=0.35,
                 anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
@@ -89,6 +91,7 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
                     y_minus_plus=0.0,
                     y_minus_minus=0.0,
                 ),
+                long_variance_boundary_state=LongVarianceState.unit(),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                     kappa=0.35,
                     anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
@@ -112,7 +115,7 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
             surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         ),
@@ -206,6 +209,7 @@ def _build_model_parameters() -> VanillaOptionPricingModelParameters:
             delta_beta=-0.2,
         ),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
         pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
     )
 
@@ -218,6 +222,7 @@ def _disabled_boundary_input(
     return AnchoredVanillaOptionPricingBoundaryInput(
         interval_index=0,
         hawkes_boundary_state=hawkes_boundary_state,
+        long_variance_boundary_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.0,
             anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),

@@ -218,10 +218,10 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
 
     assert!(report.status.is_successful(), "{report:#?}");
     assert!(report.failure.is_none());
-    assert_eq!(report.emitted_checkpoints.len(), 6);
+    assert_eq!(report.emitted_checkpoints.len(), 7);
     assert_eq!(
         checkpoint_store.checkpoint_count_for_run(run_contract.run_spec.run_id.as_str()),
-        6
+        7
     );
 
     let first_checkpoint = report
@@ -311,7 +311,7 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
     );
 
     assert!(report.status.is_successful(), "{report:#?}");
-    assert_eq!(report.stage_reports.len(), 6);
+    assert_eq!(report.stage_reports.len(), 7);
 
     for stage_report in &report.stage_reports {
         match stage_report {
@@ -358,6 +358,28 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                     derive_calibration_stage_seed_from_global_seed(
                         17,
                         CalibrationStage::ReturnComponents
+                    )
+                );
+                assert_eq!(
+                    metadata.stage_seed_source,
+                    CalibrationStageSeedSource::DerivedFromGlobalSeed
+                );
+                assert_eq!(
+                    metadata.stage_seed_derivation_policy,
+                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+            }
+            CalibrationStagedRunStageReport::LongVariance(long_variance_report) => {
+                let metadata = long_variance_report
+                    .metadata
+                    .as_ref()
+                    .expect("long-variance stage metadata should be present");
+                assert_eq!(metadata.run_global_seed, 17);
+                assert_eq!(
+                    metadata.stage_seed,
+                    derive_calibration_stage_seed_from_global_seed(
+                        17,
+                        CalibrationStage::LongVariance
                     )
                 );
                 assert_eq!(
@@ -991,7 +1013,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         cli_default_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(cli_default_report.stage_reports.len(), 6);
+    assert_eq!(cli_default_report.stage_reports.len(), 7);
 
     let python_override_checkpoint_directory =
         temporary_checkpoint_directory("python-disk-override-run");
@@ -1015,7 +1037,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         python_override_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(python_override_report.stage_reports.len(), 6);
+    assert_eq!(python_override_report.stage_reports.len(), 7);
 
     let _ = fs::remove_dir_all(cli_default_checkpoint_directory);
     let _ = fs::remove_dir_all(python_override_checkpoint_directory);
@@ -1284,8 +1306,8 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 4);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 4);
+    assert_eq!(resume_report.stage_reports.len(), 5);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 5);
 }
 
 #[test]
@@ -1325,8 +1347,8 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 4);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 4);
+    assert_eq!(resume_report.stage_reports.len(), 5);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 5);
 }
 
 #[test]
@@ -1592,6 +1614,7 @@ fn normalized_report_for_reproducibility(
             CalibrationStagedRunStageReport::Seasonality(_)
             | CalibrationStagedRunStageReport::Hawkes(_)
             | CalibrationStagedRunStageReport::ReturnComponents(_)
+            | CalibrationStagedRunStageReport::LongVariance(_)
             | CalibrationStagedRunStageReport::MeanReversion(_) => {}
         }
     }

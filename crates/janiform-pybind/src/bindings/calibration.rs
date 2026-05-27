@@ -53,6 +53,7 @@ use janiform::calibration::staged::{
     run_staged_calibration_from_execution_input_with_observer,
 };
 use janiform::model::hawkes::{HawkesEventSide, HawkesKernelParameters};
+use janiform::model::long_variance::LongVarianceParameters;
 use janiform::simulation::MeanReversionFittedParameters;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyDict, PyDictMethods, PyModule, PyModuleMethods};
@@ -955,6 +956,7 @@ fn evaluate_return_components_candidate(
 fn estimate_current_state_from_observed_data(
     py: Python<'_>,
     kernel_parameters: &Bound<'_, PyAny>,
+    long_variance_parameters: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
     state_time_utc_nanos: i64,
     observed_log_return: f64,
@@ -977,6 +979,15 @@ fn estimate_current_state_from_observed_data(
                 ))
             },
         )?;
+
+    let parsed_long_variance_parameters: LongVarianceParameters = serde_json::from_value(
+        py_any_to_json_value(long_variance_parameters)?,
+    )
+    .map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to deserialize current-state long-variance parameters: {source}"
+        ))
+    })?;
 
     let parsed_observation_timestamps_utc: Vec<String> =
         observation_timestamps_utc.extract().map_err(|_| {
@@ -1033,6 +1044,7 @@ fn estimate_current_state_from_observed_data(
     let estimation_output =
         estimate_current_state_from_observed_data_core(CurrentStateEstimationInput {
             kernel_parameters: parsed_kernel_parameters,
+            long_variance_parameters: parsed_long_variance_parameters,
             mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
             state_time_utc_nanos,
             observed_log_return,
@@ -1216,6 +1228,9 @@ fn flatten_stage_report_for_python(
         }
         CalibrationStagedRunStageReport::ReturnComponents(stage_report) => {
             ("return_components", serde_json::to_value(stage_report)?)
+        }
+        CalibrationStagedRunStageReport::LongVariance(stage_report) => {
+            ("long_variance", serde_json::to_value(stage_report)?)
         }
         CalibrationStagedRunStageReport::MeanReversion(stage_report) => {
             ("mean_reversion", serde_json::to_value(stage_report)?)

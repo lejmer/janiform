@@ -617,6 +617,22 @@ pub(crate) fn joint_parameter_name_by_index(
             active_parameter_layout.log_sell_excitation_return_clock_scale_index,
             "log_sell_excitation_return_clock_scale",
         ),
+        (
+            active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index,
+            "long_variance.log_mean_reversion_rate_scale",
+        ),
+        (
+            active_parameter_layout.long_variance_vol_of_vol_index,
+            "long_variance.vol_of_vol",
+        ),
+        (
+            active_parameter_layout.long_variance_buy_event_loading_index,
+            "long_variance.buy_event_loading",
+        ),
+        (
+            active_parameter_layout.long_variance_sell_event_loading_index,
+            "long_variance.sell_event_loading",
+        ),
     ];
 
     if let Some(index) = active_parameter_layout.known_activity_scale_index {

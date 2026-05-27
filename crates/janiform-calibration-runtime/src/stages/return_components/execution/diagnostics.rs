@@ -410,6 +410,8 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
             return_clock_exposure_parameters: candidate_input.return_clock_exposure_parameters,
+            long_variance_parameters:
+                janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
             tick_grid_observation_model,
             mean_reversion_fitted_parameters:
                 MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),

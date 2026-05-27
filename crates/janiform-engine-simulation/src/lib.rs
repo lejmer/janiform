@@ -7,6 +7,7 @@ mod coarse_runtime;
 mod config;
 mod constants;
 mod error;
+mod long_variance;
 mod progress;
 mod runtime;
 
@@ -75,6 +76,7 @@ pub use janiform_model_kernels::mean_reversion::{
     evolve_mean_reversion_pressure_state,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
+pub use long_variance::LongVarianceTransitionSamplingError;
 pub use progress::{SimulationProgressEvent, SimulationProgressPhase};
 pub use runtime::{
     estimate_seeded_result_capacities, run_seeded_tick_event_simulation,

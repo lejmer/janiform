@@ -28,6 +28,10 @@ use janiform_model_kernels::return_clock::{
 use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
 use super::coarse::{CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord};
+use super::long_variance::{
+    LongVarianceTransitionSamplingError, apply_long_variance_event_count_jumps,
+    sample_long_variance_transition,
+};
 use super::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_progress_event};
 use super::runtime::{
     SeededObservedState, SeededSimulationMarketStateResolver, build_interval_open_market_segments,
@@ -135,6 +139,15 @@ where
             },
         )?;
 
+    let long_variance_stationary_mean_reversion_level = model_inputs
+        .long_variance_parameters
+        .stationary_mean_reversion_level_for_hawkes_kernel(kernel_parameters)
+        .map_err(
+            |source| CoarseSimulationRunError::InvalidLongVarianceStationaryLevel {
+                source: Box::new(source),
+            },
+        )?;
+
     let interval_delta_nanos = run_request.interval_delta_nanos().map_err(|source| {
         CoarseSimulationRunError::InvalidIntervalDelta {
             source: Box::new(source),
@@ -144,6 +157,8 @@ where
     let mut terminal_state = model_inputs
         .sufficient_statistics_model_inputs
         .initial_excitation_state;
+
+    let mut long_variance_state = model_inputs.initial_long_variance_state;
 
     let mut observed_state = SeededObservedState::from_boundary_state(
         &model_inputs
@@ -309,14 +324,34 @@ where
             interval_index as u64,
         );
 
+        let mut long_variance_stream = randomness_factory.create_substream(
+            run_request.seed,
+            SimulationRandomnessSubstreamDomain::LongVarianceDiffusion,
+            interval_index as u64,
+        );
+
+        let long_variance_transition = sample_long_variance_transition(
+            long_variance_state,
+            model_inputs.long_variance_parameters,
+            long_variance_stationary_mean_reversion_level,
+            run_request.interval_delta,
+            &mut long_variance_stream,
+        )
+        .map_err(
+            |source| CoarseSimulationRunError::LongVarianceTransitionFailure {
+                interval_index,
+                source: Box::new(source),
+            },
+        )?;
+
         let effective_return_clocks = compute_effective_return_clocks(
             model_inputs.return_clock_exposure_parameters,
             IntegratedSideActivityDecomposition::new(
-                sampled_statistics.baseline_a_plus,
+                sampled_statistics.baseline_a_plus * long_variance_transition.baseline_clock_scale,
                 sampled_statistics.endogenous_a_plus,
             ),
             IntegratedSideActivityDecomposition::new(
-                sampled_statistics.baseline_a_minus,
+                sampled_statistics.baseline_a_minus * long_variance_transition.baseline_clock_scale,
                 sampled_statistics.endogenous_a_minus,
             ),
         )
@@ -445,6 +480,19 @@ where
             interval_direct_jump_totals.activity_coupling_j_t_increment,
         )?;
 
+        long_variance_state = apply_long_variance_event_count_jumps(
+            long_variance_transition.terminal_state,
+            model_inputs.long_variance_parameters,
+            sampled_statistics.n_plus,
+            sampled_statistics.n_minus,
+        )
+        .map_err(
+            |source| CoarseSimulationRunError::LongVarianceTransitionFailure {
+                interval_index,
+                source: Box::new(source),
+            },
+        )?;
+
         emit_progress_event(
             &mut observer,
             SimulationProgressEvent::new(
@@ -481,6 +529,11 @@ pub enum CoarseSimulationRunError {
     },
     InvalidNigDriverConfiguration {
         source: Box<janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError>,
+    },
+    InvalidLongVarianceStationaryLevel {
+        source: Box<
+            janiform_model_kernels::long_variance::LongVarianceStationaryLevelForHawkesKernelError,
+        >,
     },
     InvalidIntervalDelta {
         source: Box<super::coarse::IntervalDeltaGridError>,
@@ -526,6 +579,10 @@ pub enum CoarseSimulationRunError {
         interval_index: usize,
         source: Box<EffectiveReturnClocksBuildError>,
     },
+    LongVarianceTransitionFailure {
+        interval_index: usize,
+        source: Box<LongVarianceTransitionSamplingError>,
+    },
     TickGridProjectionFailure {
         interval_index: usize,
         source: Box<super::error::SeededTickSimulationRunError>,
@@ -568,6 +625,10 @@ impl Display for CoarseSimulationRunError {
                     "nig_shared_plus_shift_configuration is invalid: {source}"
                 )
             }
+            Self::InvalidLongVarianceStationaryLevel { source } => write!(
+                formatter,
+                "long_variance_parameters imply an invalid stationary mean-reversion level: {source}"
+            ),
             Self::InvalidIntervalDelta { source } => {
                 write!(formatter, "interval_delta is invalid: {source}")
             }
@@ -641,6 +702,13 @@ impl Display for CoarseSimulationRunError {
                 formatter,
                 "interval {interval_index} effective return-clock construction failed: {source}"
             ),
+            Self::LongVarianceTransitionFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} long-variance transition failed: {source}"
+            ),
             Self::TickGridProjectionFailure {
                 interval_index,
                 source,
@@ -689,6 +757,7 @@ impl Error for CoarseSimulationRunError {
             Self::InvalidRunRequest { source } => Some(source.as_ref()),
             Self::CalendarRegistryLoadFailure { source } => Some(source.as_ref()),
             Self::InvalidNigDriverConfiguration { source } => Some(source.as_ref()),
+            Self::InvalidLongVarianceStationaryLevel { source } => Some(source.as_ref()),
             Self::InvalidIntervalDelta { source } => Some(source.as_ref()),
             Self::TransformSliceSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::NewsProcessConfigurationFailure { source, .. } => Some(source.as_ref()),
@@ -697,6 +766,7 @@ impl Error for CoarseSimulationRunError {
             Self::InvalidReturnDecomposition { source, .. } => Some(source.as_ref()),
             Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::EffectiveReturnClockBuildFailure { source, .. } => Some(source.as_ref()),
+            Self::LongVarianceTransitionFailure { source, .. } => Some(source.as_ref()),
             Self::TickGridProjectionFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
             Self::InvalidPathRecord { source, .. } => Some(source.as_ref()),
@@ -904,6 +974,7 @@ mod tests {
     use janiform_model_kernels::hawkes::{
         HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     };
+    use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
     use janiform_model_kernels::mean_reversion::{
         MeanReversionBoundaryState, MeanReversionFittedParameters,
         MeanReversionRuntimeIntervalAnchors,
@@ -938,38 +1009,48 @@ mod tests {
             .expect("kernel parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("gamma marks should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct");
 
-        let sufficient_statistics_model_inputs = SufficientStatisticsModelInputs::try_new(
-            equation_specification,
-            NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        let sufficient_statistics_model_inputs =
+            SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
+                equation_specification,
+                nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+                    2.3, -0.8, 0.7, 0.1, -0.2,
+                )
                 .expect("nig configuration should construct"),
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(1.0)
-                .expect("positive-kappa mean reversion should construct"),
-            MeanReversionRuntimeIntervalAnchors::try_new(
-                "explicit_runtime_interval_grid_alignment.v1",
-                2.0,
-                0.0,
-                vec![2.0],
-                vec![0.0],
-                vec![1.0],
-            )
-            .expect("mean-reversion runtime anchors should construct"),
-            MeanReversionBoundaryState::try_new(3.0, 2.0, 0.0, 1.0)
+                initial_excitation_state: HawkesExcitationState {
+                    y_plus_plus: 0.0,
+                    y_plus_minus: 0.0,
+                    y_minus_plus: 0.0,
+                    y_minus_minus: 0.0,
+                },
+                long_variance_parameters: LongVarianceParameters::neutral(),
+                initial_long_variance_state: LongVarianceState::unit(),
+                mean_reversion_fitted_parameters:
+                    MeanReversionFittedParameters::flat_anchor_mean_reversion(1.0)
+                        .expect("positive-kappa mean reversion should construct"),
+                mean_reversion_runtime_interval_anchors:
+                    MeanReversionRuntimeIntervalAnchors::try_new(
+                        "explicit_runtime_interval_grid_alignment.v1",
+                        2.0,
+                        0.0,
+                        vec![2.0],
+                        vec![0.0],
+                        vec![1.0],
+                    )
+                    .expect("mean-reversion runtime anchors should construct"),
+                initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+                    3.0, 2.0, 0.0, 1.0,
+                )
                 .expect("mean-reversion boundary state should construct"),
-        )
-        .expect("sufficient-statistics model inputs should construct");
+            })
+            .expect("sufficient-statistics model inputs should construct");
 
-        let model_inputs = CoarseSimulationModelInputs::try_new(
+        let model_inputs = CoarseSimulationModelInputs::try_new(CoarseSimulationModelInputs {
             sufficient_statistics_model_inputs,
-            NewsProcessConfiguration::try_new(
+            news_process_configuration: NewsProcessConfiguration::try_new(
                 NewsArrivalConfiguration {
                     known: KnownNewsArrivalConfiguration {
                         scheduled_event_timestamps_utc_nanos: vec![],
@@ -996,9 +1077,12 @@ mod tests {
                 },
             )
             .expect("news process configuration should construct"),
-            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-            None,
-            ExchangeCalendarRegistryArtifact {
+            return_clock_exposure_parameters:
+                janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            long_variance_parameters: LongVarianceParameters::neutral(),
+            initial_long_variance_state: LongVarianceState::unit(),
+            observed_price_tick_size: None,
+            calendar_registry_artifact: ExchangeCalendarRegistryArtifact {
                 schema_version: "calendar.registry.v1".to_string(),
                 artifact_date: "2024-01-02".to_string(),
                 exchanges: vec![ExchangeCalendarArtifact {
@@ -1022,8 +1106,8 @@ mod tests {
                     early_close_sessions: vec![],
                 }],
             },
-            "XNYS",
-        )
+            exchange_code: "XNYS".to_string(),
+        })
         .expect("coarse model inputs should construct");
 
         let run_request = CoarseSimulationRunRequest::try_new(

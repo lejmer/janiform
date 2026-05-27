@@ -755,17 +755,17 @@ fn refine_single_search_tier_candidate(
 
     let option_refinement_started_at = Instant::now();
 
-    let initial_candidate = scored_pricing_vector(
-        &refinement_context,
+    let initial_candidate = scored_pricing_vector(ScoredPricingVectorInput {
+        refinement_context: &refinement_context,
         dynamics_candidate,
-        initial_pricing_vector.as_slice(),
-        source_dynamics_parameter_bits.as_slice(),
-        JointRefinementOptionSurfaceTierKind::Search,
-        true,
-        "option_pricing_block_sensitivity_baseline_evaluated",
-        Some(&mut theta_warm_start_state),
+        pricing_vector: initial_pricing_vector.as_slice(),
+        source_dynamics_parameter_bits: source_dynamics_parameter_bits.as_slice(),
+        tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+        include_node_price_sensitivities: true,
+        stop_reason: "option_pricing_block_sensitivity_baseline_evaluated",
+        theta_warm_start_state: Some(&mut theta_warm_start_state),
         progress_context,
-    )?;
+    })?;
 
     let first_oracle_call_wall_clock_millis = elapsed_millis(option_refinement_started_at).max(1);
 
@@ -1093,54 +1093,68 @@ fn evaluate_selection_tier_candidates(
     candidate_slots.into_iter().flatten().collect()
 }
 
+pub(super) struct ScoredPricingVectorInput<'a> {
+    pub(super) refinement_context: &'a JointRefinementContext,
+    pub(super) dynamics_candidate: &'a JointRefinementRestartOutcome,
+    pub(super) pricing_vector: &'a [f64],
+    pub(super) source_dynamics_parameter_bits: &'a [u64],
+    pub(super) tier_kind: JointRefinementOptionSurfaceTierKind,
+    pub(super) include_node_price_sensitivities: bool,
+    pub(super) stop_reason: &'a str,
+    pub(super) theta_warm_start_state: Option<&'a mut SpectralThetaWarmStartState>,
+    pub(super) progress_context: Option<&'a OptionRefinementProgressContext<'a>>,
+}
+
 pub(super) fn scored_pricing_vector(
-    refinement_context: &JointRefinementContext,
-    dynamics_candidate: &JointRefinementRestartOutcome,
-    pricing_vector: &[f64],
-    source_dynamics_parameter_bits: &[u64],
-    tier_kind: JointRefinementOptionSurfaceTierKind,
-    include_node_price_sensitivities: bool,
-    stop_reason: &str,
-    theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
-    progress_context: Option<&OptionRefinementProgressContext<'_>>,
+    input: ScoredPricingVectorInput<'_>,
 ) -> Result<SearchTierCandidate, String> {
-    if let Some(progress_context) = progress_context {
+    if let Some(progress_context) = input.progress_context {
         progress_context.record_evaluation_started();
     }
 
     let fitted_parameters =
-        parameter_vector_to_fitted_parameters(pricing_vector, refinement_context)
+        parameter_vector_to_fitted_parameters(input.pricing_vector, input.refinement_context)
             .ok_or_else(|| "pricing block parameter conversion failed".to_string())?;
 
-    let pricing_parameter_bits = pricing_block_parameter_bits(pricing_vector, refinement_context);
+    let pricing_parameter_bits =
+        pricing_block_parameter_bits(input.pricing_vector, input.refinement_context);
 
     let pricing_artifact = resolve_option_surface_tier_pricing_artifact(
         OptionSurfaceTierPricingArtifactResolutionInput {
-            context: refinement_context,
+            context: input.refinement_context,
             fitted_parameters: &fitted_parameters,
-            tier_kind,
-            source_dynamics_parameter_bits,
+            tier_kind: input.tier_kind,
+            source_dynamics_parameter_bits: input.source_dynamics_parameter_bits,
             pricing_parameter_bits: pricing_parameter_bits.as_slice(),
-            include_node_price_sensitivities,
-            theta_warm_start_state,
+            include_node_price_sensitivities: input.include_node_price_sensitivities,
+            theta_warm_start_state: input.theta_warm_start_state,
             progress: OptionPricingProgressInput {
-                progress_sender: progress_context.and_then(|context| context.progress_sender),
-                progress_phase: progress_context.map(|context| context.phase),
-                completed_units: progress_context
+                progress_sender: input
+                    .progress_context
+                    .and_then(|context| context.progress_sender),
+                progress_phase: input.progress_context.map(|context| context.phase),
+                completed_units: input
+                    .progress_context
                     .map(|context| context.shared_progress_snapshot().completed_units),
-                total_units: progress_context.map(|context| context.total_units),
-                current_restart_id: progress_context.map(|context| context.current_restart_id),
+                total_units: input.progress_context.map(|context| context.total_units),
+                current_restart_id: input
+                    .progress_context
+                    .map(|context| context.current_restart_id),
                 best_restart_id: None,
                 best_weighted_objective: None,
                 active_restart_count: None,
-                current_evaluation_count: progress_context
+                current_evaluation_count: input
+                    .progress_context
                     .map(|context| context.current_evaluation_count()),
-                total_evaluation_budget: progress_context
+                total_evaluation_budget: input
+                    .progress_context
                     .and_then(|context| context.total_evaluation_budget()),
                 evaluation_progress_percent: None,
-                current_weighted_objective: progress_context
+                current_weighted_objective: input
+                    .progress_context
                     .and_then(|context| context.current_weighted_objective()),
-                progress_snapshot_source: progress_context
+                progress_snapshot_source: input
+                    .progress_context
                     .map(|context| context as &dyn OptionPricingProgressSnapshotSource),
             },
         },
@@ -1150,20 +1164,20 @@ pub(super) fn scored_pricing_vector(
         .score
         .root_mean_square_spread_normalized_residual;
 
-    if let Some(progress_context) = progress_context {
+    if let Some(progress_context) = input.progress_context {
         progress_context.record_weighted_objective(search_tier_score);
     }
 
     Ok(SearchTierCandidate {
         source_rank: 0,
-        source_dynamics_parameter_bits: source_dynamics_parameter_bits.to_vec(),
+        source_dynamics_parameter_bits: input.source_dynamics_parameter_bits.to_vec(),
         search_tier_score,
         search_tier_pricing_artifact: pricing_artifact,
         restart_outcome: restart_outcome_with_pricing_block(
-            dynamics_candidate,
-            pricing_vector,
+            input.dynamics_candidate,
+            input.pricing_vector,
             fitted_parameters,
-            stop_reason,
+            input.stop_reason,
         ),
     })
 }

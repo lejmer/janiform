@@ -1272,6 +1272,7 @@ pub(crate) fn build_pricing_equation_specification(
             .news_process_configuration
             .shared_mark_law
             .gamma_severity_marks,
+        pricing_request.model_parameters.long_variance_parameters,
     )
 }
 

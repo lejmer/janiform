@@ -90,6 +90,7 @@ fn checkpoint_metadata(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
@@ -109,10 +110,11 @@ fn completed_stage_position(stage: CalibrationStage) -> usize {
         CalibrationStage::Seasonality => 0,
         CalibrationStage::Hawkes => 1,
         CalibrationStage::ReturnComponents => 2,
-        CalibrationStage::MeanReversion => 3,
-        CalibrationStage::JointRefinement => 4,
-        CalibrationStage::OptionRefinement => 5,
-        CalibrationStage::Finalization => 6,
+        CalibrationStage::LongVariance => 3,
+        CalibrationStage::MeanReversion => 4,
+        CalibrationStage::JointRefinement => 5,
+        CalibrationStage::OptionRefinement => 6,
+        CalibrationStage::Finalization => 7,
     }
 }
 

@@ -7,14 +7,15 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_metrics::{
-    JointRefinementAggregatedIntervalObservation, JointRefinementBusinessTimeBucketThresholds,
-    JointRefinementIntervalObservationCursor, accumulate_return_into_intervals_with_cursor,
-    finalize_sell_share_proxies, mean_absolute_return_by_utc_hour,
-    mean_absolute_return_profile_from_hourly_totals,
+    JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY, JointRefinementAggregatedIntervalObservation,
+    JointRefinementBusinessTimeBucketThresholds, JointRefinementIntervalObservationCursor,
+    accumulate_return_into_intervals_with_cursor, finalize_sell_share_proxies,
+    mean_absolute_return_by_utc_hour, mean_absolute_return_profile_from_hourly_totals,
     return_scale_summaries_by_business_time_bucket, return_scale_summary,
     return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
     scale_normalized_returns, tick_count_series,
 };
+use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
 use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
 use janiform_engine_simulation::{
     SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickSimulationTransitionConsumer,
@@ -281,9 +282,18 @@ impl JointRefinementSummaryCollector {
         observed_5m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds,
         observed_15m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds,
     ) -> JointRefinementSeedSummary {
-        finalize_sell_share_proxies(&mut self.simulated_5m_intervals, 0.5);
-        finalize_sell_share_proxies(&mut self.simulated_15m_intervals, 0.5);
-        finalize_sell_share_proxies(&mut self.simulated_hourly_intervals, 0.5);
+        finalize_sell_share_proxies(
+            &mut self.simulated_5m_intervals,
+            JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
+        );
+        finalize_sell_share_proxies(
+            &mut self.simulated_15m_intervals,
+            JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
+        );
+        finalize_sell_share_proxies(
+            &mut self.simulated_hourly_intervals,
+            JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
+        );
 
         let simulated_5m_log_returns = self
             .simulated_5m_intervals
@@ -332,6 +342,10 @@ impl JointRefinementSummaryCollector {
             tick_count_series(self.simulated_hourly_intervals.as_slice());
         let simulated_15m_rv_activity_metric =
             rolling_variance_activity_metric(self.simulated_15m_intervals.as_slice());
+        let simulated_long_variance_horizon_summaries = long_variance_horizon_summaries(
+            self.simulated_5m_intervals.as_slice(),
+            self.simulated_hourly_intervals.as_slice(),
+        );
 
         JointRefinementSeedSummary {
             simulated_5m_intervals: self.simulated_5m_intervals,
@@ -357,6 +371,7 @@ impl JointRefinementSummaryCollector {
             simulated_15m_intraday_mean_absolute_returns,
             simulated_hourly_tick_counts,
             simulated_15m_rv_activity_metric,
+            simulated_long_variance_horizon_summaries,
         }
     }
 }
@@ -716,6 +731,11 @@ fn build_seeded_summary_simulation_run_config(
             return_clock_exposure_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .return_clock_exposure_parameters,
+            long_variance_parameters: fitted_parameters
+                .return_components_fitted_parameters
+                .long_variance_parameters,
+            initial_long_variance_state:
+                janiform_model_kernels::long_variance::LongVarianceState::unit(),
             observed_price_tick_size: fitted_parameters
                 .return_components_fitted_parameters
                 .tick_grid_observation_model
@@ -817,6 +837,7 @@ pub(crate) mod tests {
         scale_normalized_returns, tick_count_series,
     };
     use crate::stages::joint_refinement::JointRefinementSeedSummary;
+    use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
     use crate::stages::return_components::{
         ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
         ReturnComponentsKnownNewsCalendarInput,
@@ -1346,6 +1367,10 @@ pub(crate) mod tests {
                 ),
                 simulated_15m_rv_activity_metric: rolling_variance_activity_metric(
                     simulated_15m_intervals.as_slice(),
+                ),
+                simulated_long_variance_horizon_summaries: long_variance_horizon_summaries(
+                    simulated_5m_intervals.as_slice(),
+                    simulated_hourly_intervals.as_slice(),
                 ),
             },
             run_result.native_diagnostics(),

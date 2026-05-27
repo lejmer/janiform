@@ -62,6 +62,9 @@ fn vanilla_option_request_deserialization_requires_interval_delta() {
                 "y_minus_plus": 0.3,
                 "y_minus_minus": 0.4
             },
+            "long_variance_boundary_state": {
+                "level": 1.0
+            },
             "mean_reversion_fitted_parameters": {
                 "kappa": 0.0,
                 "anchor_model": {

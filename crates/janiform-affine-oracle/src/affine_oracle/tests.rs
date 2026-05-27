@@ -31,6 +31,7 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 fn total_activity_loadings(
@@ -77,6 +78,12 @@ fn reference_transform_input_payload() -> Value {
             "gamma_severity_mark_configuration": {
                 "shape_k": 1.8,
                 "scale_theta": 0.9
+            },
+            "long_variance_parameters": {
+                "mean_reversion_rate": 1.0,
+                "vol_of_vol": 0.0,
+                "buy_event_loading": 0.0,
+                "sell_event_loading": 0.0
             }
         },
         "activity_loadings": {
@@ -157,6 +164,7 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
             .expect("closed-form fixture kernel payload should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
                 .expect("closed-form fixture gamma payload should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("closed-form fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(0.2, 0.0), ComplexScalar::new(0.3, 0.0)),
@@ -193,6 +201,7 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
             .expect("domain violation fixture kernel payload should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
                 .expect("domain violation fixture gamma payload should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("domain violation fixture equation specification should construct"),
         total_activity_loadings(
@@ -232,6 +241,7 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
             .expect("blowup fixture kernel payload should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
                 .expect("blowup fixture gamma payload should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("blowup fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(0.0, 0.0), ComplexScalar::new(0.0, 0.0)),
@@ -284,6 +294,7 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
             .expect("stiff fixture kernel payload should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
                 .expect("stiff fixture gamma payload should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("stiff fixture equation specification should construct"),
         total_activity_loadings(
@@ -579,7 +590,7 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
     );
     assert_complex_close(
         rhs.d_derivative.minus_minus,
-        ComplexScalar::new(-0.27510814838837286, 0.0),
+        ComplexScalar::new(-0.275_108_148_388_372_9, 0.0),
         1.0e-12,
         "D_--'",
     );

@@ -18,6 +18,7 @@ use janiform_engine_sufficient_statistics::{
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::HawkesKernelParameters;
+use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::catalog::BenchmarkScenarioWorkloadProfile;
@@ -62,6 +63,7 @@ pub fn build_equation_specification(
     Ok(ExponentialAffineTransformEquationSpecification::new(
         hawkes_kernel_parameters,
         gamma_mark_configuration,
+        LongVarianceParameters::neutral(),
     ))
 }
 

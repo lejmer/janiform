@@ -110,15 +110,16 @@ pub(crate) use janiform_calibration_artifacts::{
     JointRefinementStageOptionSnapshotMetadata, JointRefinementStageParameterArtifactInput,
     JointRefinementStageParameterPayload, JointRefinementStagePricingBlockFittedParameters,
     JointRefinementStageRestartDiagnostics, JointRefinementStageRuntimeProfile,
-    MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
-    MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
-    MeanReversionStageParameterPayload, ReturnComponentsStageFittedParameters,
-    ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
-    SeasonalityStageNormalizationMetadata, SeasonalityStageParameterArtifactInput,
-    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
-    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
+    LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
+    MeanReversionStageCandidateDiagnostics, MeanReversionStageDiagnostics,
+    MeanReversionStageParameterArtifactInput, MeanReversionStageParameterPayload,
+    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
+    ReturnComponentsStageParameterPayload, SeasonalityStageNormalizationMetadata,
+    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
+    SurpriseNewsDeterministicIntensityProfile, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
+    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
+    calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -1221,6 +1222,10 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
+            stage: CalibrationStage::LongVariance,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
             stage: CalibrationStage::MeanReversion,
             optimizer_settings: build_solver_settings(),
         },
@@ -1268,6 +1273,7 @@ pub(crate) fn build_valid_run_spec_with_mode(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
@@ -1751,6 +1757,47 @@ fn stage_parameter_artifact_input(
                 }),
             ))
         }
+        CalibrationStagedRunStageReport::LongVariance(report) => {
+            let payload = report.fitted_stage_payload.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::LongVariance,
+                    error_message: "successful long-variance stage is missing its payload"
+                        .to_string(),
+                },
+            )?;
+            let metadata = report.metadata.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::LongVariance,
+                    error_message: "successful long-variance stage is missing metadata".to_string(),
+                },
+            )?;
+
+            Ok(CalibrationStageParameterArtifactInput::LongVariance(
+                Box::new(LongVarianceStageParameterArtifactInput {
+                    metadata: CalibrationStageParameterBuildMetadata {
+                        stage_output_schema_version: metadata
+                            .stage_output_schema_version
+                            .to_string(),
+                        run_global_seed: metadata.run_global_seed,
+                        stage_seed: metadata.stage_seed,
+                        stage_seed_source: metadata.stage_seed_source,
+                        stage_seed_derivation_policy: metadata
+                            .stage_seed_derivation_policy
+                            .to_string(),
+                        solver_settings: metadata.solver_settings.clone(),
+                    },
+                    fitted_parameters: payload.fitted_parameters,
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                }),
+            ))
+        }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             Ok(CalibrationStageParameterArtifactInput::JointRefinement(
                 Box::new(joint_refinement_like_stage_parameter_artifact_input(
@@ -1897,6 +1944,7 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::Finalization,
@@ -1936,6 +1984,7 @@ pub(crate) fn build_through_mean_reversion_run_contract_with_mode_and_resume(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
         ],
         build_solver_settings_for_through_mean_reversion_pipeline(),
@@ -1991,6 +2040,7 @@ pub(crate) fn build_run_contract_for_caller_surface(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::Finalization,
@@ -2030,6 +2080,7 @@ pub(crate) fn build_through_mean_reversion_run_contract_for_caller_surface(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
         ],
         build_solver_settings_for_through_mean_reversion_pipeline(),
@@ -2109,6 +2160,7 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
         CalibrationStage::ReturnComponents,
+        CalibrationStage::LongVariance,
         CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
         CalibrationStage::Finalization,
@@ -2128,6 +2180,10 @@ fn build_solver_settings_for_through_mean_reversion_pipeline() -> Vec<Calibratio
         },
         CalibrationStageSolverSettings {
             stage: CalibrationStage::ReturnComponents,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::LongVariance,
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
@@ -2153,8 +2209,12 @@ pub(crate) fn stage_graph_for_selected_stages(
                 depends_on: CalibrationStage::Hawkes,
             },
             CalibrationStageDependency {
-                stage: CalibrationStage::MeanReversion,
+                stage: CalibrationStage::LongVariance,
                 depends_on: CalibrationStage::ReturnComponents,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::MeanReversion,
+                depends_on: CalibrationStage::LongVariance,
             },
             CalibrationStageDependency {
                 stage: CalibrationStage::JointRefinement,
@@ -2163,6 +2223,10 @@ pub(crate) fn stage_graph_for_selected_stages(
             CalibrationStageDependency {
                 stage: CalibrationStage::JointRefinement,
                 depends_on: CalibrationStage::ReturnComponents,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::JointRefinement,
+                depends_on: CalibrationStage::LongVariance,
             },
             CalibrationStageDependency {
                 stage: CalibrationStage::JointRefinement,

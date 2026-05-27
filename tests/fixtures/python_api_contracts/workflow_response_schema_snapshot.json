@@ -68,6 +68,25 @@
                 },
                 "completed_stage": {
                   "type": "string",
+                  "value": "long_variance"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "completed_stage_position": {
@@ -81,7 +100,7 @@
               "type": "object"
             }
           ],
-          "length": 4,
+          "length": 5,
           "type": "array"
         },
         "execution_mode": {
@@ -221,6 +240,37 @@
                 },
                 "stage": {
                   "type": "string",
+                  "value": "long_variance"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "stage_report_kind": {
@@ -235,7 +285,7 @@
               "type": "object"
             }
           ],
-          "length": 4,
+          "length": 5,
           "type": "array"
         },
         "started_from_stage": {
@@ -316,6 +366,25 @@
                 },
                 "completed_stage": {
                   "type": "string",
+                  "value": "long_variance"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "completed_stage_position": {
@@ -329,7 +398,7 @@
               "type": "object"
             }
           ],
-          "length": 4,
+          "length": 5,
           "type": "array"
         },
         "execution_mode": {
@@ -469,6 +538,37 @@
                 },
                 "stage": {
                   "type": "string",
+                  "value": "long_variance"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "stage_report_kind": {
@@ -483,7 +583,7 @@
               "type": "object"
             }
           ],
-          "length": 4,
+          "length": 5,
           "type": "array"
         },
         "started_from_stage": {
@@ -612,90 +712,60 @@
       "type": "object"
     },
     "pricing.vanilla_option.run_result.v1::boundary_runtime_nominal": {
-      "type": "object",
       "fields": {
-        "schema_version": {
-          "type": "string",
-          "value": "pricing.vanilla_option.run_result.v1"
-        },
-        "output_schema_metadata": {
-          "type": "object",
+        "calibration_hooks": {
           "fields": {
+            "forward_moneyness": {
+              "type": "float"
+            },
+            "hook_policy": {
+              "type": "string",
+              "value": "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1"
+            },
+            "integration_convergence_check_passed": {
+              "type": "bool"
+            },
+            "integration_numeric_quality_is_poor": {
+              "type": "bool"
+            },
+            "integration_truncation_check_passed": {
+              "type": "bool"
+            },
+            "log_moneyness": {
+              "type": "float"
+            },
+            "maturity_interval": {
+              "type": "float"
+            },
+            "option_price": {
+              "type": "float"
+            },
             "schema_version": {
               "type": "string",
-              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
             },
-            "run_result_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_result.v1"
-            },
-            "run_diagnostics_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_diagnostics.v1"
-            },
+            "transform_status": {
+              "type": "null"
+            }
+          },
+          "type": "object"
+        },
+        "maturity_terminal_interval_indices": {
+          "item_profiles": [
+            {
+              "type": "int"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "output_schema_metadata": {
+          "fields": {
             "calibration_hooks_schema_version": {
               "type": "string",
               "value": "pricing.vanilla_option.calibration_hooks.v1"
             },
-            "required_run_result_fields": {
-              "type": "array",
-              "length": 7,
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "output_schema_metadata"
-                },
-                {
-                  "type": "string",
-                  "value": "response"
-                },
-                {
-                  "type": "string",
-                  "value": "run_diagnostics"
-                },
-                {
-                  "type": "string",
-                  "value": "calibration_hooks"
-                },
-                {
-                  "type": "string",
-                  "value": "runtime_interval_schedule"
-                },
-                {
-                  "type": "string",
-                  "value": "maturity_terminal_interval_indices"
-                }
-              ]
-            },
-            "required_run_diagnostics_fields": {
-              "type": "array",
-              "length": 4,
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "transform"
-                },
-                {
-                  "type": "string",
-                  "value": "integration_quality"
-                },
-                {
-                  "type": "string",
-                  "value": "spectral"
-                }
-              ]
-            },
             "required_calibration_hooks_fields": {
-              "type": "array",
-              "length": 10,
               "item_profiles": [
                 {
                   "type": "string",
@@ -737,266 +807,121 @@
                   "type": "string",
                   "value": "integration_truncation_check_passed"
                 }
-              ]
+              ],
+              "length": 10,
+              "type": "array"
+            },
+            "required_run_diagnostics_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "spectral"
+                }
+              ],
+              "length": 4,
+              "type": "array"
+            },
+            "required_run_result_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                },
+                {
+                  "type": "string",
+                  "value": "runtime_interval_schedule"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_terminal_interval_indices"
+                }
+              ],
+              "length": 7,
+              "type": "array"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
             }
-          }
+          },
+          "type": "object"
         },
         "response": {
-          "type": "object",
           "fields": {
-            "pricing_status": {
-              "type": "string"
-            },
-            "pricing_failure_diagnostic": {
-              "type": "null"
-            },
-            "price": {
-              "type": "float"
-            },
             "diagnostics": {
-              "type": "object",
               "fields": {
-                "forward_price": {
+                "boundary_state_norm": {
                   "type": "float"
                 },
                 "discount_factor": {
                   "type": "float"
                 },
-                "maturity_interval": {
+                "forward_price": {
                   "type": "float"
                 },
-                "boundary_state_norm": {
+                "maturity_interval": {
                   "type": "float"
                 }
-              }
+              },
+              "type": "object"
             },
             "implied_volatility": {
               "type": "float"
             },
             "implied_volatility_inversion_status": {
               "type": "string"
+            },
+            "price": {
+              "type": "float"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "pricing_status": {
+              "type": "string"
             }
-          }
+          },
+          "type": "object"
         },
         "run_diagnostics": {
-          "type": "object",
           "fields": {
-            "schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_diagnostics.v1"
-            },
-            "transform": {
-              "type": "object",
-              "fields": {
-                "metadata": {
-                  "type": "object",
-                  "fields": {
-                    "blowup_termination_policy": {
-                      "type": "string"
-                    },
-                    "completed_step_count": {
-                      "type": "int"
-                    },
-                    "configured_step_count": {
-                      "type": "int"
-                    },
-                    "domain_guard_policy": {
-                      "type": "string"
-                    },
-                    "guard_failure": {
-                      "type": "null"
-                    },
-                    "integrator_method": {
-                      "type": "string"
-                    },
-                    "news_intensity": {
-                      "type": "object",
-                      "fields": {
-                        "known_nu_h": {
-                          "type": "float"
-                        },
-                        "surprise_nu_h": {
-                          "type": "float"
-                        }
-                      }
-                    },
-                    "news_intensity_usage_policy": {
-                      "type": "string"
-                    },
-                    "rhs_evaluation_count": {
-                      "type": "int"
-                    },
-                    "schema_version": {
-                      "type": "string",
-                      "value": "affine_oracle.integration_metadata.v1"
-                    },
-                    "status_flags": {
-                      "type": "object",
-                      "fields": {
-                        "blowup_terminated": {
-                          "type": "bool"
-                        },
-                        "completed": {
-                          "type": "bool"
-                        },
-                        "domain_guard_violation": {
-                          "type": "bool"
-                        }
-                      }
-                    },
-                    "step_size": {
-                      "type": "float"
-                    },
-                    "telemetry_mode": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "output": {
-                  "type": "object",
-                  "fields": {
-                    "c_at_delta": {
-                      "type": "object",
-                      "fields": {
-                        "imaginary": {
-                          "type": "float"
-                        },
-                        "real": {
-                          "type": "float"
-                        }
-                      }
-                    },
-                    "d_at_delta": {
-                      "type": "object",
-                      "fields": {
-                        "minus_minus": {
-                          "type": "object",
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          }
-                        },
-                        "minus_plus": {
-                          "type": "object",
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          }
-                        },
-                        "plus_minus": {
-                          "type": "object",
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          }
-                        },
-                        "plus_plus": {
-                          "type": "object",
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          }
-                        }
-                      }
-                    },
-                    "transform_value": {
-                      "type": "object",
-                      "fields": {
-                        "imaginary": {
-                          "type": "float"
-                        },
-                        "real": {
-                          "type": "float"
-                        }
-                      }
-                    }
-                  }
-                },
-                "output_schema_metadata": {
-                  "type": "object",
-                  "fields": {
-                    "guard_failure_schema_version": {
-                      "type": "string"
-                    },
-                    "integration_metadata_schema_version": {
-                      "type": "string"
-                    },
-                    "required_guard_failure_fields": {
-                      "type": "array",
-                      "length": 6,
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "required_metadata_fields": {
-                      "type": "array",
-                      "length": 13,
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "required_result_fields": {
-                      "type": "array",
-                      "length": 6,
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "required_telemetry_fields": {
-                      "type": "array",
-                      "length": 9,
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "schema_version": {
-                      "type": "string",
-                      "value": "affine_oracle.integration_output_schema_metadata.v1"
-                    },
-                    "telemetry_schema_version": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "schema_version": {
-                  "type": "string",
-                  "value": "affine_oracle.integration_result.v1"
-                },
-                "status": {
-                  "type": "string",
-                  "value": "completed"
-                },
-                "telemetry": {
-                  "type": "null"
-                }
-              }
-            },
             "integration_quality": {
-              "type": "object",
               "fields": {
                 "absolute_integral_estimate": {
                   "type": "float"
@@ -1035,7 +960,6 @@
                   "type": "float"
                 },
                 "numeric_quality_diagnostics": {
-                  "type": "object",
                   "fields": {
                     "coarse_integral_estimate": {
                       "type": "float"
@@ -1091,7 +1015,8 @@
                     "truncation_check_policy": {
                       "type": "string"
                     }
-                  }
+                  },
+                  "type": "object"
                 },
                 "numeric_settings_policy": {
                   "type": "string"
@@ -1109,10 +1034,14 @@
                 "terminal_abs_integrand": {
                   "type": "float"
                 }
-              }
+              },
+              "type": "object"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
             },
             "spectral": {
-              "type": "object",
               "fields": {
                 "collocation_node_count": {
                   "type": "int"
@@ -1129,24 +1058,14 @@
                 "deviation_domain_upper_bound": {
                   "type": "float"
                 },
-                "expected_hawkes_state_update_policy": {
-                  "type": "string"
-                },
-                "interval_operator_policy": {
-                  "type": "string"
-                },
                 "interval_diagnostics": {
-                  "type": "array",
-                  "length": 1,
                   "item_profiles": [
                     {
-                      "type": "object",
                       "fields": {
                         "current_anchor_value": {
                           "type": "float"
                         },
                         "expected_hawkes_boundary_state_after": {
-                          "type": "object",
                           "fields": {
                             "y_minus_minus": {
                               "type": "float"
@@ -1160,10 +1079,10 @@
                             "y_plus_plus": {
                               "type": "float"
                             }
-                          }
+                          },
+                          "type": "object"
                         },
                         "expected_hawkes_boundary_state_before": {
-                          "type": "object",
                           "fields": {
                             "y_minus_minus": {
                               "type": "float"
@@ -1177,7 +1096,8 @@
                             "y_plus_plus": {
                               "type": "float"
                             }
-                          }
+                          },
+                          "type": "object"
                         },
                         "interval_delta": {
                           "type": "float"
@@ -1194,187 +1114,153 @@
                         "next_anchor_value": {
                           "type": "float"
                         }
-                      }
+                      },
+                      "type": "object"
                     }
-                  ]
+                  ],
+                  "length": 1,
+                  "type": "array"
+                },
+                "terminal_affine_measure_change": {
+                  "fields": {
+                    "absolute_martingale_residual": {
+                      "type": "float"
+                    },
+                    "long_variance_boundary_state": {
+                      "fields": {
+                        "level": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "long_variance_stationary_mean_reversion_level": {
+                      "type": "float"
+                    },
+                    "martingale_residual": {
+                      "type": "float"
+                    },
+                    "martingale_tolerance": {
+                      "type": "float"
+                    },
+                    "observed_log_moment_exponent": {
+                      "type": "float"
+                    },
+                    "option_smile_contribution": {
+                      "fields": {
+                        "boundary_level_to_stationary_level_ratio": {
+                          "type": "float"
+                        },
+                        "buy_event_loading": {
+                          "type": "float"
+                        },
+                        "event_feedback_enabled": {
+                          "type": "bool"
+                        },
+                        "sell_event_loading": {
+                          "type": "float"
+                        },
+                        "stochastic_long_variance_enabled": {
+                          "type": "bool"
+                        },
+                        "vol_of_vol": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "target_log_moment_exponent": {
+                      "type": "float"
+                    },
+                    "terminal_cumulant_status": {
+                      "type": "string"
+                    },
+                    "theta": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "terminal_affine_policy": {
+                  "type": "string"
                 }
-              }
+              },
+              "type": "object"
+            },
+            "transform": {
+              "type": "null"
             }
-          }
-        },
-        "calibration_hooks": {
-          "type": "object",
-          "fields": {
-            "schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.calibration_hooks.v1"
-            },
-            "hook_policy": {
-              "type": "string",
-              "value": "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1"
-            },
-            "option_price": {
-              "type": "float"
-            },
-            "log_moneyness": {
-              "type": "float"
-            },
-            "forward_moneyness": {
-              "type": "float"
-            },
-            "maturity_interval": {
-              "type": "float"
-            },
-            "transform_status": {
-              "type": "string"
-            },
-            "integration_numeric_quality_is_poor": {
-              "type": "bool"
-            },
-            "integration_convergence_check_passed": {
-              "type": "bool"
-            },
-            "integration_truncation_check_passed": {
-              "type": "bool"
-            }
-          }
+          },
+          "type": "object"
         },
         "runtime_interval_schedule": {
-          "type": "object",
           "fields": {
-            "valuation_time_utc_nanos": {
-              "type": "int"
+            "interval_deltas_hours": {
+              "item_profiles": [
+                {
+                  "type": "float"
+                }
+              ],
+              "length": 1,
+              "type": "array"
+            },
+            "interval_end_timestamps_utc_nanos": {
+              "item_profiles": [
+                {
+                  "type": "int"
+                }
+              ],
+              "length": 1,
+              "type": "array"
             },
             "metadata": {
-              "type": "object",
               "fields": {
-                "policy_id": {
-                  "type": "string"
-                },
                 "derivation_policy": {
                   "type": "string"
                 },
                 "factor_assignment_policy": {
                   "type": "string"
+                },
+                "policy_id": {
+                  "type": "string"
                 }
-              }
+              },
+              "type": "object"
             },
-            "interval_end_timestamps_utc_nanos": {
-              "type": "array",
-              "length": 1,
-              "item_profiles": [
-                {
-                  "type": "int"
-                }
-              ]
-            },
-            "interval_deltas_hours": {
-              "type": "array",
-              "length": 1,
-              "item_profiles": [
-                {
-                  "type": "float"
-                }
-              ]
+            "valuation_time_utc_nanos": {
+              "type": "int"
             }
-          }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "pricing.vanilla_option.run_result.v1"
+        }
+      },
+      "type": "object"
+    },
+    "pricing.vanilla_option.run_result.v1::direct_run_result_validation_edge_optional_outputs_omitted": {
+      "fields": {
+        "calibration_hooks": {
+          "type": "null"
         },
         "maturity_terminal_interval_indices": {
-          "type": "array",
-          "length": 1,
           "item_profiles": [
             {
               "type": "int"
             }
-          ]
-        }
-      }
-    },
-    "pricing.vanilla_option.run_result.v1::direct_run_result_validation_edge_optional_outputs_omitted": {
-      "type": "object",
-      "fields": {
-        "schema_version": {
-          "type": "string",
-          "value": "pricing.vanilla_option.run_result.v1"
+          ],
+          "length": 1,
+          "type": "array"
         },
         "output_schema_metadata": {
-          "type": "object",
           "fields": {
-            "schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
-            },
-            "run_result_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_result.v1"
-            },
-            "run_diagnostics_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_diagnostics.v1"
-            },
             "calibration_hooks_schema_version": {
               "type": "string",
               "value": "pricing.vanilla_option.calibration_hooks.v1"
             },
-            "required_run_result_fields": {
-              "type": "array",
-              "length": 7,
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "output_schema_metadata"
-                },
-                {
-                  "type": "string",
-                  "value": "response"
-                },
-                {
-                  "type": "string",
-                  "value": "run_diagnostics"
-                },
-                {
-                  "type": "string",
-                  "value": "calibration_hooks"
-                },
-                {
-                  "type": "string",
-                  "value": "runtime_interval_schedule"
-                },
-                {
-                  "type": "string",
-                  "value": "maturity_terminal_interval_indices"
-                }
-              ]
-            },
-            "required_run_diagnostics_fields": {
-              "type": "array",
-              "length": 4,
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "transform"
-                },
-                {
-                  "type": "string",
-                  "value": "integration_quality"
-                },
-                {
-                  "type": "string",
-                  "value": "spectral"
-                }
-              ]
-            },
             "required_calibration_hooks_fields": {
-              "type": "array",
-              "length": 10,
               "item_profiles": [
                 {
                   "type": "string",
@@ -1416,103 +1302,167 @@
                   "type": "string",
                   "value": "integration_truncation_check_passed"
                 }
-              ]
+              ],
+              "length": 10,
+              "type": "array"
+            },
+            "required_run_diagnostics_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "spectral"
+                }
+              ],
+              "length": 4,
+              "type": "array"
+            },
+            "required_run_result_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                },
+                {
+                  "type": "string",
+                  "value": "runtime_interval_schedule"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_terminal_interval_indices"
+                }
+              ],
+              "length": 7,
+              "type": "array"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
             }
-          }
+          },
+          "type": "object"
         },
         "response": {
-          "type": "object",
           "fields": {
-            "pricing_status": {
-              "type": "string"
-            },
-            "pricing_failure_diagnostic": {
-              "type": "null"
-            },
-            "price": {
-              "type": "float"
-            },
             "diagnostics": {
-              "type": "object",
               "fields": {
-                "forward_price": {
+                "boundary_state_norm": {
                   "type": "float"
                 },
                 "discount_factor": {
                   "type": "float"
                 },
-                "maturity_interval": {
+                "forward_price": {
                   "type": "float"
                 },
-                "boundary_state_norm": {
+                "maturity_interval": {
                   "type": "float"
                 }
-              }
+              },
+              "type": "object"
             },
             "implied_volatility": {
               "type": "float"
             },
             "implied_volatility_inversion_status": {
               "type": "string"
+            },
+            "price": {
+              "type": "float"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "pricing_status": {
+              "type": "string"
             }
-          }
+          },
+          "type": "object"
         },
         "run_diagnostics": {
           "type": "null"
         },
-        "calibration_hooks": {
-          "type": "null"
-        },
         "runtime_interval_schedule": {
-          "type": "object",
           "fields": {
-            "valuation_time_utc_nanos": {
-              "type": "int"
+            "interval_deltas_hours": {
+              "item_profiles": [
+                {
+                  "type": "float"
+                }
+              ],
+              "length": 1,
+              "type": "array"
+            },
+            "interval_end_timestamps_utc_nanos": {
+              "item_profiles": [
+                {
+                  "type": "int"
+                }
+              ],
+              "length": 1,
+              "type": "array"
             },
             "metadata": {
-              "type": "object",
               "fields": {
-                "policy_id": {
-                  "type": "string"
-                },
                 "derivation_policy": {
                   "type": "string"
                 },
                 "factor_assignment_policy": {
                   "type": "string"
+                },
+                "policy_id": {
+                  "type": "string"
                 }
-              }
+              },
+              "type": "object"
             },
-            "interval_end_timestamps_utc_nanos": {
-              "type": "array",
-              "length": 1,
-              "item_profiles": [
-                {
-                  "type": "int"
-                }
-              ]
-            },
-            "interval_deltas_hours": {
-              "type": "array",
-              "length": 1,
-              "item_profiles": [
-                {
-                  "type": "float"
-                }
-              ]
-            }
-          }
-        },
-        "maturity_terminal_interval_indices": {
-          "type": "array",
-          "length": 1,
-          "item_profiles": [
-            {
+            "valuation_time_utc_nanos": {
               "type": "int"
             }
-          ]
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "pricing.vanilla_option.run_result.v1"
         }
-      }
+      },
+      "type": "object"
     },
     "simulation.seeded_tick_event.path.v1::boundary_runtime_nominal": {
       "fields": {

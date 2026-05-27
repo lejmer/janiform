@@ -4,12 +4,7 @@ use janiform_model_kernels::return_clock::{
     ReturnClockExposureParameters, stationary_total_return_clock,
 };
 
-use crate::stages::adaptive_direct_search::initial_mesh_radii;
-
-use super::super::execution::{
-    JointRefinementActiveParameterLayout, JointRefinementContext,
-    joint_refinement_restart_full_vector_initial_mesh_divisor,
-};
+use super::super::execution::{JointRefinementActiveParameterLayout, JointRefinementContext};
 use super::core::apply_nig_log_delta_offset_shift;
 
 #[derive(Debug, Clone, Copy)]
@@ -68,28 +63,27 @@ pub(super) fn joint_return_clock_exposure_restart_seeds(
     .into_iter()
     .filter_map(
         |(seed_id, return_clock_parameter_index, direction, move_buy_side)| {
-            let mesh_radius = initial_restart_mesh_radius_for_coordinate(
+            let log_scale_shift = midpoint_log_scale_shift_toward_bound(
                 return_clock_parameter_index,
                 baseline_parameter_vector,
                 lower_bounds,
                 upper_bounds,
+                direction,
             )?;
 
-            let buy_log_scale_shift = move_buy_side
-                .then_some(direction * mesh_radius)
-                .unwrap_or(0.0);
+            let buy_log_scale_shift = if move_buy_side { log_scale_shift } else { 0.0 };
 
-            let sell_log_scale_shift = (!move_buy_side)
-                .then_some(direction * mesh_radius)
-                .unwrap_or(0.0);
+            let sell_log_scale_shift = if move_buy_side { 0.0 } else { log_scale_shift };
 
             build_return_clock_exposure_restart_seed(
-                seed_id,
-                baseline_parameter_vector,
-                active_parameter_layout,
-                lower_bounds,
-                upper_bounds,
-                return_clock_seed_profile,
+                ReturnClockExposureRestartSeedInput {
+                    seed_id,
+                    baseline_parameter_vector,
+                    active_parameter_layout,
+                    lower_bounds,
+                    upper_bounds,
+                    return_clock_seed_profile,
+                },
                 buy_log_scale_shift,
                 sell_log_scale_shift,
             )
@@ -128,28 +122,41 @@ pub(super) fn return_clock_exposure_restart_seed_profile(
     return_clock_exposure_restart_seed_profile_is_valid(profile).then_some(profile)
 }
 
-fn build_return_clock_exposure_restart_seed(
-    seed_id: &str,
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
+struct ReturnClockExposureRestartSeedInput<'a> {
+    seed_id: &'a str,
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
     return_clock_seed_profile: ReturnClockExposureRestartSeedProfile,
+}
+
+fn build_return_clock_exposure_restart_seed(
+    input: ReturnClockExposureRestartSeedInput<'_>,
     buy_log_scale_shift: f64,
     sell_log_scale_shift: f64,
 ) -> Option<(String, Vec<f64>)> {
-    let buy_index = active_parameter_layout.log_buy_excitation_return_clock_scale_index;
-    let sell_index = active_parameter_layout.log_sell_excitation_return_clock_scale_index;
+    let buy_index = input
+        .active_parameter_layout
+        .log_buy_excitation_return_clock_scale_index;
 
-    let baseline_buy_log_scale = *baseline_parameter_vector.get(buy_index)?;
-    let baseline_sell_log_scale = *baseline_parameter_vector.get(sell_index)?;
+    let sell_index = input
+        .active_parameter_layout
+        .log_sell_excitation_return_clock_scale_index;
 
-    let mut restart_seed = baseline_parameter_vector.to_vec();
+    let baseline_buy_log_scale = *input.baseline_parameter_vector.get(buy_index)?;
+    let baseline_sell_log_scale = *input.baseline_parameter_vector.get(sell_index)?;
+
+    let mut restart_seed = input.baseline_parameter_vector.to_vec();
 
     *restart_seed.get_mut(buy_index)? += buy_log_scale_shift;
     *restart_seed.get_mut(sell_index)? += sell_log_scale_shift;
 
-    clamp_in_place(restart_seed.as_mut_slice(), lower_bounds, upper_bounds);
+    clamp_in_place(
+        restart_seed.as_mut_slice(),
+        input.lower_bounds,
+        input.upper_bounds,
+    );
 
     let candidate_buy_log_scale = *restart_seed.get(buy_index)?;
     let candidate_sell_log_scale = *restart_seed.get(sell_index)?;
@@ -161,7 +168,7 @@ fn build_return_clock_exposure_restart_seed(
     }
 
     let log_delta_offset_shift = stationary_return_clock_log_delta_compensation(
-        return_clock_seed_profile,
+        input.return_clock_seed_profile,
         baseline_buy_log_scale,
         baseline_sell_log_scale,
         candidate_buy_log_scale,
@@ -170,13 +177,17 @@ fn build_return_clock_exposure_restart_seed(
 
     apply_nig_log_delta_offset_shift(
         restart_seed.as_mut_slice(),
-        active_parameter_layout,
+        input.active_parameter_layout,
         log_delta_offset_shift,
     );
 
-    clamp_in_place(restart_seed.as_mut_slice(), lower_bounds, upper_bounds);
+    clamp_in_place(
+        restart_seed.as_mut_slice(),
+        input.lower_bounds,
+        input.upper_bounds,
+    );
 
-    Some((seed_id.to_string(), restart_seed))
+    Some((input.seed_id.to_string(), restart_seed))
 }
 
 fn return_clock_exposure_restart_seed_profile_is_valid(
@@ -245,11 +256,12 @@ fn stationary_total_return_clock_for_exposure(
     )
 }
 
-fn initial_restart_mesh_radius_for_coordinate(
+fn midpoint_log_scale_shift_toward_bound(
     parameter_index: usize,
     baseline_parameter_vector: &[f64],
     lower_bounds: &[f64],
     upper_bounds: &[f64],
+    direction: f64,
 ) -> Option<f64> {
     if baseline_parameter_vector.len() != lower_bounds.len()
         || baseline_parameter_vector.len() != upper_bounds.len()
@@ -257,22 +269,25 @@ fn initial_restart_mesh_radius_for_coordinate(
         return None;
     }
 
-    let mesh_radius = *initial_mesh_radii(
-        lower_bounds,
-        upper_bounds,
-        joint_refinement_restart_full_vector_initial_mesh_divisor(baseline_parameter_vector.len()),
-        0.0,
-    )
-    .get(parameter_index)?;
+    let current_value = *baseline_parameter_vector.get(parameter_index)?;
+    let lower_bound = *lower_bounds.get(parameter_index)?;
+    let upper_bound = *upper_bounds.get(parameter_index)?;
+    let target_bound = if direction < 0.0 {
+        lower_bound
+    } else {
+        upper_bound
+    };
+    let shifted_value = 0.5 * (current_value + target_bound);
+    let shift = shifted_value - current_value;
 
-    (mesh_radius.is_finite() && mesh_radius > 0.0).then_some(mesh_radius)
+    (shift.is_finite() && shift != 0.0).then_some(shift)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         JointReturnClockExposureSeedsBuildInput, ReturnClockExposureRestartSeedProfile,
-        initial_restart_mesh_radius_for_coordinate, joint_return_clock_exposure_restart_seeds,
+        joint_return_clock_exposure_restart_seeds, midpoint_log_scale_shift_toward_bound,
         stationary_return_clock_log_delta_compensation,
     };
     use crate::stages::joint_refinement::execution::JointRefinementActiveParameterLayout;
@@ -282,7 +297,8 @@ mod tests {
             hawkes_block: vec![0, 1, 2, 3],
             nig_block: vec![4, 5, 6, 7],
             return_clock_block: vec![8, 9],
-            option_pricing_kernel_block: vec![10, 11],
+            long_variance_block: vec![10, 11, 12, 13],
+            option_pricing_kernel_block: vec![14, 15],
             coupling_block: Vec::new(),
             log_stationary_event_rate_scale_index: 0,
             log_beta_scale_index: 1,
@@ -290,8 +306,12 @@ mod tests {
             log_cross_excitation_scale_index: 3,
             log_buy_excitation_return_clock_scale_index: 8,
             log_sell_excitation_return_clock_scale_index: 9,
-            option_pricing_log_buy_activity_premium_index: 10,
-            option_pricing_log_sell_activity_premium_index: 11,
+            log_long_variance_mean_reversion_rate_scale_index: 10,
+            long_variance_vol_of_vol_index: 11,
+            long_variance_buy_event_loading_index: 12,
+            long_variance_sell_event_loading_index: 13,
+            option_pricing_log_buy_activity_premium_index: 14,
+            option_pricing_log_sell_activity_premium_index: 15,
             known_activity_scale_index: None,
             surprise_activity_scale_index: None,
             surprise_baseline_scale_index: None,
@@ -353,11 +373,12 @@ mod tests {
             ]
         );
 
-        let buy_mesh_radius = initial_restart_mesh_radius_for_coordinate(
+        let buy_log_scale_shift = midpoint_log_scale_shift_toward_bound(
             active_parameter_layout.log_buy_excitation_return_clock_scale_index,
             baseline_parameter_vector.as_slice(),
             lower_bounds.as_slice(),
             upper_bounds.as_slice(),
+            1.0,
         )
         .expect("test bounds have positive width");
 
@@ -371,14 +392,14 @@ mod tests {
             test_return_clock_seed_profile(),
             0.0,
             0.0,
-            buy_mesh_radius,
+            buy_log_scale_shift,
             0.0,
         )
         .expect("finite stationary compensation should be available");
 
         assert_eq!(
             buy_up_seed[active_parameter_layout.log_buy_excitation_return_clock_scale_index],
-            buy_mesh_radius
+            buy_log_scale_shift
         );
         assert_eq!(
             buy_up_seed[active_parameter_layout.log_sell_excitation_return_clock_scale_index],
@@ -388,5 +409,32 @@ mod tests {
             buy_up_seed[active_parameter_layout.nig_block[3]],
             expected_log_delta_shift
         );
+    }
+
+    #[test]
+    fn return_clock_seed_shift_moves_halfway_toward_bound() {
+        let baseline_parameter_vector = vec![0.0, 0.0];
+        let lower_bounds = vec![-2.0, -2.0];
+        let upper_bounds = vec![2.0, 2.0];
+
+        let upward_shift = midpoint_log_scale_shift_toward_bound(
+            0,
+            baseline_parameter_vector.as_slice(),
+            lower_bounds.as_slice(),
+            upper_bounds.as_slice(),
+            1.0,
+        )
+        .expect("upward shift should exist");
+        let downward_shift = midpoint_log_scale_shift_toward_bound(
+            0,
+            baseline_parameter_vector.as_slice(),
+            lower_bounds.as_slice(),
+            upper_bounds.as_slice(),
+            -1.0,
+        )
+        .expect("downward shift should exist");
+
+        assert_eq!(upward_shift, 1.0);
+        assert_eq!(downward_shift, -1.0);
     }
 }

@@ -69,6 +69,17 @@ pub(super) fn diagnostic_runtime_profile_entry_for_stage_report(
                     .unwrap_or(0),
             }
         }
+        CalibrationStagedRunStageReport::LongVariance(report) => {
+            CalibrationDiagnosticRuntimeProfileEntry {
+                component_id: "stage.long_variance".to_string(),
+                elapsed_seconds,
+                evaluation_count: report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| metadata.horizon_target_count)
+                    .unwrap_or(0),
+            }
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             CalibrationDiagnosticRuntimeProfileEntry {
                 component_id: "stage.mean_reversion".to_string(),
@@ -158,6 +169,7 @@ pub(super) fn retained_stage_report(
         }
         CalibrationStagedRunStageReport::Hawkes(_)
         | CalibrationStagedRunStageReport::ReturnComponents(_)
+        | CalibrationStagedRunStageReport::LongVariance(_)
         | CalibrationStagedRunStageReport::MeanReversion(_) => stage_report.clone(),
     }
 }

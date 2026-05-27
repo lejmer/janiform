@@ -13,7 +13,7 @@ use janiform_engine_pricing::VanillaOptionPricingStatus;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use serde_json::json;
 
-use super::artifacts::write_observed_artifacts_if_requested;
+use super::artifacts::{ObservedArtifactWriteInput, write_observed_artifacts_if_requested};
 use super::data::prepare_selected_expiry_snapshot_specs_by_valuation_times;
 use super::physical_distribution::{
     ObservedOptionsPhysicalDistributionDiagnosticsNode,
@@ -278,16 +278,16 @@ fn observed_primary_artifact_matches_native_result_shape() {
         nodes: vec![node.clone()],
     };
 
-    let paths = write_observed_artifacts_if_requested(
-        Some(&output_path),
-        "observed-options-test",
-        ObservedOptionsPricingScope::Surface,
+    let paths = write_observed_artifacts_if_requested(ObservedArtifactWriteInput {
+        output_path: Some(&output_path),
+        run_id: "observed-options-test",
+        scope: ObservedOptionsPricingScope::Surface,
         valuation_time_utc,
-        &[node],
-        &[snapshot_result],
-        None,
-        Duration::from_secs(2),
-    )
+        nodes: &[node],
+        snapshot_results: &[snapshot_result],
+        physical_distribution: None,
+        execution_duration: Duration::from_secs(2),
+    })
     .expect("observed artifact should be writable")
     .expect("artifact paths should be returned");
 
@@ -339,16 +339,16 @@ fn observed_artifacts_write_physical_distribution_sidecars_when_present() {
 
     let diagnostics = physical_distribution_output(valuation_time_utc);
 
-    let paths = write_observed_artifacts_if_requested(
-        Some(&output_path),
-        "observed-options-test",
-        ObservedOptionsPricingScope::Surface,
+    let paths = write_observed_artifacts_if_requested(ObservedArtifactWriteInput {
+        output_path: Some(&output_path),
+        run_id: "observed-options-test",
+        scope: ObservedOptionsPricingScope::Surface,
         valuation_time_utc,
-        &[node],
-        &[snapshot_result],
-        Some(&diagnostics),
-        Duration::from_secs(2),
-    )
+        nodes: &[node],
+        snapshot_results: &[snapshot_result],
+        physical_distribution: Some(&diagnostics),
+        execution_duration: Duration::from_secs(2),
+    })
     .expect("observed artifact should be writable")
     .expect("artifact paths should be returned");
 

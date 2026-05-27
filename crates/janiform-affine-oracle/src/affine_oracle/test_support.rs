@@ -1,6 +1,7 @@
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::contracts::ExponentialAffineTransformEquationSpecification;
@@ -26,6 +27,7 @@ pub(crate) fn valid_equation_specification() -> ExponentialAffineTransformEquati
         .expect("valid kernel payload should construct"),
         GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
             .expect("valid gamma configuration should construct"),
+        LongVarianceParameters::neutral(),
     )
     .expect("valid equation specification should construct")
 }

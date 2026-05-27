@@ -1092,8 +1092,10 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "rand",
  "serde",
  "serde_json",
+ "statrs",
  "tracing",
 ]
 
@@ -1130,6 +1132,7 @@ dependencies = [
  "csv",
  "nalgebra 0.34.2",
  "parquet",
+ "rand",
  "serde",
  "serde_json",
 ]

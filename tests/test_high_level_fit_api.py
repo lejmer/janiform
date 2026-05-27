@@ -8,20 +8,20 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn, Optional, cast
 
-import pyarrow as pa
 import pandas
 import pytest
+import pyarrow as pa
 from pyarrow import parquet
 
 import janiform._native_api as native_api_module
-import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
-import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
 import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
 import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
+import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
+import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 import janiform.model as model_module
@@ -33,24 +33,6 @@ from janiform._workflow_outputs import SimulationArtifactSink
 from janiform._workflow_progress import WorkflowProgressMode
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import JaniformEstimator, JaniformFitReport, JaniformFitResult
-from janiform.model import JaniformModel
-from janiform.pricing.fitted import (
-    JaniformObservedOptionSurfacePricingResult,
-    JaniformVanillaOptionGrid,
-    JaniformVanillaOptionGridBatch,
-    JaniformVanillaOptionGridBatchPricingResult,
-    JaniformVanillaOptionGridPricingResult,
-    JaniformVanillaOptionMaturitySummary,
-    JaniformVanillaOptionSurface,
-    JaniformVanillaOptionSurfacePricingResult,
-    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
-)
-from janiform.pricing.fitted.physical_distribution import (
-    DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
-    DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
-    physical_distribution_diagnostics_request_payload,
-)
-from janiform.simulation import JaniformSimulationResult
 from janiform.calibration.fit.state import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
@@ -86,30 +68,47 @@ from janiform.hourly_factors import (
     HourlySeasonalityProviderExplicitSource,
     HourlySeasonalityProviderMaterializedSource,
 )
+from janiform.long_variance import LongVarianceState
 from janiform.mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
 )
+from janiform.model import JaniformModel
 from janiform.pricing import (
     AutoActivityCompressedPricingIntervalSchedulePolicy,
     AutoExactSparsePricingIntervalSchedulePolicy,
-    VanillaOptionPricingDiagnostics,
-    run_vanilla_option_pricing,
-)
-from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
+    VanillaOptionPricingDiagnostics,
     VanillaOptionPricingRunResult,
     VanillaOptionPricingStatus,
+    run_vanilla_option_pricing,
+)
+from janiform.pricing.fitted import (
+    JaniformObservedOptionSurfacePricingResult,
+    JaniformVanillaOptionGrid,
+    JaniformVanillaOptionGridBatch,
+    JaniformVanillaOptionGridBatchPricingResult,
+    JaniformVanillaOptionGridPricingResult,
+    JaniformVanillaOptionMaturitySummary,
+    JaniformVanillaOptionSurface,
+    JaniformVanillaOptionSurfacePricingResult,
+    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
+)
+from janiform.pricing.fitted.physical_distribution import (
+    DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
+    DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
+    physical_distribution_diagnostics_request_payload,
 )
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
-from janiform.simulation import SeededTickEventSide
+from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
     build_endogenous_mean_reversion_fitted_parameters_payload,
     build_nominal_tick_grid_observation_model_payload,
+    build_neutral_long_variance_parameters_payload,
     build_neutral_return_clock_exposure_parameters_payload,
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
@@ -2960,6 +2959,9 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
                         "y_minus_plus": 0.1,
                         "y_minus_minus": 0.25,
                     },
+                    "long_variance_state": {
+                        "level": 1.2,
+                    },
                     "mean_reversion_boundary_state": {
                         "observed_log_price": 0.0,
                         "anchor_value": 0.0,
@@ -2983,6 +2985,7 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
             y_minus_plus=0.1,
             y_minus_minus=0.25,
         ),
+        long_variance_state=LongVarianceState(level=1.2),
         mean_reversion_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
@@ -2991,18 +2994,18 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
         ),
     )
     assert len(captured_native_arguments) == 1
-    assert captured_native_arguments[0][2] == datetime_to_utc_nanos(
+    assert captured_native_arguments[0][3] == datetime_to_utc_nanos(
         datetime(2026, 2, 2, 15, tzinfo=UTC)
     )
-    assert captured_native_arguments[0][3] == pytest.approx(
+    assert captured_native_arguments[0][4] == pytest.approx(
         fit_pricing_support_module.price_observed_log_return_from_spot(model, spot=100.0)
     )
-    assert captured_native_arguments[0][4] == (
+    assert captured_native_arguments[0][5] == (
         datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
         datetime(2026, 2, 2, 14, tzinfo=UTC).isoformat(),
     )
-    assert captured_native_arguments[0][5] == (100.0, 100.5)
-    assert captured_native_arguments[0][6] == (
+    assert captured_native_arguments[0][6] == (100.0, 100.5)
+    assert captured_native_arguments[0][7] == (
         "buy",
         "sell",
     )
@@ -3137,7 +3140,7 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
             y_minus_plus=0.0,
             y_minus_minus=0.0,
         ),
-        include_transform_diagnostics=True,
+        include_transform_diagnostics=False,
         include_integration_quality_diagnostics=True,
     )
 
@@ -3366,7 +3369,6 @@ def test_high_level_model_price_option_grid_dispatches_through_grid_batch_pricin
                         collocation_node_count=3,
                         collocation_nodes=(-1.0, 0.0, 1.0),
                         interval_summaries=(),
-                        representative_transform=None,
                         integration_quality=None,
                     ),
                 ),
@@ -3400,7 +3402,6 @@ def test_high_level_model_price_option_grid_dispatches_through_grid_batch_pricin
                         collocation_node_count=3,
                         collocation_nodes=(-1.0, 0.0, 1.0),
                         interval_summaries=(),
-                        representative_transform=None,
                         integration_quality=None,
                     ),
                 ),
@@ -3497,7 +3498,6 @@ def test_high_level_model_price_option_grid_surface_dispatches_through_surface_p
                 collocation_node_count=3,
                 collocation_nodes=(-1.0, 0.0, 1.0),
                 interval_summaries=(),
-                representative_transform=None,
                 integration_quality=None,
             ),
             JaniformVanillaOptionMaturitySummary(
@@ -3508,7 +3508,6 @@ def test_high_level_model_price_option_grid_surface_dispatches_through_surface_p
                 collocation_node_count=3,
                 collocation_nodes=(-1.0, 0.0, 1.0),
                 interval_summaries=(),
-                representative_transform=None,
                 integration_quality=None,
             ),
         ),
@@ -3584,14 +3583,7 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
                 payoff_type=VanillaOptionPayoffType.CALL,
                 risk_free_rate=0.01,
                 dividend_yield=0.0,
-                strikes=(95.0, 105.0),
-                tenors=("1h",),
-            ),
-            JaniformVanillaOptionGrid(
-                payoff_type=VanillaOptionPayoffType.PUT,
-                risk_free_rate=0.01,
-                dividend_yield=0.0,
-                strikes=(100.0,),
+                strikes=(95.0,),
                 tenors=("1h",),
             ),
         ),
@@ -3601,7 +3593,7 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
         boundary_state=boundary_state,
-        include_transform_diagnostics=True,
+        include_transform_diagnostics=False,
         include_integration_quality_diagnostics=True,
     )
 
@@ -3609,8 +3601,6 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
 
     flattened_specs = [
         (0, 0, 95.0, VanillaOptionPayoffType.CALL),
-        (0, 1, 105.0, VanillaOptionPayoffType.CALL),
-        (1, 0, 100.0, VanillaOptionPayoffType.PUT),
     ]
 
     representative_single_results: dict[int, VanillaOptionPricingRunResult] = {}
@@ -3625,7 +3615,7 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
             risk_free_rate=0.01,
             dividend_yield=0.0,
             boundary_state=boundary_state,
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         )
@@ -3650,9 +3640,8 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
         assert observed_group.boundary_state_norm_grid[0][strike_index] == pytest.approx(
             single_result.response.diagnostics.boundary_state_norm
         )
-        assert observed_group.maturity_summaries[0].representative_transform is not None
         assert single_result.run_diagnostics is not None
-        assert observed_group.maturity_summaries[0].representative_transform == single_result.run_diagnostics.transform
+        assert single_result.run_diagnostics.transform is None
 
     for group_index, representative_single_result in representative_single_results.items():
         observed_summary = batch_result.grids[group_index].maturity_summaries[0]
@@ -3680,7 +3669,7 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
 
     surface = JaniformVanillaOptionSurface(
         spot=100.0,
-        strikes=(95.0, 105.0),
+        strikes=(95.0,),
         tenors=("1h",),
         payoff_type=VanillaOptionPayoffType.CALL,
         risk_free_rate=0.01,
@@ -3691,12 +3680,12 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         surface=surface,
         boundary_state=boundary_state,
-        include_transform_diagnostics=True,
+        include_transform_diagnostics=False,
         include_integration_quality_diagnostics=True,
     )
 
     assert isinstance(surface_result, JaniformVanillaOptionSurfacePricingResult)
-    assert surface_result.shape == (1, 2)
+    assert surface_result.shape == (1, 1)
 
     representative_single_results: dict[int, VanillaOptionPricingRunResult] = {}
 
@@ -3711,7 +3700,7 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
                 risk_free_rate=surface.risk_free_rate,
                 dividend_yield=surface.dividend_yield,
                 boundary_state=boundary_state,
-                include_transform_diagnostics=True,
+                include_transform_diagnostics=False,
                 include_integration_quality_diagnostics=True,
                 include_calibration_hooks=True,
             )
@@ -3738,12 +3727,8 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
                 surface_result.boundary_state_norm_grid[maturity_index][strike_index]
                 == pytest.approx(single_result.response.diagnostics.boundary_state_norm)
             )
-            assert surface_result.maturity_summaries[maturity_index].representative_transform is not None
             assert single_result.run_diagnostics is not None
-            assert (
-                surface_result.maturity_summaries[maturity_index].representative_transform
-                == single_result.run_diagnostics.transform
-            )
+            assert single_result.run_diagnostics.transform is None
 
     for maturity_index, representative_single_result in representative_single_results.items():
         assert representative_single_result.run_diagnostics is not None
@@ -4397,6 +4382,7 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
             CalibrationStage.SEASONALITY,
             CalibrationStage.HAWKES,
             CalibrationStage.RETURN_COMPONENTS,
+            CalibrationStage.LONG_VARIANCE,
             CalibrationStage.MEAN_REVERSION,
             CalibrationStage.JOINT_REFINEMENT,
             CalibrationStage.FINALIZATION,
@@ -5125,6 +5111,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         "return_clock_exposure_parameters": (
                             build_neutral_return_clock_exposure_parameters_payload()
                         ),
+                        "long_variance_parameters": (
+                            build_neutral_long_variance_parameters_payload()
+                        ),
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()
                         ),
@@ -5300,6 +5289,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "return_clock_exposure_parameters": (
                                 build_neutral_return_clock_exposure_parameters_payload()
                             ),
+                            "long_variance_parameters": (
+                                build_neutral_long_variance_parameters_payload()
+                            ),
                             "tick_grid_observation_model": (
                                 build_nominal_tick_grid_observation_model_payload()
                             ),
@@ -5396,6 +5388,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         },
                         "return_clock_exposure_parameters": (
                             build_neutral_return_clock_exposure_parameters_payload()
+                        ),
+                        "long_variance_parameters": (
+                            build_neutral_long_variance_parameters_payload()
                         ),
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()

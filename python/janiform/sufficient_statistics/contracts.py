@@ -34,6 +34,7 @@ from ..hourly_factors import (
     SeasonalityInputValidationError,
     load_hourly_factor_contract_payload,
 )
+from ..long_variance import LongVarianceParameters, LongVarianceState
 from .._timestamps import hours_to_exact_nanoseconds
 from .errors import (
     SUFFICIENT_STATISTICS_ERROR_FACTORY,
@@ -178,6 +179,7 @@ DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA = 1.0
 class SufficientStatisticsEquationSpecification(ContractModel):
     hawkes_kernel_parameters: HawkesKernelParameters
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
+    long_variance_parameters: LongVarianceParameters
 
     @staticmethod
     def from_mapping(
@@ -207,6 +209,16 @@ class SufficientStatisticsEquationSpecification(ContractModel):
                 ),
                 field_path=f"{field_path}.gamma_severity_mark_configuration",
             ),
+            long_variance_parameters=LongVarianceParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "long_variance_parameters",
+                    f"{field_path}.long_variance_parameters",
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.long_variance_parameters",
+                error_factory=SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
         )
 
 
@@ -215,6 +227,8 @@ class SufficientStatisticsModelInputs(ContractModel):
     equation_specification: SufficientStatisticsEquationSpecification
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     initial_excitation_state: HawkesExcitationState
+    long_variance_parameters: LongVarianceParameters
+    initial_long_variance_state: LongVarianceState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState
@@ -265,6 +279,26 @@ class SufficientStatisticsModelInputs(ContractModel):
                         SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.initial_excitation_state",
+                ),
+                long_variance_parameters=LongVarianceParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "long_variance_parameters",
+                        "model_inputs.long_variance_parameters",
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.long_variance_parameters",
+                    error_factory=SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                ),
+                initial_long_variance_state=LongVarianceState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "initial_long_variance_state",
+                        "model_inputs.initial_long_variance_state",
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.initial_long_variance_state",
+                    error_factory=SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 ),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters.from_mapping(
                     require_mapping(

@@ -51,6 +51,11 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
             .fitted_parameters
             .return_components_fitted_parameters
             .return_clock_exposure_parameters,
+        long_variance_parameters: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        initial_long_variance_state: janiform::model::long_variance::LongVarianceState::unit(),
         observed_price_tick_size: context
             .fitted_parameters
             .return_components_fitted_parameters
@@ -79,26 +84,35 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
             .news_process_configuration
             .shared_mark_law
             .gamma_severity_marks,
+        context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
     )
     .map_err(|source| validation_error("equation_specification", source.to_string()))?;
 
-    SufficientStatisticsModelInputs::try_new(
+    SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
         equation_specification,
-        context
+        nig_shared_plus_shift_configuration: context
             .fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
         initial_excitation_state,
+        long_variance_parameters: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        initial_long_variance_state: janiform::model::long_variance::LongVarianceState::unit(),
         // Intentional copy because the sufficient-statistics contract owns
         // validated fitted parameters independent of the shared workflow context.
-        context
+        mean_reversion_fitted_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
             .clone(),
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    )
+    })
     .map_err(|source| validation_error("sufficient_statistics_model_inputs", source.to_string()))
 }
 
@@ -106,29 +120,34 @@ pub(crate) fn build_coarse_simulation_model_inputs(
     context: &FittedModelContext,
     model_inputs: SufficientStatisticsModelInputs,
 ) -> Result<CoarseSimulationModelInputs, WorkflowError> {
-    CoarseSimulationModelInputs::try_new(
-        model_inputs,
+    CoarseSimulationModelInputs::try_new(CoarseSimulationModelInputs {
+        sufficient_statistics_model_inputs: model_inputs,
         // Intentional copy because the coarse simulation contract owns model inputs
         // independent of the shared workflow context.
-        context
+        news_process_configuration: context
             .fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration
             .clone(),
-        context
+        return_clock_exposure_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
             .return_clock_exposure_parameters,
-        context
+        long_variance_parameters: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .long_variance_parameters,
+        initial_long_variance_state: janiform::model::long_variance::LongVarianceState::unit(),
+        observed_price_tick_size: context
             .fitted_parameters
             .return_components_fitted_parameters
             .tick_grid_observation_model
             .tick_size,
         // Intentional copies because coarse simulation owns serialized calendar
         // and exchange identity independent of the shared workflow context.
-        context.calendar_registry_artifact.clone(),
-        context.model.session_resolution.exchange_code.clone(),
-    )
+        calendar_registry_artifact: context.calendar_registry_artifact.clone(),
+        exchange_code: context.model.session_resolution.exchange_code.clone(),
+    })
     .map_err(|source| validation_error("coarse_model_inputs", source.to_string()))
 }
 

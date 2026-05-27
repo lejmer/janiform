@@ -378,6 +378,28 @@ fn assert_stage_artifact_reload_matches(
                 );
             }
             (
+                CalibrationStageParameterPayload::LongVariance(reloaded_payload),
+                CalibrationStageParameterPayload::LongVariance(expected_payload),
+            ) => {
+                assert_eq!(
+                    reloaded_payload.fitted_parameters,
+                    expected_payload.fitted_parameters
+                );
+                assert_eq!(reloaded_payload.diagnostics, expected_payload.diagnostics);
+                assert_eq!(
+                    reloaded_payload.return_components_input_transport,
+                    expected_payload.return_components_input_transport
+                );
+                assert_eq!(
+                    reloaded_payload.return_components_selected_candidate_id,
+                    expected_payload.return_components_selected_candidate_id
+                );
+                assert_eq!(
+                    reloaded_payload.return_components_artifact_reference,
+                    expected_payload.return_components_artifact_reference
+                );
+            }
+            (
                 CalibrationStageParameterPayload::MeanReversion(reloaded_payload),
                 CalibrationStageParameterPayload::MeanReversion(expected_payload),
             ) => {
@@ -430,6 +452,39 @@ fn assert_stage_artifact_reload_matches(
                     &reloaded_payload.optimizer_diagnostics,
                     &expected_payload.optimizer_diagnostics,
                     "joint refinement optimizer_diagnostics",
+                );
+            }
+            (
+                CalibrationStageParameterPayload::Finalization(reloaded_payload),
+                CalibrationStageParameterPayload::Finalization(expected_payload),
+            ) => {
+                assert_eq!(
+                    reloaded_payload.selected_candidate_id,
+                    expected_payload.selected_candidate_id
+                );
+                assert_joint_refinement_fitted_parameters_match(
+                    &reloaded_payload.fitted_parameters,
+                    &expected_payload.fitted_parameters,
+                    "finalization fitted_parameters",
+                );
+                assert_hawkes_fitted_parameters_match(
+                    &reloaded_payload.baseline_hawkes_fitted_parameters,
+                    &expected_payload.baseline_hawkes_fitted_parameters,
+                    "finalization baseline_hawkes_fitted_parameters",
+                );
+                assert_eq!(
+                    reloaded_payload.baseline_return_components_fitted_parameters,
+                    expected_payload.baseline_return_components_fitted_parameters
+                );
+                assert_joint_refinement_objective_breakdown_matches(
+                    &reloaded_payload.objective_breakdown,
+                    &expected_payload.objective_breakdown,
+                    "finalization objective_breakdown",
+                );
+                assert_joint_refinement_optimizer_diagnostics_matches(
+                    &reloaded_payload.optimizer_diagnostics,
+                    &expected_payload.optimizer_diagnostics,
+                    "finalization optimizer_diagnostics",
                 );
             }
             _ => panic!("reloaded stage payload kind did not match expected payload kind"),

@@ -1,4 +1,4 @@
-use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_foundations::randomness::{SimulationRandomnessStream, sample_standard_normal_draw};
 
 pub(crate) fn sample_gamma_shape_scale<R>(
     shape_k: f64,
@@ -55,23 +55,6 @@ where
             return d * v;
         }
     }
-}
-
-fn sample_standard_normal_draw<R>(randomness_stream: &mut R) -> f64
-where
-    R: SimulationRandomnessStream + ?Sized,
-{
-    let first_uniform_draw = randomness_stream
-        .next_unit_interval_f64()
-        .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
-    let second_uniform_draw = randomness_stream
-        .next_unit_interval_f64()
-        .clamp(0.0, 1.0 - f64::EPSILON);
-
-    let radius = (-2.0 * first_uniform_draw.ln()).sqrt();
-    let angle = 2.0 * std::f64::consts::PI * second_uniform_draw;
-
-    radius * angle.cos()
 }
 
 pub(crate) fn sample_exponential_with_rate<R>(rate: f64, randomness_stream: &mut R) -> f64

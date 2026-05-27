@@ -11,6 +11,8 @@ pub(in crate::spectral::pricer) struct SolvedMaturityLaw {
     pub(in crate::spectral::pricer) characteristic_function_values: Vec<ComplexScalar>,
     pub(in crate::spectral::pricer) characteristic_function_sensitivities:
         Option<Vec<NodePriceSharedPlusShiftComplexSensitivity>>,
+    pub(in crate::spectral::pricer) terminal_affine_measure_change:
+        Option<super::TerminalAffineMeasureChangeDiagnostics>,
     pub(in crate::spectral::pricer) interval_summaries:
         Vec<super::SpectralPricingIntervalDiagnostics>,
 }

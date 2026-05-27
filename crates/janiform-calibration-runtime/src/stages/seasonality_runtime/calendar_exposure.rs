@@ -16,16 +16,31 @@ pub(super) struct RuntimeSeasonalityIntervalContribution {
     pub(super) interval_duration_nanos: i64,
 }
 
+pub(super) struct RuntimeSeasonalityIntervalContributionInput<'a> {
+    pub(super) calendar_definition: &'a ExchangeCalendarDefinition,
+    pub(super) timezone: Tz,
+    pub(super) intraday_minutes_per_bin: u16,
+    pub(super) intraday_factor_by_bin: &'a [f64],
+    pub(super) day_of_week_factor: &'a [f64],
+    pub(super) day_of_year_factor: &'a [f64],
+    pub(super) interval_start_utc_nanos: i64,
+    pub(super) interval_end_utc_nanos: i64,
+}
+
 pub(super) fn runtime_seasonality_interval_contribution(
-    calendar_definition: &ExchangeCalendarDefinition,
-    timezone: Tz,
-    intraday_minutes_per_bin: u16,
-    intraday_factor_by_bin: &[f64],
-    day_of_week_factor: &[f64],
-    day_of_year_factor: &[f64],
-    interval_start_utc_nanos: i64,
-    interval_end_utc_nanos: i64,
+    input: RuntimeSeasonalityIntervalContributionInput<'_>,
 ) -> Result<RuntimeSeasonalityIntervalContribution, String> {
+    let RuntimeSeasonalityIntervalContributionInput {
+        calendar_definition,
+        timezone,
+        intraday_minutes_per_bin,
+        intraday_factor_by_bin,
+        day_of_week_factor,
+        day_of_year_factor,
+        interval_start_utc_nanos,
+        interval_end_utc_nanos,
+    } = input;
+
     if interval_end_utc_nanos <= interval_start_utc_nanos {
         return Err(format!(
             "runtime seasonality interval has non-increasing bounds start={interval_start_utc_nanos}, end={interval_end_utc_nanos}"
