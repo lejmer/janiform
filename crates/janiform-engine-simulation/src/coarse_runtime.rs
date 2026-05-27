@@ -1013,37 +1013,44 @@ mod tests {
         )
         .expect("equation specification should construct");
 
-        let sufficient_statistics_model_inputs = SufficientStatisticsModelInputs::try_new(
-            equation_specification,
-            NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        let sufficient_statistics_model_inputs =
+            SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
+                equation_specification,
+                nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+                    2.3, -0.8, 0.7, 0.1, -0.2,
+                )
                 .expect("nig configuration should construct"),
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-            LongVarianceParameters::neutral(),
-            LongVarianceState::unit(),
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(1.0)
-                .expect("positive-kappa mean reversion should construct"),
-            MeanReversionRuntimeIntervalAnchors::try_new(
-                "explicit_runtime_interval_grid_alignment.v1",
-                2.0,
-                0.0,
-                vec![2.0],
-                vec![0.0],
-                vec![1.0],
-            )
-            .expect("mean-reversion runtime anchors should construct"),
-            MeanReversionBoundaryState::try_new(3.0, 2.0, 0.0, 1.0)
+                initial_excitation_state: HawkesExcitationState {
+                    y_plus_plus: 0.0,
+                    y_plus_minus: 0.0,
+                    y_minus_plus: 0.0,
+                    y_minus_minus: 0.0,
+                },
+                long_variance_parameters: LongVarianceParameters::neutral(),
+                initial_long_variance_state: LongVarianceState::unit(),
+                mean_reversion_fitted_parameters:
+                    MeanReversionFittedParameters::flat_anchor_mean_reversion(1.0)
+                        .expect("positive-kappa mean reversion should construct"),
+                mean_reversion_runtime_interval_anchors:
+                    MeanReversionRuntimeIntervalAnchors::try_new(
+                        "explicit_runtime_interval_grid_alignment.v1",
+                        2.0,
+                        0.0,
+                        vec![2.0],
+                        vec![0.0],
+                        vec![1.0],
+                    )
+                    .expect("mean-reversion runtime anchors should construct"),
+                initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+                    3.0, 2.0, 0.0, 1.0,
+                )
                 .expect("mean-reversion boundary state should construct"),
-        )
-        .expect("sufficient-statistics model inputs should construct");
+            })
+            .expect("sufficient-statistics model inputs should construct");
 
-        let model_inputs = CoarseSimulationModelInputs::try_new(
+        let model_inputs = CoarseSimulationModelInputs::try_new(CoarseSimulationModelInputs {
             sufficient_statistics_model_inputs,
-            NewsProcessConfiguration::try_new(
+            news_process_configuration: NewsProcessConfiguration::try_new(
                 NewsArrivalConfiguration {
                     known: KnownNewsArrivalConfiguration {
                         scheduled_event_timestamps_utc_nanos: vec![],
@@ -1070,11 +1077,12 @@ mod tests {
                 },
             )
             .expect("news process configuration should construct"),
-            janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-            LongVarianceParameters::neutral(),
-            LongVarianceState::unit(),
-            None,
-            ExchangeCalendarRegistryArtifact {
+            return_clock_exposure_parameters:
+                janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            long_variance_parameters: LongVarianceParameters::neutral(),
+            initial_long_variance_state: LongVarianceState::unit(),
+            observed_price_tick_size: None,
+            calendar_registry_artifact: ExchangeCalendarRegistryArtifact {
                 schema_version: "calendar.registry.v1".to_string(),
                 artifact_date: "2024-01-02".to_string(),
                 exchanges: vec![ExchangeCalendarArtifact {
@@ -1098,8 +1106,8 @@ mod tests {
                     early_close_sessions: vec![],
                 }],
             },
-            "XNYS",
-        )
+            exchange_code: "XNYS".to_string(),
+        })
         .expect("coarse model inputs should construct");
 
         let run_request = CoarseSimulationRunRequest::try_new(

@@ -2,27 +2,29 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use janiform_calibration_artifacts::{
-    CalibrationArtifactManifest, CalibrationArtifactReloadComponent,
-    CalibrationArtifactReloadError, CalibrationArtifactReloadRequest,
-    CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter, CalibrationCallerSurface,
-    CalibrationDatasetSnapshotArtifact, CalibrationExecutionMode,
-    CalibrationExperimentIndexDocument, CalibrationLossAdmissibility, CalibrationObjectivePolicy,
-    CalibrationStage, CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
-    CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
-    CalibrationStageParameterOptimizerStateInput, CalibrationStageParameterPayload,
-    CalibrationValidationMetricArtifact, CalibrationValidationMetricArtifactRole,
-    CalibrationValidationMetricSourceKind, HawkesStageFittedParameters,
-    HawkesStageParameterArtifactInput, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    JointRefinementStageParameterArtifactInput, JointRefinementStageRestartDiagnostics,
-    JointRefinementStageRuntimeProfile, MeanReversionStageCalibrationGrid,
-    MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
-    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    SeasonalityStageParameterArtifactInput, SurpriseNewsDeterministicIntensityProfile,
-    TickGridObservationModel, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
-    calibration_artifact_manifest_path, calibration_dataset_snapshot_artifact_path,
-    calibration_stage_parameter_artifact_path, calibration_validation_metric_artifact_path,
+    CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationArtifactManifest,
+    CalibrationArtifactReloadComponent, CalibrationArtifactReloadError,
+    CalibrationArtifactReloadRequest, CalibrationArtifactRunPreparationMode,
+    CalibrationArtifactRunWriter, CalibrationCallerSurface, CalibrationDatasetSnapshotArtifact,
+    CalibrationExecutionMode, CalibrationExperimentIndexDocument, CalibrationLossAdmissibility,
+    CalibrationObjectivePolicy, CalibrationStage, CalibrationStageHandoffTransport,
+    CalibrationStageParameterArtifact, CalibrationStageParameterArtifactInput,
+    CalibrationStageParameterBuildMetadata, CalibrationStageParameterOptimizerStateInput,
+    CalibrationStageParameterPayload, CalibrationValidationMetricArtifact,
+    CalibrationValidationMetricArtifactRole, CalibrationValidationMetricSourceKind,
+    HawkesStageFittedParameters, HawkesStageParameterArtifactInput,
+    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageOptimizerDiagnostics, JointRefinementStageParameterArtifactInput,
+    JointRefinementStageRestartDiagnostics, JointRefinementStageRuntimeProfile,
+    LongVarianceStageDiagnostics, LongVarianceStageParameterArtifactInput,
+    MeanReversionStageCalibrationGrid, MeanReversionStageDiagnostics,
+    MeanReversionStageParameterArtifactInput, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageParameterArtifactInput, SeasonalityStageParameterArtifactInput,
+    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
+    build_calibration_stage_parameter_artifact, calibration_artifact_manifest_path,
+    calibration_dataset_snapshot_artifact_path, calibration_stage_parameter_artifact_path,
+    calibration_stage_token, calibration_validation_metric_artifact_path,
     load_calibration_artifact_manifest_from_disk,
     load_calibration_dataset_snapshot_artifact_from_disk,
     load_calibration_experiment_index_from_disk,
@@ -773,6 +775,15 @@ fn build_regression_stage_parameter_artifacts(
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
+            CalibrationStageParameterArtifactInput::LongVariance(Box::new(
+                regression_long_variance_stage_parameter_input(
+                    run_contract,
+                    return_components_fitted_parameters.long_variance_parameters,
+                ),
+            )),
+        ),
+        build_regression_stage_parameter_artifact(
+            run_contract,
             CalibrationStageParameterArtifactInput::MeanReversion(Box::new(
                 regression_mean_reversion_stage_parameter_input(
                     run_contract,
@@ -785,6 +796,18 @@ fn build_regression_stage_parameter_artifacts(
             CalibrationStageParameterArtifactInput::JointRefinement(Box::new(
                 regression_joint_refinement_stage_parameter_input(
                     run_contract,
+                    CalibrationStage::JointRefinement,
+                    hawkes_fitted_parameters.clone(),
+                    return_components_fitted_parameters.clone(),
+                ),
+            )),
+        ),
+        build_regression_stage_parameter_artifact(
+            run_contract,
+            CalibrationStageParameterArtifactInput::Finalization(Box::new(
+                regression_joint_refinement_stage_parameter_input(
+                    run_contract,
+                    CalibrationStage::Finalization,
                     hawkes_fitted_parameters,
                     return_components_fitted_parameters,
                 ),
@@ -882,6 +905,33 @@ fn regression_return_components_stage_parameter_input(
     }
 }
 
+fn regression_long_variance_stage_parameter_input(
+    run_contract: &janiform_calibration_artifacts::CalibrationRunContract,
+    fitted_parameters: janiform_model_kernels::long_variance::LongVarianceParameters,
+) -> LongVarianceStageParameterArtifactInput {
+    LongVarianceStageParameterArtifactInput {
+        metadata: regression_stage_build_metadata(
+            run_contract,
+            CalibrationStage::LongVariance,
+            CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
+        ),
+        fitted_parameters,
+        diagnostics: LongVarianceStageDiagnostics {
+            estimation_policy: "artifact_regression_fixture.v1".to_string(),
+            stationary_normalization_policy: "artifact_regression_fixture.v1".to_string(),
+            selected_candidate_id: "artifact_regression_return_components".to_string(),
+            horizon_diagnostics: Vec::new(),
+        },
+        return_components_input_transport:
+            CalibrationStageHandoffTransport::PersistedArtifactReference,
+        return_components_selected_candidate_id: None,
+        return_components_artifact_reference: Some(format!(
+            "artifact://return_components/{}",
+            run_contract.run_spec.run_id
+        )),
+    }
+}
+
 fn regression_mean_reversion_stage_parameter_input(
     run_contract: &janiform_calibration_artifacts::CalibrationRunContract,
     fitted_parameters: MeanReversionFittedParameters,
@@ -906,20 +956,18 @@ fn regression_mean_reversion_stage_parameter_input(
 
 fn regression_joint_refinement_stage_parameter_input(
     run_contract: &janiform_calibration_artifacts::CalibrationRunContract,
+    stage: CalibrationStage,
     hawkes_fitted_parameters: HawkesStageFittedParameters,
     return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
 ) -> JointRefinementStageParameterArtifactInput {
     JointRefinementStageParameterArtifactInput {
         metadata: regression_stage_build_metadata(
             run_contract,
-            CalibrationStage::JointRefinement,
+            stage,
             CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
         ),
-        optimizer_state: regression_optimizer_state(
-            run_contract,
-            CalibrationStage::JointRefinement,
-        ),
-        selected_candidate_id: "artifact_regression_joint_refinement".to_string(),
+        optimizer_state: regression_optimizer_state(run_contract, stage),
+        selected_candidate_id: format!("artifact_regression_{}", calibration_stage_token(stage)),
         fitted_parameters: JointRefinementStageFittedParameters {
             hawkes_fitted_parameters: hawkes_fitted_parameters.clone(),
             return_components_fitted_parameters: return_components_fitted_parameters.clone(),
@@ -1593,6 +1641,39 @@ fn assert_stage_artifact_matches(
             );
         }
         (
+            CalibrationStageParameterPayload::LongVariance(loaded_payload),
+            CalibrationStageParameterPayload::LongVariance(expected_payload),
+        ) => {
+            assert_eq!(
+                loaded_payload.fitted_parameters, expected_payload.fitted_parameters,
+                "fixture_id={} long-variance fitted_parameters drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.diagnostics, expected_payload.diagnostics,
+                "fixture_id={} long-variance diagnostics drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.return_components_input_transport,
+                expected_payload.return_components_input_transport,
+                "fixture_id={} long-variance return_components_input_transport drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.return_components_selected_candidate_id,
+                expected_payload.return_components_selected_candidate_id,
+                "fixture_id={} long-variance return_components_selected_candidate_id drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.return_components_artifact_reference,
+                expected_payload.return_components_artifact_reference,
+                "fixture_id={} long-variance return_components_artifact_reference drifted",
+                fixture_id
+            );
+        }
+        (
             CalibrationStageParameterPayload::MeanReversion(loaded_payload),
             CalibrationStageParameterPayload::MeanReversion(expected_payload),
         ) => {
@@ -1654,6 +1735,35 @@ fn assert_stage_artifact_matches(
                 loaded_payload.baseline_return_components_fitted_parameters,
                 expected_payload.baseline_return_components_fitted_parameters,
                 "fixture_id={} joint-refinement baseline_return_components_fitted_parameters drifted",
+                fixture_id
+            );
+        }
+        (
+            CalibrationStageParameterPayload::Finalization(loaded_payload),
+            CalibrationStageParameterPayload::Finalization(expected_payload),
+        ) => {
+            assert_eq!(
+                loaded_payload.selected_candidate_id, expected_payload.selected_candidate_id,
+                "fixture_id={} finalization selected_candidate_id drifted",
+                fixture_id
+            );
+            assert_joint_refinement_fitted_parameters_match(
+                &loaded_payload.fitted_parameters,
+                &expected_payload.fitted_parameters,
+                &format!("fixture_id={} finalization fitted_parameters", fixture_id),
+            );
+            assert_hawkes_fitted_parameters_match(
+                &loaded_payload.baseline_hawkes_fitted_parameters,
+                &expected_payload.baseline_hawkes_fitted_parameters,
+                &format!(
+                    "fixture_id={} finalization baseline_hawkes_fitted_parameters",
+                    fixture_id
+                ),
+            );
+            assert_eq!(
+                loaded_payload.baseline_return_components_fitted_parameters,
+                expected_payload.baseline_return_components_fitted_parameters,
+                "fixture_id={} finalization baseline_return_components_fitted_parameters drifted",
                 fixture_id
             );
         }

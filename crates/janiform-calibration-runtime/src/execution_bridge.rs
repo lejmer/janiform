@@ -1523,9 +1523,9 @@ mod tests {
             plan.run_contract.execution_stage_order,
             vec![
                 CalibrationStage::Seasonality,
+                CalibrationStage::MeanReversion,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
-                CalibrationStage::MeanReversion,
             ]
         );
         assert_eq!(

@@ -10,12 +10,14 @@ use crate::stages::long_variance::metrics::{
     finite_long_variance_squared_returns, long_variance_interval_side_event_counts,
 };
 use crate::stages::long_variance::policy::{
-    LONG_VARIANCE_STANDARD_CIR_VARIANCE_PROXY_BOUNDARY, long_variance_event_feedback_drift_budget,
-    long_variance_mean_reversion_rate_calibration_upper_bound,
+    LONG_VARIANCE_STANDARD_CIR_VARIANCE_PROXY_BOUNDARY, LongVarianceSideEventLoadings,
+    LongVarianceStationaryEventRates, long_variance_mean_reversion_rate_calibration_upper_bound,
+    project_long_variance_event_loadings_to_stationary_budget,
 };
 
 pub(crate) fn estimate_long_variance_parameters(
     baseline_parameters: LongVarianceParameters,
+    stationary_event_rates: LongVarianceStationaryEventRates,
     five_minute_intervals: &[JointRefinementAggregatedIntervalObservation],
     hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> LongVarianceParameters {
@@ -25,11 +27,9 @@ pub(crate) fn estimate_long_variance_parameters(
     let mean_reversion_rate =
         persistence_decay_rate.min(long_variance_mean_reversion_rate_calibration_upper_bound());
 
-    let event_rates = observed_side_event_rates_per_hour(five_minute_intervals);
-
-    let event_loadings = project_event_loadings_to_stationary_budget(
+    let event_loadings = project_long_variance_event_loadings_to_stationary_budget(
         side_event_loading_estimate(five_minute_intervals),
-        event_rates,
+        stationary_event_rates,
         mean_reversion_rate,
     );
 
@@ -43,48 +43,6 @@ pub(crate) fn estimate_long_variance_parameters(
         event_loadings.sell_event_loading,
     )
     .unwrap_or(baseline_parameters)
-}
-
-fn project_event_loadings_to_stationary_budget(
-    event_loadings: SideEventLoadingEstimate,
-    event_rates: SideEventRateEstimate,
-    mean_reversion_rate: f64,
-) -> SideEventLoadingEstimate {
-    let event_loading_drift = event_loadings.buy_event_loading
-        * event_rates.buy_event_rate_per_hour
-        + event_loadings.sell_event_loading * event_rates.sell_event_rate_per_hour;
-
-    let Some(event_feedback_drift_budget) =
-        long_variance_event_feedback_drift_budget(mean_reversion_rate)
-    else {
-        return SideEventLoadingEstimate {
-            buy_event_loading: 0.0,
-            sell_event_loading: 0.0,
-        };
-    };
-
-    if !event_loading_drift.is_finite() || event_loading_drift <= event_feedback_drift_budget {
-        return event_loadings;
-    }
-
-    let scale = event_feedback_drift_budget / event_loading_drift;
-
-    SideEventLoadingEstimate {
-        buy_event_loading: event_loadings.buy_event_loading * scale,
-        sell_event_loading: event_loadings.sell_event_loading * scale,
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct SideEventLoadingEstimate {
-    buy_event_loading: f64,
-    sell_event_loading: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct SideEventRateEstimate {
-    buy_event_rate_per_hour: f64,
-    sell_event_rate_per_hour: f64,
 }
 
 fn hourly_squared_return_persistence_decay_rate(
@@ -114,9 +72,9 @@ fn hourly_squared_return_persistence_decay_rate(
 
 fn side_event_loading_estimate(
     intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> SideEventLoadingEstimate {
+) -> LongVarianceSideEventLoadings {
     let Some(mean_squared_return) = mean_squared_return(intervals) else {
-        return SideEventLoadingEstimate {
+        return LongVarianceSideEventLoadings {
             buy_event_loading: 0.0,
             sell_event_loading: 0.0,
         };
@@ -128,7 +86,7 @@ fn side_event_loading_estimate(
         .map(long_variance_interval_side_event_counts)
         .collect::<Vec<_>>();
     if side_counts.is_empty() {
-        return SideEventLoadingEstimate {
+        return LongVarianceSideEventLoadings {
             buy_event_loading: 0.0,
             sell_event_loading: 0.0,
         };
@@ -163,51 +121,15 @@ fn side_event_loading_estimate(
 
     let Some(coefficients) = non_negative_least_squares_2(rows.as_slice(), response.as_slice())
     else {
-        return SideEventLoadingEstimate {
+        return LongVarianceSideEventLoadings {
             buy_event_loading: 0.0,
             sell_event_loading: 0.0,
         };
     };
 
-    SideEventLoadingEstimate {
+    LongVarianceSideEventLoadings {
         buy_event_loading: coefficients[0],
         sell_event_loading: coefficients[1],
-    }
-}
-
-fn observed_side_event_rates_per_hour(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> SideEventRateEstimate {
-    let mut total_buy_count = 0.0;
-    let mut total_sell_count = 0.0;
-    let mut total_hours = 0.0;
-
-    for interval in intervals.iter().copied() {
-        let counts = long_variance_interval_side_event_counts(interval);
-
-        let interval_hours = duration_nanos_to_hours(
-            interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
-        );
-        if !interval_hours.is_finite() || interval_hours <= 0.0 {
-            continue;
-        }
-
-        total_buy_count += counts.buy_count;
-        total_sell_count += counts.sell_count;
-
-        total_hours += interval_hours;
-    }
-
-    if total_hours <= 0.0 {
-        return SideEventRateEstimate {
-            buy_event_rate_per_hour: 0.0,
-            sell_event_rate_per_hour: 0.0,
-        };
-    }
-
-    SideEventRateEstimate {
-        buy_event_rate_per_hour: total_buy_count / total_hours,
-        sell_event_rate_per_hour: total_sell_count / total_hours,
     }
 }
 
@@ -274,7 +196,17 @@ mod tests {
 
     use super::estimate_long_variance_parameters;
     use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
-    use crate::stages::long_variance::policy::long_variance_vol_of_vol_upper_bound_for_mean_reversion_rate;
+    use crate::stages::long_variance::policy::{
+        LongVarianceStationaryEventRates, long_variance_event_feedback_drift_budget,
+        long_variance_vol_of_vol_upper_bound_for_mean_reversion_rate,
+    };
+
+    fn default_stationary_event_rates() -> LongVarianceStationaryEventRates {
+        LongVarianceStationaryEventRates {
+            buy_event_rate_per_hour: 1.0,
+            sell_event_rate_per_hour: 1.0,
+        }
+    }
 
     fn interval(
         interval_start_utc_nanos: i64,
@@ -312,6 +244,7 @@ mod tests {
 
         let estimate = estimate_long_variance_parameters(
             LongVarianceParameters::neutral(),
+            default_stationary_event_rates(),
             five_minute_intervals.as_slice(),
             hourly_intervals.as_slice(),
         );
@@ -355,6 +288,7 @@ mod tests {
 
         let estimate = estimate_long_variance_parameters(
             LongVarianceParameters::neutral(),
+            default_stationary_event_rates(),
             five_minute_intervals.as_slice(),
             hourly_intervals.as_slice(),
         );
@@ -395,14 +329,26 @@ mod tests {
             interval(NANOS_PER_HOUR, NANOS_PER_HOUR, -0.02, 100, 0.50),
         ];
 
+        let raw_event_loadings =
+            super::side_event_loading_estimate(five_minute_intervals.as_slice());
+
+        let event_feedback_budget = long_variance_event_feedback_drift_budget(
+            LongVarianceParameters::neutral().mean_reversion_rate,
+        )
+        .expect("neutral long variance mean reversion should have a feedback budget");
+
+        let stationary_event_rates = LongVarianceStationaryEventRates {
+            buy_event_rate_per_hour: 2.0 * event_feedback_budget
+                / raw_event_loadings.buy_event_loading,
+            sell_event_rate_per_hour: 1.0,
+        };
+
         let estimate = estimate_long_variance_parameters(
             LongVarianceParameters::neutral(),
+            stationary_event_rates,
             five_minute_intervals.as_slice(),
             hourly_intervals.as_slice(),
         );
-
-        let raw_event_loadings =
-            super::side_event_loading_estimate(five_minute_intervals.as_slice());
 
         assert!(estimate.buy_event_loading < raw_event_loadings.buy_event_loading);
         assert_eq!(
@@ -436,9 +382,11 @@ mod tests {
 
         let estimate = estimate_long_variance_parameters(
             LongVarianceParameters::neutral(),
+            default_stationary_event_rates(),
             five_minute_intervals.as_slice(),
             hourly_intervals.as_slice(),
         );
+
         let upper_bound = long_variance_vol_of_vol_upper_bound_for_mean_reversion_rate(
             estimate.mean_reversion_rate,
         )

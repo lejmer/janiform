@@ -19,8 +19,8 @@ use super::handoffs::{
     expected_stage_handoff_transport,
 };
 use super::joint_refinement::{
-    forward_joint_refinement_like_stage_progress, joint_refinement_like_stage_input,
-    run_joint_refinement_like_stage,
+    JointRefinementLikeStageRunInput, forward_joint_refinement_like_stage_progress,
+    joint_refinement_like_stage_input, run_joint_refinement_like_stage,
 };
 
 pub(in crate::staged_runner) fn run_stage_for_staged_execution(
@@ -257,6 +257,7 @@ fn run_long_variance_staged_execution_stage(
             input.run_spec,
             input.payload_state,
         )?),
+        hawkes_stage_payload: input.payload_state.hawkes_stage_payload.clone(),
         return_components_stage_payload: input
             .payload_state
             .return_components_stage_payload
@@ -398,17 +399,17 @@ fn run_joint_refinement_like_staged_execution_stage(
         .as_ref();
 
     if input.observer.is_none() {
-        return run_joint_refinement_like_stage(
-            input.stage,
-            input.run_spec,
-            input.calendar_registry,
+        return run_joint_refinement_like_stage(JointRefinementLikeStageRunInput {
+            stage: input.stage,
+            run_spec: input.run_spec,
+            calendar_registry: input.calendar_registry,
             stage_input,
             upstream_joint_refinement_handoff,
             upstream_option_refinement_handoff,
-            None,
-            input.disk_checkpoint_directory,
-            input.load_current_stage_resume_state,
-        );
+            progress_observer: None,
+            disk_checkpoint_directory: input.disk_checkpoint_directory,
+            load_current_stage_resume_state: input.load_current_stage_resume_state,
+        });
     }
 
     let mut progress_forwarder = |progress_update: JointRefinementStageProgressUpdate| {
@@ -422,17 +423,17 @@ fn run_joint_refinement_like_staged_execution_stage(
         );
     };
 
-    run_joint_refinement_like_stage(
-        input.stage,
-        input.run_spec,
-        input.calendar_registry,
+    run_joint_refinement_like_stage(JointRefinementLikeStageRunInput {
+        stage: input.stage,
+        run_spec: input.run_spec,
+        calendar_registry: input.calendar_registry,
         stage_input,
         upstream_joint_refinement_handoff,
         upstream_option_refinement_handoff,
-        Some(&mut progress_forwarder),
-        input.disk_checkpoint_directory,
-        input.load_current_stage_resume_state,
-    )
+        progress_observer: Some(&mut progress_forwarder),
+        disk_checkpoint_directory: input.disk_checkpoint_directory,
+        load_current_stage_resume_state: input.load_current_stage_resume_state,
+    })
 }
 
 pub(in crate::staged_runner) struct RunStageForStagedExecutionInput<'a, 'observer> {

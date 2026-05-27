@@ -198,6 +198,75 @@ fn spectral_collocation_node_count_from_domain_points(domain_points: &[f64]) -> 
         .max(MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT)
 }
 
+pub(super) fn build_maturity_summary(
+    solved_maturity: &SolvedMaturityLaw,
+    optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+    representative_price: Option<f64>,
+) -> Result<VanillaOptionMaturitySummary, VanillaOptionGridBatchPricingRunError> {
+    let spectral_diagnostics = if optional_output_selection.include_integration_quality_diagnostics
+    {
+        Some(
+            SpectralPricingDiagnostics::try_new(
+                solved_maturity.deviation_lower_bound,
+                solved_maturity.deviation_upper_bound,
+                solved_maturity.node_count,
+                solved_maturity.terminal_affine_measure_change,
+                solved_maturity.interval_summaries.clone(),
+            )
+            .map_err(|source| {
+                VanillaOptionGridBatchPricingRunError::NodePricingFailure {
+                    message: format!("spectral maturity diagnostics are invalid: {source}"),
+                }
+            })?,
+        )
+    } else {
+        None
+    };
+
+    let integration_quality =
+        if let (Some(price), Some(diagnostics)) = (representative_price, spectral_diagnostics) {
+            Some(build_spectral_compatibility_integration_diagnostics(
+                price,
+                solved_maturity.maturity_interval,
+                &diagnostics,
+            ))
+        } else {
+            None
+        };
+
+    Ok(VanillaOptionMaturitySummary {
+        maturity_interval: solved_maturity.maturity_interval,
+        terminal_anchor_value: solved_maturity.terminal_anchor_value,
+        deviation_domain_lower_bound: solved_maturity.deviation_lower_bound,
+        deviation_domain_upper_bound: solved_maturity.deviation_upper_bound,
+        collocation_node_count: solved_maturity.node_count,
+        terminal_affine_measure_change: solved_maturity.terminal_affine_measure_change,
+        collocation_nodes: SpectralDomain {
+            deviation_lower_bound: solved_maturity.deviation_lower_bound,
+            deviation_upper_bound: solved_maturity.deviation_upper_bound,
+            node_count: solved_maturity.node_count,
+        }
+        .collocation_nodes(),
+        interval_summaries: solved_maturity.interval_summaries.clone(),
+        integration_quality,
+    })
+}
+
+pub(super) fn resolve_bounded_node_price_sensitivity(
+    raw_price_sensitivity: NodePriceSharedPlusShiftSensitivity,
+    raw_price: f64,
+    bounded_price: f64,
+) -> VanillaOptionNodePriceSensitivity {
+    if raw_price == bounded_price {
+        raw_price_sensitivity.into_output()
+    } else {
+        // The reported node price is the clipped no-arbitrage output. Away from the exact
+        // kink, the active bound is constant with respect to the pricing parameters, so the
+        // local derivative of the clipped output is zero.
+        NodePriceSharedPlusShiftSensitivity::zero().into_output()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::payoff::payoff_cos_coefficient;
@@ -281,74 +350,5 @@ mod tests {
             spectral_collocation_node_count_from_domain_points(&[0.0]),
             MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT
         );
-    }
-}
-
-pub(super) fn build_maturity_summary(
-    solved_maturity: &SolvedMaturityLaw,
-    optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
-    representative_price: Option<f64>,
-) -> Result<VanillaOptionMaturitySummary, VanillaOptionGridBatchPricingRunError> {
-    let spectral_diagnostics = if optional_output_selection.include_integration_quality_diagnostics
-    {
-        Some(
-            SpectralPricingDiagnostics::try_new(
-                solved_maturity.deviation_lower_bound,
-                solved_maturity.deviation_upper_bound,
-                solved_maturity.node_count,
-                solved_maturity.terminal_affine_measure_change,
-                solved_maturity.interval_summaries.clone(),
-            )
-            .map_err(|source| {
-                VanillaOptionGridBatchPricingRunError::NodePricingFailure {
-                    message: format!("spectral maturity diagnostics are invalid: {source}"),
-                }
-            })?,
-        )
-    } else {
-        None
-    };
-
-    let integration_quality =
-        if let (Some(price), Some(diagnostics)) = (representative_price, spectral_diagnostics) {
-            Some(build_spectral_compatibility_integration_diagnostics(
-                price,
-                solved_maturity.maturity_interval,
-                &diagnostics,
-            ))
-        } else {
-            None
-        };
-
-    Ok(VanillaOptionMaturitySummary {
-        maturity_interval: solved_maturity.maturity_interval,
-        terminal_anchor_value: solved_maturity.terminal_anchor_value,
-        deviation_domain_lower_bound: solved_maturity.deviation_lower_bound,
-        deviation_domain_upper_bound: solved_maturity.deviation_upper_bound,
-        collocation_node_count: solved_maturity.node_count,
-        terminal_affine_measure_change: solved_maturity.terminal_affine_measure_change,
-        collocation_nodes: SpectralDomain {
-            deviation_lower_bound: solved_maturity.deviation_lower_bound,
-            deviation_upper_bound: solved_maturity.deviation_upper_bound,
-            node_count: solved_maturity.node_count,
-        }
-        .collocation_nodes(),
-        interval_summaries: solved_maturity.interval_summaries.clone(),
-        integration_quality,
-    })
-}
-
-pub(super) fn resolve_bounded_node_price_sensitivity(
-    raw_price_sensitivity: NodePriceSharedPlusShiftSensitivity,
-    raw_price: f64,
-    bounded_price: f64,
-) -> VanillaOptionNodePriceSensitivity {
-    if raw_price == bounded_price {
-        raw_price_sensitivity.into_output()
-    } else {
-        // The reported node price is the clipped no-arbitrage output. Away from the exact
-        // kink, the active bound is constant with respect to the pricing parameters, so the
-        // local derivative of the clipped output is zero.
-        NodePriceSharedPlusShiftSensitivity::zero().into_output()
     }
 }

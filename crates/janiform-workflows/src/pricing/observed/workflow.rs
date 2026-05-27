@@ -17,8 +17,8 @@ use super::super::progress::{
 use super::super::validation::pricing_validation_error;
 use super::super::workflow::PricingWorkflowObserver;
 use super::artifacts::{
-    observed_options_completion_summary, observed_options_start_summary, observed_pricing_run_id,
-    write_observed_artifacts_if_requested,
+    ObservedArtifactWriteInput, observed_options_completion_summary,
+    observed_options_start_summary, observed_pricing_run_id, write_observed_artifacts_if_requested,
 };
 use super::data::{
     prepare_selected_expiry_snapshot_specs_by_valuation_times,
@@ -183,16 +183,16 @@ pub fn run_observed_options_pricing_with_observer(
     let resolved_valuation_time_utc =
         DateTime::<Utc>::from_timestamp_nanos(valuation_time_utc_nanos);
 
-    let artifact_paths = write_observed_artifacts_if_requested(
-        request.output_path.as_ref(),
-        &run_id,
-        request.scope,
-        resolved_valuation_time_utc,
-        nodes.as_slice(),
-        &pricing_execution.snapshot_results,
-        physical_distribution.as_ref(),
+    let artifact_paths = write_observed_artifacts_if_requested(ObservedArtifactWriteInput {
+        output_path: request.output_path.as_ref(),
+        run_id: &run_id,
+        scope: request.scope,
+        valuation_time_utc: resolved_valuation_time_utc,
+        nodes: nodes.as_slice(),
+        snapshot_results: &pricing_execution.snapshot_results,
+        physical_distribution: physical_distribution.as_ref(),
         execution_duration,
-    )?;
+    })?;
 
     emit_observed_stage_progress(
         &mut observer.progress_adapter,

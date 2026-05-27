@@ -579,9 +579,10 @@ def test_run_vanilla_option_pricing_executes_native_workflow_with_optional_outpu
     )
     assert run_result.response.diagnostics.forward_price > 0.0
     assert run_result.run_diagnostics is not None
-    assert run_result.run_diagnostics.transform is not None
+    assert run_result.run_diagnostics.transform is None
     assert run_result.run_diagnostics.integration_quality is not None
     assert run_result.calibration_hooks is not None
+    assert run_result.calibration_hooks.transform_status is None
     assert run_result.calibration_hooks.option_price == pytest.approx(run_result.response.price)
 
 
@@ -808,7 +809,7 @@ def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
             surprise_component_nu_h=(0.05,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         ),
@@ -846,7 +847,7 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
             surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         ),

@@ -1,5 +1,5 @@
 use janiform_foundations::numeric::clamp_point_in_place as clamp_in_place;
-use janiform_model_kernels::hawkes::{HawkesKernelParameters, stationary_intensity_multipliers};
+use janiform_model_kernels::hawkes::HawkesKernelParameters;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 
 use super::super::execution::{
@@ -8,6 +8,7 @@ use super::super::execution::{
 use crate::stages::long_variance::policy::{
     long_variance_mean_reversion_rate_calibration_upper_bound,
     long_variance_side_event_feedback_drift_budget,
+    long_variance_stationary_event_rates_for_hawkes_kernel,
     long_variance_vol_of_vol_upper_bound_for_mean_reversion_rate,
 };
 
@@ -116,21 +117,15 @@ fn long_variance_event_loading_upper_bounds(
     baseline_hawkes_kernel_parameters: HawkesKernelParameters,
     baseline_long_variance_parameters: LongVarianceParameters,
 ) -> Result<(f64, f64), String> {
-    let stationary_multipliers = stationary_intensity_multipliers(
-        baseline_hawkes_kernel_parameters.alpha,
-        baseline_hawkes_kernel_parameters.beta,
-    )
-    .ok_or_else(|| {
-        "long variance bounds require finite stationary Hawkes intensity multipliers".to_string()
-    })?;
-
-    let stationary_buy_event_rate = baseline_hawkes_kernel_parameters.lambda_bar
-        * stationary_multipliers.buy_intensity_multiplier;
-    let stationary_sell_event_rate = baseline_hawkes_kernel_parameters.lambda_bar
-        * stationary_multipliers.sell_intensity_multiplier;
+    let stationary_event_rates =
+        long_variance_stationary_event_rates_for_hawkes_kernel(baseline_hawkes_kernel_parameters)
+            .ok_or_else(|| {
+            "long variance bounds require finite stationary Hawkes event rates".to_string()
+        })?;
 
     let maximum_mean_reversion_rate =
         long_variance_maximum_calibration_mean_reversion_rate(baseline_long_variance_parameters)?;
+
     let side_event_drift_budget = long_variance_side_event_feedback_drift_budget(
         maximum_mean_reversion_rate,
     )
@@ -143,12 +138,12 @@ fn long_variance_event_loading_upper_bounds(
     Ok((
         long_variance_event_loading_upper_bound(
             side_event_drift_budget,
-            stationary_buy_event_rate,
+            stationary_event_rates.buy_event_rate_per_hour,
             "stationary_buy_event_rate",
         )?,
         long_variance_event_loading_upper_bound(
             side_event_drift_budget,
-            stationary_sell_event_rate,
+            stationary_event_rates.sell_event_rate_per_hour,
             "stationary_sell_event_rate",
         )?,
     ))

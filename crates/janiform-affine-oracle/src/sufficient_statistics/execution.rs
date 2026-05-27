@@ -1028,7 +1028,7 @@ pub fn update_boundary_state_from_interval_statistics(
     if !snapshot.interval_delta.is_finite() || snapshot.interval_delta <= 0.0 {
         return Err(
             SufficientStatisticsBoundaryStateUpdateError::InvalidIntervalDelta {
-                snapshot,
+                snapshot: Box::new(snapshot),
                 value: snapshot.interval_delta,
             },
         );
@@ -1036,25 +1036,30 @@ pub fn update_boundary_state_from_interval_statistics(
 
     validate_excitation_state(snapshot.state_before_update).map_err(|(field, value)| {
         SufficientStatisticsBoundaryStateUpdateError::InvalidStateBeforeUpdate {
-            snapshot,
+            snapshot: Box::new(snapshot),
             field,
             value,
         }
     })?;
 
     snapshot.sampled_statistics.validate().map_err(|source| {
-        SufficientStatisticsBoundaryStateUpdateError::InvalidSampledStatistics { snapshot, source }
+        SufficientStatisticsBoundaryStateUpdateError::InvalidSampledStatistics {
+            snapshot: Box::new(snapshot),
+            source,
+        }
     })?;
 
-    let drifted_state =
-        evolve_hawkes_state(
-            snapshot.state_before_update,
-            kernel_parameters,
-            HawkesTransitionStep::new(snapshot.interval_delta, None, None),
-        )
-        .map_err(|source| {
-            SufficientStatisticsBoundaryStateUpdateError::TransitionFailure { snapshot, source }
-        })?;
+    let drifted_state = evolve_hawkes_state(
+        snapshot.state_before_update,
+        kernel_parameters,
+        HawkesTransitionStep::new(snapshot.interval_delta, None, None),
+    )
+    .map_err(
+        |source| SufficientStatisticsBoundaryStateUpdateError::TransitionFailure {
+            snapshot: Box::new(snapshot),
+            source,
+        },
+    )?;
 
     let post_buy_state = apply_endogenous_count_mapped_jump(
         drifted_state,
@@ -1074,7 +1079,7 @@ pub fn update_boundary_state_from_interval_statistics(
 
     validate_excitation_state(post_sell_state).map_err(|(field, value)| {
         SufficientStatisticsBoundaryStateUpdateError::InvalidStateAfterUpdate {
-            snapshot,
+            snapshot: Box::new(snapshot),
             field,
             value,
         }
@@ -1113,7 +1118,7 @@ fn apply_endogenous_count_mapped_jump(
     )
     .map_err(
         |source| SufficientStatisticsBoundaryStateUpdateError::TransitionFailure {
-            snapshot,
+            snapshot: Box::new(snapshot),
             source,
         },
     )
@@ -1193,7 +1198,7 @@ fn validate_scaled_loading(
     if !value.is_finite() || value < 0.0 {
         return Err(
             SufficientStatisticsBoundaryStateUpdateError::InvalidScaledKernelLoading {
-                snapshot,
+                snapshot: Box::new(snapshot),
                 side,
                 event_count,
                 field,
@@ -1231,6 +1236,7 @@ mod tests {
     use janiform_model_kernels::hawkes::{
         HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     };
+    use janiform_model_kernels::long_variance::LongVarianceParameters;
     use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
     use super::{
@@ -1311,6 +1317,7 @@ mod tests {
                 .expect("kernel parameters should construct"),
                 GammaSeverityMarkConfiguration::try_new(1.0, 1.0)
                     .expect("gamma severity marks should construct"),
+                LongVarianceParameters::neutral(),
             )
             .expect("equation specification should construct"),
             context,

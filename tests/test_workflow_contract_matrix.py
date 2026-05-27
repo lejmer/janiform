@@ -8,11 +8,6 @@ from typing import Any, Optional
 import pytest
 
 from janiform.calibration import CalibrationValidationError
-from janiform.mean_reversion import (
-    MeanReversionAnchorModel,
-    MeanReversionBoundaryState,
-    MeanReversionFittedParameters,
-)
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
     CalibrationExecutionMode,
@@ -25,6 +20,12 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
     provide_hourly_factor_contract,
+)
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
+from janiform.mean_reversion import (
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
 )
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
@@ -43,6 +44,7 @@ from janiform.pricing import (
     VanillaOptionPricingValidationError,
     run_vanilla_option_pricing,
 )
+from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation import (
     SeededTickEventSide,
     SeededTickSimulationValidationError,
@@ -62,13 +64,13 @@ from janiform.simulation.seeded import (
     run_seeded_tick_event_simulation,
     validate_seeded_tick_simulation_response,
 )
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 from janiform.simulation.shared import (
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
-)
-from janiform.simulation.seeded.contracts import (
-    build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from tests.support.calibration import (
     build_valid_execution_input_model,
@@ -373,6 +375,9 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
         ),
         initial_excitation_state=_valid_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

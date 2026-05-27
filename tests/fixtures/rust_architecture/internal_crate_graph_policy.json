@@ -180,6 +180,7 @@
       "kind": "test_only",
       "layer": "test_support",
       "allowed_internal_dependencies": [
+        "janiform-foundations",
         "janiform-market-time",
         "janiform-verification"
       ]

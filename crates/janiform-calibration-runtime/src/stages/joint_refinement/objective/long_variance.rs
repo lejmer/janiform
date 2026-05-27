@@ -96,8 +96,10 @@ pub(super) fn add_long_variance_horizon_terms(
             builder,
             horizon_label,
             "realized_variance",
-            observed_summary.realized_variance,
-            observed_summary.standard_errors.realized_variance,
+            ObservedLongVarianceMetric {
+                value: observed_summary.realized_variance,
+                standard_error: observed_summary.standard_errors.realized_variance,
+            },
             model_summaries.as_slice(),
             |summary| summary.realized_variance,
             |standard_errors| standard_errors.realized_variance,
@@ -107,8 +109,10 @@ pub(super) fn add_long_variance_horizon_terms(
             builder,
             horizon_label,
             "variance_of_variance",
-            observed_summary.variance_of_variance,
-            observed_summary.standard_errors.variance_of_variance,
+            ObservedLongVarianceMetric {
+                value: observed_summary.variance_of_variance,
+                standard_error: observed_summary.standard_errors.variance_of_variance,
+            },
             model_summaries.as_slice(),
             |summary| summary.variance_of_variance,
             |standard_errors| standard_errors.variance_of_variance,
@@ -118,8 +122,10 @@ pub(super) fn add_long_variance_horizon_terms(
             builder,
             horizon_label,
             "return_skewness",
-            observed_summary.return_skewness,
-            observed_summary.standard_errors.return_skewness,
+            ObservedLongVarianceMetric {
+                value: observed_summary.return_skewness,
+                standard_error: observed_summary.standard_errors.return_skewness,
+            },
             model_summaries.as_slice(),
             |summary| summary.return_skewness,
             |standard_errors| standard_errors.return_skewness,
@@ -129,8 +135,10 @@ pub(super) fn add_long_variance_horizon_terms(
             builder,
             horizon_label,
             "return_excess_kurtosis",
-            observed_summary.return_excess_kurtosis,
-            observed_summary.standard_errors.return_excess_kurtosis,
+            ObservedLongVarianceMetric {
+                value: observed_summary.return_excess_kurtosis,
+                standard_error: observed_summary.standard_errors.return_excess_kurtosis,
+            },
             model_summaries.as_slice(),
             |summary| summary.return_excess_kurtosis,
             |standard_errors| standard_errors.return_excess_kurtosis,
@@ -140,10 +148,12 @@ pub(super) fn add_long_variance_horizon_terms(
             builder,
             horizon_label,
             "activity_variance_correlation",
-            observed_summary.activity_variance_correlation,
-            observed_summary
-                .standard_errors
-                .activity_variance_correlation,
+            ObservedLongVarianceMetric {
+                value: observed_summary.activity_variance_correlation,
+                standard_error: observed_summary
+                    .standard_errors
+                    .activity_variance_correlation,
+            },
             model_summaries.as_slice(),
             |summary| summary.activity_variance_correlation,
             |standard_errors| standard_errors.activity_variance_correlation,
@@ -153,10 +163,12 @@ pub(super) fn add_long_variance_horizon_terms(
             builder,
             horizon_label,
             "signed_activity_future_variance_relation",
-            observed_summary.signed_activity_future_variance_relation,
-            observed_summary
-                .standard_errors
-                .signed_activity_future_variance_relation,
+            ObservedLongVarianceMetric {
+                value: observed_summary.signed_activity_future_variance_relation,
+                standard_error: observed_summary
+                    .standard_errors
+                    .signed_activity_future_variance_relation,
+            },
             model_summaries.as_slice(),
             |summary| summary.signed_activity_future_variance_relation,
             |standard_errors| standard_errors.signed_activity_future_variance_relation,
@@ -164,21 +176,26 @@ pub(super) fn add_long_variance_horizon_terms(
     }
 }
 
+struct ObservedLongVarianceMetric {
+    value: Option<f64>,
+    standard_error: Option<f64>,
+}
+
 fn add_metric_term(
     builder: &mut CalibrationLossBuilder,
     horizon_label: &str,
     metric_name: &str,
-    observed_value: Option<f64>,
-    observed_standard_error: Option<f64>,
+    observed_metric: ObservedLongVarianceMetric,
     model_summaries: &[LongVarianceHorizonMomentSummary],
     extract_metric: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
     extract_standard_error: fn(LongVarianceHorizonMomentStandardErrors) -> Option<f64>,
 ) {
-    let Some(observed_value) = observed_value else {
+    let Some(observed_value) = observed_metric.value else {
         return;
     };
 
-    let Some(observed_standard_error) = finite_positive_standard_error(observed_standard_error)
+    let Some(observed_standard_error) =
+        finite_positive_standard_error(observed_metric.standard_error)
     else {
         return;
     };

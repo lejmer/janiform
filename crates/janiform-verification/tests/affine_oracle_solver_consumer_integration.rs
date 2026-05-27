@@ -21,6 +21,7 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -182,6 +183,7 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
             .expect("fixture hawkes kernel parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
                 .expect("fixture gamma mark configuration should construct"),
+            LongVarianceParameters::neutral(),
         )
         .expect("fixture equation specification should construct"),
         ExponentialAffineTransformActivityLoadings::total_activity(

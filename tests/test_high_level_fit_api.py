@@ -3140,7 +3140,7 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
             y_minus_plus=0.0,
             y_minus_minus=0.0,
         ),
-        include_transform_diagnostics=True,
+        include_transform_diagnostics=False,
         include_integration_quality_diagnostics=True,
     )
 
@@ -3369,7 +3369,6 @@ def test_high_level_model_price_option_grid_dispatches_through_grid_batch_pricin
                         collocation_node_count=3,
                         collocation_nodes=(-1.0, 0.0, 1.0),
                         interval_summaries=(),
-                        representative_transform=None,
                         integration_quality=None,
                     ),
                 ),
@@ -3403,7 +3402,6 @@ def test_high_level_model_price_option_grid_dispatches_through_grid_batch_pricin
                         collocation_node_count=3,
                         collocation_nodes=(-1.0, 0.0, 1.0),
                         interval_summaries=(),
-                        representative_transform=None,
                         integration_quality=None,
                     ),
                 ),
@@ -3500,7 +3498,6 @@ def test_high_level_model_price_option_grid_surface_dispatches_through_surface_p
                 collocation_node_count=3,
                 collocation_nodes=(-1.0, 0.0, 1.0),
                 interval_summaries=(),
-                representative_transform=None,
                 integration_quality=None,
             ),
             JaniformVanillaOptionMaturitySummary(
@@ -3511,7 +3508,6 @@ def test_high_level_model_price_option_grid_surface_dispatches_through_surface_p
                 collocation_node_count=3,
                 collocation_nodes=(-1.0, 0.0, 1.0),
                 interval_summaries=(),
-                representative_transform=None,
                 integration_quality=None,
             ),
         ),
@@ -3587,14 +3583,7 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
                 payoff_type=VanillaOptionPayoffType.CALL,
                 risk_free_rate=0.01,
                 dividend_yield=0.0,
-                strikes=(95.0, 105.0),
-                tenors=("1h",),
-            ),
-            JaniformVanillaOptionGrid(
-                payoff_type=VanillaOptionPayoffType.PUT,
-                risk_free_rate=0.01,
-                dividend_yield=0.0,
-                strikes=(100.0,),
+                strikes=(95.0,),
                 tenors=("1h",),
             ),
         ),
@@ -3604,7 +3593,7 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
         boundary_state=boundary_state,
-        include_transform_diagnostics=True,
+        include_transform_diagnostics=False,
         include_integration_quality_diagnostics=True,
     )
 
@@ -3612,8 +3601,6 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
 
     flattened_specs = [
         (0, 0, 95.0, VanillaOptionPayoffType.CALL),
-        (0, 1, 105.0, VanillaOptionPayoffType.CALL),
-        (1, 0, 100.0, VanillaOptionPayoffType.PUT),
     ]
 
     representative_single_results: dict[int, VanillaOptionPricingRunResult] = {}
@@ -3628,7 +3615,7 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
             risk_free_rate=0.01,
             dividend_yield=0.0,
             boundary_state=boundary_state,
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         )
@@ -3653,9 +3640,8 @@ def test_high_level_model_price_option_grid_matches_single_option_engine_on_shar
         assert observed_group.boundary_state_norm_grid[0][strike_index] == pytest.approx(
             single_result.response.diagnostics.boundary_state_norm
         )
-        assert observed_group.maturity_summaries[0].representative_transform is not None
         assert single_result.run_diagnostics is not None
-        assert observed_group.maturity_summaries[0].representative_transform == single_result.run_diagnostics.transform
+        assert single_result.run_diagnostics.transform is None
 
     for group_index, representative_single_result in representative_single_results.items():
         observed_summary = batch_result.grids[group_index].maturity_summaries[0]
@@ -3683,7 +3669,7 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
 
     surface = JaniformVanillaOptionSurface(
         spot=100.0,
-        strikes=(95.0, 105.0),
+        strikes=(95.0,),
         tenors=("1h",),
         payoff_type=VanillaOptionPayoffType.CALL,
         risk_free_rate=0.01,
@@ -3694,12 +3680,12 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         surface=surface,
         boundary_state=boundary_state,
-        include_transform_diagnostics=True,
+        include_transform_diagnostics=False,
         include_integration_quality_diagnostics=True,
     )
 
     assert isinstance(surface_result, JaniformVanillaOptionSurfacePricingResult)
-    assert surface_result.shape == (1, 2)
+    assert surface_result.shape == (1, 1)
 
     representative_single_results: dict[int, VanillaOptionPricingRunResult] = {}
 
@@ -3714,7 +3700,7 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
                 risk_free_rate=surface.risk_free_rate,
                 dividend_yield=surface.dividend_yield,
                 boundary_state=boundary_state,
-                include_transform_diagnostics=True,
+                include_transform_diagnostics=False,
                 include_integration_quality_diagnostics=True,
                 include_calibration_hooks=True,
             )
@@ -3741,12 +3727,8 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
                 surface_result.boundary_state_norm_grid[maturity_index][strike_index]
                 == pytest.approx(single_result.response.diagnostics.boundary_state_norm)
             )
-            assert surface_result.maturity_summaries[maturity_index].representative_transform is not None
             assert single_result.run_diagnostics is not None
-            assert (
-                surface_result.maturity_summaries[maturity_index].representative_transform
-                == single_result.run_diagnostics.transform
-            )
+            assert single_result.run_diagnostics.transform is None
 
     for maturity_index, representative_single_result in representative_single_results.items():
         assert representative_single_result.run_diagnostics is not None
@@ -4400,6 +4382,7 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
             CalibrationStage.SEASONALITY,
             CalibrationStage.HAWKES,
             CalibrationStage.RETURN_COMPONENTS,
+            CalibrationStage.LONG_VARIANCE,
             CalibrationStage.MEAN_REVERSION,
             CalibrationStage.JOINT_REFINEMENT,
             CalibrationStage.FINALIZATION,

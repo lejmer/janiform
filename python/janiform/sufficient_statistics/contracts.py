@@ -227,6 +227,7 @@ class SufficientStatisticsModelInputs(ContractModel):
     equation_specification: SufficientStatisticsEquationSpecification
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     initial_excitation_state: HawkesExcitationState
+    long_variance_parameters: LongVarianceParameters
     initial_long_variance_state: LongVarianceState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
@@ -278,6 +279,16 @@ class SufficientStatisticsModelInputs(ContractModel):
                         SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.initial_excitation_state",
+                ),
+                long_variance_parameters=LongVarianceParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "long_variance_parameters",
+                        "model_inputs.long_variance_parameters",
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.long_variance_parameters",
+                    error_factory=SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 ),
                 initial_long_variance_state=LongVarianceState.from_mapping(
                     require_mapping(

@@ -317,10 +317,11 @@
         "CurrentStateEstimationResult": {
           "field_names": [
             "hawkes_excitation_state",
+            "long_variance_state",
             "mean_reversion_boundary_state"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', long_variance_state: 'LongVarianceState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         }
       }
     },
@@ -2792,6 +2793,10 @@
               "value": "return_components"
             },
             {
+              "name": "LONG_VARIANCE",
+              "value": "long_variance"
+            },
+            {
               "name": "MEAN_REVERSION",
               "value": "mean_reversion"
             },
@@ -3137,6 +3142,10 @@
             {
               "name": "RETURN_COMPONENTS",
               "value": "return_components"
+            },
+            {
+              "name": "LONG_VARIANCE",
+              "value": "long_variance"
             },
             {
               "name": "MEAN_REVERSION",
@@ -4862,12 +4871,13 @@
           "field_names": [
             "interval_index",
             "hawkes_boundary_state",
+            "long_variance_boundary_state",
             "mean_reversion_fitted_parameters",
             "interval_delta",
             "observed_boundary_state"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "AutoActivityCompressedPricingIntervalSchedulePolicy": {
           "field_names": [
@@ -5053,22 +5063,6 @@
               "value": "node_setup"
             },
             {
-              "name": "TRANSFORM_INPUT_BUILD",
-              "value": "transform_input_build"
-            },
-            {
-              "name": "TRANSFORM_SOLVE",
-              "value": "transform_solve"
-            },
-            {
-              "name": "TRANSFORM_OUTPUT",
-              "value": "transform_output"
-            },
-            {
-              "name": "CHARACTERISTIC_FUNCTION_ASSEMBLY",
-              "value": "characteristic_function_assembly"
-            },
-            {
               "name": "FOURIER_PRICING",
               "value": "fourier_pricing"
             },
@@ -5077,28 +5071,12 @@
               "value": "risk_neutral_characteristic_function"
             },
             {
-              "name": "ENDOGENOUS_ANCHOR_MATERIALIZATION",
-              "value": "endogenous_anchor_materialization"
-            },
-            {
-              "name": "EXPECTED_HAWKES_STATE_UPDATE",
-              "value": "expected_hawkes_state_update"
-            },
-            {
-              "name": "ANCHORED_LOCAL_TILT_SOLVE",
-              "value": "anchored_local_tilt_solve"
-            },
-            {
-              "name": "SPECTRAL_OBSERVED_BOUNDARY_STATE",
-              "value": "spectral_observed_boundary_state"
+              "name": "TERMINAL_AFFINE_MEASURE_CHANGE",
+              "value": "terminal_affine_measure_change"
             },
             {
               "name": "SPECTRAL_DIAGNOSTICS",
               "value": "spectral_diagnostics"
-            },
-            {
-              "name": "SPECTRAL_OPERATOR_ASSEMBLY",
-              "value": "spectral_operator_assembly"
             },
             {
               "name": "RESPONSE_DIAGNOSTICS",
@@ -5143,10 +5121,11 @@
             "news_process_configuration",
             "nig_shared_plus_shift_configuration",
             "return_clock_exposure_parameters",
+            "long_variance_parameters",
             "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -5467,12 +5446,13 @@
           "field_names": [
             "interval_index",
             "hawkes_boundary_state",
+            "long_variance_boundary_state",
             "mean_reversion_fitted_parameters",
             "interval_delta",
             "observed_boundary_state"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "AutoActivityCompressedPricingIntervalSchedulePolicy": {
           "field_names": [
@@ -5658,22 +5638,6 @@
               "value": "node_setup"
             },
             {
-              "name": "TRANSFORM_INPUT_BUILD",
-              "value": "transform_input_build"
-            },
-            {
-              "name": "TRANSFORM_SOLVE",
-              "value": "transform_solve"
-            },
-            {
-              "name": "TRANSFORM_OUTPUT",
-              "value": "transform_output"
-            },
-            {
-              "name": "CHARACTERISTIC_FUNCTION_ASSEMBLY",
-              "value": "characteristic_function_assembly"
-            },
-            {
               "name": "FOURIER_PRICING",
               "value": "fourier_pricing"
             },
@@ -5682,28 +5646,12 @@
               "value": "risk_neutral_characteristic_function"
             },
             {
-              "name": "ENDOGENOUS_ANCHOR_MATERIALIZATION",
-              "value": "endogenous_anchor_materialization"
-            },
-            {
-              "name": "EXPECTED_HAWKES_STATE_UPDATE",
-              "value": "expected_hawkes_state_update"
-            },
-            {
-              "name": "ANCHORED_LOCAL_TILT_SOLVE",
-              "value": "anchored_local_tilt_solve"
-            },
-            {
-              "name": "SPECTRAL_OBSERVED_BOUNDARY_STATE",
-              "value": "spectral_observed_boundary_state"
+              "name": "TERMINAL_AFFINE_MEASURE_CHANGE",
+              "value": "terminal_affine_measure_change"
             },
             {
               "name": "SPECTRAL_DIAGNOSTICS",
               "value": "spectral_diagnostics"
-            },
-            {
-              "name": "SPECTRAL_OPERATOR_ASSEMBLY",
-              "value": "spectral_operator_assembly"
             },
             {
               "name": "RESPONSE_DIAGNOSTICS",
@@ -5740,10 +5688,11 @@
             "news_process_configuration",
             "nig_shared_plus_shift_configuration",
             "return_clock_exposure_parameters",
+            "long_variance_parameters",
             "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -6077,11 +6026,10 @@
             "collocation_node_count",
             "collocation_nodes",
             "interval_summaries",
-            "representative_transform",
             "integration_quality"
           ],
           "kind": "contract_model",
-          "signature": "(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
+          "signature": "(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "JaniformVanillaOptionSurface": {
           "field_names": [
@@ -6380,11 +6328,10 @@
             "collocation_node_count",
             "collocation_nodes",
             "interval_summaries",
-            "representative_transform",
             "integration_quality"
           ],
           "kind": "contract_model",
-          "signature": "(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
+          "signature": "(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
         }
       }
     },
@@ -7001,6 +6948,8 @@
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "JaniformSimulationResult",
+        "LongVarianceParameters",
+        "LongVarianceState",
         "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
@@ -7026,12 +6975,14 @@
             "sufficient_statistics_model_inputs",
             "news_process_configuration",
             "return_clock_exposure_parameters",
+            "long_variance_parameters",
+            "initial_long_variance_state",
             "observed_price_tick_size",
             "calendar_registry_artifact",
             "exchange_code"
           ],
           "kind": "contract_model",
-          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
+          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -7105,6 +7056,23 @@
           ],
           "kind": "contract_model",
           "signature": "(simulation_kind: 'SimulationKind', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
+        },
+        "LongVarianceParameters": {
+          "field_names": [
+            "mean_reversion_rate",
+            "vol_of_vol",
+            "buy_event_loading",
+            "sell_event_loading"
+          ],
+          "kind": "contract_model",
+          "signature": "(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'"
+        },
+        "LongVarianceState": {
+          "field_names": [
+            "level"
+          ],
+          "kind": "contract_model",
+          "signature": "(level: 'float') -> 'None'"
         },
         "MeanReversionAnchorModel": {
           "field_names": [
@@ -7210,6 +7178,8 @@
             "initial_mean_reversion_boundary_state",
             "hourly_factor_summary",
             "return_clock_exposure_parameters",
+            "long_variance_parameters",
+            "initial_long_variance_state",
             "observed_price_tick_size",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -7217,7 +7187,7 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -7412,12 +7382,14 @@
             "sufficient_statistics_model_inputs",
             "news_process_configuration",
             "return_clock_exposure_parameters",
+            "long_variance_parameters",
+            "initial_long_variance_state",
             "observed_price_tick_size",
             "calendar_registry_artifact",
             "exchange_code"
           ],
           "kind": "contract_model",
-          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
+          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -7653,6 +7625,8 @@
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "LongVarianceParameters",
+        "LongVarianceState",
         "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY",
         "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
         "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT",
@@ -7718,6 +7692,23 @@
           ],
           "kind": "contract_model",
           "signature": "(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'"
+        },
+        "LongVarianceParameters": {
+          "field_names": [
+            "mean_reversion_rate",
+            "vol_of_vol",
+            "buy_event_loading",
+            "sell_event_loading"
+          ],
+          "kind": "contract_model",
+          "signature": "(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'"
+        },
+        "LongVarianceState": {
+          "field_names": [
+            "level"
+          ],
+          "kind": "contract_model",
+          "signature": "(level: 'float') -> 'None'"
         },
         "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY": {
           "kind": "constant",
@@ -7948,6 +7939,8 @@
             "initial_mean_reversion_boundary_state",
             "hourly_factor_summary",
             "return_clock_exposure_parameters",
+            "long_variance_parameters",
+            "initial_long_variance_state",
             "observed_price_tick_size",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -7955,7 +7948,7 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -8835,10 +8828,11 @@
         "SufficientStatisticsEquationSpecification": {
           "field_names": [
             "hawkes_kernel_parameters",
-            "gamma_severity_mark_configuration"
+            "gamma_severity_mark_configuration",
+            "long_variance_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'"
         },
         "SufficientStatisticsIntervalStatistics": {
           "field_names": [
@@ -8859,12 +8853,14 @@
             "equation_specification",
             "nig_shared_plus_shift_configuration",
             "initial_excitation_state",
+            "long_variance_parameters",
+            "initial_long_variance_state",
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state"
           ],
           "kind": "contract_model",
-          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "SufficientStatisticsPath": {
           "field_names": [
@@ -9082,10 +9078,11 @@
         "SufficientStatisticsEquationSpecification": {
           "field_names": [
             "hawkes_kernel_parameters",
-            "gamma_severity_mark_configuration"
+            "gamma_severity_mark_configuration",
+            "long_variance_parameters"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'"
         },
         "SufficientStatisticsIntervalStatistics": {
           "field_names": [
@@ -9106,12 +9103,14 @@
             "equation_specification",
             "nig_shared_plus_shift_configuration",
             "initial_excitation_state",
+            "long_variance_parameters",
+            "initial_long_variance_state",
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state"
           ],
           "kind": "contract_model",
-          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "SufficientStatisticsPath": {
           "field_names": [

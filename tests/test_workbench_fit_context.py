@@ -12,8 +12,8 @@ from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
 from janiform.mean_reversion import MeanReversionAnchorModel, MeanReversionFittedParameters
-from tools.workbench import plots as workbench_plots
 from tools.workbench import load_workbench_artifacts
+from tools.workbench import plots as workbench_plots
 from tools.workbench.artifacts import WorkbenchArtifacts
 from tools.workbench.fit_context import (
     WorkbenchFitContext,
@@ -1717,14 +1717,7 @@ def test_mean_reversion_series_analysis_materializes_endogenous_anchor_values(
     analysis = workbench_plots._build_mean_reversion_series_analysis(
         SimpleNamespace(
             metadata={"simulation_output_preferences": {"reference_price": 100.0}},
-            parameters={
-                "mean_reversion": {
-                    "fitted_parameters": MeanReversionFittedParameters(
-                        kappa=0.4,
-                        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-                    ).to_payload()
-                }
-            },
+            parameters=_mean_reversion_model_parameters(),
         ),
         _price_series_from_records(
             (
@@ -2799,15 +2792,23 @@ def _price_series_from_records(
 def _mean_reversion_test_model() -> Any:
     return SimpleNamespace(
         metadata={"simulation_output_preferences": {"reference_price": 1.0}},
-        parameters={
-            "mean_reversion": {
-                "fitted_parameters": MeanReversionFittedParameters(
-                    kappa=0.4,
-                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-                ).to_payload()
+        parameters=_mean_reversion_model_parameters(),
+    )
+
+
+def _mean_reversion_model_parameters() -> dict[str, Any]:
+    return {
+        "finalization": {
+            "fitted_parameters": {
+                "return_components_fitted_parameters": {
+                    "mean_reversion_fitted_parameters": MeanReversionFittedParameters(
+                        kappa=0.4,
+                        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
+                    ).to_payload()
+                }
             }
         }
-    )
+    }
 
 
 def _diagnostic_only_mean_reversion_test_model(diagnostics_payload: dict[str, Any]) -> Any:

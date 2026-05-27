@@ -1,4 +1,5 @@
 use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
+use janiform_model_kernels::hawkes::{HawkesKernelParameters, stationary_intensity_multipliers};
 
 // Unit-stationary CIR variance is sigma_z^2 / (2 kappa_z). The standard
 // finite-variance boundary uses variance proxy one.
@@ -56,4 +57,71 @@ pub(crate) fn long_variance_side_event_feedback_drift_budget(
     let budget = mean_reversion_rate / LONG_VARIANCE_STATIONARY_COMPONENT_COUNT;
 
     (budget.is_finite() && budget >= 0.0).then_some(budget)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LongVarianceSideEventLoadings {
+    pub(crate) buy_event_loading: f64,
+    pub(crate) sell_event_loading: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LongVarianceStationaryEventRates {
+    pub(crate) buy_event_rate_per_hour: f64,
+    pub(crate) sell_event_rate_per_hour: f64,
+}
+
+pub(crate) fn long_variance_stationary_event_rates_for_hawkes_kernel(
+    kernel_parameters: HawkesKernelParameters,
+) -> Option<LongVarianceStationaryEventRates> {
+    let stationary_multipliers =
+        stationary_intensity_multipliers(kernel_parameters.alpha, kernel_parameters.beta)?;
+
+    let buy_event_rate_per_hour =
+        kernel_parameters.lambda_bar * stationary_multipliers.buy_intensity_multiplier;
+    let sell_event_rate_per_hour =
+        kernel_parameters.lambda_bar * stationary_multipliers.sell_intensity_multiplier;
+
+    if !buy_event_rate_per_hour.is_finite()
+        || buy_event_rate_per_hour < 0.0
+        || !sell_event_rate_per_hour.is_finite()
+        || sell_event_rate_per_hour < 0.0
+    {
+        return None;
+    }
+
+    Some(LongVarianceStationaryEventRates {
+        buy_event_rate_per_hour,
+        sell_event_rate_per_hour,
+    })
+}
+
+pub(crate) fn project_long_variance_event_loadings_to_stationary_budget(
+    event_loadings: LongVarianceSideEventLoadings,
+    stationary_event_rates: LongVarianceStationaryEventRates,
+    mean_reversion_rate: f64,
+) -> LongVarianceSideEventLoadings {
+    let event_loading_drift = event_loadings.buy_event_loading
+        * stationary_event_rates.buy_event_rate_per_hour
+        + event_loadings.sell_event_loading * stationary_event_rates.sell_event_rate_per_hour;
+
+    let Some(event_feedback_drift_budget) =
+        long_variance_event_feedback_drift_budget(mean_reversion_rate)
+    else {
+        return LongVarianceSideEventLoadings {
+            buy_event_loading: 0.0,
+            sell_event_loading: 0.0,
+        };
+    };
+
+    if !event_loading_drift.is_finite() || event_loading_drift <= event_feedback_drift_budget {
+        return event_loadings;
+    }
+
+    let scale = event_feedback_drift_budget / event_loading_drift;
+
+    LongVarianceSideEventLoadings {
+        buy_event_loading: event_loadings.buy_event_loading * scale,
+        sell_event_loading: event_loadings.sell_event_loading * scale,
+    }
 }

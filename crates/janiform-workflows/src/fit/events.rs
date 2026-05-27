@@ -701,16 +701,7 @@ fn work_item_table_columns(
     }
 
     if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
-        let final_objective_label = if uses_restart_optimization_columns {
-            "Final loss"
-        } else {
-            "Final loss"
-        };
-
-        columns.push(ProgressWorkItemColumn::new(
-            "final_objective",
-            final_objective_label,
-        ));
+        columns.push(ProgressWorkItemColumn::new("final_objective", "Final loss"));
     }
 
     if progress.current_candidate_assessment.is_some() {

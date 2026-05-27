@@ -18,6 +18,7 @@ use janiform_market_time::hourly_factors::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -533,6 +534,8 @@ fn run_fixture_case(
             hourly_factor_contract,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            long_variance_parameters: LongVarianceParameters::neutral(),
+            initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
             calendar_registry: calendar_registry.clone(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),

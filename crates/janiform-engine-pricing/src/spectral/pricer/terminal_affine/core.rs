@@ -56,55 +56,63 @@ pub(super) struct TerminalAffineMaturityContext<'a> {
     pub(super) driver_parameters: NigBuySellDriverParameters,
 }
 
+pub(in crate::spectral::pricer) struct TerminalAffineMaturitySolveInput<'a> {
+    pub(in crate::spectral::pricer) pricing_request: &'a VanillaOptionPricingRequest,
+    pub(in crate::spectral::pricer) maturity_count: usize,
+    pub(in crate::spectral::pricer) maturity_interval: f64,
+    pub(in crate::spectral::pricer) strikes: &'a [f64],
+    pub(in crate::spectral::pricer) payoff_types: &'a [VanillaOptionPayoffType],
+    pub(in crate::spectral::pricer) collocation_node_count_override: Option<usize>,
+    pub(in crate::spectral::pricer) interval_deltas: &'a [f64],
+    pub(in crate::spectral::pricer) interval_factors: &'a [VanillaOptionPricingIntervalFactors],
+    pub(in crate::spectral::pricer) driver_parameters: NigBuySellDriverParameters,
+    pub(in crate::spectral::pricer) include_node_price_sensitivities: bool,
+    pub(in crate::spectral::pricer) pricing_thread_pool: Option<&'a rayon::ThreadPool>,
+    pub(in crate::spectral::pricer) theta_warm_start_key: SpectralThetaWarmStartKey,
+}
+
 pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
-    pricing_request: &VanillaOptionPricingRequest,
-    maturity_count: usize,
-    maturity_interval: f64,
-    strikes: &[f64],
-    payoff_types: &[VanillaOptionPayoffType],
-    collocation_node_count_override: Option<usize>,
-    interval_deltas: &[f64],
-    interval_factors: &[VanillaOptionPricingIntervalFactors],
-    driver_parameters: NigBuySellDriverParameters,
-    include_node_price_sensitivities: bool,
-    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    solve_input: TerminalAffineMaturitySolveInput<'_>,
     theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
-    theta_warm_start_key: SpectralThetaWarmStartKey,
     progress_observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
 ) -> Result<SolvedMaturityLaw, VanillaOptionPricingRunError> {
-    validate_terminal_affine_inputs(maturity_count, interval_deltas, interval_factors)?;
+    validate_terminal_affine_inputs(
+        solve_input.maturity_count,
+        solve_input.interval_deltas,
+        solve_input.interval_factors,
+    )?;
 
     let mean_reversion_path = build_terminal_affine_mean_reversion_path(
-        pricing_request,
-        maturity_count,
-        interval_deltas,
-        interval_factors,
-        driver_parameters,
+        solve_input.pricing_request,
+        solve_input.maturity_count,
+        solve_input.interval_deltas,
+        solve_input.interval_factors,
+        solve_input.driver_parameters,
     )?;
 
     let spectral_domain = build_spectral_domain_from_anchor_span(
-        pricing_request,
+        solve_input.pricing_request,
         mean_reversion_path.terminal_anchor_value,
         mean_reversion_path.anchor_span,
-        strikes,
-        payoff_types,
-        collocation_node_count_override,
+        solve_input.strikes,
+        solve_input.payoff_types,
+        solve_input.collocation_node_count_override,
     )?;
 
     let context = TerminalAffineMaturityContext {
-        pricing_request,
-        maturity_count,
-        maturity_interval,
+        pricing_request: solve_input.pricing_request,
+        maturity_count: solve_input.maturity_count,
+        maturity_interval: solve_input.maturity_interval,
         spectral_domain,
         mean_reversion_path,
-        interval_deltas,
-        interval_factors,
-        driver_parameters,
+        interval_deltas: solve_input.interval_deltas,
+        interval_factors: solve_input.interval_factors,
+        driver_parameters: solve_input.driver_parameters,
     };
 
     let preferred_theta = theta_warm_start_state
         .as_ref()
-        .and_then(|state| state.theta_hint(theta_warm_start_key));
+        .and_then(|state| state.theta_hint(solve_input.theta_warm_start_key));
 
     let theta_solution =
         solve_terminal_affine_martingale_theta(&context, preferred_theta, progress_observer)?;
@@ -112,37 +120,39 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
     let frequency_outputs = solve_terminal_affine_frequency_outputs(
         &context,
         theta_solution,
-        include_node_price_sensitivities,
-        pricing_thread_pool,
+        solve_input.include_node_price_sensitivities,
+        solve_input.pricing_thread_pool,
     )?;
 
     if let Some(theta_warm_start_state) = theta_warm_start_state {
         theta_warm_start_state.record_theta_solution(
-            theta_warm_start_key,
+            solve_input.theta_warm_start_key,
             theta_solution.theta,
             theta_solution.buy_activity_premium_theta_derivative,
             theta_solution.sell_activity_premium_theta_derivative,
         );
     }
 
-    let characteristic_function_sensitivities = include_node_price_sensitivities.then(|| {
-        frequency_outputs
-            .iter()
-            .map(|output| {
-                output
-                    .sensitivity
-                    .unwrap_or_else(NodePriceSharedPlusShiftComplexSensitivity::zero)
-            })
-            .collect::<Vec<_>>()
-    });
+    let characteristic_function_sensitivities =
+        solve_input.include_node_price_sensitivities.then(|| {
+            frequency_outputs
+                .iter()
+                .map(|output| {
+                    output
+                        .sensitivity
+                        .unwrap_or_else(NodePriceSharedPlusShiftComplexSensitivity::zero)
+                })
+                .collect::<Vec<_>>()
+        });
 
     Ok(SolvedMaturityLaw {
-        maturity_interval,
+        maturity_interval: solve_input.maturity_interval,
         terminal_anchor_value: context.mean_reversion_path.terminal_anchor_value,
         deviation_lower_bound: spectral_domain.deviation_lower_bound,
         deviation_upper_bound: spectral_domain.deviation_upper_bound,
         node_count: spectral_domain.node_count,
-        observed_log_price: pricing_request
+        observed_log_price: solve_input
+            .pricing_request
             .boundary_input
             .observed_boundary_state
             .observed_log_price,
@@ -156,9 +166,9 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
             theta_solution,
         )?),
         interval_summaries: build_terminal_affine_interval_summaries(
-            pricing_request,
-            interval_deltas,
-            maturity_count,
+            solve_input.pricing_request,
+            solve_input.interval_deltas,
+            solve_input.maturity_count,
             theta_solution.theta,
             &context.mean_reversion_path,
         ),
@@ -532,7 +542,7 @@ mod tests {
     use janiform_foundations::numeric::square_root_machine_epsilon;
     use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 
-    use super::solve_terminal_affine_maturity_law;
+    use super::{TerminalAffineMaturitySolveInput, solve_terminal_affine_maturity_law};
     use crate::tests::support::build_valid_vanilla_option_request;
     use crate::{
         VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
@@ -590,19 +600,25 @@ mod tests {
         let mut progress_observer = None;
 
         solve_terminal_affine_maturity_law(
-            &pricing_request,
-            1,
-            1.0,
-            pricing_request.market_inputs.strikes.as_slice(),
-            &payoff_types,
-            Some(257),
-            &interval_deltas,
-            &interval_factors,
-            driver_parameters,
-            false,
+            TerminalAffineMaturitySolveInput {
+                pricing_request: &pricing_request,
+                maturity_count: 1,
+                maturity_interval: 1.0,
+                strikes: pricing_request.market_inputs.strikes.as_slice(),
+                payoff_types: &payoff_types,
+                collocation_node_count_override: Some(257),
+                interval_deltas: &interval_deltas,
+                interval_factors: &interval_factors,
+                driver_parameters,
+                include_node_price_sensitivities: false,
+                pricing_thread_pool: None,
+                theta_warm_start_key: super::SpectralThetaWarmStartKey::new(
+                    0.02_f64.to_bits(),
+                    0.01_f64.to_bits(),
+                    1,
+                ),
+            },
             None,
-            None,
-            super::SpectralThetaWarmStartKey::new(0.02_f64.to_bits(), 0.01_f64.to_bits(), 1),
             &mut progress_observer,
         )
         .expect("terminal affine maturity law should solve")

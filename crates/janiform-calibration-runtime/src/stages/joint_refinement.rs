@@ -23,7 +23,8 @@ pub use contracts::{
 pub use execution::JointRefinementSeedSummary;
 pub use execution::run_joint_refinement_calibration_stage;
 pub(crate) use execution::{
-    JointRefinementStageRuntimeHandoff, pricing_block_search_coordinate_count,
+    FinalizationCalibrationStageEntrypointInput, JointRefinementStageRuntimeHandoff,
+    pricing_block_search_coordinate_count,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,

@@ -12,6 +12,7 @@ use janiform_engine_sufficient_statistics::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
@@ -580,24 +581,28 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
         hawkes_kernel_parameters,
         GammaSeverityMarkConfiguration::try_new(2.0, 0.4)
             .expect("gamma severity marks should validate"),
+        LongVarianceParameters::neutral(),
     )
     .expect("equation specification should validate");
 
     let nig_configuration = NigSharedPlusShiftConfiguration::try_new(1.6, 0.15, 0.5, 0.0, -0.1)
         .expect("nig configuration should validate");
 
-    SufficientStatisticsModelInputs::try_new(
+    SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
         equation_specification,
-        nig_configuration,
-        HawkesExcitationState {
+        nig_shared_plus_shift_configuration: nig_configuration,
+        initial_excitation_state: HawkesExcitationState {
             y_plus_plus: 0.05,
             y_plus_minus: 0.02,
             y_minus_plus: 0.03,
             y_minus_minus: 0.04,
         },
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
-        MeanReversionRuntimeIntervalAnchors::try_new(
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        initial_long_variance_state: LongVarianceState::unit(),
+        mean_reversion_fitted_parameters:
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-kappa endogenous mean reversion should construct"),
+        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
             0.0,
@@ -606,9 +611,11 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
             vec![1.0; 2],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
-            .expect("disabled mean-reversion boundary state should construct"),
-    )
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+            0.0, 0.0, 0.0, 0.0,
+        )
+        .expect("disabled mean-reversion boundary state should construct"),
+    })
     .expect("model inputs should validate")
 }
 

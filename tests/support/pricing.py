@@ -115,7 +115,7 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
             surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
+            include_transform_diagnostics=False,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         ),

@@ -1,8 +1,6 @@
 mod support;
 use janiform_calibration_artifacts::CalibrationExecutionMode;
-use janiform_calibration_runtime::{
-    CalibrationStageExecutionStatus, run_staged_calibration_with_checkpointing,
-};
+use janiform_calibration_runtime::run_staged_calibration_with_checkpointing;
 use support::shared::{
     build_run_contract_with_mode_and_resume, calibration_stage_test_registry, staged_run_inputs,
 };
@@ -24,11 +22,7 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
         None,
     );
 
-    assert_eq!(
-        report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{report:#?}"
-    );
+    assert!(report.status.is_successful(), "{report:#?}");
 
     let diagnostic_bundle = report
         .diagnostic_artifact_bundle
@@ -38,12 +32,17 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
         .decision
         .selected_candidate_id
         .clone();
+    let selected_restart_id = selected_candidate_id
+        .strip_prefix("finalization_")
+        .or_else(|| selected_candidate_id.strip_prefix("joint_refinement_"))
+        .unwrap_or(selected_candidate_id.as_str());
+    let selected_joint_candidate_id = format!("joint_refinement_{selected_restart_id}");
     let selected_joint_candidate = diagnostic_bundle
         .candidate_frontier
         .frontier_entries
         .iter()
         .find(|entry| {
-            entry.stage == "joint_refinement" && entry.candidate_id == selected_candidate_id
+            entry.stage == "joint_refinement" && entry.candidate_id == selected_joint_candidate_id
         })
         .expect("selected joint-refinement frontier entry should be present");
 
@@ -55,9 +54,9 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
     let activity_level_metric = selected_joint_candidate
         .family_metrics
         .iter()
-        .find(|metric| metric.metric_id == "joint.activity_level")
+        .find(|metric| metric.metric_id == "activity_level.total_count")
         .expect("joint activity-level metric should be emitted");
-    assert_eq!(activity_level_metric.target_family, "activity_level");
+    assert_eq!(activity_level_metric.target_family, "activity_level_timing");
     assert!(activity_level_metric.observed_value > 0.0);
     assert!(activity_level_metric.simulated_value > 0.0);
     assert!(activity_level_metric.uncertainty_scale > 0.0);
@@ -69,7 +68,7 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
     let return_scale_metric = selected_joint_candidate
         .family_metrics
         .iter()
-        .find(|metric| metric.metric_id == "joint.return_scale")
+        .find(|metric| metric.metric_id == "return_scale.15m.realized_variance")
         .expect("joint return-scale metric should be emitted");
     assert_eq!(return_scale_metric.target_family, "return_scale");
     assert!(return_scale_metric.observed_value > 0.0);
@@ -83,12 +82,9 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
     let rv_activity_metric = selected_joint_candidate
         .family_metrics
         .iter()
-        .find(|metric| metric.metric_id == "joint.rv_activity_coupling")
+        .find(|metric| metric.metric_id == "rv_activity_coupling.correlation")
         .expect("joint rv-activity coupling metric should be emitted");
-    assert_eq!(
-        rv_activity_metric.target_family,
-        "activity_vs_volatility_coupling"
-    );
+    assert_eq!(rv_activity_metric.target_family, "rv_activity_coupling");
     assert!(rv_activity_metric.uncertainty_scale > 0.0);
     assert!(
         rv_activity_metric.observed_value != 0.0

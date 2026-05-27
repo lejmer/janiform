@@ -12,6 +12,7 @@ use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 
+use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
 use crate::stages::joint_metrics::build_observed_open_session_interval_observations;
 use crate::stages::long_variance::estimation::estimate_long_variance_parameters;
@@ -19,6 +20,7 @@ use crate::stages::long_variance::metrics::{
     LONG_VARIANCE_HORIZON_DEFINITIONS, LONG_VARIANCE_HORIZON_MOMENT_METRIC_COUNT,
     LongVarianceHorizonMomentSummary, long_variance_horizon_summaries,
 };
+use crate::stages::long_variance::policy::long_variance_stationary_event_rates_for_hawkes_kernel;
 use crate::stages::return_components::ReturnComponentsStageCandidateGenerationInput;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
@@ -52,6 +54,7 @@ impl LongVarianceStageReturnComponentsInput {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LongVarianceStageExecutionInput {
     pub return_components_input: Option<LongVarianceStageReturnComponentsInput>,
+    pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
     pub candidate_generation_input: Option<ReturnComponentsStageCandidateGenerationInput>,
 }
@@ -86,6 +89,8 @@ pub enum LongVarianceStageExecutionFailure {
     StageIsNotSelectedInRunSpec,
     MissingStageSolverSettings,
     MissingReturnComponentsInput,
+    MissingHawkesStagePayload,
+    InvalidHawkesStagePayload { error_message: String },
     MissingReturnComponentsStagePayload,
     MissingCandidateGenerationInput,
 }
@@ -146,6 +151,13 @@ pub fn run_long_variance_calibration_stage(
         );
     };
 
+    let Some(hawkes_stage_payload) = execution_input.hawkes_stage_payload else {
+        return failure_report(
+            run_spec,
+            LongVarianceStageExecutionFailure::MissingHawkesStagePayload,
+        );
+    };
+
     let Some(return_components_stage_payload) = execution_input.return_components_stage_payload
     else {
         return failure_report(
@@ -161,13 +173,17 @@ pub fn run_long_variance_calibration_stage(
         );
     };
 
-    let fitted_stage_payload = build_long_variance_fitted_stage_payload(
+    let fitted_stage_payload = match build_long_variance_fitted_stage_payload(
         run_spec,
         calendar_registry,
         return_components_input,
+        &hawkes_stage_payload,
         &return_components_stage_payload,
         &candidate_generation_input,
-    );
+    ) {
+        Ok(fitted_stage_payload) => fitted_stage_payload,
+        Err(failure) => return failure_report(run_spec, failure),
+    };
 
     let seed_metadata = janiform_calibration_artifacts::resolve_calibration_stage_seed_metadata(
         run_spec,
@@ -200,12 +216,23 @@ fn build_long_variance_fitted_stage_payload(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     return_components_input: LongVarianceStageReturnComponentsInput,
+    hawkes_stage_payload: &HawkesStageFittedPayload,
     return_components_stage_payload: &ReturnComponentsStageFittedPayload,
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-) -> LongVarianceStageFittedPayload {
+) -> Result<LongVarianceStageFittedPayload, LongVarianceStageExecutionFailure> {
     let baseline_parameters = return_components_stage_payload
         .fitted_parameters
         .long_variance_parameters;
+
+    let stationary_event_rates = long_variance_stationary_event_rates_for_hawkes_kernel(
+        hawkes_stage_payload.fitted_parameters.kernel_parameters,
+    )
+    .ok_or_else(
+        || LongVarianceStageExecutionFailure::InvalidHawkesStagePayload {
+            error_message: "long variance stage requires finite stationary Hawkes event rates"
+                .to_string(),
+        },
+    )?;
 
     let observed_intervals = observed_long_variance_intervals(
         calendar_registry,
@@ -215,6 +242,7 @@ fn build_long_variance_fitted_stage_payload(
 
     let fitted_parameters = estimate_long_variance_parameters(
         baseline_parameters,
+        stationary_event_rates,
         observed_intervals.five_minute.as_slice(),
         observed_intervals.hourly.as_slice(),
     );
@@ -241,14 +269,14 @@ fn build_long_variance_fitted_stage_payload(
             } => (None, Some(artifact_reference)),
         };
 
-    LongVarianceStageFittedPayload {
+    Ok(LongVarianceStageFittedPayload {
         schema_version: CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
         fitted_parameters,
         diagnostics,
         return_components_input_transport,
         return_components_selected_candidate_id,
         return_components_artifact_reference,
-    }
+    })
 }
 
 fn selected_candidate_id<'a>(

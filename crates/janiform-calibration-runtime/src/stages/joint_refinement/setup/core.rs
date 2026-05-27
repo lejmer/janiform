@@ -65,6 +65,9 @@ use janiform_calibration_artifacts::{
     JointRefinementStagePricingBlockFittedParameters, ReturnComponentsStageFittedParameters,
 };
 
+type RestartSeedCandidate = (String, Vec<f64>);
+type RestartSeedCandidateBatch = Vec<RestartSeedCandidate>;
+
 const RETURN_SCALE_REALIZED_VARIANCE_15M_METRIC_ID: &str = "return_scale.15m.realized_variance";
 const RETURN_SCALE_MEAN_ABSOLUTE_RETURN_15M_METRIC_ID: &str =
     "return_scale.15m.mean_absolute_return";
@@ -564,18 +567,42 @@ impl JointRefinementActiveParameterLayout {
     }
 }
 
+pub(in crate::stages::joint_refinement) struct ParameterBoundsBuildInput<'a> {
+    pub(in crate::stages::joint_refinement) active_parameter_layout:
+        &'a JointRefinementActiveParameterLayout,
+    pub(in crate::stages::joint_refinement) baseline_parameter_vector: &'a [f64],
+    pub(in crate::stages::joint_refinement) baseline_15m_calibration_sample:
+        &'a ReturnComponentsStageContinuousReturnCalibrationSample,
+    pub(in crate::stages::joint_refinement) selected_return_nig_configuration:
+        NigSharedPlusShiftConfiguration,
+    pub(in crate::stages::joint_refinement) return_component_basin_diagnostics:
+        &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    pub(in crate::stages::joint_refinement) baseline_hawkes_kernel_parameters:
+        HawkesKernelParameters,
+    pub(in crate::stages::joint_refinement) baseline_long_variance_parameters:
+        LongVarianceParameters,
+    pub(in crate::stages::joint_refinement) observed_data:
+        &'a super::super::execution::JointRefinementObservedData,
+    pub(in crate::stages::joint_refinement) baseline_modeled_open_event_rate_per_hour: f64,
+    pub(in crate::stages::joint_refinement) solver_settings: &'a CalibrationOptimizerSettings,
+}
+
 pub(in crate::stages::joint_refinement) fn build_parameter_bounds(
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    baseline_parameter_vector: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    selected_return_nig_configuration: NigSharedPlusShiftConfiguration,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
-    baseline_hawkes_kernel_parameters: HawkesKernelParameters,
-    baseline_long_variance_parameters: LongVarianceParameters,
-    observed_data: &super::super::execution::JointRefinementObservedData,
-    baseline_modeled_open_event_rate_per_hour: f64,
-    solver_settings: &CalibrationOptimizerSettings,
+    input: ParameterBoundsBuildInput<'_>,
 ) -> Result<(Vec<f64>, Vec<f64>), String> {
+    let ParameterBoundsBuildInput {
+        active_parameter_layout,
+        baseline_parameter_vector,
+        baseline_15m_calibration_sample,
+        selected_return_nig_configuration,
+        return_component_basin_diagnostics,
+        baseline_hawkes_kernel_parameters,
+        baseline_long_variance_parameters,
+        observed_data,
+        baseline_modeled_open_event_rate_per_hour,
+        solver_settings,
+    } = input;
+
     let mut lower_bounds = vec![0.0; baseline_parameter_vector.len()];
     let mut upper_bounds = vec![0.0; baseline_parameter_vector.len()];
 
@@ -831,17 +858,18 @@ pub(in crate::stages::joint_refinement) fn build_restart_seeds(
 
     let return_clock_seed_profile = return_clock_exposure_restart_seed_profile(joint_context);
 
-    let mut restart_candidates = build_core_restart_seed_candidates(
-        baseline_parameter_vector,
-        active_parameter_layout,
-        lower_bounds,
-        upper_bounds,
-        baseline_15m_calibration_sample,
-        return_component_basin_diagnostics,
-        baseline_final_objective_terms,
-        activity_log_shift,
-        return_clock_seed_profile,
-    );
+    let mut restart_candidates =
+        build_core_restart_seed_candidates(CoreRestartSeedCandidatesInput {
+            baseline_parameter_vector,
+            active_parameter_layout,
+            lower_bounds,
+            upper_bounds,
+            baseline_15m_calibration_sample,
+            return_component_basin_diagnostics,
+            baseline_final_objective_terms,
+            activity_log_shift,
+            return_clock_seed_profile,
+        });
 
     emit_restart_seed_generation_progress(
         progress_sender,
@@ -923,7 +951,7 @@ pub(in crate::stages::joint_refinement) fn build_restart_seeds_with_halton_accep
 
     let halton_seed_is_accepted = Mutex::new(halton_seed_is_accepted);
 
-    let restart_candidates = build_core_restart_seed_candidates(
+    let restart_candidates = build_core_restart_seed_candidates(CoreRestartSeedCandidatesInput {
         baseline_parameter_vector,
         active_parameter_layout,
         lower_bounds,
@@ -932,8 +960,8 @@ pub(in crate::stages::joint_refinement) fn build_restart_seeds_with_halton_accep
         return_component_basin_diagnostics,
         baseline_final_objective_terms,
         activity_log_shift,
-        None,
-    );
+        return_clock_seed_profile: None,
+    });
 
     let restart_seed_score = |restart_id: &str, restart_seed: &[f64]| {
         if !restart_id.starts_with("halton_") {
@@ -985,17 +1013,34 @@ pub(in crate::stages::joint_refinement) struct RestartSeedsWithHaltonAcceptanceB
         HaltonSeedAcceptancePredicate<'a>,
 }
 
-fn build_core_restart_seed_candidates(
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
-    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
-    baseline_final_objective_terms: &[JointRefinementStageObjectiveTermDiagnostic],
+struct CoreRestartSeedCandidatesInput<'a> {
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
+    baseline_15m_calibration_sample: &'a ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics:
+        &'a [ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    baseline_final_objective_terms: &'a [JointRefinementStageObjectiveTermDiagnostic],
     activity_log_shift: f64,
     return_clock_seed_profile: Option<ReturnClockExposureRestartSeedProfile>,
+}
+
+fn build_core_restart_seed_candidates(
+    input: CoreRestartSeedCandidatesInput<'_>,
 ) -> Vec<(String, Vec<f64>)> {
+    let CoreRestartSeedCandidatesInput {
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        baseline_final_objective_terms,
+        activity_log_shift,
+        return_clock_seed_profile,
+    } = input;
+
     let mut incumbent_local_search = baseline_parameter_vector.to_vec();
 
     clamp_in_place(
@@ -1402,7 +1447,7 @@ fn build_sensitivity_repair_restart_candidates(
     let mut anchor_candidates = screened_restart_candidates.iter().collect::<Vec<_>>();
 
     anchor_candidates
-        .sort_by(|left, right| compare_screened_restart_candidates_by_score(*left, *right));
+        .sort_by(|left, right| compare_screened_restart_candidates_by_score(left, right));
     anchor_candidates.truncate(policy.active_anchor_count);
 
     let sensitivity_evaluator = |parameter_vector: &[f64]| {
@@ -1426,7 +1471,7 @@ fn build_sensitivity_repair_restart_candidates(
 
     let mut repair_candidate_batches = std::iter::repeat_with(|| None)
         .take(anchor_jobs.len())
-        .collect::<Vec<Option<Vec<(String, Vec<f64>)>>>>();
+        .collect::<Vec<Option<RestartSeedCandidateBatch>>>();
 
     run_static_work_pool(
         joint_context.stage_thread_pool.as_deref(),
@@ -1451,7 +1496,7 @@ fn build_sensitivity_repair_restart_candidates(
                     .collect(),
                 }
             },
-            |repair_candidate_batches: &mut Vec<Option<Vec<(String, Vec<f64>)>>>,
+            |repair_candidate_batches: &mut Vec<Option<RestartSeedCandidateBatch>>,
              batch: SensitivityRepairRestartCandidateBatch,
              _status| {
                 if let Some(batch_slot) = repair_candidate_batches.get_mut(batch.anchor_position) {

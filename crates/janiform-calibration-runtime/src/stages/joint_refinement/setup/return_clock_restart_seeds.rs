@@ -71,17 +71,19 @@ pub(super) fn joint_return_clock_exposure_restart_seeds(
                 direction,
             )?;
 
-            let buy_log_scale_shift = move_buy_side.then_some(log_scale_shift).unwrap_or(0.0);
+            let buy_log_scale_shift = if move_buy_side { log_scale_shift } else { 0.0 };
 
-            let sell_log_scale_shift = (!move_buy_side).then_some(log_scale_shift).unwrap_or(0.0);
+            let sell_log_scale_shift = if move_buy_side { 0.0 } else { log_scale_shift };
 
             build_return_clock_exposure_restart_seed(
-                seed_id,
-                baseline_parameter_vector,
-                active_parameter_layout,
-                lower_bounds,
-                upper_bounds,
-                return_clock_seed_profile,
+                ReturnClockExposureRestartSeedInput {
+                    seed_id,
+                    baseline_parameter_vector,
+                    active_parameter_layout,
+                    lower_bounds,
+                    upper_bounds,
+                    return_clock_seed_profile,
+                },
                 buy_log_scale_shift,
                 sell_log_scale_shift,
             )
@@ -120,28 +122,41 @@ pub(super) fn return_clock_exposure_restart_seed_profile(
     return_clock_exposure_restart_seed_profile_is_valid(profile).then_some(profile)
 }
 
-fn build_return_clock_exposure_restart_seed(
-    seed_id: &str,
-    baseline_parameter_vector: &[f64],
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-    lower_bounds: &[f64],
-    upper_bounds: &[f64],
+struct ReturnClockExposureRestartSeedInput<'a> {
+    seed_id: &'a str,
+    baseline_parameter_vector: &'a [f64],
+    active_parameter_layout: &'a JointRefinementActiveParameterLayout,
+    lower_bounds: &'a [f64],
+    upper_bounds: &'a [f64],
     return_clock_seed_profile: ReturnClockExposureRestartSeedProfile,
+}
+
+fn build_return_clock_exposure_restart_seed(
+    input: ReturnClockExposureRestartSeedInput<'_>,
     buy_log_scale_shift: f64,
     sell_log_scale_shift: f64,
 ) -> Option<(String, Vec<f64>)> {
-    let buy_index = active_parameter_layout.log_buy_excitation_return_clock_scale_index;
-    let sell_index = active_parameter_layout.log_sell_excitation_return_clock_scale_index;
+    let buy_index = input
+        .active_parameter_layout
+        .log_buy_excitation_return_clock_scale_index;
 
-    let baseline_buy_log_scale = *baseline_parameter_vector.get(buy_index)?;
-    let baseline_sell_log_scale = *baseline_parameter_vector.get(sell_index)?;
+    let sell_index = input
+        .active_parameter_layout
+        .log_sell_excitation_return_clock_scale_index;
 
-    let mut restart_seed = baseline_parameter_vector.to_vec();
+    let baseline_buy_log_scale = *input.baseline_parameter_vector.get(buy_index)?;
+    let baseline_sell_log_scale = *input.baseline_parameter_vector.get(sell_index)?;
+
+    let mut restart_seed = input.baseline_parameter_vector.to_vec();
 
     *restart_seed.get_mut(buy_index)? += buy_log_scale_shift;
     *restart_seed.get_mut(sell_index)? += sell_log_scale_shift;
 
-    clamp_in_place(restart_seed.as_mut_slice(), lower_bounds, upper_bounds);
+    clamp_in_place(
+        restart_seed.as_mut_slice(),
+        input.lower_bounds,
+        input.upper_bounds,
+    );
 
     let candidate_buy_log_scale = *restart_seed.get(buy_index)?;
     let candidate_sell_log_scale = *restart_seed.get(sell_index)?;
@@ -153,7 +168,7 @@ fn build_return_clock_exposure_restart_seed(
     }
 
     let log_delta_offset_shift = stationary_return_clock_log_delta_compensation(
-        return_clock_seed_profile,
+        input.return_clock_seed_profile,
         baseline_buy_log_scale,
         baseline_sell_log_scale,
         candidate_buy_log_scale,
@@ -162,13 +177,17 @@ fn build_return_clock_exposure_restart_seed(
 
     apply_nig_log_delta_offset_shift(
         restart_seed.as_mut_slice(),
-        active_parameter_layout,
+        input.active_parameter_layout,
         log_delta_offset_shift,
     );
 
-    clamp_in_place(restart_seed.as_mut_slice(), lower_bounds, upper_bounds);
+    clamp_in_place(
+        restart_seed.as_mut_slice(),
+        input.lower_bounds,
+        input.upper_bounds,
+    );
 
-    Some((seed_id.to_string(), restart_seed))
+    Some((input.seed_id.to_string(), restart_seed))
 }
 
 fn return_clock_exposure_restart_seed_profile_is_valid(

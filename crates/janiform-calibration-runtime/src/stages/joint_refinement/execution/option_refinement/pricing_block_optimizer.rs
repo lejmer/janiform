@@ -7,7 +7,7 @@ use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOpti
 use super::super::{JointRefinementContext, JointRefinementRestartOutcome, elapsed_millis};
 use super::residual_jacobian::weighted_option_residual_jacobian_rows;
 use super::workflow::{
-    OptionRefinementProgressContext, SearchTierCandidate,
+    OptionRefinementProgressContext, ScoredPricingVectorInput, SearchTierCandidate,
     option_refinement_effective_search_sample_count, option_score_resolution,
     pricing_block_search_coordinate_count, scored_pricing_vector,
 };
@@ -84,34 +84,38 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
     let mut used_evaluation_count = 1usize;
 
     evaluate_pricing_block_proposals(
-        refinement_context,
-        dynamics_candidate,
-        source_dynamics_parameter_bits,
-        theta_warm_start_state,
-        progress_context,
-        search_budget,
-        &mut used_evaluation_count,
-        &mut best_candidate,
+        PricingBlockProposalEvaluationInput {
+            refinement_context,
+            dynamics_candidate,
+            source_dynamics_parameter_bits,
+            theta_warm_start_state,
+            progress_context,
+            search_budget,
+            used_evaluation_count: &mut used_evaluation_count,
+            best_candidate: &mut best_candidate,
+            budget_limited: &mut budget_limited,
+            prediction_rejected: &mut prediction_rejected,
+        },
         proposals,
-        &mut budget_limited,
-        &mut prediction_rejected,
     )?;
 
     let bound_proposals =
         pricing_block_bound_exploration_proposals(refinement_context, &best_candidate);
 
     evaluate_pricing_block_proposals(
-        refinement_context,
-        dynamics_candidate,
-        source_dynamics_parameter_bits,
-        theta_warm_start_state,
-        progress_context,
-        search_budget,
-        &mut used_evaluation_count,
-        &mut best_candidate,
+        PricingBlockProposalEvaluationInput {
+            refinement_context,
+            dynamics_candidate,
+            source_dynamics_parameter_bits,
+            theta_warm_start_state,
+            progress_context,
+            search_budget,
+            used_evaluation_count: &mut used_evaluation_count,
+            best_candidate: &mut best_candidate,
+            budget_limited: &mut budget_limited,
+            prediction_rejected: &mut prediction_rejected,
+        },
         bound_proposals,
-        &mut budget_limited,
-        &mut prediction_rejected,
     )?;
 
     if budget_limited {
@@ -125,66 +129,72 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
     Ok(best_candidate)
 }
 
-fn evaluate_pricing_block_proposals(
-    refinement_context: &JointRefinementContext,
-    dynamics_candidate: &JointRefinementRestartOutcome,
-    source_dynamics_parameter_bits: &[u64],
-    theta_warm_start_state: &mut SpectralThetaWarmStartState,
-    progress_context: Option<&OptionRefinementProgressContext<'_>>,
+struct PricingBlockProposalEvaluationInput<'a> {
+    refinement_context: &'a JointRefinementContext,
+    dynamics_candidate: &'a JointRefinementRestartOutcome,
+    source_dynamics_parameter_bits: &'a [u64],
+    theta_warm_start_state: &'a mut SpectralThetaWarmStartState,
+    progress_context: Option<&'a OptionRefinementProgressContext<'a>>,
     search_budget: OptionRefinementCandidateSearchBudget,
-    used_evaluation_count: &mut usize,
-    best_candidate: &mut SearchTierCandidate,
+    used_evaluation_count: &'a mut usize,
+    best_candidate: &'a mut SearchTierCandidate,
+    budget_limited: &'a mut bool,
+    prediction_rejected: &'a mut bool,
+}
+
+fn evaluate_pricing_block_proposals(
+    input: PricingBlockProposalEvaluationInput<'_>,
     proposals: Vec<PricingBlockProposal>,
-    budget_limited: &mut bool,
-    prediction_rejected: &mut bool,
 ) -> Result<(), String> {
     let score_resolution = option_score_resolution(
-        best_candidate.search_tier_score,
-        option_refinement_effective_search_sample_count(best_candidate),
+        input.best_candidate.search_tier_score,
+        option_refinement_effective_search_sample_count(input.best_candidate),
     );
 
     for proposal in proposals {
-        if proposal
-            .predicted_score
-            .is_some_and(|predicted_score| predicted_score >= best_candidate.search_tier_score)
-        {
-            *prediction_rejected = true;
+        if proposal.predicted_score.is_some_and(|predicted_score| {
+            predicted_score >= input.best_candidate.search_tier_score
+        }) {
+            *input.prediction_rejected = true;
             continue;
         }
 
-        if !search_budget.can_start_proposal_evaluation(*used_evaluation_count) {
-            *budget_limited = true;
+        if !input
+            .search_budget
+            .can_start_proposal_evaluation(*input.used_evaluation_count)
+        {
+            *input.budget_limited = true;
             break;
         }
 
         let evaluated_candidate = accept_or_reject_pricing_block_proposal(
-            scored_pricing_vector(
-                refinement_context,
-                dynamics_candidate,
-                proposal.parameter_vector.as_slice(),
-                source_dynamics_parameter_bits,
-                JointRefinementOptionSurfaceTierKind::Search,
-                false,
-                "option_pricing_block_refined",
-                Some(theta_warm_start_state),
-                progress_context,
-            ),
-            used_evaluation_count,
-            prediction_rejected,
+            scored_pricing_vector(ScoredPricingVectorInput {
+                refinement_context: input.refinement_context,
+                dynamics_candidate: input.dynamics_candidate,
+                pricing_vector: proposal.parameter_vector.as_slice(),
+                source_dynamics_parameter_bits: input.source_dynamics_parameter_bits,
+                tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+                include_node_price_sensitivities: false,
+                stop_reason: "option_pricing_block_refined",
+                theta_warm_start_state: Some(&mut *input.theta_warm_start_state),
+                progress_context: input.progress_context,
+            }),
+            input.used_evaluation_count,
+            input.prediction_rejected,
         );
 
         let Some(evaluated_candidate) = evaluated_candidate else {
             continue;
         };
 
-        if evaluated_candidate.search_tier_score < best_candidate.search_tier_score {
+        if evaluated_candidate.search_tier_score < input.best_candidate.search_tier_score {
             let validated_improvement =
-                best_candidate.search_tier_score - evaluated_candidate.search_tier_score;
+                input.best_candidate.search_tier_score - evaluated_candidate.search_tier_score;
 
-            *best_candidate = evaluated_candidate;
+            *input.best_candidate = evaluated_candidate;
 
             if validated_improvement <= score_resolution {
-                best_candidate.restart_outcome.stop_reason =
+                input.best_candidate.restart_outcome.stop_reason =
                     "option_pricing_block_validated_improvement_below_resolution".to_string();
 
                 break;
@@ -193,7 +203,7 @@ fn evaluate_pricing_block_proposals(
             continue;
         }
 
-        *prediction_rejected = true;
+        *input.prediction_rejected = true;
     }
 
     Ok(())
@@ -603,9 +613,7 @@ fn pricing_block_parameter_indices(refinement_context: &JointRefinementContext) 
     refinement_context
         .active_parameter_layout
         .option_pricing_kernel_block
-        .iter()
-        .copied()
-        .collect()
+        .to_vec()
 }
 
 #[cfg(test)]

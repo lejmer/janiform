@@ -464,31 +464,31 @@ impl Error for SufficientStatisticsIntervalStatisticsError {}
 #[derive(Debug, Clone, PartialEq)]
 pub enum SufficientStatisticsBoundaryStateUpdateError {
     InvalidIntervalDelta {
-        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         value: f64,
     },
     InvalidStateBeforeUpdate {
-        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         field: &'static str,
         value: f64,
     },
     InvalidSampledStatistics {
-        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         source: SufficientStatisticsIntervalStatisticsError,
     },
     InvalidScaledKernelLoading {
-        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         side: HawkesEventSide,
         event_count: u64,
         field: &'static str,
         value: f64,
     },
     TransitionFailure {
-        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         source: HawkesTransitionError,
     },
     InvalidStateAfterUpdate {
-        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         field: &'static str,
         value: f64,
     },

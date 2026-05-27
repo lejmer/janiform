@@ -1,18 +1,20 @@
 #![allow(dead_code)]
 
 use janiform_calibration_artifacts::{
-    CalibrationLossAdmissibility, CalibrationObjectivePolicy, CalibrationRunContract,
-    CalibrationStage, CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
+    CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationLossAdmissibility,
+    CalibrationObjectivePolicy, CalibrationRunContract, CalibrationStage,
+    CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
     CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
     CalibrationStageParameterOptimizerStateInput, HawkesStageFittedParameters,
     HawkesStageParameterArtifactInput, JointRefinementStageFittedParameters,
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
     JointRefinementStageParameterArtifactInput, JointRefinementStageRestartDiagnostics,
-    JointRefinementStageRuntimeProfile, MeanReversionStageCalibrationGrid,
+    JointRefinementStageRuntimeProfile, LongVarianceStageDiagnostics,
+    LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
     MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
     SeasonalityStageParameterArtifactInput, SurpriseNewsDeterministicIntensityProfile,
-    TickGridObservationModel, build_calibration_stage_parameter_artifact,
+    TickGridObservationModel, build_calibration_stage_parameter_artifact, calibration_stage_token,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::KnownNewsArrivalConfiguration;
@@ -68,6 +70,15 @@ pub(crate) fn build_stage_parameter_artifact_fixture_set(
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
+            CalibrationStageParameterArtifactInput::LongVariance(Box::new(
+                regression_long_variance_stage_parameter_input(
+                    run_contract,
+                    return_components_fitted_parameters.long_variance_parameters,
+                ),
+            )),
+        ),
+        build_regression_stage_parameter_artifact(
+            run_contract,
             CalibrationStageParameterArtifactInput::MeanReversion(Box::new(
                 regression_mean_reversion_stage_parameter_input(
                     run_contract,
@@ -80,6 +91,18 @@ pub(crate) fn build_stage_parameter_artifact_fixture_set(
             CalibrationStageParameterArtifactInput::JointRefinement(Box::new(
                 regression_joint_refinement_stage_parameter_input(
                     run_contract,
+                    CalibrationStage::JointRefinement,
+                    hawkes_fitted_parameters.clone(),
+                    return_components_fitted_parameters.clone(),
+                ),
+            )),
+        ),
+        build_regression_stage_parameter_artifact(
+            run_contract,
+            CalibrationStageParameterArtifactInput::Finalization(Box::new(
+                regression_joint_refinement_stage_parameter_input(
+                    run_contract,
+                    CalibrationStage::Finalization,
                     hawkes_fitted_parameters,
                     return_components_fitted_parameters,
                 ),
@@ -177,6 +200,33 @@ fn regression_return_components_stage_parameter_input(
     }
 }
 
+fn regression_long_variance_stage_parameter_input(
+    run_contract: &CalibrationRunContract,
+    fitted_parameters: janiform_model_kernels::long_variance::LongVarianceParameters,
+) -> LongVarianceStageParameterArtifactInput {
+    LongVarianceStageParameterArtifactInput {
+        metadata: regression_stage_build_metadata(
+            run_contract,
+            CalibrationStage::LongVariance,
+            CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
+        ),
+        fitted_parameters,
+        diagnostics: LongVarianceStageDiagnostics {
+            estimation_policy: "artifact_regression_fixture.v1".to_string(),
+            stationary_normalization_policy: "artifact_regression_fixture.v1".to_string(),
+            selected_candidate_id: "artifact_regression_return_components".to_string(),
+            horizon_diagnostics: Vec::new(),
+        },
+        return_components_input_transport:
+            CalibrationStageHandoffTransport::PersistedArtifactReference,
+        return_components_selected_candidate_id: None,
+        return_components_artifact_reference: Some(format!(
+            "artifact://return_components/{}",
+            run_contract.run_spec.run_id
+        )),
+    }
+}
+
 fn regression_mean_reversion_stage_parameter_input(
     run_contract: &CalibrationRunContract,
     fitted_parameters: MeanReversionFittedParameters,
@@ -201,20 +251,18 @@ fn regression_mean_reversion_stage_parameter_input(
 
 fn regression_joint_refinement_stage_parameter_input(
     run_contract: &CalibrationRunContract,
+    stage: CalibrationStage,
     hawkes_fitted_parameters: HawkesStageFittedParameters,
     return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
 ) -> JointRefinementStageParameterArtifactInput {
     JointRefinementStageParameterArtifactInput {
         metadata: regression_stage_build_metadata(
             run_contract,
-            CalibrationStage::JointRefinement,
+            stage,
             CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
         ),
-        optimizer_state: regression_optimizer_state(
-            run_contract,
-            CalibrationStage::JointRefinement,
-        ),
-        selected_candidate_id: "artifact_regression_joint_refinement".to_string(),
+        optimizer_state: regression_optimizer_state(run_contract, stage),
+        selected_candidate_id: format!("artifact_regression_{}", calibration_stage_token(stage)),
         fitted_parameters: JointRefinementStageFittedParameters {
             hawkes_fitted_parameters: hawkes_fitted_parameters.clone(),
             return_components_fitted_parameters: return_components_fitted_parameters.clone(),

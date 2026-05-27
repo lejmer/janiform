@@ -18,54 +18,62 @@ use super::handoffs::{
     expected_stage_handoff_transport,
 };
 
+pub(super) struct JointRefinementLikeStageRunInput<'a, 'observer> {
+    pub(super) stage: CalibrationStage,
+    pub(super) run_spec: &'a CalibrationRunSpec,
+    pub(super) calendar_registry: &'a ExchangeCalendarRegistry,
+    pub(super) stage_input: JointRefinementStageExecutionInput,
+    pub(super) upstream_joint_refinement_handoff: Option<&'a JointRefinementStageRuntimeHandoff>,
+    pub(super) upstream_option_refinement_handoff: Option<&'a JointRefinementStageRuntimeHandoff>,
+    pub(super) progress_observer:
+        Option<&'observer mut dyn FnMut(JointRefinementStageProgressUpdate)>,
+    pub(super) disk_checkpoint_directory: Option<&'a Path>,
+    pub(super) load_current_stage_resume_state: bool,
+}
+
 pub(super) fn run_joint_refinement_like_stage(
-    stage: CalibrationStage,
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    stage_input: JointRefinementStageExecutionInput,
-    upstream_joint_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
-    upstream_option_refinement_handoff: Option<&JointRefinementStageRuntimeHandoff>,
-    progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
-    disk_checkpoint_directory: Option<&Path>,
-    load_current_stage_resume_state: bool,
+    input: JointRefinementLikeStageRunInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
-    match stage {
+    match input.stage {
         CalibrationStage::JointRefinement => {
             Ok(CalibrationStagedRunStageReport::JointRefinement(Box::new(
                 run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
-                    run_spec,
-                    calendar_registry,
-                    stage_input,
-                    progress_observer,
-                    disk_checkpoint_directory,
-                    load_current_stage_resume_state,
+                    input.run_spec,
+                    input.calendar_registry,
+                    input.stage_input,
+                    input.progress_observer,
+                    input.disk_checkpoint_directory,
+                    input.load_current_stage_resume_state,
                 ),
             )))
         }
         CalibrationStage::OptionRefinement => {
             Ok(CalibrationStagedRunStageReport::OptionRefinement(Box::new(
                 run_option_refinement_calibration_stage_with_progress_observer_and_persistence(
-                    run_spec,
-                    calendar_registry,
-                    stage_input,
-                    upstream_joint_refinement_handoff,
-                    progress_observer,
-                    disk_checkpoint_directory,
-                    load_current_stage_resume_state,
+                    input.run_spec,
+                    input.calendar_registry,
+                    input.stage_input,
+                    input.upstream_joint_refinement_handoff,
+                    input.progress_observer,
+                    input.disk_checkpoint_directory,
+                    input.load_current_stage_resume_state,
                 ),
             )))
         }
         CalibrationStage::Finalization => {
             Ok(CalibrationStagedRunStageReport::Finalization(Box::new(
                 run_finalization_calibration_stage_with_progress_observer_and_persistence(
-                    run_spec,
-                    calendar_registry,
-                    stage_input,
-                    upstream_joint_refinement_handoff,
-                    upstream_option_refinement_handoff,
-                    progress_observer,
-                    disk_checkpoint_directory,
-                    load_current_stage_resume_state,
+                    super::super::FinalizationCalibrationStageEntrypointInput {
+                        run_spec: input.run_spec,
+                        calendar_registry: input.calendar_registry,
+                        stage_input: input.stage_input,
+                        upstream_joint_refinement_handoff: input.upstream_joint_refinement_handoff,
+                        upstream_option_refinement_handoff: input
+                            .upstream_option_refinement_handoff,
+                        disk_checkpoint_directory: input.disk_checkpoint_directory,
+                        load_current_stage_resume_state: input.load_current_stage_resume_state,
+                    },
+                    input.progress_observer,
                 ),
             )))
         }
@@ -74,7 +82,7 @@ pub(super) fn run_joint_refinement_like_stage(
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
         | CalibrationStage::MeanReversion => {
-            Err(CalibrationStagedRunFailure::MissingStageInput { stage })
+            Err(CalibrationStagedRunFailure::MissingStageInput { stage: input.stage })
         }
     }
 }
@@ -313,8 +321,7 @@ fn option_refinement_dispatch_settings(
         CalibrationStage::JointRefinement => {
             if run_spec
                 .selected_stages
-                .iter()
-                .any(|stage| *stage == CalibrationStage::OptionRefinement)
+                .contains(&CalibrationStage::OptionRefinement)
             {
                 // Option pricing input can be consumed by separate selected stages.
                 return Ok(OptionRefinementDispatchSettings {

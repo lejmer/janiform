@@ -727,60 +727,61 @@ fn build_joint_coarse_model_inputs(
             )
         })?;
 
-    let sufficient_statistics_model_inputs = SufficientStatisticsModelInputs::try_new(
-        ExponentialAffineTransformEquationSpecification::try_new(
-            fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
-            fitted_parameters
+    let sufficient_statistics_model_inputs =
+        SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
+            equation_specification: ExponentialAffineTransformEquationSpecification::try_new(
+                fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
+                fitted_parameters
+                    .return_components_fitted_parameters
+                    .news_process_configuration
+                    .shared_mark_law
+                    .gamma_severity_marks,
+                fitted_parameters
+                    .return_components_fitted_parameters
+                    .long_variance_parameters,
+            )
+            .map_err(|source| format!("invalid coarse equation specification: {source}"))?,
+            nig_shared_plus_shift_configuration: fitted_parameters
                 .return_components_fitted_parameters
-                .news_process_configuration
-                .shared_mark_law
-                .gamma_severity_marks,
-            fitted_parameters
+                .nig_shared_plus_shift_configuration,
+            initial_excitation_state,
+            long_variance_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
-        )
-        .map_err(|source| format!("invalid coarse equation specification: {source}"))?,
-        fitted_parameters
-            .return_components_fitted_parameters
-            .nig_shared_plus_shift_configuration,
-        initial_excitation_state,
-        fitted_parameters
-            .return_components_fitted_parameters
-            .long_variance_parameters,
-        LongVarianceState::unit(),
-        fitted_parameters
-            .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
-            .clone(),
-        mean_reversion_runtime_interval_anchors,
-        initial_mean_reversion_boundary_state,
-    )
-    .map_err(|source| format!("invalid sufficient-statistics model inputs: {source}"))?;
+            initial_long_variance_state: LongVarianceState::unit(),
+            mean_reversion_fitted_parameters: fitted_parameters
+                .return_components_fitted_parameters
+                .mean_reversion_fitted_parameters
+                .clone(),
+            mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state,
+        })
+        .map_err(|source| format!("invalid sufficient-statistics model inputs: {source}"))?;
 
-    CoarseSimulationModelInputs::try_new(
+    CoarseSimulationModelInputs::try_new(CoarseSimulationModelInputs {
         sufficient_statistics_model_inputs,
-        fitted_parameters
+        news_process_configuration: fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration
             .clone(),
-        fitted_parameters
+        return_clock_exposure_parameters: fitted_parameters
             .return_components_fitted_parameters
             .return_clock_exposure_parameters,
-        fitted_parameters
+        long_variance_parameters: fitted_parameters
             .return_components_fitted_parameters
             .long_variance_parameters,
-        LongVarianceState::unit(),
-        fitted_parameters
+        initial_long_variance_state: LongVarianceState::unit(),
+        observed_price_tick_size: fitted_parameters
             .return_components_fitted_parameters
             .tick_grid_observation_model
             .tick_size,
-        build_exchange_calendar_registry_artifact(
+        calendar_registry_artifact: build_exchange_calendar_registry_artifact(
             &context.calendar_registry,
             context.exchange_code.as_str(),
             context.observed_data.hourly_simulation_start_utc,
         )
         .ok_or_else(|| "failed to build exchange calendar registry artifact".to_string())?,
-        context.exchange_code.clone(),
-    )
+        exchange_code: context.exchange_code.clone(),
+    })
     .map_err(|source| format!("invalid coarse simulation model inputs: {source}"))
 }

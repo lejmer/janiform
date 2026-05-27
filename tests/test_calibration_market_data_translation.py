@@ -1,5 +1,5 @@
-from datetime import UTC, datetime, timedelta
 import math
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -7,12 +7,6 @@ import pyarrow as pa
 import pytest
 from pyarrow import parquet
 
-from janiform.calibration.market_data.translation import (
-    normalize_market_data_source,
-    resolve_market_data_session,
-    translate_market_data_request_to_prepared_calibration,
-    translate_market_data_request_to_prepared_calibration_from_phases,
-)
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.market_data import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
@@ -36,6 +30,12 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
+)
+from janiform.calibration.market_data.translation import (
+    normalize_market_data_source,
+    resolve_market_data_session,
+    translate_market_data_request_to_prepared_calibration,
+    translate_market_data_request_to_prepared_calibration_from_phases,
 )
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
@@ -167,6 +167,7 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.LONG_VARIANCE,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
         CalibrationStage.FINALIZATION,
@@ -259,6 +260,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.LONG_VARIANCE,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
         CalibrationStage.FINALIZATION,
@@ -1157,6 +1159,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.LONG_VARIANCE,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
         CalibrationStage.FINALIZATION,
@@ -1165,6 +1168,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.LONG_VARIANCE,
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
         CalibrationStage.FINALIZATION,

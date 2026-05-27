@@ -156,6 +156,7 @@ def build_valid_execution_input_model(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.LONG_VARIANCE,
                 CalibrationStage.MEAN_REVERSION,
             ),
             seed_settings=CalibrationRunSeedSettings(
@@ -171,6 +172,7 @@ def build_valid_execution_input_model(
                 _solver_settings(CalibrationStage.SEASONALITY),
                 _solver_settings(CalibrationStage.HAWKES),
                 _solver_settings(CalibrationStage.RETURN_COMPONENTS),
+                _solver_settings(CalibrationStage.LONG_VARIANCE),
                 _solver_settings(CalibrationStage.MEAN_REVERSION),
             ),
         ),

@@ -718,6 +718,7 @@ def _valid_coarse_simulation_request(
                     shape_k=1.5,
                     scale_theta=0.9,
                 ),
+                long_variance_parameters=LongVarianceParameters.neutral(),
             ),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,

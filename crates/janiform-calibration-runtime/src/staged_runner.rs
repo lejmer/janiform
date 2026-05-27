@@ -16,12 +16,12 @@ pub(super) use crate::stages::hawkes::{
     HawkesStageExecutionReport, HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
 };
 pub(super) use crate::stages::joint_refinement::{
-    JointRefinementStageExecutionInput, JointRefinementStageExecutionMetadata,
-    JointRefinementStageExecutionReport, JointRefinementStageHawkesInput,
-    JointRefinementStageMeanReversionInput, JointRefinementStageOptionPricingInput,
-    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
-    JointRefinementStageReturnComponentsInput, JointRefinementStageRuntimeHandoff,
-    JointRefinementStageSeasonalityFactorsInput,
+    FinalizationCalibrationStageEntrypointInput, JointRefinementStageExecutionInput,
+    JointRefinementStageExecutionMetadata, JointRefinementStageExecutionReport,
+    JointRefinementStageHawkesInput, JointRefinementStageMeanReversionInput,
+    JointRefinementStageOptionPricingInput, JointRefinementStageProgressPhase,
+    JointRefinementStageProgressUpdate, JointRefinementStageReturnComponentsInput,
+    JointRefinementStageRuntimeHandoff, JointRefinementStageSeasonalityFactorsInput,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,

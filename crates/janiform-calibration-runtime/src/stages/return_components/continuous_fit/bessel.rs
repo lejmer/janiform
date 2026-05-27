@@ -17,7 +17,7 @@ pub(super) fn log_modified_bessel_k1(argument: f64) -> Option<f64> {
         return Some(k1.ln());
     }
 
-    Some(log_modified_bessel_k_large_argument(1.0, argument)?)
+    log_modified_bessel_k_large_argument(1.0, argument)
 }
 
 pub(super) fn modified_bessel_k0_to_k1_ratio(argument: f64) -> Option<f64> {

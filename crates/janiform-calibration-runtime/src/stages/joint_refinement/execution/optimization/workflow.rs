@@ -99,7 +99,7 @@ pub(crate) fn optimize_restart_seeds(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    mut completed_restart_store: Option<&mut JointRefinementResumeStore>,
+    completed_restart_store: Option<&mut JointRefinementResumeStore>,
 ) -> JointRefinementRestartOptimizationOutput {
     debug_assert!(budget_schedule.restart_count > 0);
 
@@ -139,7 +139,7 @@ pub(crate) fn optimize_restart_seeds(
             solver_settings,
             budget_schedule,
             progress_sender,
-            completed_restart_store.as_deref_mut(),
+            completed_restart_store,
         )
     } else {
         optimize_restart_seeds_parallel(
@@ -148,7 +148,7 @@ pub(crate) fn optimize_restart_seeds(
             solver_settings,
             budget_schedule,
             progress_sender,
-            completed_restart_store.as_deref_mut(),
+            completed_restart_store,
         )
     }
 }
@@ -237,7 +237,7 @@ fn optimize_restart_seeds_parallel(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    mut completed_restart_store: Option<&mut JointRefinementResumeStore>,
+    completed_restart_store: Option<&mut JointRefinementResumeStore>,
 ) -> JointRefinementRestartOptimizationOutput {
     let mut output = super::restart_probe_pool::optimize_restart_seeds_batched_poll_pool(
         restart_seeds,
@@ -247,7 +247,7 @@ fn optimize_restart_seeds_parallel(
         progress_sender,
     );
 
-    if let Some(resume_store) = completed_restart_store.as_deref_mut() {
+    if let Some(resume_store) = completed_restart_store {
         for outcome in &output.restart_outcomes {
             resume_store.record_restart_outcome(outcome);
         }

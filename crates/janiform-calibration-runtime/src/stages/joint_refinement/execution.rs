@@ -21,6 +21,7 @@ pub use entrypoint::run_joint_refinement_calibration_stage;
 pub use state::JointRefinementSeedSummary;
 
 pub(crate) use entrypoint::{
+    FinalizationCalibrationStageEntrypointInput,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,

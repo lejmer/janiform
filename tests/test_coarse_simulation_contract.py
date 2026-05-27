@@ -163,6 +163,7 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                     shape_k=1.8,
                     scale_theta=0.7,
                 ),
+                long_variance_parameters=LongVarianceParameters.neutral(),
             ),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
@@ -177,6 +178,8 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                 y_minus_plus=0.15,
                 y_minus_minus=0.25,
             ),
+            long_variance_parameters=LongVarianceParameters.neutral(),
+            initial_long_variance_state=LongVarianceState.unit(),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

@@ -263,10 +263,7 @@ fn resolve_prepared_snapshot_progress_plan(
         request.pricing_interval_schedule_policy,
         PricingIntervalSchedulePolicy::AutoActivityCompressed
     ) {
-        return Ok(surface_task_progress_plan_from_resolution(
-            prepared_snapshot,
-            &maturity_resolution,
-        )?);
+        return surface_task_progress_plan_from_resolution(prepared_snapshot, &maturity_resolution);
     }
 
     let context = fitted_model_context(

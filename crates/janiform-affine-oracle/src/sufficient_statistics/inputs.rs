@@ -421,27 +421,7 @@ pub struct SufficientStatisticsModelInputs {
 }
 
 impl SufficientStatisticsModelInputs {
-    pub fn try_new(
-        equation_specification: ExponentialAffineTransformEquationSpecification,
-        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
-        initial_excitation_state: HawkesExcitationState,
-        long_variance_parameters: LongVarianceParameters,
-        initial_long_variance_state: LongVarianceState,
-        mean_reversion_fitted_parameters: MeanReversionFittedParameters,
-        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
-        initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
-    ) -> Result<Self, SufficientStatisticsModelInputsError> {
-        let model_inputs = Self {
-            equation_specification,
-            nig_shared_plus_shift_configuration,
-            initial_excitation_state,
-            long_variance_parameters,
-            initial_long_variance_state,
-            mean_reversion_fitted_parameters,
-            mean_reversion_runtime_interval_anchors,
-            initial_mean_reversion_boundary_state,
-        };
-
+    pub fn try_new(model_inputs: Self) -> Result<Self, SufficientStatisticsModelInputsError> {
         model_inputs.validate()?;
 
         Ok(model_inputs)
@@ -577,16 +557,17 @@ impl<'de> Deserialize<'de> for SufficientStatisticsModelInputs {
     {
         let payload = SufficientStatisticsModelInputsPayload::deserialize(deserializer)?;
 
-        Self::try_new(
-            payload.equation_specification,
-            payload.nig_shared_plus_shift_configuration,
-            payload.initial_excitation_state,
-            payload.long_variance_parameters,
-            payload.initial_long_variance_state,
-            payload.mean_reversion_fitted_parameters,
-            payload.mean_reversion_runtime_interval_anchors,
-            payload.initial_mean_reversion_boundary_state,
-        )
+        Self::try_new(Self {
+            equation_specification: payload.equation_specification,
+            nig_shared_plus_shift_configuration: payload.nig_shared_plus_shift_configuration,
+            initial_excitation_state: payload.initial_excitation_state,
+            long_variance_parameters: payload.long_variance_parameters,
+            initial_long_variance_state: payload.initial_long_variance_state,
+            mean_reversion_fitted_parameters: payload.mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors: payload
+                .mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state: payload.initial_mean_reversion_boundary_state,
+        })
         .map_err(serde::de::Error::custom)
     }
 }
