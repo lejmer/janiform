@@ -17,6 +17,10 @@ from ...market_data.contracts import (
     CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
 )
+from ...market_data.price_coordinates import (
+    OptionForwardParityWarningPolicy,
+    PriceCoordinatePolicy,
+)
 from ...market_data.workflow import PreparedMarketDataCalibration
 from ...presets.references import (
     KnownNewsPresetReference,
@@ -54,6 +58,8 @@ class FitPreparationConfiguration:
     tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping]
     normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy]
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping]
+    price_coordinate_policy: PriceCoordinatePolicy
+    option_forward_parity_warning_policy: OptionForwardParityWarningPolicy
     output_preferences: CalibrationMarketDataOutputPreferences
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]

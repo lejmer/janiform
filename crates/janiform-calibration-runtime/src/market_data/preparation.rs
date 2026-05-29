@@ -35,8 +35,10 @@ use crate::{
     MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
     MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingSettings,
-    normalize_market_data_source, prepare_market_data_loading_from_phases,
-    resolve_market_data_session_configuration,
+    OptionForwardParityWarningPolicy, PriceCoordinatePolicy, PriceCoordinateResolutionInput,
+    ResolvedPriceCoordinateSet, normalize_market_data_source,
+    prepare_market_data_loading_from_phases, resolve_market_data_session_configuration,
+    resolve_price_coordinates,
 };
 
 const PREPARED_MARKET_DATA_DERIVATION_POLICY_ID: &str =
@@ -159,6 +161,10 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub carry: Option<CalibrationMarketDataCarryInput>,
     #[serde(default)]
+    pub price_coordinate_policy: PriceCoordinatePolicy,
+    #[serde(default)]
+    pub option_forward_parity_warning_policy: OptionForwardParityWarningPolicy,
+    #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     #[serde(default)]
     pub dynamics_search_restart_candidate_budget: Option<usize>,
@@ -226,6 +232,8 @@ pub struct PreparedMarketDataCalibrationPlan {
     pub diagnostics: CalibrationMarketDataPreparationDiagnostics,
     pub provenance: CalibrationMarketDataPreparationProvenance,
     pub session_resolution: MarketDataSessionResolutionPayload,
+    pub price_coordinate_resolution: Option<ResolvedPriceCoordinateSet>,
+    pub warnings: Vec<String>,
     pub fit_warning: Option<String>,
     pub reference_price: Option<f64>,
 }
@@ -765,12 +773,13 @@ fn joint_refinement_option_pricing_input_from_request(
     request: &CalibrationMarketDataPreparationRequest,
     loading_output: &MarketDataLoadingOutput,
     normalized_tick_output: &MarketDataNormalizedTickOutput,
-) -> Result<
-    Option<CalibrationJointRefinementOptionPricingInput>,
-    CalibrationMarketDataPreparationError,
-> {
+) -> Result<PreparedOptionPricingInput, CalibrationMarketDataPreparationError> {
     if request.workflow_scope != CalibrationMarketDataWorkflowScope::FullWithOptionSurface {
-        return Ok(None);
+        return Ok(PreparedOptionPricingInput {
+            option_pricing_input: None,
+            price_coordinate_resolution: None,
+            warnings: Vec::new(),
+        });
     }
 
     let option_snapshot_nodes =
@@ -801,7 +810,55 @@ fn joint_refinement_option_pricing_input_from_request(
         normalized_tick_output,
     )?;
 
-    let carry_input = match request.carry.clone() {
+    let price_coordinate_output = resolve_price_coordinates(PriceCoordinateResolutionInput {
+        tick_data_source: &request.tick_data_source,
+        dynamics_tick_data_column_mapping: &request.column_mapping.tick_data,
+        normalization_policy: &request.normalization_policy,
+        option_surface_source: request.option_surface_source.as_ref(),
+        option_surface_records: loading_output.option_surface_records.as_deref(),
+        dynamics_tick_records: normalized_tick_output.tick_records.as_slice(),
+        valuation_time_utc_nanos: Some(valuation_time_utc_nanos),
+        policy: request.price_coordinate_policy,
+        parity_warning_policy: &request.option_forward_parity_warning_policy,
+        risk_free_rate: carry_rates(&request.carry).discount_rate,
+        dividend_yield: carry_rates(&request.carry).carry_rate,
+    })
+    .map_err(|source| {
+        CalibrationMarketDataPreparationError::from(format!(
+            "failed to resolve price coordinates: {source}"
+        ))
+    })?;
+
+    let option_valuation_spot = price_coordinate_output
+        .option_valuation_spot
+        .unwrap_or(current_state_estimation_input.observed_spot);
+
+    let carry_input = carry_rates(&request.carry);
+
+    Ok(PreparedOptionPricingInput {
+        option_pricing_input: Some(CalibrationJointRefinementOptionPricingInput {
+            valuation_time_utc_nanos,
+            pricing_interval_schedule_policy: request.pricing_interval_schedule_policy.clone(),
+            carry_input,
+            option_valuation_spot,
+            current_state_estimation_input,
+            option_snapshot_nodes,
+        }),
+        price_coordinate_resolution: price_coordinate_output.resolution,
+        warnings: price_coordinate_output.warning.into_iter().collect(),
+    })
+}
+
+struct PreparedOptionPricingInput {
+    option_pricing_input: Option<CalibrationJointRefinementOptionPricingInput>,
+    price_coordinate_resolution: Option<ResolvedPriceCoordinateSet>,
+    warnings: Vec<String>,
+}
+
+fn carry_rates(
+    carry: &Option<CalibrationMarketDataCarryInput>,
+) -> CalibrationJointRefinementCarryInput {
+    match carry.clone() {
         Some(carry) => CalibrationJointRefinementCarryInput {
             discount_rate: carry.discount_rate,
             carry_rate: carry.carry_rate,
@@ -810,15 +867,7 @@ fn joint_refinement_option_pricing_input_from_request(
             discount_rate: 0.0,
             carry_rate: 0.0,
         },
-    };
-
-    Ok(Some(CalibrationJointRefinementOptionPricingInput {
-        valuation_time_utc_nanos,
-        pricing_interval_schedule_policy: request.pricing_interval_schedule_policy.clone(),
-        carry_input,
-        current_state_estimation_input,
-        option_snapshot_nodes,
-    }))
+    }
 }
 
 fn selected_option_snapshot_nodes_from_loading_output(
@@ -1389,6 +1438,12 @@ fn prepared_market_data_plan_from_loading_output(
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     let objective_policy = calibration_objective_policy_from_request(&request)?;
 
+    let prepared_option_pricing_input = joint_refinement_option_pricing_input_from_request(
+        &request,
+        &loading_output,
+        &normalized_tick_output,
+    )?;
+
     let run_request = CalibrationRunSpec::builder(
         request.run_id.clone(),
         CalibrationRunDataInputs {
@@ -1452,11 +1507,7 @@ fn prepared_market_data_plan_from_loading_output(
         joint_refinement_audit_option_pricing_enabled: request
             .joint_refinement_audit_option_pricing_enabled,
         diagnostics: request.diagnostics.clone(),
-        joint_refinement_option_pricing_input: joint_refinement_option_pricing_input_from_request(
-            &request,
-            &loading_output,
-            &normalized_tick_output,
-        )?,
+        joint_refinement_option_pricing_input: prepared_option_pricing_input.option_pricing_input,
         runtime_resources: runtime_resources_from_output_preferences(&request.output_preferences),
     };
 
@@ -1600,6 +1651,8 @@ fn prepared_market_data_plan_from_loading_output(
         diagnostics,
         provenance,
         session_resolution: loading_output.session_resolution,
+        price_coordinate_resolution: prepared_option_pricing_input.price_coordinate_resolution,
+        warnings: prepared_option_pricing_input.warnings,
         fit_warning: loading_output.fit_warning,
         reference_price: loading_output.reference_price,
     })

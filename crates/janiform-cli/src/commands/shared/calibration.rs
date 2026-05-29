@@ -1,7 +1,7 @@
 use janiform::calibration::artifacts::{CalibrationExecutionMode, CalibrationStage};
 use janiform::calibration::market_data::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataOptionQuoteInputPolicy,
-    MarketDataTickPriceInputPolicy,
+    MarketDataTickPriceInputPolicy, PriceCoordinatePolicy,
 };
 
 use crate::commands::options;
@@ -62,6 +62,18 @@ pub(crate) fn option_quote_input_policy(
         }
         options::OptionQuoteInputPolicy::ImpliedVolatilityColumn => {
             MarketDataOptionQuoteInputPolicy::ImpliedVolatilityColumn
+        }
+    }
+}
+
+pub(crate) fn price_coordinate_policy(
+    policy: options::PriceCoordinatePolicyOption,
+) -> PriceCoordinatePolicy {
+    match policy {
+        options::PriceCoordinatePolicyOption::Auto => PriceCoordinatePolicy::Auto,
+        options::PriceCoordinatePolicyOption::Single => PriceCoordinatePolicy::Single,
+        options::PriceCoordinatePolicyOption::ContinuousFitRawOptionAnchor => {
+            PriceCoordinatePolicy::ContinuousFitRawOptionAnchor
         }
     }
 }

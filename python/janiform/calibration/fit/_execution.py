@@ -25,6 +25,7 @@ from ..market_data.contracts import (
     CalibrationInputFileFormat,
     CalibrationMarketDataWorkflowScope,
 )
+from ..market_data.price_coordinates import ResolvedPriceCoordinateSet
 from ..market_data.workflow import (
     MarketDataCalibrationPreparationDiagnostics,
     MarketDataCalibrationPreparationProvenance,
@@ -199,6 +200,15 @@ def _build_fit_outputs_from_native(
                 preparation_payload["provenance"]
             )
         ),
+        price_coordinate_resolution=(
+            ResolvedPriceCoordinateSet.from_mapping(
+                preparation_payload["price_coordinate_resolution"],
+                field_path="fit_report.preparation.price_coordinate_resolution",
+            )
+            if preparation_payload.get("price_coordinate_resolution") is not None
+            else None
+        ),
+        warnings=tuple(str(warning) for warning in preparation_payload.get("warnings", [])),
         staged_request=StagedCalibrationRequest.from_mapping(
             staged_request_payload,
             field_path_prefix="fit_report.staged_request",

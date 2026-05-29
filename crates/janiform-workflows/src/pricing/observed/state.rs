@@ -25,6 +25,8 @@ pub(super) fn prepare_observed_snapshots(
     snapshot_specs: Vec<(i64, Vec<PreparedSnapshotGroup>)>,
     option_records: &[MarketDataNormalizedOptionSurfaceRecord],
     tick_records: &[MarketDataTranslationTickRecord],
+    option_valuation_spot: Option<f64>,
+    option_valuation_tick_records: Option<&[MarketDataTranslationTickRecord]>,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<Vec<PreparedObservedSnapshot>, WorkflowError> {
     if snapshot_specs.is_empty() {
@@ -38,12 +40,21 @@ pub(super) fn prepare_observed_snapshots(
         .iter()
         .map(|(valuation_time_utc_nanos, _)| *valuation_time_utc_nanos)
         .collect::<Vec<_>>();
+
     let pricing_spots = resolve_snapshot_pricing_spots(
         option_records,
         snapshot_specs.as_slice(),
         request.risk_free_rate,
         request.dividend_yield,
     )?;
+
+    let option_valuation_spots = option_valuation_tick_records
+        .map(|tick_records| {
+            option_valuation_spots_at_times(tick_records, valuation_times.as_slice())
+        })
+        .transpose()?;
+
+    let valuation_count = valuation_times.len();
 
     let final_valuation_time_utc_nanos = valuation_times[valuation_times.len() - 1];
     let final_valuation_time_utc =
@@ -55,7 +66,9 @@ pub(super) fn prepare_observed_snapshots(
         DEFAULT_PRICING_INTERVAL_DURATION_NANOS,
         1,
     )?;
+
     let reference_price = model_reference_price(&context.model)?;
+
     let tick_state_columns =
         observed_tick_state_columns(tick_records, final_valuation_time_utc_nanos)?;
 
@@ -105,8 +118,12 @@ pub(super) fn prepare_observed_snapshots(
         .into_iter()
         .zip(state_items)
         .zip(pricing_spots)
+        .zip(option_valuation_spots.unwrap_or_else(|| vec![option_valuation_spot; valuation_count]))
         .map(
-            |(((valuation_time_utc_nanos, snapshot_groups), state_item), pricing_spot)| {
+            |(
+                (((valuation_time_utc_nanos, snapshot_groups), state_item), pricing_spot),
+                option_coordinate_spot,
+            )| {
                 if valuation_time_utc_nanos != state_item.state_time_utc_nanos {
                     return Err(pricing_validation_error(
                         "valuation_time_utc",
@@ -116,13 +133,49 @@ pub(super) fn prepare_observed_snapshots(
 
                 Ok(PreparedObservedSnapshot {
                     valuation_time_utc_nanos,
-                    spot: pricing_spot.unwrap_or(state_item.observed_price),
+                    spot: pricing_spot
+                        .or(option_coordinate_spot)
+                        .unwrap_or(state_item.observed_price),
                     estimated_state: state_item.state,
                     snapshot_groups,
                 })
             },
         )
         .collect()
+}
+
+fn option_valuation_spots_at_times(
+    tick_records: &[MarketDataTranslationTickRecord],
+    valuation_times: &[i64],
+) -> Result<Vec<Option<f64>>, WorkflowError> {
+    let mut tick_iterator = tick_records.iter().peekable();
+    let mut latest_price = None;
+    let mut prices = Vec::with_capacity(valuation_times.len());
+
+    for valuation_time_utc_nanos in valuation_times {
+        while let Some(record) = tick_iterator.peek() {
+            if record.timestamp_utc_nanos > *valuation_time_utc_nanos {
+                break;
+            }
+
+            if let Some(price) = record.price {
+                if !price.is_finite() || price <= 0.0 {
+                    return Err(pricing_validation_error(
+                        "tick_data.price",
+                        "raw option valuation ticks must have finite, strictly positive prices",
+                    ));
+                }
+
+                latest_price = Some(price);
+            }
+
+            tick_iterator.next();
+        }
+
+        prices.push(latest_price);
+    }
+
+    Ok(prices)
 }
 
 pub(super) fn observed_tick_state_columns(

@@ -15,6 +15,7 @@ pub mod validation;
 mod artifact_io;
 mod machine_events;
 mod model;
+mod price_coordinates;
 mod progress;
 
 pub use machine_events::write_machine_event_to_stderr;

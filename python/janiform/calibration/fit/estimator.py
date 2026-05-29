@@ -10,6 +10,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
+from calibration import JaniformFitReport
+from model import JaniformModel
+
 from ._execution import fit_with_execution_configuration
 from ._inference import FitInference
 from ._preparation.configuration import (
@@ -45,6 +48,12 @@ from ..market_data.contracts import (
     CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
 )
+from ..market_data.price_coordinates import (
+    DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD,
+    OptionForwardParityWarningPolicy,
+    PriceCoordinatePolicy,
+    coerce_price_coordinate_policy,
+)
 from ..market_data.request import validate_market_data_calibration_request
 from ..market_data.workflow import (
     MarketDataCalibrationPreparationDiagnostics,
@@ -76,6 +85,8 @@ class JaniformEstimator:
     _tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping]
     _normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy]
     _option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping]
+    _price_coordinate_policy: PriceCoordinatePolicy
+    _option_forward_parity_warning_policy: OptionForwardParityWarningPolicy
     _output_preferences: CalibrationMarketDataOutputPreferences
     _optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     _preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
@@ -106,6 +117,8 @@ class JaniformEstimator:
         tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = None,
         normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = None,
         option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
+        price_coordinate_policy: PriceCoordinatePolicy | str = PriceCoordinatePolicy.AUTO,
+        option_forward_parity_warning_threshold: Optional[float] = None,
         output_preferences: Optional[CalibrationMarketDataOutputPreferences] = None,
         optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (),
         preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
@@ -215,10 +228,30 @@ class JaniformEstimator:
                 "must be a CalibrationDiagnosticsRequest when provided",
             )
 
+        if (
+            option_forward_parity_warning_threshold is not None
+            and (
+                not isfinite(option_forward_parity_warning_threshold)
+                or option_forward_parity_warning_threshold <= 0.0
+            )
+        ):
+            raise calibration_error(
+                "option_forward_parity_warning_threshold",
+                "must be finite and strictly positive when provided",
+            )
+
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
         self._normalization_policy = normalization_policy
         self._option_surface_column_mapping = option_surface_column_mapping
+        self._price_coordinate_policy = coerce_price_coordinate_policy(price_coordinate_policy)
+        self._option_forward_parity_warning_policy = OptionForwardParityWarningPolicy(
+            relative_threshold=(
+                DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD
+                if option_forward_parity_warning_threshold is None
+                else option_forward_parity_warning_threshold
+            ),
+        )
         self._output_preferences = _DEFAULT_OUTPUT_PREFERENCES if output_preferences is None else output_preferences
         self._optimizer_settings_by_stage = optimizer_settings_by_stage
         self._preprocessing_settings = preprocessing_settings
@@ -271,7 +304,7 @@ class JaniformEstimator:
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
         progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
-    ) -> JaniformModel:
+    ) -> JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]:
         return fit_with_execution_configuration(
             self._build_execution_configuration(
                 silent=silent,
@@ -354,6 +387,8 @@ class JaniformEstimator:
             tick_data_column_mapping=self._tick_data_column_mapping,
             normalization_policy=self._normalization_policy,
             option_surface_column_mapping=self._option_surface_column_mapping,
+            price_coordinate_policy=self._price_coordinate_policy,
+            option_forward_parity_warning_policy=self._option_forward_parity_warning_policy,
             output_preferences=self._output_preferences,
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,
             preprocessing_settings=self._preprocessing_settings,

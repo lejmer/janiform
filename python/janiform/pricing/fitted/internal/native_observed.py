@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from math import isfinite
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import ModuleType
@@ -21,6 +22,13 @@ from ....calibration.fit.state import CurrentStateEstimationRequest
 from ....calibration.market_data.contracts import (
     CalibrationInputFileFormat,
     CalibrationOptionSurfaceColumnMapping,
+)
+from ....calibration.market_data.price_coordinates import (
+    DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD,
+    OptionForwardParityWarningPolicy,
+    PriceCoordinatePolicy,
+    ResolvedPriceCoordinateSet,
+    coerce_price_coordinate_policy,
 )
 from ....pricing import VanillaOptionPayoffType
 from ....pricing.errors import (
@@ -62,6 +70,8 @@ def run_native_observed_options_pricing(
     valuation_count: Optional[int],
     use_all_valuation_times: bool,
     cpu_count: Optional[int],
+    price_coordinate_policy: PriceCoordinatePolicy | str,
+    option_forward_parity_warning_threshold: Optional[float],
     physical_distribution_diagnostics: (
         bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
     ),
@@ -78,6 +88,18 @@ def run_native_observed_options_pricing(
         raise _pricing_error("cpu_count", "must be strictly positive when provided")
     if use_all_valuation_times and valuation_count is not None:
         raise _pricing_error("valuation_count", "cannot be combined with use_all_valuation_times")
+
+    if (
+        option_forward_parity_warning_threshold is not None
+        and (
+            not isfinite(option_forward_parity_warning_threshold)
+            or option_forward_parity_warning_threshold <= 0.0
+        )
+    ):
+        raise _pricing_error(
+            "option_forward_parity_warning_threshold",
+            "must be strictly positive when provided",
+        )
 
     tick_data_column_mapping = current_state_tick_data_column_mapping_for_model(
         model,
@@ -123,6 +145,16 @@ def run_native_observed_options_pricing(
             "valuation_count": valuation_count,
             "use_all_valuation_times": use_all_valuation_times,
             "cpu_count": cpu_count,
+            "price_coordinate_policy": coerce_price_coordinate_policy(
+                price_coordinate_policy
+            ).value,
+            "option_forward_parity_warning_policy": OptionForwardParityWarningPolicy(
+                relative_threshold=(
+                    DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD
+                    if option_forward_parity_warning_threshold is None
+                    else option_forward_parity_warning_threshold
+                )
+            ).to_payload(),
             "optional_output_selection": {
                 "include_transform_diagnostics": False,
                 "include_integration_quality_diagnostics": False,
@@ -194,7 +226,21 @@ def observed_snapshot_result_from_native_payload(
         )
     )
 
-    return replace(snapshot_result, physical_distribution=physical_distribution)
+    price_coordinate_resolution = (
+        ResolvedPriceCoordinateSet.from_mapping(
+            raw_result["price_coordinate_resolution"],
+            field_path="observed_options_pricing_result.price_coordinate_resolution",
+        )
+        if raw_result.get("price_coordinate_resolution") is not None
+        else None
+    )
+
+    return replace(
+        snapshot_result,
+        physical_distribution=physical_distribution,
+        price_coordinate_resolution=price_coordinate_resolution,
+        warnings=tuple(str(warning) for warning in raw_result.get("warnings", [])),
+    )
 
 
 def observed_surface_result_from_native_payload(

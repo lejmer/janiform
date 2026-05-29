@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use janiform::calibration::market_data::{
     MarketDataInputFileReference, MarketDataNormalizationPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataTickDataColumnMapping,
+    OptionForwardParityWarningPolicy, PriceCoordinatePolicy, ResolvedPriceCoordinateSet,
 };
 use janiform::model::factors::hourly::NANOS_PER_HOUR;
 use janiform::model::hawkes::HawkesEventSide;
@@ -78,6 +79,12 @@ pub struct ObservedOptionsPricingRequest {
     pub option_surface_column_mapping: MarketDataOptionSurfaceColumnMapping,
     /// Shared market-data normalization policy.
     pub normalization_policy: MarketDataNormalizationPolicy,
+    /// Price-coordinate policy for option valuation.
+    #[serde(default)]
+    pub price_coordinate_policy: PriceCoordinatePolicy,
+    /// Put-call parity warning policy for option valuation coordinates.
+    #[serde(default)]
+    pub option_forward_parity_warning_policy: OptionForwardParityWarningPolicy,
     /// Optional valuation timestamp. Required when snapshot inputs contain more than one quote time.
     #[serde(default, deserialize_with = "deserialize_optional_utc_datetime")]
     pub valuation_time_utc: Option<DateTime<Utc>>,
@@ -123,6 +130,10 @@ pub struct ObservedOptionsPricingOutput {
     pub nodes: Vec<ObservedOptionsPricingNode>,
     pub snapshot_results: Vec<ObservedOptionsSnapshotResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_coordinate_resolution: Option<ResolvedPriceCoordinateSet>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub physical_distribution: Option<ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
     pub artifact_paths: Option<PricingArtifactPaths>,
     pub execution_duration_seconds: f64,
@@ -148,6 +159,7 @@ impl ObservedOptionsPricingOutput {
             "run_directory": self.artifact_paths.as_ref().map(|paths| &paths.run_directory),
             "priced_node_count": self.nodes.iter().filter(|node| node.model_price.is_some()).count(),
             "failed_node_count": self.nodes.iter().filter(|node| node.model_price.is_none()).count(),
+            "warnings": &self.warnings,
             "physical_distribution_node_count": self.physical_distribution.as_ref().map(|diagnostics| diagnostics.nodes.len()),
             "execution_duration_seconds": self.execution_duration_seconds,
             "response": response,

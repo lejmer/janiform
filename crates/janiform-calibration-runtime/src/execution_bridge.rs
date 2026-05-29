@@ -452,6 +452,7 @@ pub struct CalibrationJointRefinementOptionPricingInput {
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     pub carry_input: CalibrationJointRefinementCarryInput,
+    pub option_valuation_spot: f64,
     pub current_state_estimation_input: CalibrationJointRefinementCurrentStateEstimationInput,
     pub option_snapshot_nodes: Vec<CalibrationJointRefinementOptionSnapshotNode>,
 }
@@ -1219,6 +1220,7 @@ impl CalibrationJointRefinementOptionPricingInput {
                 valuation_time_utc_nanos: self.valuation_time_utc_nanos,
                 pricing_interval_schedule_policy: self.pricing_interval_schedule_policy,
                 carry_input: self.carry_input.into_core(),
+                option_valuation_spot: self.option_valuation_spot,
                 current_state_estimation_input: self
                     .current_state_estimation_input
                     .try_into_core()?,
@@ -1635,6 +1637,7 @@ mod tests {
                     discount_rate: 0.02,
                     carry_rate: 0.01,
                 },
+                option_valuation_spot: 100.0,
                 current_state_estimation_input:
                     CalibrationJointRefinementCurrentStateEstimationInput {
                         state_time_utc_nanos: 1_770_042_600_000_000_000,

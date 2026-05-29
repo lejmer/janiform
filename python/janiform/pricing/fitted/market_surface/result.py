@@ -42,6 +42,7 @@ from janiform.pricing import (
 )
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
+from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 from ..internal.common import native_datetime
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
@@ -91,6 +92,8 @@ class JaniformObservedOptionSurfacePricingResult:
     valuation_time_utc: datetime
     nodes: tuple[JaniformObservedOptionSurfaceNode, ...]
     physical_distribution: Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput] = None
+    price_coordinate_resolution: Optional[ResolvedPriceCoordinateSet] = None
+    warnings: tuple[str, ...] = ()
     raw_results: tuple[JaniformObservedOptionSnapshotPricingResult, ...] = field(
         default=(),
         repr=False,
@@ -154,6 +157,15 @@ class JaniformObservedOptionSurfacePricingResult:
                     field_path=f"{field_path}.physical_distribution",
                 )
             ),
+            price_coordinate_resolution=(
+                ResolvedPriceCoordinateSet.from_mapping(
+                    raw_payload["price_coordinate_resolution"],
+                    field_path=f"{field_path}.price_coordinate_resolution",
+                )
+                if raw_payload.get("price_coordinate_resolution") is not None
+                else None
+            ),
+            warnings=tuple(str(warning) for warning in raw_payload.get("warnings", [])),
             raw_results=snapshot_results,
         )
 

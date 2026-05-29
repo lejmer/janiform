@@ -38,6 +38,7 @@ from janiform.pricing import (
 )
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
+from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 from ..grids import JaniformVanillaOptionGridBatchPricingResult
 from ..internal.common import native_datetime, optional_float
 from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
@@ -79,6 +80,8 @@ class JaniformObservedOptionSnapshotPricingResult:
     spot: float
     nodes: tuple[JaniformObservedOptionSnapshotNode, ...]
     physical_distribution: Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput] = None
+    price_coordinate_resolution: Optional[ResolvedPriceCoordinateSet] = None
+    warnings: tuple[str, ...] = ()
     raw_result: Optional[JaniformVanillaOptionGridBatchPricingResult] = field(
         default=None,
         repr=False,

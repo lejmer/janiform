@@ -146,6 +146,114 @@ pub enum MarketDataOptionQuoteInputPolicy {
     ImpliedVolatilityColumn,
 }
 
+/// Policy for resolving price coordinates when option strikes live in a different source
+/// coordinate than the fitted continuous return series.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PriceCoordinatePolicy {
+    Auto,
+    Single,
+    ContinuousFitRawOptionAnchor,
+}
+
+impl Default for PriceCoordinatePolicy {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+/// Default relative put-call parity warning threshold for option coordinate validation.
+pub const DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD: f64 = 0.0025;
+
+/// Policy for warning when the resolved model forward disagrees with option parity.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OptionForwardParityWarningPolicy {
+    /// Relative model-vs-observed parity delta that triggers a warning.
+    pub relative_threshold: f64,
+}
+
+impl Default for OptionForwardParityWarningPolicy {
+    fn default() -> Self {
+        Self {
+            relative_threshold: DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD,
+        }
+    }
+}
+
+impl OptionForwardParityWarningPolicy {
+    pub fn validate(&self) -> Result<(), MarketDataLoadingError> {
+        if self.relative_threshold.is_finite() && self.relative_threshold > 0.0 {
+            return Ok(());
+        }
+
+        Err(MarketDataLoadingError::InvalidValue {
+            field_path: "option_forward_parity_warning_policy.relative_threshold".to_string(),
+            message: "must be finite and strictly positive".to_string(),
+        })
+    }
+}
+
+/// Resolved tick coordinate for one workflow role.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedPriceCoordinate {
+    pub coordinate_role: String,
+    pub coordinate_kind: String,
+    pub tick_data_column_mapping: MarketDataTickDataColumnMapping,
+    pub tick_price_input_policy: Option<MarketDataTickPriceInputPolicy>,
+}
+
+/// Evidence that an adjusted price column is an additive transform of a raw price column.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedRollAdjustmentEvidence {
+    pub adjusted_price_column: String,
+    pub raw_price_column: String,
+    pub adjustment_column: String,
+    pub checked_row_count: usize,
+    pub max_absolute_relation_error: f64,
+}
+
+/// Put-call parity comparison for the resolved option valuation coordinate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OptionForwardParityCheck {
+    pub model_forward_price: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_forward_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absolute_delta: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relative_delta: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_bid_ask_forward_lower: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_bid_ask_forward_upper: Option<f64>,
+    pub relative_warning_threshold: f64,
+    pub paired_strike_count: usize,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
+/// Resolved price coordinates for dynamics fitting and option valuation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedPriceCoordinateSet {
+    pub policy: PriceCoordinatePolicy,
+    pub dynamics_fit: ResolvedPriceCoordinate,
+    pub option_valuation: ResolvedPriceCoordinate,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_underlier_identity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tick_underlier_identity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roll_adjustment_evidence: Option<ResolvedRollAdjustmentEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parity_forward_check: Option<OptionForwardParityCheck>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarketDataLoadingOutput {

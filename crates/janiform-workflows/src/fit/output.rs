@@ -13,6 +13,7 @@ use janiform_terminal_ui::{
 use serde_json::{Value, json};
 
 use crate::error::WorkflowError;
+use crate::price_coordinates::price_coordinate_resolution_summary;
 
 use super::events::{failed_stage_label, failure_reason, resume_availability};
 use super::labels::workflow_scope_label;
@@ -112,6 +113,7 @@ pub fn fit_completion_json_payload(
 /// Build the terminal completion view for a fit workflow.
 pub(super) fn fit_completion_view(
     report: &CalibrationStagedRunReport,
+    report_payload: &Value,
     paths: &FitWorkflowPaths,
     event_log_path: &Path,
     execution_duration: Duration,
@@ -119,6 +121,7 @@ pub(super) fn fit_completion_view(
     if report.status.is_successful() {
         return Ok(FitCompletionView::Success(success_summary(
             report,
+            report_payload,
             paths,
             event_log_path,
             execution_duration,
@@ -134,11 +137,13 @@ pub(super) fn fit_completion_view(
 
 fn success_summary(
     report: &CalibrationStagedRunReport,
+    report_payload: &Value,
     paths: &FitWorkflowPaths,
     event_log_path: &Path,
     execution_duration: Duration,
 ) -> CompletionSummary {
-    let warning_messages = fit_warning_messages(report);
+    let warning_messages = combined_fit_warning_messages(report, report_payload);
+
     let mut rows = vec![
         KeyValueRow::new("Model", format_artifact_path(paths.model_path.as_path())),
         KeyValueRow::new("Report", format_artifact_path(paths.report_path.as_path())),
@@ -147,12 +152,25 @@ fn success_summary(
         KeyValueRow::new("Resume", resume_availability(report)),
     ];
 
+    if let Some(price_coordinate_summary) = report_payload
+        .get("preparation")
+        .and_then(|preparation| preparation.get("price_coordinate_resolution"))
+        .and_then(price_coordinate_resolution_summary)
+    {
+        rows.push(KeyValueRow::block(
+            "Price coordinates",
+            price_coordinate_summary,
+        ));
+    }
+
     if !warning_messages.is_empty() {
         rows.push(KeyValueRow::block("Warnings", warning_messages.join("\n")));
     }
 
     CompletionSummary {
-        status: if report.status == CalibrationStageExecutionStatus::SuccessWithWarnings {
+        status: if report.status == CalibrationStageExecutionStatus::SuccessWithWarnings
+            || !warning_messages.is_empty()
+        {
             CompletionSummaryStatus::SucceededWithWarnings
         } else {
             CompletionSummaryStatus::Succeeded
@@ -172,6 +190,31 @@ fn fit_warning_messages(report: &CalibrationStagedRunReport) -> Vec<String> {
         for warning in stage_report_warning_messages(stage_report) {
             if !warnings.contains(warning) {
                 warnings.push(warning.clone());
+            }
+        }
+    }
+
+    warnings
+}
+
+fn combined_fit_warning_messages(
+    report: &CalibrationStagedRunReport,
+    report_payload: &Value,
+) -> Vec<String> {
+    let mut warnings = fit_warning_messages(report);
+
+    if let Some(preparation_warnings) = report_payload
+        .get("preparation")
+        .and_then(|preparation| preparation.get("warnings"))
+        .and_then(Value::as_array)
+    {
+        for warning in preparation_warnings {
+            let Some(warning) = warning.as_str() else {
+                continue;
+            };
+            let warning = warning.to_string();
+            if !warnings.contains(&warning) {
+                warnings.push(warning);
             }
         }
     }

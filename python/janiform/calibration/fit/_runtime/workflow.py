@@ -209,6 +209,10 @@ def _fit_preparation_configuration_payload(
             if preparation.option_surface_column_mapping is None
             else preparation.option_surface_column_mapping.to_payload()
         ),
+        "price_coordinate_policy": _enum_value(preparation.price_coordinate_policy),
+        "option_forward_parity_warning_policy": (
+            preparation.option_forward_parity_warning_policy.to_payload()
+        ),
         "output_preferences": preparation.output_preferences.to_payload(),
         "optimizer_settings_by_stage": [
             settings.to_payload()

@@ -241,6 +241,17 @@ pub(super) fn render_warnings(
         }));
     }
 
+    if let Some(preparation_warnings) =
+        nested_value(report, &["preparation", "warnings"]).and_then(Value::as_array)
+    {
+        warnings.extend(
+            preparation_warnings
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string),
+        );
+    }
+
     if warnings.is_empty() {
         return None;
     }

@@ -122,6 +122,7 @@ pub(crate) fn clean_option_pricing_input(
             .pricing_interval_schedule_policy
             .clone(),
         carry_input: option_pricing_input.carry_input.clone(),
+        option_valuation_spot: option_pricing_input.option_valuation_spot,
         current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
             state_time_utc_nanos: option_pricing_input
                 .current_state_estimation_input
@@ -740,6 +741,7 @@ mod tests {
                 discount_rate: 0.01,
                 carry_rate: 0.005,
             },
+            option_valuation_spot: 100.0,
             current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: 0,
                 observed_spot: 100.0,

@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -596,6 +597,7 @@ __all__ = [
     "normalize_market_data_source",
     "probe_market_data_source",
     "infer_bundled_market_profile_for_tick_data_path",
+    "infer_market_data_fit_inputs",
     "resolve_market_data_session",
     "translate_market_data_request_to_prepared_calibration",
     "translate_market_data_request_to_prepared_calibration_from_phases",

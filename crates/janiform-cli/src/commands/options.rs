@@ -82,6 +82,16 @@ pub(crate) enum OptionQuoteInputPolicy {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum PriceCoordinatePolicyOption {
+    #[value(help = "Infer separate coordinates when option data requires it.")]
+    Auto,
+    #[value(help = "Use one tick price coordinate for dynamics and option valuation.")]
+    Single,
+    #[value(help = "Require continuous dynamics with a raw option valuation anchor.")]
+    ContinuousFitRawOptionAnchor,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum DuplicateRecordPolicy {
     #[value(help = "Keep the first record for each duplicate key.")]
     KeepFirst,
@@ -253,6 +263,20 @@ When omitted, Janiform may infer a bundled market profile from the tick-data fil
 
     #[arg(long, value_enum, help = "Option quote input policy.")]
     pub(crate) option_quote_input_policy: Option<OptionQuoteInputPolicy>,
+
+    #[arg(
+        long,
+        value_enum,
+        help = "Price-coordinate policy for option workflows."
+    )]
+    pub(crate) price_coordinate_policy: Option<PriceCoordinatePolicyOption>,
+
+    #[arg(
+        long,
+        value_name = "RELATIVE",
+        help = "Relative put-call parity warning threshold for option valuation coordinates."
+    )]
+    pub(crate) option_forward_parity_warning_threshold: Option<f64>,
 
     #[arg(
         long,

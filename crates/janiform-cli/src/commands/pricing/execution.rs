@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use janiform::calibration::market_data::OptionForwardParityWarningPolicy;
 use janiform::pricing::{
     PricingIntervalSchedulePolicy, VanillaOptionPayoffType,
     VanillaOptionPricingOptionalOutputSelection,
@@ -22,6 +23,7 @@ use super::{
 };
 use crate::commands::options::TickDataOptions;
 use crate::commands::shared::artifacts::load_json_artifact;
+use crate::commands::shared::calibration::price_coordinate_policy;
 use crate::commands::shared::market_data::prepare_market_data_command_inputs;
 use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::output_paths::default_run_output_directory;
@@ -107,6 +109,16 @@ pub(crate) fn run_price_observed_options_command(
         option_surface_source,
         option_surface_column_mapping,
         normalization_policy: prepared_market_data.normalization_policy,
+        price_coordinate_policy: command
+            .market_data
+            .price_coordinate_policy
+            .map(price_coordinate_policy)
+            .unwrap_or_default(),
+        option_forward_parity_warning_policy: command
+            .market_data
+            .option_forward_parity_warning_threshold
+            .map(|relative_threshold| OptionForwardParityWarningPolicy { relative_threshold })
+            .unwrap_or_default(),
         valuation_time_utc,
         option_type: command.option_type.map(observed_option_type_filter),
         scope: if command.surface {

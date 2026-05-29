@@ -104,7 +104,12 @@ pub fn run_observed_options_pricing_with_observer(
         snapshot_groups,
         option_records,
         tick_records,
+        price_coordinate_resolution,
+        warnings,
+        option_valuation_spot,
+        option_valuation_tick_records,
     } = loaded_inputs;
+    let option_valuation_tick_records = option_valuation_tick_records.as_deref();
 
     let pricing_execution = match request.scope {
         ObservedOptionsPricingScope::Snapshot => price_snapshot_groups(
@@ -113,6 +118,8 @@ pub fn run_observed_options_pricing_with_observer(
             snapshot_groups,
             option_records.as_slice(),
             tick_records.as_slice(),
+            option_valuation_spot,
+            option_valuation_tick_records,
             &mut observer.progress_adapter,
         )?,
         ObservedOptionsPricingScope::Surface => price_surface_groups(
@@ -121,6 +128,8 @@ pub fn run_observed_options_pricing_with_observer(
             snapshot_groups,
             option_records.as_slice(),
             tick_records.as_slice(),
+            option_valuation_spot,
+            option_valuation_tick_records,
             &mut observer.progress_adapter,
         )?,
     };
@@ -190,6 +199,8 @@ pub fn run_observed_options_pricing_with_observer(
         valuation_time_utc: resolved_valuation_time_utc,
         nodes: nodes.as_slice(),
         snapshot_results: &pricing_execution.snapshot_results,
+        price_coordinate_resolution: price_coordinate_resolution.as_ref(),
+        warnings: warnings.as_slice(),
         physical_distribution: physical_distribution.as_ref(),
         execution_duration,
     })?;
@@ -218,6 +229,8 @@ pub fn run_observed_options_pricing_with_observer(
         valuation_time_utc: resolved_valuation_time_utc,
         nodes,
         snapshot_results: pricing_execution.snapshot_results,
+        price_coordinate_resolution,
+        warnings,
         physical_distribution,
         artifact_paths,
         execution_duration_seconds: execution_duration.as_secs_f64(),
@@ -267,6 +280,13 @@ fn validate_request(request: &ObservedOptionsPricingRequest) -> Result<(), Workf
         ));
     }
 
+    request
+        .option_forward_parity_warning_policy
+        .validate()
+        .map_err(|source| {
+            pricing_validation_error("option_forward_parity_warning_policy", source.to_string())
+        })?;
+
     if let Some(physical_distribution_diagnostics) =
         request.physical_distribution_diagnostics.as_ref()
     {
@@ -282,6 +302,8 @@ fn price_surface_groups(
     snapshot_groups: Vec<PreparedSnapshotGroup>,
     option_records: &[MarketDataNormalizedOptionSurfaceRecord],
     tick_records: &[MarketDataTranslationTickRecord],
+    option_valuation_spot: Option<f64>,
+    option_valuation_tick_records: Option<&[MarketDataTranslationTickRecord]>,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
     let expiry_count = snapshot_groups
@@ -297,6 +319,8 @@ fn price_surface_groups(
             snapshot_groups,
             option_records,
             tick_records,
+            option_valuation_spot,
+            option_valuation_tick_records,
             progress_adapter,
         );
     }
@@ -341,6 +365,8 @@ fn price_surface_groups(
         snapshot_specs,
         option_records,
         tick_records,
+        option_valuation_spot,
+        option_valuation_tick_records,
         progress_adapter,
     )?;
 
@@ -373,6 +399,8 @@ fn price_snapshot_groups(
     snapshot_groups: Vec<PreparedSnapshotGroup>,
     option_records: &[MarketDataNormalizedOptionSurfaceRecord],
     tick_records: &[MarketDataTranslationTickRecord],
+    option_valuation_spot: Option<f64>,
+    option_valuation_tick_records: Option<&[MarketDataTranslationTickRecord]>,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
     let stage_count =
@@ -390,6 +418,8 @@ fn price_snapshot_groups(
         vec![(valuation_time_utc_nanos, snapshot_groups)],
         option_records,
         tick_records,
+        option_valuation_spot,
+        option_valuation_tick_records,
         progress_adapter,
     )?;
 
