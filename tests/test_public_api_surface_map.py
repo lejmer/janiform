@@ -673,6 +673,7 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD",
         "CalibrationCoarseTrainingColumnMapping",
+        "CalibrationCoarseTrainingTimestampSemantics",
         "CalibrationDuplicateRecordPolicy",
         "CalibrationFlatCarryInput",
         "CalibrationInputFileFormat",
@@ -732,6 +733,7 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
 
     assert {
         "CalibrationCoarseTrainingColumnMapping",
+        "CalibrationCoarseTrainingTimestampSemantics",
         "CalibrationInputFileReference",
         "CalibrationMarketDataWorkflowScope",
         "CalibrationMarketDataPreprocessingSettings",

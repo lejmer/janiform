@@ -80,6 +80,8 @@ pub struct MarketDataCoarseTrainingLoadingInput {
 pub struct MarketDataCoarseTrainingColumnMapping {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp_column: Option<String>,
+    #[serde(default)]
+    pub timestamp_semantics: MarketDataCoarseTrainingTimestampSemantics,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interval_start_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -94,6 +96,14 @@ pub struct MarketDataCoarseTrainingColumnMapping {
     pub close_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub volume_column: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketDataCoarseTrainingTimestampSemantics {
+    #[default]
+    BarOpenTime,
+    BarCloseTime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

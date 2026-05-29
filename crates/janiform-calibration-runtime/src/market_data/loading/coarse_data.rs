@@ -10,8 +10,8 @@ use super::column_resolution::{
 use super::contracts::{
     MarketDataCoarseTrainingColumnMapping, MarketDataCoarseTrainingKind,
     MarketDataCoarseTrainingLoadingInput, MarketDataCoarseTrainingSummary,
-    MarketDataInputFileFormat, MarketDataLoadingError, MarketDataNormalizedCoarseTrainingRecord,
-    MarketDataSourceSummary,
+    MarketDataCoarseTrainingTimestampSemantics, MarketDataInputFileFormat, MarketDataLoadingError,
+    MarketDataNormalizedCoarseTrainingRecord, MarketDataSourceSummary,
 };
 use super::normalization::{normalize_optional_numeric_value, normalize_timestamp_value};
 use super::rows::{
@@ -87,11 +87,18 @@ pub(super) fn load_coarse_training_records(
         loaded_rows.as_slice(),
         inferred_kind,
         nominal_interval_nanos,
+        resolved_column_mapping.timestamp_semantics,
         calendar_registry,
         exchange_code,
     )?;
 
     validate_coarse_record_intervals(records.as_slice())?;
+
+    let summary_timestamp_semantics = timestamp_semantics(
+        explicit_intervals,
+        resolved_column_mapping.timestamp_semantics,
+    )
+    .to_string();
 
     let summary = MarketDataCoarseTrainingSummary {
         source_summary: MarketDataSourceSummary {
@@ -109,7 +116,7 @@ pub(super) fn load_coarse_training_records(
         },
         inferred_kind,
         resolved_column_mapping,
-        timestamp_semantics: timestamp_semantics(explicit_intervals).to_string(),
+        timestamp_semantics: summary_timestamp_semantics,
         interval_inference_policy: interval_inference_policy(explicit_intervals).to_string(),
         nominal_interval_nanos,
         retained_return_interval_count: records
@@ -309,6 +316,7 @@ fn materialize_coarse_records(
     loaded_rows: &[LoadedCoarseRow],
     inferred_kind: MarketDataCoarseTrainingKind,
     nominal_interval_nanos: i64,
+    timestamp_semantics: MarketDataCoarseTrainingTimestampSemantics,
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
 ) -> Result<Vec<MarketDataNormalizedCoarseTrainingRecord>, MarketDataLoadingError> {
@@ -319,6 +327,7 @@ fn materialize_coarse_records(
         let interval = resolve_row_interval(
             row,
             nominal_interval_nanos,
+            timestamp_semantics,
             calendar_registry,
             exchange_code,
         )?;

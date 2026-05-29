@@ -4366,7 +4366,8 @@
 |--------|------|---------|
 | [`CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-market-data-calibration-market-data-preparation-schema-version) | constant | constant value |
 | [`CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-market-data-calibration-market-data-request-schema-version) | constant | constant value |
-| [`CalibrationCoarseTrainingColumnMapping`](#python-api-symbol-janiform-calibration-market-data-calibrationcoarsetrainingcolumnmapping) | contract_model | 8 fields |
+| [`CalibrationCoarseTrainingColumnMapping`](#python-api-symbol-janiform-calibration-market-data-calibrationcoarsetrainingcolumnmapping) | contract_model | 9 fields |
+| [`CalibrationCoarseTrainingTimestampSemantics`](#python-api-symbol-janiform-calibration-market-data-calibrationcoarsetrainingtimestampsemantics) | enum | 2 members |
 | [`CalibrationDuplicateRecordPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationduplicaterecordpolicy) | enum | 2 members |
 | [`CalibrationFlatCarryInput`](#python-api-symbol-janiform-calibration-market-data-calibrationflatcarryinput) | contract_model | 2 fields |
 | [`CalibrationInputFileFormat`](#python-api-symbol-janiform-calibration-market-data-calibrationinputfileformat) | enum | 3 members |
@@ -4429,8 +4430,18 @@
 ### `CalibrationCoarseTrainingColumnMapping`
 
 - Kind: `contract_model`
-- Signature: `(timestamp_column: 'Optional[str]' = None, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'`
-- Fields: `timestamp_column`, `interval_start_column`, `interval_end_column`, `open_column`, `high_column`, `low_column`, `close_column`, `volume_column`
+- Signature: `(timestamp_column: 'Optional[str]' = None, timestamp_semantics: 'CalibrationCoarseTrainingTimestampSemantics' = <CalibrationCoarseTrainingTimestampSemantics.BAR_OPEN_TIME: 'bar_open_time'>, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'`
+- Fields: `timestamp_column`, `timestamp_semantics`, `interval_start_column`, `interval_end_column`, `open_column`, `high_column`, `low_column`, `close_column`, `volume_column`
+
+<a id="python-api-symbol-janiform-calibration-market-data-calibrationcoarsetrainingtimestampsemantics"></a>
+### `CalibrationCoarseTrainingTimestampSemantics`
+
+- Kind: `enum`
+
+| Member | Value |
+|--------|-------|
+| `BAR_OPEN_TIME` | `bar_open_time` |
+| `BAR_CLOSE_TIME` | `bar_close_time` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationduplicaterecordpolicy"></a>
 ### `CalibrationDuplicateRecordPolicy`
@@ -4774,7 +4785,8 @@
 |--------|------|---------|
 | [`CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-market-data-contracts-calibration-market-data-preparation-schema-version) | constant | constant value |
 | [`CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-market-data-contracts-calibration-market-data-request-schema-version) | constant | constant value |
-| [`CalibrationCoarseTrainingColumnMapping`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationcoarsetrainingcolumnmapping) | contract_model | 8 fields |
+| [`CalibrationCoarseTrainingColumnMapping`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationcoarsetrainingcolumnmapping) | contract_model | 9 fields |
+| [`CalibrationCoarseTrainingTimestampSemantics`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationcoarsetrainingtimestampsemantics) | enum | 2 members |
 | [`CalibrationDuplicateRecordPolicy`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationduplicaterecordpolicy) | enum | 2 members |
 | [`CalibrationExecutionMode`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationexecutionmode) | enum | 2 members |
 | [`CalibrationFlatCarryInput`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationflatcarryinput) | contract_model | 2 fields |
@@ -4817,8 +4829,18 @@
 ### `CalibrationCoarseTrainingColumnMapping`
 
 - Kind: `contract_model`
-- Signature: `(timestamp_column: 'Optional[str]' = None, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'`
-- Fields: `timestamp_column`, `interval_start_column`, `interval_end_column`, `open_column`, `high_column`, `low_column`, `close_column`, `volume_column`
+- Signature: `(timestamp_column: 'Optional[str]' = None, timestamp_semantics: 'CalibrationCoarseTrainingTimestampSemantics' = <CalibrationCoarseTrainingTimestampSemantics.BAR_OPEN_TIME: 'bar_open_time'>, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'`
+- Fields: `timestamp_column`, `timestamp_semantics`, `interval_start_column`, `interval_end_column`, `open_column`, `high_column`, `low_column`, `close_column`, `volume_column`
+
+<a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationcoarsetrainingtimestampsemantics"></a>
+### `CalibrationCoarseTrainingTimestampSemantics`
+
+- Kind: `enum`
+
+| Member | Value |
+|--------|-------|
+| `BAR_OPEN_TIME` | `bar_open_time` |
+| `BAR_CLOSE_TIME` | `bar_close_time` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationduplicaterecordpolicy"></a>
 ### `CalibrationDuplicateRecordPolicy`

@@ -528,6 +528,7 @@ pub(super) fn resolve_coarse_training_column_mapping(
 
     Ok(MarketDataCoarseTrainingColumnMapping {
         timestamp_column,
+        timestamp_semantics: column_mapping.timestamp_semantics,
         interval_start_column,
         interval_end_column,
         open_column: resolve_optional_column(

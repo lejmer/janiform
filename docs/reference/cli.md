@@ -193,6 +193,14 @@ Disk execution writes a run directory with the fitted model, fit report, progres
 
 * `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
+
+  Possible values:
+  - `bar-open-time`:
+    Treat coarse timestamps as bar-open times.
+  - `bar-close-time`:
+    Treat coarse timestamps as bar-close times.
+
 * `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
 * `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
 * `--coarse-open-column <COLUMN>` — Coarse data open-price column.
@@ -413,6 +421,14 @@ This command resolves the supplied market-data inputs and calibration scope, the
 
 * `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
+
+  Possible values:
+  - `bar-open-time`:
+    Treat coarse timestamps as bar-open times.
+  - `bar-close-time`:
+    Treat coarse timestamps as bar-close times.
+
 * `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
 * `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
 * `--coarse-open-column <COLUMN>` — Coarse data open-price column.
@@ -579,6 +595,14 @@ This command prepares the same calibration plan used by the default fit command,
 
 * `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
+
+  Possible values:
+  - `bar-open-time`:
+    Treat coarse timestamps as bar-open times.
+  - `bar-close-time`:
+    Treat coarse timestamps as bar-close times.
+
 * `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
 * `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
 * `--coarse-open-column <COLUMN>` — Coarse data open-price column.
@@ -813,6 +837,14 @@ This command validates fit inputs and writes the prepared input file consumed by
 
 * `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
+
+  Possible values:
+  - `bar-open-time`:
+    Treat coarse timestamps as bar-open times.
+  - `bar-close-time`:
+    Treat coarse timestamps as bar-close times.
+
 * `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
 * `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
 * `--coarse-open-column <COLUMN>` — Coarse data open-price column.
@@ -1206,6 +1238,14 @@ This command reads a saved Janiform model and an observed option snapshot, then 
 
 * `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
+
+  Possible values:
+  - `bar-open-time`:
+    Treat coarse timestamps as bar-open times.
+  - `bar-close-time`:
+    Treat coarse timestamps as bar-close times.
+
 * `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
 * `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
 * `--coarse-open-column <COLUMN>` — Coarse data open-price column.

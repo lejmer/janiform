@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "f1e0199e2678261777fa9452707694b3921e5d287262a4a0018c5fea22af1692",
+  "approved_snapshot_sha256": "0d8dc0cb1121d0cae306104acb86b676ed7abdaffef908b85cf24d27322ceb2c",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1541,6 +1541,21 @@
         "janiform.calibration.market_data.request",
         "janiform.calibration.market_data.translation",
         "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-05-30",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Coarse historical bars now expose typed timestamp semantics so the default industry-standard open-time interpretation is explicit while close-time sources remain selectable.",
+      "snapshot_sha256": "0d8dc0cb1121d0cae306104acb86b676ed7abdaffef908b85cf24d27322ceb2c",
+      "summary": "Expose coarse timestamp semantics in the Python calibration boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
       ]
     }
   ],

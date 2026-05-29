@@ -336,6 +336,7 @@
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "CalibrationCoarseTrainingColumnMapping",
+        "CalibrationCoarseTrainingTimestampSemantics",
         "CalibrationDuplicateRecordPolicy",
         "CalibrationFlatCarryInput",
         "CalibrationInputFileFormat",
@@ -407,6 +408,7 @@
         "CalibrationCoarseTrainingColumnMapping": {
           "field_names": [
             "timestamp_column",
+            "timestamp_semantics",
             "interval_start_column",
             "interval_end_column",
             "open_column",
@@ -416,7 +418,20 @@
             "volume_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: 'Optional[str]' = None, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(timestamp_column: 'Optional[str]' = None, timestamp_semantics: 'CalibrationCoarseTrainingTimestampSemantics' = <CalibrationCoarseTrainingTimestampSemantics.BAR_OPEN_TIME: 'bar_open_time'>, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'"
+        },
+        "CalibrationCoarseTrainingTimestampSemantics": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "BAR_OPEN_TIME",
+              "value": "bar_open_time"
+            },
+            {
+              "name": "BAR_CLOSE_TIME",
+              "value": "bar_close_time"
+            }
+          ]
         },
         "CalibrationDuplicateRecordPolicy": {
           "kind": "enum",
@@ -908,6 +923,7 @@
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "CalibrationCoarseTrainingColumnMapping",
+        "CalibrationCoarseTrainingTimestampSemantics",
         "CalibrationDuplicateRecordPolicy",
         "CalibrationExecutionMode",
         "CalibrationFlatCarryInput",
@@ -959,6 +975,7 @@
         "CalibrationCoarseTrainingColumnMapping": {
           "field_names": [
             "timestamp_column",
+            "timestamp_semantics",
             "interval_start_column",
             "interval_end_column",
             "open_column",
@@ -968,7 +985,20 @@
             "volume_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: 'Optional[str]' = None, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(timestamp_column: 'Optional[str]' = None, timestamp_semantics: 'CalibrationCoarseTrainingTimestampSemantics' = <CalibrationCoarseTrainingTimestampSemantics.BAR_OPEN_TIME: 'bar_open_time'>, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'"
+        },
+        "CalibrationCoarseTrainingTimestampSemantics": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "BAR_OPEN_TIME",
+              "value": "bar_open_time"
+            },
+            {
+              "name": "BAR_CLOSE_TIME",
+              "value": "bar_close_time"
+            }
+          ]
         },
         "CalibrationDuplicateRecordPolicy": {
           "kind": "enum",

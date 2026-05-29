@@ -102,6 +102,14 @@ pub(crate) enum TickObjectiveDataUsagePolicyOption {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum CoarseTimestampSemanticsOption {
+    #[value(help = "Treat coarse timestamps as bar-open times.")]
+    BarOpenTime,
+    #[value(help = "Treat coarse timestamps as bar-close times.")]
+    BarCloseTime,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum DuplicateRecordPolicy {
     #[value(help = "Keep the first record for each duplicate key.")]
     KeepFirst,
@@ -222,6 +230,9 @@ When omitted, Janiform may infer a bundled market profile from the tick-data fil
 
     #[arg(long, value_name = "COLUMN", help = "Coarse data timestamp column.")]
     pub(crate) coarse_timestamp_column: Option<String>,
+
+    #[arg(long, value_enum, help = "Coarse data timestamp semantics.")]
+    pub(crate) coarse_timestamp_semantics: Option<CoarseTimestampSemanticsOption>,
 
     #[arg(
         long,

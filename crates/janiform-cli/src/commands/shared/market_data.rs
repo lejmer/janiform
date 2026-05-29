@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use janiform::calibration::market_data::{
     DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataCoarseTrainingColumnMapping,
-    MarketDataInputFileReference, MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
+    MarketDataCoarseTrainingTimestampSemantics, MarketDataInputFileReference,
+    MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataSessionConfiguration,
     MarketDataTickDataColumnMapping, infer_bundled_market_profile_from_tick_data_path,
     infer_market_data_option_quote_input_policy, infer_market_data_tick_price_input_policy,
@@ -16,6 +17,7 @@ use janiform::calibration::staged::{
 };
 
 use crate::commands::options;
+use crate::commands::options::CoarseTimestampSemanticsOption;
 use crate::commands::options::TickDataOptions;
 use crate::commands::shared::calibration::duplicate_record_policy;
 use crate::commands::shared::calibration::option_quote_input_policy;
@@ -243,6 +245,7 @@ fn prepare_coarse_training_inputs(
 
     let mapping = MarketDataCoarseTrainingColumnMapping {
         timestamp_column: inputs.coarse_timestamp_column.clone(),
+        timestamp_semantics: coarse_timestamp_semantics(inputs.coarse_timestamp_semantics),
         interval_start_column: inputs.coarse_interval_start_column.clone(),
         interval_end_column: inputs.coarse_interval_end_column.clone(),
         open_column: inputs.coarse_open_column.clone(),
@@ -253,6 +256,19 @@ fn prepare_coarse_training_inputs(
     };
 
     Ok((Some(source), Some(mapping)))
+}
+
+fn coarse_timestamp_semantics(
+    option: Option<CoarseTimestampSemanticsOption>,
+) -> MarketDataCoarseTrainingTimestampSemantics {
+    match option {
+        Some(CoarseTimestampSemanticsOption::BarOpenTime) | None => {
+            MarketDataCoarseTrainingTimestampSemantics::BarOpenTime
+        }
+        Some(CoarseTimestampSemanticsOption::BarCloseTime) => {
+            MarketDataCoarseTrainingTimestampSemantics::BarCloseTime
+        }
+    }
 }
 
 fn prepare_option_surface_inputs(
