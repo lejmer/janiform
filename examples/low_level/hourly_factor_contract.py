@@ -51,7 +51,8 @@ def main() -> None:
                 datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
                 datetime(2026, 2, 2, 16, 15, tzinfo=UTC),
             ),
-            surprise_baseline_intensity=0.05,
+            surprise_open_baseline_intensity=0.05,
+            surprise_closed_baseline_intensity=0.05,
             surprise_deterministic_time_multiplier_by_interval_index={
                 2: 2.0,
             },

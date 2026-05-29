@@ -18,11 +18,11 @@ from janiform.simulation import (
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    LongVarianceParameters,
+    LongVarianceState,
     MeanReversionRuntimeIntervalAnchors,
 )
 from janiform.simulation.coarse import (
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
@@ -78,30 +78,24 @@ def build_news_process_configuration() -> NewsProcessConfiguration:
                 scheduled_event_timestamps_utc_nanos=(),
             ),
             surprise=SurpriseNewsArrivalConfiguration(
-                baseline_intensity=0.75,
+                open_baseline_intensity=0.75,
+                closed_baseline_intensity=0.75,
             ),
         ),
         shared_mark_law=SharedNewsMarkLawConfiguration(
             gamma_severity_marks=GammaSeverityMarkConfiguration(
                 shape_k=1.8,
-                scale_theta=0.7,
-            ),
-            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
-                probability_positive=0.35,
-                eta_plus=2.1,
-                eta_minus=3.0,
-            ),
-            coupled_gap_marks=CoupledGapMarkConfiguration(
-                sigma_g=0.6,
             ),
         ),
         known_component_mark_scales=NewsComponentMarkScaleConfiguration(
             activity_coupling_scale=1.0,
-            return_jump_scale=1.0,
+            return_jump_drift=0.0,
+            return_jump_volatility=1.0,
         ),
         surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
             activity_coupling_scale=1.0,
-            return_jump_scale=1.0,
+            return_jump_drift=0.0,
+            return_jump_volatility=1.0,
         ),
     )
 
@@ -203,8 +197,8 @@ def build_sufficient_statistics_model_inputs(
             hawkes_kernel_parameters=build_kernel_parameters(),
             gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
                 shape_k=1.8,
-                scale_theta=0.7,
             ),
+            long_variance_parameters=LongVarianceParameters.neutral(),
         ),
         nig_shared_plus_shift_configuration=build_nig_shared_plus_shift_configuration(),
         initial_excitation_state=HawkesExcitationState(
@@ -213,6 +207,8 @@ def build_sufficient_statistics_model_inputs(
             y_minus_plus=0.3,
             y_minus_minus=0.4,
         ),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

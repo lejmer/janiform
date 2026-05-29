@@ -27,7 +27,6 @@ from ....calibration.market_data.price_coordinates import (
     DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD,
     OptionForwardParityWarningPolicy,
     PriceCoordinatePolicy,
-    ResolvedPriceCoordinateSet,
     coerce_price_coordinate_policy,
 )
 from ....pricing import VanillaOptionPayoffType
@@ -38,6 +37,7 @@ from ....pricing.errors import (
     _pricing_execution_error,
     _pricing_integration_error,
 )
+from .price_coordinates import resolve_price_coordinate_from_native_mapping
 from ..market_snapshot.inputs import TabularFrameInput
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 from ..market_surface.result import JaniformObservedOptionSurfacePricingResult
@@ -227,7 +227,7 @@ def observed_snapshot_result_from_native_payload(
     )
 
     price_coordinate_resolution = (
-        ResolvedPriceCoordinateSet.from_mapping(
+        resolve_price_coordinate_from_native_mapping(
             raw_result["price_coordinate_resolution"],
             field_path="observed_options_pricing_result.price_coordinate_resolution",
         )

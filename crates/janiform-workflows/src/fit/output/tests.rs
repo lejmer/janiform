@@ -14,6 +14,7 @@ use janiform_calibration_artifacts::{
 };
 use janiform_calibration_runtime::{CalibrationStageExecutionStatus, CalibrationStagedRunReport};
 use janiform_terminal_ui::CompletionSummary;
+use serde_json::json;
 
 use super::FitWorkflowPaths;
 use super::success_summary;
@@ -36,8 +37,10 @@ fn success_summary_reports_latest_emitted_resume_checkpoint() {
         ],
     );
 
+    let report_payload = json!({});
     let summary = success_summary(
         &report,
+        &report_payload,
         &test_paths(),
         Path::new("events.jsonl"),
         Duration::from_secs(1),
@@ -91,6 +94,7 @@ fn checkpoint_metadata(
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
@@ -111,10 +115,11 @@ fn completed_stage_position(stage: CalibrationStage) -> usize {
         CalibrationStage::Hawkes => 1,
         CalibrationStage::ReturnComponents => 2,
         CalibrationStage::LongVariance => 3,
-        CalibrationStage::MeanReversion => 4,
-        CalibrationStage::JointRefinement => 5,
-        CalibrationStage::OptionRefinement => 6,
-        CalibrationStage::Finalization => 7,
+        CalibrationStage::NewsShocks => 4,
+        CalibrationStage::MeanReversion => 5,
+        CalibrationStage::JointRefinement => 6,
+        CalibrationStage::OptionRefinement => 7,
+        CalibrationStage::Finalization => 8,
     }
 }
 

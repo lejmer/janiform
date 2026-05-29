@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "af0c0ef04cd7ba8828e1186ca89e2d73f4bdf9f5bb21d82325440d1940c2a652",
+  "approved_snapshot_sha256": "96c1d96a7b7664b864ba42ab590d0480780ac26ed6b2564e4d2362f993169b41",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1512,6 +1512,22 @@
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-29",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Option workflows now expose price-coordinate policy, resolved coordinate diagnostics, warning summaries, and opt-in calibration diagnostics through the public Python fit and market-data surfaces.",
+      "snapshot_sha256": "96c1d96a7b7664b864ba42ab590d0480780ac26ed6b2564e4d2362f993169b41",
+      "summary": "Approve public price-coordinate and calibration diagnostic controls.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.market_surface"
       ]
     }
   ],

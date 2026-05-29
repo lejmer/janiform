@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import pandas
 
@@ -38,10 +38,12 @@ from janiform.pricing import (
 )
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
-from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 from ..grids import JaniformVanillaOptionGridBatchPricingResult
 from ..internal.common import native_datetime, optional_float
 from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
+
+if TYPE_CHECKING:
+    from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 
 
 @dataclass(frozen=True, slots=True)

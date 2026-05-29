@@ -364,8 +364,9 @@ fn validate_option_spot(
 
     Err(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-            error_message: "joint option calibration requires a strictly positive observed spot"
-                .to_string(),
+            error_message:
+                "joint option calibration requires a strictly positive option valuation spot"
+                    .to_string(),
         },
     )
 }

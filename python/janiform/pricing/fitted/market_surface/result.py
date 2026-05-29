@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy
 import pandas
@@ -42,10 +42,13 @@ from janiform.pricing import (
 )
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
-from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 from ..internal.common import native_datetime
+from ..internal.price_coordinates import resolve_price_coordinate_from_native_mapping
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
+
+if TYPE_CHECKING:
+    from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +161,7 @@ class JaniformObservedOptionSurfacePricingResult:
                 )
             ),
             price_coordinate_resolution=(
-                ResolvedPriceCoordinateSet.from_mapping(
+                resolve_price_coordinate_from_native_mapping(
                     raw_payload["price_coordinate_resolution"],
                     field_path=f"{field_path}.price_coordinate_resolution",
                 )

@@ -191,9 +191,12 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
         ),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
+        ComplexScalar::new(0.0, 0.0),
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("fixture news intensity should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         delta,
         HawkesExcitationState {
             y_plus_plus: 0.4,

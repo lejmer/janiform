@@ -44,6 +44,18 @@ from janiform.calibration.staged import (
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 
 
+FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
+    CalibrationStage.SEASONALITY,
+    CalibrationStage.HAWKES,
+    CalibrationStage.RETURN_COMPONENTS,
+    CalibrationStage.LONG_VARIANCE,
+    CalibrationStage.NEWS_SHOCKS,
+    CalibrationStage.MEAN_REVERSION,
+    CalibrationStage.JOINT_REFINEMENT,
+    CalibrationStage.FINALIZATION,
+)
+
+
 def test_translate_market_data_request_seasonality_only_selects_only_seasonality_stage(
     tmp_path: Path,
     calendar_registry_json: str,
@@ -87,6 +99,7 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
         "schema_version",
         "request",
         "seasonality_stage_input",
+        "diagnostics",
         "joint_refinement_calibration_effort",
         "joint_refinement_audit_option_pricing_enabled",
         "treat_inadmissible_calibration_warning_as_error",
@@ -163,15 +176,7 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
 
     assert first_prepared_payload == _prepared_payload(second_translation)
     assert first_translation.diagnostics == second_translation.diagnostics
-    assert first_translation.staged_request.selected_stages == (
-        CalibrationStage.SEASONALITY,
-        CalibrationStage.HAWKES,
-        CalibrationStage.RETURN_COMPONENTS,
-        CalibrationStage.LONG_VARIANCE,
-        CalibrationStage.MEAN_REVERSION,
-        CalibrationStage.JOINT_REFINEMENT,
-        CalibrationStage.FINALIZATION,
-    )
+    assert first_translation.staged_request.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
     assert first_translation.diagnostics.known_news_event_count == 2
     assert first_translation.diagnostics.known_news_events_outside_source_window_count == 1
     assert first_translation.diagnostics.seasonality_overlay_count == 2
@@ -256,15 +261,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     translation = translate_market_data_request_to_prepared_calibration(request)
     prepared_payload = _prepared_payload(translation)
 
-    assert translation.staged_request.selected_stages == (
-        CalibrationStage.SEASONALITY,
-        CalibrationStage.HAWKES,
-        CalibrationStage.RETURN_COMPONENTS,
-        CalibrationStage.LONG_VARIANCE,
-        CalibrationStage.MEAN_REVERSION,
-        CalibrationStage.JOINT_REFINEMENT,
-        CalibrationStage.FINALIZATION,
-    )
+    assert translation.staged_request.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
     assert set(mean_reversion_stage_input) == {
@@ -1155,24 +1152,8 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         "prepared_payload_path",
         "staged_execution_input_path",
     }
-    assert prepared.staged_request.selected_stages == (
-        CalibrationStage.SEASONALITY,
-        CalibrationStage.HAWKES,
-        CalibrationStage.RETURN_COMPONENTS,
-        CalibrationStage.LONG_VARIANCE,
-        CalibrationStage.MEAN_REVERSION,
-        CalibrationStage.JOINT_REFINEMENT,
-        CalibrationStage.FINALIZATION,
-    )
-    assert prepared.diagnostics.selected_stages == (
-        CalibrationStage.SEASONALITY,
-        CalibrationStage.HAWKES,
-        CalibrationStage.RETURN_COMPONENTS,
-        CalibrationStage.LONG_VARIANCE,
-        CalibrationStage.MEAN_REVERSION,
-        CalibrationStage.JOINT_REFINEMENT,
-        CalibrationStage.FINALIZATION,
-    )
+    assert prepared.staged_request.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
+    assert prepared.diagnostics.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
     assert prepared.staged_request.selected_stages == prepared.diagnostics.selected_stages
     assert prepared.diagnostics.executed_preprocessing_steps == (
         "source_loading",

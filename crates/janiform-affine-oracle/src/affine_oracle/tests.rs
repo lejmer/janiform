@@ -225,18 +225,19 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
             LongVarianceParameters::neutral(),
         )
         .expect("domain violation fixture equation specification should construct"),
-        total_activity_loadings(
-            ComplexScalar::new(-10.0, 0.0),
-            ComplexScalar::new(-10.0, 0.0),
-        ),
+        total_activity_loadings(ComplexScalar::new(10.0, 0.0), ComplexScalar::new(10.0, 0.0)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(2.0, 0.0),
         2.0,
-        ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 1.0)
             .expect("domain violation fixture news-intensity payload should construct"),
         NewsComponentMarkScaleConfiguration::neutral(),
-        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 1.0,
+            return_jump_drift: 1.0,
+            return_jump_volatility: 0.0,
+        },
         0.5,
         standard_initial_state(),
     )
@@ -632,7 +633,7 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
     );
     assert_complex_close(
         rhs.c_derivative,
-        ComplexScalar::new(-0.3053334325713209, 0.0),
+        ComplexScalar::new(-0.30840293877834213, 0.0),
         1.0e-12,
         "C'",
     );
@@ -973,9 +974,9 @@ fn solver_domain_guard_violation_terminates_with_deterministic_metadata() {
         guard_failure.schema_version,
         EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION
     );
-    assert_eq!(guard_failure.step_index, 1);
+    assert_eq!(guard_failure.step_index, 0);
     assert!(
-        (guard_failure.time - 0.25).abs() <= 1.0e-15,
+        guard_failure.time.abs() <= 1.0e-15,
         "unexpected guard failure time: {}",
         guard_failure.time
     );
@@ -987,7 +988,7 @@ fn solver_domain_guard_violation_terminates_with_deterministic_metadata() {
         solve_result.metadata.completed_step_count,
         guard_failure.step_index
     );
-    assert_eq!(solve_result.metadata.rhs_evaluation_count, 1);
+    assert_eq!(solve_result.metadata.rhs_evaluation_count, 0);
 }
 
 #[test]
@@ -1236,8 +1237,8 @@ fn telemetry_payload_reports_guarded_failure_context() {
     assert!(telemetry.guard_triggered);
     assert_eq!(telemetry.guard_trigger, Some(guard_failure));
     assert!(
-        telemetry.checkpoint_count >= 2,
-        "telemetry must include at least initial and first-step checkpoints"
+        telemetry.checkpoint_count >= 1,
+        "telemetry must include the guarded initial checkpoint"
     );
     assert!(
         telemetry
