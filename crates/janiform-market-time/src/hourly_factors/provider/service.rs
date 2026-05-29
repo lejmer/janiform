@@ -113,7 +113,8 @@ pub fn provide_hourly_factor_contract(
         }
         HourlyNewsIntensityFactorSource::Materialized {
             known_scheduled_event_timestamps_utc_nanos,
-            surprise_baseline_intensity,
+            surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index,
         } => {
             let news_materialization_output = materialize_hourly_news_intensity_factors(
@@ -123,7 +124,8 @@ pub fn provide_hourly_factor_contract(
                     range_utc: range_start_utc..range_end_utc,
                     interval_duration_nanos,
                     known_scheduled_event_timestamps_utc_nanos,
-                    surprise_baseline_intensity,
+                    surprise_open_baseline_intensity,
+                    surprise_closed_baseline_intensity,
                     surprise_deterministic_time_multiplier_by_interval_index,
                 },
             )

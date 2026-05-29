@@ -684,10 +684,20 @@ fn precheck_deterministic_intensity_scales(
         .return_components_fitted_parameters
         .news_process_configuration;
 
-    let surprise_baseline_intensity = news_process.arrivals.surprise.baseline_intensity;
-    if !surprise_baseline_intensity.is_finite() || surprise_baseline_intensity < 0.0 {
+    let surprise_open_baseline_intensity = news_process.arrivals.surprise.open_baseline_intensity;
+
+    let surprise_closed_baseline_intensity =
+        news_process.arrivals.surprise.closed_baseline_intensity;
+
+    if !surprise_open_baseline_intensity.is_finite() || surprise_open_baseline_intensity < 0.0 {
         return Err(format!(
-            "surprise_baseline_intensity_invalid value={surprise_baseline_intensity}"
+            "surprise_open_baseline_intensity_invalid value={surprise_open_baseline_intensity}"
+        ));
+    }
+
+    if !surprise_closed_baseline_intensity.is_finite() || surprise_closed_baseline_intensity < 0.0 {
+        return Err(format!(
+            "surprise_closed_baseline_intensity_invalid value={surprise_closed_baseline_intensity}"
         ));
     }
 
@@ -707,10 +717,17 @@ fn precheck_deterministic_intensity_scales(
             ));
         }
 
-        let surprise_intensity = surprise_baseline_intensity * *multiplier;
-        if !surprise_intensity.is_finite() || surprise_intensity < 0.0 {
+        let surprise_open_intensity = surprise_open_baseline_intensity * *multiplier;
+        if !surprise_open_intensity.is_finite() || surprise_open_intensity < 0.0 {
             return Err(format!(
-                "surprise_intensity_scale_invalid bucket_index={bucket_index} value={surprise_intensity}"
+                "surprise_open_intensity_scale_invalid bucket_index={bucket_index} value={surprise_open_intensity}"
+            ));
+        }
+
+        let surprise_closed_intensity = surprise_closed_baseline_intensity * *multiplier;
+        if !surprise_closed_intensity.is_finite() || surprise_closed_intensity < 0.0 {
+            return Err(format!(
+                "surprise_closed_intensity_scale_invalid bucket_index={bucket_index} value={surprise_closed_intensity}"
             ));
         }
     }

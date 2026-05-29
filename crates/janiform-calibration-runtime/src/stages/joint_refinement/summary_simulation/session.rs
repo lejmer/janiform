@@ -168,6 +168,7 @@ pub enum JointRefinementSummarySimulationWorkerResponse {
 #[derive(Debug, Clone)]
 pub struct JointRefinementSummarySimulationSessionState {
     calendar_registry: ExchangeCalendarRegistry,
+    exchange_code: String,
     hourly_simulation_start_utc: DateTime<Utc>,
     hourly_simulation_interval_count: usize,
     surprise_deterministic_time_multipliers: Vec<f64>,
@@ -499,7 +500,8 @@ pub fn initialize_joint_refinement_summary_simulation_session(
                 known_scheduled_event_timestamps_utc_nanos: session_context
                     .known_scheduled_event_timestamps_utc_nanos
                     .as_slice(),
-                surprise_baseline_intensity: 0.0,
+                surprise_open_baseline_intensity: 0.0,
+                surprise_closed_baseline_intensity: 0.0,
                 surprise_deterministic_time_multiplier_by_interval_index:
                     surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
             }),
@@ -509,6 +511,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
 
     Ok(JointRefinementSummarySimulationSessionState {
         calendar_registry,
+        exchange_code: session_context.exchange_code.clone(),
         hourly_simulation_start_utc,
         hourly_simulation_interval_count: session_context.hourly_simulation_interval_count,
         surprise_deterministic_time_multipliers,
@@ -659,20 +662,37 @@ fn build_seeded_summary_simulation_run_config(
     fitted_parameters: &JointRefinementStageFittedParameters,
     simulation_seed: u64,
 ) -> Result<janiform_engine_simulation::SeededTickSimulationRunConfig, String> {
-    let surprise_baseline_intensity = fitted_parameters
+    let surprise_arrival_configuration = fitted_parameters
         .return_components_fitted_parameters
         .news_process_configuration
         .arrivals
-        .surprise
-        .baseline_intensity;
+        .surprise;
 
     let surprise_component_nu_h = session_state
         .surprise_deterministic_time_multipliers
         .iter()
-        .map(|deterministic_time_multiplier| {
-            surprise_baseline_intensity * deterministic_time_multiplier
+        .enumerate()
+        .map(|(interval_position, deterministic_time_multiplier)| {
+            let market_state_exposure = session_state
+                .calendar_registry
+                .resolve_market_state_exposure_in_utc_interval(
+                    session_state.exchange_code.as_str(),
+                    session_state
+                        .hourly_factor_contract_template
+                        .interval_start_utc_nanos[interval_position],
+                    session_state
+                        .hourly_factor_contract_template
+                        .interval_end_utc_nanos[interval_position],
+                )
+                .map_err(|source| source.to_string())?;
+
+            Ok((surprise_arrival_configuration.open_baseline_intensity
+                * market_state_exposure.open_window_share
+                + surprise_arrival_configuration.closed_baseline_intensity
+                    * market_state_exposure.closed_window_share)
+                * deterministic_time_multiplier)
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, String>>()?;
 
     let nu_h = session_state
         .hourly_factor_contract_template
@@ -881,7 +901,6 @@ pub(crate) mod tests {
     };
     use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
     use janiform_model_kernels::news::{
-        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
     };
 
@@ -1052,13 +1071,20 @@ pub(crate) mod tests {
                         .session_context
                         .known_scheduled_event_timestamps_utc_nanos
                         .as_slice(),
-                    surprise_baseline_intensity: fixture
+                    surprise_open_baseline_intensity: fixture
                         .fitted_parameters
                         .return_components_fitted_parameters
                         .news_process_configuration
                         .arrivals
                         .surprise
-                        .baseline_intensity,
+                        .open_baseline_intensity,
+                    surprise_closed_baseline_intensity: fixture
+                        .fitted_parameters
+                        .return_components_fitted_parameters
+                        .news_process_configuration
+                        .arrivals
+                        .surprise
+                        .closed_baseline_intensity,
                     surprise_deterministic_time_multiplier_by_interval_index:
                         surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
                 }),
@@ -2125,13 +2151,8 @@ pub(crate) mod tests {
             ),
             open_session_sell_share_proxy: 0.52,
             shared_mark_law_template: SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8)
                     .expect("gamma severity mark configuration should validate"),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                    0.45, 8.0, 10.0,
-                )
-                .expect("double-exponential base-shock configuration should validate"),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
             },
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),

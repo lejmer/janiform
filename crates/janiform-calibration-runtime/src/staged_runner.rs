@@ -36,6 +36,11 @@ pub(super) use crate::stages::mean_reversion::{
     MeanReversionStageExecutionReport, MeanReversionStageReturnComponentsInput,
     run_mean_reversion_calibration_stage,
 };
+pub(super) use crate::stages::news_shocks::{
+    NewsShocksStageExecutionInput, NewsShocksStageExecutionMetadata,
+    NewsShocksStageExecutionReport, NewsShocksStageReturnComponentsInput,
+    run_news_shocks_calibration_stage,
+};
 pub(super) use crate::stages::return_components::{
     ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionMetadata,
@@ -53,6 +58,7 @@ pub(super) use janiform_calibration_artifacts::{
     CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
     CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY, CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,

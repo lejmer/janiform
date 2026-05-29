@@ -21,8 +21,6 @@ from janiform.simulation.coarse import (
     COARSE_SIMULATION_PATH_SCHEMA_VERSION,
     COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
     CoarseSimulationRunRequest,
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
@@ -161,7 +159,6 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                 ),
                 gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
                     shape_k=1.8,
-                    scale_theta=0.7,
                 ),
                 long_variance_parameters=LongVarianceParameters.neutral(),
             ),
@@ -202,22 +199,17 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
             shared_mark_law=SharedNewsMarkLawConfiguration(
                 gamma_severity_marks=GammaSeverityMarkConfiguration(
                     shape_k=1.4,
-                    scale_theta=0.6,
                 ),
-                double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
-                    probability_positive=0.35,
-                    eta_plus=2.1,
-                    eta_minus=3.0,
-                ),
-                coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.8),
             ),
             known_component_mark_scales=NewsComponentMarkScaleConfiguration(
                 activity_coupling_scale=1.0,
-                return_jump_scale=1.0,
+                return_jump_drift=0.0,
+                return_jump_volatility=1.0,
             ),
             surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
                 activity_coupling_scale=1.0,
-                return_jump_scale=1.0,
+                return_jump_drift=0.0,
+                return_jump_volatility=1.0,
             ),
         ),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),

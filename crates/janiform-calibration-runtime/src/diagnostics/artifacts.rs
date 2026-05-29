@@ -528,7 +528,7 @@ fn build_return_candidate_frontier_entry(
                 admissible,
                 simulated_value: candidate
                     .surprise_arrival_diagnostic
-                    .fitted_surprise_arrival_intensity_per_hour,
+                    .fitted_surprise_open_arrival_intensity_per_hour,
                 observed_value: candidate
                     .surprise_arrival_diagnostic
                     .observed_jump_frequency_per_hour,

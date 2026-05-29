@@ -32,7 +32,8 @@ pub enum HourlyNewsIntensityFactorSource<'a> {
     /// Materialize hourly values from known-news calendar anchors and surprise controls.
     Materialized {
         known_scheduled_event_timestamps_utc_nanos: &'a [i64],
-        surprise_baseline_intensity: f64,
+        surprise_open_baseline_intensity: f64,
+        surprise_closed_baseline_intensity: f64,
         surprise_deterministic_time_multiplier_by_interval_index: &'a [(u64, f64)],
     },
 }

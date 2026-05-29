@@ -45,6 +45,9 @@ fn stage_report_payload(
         CalibrationStagedRunStageReport::LongVariance(report) => {
             stage_report_payload_from_report("long_variance", report)
         }
+        CalibrationStagedRunStageReport::NewsShocks(report) => {
+            stage_report_payload_from_report("news_shocks", report)
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             stage_report_payload_from_report("mean_reversion", report)
         }

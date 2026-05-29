@@ -5,7 +5,6 @@ use janiform_foundations::numeric::sample_standard_deviation;
 use janiform_foundations::time::utc_nanos;
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -474,16 +473,8 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
         open_session_sell_share_proxy: 0.5,
         shared_mark_law_template: SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration {
-                shape_k: 2.0,
-                scale_theta: 1.0e-4,
-            },
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                probability_positive: 0.45,
-                eta_plus: 8.0,
-                eta_minus: 10.0,
-            },
-            coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0)
+                .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
@@ -595,16 +586,8 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
         close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
         open_session_sell_share_proxy: 0.5,
         shared_mark_law_template: SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration {
-                shape_k: 2.0,
-                scale_theta: 1.0e-4,
-            },
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                probability_positive: 0.45,
-                eta_plus: 8.0,
-                eta_minus: 10.0,
-            },
-            coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0)
+                .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
@@ -625,6 +608,8 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
         &candidate_generation_input,
         &[],
         "test_filter",
+        1.0,
+        1.0,
         None,
         17,
         &solver_settings,
@@ -683,16 +668,8 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
         open_session_sell_share_proxy: 0.5,
         shared_mark_law_template: SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration {
-                shape_k: 2.0,
-                scale_theta: 1.0e-4,
-            },
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                probability_positive: 0.45,
-                eta_plus: 8.0,
-                eta_minus: 10.0,
-            },
-            coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0)
+                .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
@@ -815,16 +792,8 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
         open_session_sell_share_proxy: 0.5,
         shared_mark_law_template: SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration {
-                shape_k: 2.0,
-                scale_theta: 1.0e-4,
-            },
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                probability_positive: 0.45,
-                eta_plus: 8.0,
-                eta_minus: 10.0,
-            },
-            coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0)
+                .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
@@ -852,18 +821,13 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
                     scheduled_event_timestamps_utc_nanos: Vec::new(),
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
+                    open_baseline_intensity: 0.0,
+                    closed_baseline_intensity: 0.0,
                 },
             },
             candidate_generation_input.shared_mark_law_template,
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 1.0,
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 1.0,
-            },
+            NewsComponentMarkScaleConfiguration::neutral(),
+            NewsComponentMarkScaleConfiguration::neutral(),
         )
         .expect("news process configuration should validate"),
         surprise_deterministic_intensity_profile: default_surprise_deterministic_intensity_profile(
@@ -924,11 +888,16 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
     );
 
     let surprise_arrival_family = ReturnComponentsSurpriseNewsArrivalCandidateFamily {
-        baseline_intensity: fitted_parameters
+        open_baseline_intensity: fitted_parameters
             .news_process_configuration
             .arrivals
             .surprise
-            .baseline_intensity,
+            .open_baseline_intensity,
+        closed_baseline_intensity: fitted_parameters
+            .news_process_configuration
+            .arrivals
+            .surprise
+            .closed_baseline_intensity,
         weekly_hour_utc_multipliers: fitted_parameters
             .surprise_deterministic_intensity_profile
             .weekly_hour_utc_multipliers
@@ -939,11 +908,22 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
     };
 
     let return_jump_family = ReturnComponentsReturnJumpMarkScaleCandidateFamily {
-        sigma_g: fitted_parameters
+        known_return_jump_drift: fitted_parameters
             .news_process_configuration
-            .shared_mark_law
-            .coupled_gap_marks
-            .sigma_g,
+            .known_component_mark_scales
+            .return_jump_drift,
+        known_return_jump_volatility: fitted_parameters
+            .news_process_configuration
+            .known_component_mark_scales
+            .return_jump_volatility,
+        surprise_return_jump_drift: fitted_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales
+            .return_jump_drift,
+        surprise_return_jump_volatility: fitted_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales
+            .return_jump_volatility,
     };
 
     let activity_coupling_family = ReturnComponentsActivityCouplingCandidateFamily {

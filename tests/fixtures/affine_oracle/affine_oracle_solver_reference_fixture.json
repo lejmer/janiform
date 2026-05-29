@@ -47,8 +47,7 @@
             }
           },
           "gamma_severity_mark_configuration": {
-            "shape_k": 1.8,
-            "scale_theta": 0.9
+            "shape_k": 1.8
           },
           "long_variance_parameters": {
             "mean_reversion_rate": 1.0,
@@ -126,9 +125,9 @@
         }
       },
       "tolerances": {
-        "c_at_delta_absolute_tolerance": 5.0e-10,
-        "d_component_absolute_tolerance": 5.0e-10,
-        "transform_value_absolute_tolerance": 5.0e-10
+        "c_at_delta_absolute_tolerance": 5e-10,
+        "d_component_absolute_tolerance": 5e-10,
+        "transform_value_absolute_tolerance": 5e-10
       },
       "tags": [
         "deterministic_numeric",
@@ -162,8 +161,7 @@
             }
           },
           "gamma_severity_mark_configuration": {
-            "shape_k": 1.8,
-            "scale_theta": 0.9
+            "shape_k": 1.8
           },
           "long_variance_parameters": {
             "mean_reversion_rate": 1.0,
@@ -227,11 +225,11 @@
             "imaginary": 0.06229008939817648
           },
           "minus_plus": {
-            "real": -0.22748219618578741,
+            "real": -0.2274821961857874,
             "imaginary": -0.01772949121734341
           },
           "minus_minus": {
-            "real": -0.22748219618578741,
+            "real": -0.2274821961857874,
             "imaginary": -0.01772949121734341
           }
         },
@@ -241,9 +239,9 @@
         }
       },
       "tolerances": {
-        "c_at_delta_absolute_tolerance": 1.0e-11,
-        "d_component_absolute_tolerance": 1.0e-11,
-        "transform_value_absolute_tolerance": 1.0e-11
+        "c_at_delta_absolute_tolerance": 1e-11,
+        "d_component_absolute_tolerance": 1e-11,
+        "transform_value_absolute_tolerance": 1e-11
       },
       "tags": [
         "deterministic_numeric",
@@ -277,8 +275,7 @@
             }
           },
           "gamma_severity_mark_configuration": {
-            "shape_k": 1.8,
-            "scale_theta": 0.9
+            "shape_k": 1.8
           },
           "long_variance_parameters": {
             "mean_reversion_rate": 1.0,
@@ -342,11 +339,11 @@
             "imaginary": 0.03905023070308086
           },
           "minus_plus": {
-            "real": -0.13989482349083801,
+            "real": -0.139894823490838,
             "imaginary": -0.01137851971704391
           },
           "minus_minus": {
-            "real": -0.13989482349083801,
+            "real": -0.139894823490838,
             "imaginary": -0.01137851971704391
           }
         },
@@ -356,9 +353,9 @@
         }
       },
       "tolerances": {
-        "c_at_delta_absolute_tolerance": 1.0e-11,
-        "d_component_absolute_tolerance": 1.0e-11,
-        "transform_value_absolute_tolerance": 1.0e-11
+        "c_at_delta_absolute_tolerance": 1e-11,
+        "d_component_absolute_tolerance": 1e-11,
+        "transform_value_absolute_tolerance": 1e-11
       },
       "tags": [
         "deterministic_numeric",

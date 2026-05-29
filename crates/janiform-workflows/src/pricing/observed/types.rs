@@ -61,7 +61,7 @@ impl ObservedOptionTypeFilter {
 }
 
 /// Rust-owned observed-options pricing request.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservedOptionsPricingRequest {
     /// Persisted `JaniformModel` payload.
@@ -102,6 +102,8 @@ pub struct ObservedOptionsPricingRequest {
     /// Pricing interval schedule policy.
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
+    /// Optional Fourier-COS collocation node count override.
+    pub spectral_collocation_node_count_override: Option<usize>,
     /// Optional model-P terminal distribution diagnostics for observed option nodes.
     #[serde(default)]
     pub physical_distribution_diagnostics:

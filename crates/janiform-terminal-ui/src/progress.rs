@@ -221,8 +221,6 @@ impl ProgressAdapter {
 
                 self.active_stage_started_at = None;
 
-                self.clear_progress_details();
-
                 self.progress_bar.reset();
                 self.progress_bar.unset_length();
             }

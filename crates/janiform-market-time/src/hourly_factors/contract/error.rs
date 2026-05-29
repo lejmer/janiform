@@ -55,7 +55,10 @@ pub enum HourlyFactorContractError {
         previous_timestamp_utc_nanos: i64,
         current_timestamp_utc_nanos: i64,
     },
-    InvalidSurpriseBaselineIntensity {
+    InvalidSurpriseOpenBaselineIntensity {
+        value: f64,
+    },
+    InvalidSurpriseClosedBaselineIntensity {
         value: f64,
     },
     SurpriseDeterministicTimeMultiplierIntervalOutOfRange {
@@ -221,9 +224,13 @@ impl Display for HourlyFactorContractError {
                 formatter,
                 "known_scheduled_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
             ),
-            Self::InvalidSurpriseBaselineIntensity { value } => write!(
+            Self::InvalidSurpriseOpenBaselineIntensity { value } => write!(
                 formatter,
-                "surprise_baseline_intensity must be a finite non-negative value, found {value}"
+                "surprise_open_baseline_intensity must be a finite non-negative value, found {value}"
+            ),
+            Self::InvalidSurpriseClosedBaselineIntensity { value } => write!(
+                formatter,
+                "surprise_closed_baseline_intensity must be a finite non-negative value, found {value}"
             ),
             Self::SurpriseDeterministicTimeMultiplierIntervalOutOfRange {
                 interval_index,

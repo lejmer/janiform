@@ -150,9 +150,8 @@ pub(crate) use janiform_model_kernels::mean_reversion::{
     MeanReversionRuntimeIntervalAnchors,
 };
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
-    SurpriseNewsArrivalConfiguration,
+    KnownNewsArrivalConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration, SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
@@ -746,29 +745,24 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                     scheduled_event_timestamps_utc_nanos: Vec::new(),
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.02,
+                    open_baseline_intensity: 0.02,
+                    closed_baseline_intensity: 0.02,
                 },
             },
             SharedNewsMarkLawConfiguration {
                 gamma_severity_marks: janiform_model_kernels::news::GammaSeverityMarkConfiguration {
                     shape_k: 1.4,
-                    scale_theta: 0.6,
                 },
-                double_exponential_base_shock:
-                    janiform_model_kernels::news::DoubleExponentialBaseShockConfiguration {
-                        probability_positive: 0.35,
-                        eta_plus: 2.1,
-                        eta_minus: 3.0,
-                    },
-                coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.8 },
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 1.0,
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 1.0,
             },
         )
         .expect("news process configuration should validate"),

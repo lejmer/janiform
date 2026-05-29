@@ -114,6 +114,7 @@ fn calibration_stage_name(stage: CalibrationStage) -> &'static str {
         CalibrationStage::Hawkes => "hawkes",
         CalibrationStage::ReturnComponents => "return_components",
         CalibrationStage::LongVariance => "long_variance",
+        CalibrationStage::NewsShocks => "news_shocks",
         CalibrationStage::MeanReversion => "mean_reversion",
         CalibrationStage::JointRefinement => "joint_refinement",
         CalibrationStage::OptionRefinement => "option_refinement",
@@ -237,6 +238,26 @@ fn stage_solver_geometry(
                 objective_term_count: LONG_VARIANCE_OBJECTIVE_TERM_COUNT,
                 support_count,
                 candidate_geometry_count: LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT,
+                scale_reference: 1.0,
+            }
+        }
+        CalibrationStage::NewsShocks => {
+            let candidate_generation_input = loading_output
+                .preprocessing_output
+                .return_components_candidate_generation_input
+                .as_ref();
+
+            let support_count = candidate_generation_input.map_or(0, |input| {
+                input.realized_known_news_return_samples.len()
+                    + input.detected_intraday_jump_candidates.len()
+                    + input.observed_close_open_boundary_observations.len()
+            });
+
+            StageSolverGeometry {
+                parameter_dimension: 8,
+                objective_term_count: 5,
+                support_count,
+                candidate_geometry_count: support_count,
                 scale_reference: 1.0,
             }
         }
@@ -638,17 +659,6 @@ mod tests {
                                 gamma_severity_marks:
                                     janiform_model_kernels::news::GammaSeverityMarkConfiguration {
                                         shape_k: 1.0,
-                                        scale_theta: 1.0,
-                                    },
-                                double_exponential_base_shock:
-                                    janiform_model_kernels::news::DoubleExponentialBaseShockConfiguration {
-                                        probability_positive: 0.5,
-                                        eta_plus: 1.0,
-                                        eta_minus: 1.0,
-                                    },
-                                coupled_gap_marks:
-                                    janiform_model_kernels::news::CoupledGapMarkConfiguration {
-                                        sigma_g: 0.5,
                                     },
                             },
                         return_clock_exposure_parameters:

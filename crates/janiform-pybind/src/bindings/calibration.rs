@@ -1232,6 +1232,9 @@ fn flatten_stage_report_for_python(
         CalibrationStagedRunStageReport::LongVariance(stage_report) => {
             ("long_variance", serde_json::to_value(stage_report)?)
         }
+        CalibrationStagedRunStageReport::NewsShocks(stage_report) => {
+            ("news_shocks", serde_json::to_value(stage_report)?)
+        }
         CalibrationStagedRunStageReport::MeanReversion(stage_report) => {
             ("mean_reversion", serde_json::to_value(stage_report)?)
         }

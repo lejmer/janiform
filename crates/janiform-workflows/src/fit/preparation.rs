@@ -3,20 +3,21 @@ use std::path::Path;
 
 use janiform_calibration_artifacts::{CalibrationEffortOptions, CalibrationStageSolverSettings};
 use janiform_calibration_runtime::{
-    CalibrationMarketDataCarryInput, CalibrationMarketDataColumnMapping,
-    CalibrationMarketDataKnownNewsInput, CalibrationMarketDataMeanReversionConfiguration,
-    CalibrationMarketDataOutputPreferences, CalibrationMarketDataPreparationRequest,
-    CalibrationMarketDataWorkflowScope, CalibrationStagedExecutionInput,
-    DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataFitInputInferenceRequest,
-    MarketDataFitMarketProfileDefaults, MarketDataFitNormalizationOverrides,
-    MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
-    MarketDataNormalizationPolicy, MarketDataOptionSurfaceColumnMapping,
-    MarketDataSessionConfiguration, MarketDataSessionRecurringClosedWindowPayload,
-    MarketDataSessionRegularWindowPayload, MarketDataTickDataColumnMapping,
-    MarketDataTranslationPreprocessingSettings, build_market_data_session_definition_json,
-    infer_bundled_market_profile_from_tick_data_path, infer_market_data_fit_inputs,
-    normalize_market_data_source, prepare_market_data_calibration_plan,
-    resolve_market_data_session_configuration, resolve_preset_workflow_configuration,
+    CalibrationDiagnosticsRequest, CalibrationMarketDataCarryInput,
+    CalibrationMarketDataColumnMapping, CalibrationMarketDataKnownNewsInput,
+    CalibrationMarketDataMeanReversionConfiguration, CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
+    CalibrationStagedExecutionInput, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
+    MarketDataFitInputInferenceRequest, MarketDataFitMarketProfileDefaults,
+    MarketDataFitNormalizationOverrides, MarketDataInputFileFormat, MarketDataInputFileReference,
+    MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
+    MarketDataOptionSurfaceColumnMapping, MarketDataSessionConfiguration,
+    MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
+    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingSettings,
+    build_market_data_session_definition_json, infer_bundled_market_profile_from_tick_data_path,
+    infer_market_data_fit_inputs, normalize_market_data_source,
+    prepare_market_data_calibration_plan, resolve_market_data_session_configuration,
+    resolve_preset_workflow_configuration,
 };
 use janiform_engine_pricing::PricingIntervalSchedulePolicy;
 use serde::Deserialize;
@@ -109,6 +110,9 @@ pub struct FitPreparationConfiguration {
     /// Whether audit option pricing is enabled.
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
+    /// Opt-in extended diagnostics.
+    #[serde(default)]
+    pub diagnostics: CalibrationDiagnosticsRequest,
     /// Optional stylized-fact Huber cutoff override.
     #[serde(default)]
     pub stylized_fact_huber_cutoff: Option<f64>,
@@ -627,6 +631,7 @@ fn build_preparation_request(
             .request
             .configuration
             .joint_refinement_audit_option_pricing_enabled,
+        diagnostics: input.request.configuration.diagnostics.clone(),
         stylized_fact_huber_cutoff: input.request.configuration.stylized_fact_huber_cutoff,
         stylized_fact_admissibility_z_threshold: input
             .request

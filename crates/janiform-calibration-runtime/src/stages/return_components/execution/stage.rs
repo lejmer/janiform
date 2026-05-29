@@ -360,6 +360,12 @@ fn generate_stage_candidates(
             .prepared_candidate_generation_input
             .close_open_gap_detection_filter
             .as_str(),
+        preflight
+            .prepared_candidate_generation_input
+            .source_window_open_exposure_hours,
+        preflight
+            .prepared_candidate_generation_input
+            .source_window_closed_exposure_hours,
         resolve_activity_calibration_context(&stage_input.activity_input),
         stage_seed,
         &preflight.stage_solver_settings,

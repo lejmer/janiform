@@ -13,8 +13,9 @@ use super::super::contracts::{
 use super::super::{
     HawkesStageFittedParameters, JointRefinementStageFittedParameters,
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    LongVarianceStageDiagnostics, MeanReversionStageDiagnostics,
+    LongVarianceStageDiagnostics, MeanReversionStageDiagnostics, NewsShocksStageDiagnostics,
     ReturnComponentsStageFittedParameters, SeasonalityStageNormalizationMetadata,
+    SurpriseNewsDeterministicIntensityProfile,
 };
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::shared::{
@@ -178,6 +179,19 @@ pub struct LongVarianceStageParameterPayload {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct NewsShocksStageParameterPayload {
+    pub news_process_configuration: janiform_model_kernels::news::NewsProcessConfiguration,
+    pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
+    pub diagnostics: NewsShocksStageDiagnostics,
+    pub return_components_input_transport: CalibrationStageHandoffTransport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_components_selected_candidate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_components_artifact_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MeanReversionStageParameterPayload {
     pub fitted_parameters: janiform_model_kernels::mean_reversion::MeanReversionFittedParameters,
     pub diagnostics: MeanReversionStageDiagnostics,
@@ -206,6 +220,7 @@ pub enum CalibrationStageParameterPayload {
     Hawkes(Box<HawkesStageParameterPayload>),
     ReturnComponents(Box<ReturnComponentsStageParameterPayload>),
     LongVariance(Box<LongVarianceStageParameterPayload>),
+    NewsShocks(Box<NewsShocksStageParameterPayload>),
     MeanReversion(Box<MeanReversionStageParameterPayload>),
     JointRefinement(Box<JointRefinementStageParameterPayload>),
     OptionRefinement(Box<JointRefinementStageParameterPayload>),
@@ -219,6 +234,7 @@ impl CalibrationStageParameterPayload {
             Self::Hawkes(_) => CalibrationStage::Hawkes,
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
             Self::LongVariance(_) => CalibrationStage::LongVariance,
+            Self::NewsShocks(_) => CalibrationStage::NewsShocks,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
             Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
@@ -461,6 +477,24 @@ impl CalibrationStageParameterArtifact {
                 })?;
 
                 validate_long_variance_stage_parameter_boundary(payload)?;
+
+                if self.optimizer_state.is_some() {
+                    return Err(
+                        CalibrationStageParameterArtifactValidationError::UnexpectedOptimizerState {
+                            stage: self.stage,
+                        },
+                    );
+                }
+            }
+            CalibrationStageParameterPayload::NewsShocks(payload) => {
+                payload.news_process_configuration.validate().map_err(|source| {
+                    CalibrationStageParameterArtifactValidationError::InvalidNewsProcessConfiguration {
+                        stage: self.stage,
+                        error_message: source.to_string(),
+                    }
+                })?;
+
+                validate_news_shocks_stage_parameter_boundary(payload)?;
 
                 if self.optimizer_state.is_some() {
                     return Err(
@@ -715,6 +749,17 @@ pub struct LongVarianceStageParameterArtifactInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NewsShocksStageParameterArtifactInput {
+    pub metadata: CalibrationStageParameterBuildMetadata,
+    pub news_process_configuration: janiform_model_kernels::news::NewsProcessConfiguration,
+    pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
+    pub diagnostics: NewsShocksStageDiagnostics,
+    pub return_components_input_transport: CalibrationStageHandoffTransport,
+    pub return_components_selected_candidate_id: Option<String>,
+    pub return_components_artifact_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageParameterArtifactInput {
     pub metadata: CalibrationStageParameterBuildMetadata,
     pub optimizer_state: CalibrationStageParameterOptimizerStateInput,
@@ -742,6 +787,7 @@ pub enum CalibrationStageParameterArtifactInput {
     Hawkes(Box<HawkesStageParameterArtifactInput>),
     ReturnComponents(Box<ReturnComponentsStageParameterArtifactInput>),
     LongVariance(Box<LongVarianceStageParameterArtifactInput>),
+    NewsShocks(Box<NewsShocksStageParameterArtifactInput>),
     MeanReversion(Box<MeanReversionStageParameterArtifactInput>),
     JointRefinement(Box<JointRefinementStageParameterArtifactInput>),
     OptionRefinement(Box<JointRefinementStageParameterArtifactInput>),
@@ -768,6 +814,7 @@ pub fn build_calibration_stage_parameter_artifact(
             CalibrationStage::ReturnComponents
         }
         CalibrationStageParameterArtifactInput::LongVariance(_) => CalibrationStage::LongVariance,
+        CalibrationStageParameterArtifactInput::NewsShocks(_) => CalibrationStage::NewsShocks,
         CalibrationStageParameterArtifactInput::MeanReversion(_) => CalibrationStage::MeanReversion,
         CalibrationStageParameterArtifactInput::JointRefinement(_) => {
             CalibrationStage::JointRefinement
@@ -777,6 +824,7 @@ pub fn build_calibration_stage_parameter_artifact(
         }
         CalibrationStageParameterArtifactInput::Finalization(_) => CalibrationStage::Finalization,
     };
+
     let artifact_reference =
         resolve_stage_output_artifact_reference(&run_contract.run_spec, stage)?;
 
@@ -807,6 +855,14 @@ pub fn build_calibration_stage_parameter_artifact(
         }
         CalibrationStageParameterArtifactInput::LongVariance(input) => {
             build_long_variance_stage_parameter_artifact(
+                run_contract.run_spec.run_id.as_str(),
+                run_contract.run_spec.execution_mode,
+                *input,
+                artifact_reference,
+            )
+        }
+        CalibrationStageParameterArtifactInput::NewsShocks(input) => {
+            build_news_shocks_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
                 *input,
@@ -1045,6 +1101,10 @@ pub enum CalibrationStageParameterArtifactValidationError {
         stage: CalibrationStage,
         error_message: String,
     },
+    InvalidNewsProcessConfiguration {
+        stage: CalibrationStage,
+        error_message: String,
+    },
     HawkesBoundaryMismatch {
         expected_transport: &'static str,
     },
@@ -1055,6 +1115,9 @@ pub enum CalibrationStageParameterArtifactValidationError {
         expected_transport: &'static str,
     },
     LongVarianceBoundaryMismatch {
+        expected_transport: &'static str,
+    },
+    NewsShocksBoundaryMismatch {
         expected_transport: &'static str,
     },
 }
@@ -1143,6 +1206,13 @@ impl Display for CalibrationStageParameterArtifactValidationError {
                 formatter,
                 "stage parameter artifact for `{stage:?}` uses invalid long_variance_parameters: {error_message}"
             ),
+            Self::InvalidNewsProcessConfiguration {
+                stage,
+                error_message,
+            } => write!(
+                formatter,
+                "stage parameter artifact for `{stage:?}` uses invalid news_process_configuration: {error_message}"
+            ),
             Self::HawkesBoundaryMismatch { expected_transport } => write!(
                 formatter,
                 "hawkes stage parameter boundary does not match expected `{expected_transport}` transport contract"
@@ -1158,6 +1228,10 @@ impl Display for CalibrationStageParameterArtifactValidationError {
             Self::LongVarianceBoundaryMismatch { expected_transport } => write!(
                 formatter,
                 "long-variance stage parameter boundary does not match expected `{expected_transport}` transport contract"
+            ),
+            Self::NewsShocksBoundaryMismatch { expected_transport } => write!(
+                formatter,
+                "news-shocks stage parameter boundary does not match expected `{expected_transport}` transport contract"
             ),
         }
     }
@@ -1387,6 +1461,49 @@ fn build_long_variance_stage_parameter_artifact(
         stage_parameters: CalibrationStageParameterPayload::LongVariance(Box::new(
             LongVarianceStageParameterPayload {
                 fitted_parameters: input.fitted_parameters,
+                diagnostics: input.diagnostics,
+                return_components_input_transport: input.return_components_input_transport,
+                return_components_selected_candidate_id: input
+                    .return_components_selected_candidate_id,
+                return_components_artifact_reference: input.return_components_artifact_reference,
+            },
+        )),
+    })
+}
+
+fn build_news_shocks_stage_parameter_artifact(
+    run_id: &str,
+    execution_mode: CalibrationExecutionMode,
+    input: NewsShocksStageParameterArtifactInput,
+    artifact_reference: String,
+) -> Result<CalibrationStageParameterArtifact, CalibrationStageParameterArtifactBuildError> {
+    Ok(CalibrationStageParameterArtifact {
+        schema_version: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION.to_string(),
+        run_id: run_id.to_string(),
+        execution_mode,
+        stage: CalibrationStage::NewsShocks,
+        artifact_reference,
+        schema_metadata: CalibrationStageParameterSchemaMetadata {
+            schema_family: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_FAMILY.to_string(),
+            schema_generation: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_GENERATION.to_string(),
+            forward_extension_policy: CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY
+                .to_string(),
+        },
+        output_schema_metadata: build_stage_parameter_output_schema_metadata(),
+        stage_output_schema_version: input.metadata.stage_output_schema_version,
+        seed_metadata: build_stage_parameter_seed_metadata(
+            input.metadata.run_global_seed,
+            input.metadata.stage_seed,
+            input.metadata.stage_seed_source,
+            input.metadata.stage_seed_derivation_policy.as_str(),
+        ),
+        solver_settings: input.metadata.solver_settings,
+        optimizer_state: None,
+        stage_parameters: CalibrationStageParameterPayload::NewsShocks(Box::new(
+            NewsShocksStageParameterPayload {
+                news_process_configuration: input.news_process_configuration,
+                surprise_deterministic_intensity_profile: input
+                    .surprise_deterministic_intensity_profile,
                 diagnostics: input.diagnostics,
                 return_components_input_transport: input.return_components_input_transport,
                 return_components_selected_candidate_id: input
@@ -1669,70 +1786,69 @@ fn validate_return_components_stage_parameter_boundary(
 fn validate_mean_reversion_stage_parameter_boundary(
     payload: &MeanReversionStageParameterPayload,
 ) -> Result<(), CalibrationStageParameterArtifactValidationError> {
-    match payload.return_components_input_transport {
-        CalibrationStageHandoffTransport::InMemoryOutput => {
-            if payload
-                .return_components_selected_candidate_id
-                .as_ref()
-                .is_none_or(|value| !is_non_empty_string(value))
-                || payload.return_components_artifact_reference.is_some()
-            {
-                return Err(
-                    CalibrationStageParameterArtifactValidationError::MeanReversionBoundaryMismatch {
-                        expected_transport: "in_memory_output",
-                    },
-                );
+    validate_return_components_input_boundary(
+        payload.return_components_input_transport,
+        payload.return_components_selected_candidate_id.as_deref(),
+        payload.return_components_artifact_reference.as_deref(),
+        |expected_transport| {
+            CalibrationStageParameterArtifactValidationError::MeanReversionBoundaryMismatch {
+                expected_transport,
             }
-        }
-        CalibrationStageHandoffTransport::PersistedArtifactReference => {
-            if payload
-                .return_components_artifact_reference
-                .as_ref()
-                .is_none_or(|value| !is_non_empty_string(value))
-                || payload.return_components_selected_candidate_id.is_some()
-            {
-                return Err(
-                    CalibrationStageParameterArtifactValidationError::MeanReversionBoundaryMismatch {
-                        expected_transport: "persisted_artifact_reference",
-                    },
-                );
-            }
-        }
-    }
-
-    Ok(())
+        },
+    )
 }
 
 fn validate_long_variance_stage_parameter_boundary(
     payload: &LongVarianceStageParameterPayload,
 ) -> Result<(), CalibrationStageParameterArtifactValidationError> {
-    match payload.return_components_input_transport {
+    validate_return_components_input_boundary(
+        payload.return_components_input_transport,
+        payload.return_components_selected_candidate_id.as_deref(),
+        payload.return_components_artifact_reference.as_deref(),
+        |expected_transport| {
+            CalibrationStageParameterArtifactValidationError::LongVarianceBoundaryMismatch {
+                expected_transport,
+            }
+        },
+    )
+}
+
+fn validate_news_shocks_stage_parameter_boundary(
+    payload: &NewsShocksStageParameterPayload,
+) -> Result<(), CalibrationStageParameterArtifactValidationError> {
+    validate_return_components_input_boundary(
+        payload.return_components_input_transport,
+        payload.return_components_selected_candidate_id.as_deref(),
+        payload.return_components_artifact_reference.as_deref(),
+        |expected_transport| {
+            CalibrationStageParameterArtifactValidationError::NewsShocksBoundaryMismatch {
+                expected_transport,
+            }
+        },
+    )
+}
+
+fn validate_return_components_input_boundary(
+    transport: CalibrationStageHandoffTransport,
+    selected_candidate_id: Option<&str>,
+    artifact_reference: Option<&str>,
+    boundary_mismatch_error: impl FnOnce(
+        &'static str,
+    ) -> CalibrationStageParameterArtifactValidationError,
+) -> Result<(), CalibrationStageParameterArtifactValidationError> {
+    match transport {
         CalibrationStageHandoffTransport::InMemoryOutput => {
-            if payload
-                .return_components_selected_candidate_id
-                .as_ref()
-                .is_none_or(|value| !is_non_empty_string(value))
-                || payload.return_components_artifact_reference.is_some()
+            if selected_candidate_id.is_none_or(|value| !is_non_empty_string(value))
+                || artifact_reference.is_some()
             {
-                return Err(
-                    CalibrationStageParameterArtifactValidationError::LongVarianceBoundaryMismatch {
-                        expected_transport: "in_memory_output",
-                    },
-                );
+                return Err(boundary_mismatch_error("in_memory_output"));
             }
         }
         CalibrationStageHandoffTransport::PersistedArtifactReference => {
-            if payload
-                .return_components_artifact_reference
-                .as_ref()
-                .is_none_or(|value| !is_non_empty_string(value))
-                || payload.return_components_selected_candidate_id.is_some()
+            if artifact_reference.is_none_or(|value| !is_non_empty_string(value))
+                || selected_candidate_id.is_some()
             {
-                return Err(
-                    CalibrationStageParameterArtifactValidationError::LongVarianceBoundaryMismatch {
-                        expected_transport: "persisted_artifact_reference",
-                    },
-                );
+                return Err(boundary_mismatch_error("persisted_artifact_reference"));
             }
         }
     }

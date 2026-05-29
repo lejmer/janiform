@@ -397,8 +397,12 @@ class HourlyNewsIntensityMaterialization:
         return cast(int, self._native_result.known_news_calendar_anchor_count)
 
     @property
-    def surprise_baseline_intensity(self) -> float:
-        return cast(float, self._native_result.surprise_baseline_intensity)
+    def surprise_open_baseline_intensity(self) -> float:
+        return cast(float, self._native_result.surprise_open_baseline_intensity)
+
+    @property
+    def surprise_closed_baseline_intensity(self) -> float:
+        return cast(float, self._native_result.surprise_closed_baseline_intensity)
 
     @property
     def interval_boundary_policy(self) -> str:

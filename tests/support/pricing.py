@@ -24,8 +24,6 @@ from janiform.pricing import (
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
 from janiform.simulation.coarse import (
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
@@ -249,30 +247,24 @@ def _build_news_process_configuration() -> NewsProcessConfiguration:
                 scheduled_event_timestamps_utc_nanos=(),
             ),
             surprise=SurpriseNewsArrivalConfiguration(
-                baseline_intensity=0.75,
+                open_baseline_intensity=0.75,
+                closed_baseline_intensity=0.0,
             ),
         ),
         shared_mark_law=SharedNewsMarkLawConfiguration(
             gamma_severity_marks=GammaSeverityMarkConfiguration(
                 shape_k=1.8,
-                scale_theta=0.7,
-            ),
-            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
-                probability_positive=0.35,
-                eta_plus=2.1,
-                eta_minus=3.0,
-            ),
-            coupled_gap_marks=CoupledGapMarkConfiguration(
-                sigma_g=0.6,
             ),
         ),
         known_component_mark_scales=NewsComponentMarkScaleConfiguration(
             activity_coupling_scale=0.0,
-            return_jump_scale=1.0,
+            return_jump_drift=0.0,
+            return_jump_volatility=0.0,
         ),
         surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
             activity_coupling_scale=0.0,
-            return_jump_scale=1.0,
+            return_jump_drift=0.0,
+            return_jump_volatility=0.0,
         ),
     )
 

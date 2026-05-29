@@ -52,8 +52,11 @@ pub(crate) fn build_jump_diagnostic(
     return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     shared_mark_law_template: SharedNewsMarkLawConfiguration,
 ) -> ReturnComponentsStageJumpDiagnostic {
-    let fitted_mean_abs_jump_return =
-        fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
+    let fitted_mean_abs_jump_return = fitted_mean_abs_return_for_gamma_normal_component(
+        shared_mark_law_template,
+        return_jump_family.surprise_return_jump_drift,
+        return_jump_family.surprise_return_jump_volatility,
+    );
 
     ReturnComponentsStageJumpDiagnostic {
         evidence_state: diagnostic_policy_fit::evidence_state_from_count(
@@ -70,7 +73,8 @@ pub(crate) fn build_jump_diagnostic(
             summary_statistics.mean_abs_surprise_open_jump_return
         },
         fitted_mean_abs_jump_return,
-        fitted_sigma_g: return_jump_family.sigma_g,
+        fitted_return_jump_drift: return_jump_family.surprise_return_jump_drift,
+        fitted_return_jump_volatility: return_jump_family.surprise_return_jump_volatility,
     }
 }
 
@@ -108,7 +112,10 @@ pub(crate) fn build_surprise_arrival_diagnostic(
                     .source_window_duration_hours
                     .max(return_components_stage_positive_domain_floor())
         },
-        fitted_surprise_arrival_intensity_per_hour: surprise_arrival_family.baseline_intensity,
+        fitted_surprise_open_arrival_intensity_per_hour: surprise_arrival_family
+            .open_baseline_intensity,
+        fitted_surprise_closed_arrival_intensity_per_hour: surprise_arrival_family
+            .closed_baseline_intensity,
         surprise_arrival_profile_fit_error: if summary_statistics
             .selected_surprise_jump_episode_count
             == 0
@@ -129,8 +136,11 @@ pub(crate) fn build_gap_diagnostic(
     return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     shared_mark_law_template: SharedNewsMarkLawConfiguration,
 ) -> ReturnComponentsStageGapDiagnostic {
-    let fitted_mean_abs_gap_return =
-        fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
+    let fitted_mean_abs_gap_return = fitted_mean_abs_return_for_gamma_normal_component(
+        shared_mark_law_template,
+        return_jump_family.surprise_return_jump_drift,
+        return_jump_family.surprise_return_jump_volatility,
+    );
 
     ReturnComponentsStageGapDiagnostic {
         evidence_state: diagnostic_policy_fit::evidence_state_from_count(
@@ -153,7 +163,8 @@ pub(crate) fn build_gap_diagnostic(
             summary_statistics.mean_abs_surprise_closed_gap_return
         },
         fitted_mean_abs_gap_return,
-        fitted_sigma_g: return_jump_family.sigma_g,
+        fitted_return_jump_drift: return_jump_family.surprise_return_jump_drift,
+        fitted_return_jump_volatility: return_jump_family.surprise_return_jump_volatility,
     }
 }
 
@@ -215,16 +226,26 @@ pub(crate) fn build_price_range_sanity_diagnostic(
             / summary_statistics.continuous_return_volatility
     };
 
-    let fitted_mean_abs_jump_return =
-        fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
+    let fitted_known_mean_abs_jump_return = fitted_mean_abs_return_for_gamma_normal_component(
+        shared_mark_law_template,
+        return_jump_family.known_return_jump_drift,
+        return_jump_family.known_return_jump_volatility,
+    );
+
+    let fitted_surprise_mean_abs_jump_return = fitted_mean_abs_return_for_gamma_normal_component(
+        shared_mark_law_template,
+        return_jump_family.surprise_return_jump_drift,
+        return_jump_family.surprise_return_jump_volatility,
+    );
 
     let fitted_reference_log_price_span = continuous_reference_span
-        + (summary_statistics.known_realized_sample_count as f64
-            + surprise_arrival_family.baseline_intensity
-                * summary_statistics.source_window_duration_hours)
-            * fitted_mean_abs_jump_return
+        + summary_statistics.known_realized_sample_count as f64 * fitted_known_mean_abs_jump_return
+        + surprise_arrival_family.open_baseline_intensity
+            * summary_statistics.source_window_duration_hours
+            * fitted_surprise_mean_abs_jump_return
         + if summary_statistics.close_open_gap_episode_count > 0 {
-            summary_statistics.close_open_gap_candidate_count as f64 * fitted_mean_abs_jump_return
+            summary_statistics.close_open_gap_candidate_count as f64
+                * fitted_surprise_mean_abs_jump_return
         } else {
             0.0
         };
@@ -251,7 +272,7 @@ pub(crate) fn build_price_range_sanity_diagnostic(
         continuous_reference_log_price_span: continuous_reference_span,
         effective_continuous_sample_count,
         effective_mean_business_time_scale,
-        fitted_mean_abs_jump_return,
+        fitted_mean_abs_jump_return: fitted_surprise_mean_abs_jump_return,
         expansion_ratio,
     }
 }
@@ -621,35 +642,25 @@ pub(crate) fn default_tick_grid_observation_model() -> TickGridObservationModel 
     }
 }
 
-fn shared_mark_law_mean_abs_jump_multiplier(
+fn shared_mark_law_mean_abs_gamma_normal_volatility_multiplier(
     shared_mark_law_template: SharedNewsMarkLawConfiguration,
 ) -> f64 {
-    let severity_scale_proxy = (shared_mark_law_template.gamma_severity_marks.shape_k
-        * shared_mark_law_template.gamma_severity_marks.scale_theta)
-        .sqrt();
+    let severity_scale_proxy = shared_mark_law_template
+        .gamma_severity_marks
+        .expected_square_root_severity_mark()
+        .unwrap_or(0.0);
 
-    let base_shock_mean_absolute_value = shared_mark_law_template
-        .double_exponential_base_shock
-        .probability_positive
-        / shared_mark_law_template
-            .double_exponential_base_shock
-            .eta_plus
-        + (1.0
-            - shared_mark_law_template
-                .double_exponential_base_shock
-                .probability_positive)
-            / shared_mark_law_template
-                .double_exponential_base_shock
-                .eta_minus;
-
-    severity_scale_proxy * base_shock_mean_absolute_value
+    severity_scale_proxy * (2.0 / std::f64::consts::PI).sqrt()
 }
 
-fn fitted_mean_abs_jump_return(
+fn fitted_mean_abs_return_for_gamma_normal_component(
     shared_mark_law_template: SharedNewsMarkLawConfiguration,
-    return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+    return_jump_drift: f64,
+    return_jump_volatility: f64,
 ) -> f64 {
-    return_jump_family.sigma_g * shared_mark_law_mean_abs_jump_multiplier(shared_mark_law_template)
+    return_jump_drift.abs()
+        + return_jump_volatility.max(0.0)
+            * shared_mark_law_mean_abs_gamma_normal_volatility_multiplier(shared_mark_law_template)
 }
 
 fn nig_unit_cumulants(alpha: f64, beta: f64, delta: f64, mu: f64) -> Option<(f64, f64, f64, f64)> {

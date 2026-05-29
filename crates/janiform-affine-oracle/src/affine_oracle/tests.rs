@@ -32,7 +32,9 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::news::{
+    GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
+};
 
 fn total_activity_loadings(
     u_plus: ComplexScalar,
@@ -47,9 +49,12 @@ fn valid_input() -> ExponentialAffineTransformInput {
         total_activity_loadings(ComplexScalar::new(0.2, -0.1), ComplexScalar::new(0.3, 0.05)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
+        ComplexScalar::new(0.0, 0.0),
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("news intensity components should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         1.0,
         standard_initial_state(),
     )
@@ -76,8 +81,7 @@ fn reference_transform_input_payload() -> Value {
                 }
             },
             "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.9
+                "shape_k": 1.8
             },
             "long_variance_parameters": {
                 "mean_reversion_rate": 1.0,
@@ -112,10 +116,24 @@ fn reference_transform_input_payload() -> Value {
             "real": 0.95,
             "imaginary": 0.02
         },
+        "news_return_loading": {
+            "real": 0.0,
+            "imaginary": 0.0
+        },
         "s_h": 1.1,
         "news_intensity": {
             "known_nu_h": 0.03,
             "surprise_nu_h": 0.05
+        },
+        "known_news_component_mark_scales": {
+            "activity_coupling_scale": 0.0,
+            "return_jump_drift": 0.0,
+            "return_jump_volatility": 0.0
+        },
+        "surprise_news_component_mark_scales": {
+            "activity_coupling_scale": 0.0,
+            "return_jump_drift": 0.0,
+            "return_jump_volatility": 0.0
         },
         "delta": 1.0,
         "initial_state": {
@@ -162,7 +180,7 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
                 },
             )
             .expect("closed-form fixture kernel payload should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("closed-form fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -170,9 +188,12 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
         total_activity_loadings(ComplexScalar::new(0.2, 0.0), ComplexScalar::new(0.3, 0.0)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("closed-form fixture news-intensity payload should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         1.0,
         standard_initial_state(),
     )
@@ -199,7 +220,7 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
                 },
             )
             .expect("domain violation fixture kernel payload should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("domain violation fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -210,9 +231,12 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
         ),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
         2.0,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("domain violation fixture news-intensity payload should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         0.5,
         standard_initial_state(),
     )
@@ -239,7 +263,7 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
                 },
             )
             .expect("blowup fixture kernel payload should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("blowup fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -247,9 +271,12 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
         total_activity_loadings(ComplexScalar::new(0.0, 0.0), ComplexScalar::new(0.0, 0.0)),
         ComplexScalar::new(1.0e308, 0.0),
         ComplexScalar::new(1.0e308, 0.0),
+        ComplexScalar::new(0.0, 0.0),
         1.0,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("blowup fixture news-intensity payload should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         2.0,
         standard_initial_state(),
     )
@@ -292,7 +319,7 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
                 },
             )
             .expect("stiff fixture kernel payload should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("stiff fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -303,9 +330,12 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
         ),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
         0.36,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("stiff fixture news-intensity payload should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         1.0,
         HawkesExcitationState {
             y_plus_plus: 991.0,
@@ -323,9 +353,12 @@ fn exact_identity_query_input() -> ExponentialAffineTransformInput {
         total_activity_loadings(ComplexScalar::new(0.0, -0.0), ComplexScalar::new(0.0, 0.0)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, -0.0),
+        ComplexScalar::new(0.0, 0.0),
         1.3,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.17, 0.29)
             .expect("identity-query news-intensity payload should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         0.5,
         standard_initial_state(),
     )
@@ -553,9 +586,12 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
         total_activity_loadings(ComplexScalar::new(0.2, 0.0), ComplexScalar::new(0.3, 0.0)),
         ComplexScalar::new(0.9, 0.0),
         ComplexScalar::new(1.1, 0.0),
+        ComplexScalar::new(0.0, 0.0),
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("fixture news intensity should construct"),
+        NewsComponentMarkScaleConfiguration::neutral(),
+        NewsComponentMarkScaleConfiguration::neutral(),
         1.0,
         standard_initial_state(),
     )

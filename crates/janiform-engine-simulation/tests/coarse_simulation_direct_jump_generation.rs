@@ -18,7 +18,6 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -212,14 +211,14 @@ fn coarse_simulation_surfaces_first_moment_projection_failures() {
                 },
             )
             .expect("solver-failure kernel parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("solver-failure gamma configuration should construct"),
             1,
             1.0,
         ),
         build_news_process_configuration(
             vec![],
-            GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.5)
                 .expect("news gamma configuration should construct"),
             default_known_component_mark_scales(),
             default_surprise_component_mark_scales(),
@@ -267,18 +266,19 @@ fn coarse_simulation_surfaces_boundary_state_update_failures() {
                 },
             )
             .expect("boundary-failure kernel parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 1.0e-308)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("boundary-failure gamma configuration should construct"),
             1,
             1.0,
         ),
         build_news_process_configuration(
             vec![1_704_206_700_000_000_000],
-            GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.5)
                 .expect("news gamma configuration should construct"),
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 8.0,
-                return_jump_scale: 1.2,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 1.2,
             },
             default_surprise_component_mark_scales(),
         ),
@@ -306,7 +306,7 @@ fn coarse_simulation_surfaces_boundary_state_update_failures() {
 }
 
 #[test]
-fn coarse_run_request_deserialization_rejects_invalid_base_shock_configuration() {
+fn coarse_run_request_deserialization_rejects_invalid_gamma_severity_configuration() {
     let mut payload = serde_json::to_value(build_run_request(
         3_003,
         1_704_204_000_000_000_000,
@@ -317,17 +317,17 @@ fn coarse_run_request_deserialization_rejects_invalid_base_shock_configuration()
         vec![0.0],
     ))
     .expect("valid run request should serialize");
-    payload["model_inputs"]["news_process_configuration"]["shared_mark_law"]["double_exponential_base_shock"]
-        ["probability_positive"] = json!(1.0);
+    payload["model_inputs"]["news_process_configuration"]["shared_mark_law"]["gamma_severity_marks"]
+        ["shape_k"] = json!(-1.0);
 
     let error = serde_json::from_value::<CoarseSimulationRunRequest>(payload)
-        .expect_err("invalid base shock configuration must fail deserialization");
+        .expect_err("invalid gamma severity configuration must fail deserialization");
 
-    assert!(error.to_string().contains("probability_positive"));
+    assert!(error.to_string().contains("shape_k"));
 }
 
 #[test]
-fn coarse_run_request_deserialization_rejects_invalid_coupled_gap_configuration() {
+fn coarse_run_request_deserialization_rejects_uncoupled_return_jump_configuration() {
     let mut payload = serde_json::to_value(build_run_request(
         3_004,
         1_704_204_000_000_000_000,
@@ -338,13 +338,15 @@ fn coarse_run_request_deserialization_rejects_invalid_coupled_gap_configuration(
         vec![0.0],
     ))
     .expect("valid run request should serialize");
-    payload["model_inputs"]["news_process_configuration"]["shared_mark_law"]["coupled_gap_marks"]
-        ["sigma_g"] = json!(-0.2);
+    payload["model_inputs"]["news_process_configuration"]["known_component_mark_scales"]["activity_coupling_scale"] =
+        json!(0.0);
+    payload["model_inputs"]["news_process_configuration"]["known_component_mark_scales"]["return_jump_volatility"] =
+        json!(0.2);
 
     let error = serde_json::from_value::<CoarseSimulationRunRequest>(payload)
-        .expect_err("invalid coupled gap configuration must fail deserialization");
+        .expect_err("uncoupled return jump configuration must fail deserialization");
 
-    assert!(error.to_string().contains("sigma_g"));
+    assert!(error.to_string().contains("activity_coupling_scale"));
 }
 
 fn build_run_request(
@@ -417,14 +419,14 @@ fn build_model_inputs(
                 },
             )
             .expect("kernel parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("gamma severity configuration should construct"),
             interval_count,
             interval_delta,
         ),
         build_news_process_configuration(
             known_news_timestamps_utc_nanos,
-            GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.5)
                 .expect("gamma severity configuration should construct"),
             default_known_component_mark_scales(),
             default_surprise_component_mark_scales(),
@@ -502,16 +504,12 @@ fn build_news_process_configuration(
                 scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
             },
             surprise: SurpriseNewsArrivalConfiguration {
-                baseline_intensity: 0.0,
+                open_baseline_intensity: 0.0,
+                closed_baseline_intensity: 0.0,
             },
         },
         SharedNewsMarkLawConfiguration {
             gamma_severity_marks: gamma_severity_configuration,
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                0.4, 1.3, 1.1,
-            )
-            .expect("base shock configuration should construct"),
-            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
         },
         known_component_mark_scales,
         surprise_component_mark_scales,
@@ -522,14 +520,16 @@ fn build_news_process_configuration(
 fn default_known_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
     NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 0.6,
-        return_jump_scale: 1.2,
+        return_jump_drift: 0.0,
+        return_jump_volatility: 1.2,
     }
 }
 
 fn default_surprise_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
     NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 0.5,
-        return_jump_scale: 0.8,
+        return_jump_drift: 0.0,
+        return_jump_volatility: 0.8,
     }
 }
 

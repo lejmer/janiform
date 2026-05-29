@@ -75,39 +75,123 @@
         "analysis_end_utc_nanos": 100,
         "empirical_dataset": {
           "dataset_id": "empirical",
-          "event_timestamps_utc_nanos": [1, 5, 12, 18, 24, 41, 74, 82],
+          "event_timestamps_utc_nanos": [
+            1,
+            5,
+            12,
+            18,
+            24,
+            41,
+            74,
+            82
+          ],
           "return_observations": [
-            {"timestamp_utc_nanos": 2, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 12, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 22, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 32, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 42, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 52, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 62, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 72, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 82, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 92, "return_increment": -2.0}
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
           ]
         },
         "simulated_dataset": {
           "dataset_id": "simulated",
-          "event_timestamps_utc_nanos": [1, 5, 12, 18, 24, 41, 74, 82],
+          "event_timestamps_utc_nanos": [
+            1,
+            5,
+            12,
+            18,
+            24,
+            41,
+            74,
+            82
+          ],
           "return_observations": [
-            {"timestamp_utc_nanos": 2, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 12, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 22, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 32, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 42, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 52, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 62, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 72, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 82, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 92, "return_increment": -2.0}
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
           ]
         },
         "horizon_buckets": [
-          {"horizon_label": "20n_dense", "horizon_duration_nanos": 20},
-          {"horizon_label": "5n_sparse", "horizon_duration_nanos": 5}
+          {
+            "horizon_label": "20n_dense",
+            "horizon_duration_nanos": 20
+          },
+          {
+            "horizon_label": "5n_sparse",
+            "horizon_duration_nanos": 5
+          }
         ],
         "bootstrap_configuration": {
           "confidence_level": 0.95,
@@ -233,176 +317,662 @@
         "empirical_dataset": {
           "dataset_id": "empirical",
           "return_observations": [
-            {"timestamp_utc_nanos": 1, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 11, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 21, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 31, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 41, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 51, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 61, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 71, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 81, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 91, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 101, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 111, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 121, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 131, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 141, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 151, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 161, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 171, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 181, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 191, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 201, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 211, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 221, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 231, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 241, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 251, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 261, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 271, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 281, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 291, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 301, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 311, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 321, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 331, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 341, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 351, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 361, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 371, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 381, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 391, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 401, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 411, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 421, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 431, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 441, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 451, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 461, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 471, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 481, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 491, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 501, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 511, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 521, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 531, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 541, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 551, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 561, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 571, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 581, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 591, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 601, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 611, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 621, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 631, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 641, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 651, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 661, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 671, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 681, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 691, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 701, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 711, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 721, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 731, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 741, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 751, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 761, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 771, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 781, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 791, "return_increment": 4.0}
+            {
+              "timestamp_utc_nanos": 1,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 11,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 21,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 31,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 41,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 51,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 61,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 71,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 81,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 91,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 101,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 111,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 121,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 131,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 141,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 151,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 161,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 171,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 181,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 191,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 201,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 211,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 221,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 231,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 241,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 251,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 261,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 271,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 281,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 291,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 301,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 311,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 321,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 331,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 341,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 351,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 361,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 371,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 381,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 391,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 401,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 411,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 421,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 431,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 441,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 451,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 461,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 471,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 481,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 491,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 501,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 511,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 521,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 531,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 541,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 551,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 561,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 571,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 581,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 591,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 601,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 611,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 621,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 631,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 641,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 651,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 661,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 671,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 681,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 691,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 701,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 711,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 721,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 731,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 741,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 751,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 761,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 771,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 781,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 791,
+              "return_increment": 4.0
+            }
           ]
         },
         "simulated_dataset": {
           "dataset_id": "simulated",
           "return_observations": [
-            {"timestamp_utc_nanos": 1, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 11, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 21, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 31, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 41, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 51, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 61, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 71, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 81, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 91, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 101, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 111, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 121, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 131, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 141, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 151, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 161, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 171, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 181, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 191, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 201, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 211, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 221, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 231, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 241, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 251, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 261, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 271, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 281, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 291, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 301, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 311, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 321, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 331, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 341, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 351, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 361, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 371, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 381, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 391, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 401, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 411, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 421, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 431, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 441, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 451, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 461, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 471, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 481, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 491, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 501, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 511, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 521, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 531, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 541, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 551, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 561, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 571, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 581, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 591, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 601, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 611, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 621, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 631, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 641, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 651, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 661, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 671, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 681, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 691, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 701, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 711, "return_increment": 4.0},
-            {"timestamp_utc_nanos": 721, "return_increment": -4.0},
-            {"timestamp_utc_nanos": 731, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 741, "return_increment": -1.0},
-            {"timestamp_utc_nanos": 751, "return_increment": -0.5},
-            {"timestamp_utc_nanos": 761, "return_increment": 0.5},
-            {"timestamp_utc_nanos": 771, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 781, "return_increment": 2.0},
-            {"timestamp_utc_nanos": 791, "return_increment": 4.0}
+            {
+              "timestamp_utc_nanos": 1,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 11,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 21,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 31,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 41,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 51,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 61,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 71,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 81,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 91,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 101,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 111,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 121,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 131,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 141,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 151,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 161,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 171,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 181,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 191,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 201,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 211,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 221,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 231,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 241,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 251,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 261,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 271,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 281,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 291,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 301,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 311,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 321,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 331,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 341,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 351,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 361,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 371,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 381,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 391,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 401,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 411,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 421,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 431,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 441,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 451,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 461,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 471,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 481,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 491,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 501,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 511,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 521,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 531,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 541,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 551,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 561,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 571,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 581,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 591,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 601,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 611,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 621,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 631,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 641,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 651,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 661,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 671,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 681,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 691,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 701,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 711,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 721,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 731,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 741,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 751,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 761,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 771,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 781,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 791,
+              "return_increment": 4.0
+            }
           ]
         },
         "horizon_buckets": [
-          {"horizon_label": "10n_dense", "horizon_duration_nanos": 10},
-          {"horizon_label": "5n_sparse", "horizon_duration_nanos": 5}
+          {
+            "horizon_label": "10n_dense",
+            "horizon_duration_nanos": 10
+          },
+          {
+            "horizon_label": "5n_sparse",
+            "horizon_duration_nanos": 5
+          }
         ],
         "bootstrap_configuration": {
           "confidence_level": 0.95,
@@ -690,40 +1260,112 @@
         "empirical_dataset": {
           "dataset_id": "empirical",
           "return_observations": [
-            {"timestamp_utc_nanos": 2, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 12, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 22, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 32, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 42, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 52, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 62, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 72, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 82, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 92, "return_increment": -2.0}
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
           ]
         },
         "simulated_dataset": {
           "dataset_id": "simulated",
           "return_observations": [
-            {"timestamp_utc_nanos": 2, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 12, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 22, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 32, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 42, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 52, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 62, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 72, "return_increment": -2.0},
-            {"timestamp_utc_nanos": 82, "return_increment": 1.0},
-            {"timestamp_utc_nanos": 92, "return_increment": -2.0}
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
           ]
         },
         "horizon_buckets": [
-          {"horizon_label": "20n_dense", "horizon_duration_nanos": 20},
-          {"horizon_label": "5n_sparse", "horizon_duration_nanos": 5}
+          {
+            "horizon_label": "20n_dense",
+            "horizon_duration_nanos": 20
+          },
+          {
+            "horizon_label": "5n_sparse",
+            "horizon_duration_nanos": 5
+          }
         ],
         "lag_settings": [
-          {"lag_label": "lag_1", "lag_interval_count": 1},
-          {"lag_label": "lag_2", "lag_interval_count": 2}
+          {
+            "lag_label": "lag_1",
+            "lag_interval_count": 1
+          },
+          {
+            "lag_label": "lag_2",
+            "lag_interval_count": 2
+          }
         ],
         "bootstrap_configuration": {
           "confidence_level": 0.95,
@@ -843,9 +1485,15 @@
               },
               "issue_traceability": {
                 "issue_id": "JAN-167",
-                "semantic_focus_tags": ["open_jump", "activity_coupling"]
+                "semantic_focus_tags": [
+                  "open_jump",
+                  "activity_coupling"
+                ]
               },
-              "tags": ["open_window", "intraday"],
+              "tags": [
+                "open_window",
+                "intraday"
+              ],
               "event_observations": [
                 {
                   "event_id": "event_open_0",
@@ -890,9 +1538,16 @@
               },
               "issue_traceability": {
                 "issue_id": "JAN-167",
-                "semantic_focus_tags": ["closed_gap", "overnight", "weekend"]
+                "semantic_focus_tags": [
+                  "closed_gap",
+                  "overnight",
+                  "weekend"
+                ]
               },
-              "tags": ["closed_window", "mixed_window"],
+              "tags": [
+                "closed_window",
+                "mixed_window"
+              ],
               "event_observations": [
                 {
                   "event_id": "event_closed_0",
@@ -942,9 +1597,15 @@
               },
               "issue_traceability": {
                 "issue_id": "JAN-167",
-                "semantic_focus_tags": ["open_jump", "activity_coupling"]
+                "semantic_focus_tags": [
+                  "open_jump",
+                  "activity_coupling"
+                ]
               },
-              "tags": ["open_window", "intraday"],
+              "tags": [
+                "open_window",
+                "intraday"
+              ],
               "event_observations": [
                 {
                   "event_id": "event_open_0",
@@ -989,9 +1650,16 @@
               },
               "issue_traceability": {
                 "issue_id": "JAN-167",
-                "semantic_focus_tags": ["closed_gap", "overnight", "weekend"]
+                "semantic_focus_tags": [
+                  "closed_gap",
+                  "overnight",
+                  "weekend"
+                ]
               },
-              "tags": ["closed_window", "mixed_window"],
+              "tags": [
+                "closed_window",
+                "mixed_window"
+              ],
               "event_observations": [
                 {
                   "event_id": "event_closed_0",
@@ -1025,7 +1693,10 @@
           ]
         },
         "horizon_buckets": [
-          {"horizon_label": "10n", "horizon_duration_nanos": 10}
+          {
+            "horizon_label": "10n",
+            "horizon_duration_nanos": 10
+          }
         ],
         "bootstrap_configuration": {
           "confidence_level": 0.95,

@@ -27,7 +27,6 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -162,24 +161,15 @@ pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
                     scheduled_event_timestamps_utc_nanos: vec![],
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.75,
+                    open_baseline_intensity: 0.75,
+                    closed_baseline_intensity: 0.0,
                 },
             },
             SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8, 0.7),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
-                    0.35, 2.1, 3.0,
-                ),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8),
             },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 1.0,
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 1.0,
-            },
+            NewsComponentMarkScaleConfiguration::neutral(),
+            NewsComponentMarkScaleConfiguration::neutral(),
         )
         .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)

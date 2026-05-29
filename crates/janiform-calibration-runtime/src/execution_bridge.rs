@@ -24,10 +24,11 @@ use janiform_model_kernels::hawkes::{
     HawkesStructuredRhoSelfDominancePolicy,
 };
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+
+use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;
 use super::staged_runner::{
@@ -91,6 +92,8 @@ pub struct CalibrationStagedExecutionInput {
     pub joint_refinement_option_refinement_wall_clock_budget_millis: Option<u64>,
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
+    #[serde(default)]
+    pub diagnostics: CalibrationDiagnosticsRequest,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_pricing_input: Option<CalibrationJointRefinementOptionPricingInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -353,8 +356,6 @@ pub struct CalibrationReturnComponentsObjectiveMetricWeights {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationSharedNewsMarkLawConfiguration {
     pub gamma_severity_marks: GammaSeverityMarkConfiguration,
-    pub double_exponential_base_shock: DoubleExponentialBaseShockConfiguration,
-    pub coupled_gap_marks: CoupledGapMarkConfiguration,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -477,6 +478,10 @@ pub enum CalibrationStagedExecutionBridgeError {
     InvalidJointRefinementOptionRefinementCandidateCountOverride,
     InvalidJointRefinementOptionRefinementWallClockBudget,
     AuditOptionPricingRequiresOptionInput,
+    DiagnosticsRequireOptionInput,
+    InvalidDiagnosticsRequest {
+        message: String,
+    },
     InvalidObservationTradeSide {
         trade_side: String,
     },
@@ -531,6 +536,14 @@ impl Display for CalibrationStagedExecutionBridgeError {
                 formatter,
                 "joint_refinement_audit_option_pricing_enabled requires joint_refinement_option_pricing_input"
             ),
+            Self::DiagnosticsRequireOptionInput => write!(
+                formatter,
+                "option-surface diagnostics require joint_refinement_option_pricing_input"
+            ),
+            Self::InvalidDiagnosticsRequest { message } => write!(
+                formatter,
+                "calibration diagnostics request is invalid: {message}"
+            ),
             Self::InvalidObservationTradeSide { trade_side } => write!(
                 formatter,
                 "joint refinement current-state estimation input observation_trade_sides contains unsupported value `{trade_side}`"
@@ -583,6 +596,14 @@ impl CalibrationStagedExecutionInput {
                 CalibrationStagedExecutionBridgeError::AuditOptionPricingRequiresOptionInput,
             );
         }
+        if self.diagnostics.option_surface_shape_requested()
+            && self.joint_refinement_option_pricing_input.is_none()
+        {
+            return Err(CalibrationStagedExecutionBridgeError::DiagnosticsRequireOptionInput);
+        }
+        self.diagnostics.validate().map_err(|message| {
+            CalibrationStagedExecutionBridgeError::InvalidDiagnosticsRequest { message }
+        })?;
 
         let seasonality_selected = selected_stages.contains(&CalibrationStage::Seasonality);
         let hawkes_selected = selected_stages.contains(&CalibrationStage::Hawkes);
@@ -691,6 +712,7 @@ impl CalibrationStagedExecutionInput {
             option_refinement_wall_clock_budget_millis: self
                 .joint_refinement_option_refinement_wall_clock_budget_millis,
             audit_option_pricing_enabled: self.joint_refinement_audit_option_pricing_enabled,
+            diagnostics: self.diagnostics,
             option_refinement_pricing_input: self
                 .joint_refinement_option_pricing_input
                 .map(CalibrationJointRefinementOptionPricingInput::try_into_core)
@@ -764,6 +786,7 @@ fn canonical_stage_graph_for_selected_stages(
 ) -> CalibrationStageGraph {
     let selected_stage_set: std::collections::BTreeSet<CalibrationStage> =
         selected_stages.iter().copied().collect();
+
     let dependencies = vec![
         CalibrationStageDependency {
             stage: CalibrationStage::Hawkes,
@@ -775,6 +798,10 @@ fn canonical_stage_graph_for_selected_stages(
         },
         CalibrationStageDependency {
             stage: CalibrationStage::LongVariance,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::NewsShocks,
             depends_on: CalibrationStage::ReturnComponents,
         },
         CalibrationStageDependency {
@@ -790,8 +817,16 @@ fn canonical_stage_graph_for_selected_stages(
             depends_on: CalibrationStage::LongVariance,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::MeanReversion,
+            depends_on: CalibrationStage::NewsShocks,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::LongVariance,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::NewsShocks,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
@@ -1047,8 +1082,6 @@ impl CalibrationSharedNewsMarkLawConfiguration {
     fn into_core(self) -> SharedNewsMarkLawConfiguration {
         SharedNewsMarkLawConfiguration {
             gamma_severity_marks: self.gamma_severity_marks,
-            double_exponential_base_shock: self.double_exponential_base_shock,
-            coupled_gap_marks: self.coupled_gap_marks,
         }
     }
 }
@@ -1072,13 +1105,16 @@ impl CalibrationReturnComponentsActivityContextPayload {
             .candidate_diagnostics
             .into_iter()
             .find(|candidate| candidate.candidate_id == self.selected_candidate_id)?;
+
         let modeled_open_event_rate_per_hour = selected_candidate
             .implied_metrics
             .model_implied_open_event_rate_per_hour;
+
         let representative_interarrival_hours = selected_candidate
             .source_regime
             .open_session_mean_interarrival_seconds
             / 3_600.0;
+
         if !modeled_open_event_rate_per_hour.is_finite()
             || modeled_open_event_rate_per_hour <= 0.0
             || !representative_interarrival_hours.is_finite()
@@ -1240,10 +1276,7 @@ mod tests {
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,
     };
-    use janiform_model_kernels::news::{
-        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-        GammaSeverityMarkConfiguration,
-    };
+    use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
     fn valid_request(execution_mode: CalibrationExecutionMode) -> CalibrationRunSpec {
         CalibrationRunSpec::try_new(
@@ -1407,12 +1440,8 @@ mod tests {
                         },
                     open_session_sell_share_proxy: 0.52,
                     shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration {
-                        gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+                        gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8)
                             .expect("gamma configuration should validate"),
-                        double_exponential_base_shock:
-                            DoubleExponentialBaseShockConfiguration::try_new(0.45, 8.0, 10.0)
-                                .expect("base shock configuration should validate"),
-                        coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
                     },
                     return_clock_exposure_parameters:
                         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
@@ -1463,6 +1492,7 @@ mod tests {
             joint_refinement_option_refinement_candidate_count_override: None,
             joint_refinement_option_refinement_wall_clock_budget_millis: None,
             joint_refinement_audit_option_pricing_enabled: false,
+            diagnostics: Default::default(),
             joint_refinement_option_pricing_input: None,
             runtime_resources: match execution_mode {
                 CalibrationExecutionMode::Memory => None,

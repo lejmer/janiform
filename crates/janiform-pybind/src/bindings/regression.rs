@@ -431,7 +431,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
                 )));
             }
 
-            let coupled_gap_jump_mark_value = parse_required_field(
+            let coupled_return_jump_mark_value = parse_required_field(
                 event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
@@ -439,7 +439,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
             )?;
 
             let coupled_return_jump_mark =
-                coupled_gap_jump_mark_value.extract::<f64>().map_err(|_| {
+                coupled_return_jump_mark_value.extract::<f64>().map_err(|_| {
                 SeasonalityInputValidationError::new_err(format!(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'coupled_return_jump_mark' must be a float"
                 ))
@@ -772,11 +772,13 @@ fn convert_regression_news_intensity_source(
         },
         ParsedHourlyProviderNewsIntensitySource::Materialized {
             known_scheduled_event_timestamps_utc_nanos,
-            surprise_baseline_intensity,
+            surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index,
         } => HourlyNewsIntensityRegressionSource::Materialized {
             known_scheduled_event_timestamps_utc_nanos,
-            surprise_baseline_intensity,
+            surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index,
         },
     }

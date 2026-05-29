@@ -475,7 +475,8 @@ fn hourly_factor_materialize_news_intensity_json_runs_native_workflow() {
                 "2026-02-02T14:05:00Z",
                 "2026-02-02T15:10:00Z"
             ],
-            "surprise_baseline_intensity": 0.1,
+            "surprise_open_baseline_intensity": 0.1,
+            "surprise_closed_baseline_intensity": 0.1,
             "surprise_deterministic_time_multiplier_by_interval_index": {
                 "0": 1.0,
                 "1": 2.0,

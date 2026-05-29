@@ -685,12 +685,18 @@ fn build_endogenous_mean_reversion_calibration_context(
                     .known
                     .scheduled_event_timestamps_utc_nanos
                     .as_slice(),
-                surprise_baseline_intensity: return_components_payload
+                surprise_open_baseline_intensity: return_components_payload
                     .fitted_parameters
                     .news_process_configuration
                     .arrivals
                     .surprise
-                    .baseline_intensity,
+                    .open_baseline_intensity,
+                surprise_closed_baseline_intensity: return_components_payload
+                    .fitted_parameters
+                    .news_process_configuration
+                    .arrivals
+                    .surprise
+                    .closed_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index:
                     surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
             }),
@@ -1010,7 +1016,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
         .map(|observation| observation - anchor_value)
         .collect::<Vec<_>>();
 
-    let residuals = remove_intercept_contribution(
+    let residuals = remove_scaled_column_contribution(
         response.as_slice(),
         intercept_column.as_slice(),
         least_squares_solution.first_coefficient,
@@ -1254,31 +1260,15 @@ fn adjacent_observation_level_differences(observation_levels: &[f64]) -> Vec<f64
         .collect::<Vec<_>>()
 }
 
-fn remove_intercept_contribution(
+fn remove_scaled_column_contribution(
     response: &[f64],
-    intercept_column: &[f64],
-    anchor_origin_level_value: f64,
+    column: &[f64],
+    coefficient: f64,
 ) -> Vec<f64> {
     response
         .iter()
-        .zip(intercept_column.iter())
-        .map(|(current_response, intercept_term)| {
-            current_response - anchor_origin_level_value * intercept_term
-        })
-        .collect::<Vec<_>>()
-}
-
-fn remove_pressure_contribution(
-    response: &[f64],
-    pressure_column: &[f64],
-    pressure_level_gain: f64,
-) -> Vec<f64> {
-    response
-        .iter()
-        .zip(pressure_column.iter())
-        .map(|(current_response, current_pressure_term)| {
-            current_response - pressure_level_gain * current_pressure_term
-        })
+        .zip(column.iter())
+        .map(|(current_response, column_value)| current_response - coefficient * column_value)
         .collect::<Vec<_>>()
 }
 
@@ -1344,7 +1334,7 @@ fn assemble_candidate_evaluation(
         anchor_model.pressure_persistence_per_reference_interval;
 
     let residuals = match (pressure_column, intercept_column.is_empty()) {
-        (Some(pressure_column), true) => remove_pressure_contribution(
+        (Some(pressure_column), true) => remove_scaled_column_contribution(
             response,
             pressure_column,
             anchor_model.pressure_level_gain,
@@ -1362,7 +1352,7 @@ fn assemble_candidate_evaluation(
             )
             .collect::<Vec<_>>(),
         (None, _) => {
-            remove_intercept_contribution(response, intercept_column, anchor_origin_level_value)
+            remove_scaled_column_contribution(response, intercept_column, anchor_origin_level_value)
         }
     };
 
@@ -1694,7 +1684,7 @@ fn solve_full_pressure_to_level_least_squares_at_fixed_gain(
     pressure_level_gain: f64,
 ) -> MeanReversionLeastSquaresSolution {
     let adjusted_response =
-        remove_pressure_contribution(response, pressure_column, pressure_level_gain);
+        remove_scaled_column_contribution(response, pressure_column, pressure_level_gain);
 
     let intercept_solution =
         solve_one_column_least_squares(intercept_column, adjusted_response.as_slice());

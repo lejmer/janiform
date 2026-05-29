@@ -221,7 +221,7 @@
         "close_timestamp_utc_nanos": 1770066000000000000,
         "close_price": 100.0,
         "open_timestamp_utc_nanos": 1770215400000000000,
-        "open_price": 98.70858118310978,
+        "open_price": 98.70858118310979,
         "post_shock_activity_lift": 1.4
       }
     ],
@@ -231,16 +231,7 @@
     "open_session_sell_share_proxy": 0.52,
     "shared_mark_law_template": {
       "gamma_severity_marks": {
-        "shape_k": 1.8,
-        "scale_theta": 0.7
-      },
-      "double_exponential_base_shock": {
-        "probability_positive": 0.45,
-        "eta_plus": 8.0,
-        "eta_minus": 10.0
-      },
-      "coupled_gap_marks": {
-        "sigma_g": 0.22
+        "shape_k": 1.8
       }
     },
     "return_clock_exposure_parameters": {

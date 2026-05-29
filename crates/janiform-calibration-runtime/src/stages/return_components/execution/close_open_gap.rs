@@ -1,4 +1,6 @@
 use chrono::{DateTime, Utc};
+use janiform_foundations::time::duration_nanos_to_hours;
+use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
 
 use super::super::contracts::{
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedCloseOpenGapCandidate,
@@ -9,7 +11,6 @@ use super::super::contracts::{
 use super::super::{signal_partition_fit, surprise_episode_selection_fit};
 use super::signals::ReturnComponentsStagePreparedCandidateGenerationInput;
 use crate::shock_mark_fitting::fit_shared_news_mark_law_from_shock_samples;
-use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
 
 pub(crate) fn prepare_candidate_generation_input(
     exchange_code: &str,
@@ -47,6 +48,33 @@ pub(crate) fn prepare_candidate_generation_input(
             .close_open_gap_detection_policy
             .material_gap_absolute_return_tolerance
     );
+
+    let source_window_exposure = calendar_registry
+        .resolve_market_state_exposure_in_utc_interval(
+            exchange_code,
+            candidate_generation_input
+                .known_news_calendar
+                .source_window
+                .window_start_utc_nanos,
+            candidate_generation_input
+                .known_news_calendar
+                .source_window
+                .window_end_utc_nanos,
+        )
+        .map_err(|source| {
+            ReturnComponentsStageCandidateGenerationInputError::SourceWindowStateExposureResolutionFailed {
+                exchange_code: exchange_code.to_string(),
+                window_start_utc_nanos: candidate_generation_input
+                    .known_news_calendar
+                    .source_window
+                    .window_start_utc_nanos,
+                window_end_utc_nanos: candidate_generation_input
+                    .known_news_calendar
+                    .source_window
+                    .window_end_utc_nanos,
+                error_message: source.to_string(),
+            }
+        })?;
 
     let fitted_surprise_episode_selection_layer =
         surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
@@ -104,6 +132,12 @@ pub(crate) fn prepare_candidate_generation_input(
         candidate_generation_input,
         derived_close_open_gap_candidates,
         close_open_gap_detection_filter,
+        source_window_open_exposure_hours: duration_nanos_to_hours(
+            source_window_exposure.open_window_nanos,
+        ),
+        source_window_closed_exposure_hours: duration_nanos_to_hours(
+            source_window_exposure.closed_window_nanos,
+        ),
     })
 }
 

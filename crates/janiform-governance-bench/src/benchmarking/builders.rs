@@ -19,7 +19,9 @@ use janiform_engine_sufficient_statistics::{
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::HawkesKernelParameters;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::news::{
+    GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
+};
 
 use super::catalog::BenchmarkScenarioWorkloadProfile;
 use super::harness::OraclePricerSufficientStatisticsBenchmarkHarnessError;
@@ -51,7 +53,6 @@ pub fn build_equation_specification(
 
     let gamma_mark_configuration = GammaSeverityMarkConfiguration::try_new(
         model_parameters.gamma_shape_k,
-        model_parameters.gamma_scale_theta,
     )
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidModelGammaMarkConfiguration {
@@ -188,12 +189,23 @@ pub fn build_oracle_transform_input(
             ),
             0.0,
         ),
+        ComplexScalar::new(0.0, 0.0),
         interpolate_range(
             solver_probes.seasonality_factor_min,
             solver_probes.seasonality_factor_max,
             noise,
         ),
         news_intensity_input,
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 1.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
+        },
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 1.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
+        },
         profile.interval_settings.interval_delta,
         profile.model_state.initial_excitation_state,
     )

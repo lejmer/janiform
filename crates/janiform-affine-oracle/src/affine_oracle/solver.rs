@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
 
+use super::news_transform::{GammaNormalNewsTransformComponents, gamma_normal_news_domain_metric};
 use super::{
     EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
     EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
@@ -691,7 +692,7 @@ where
         / transform_input
             .equation_specification
             .gamma_severity_mark_configuration
-            .scale_theta;
+            .derived_unit_mean_scale();
 
     if !transform_exponent.is_finite() {
         return Ok(termination_context.terminated_result_from_guard_failure(
@@ -913,7 +914,7 @@ fn evaluate_integration_guard_checkpoint(
         / transform_input
             .equation_specification
             .gamma_severity_mark_configuration
-            .scale_theta;
+            .derived_unit_mean_scale();
     let checkpoint_time = completed_step_count as f64 * step_size;
 
     if !integration_state.c_value.is_finite() || integration_state.d_vector.validate().is_err() {
@@ -930,9 +931,19 @@ fn evaluate_integration_guard_checkpoint(
         };
     }
 
-    let d_dot_r = integration_state
-        .d_vector
-        .dot_loadings(transform_input.equation_specification.r());
+    let d_dot_r = gamma_normal_news_domain_metric(GammaNormalNewsTransformComponents {
+        gamma_severity_mark_configuration: transform_input
+            .equation_specification
+            .gamma_severity_mark_configuration,
+        news_intensity: transform_input.news_intensity,
+        known_component_mark_scales: transform_input.known_news_component_mark_scales,
+        surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
+        activity_loading: integration_state
+            .d_vector
+            .dot_loadings(transform_input.equation_specification.r()),
+        return_loading: transform_input.news_return_loading,
+    });
+
     if !d_dot_r.is_finite() {
         return ExponentialAffineTransformGuardCheckpointEvaluation {
             guard_failure: Some(build_guard_failure(

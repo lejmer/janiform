@@ -16,6 +16,7 @@
 
 mod constants;
 mod contracts;
+mod news_transform;
 mod rhs;
 mod runge_kutta;
 mod schedule;

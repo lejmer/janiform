@@ -7,6 +7,7 @@ pub enum CalibrationStage {
     Hawkes,
     ReturnComponents,
     LongVariance,
+    NewsShocks,
     MeanReversion,
     JointRefinement,
     OptionRefinement,

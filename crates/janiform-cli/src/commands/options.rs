@@ -35,6 +35,8 @@ pub(crate) enum CalibrationStageOption {
     ReturnComponents,
     #[value(help = "Resume from the long-variance stage.")]
     LongVariance,
+    #[value(help = "Resume from the news-shocks stage.")]
+    NewsShocks,
     #[value(help = "Resume from the mean-reversion stage.")]
     MeanReversion,
     #[value(help = "Resume from the joint-refinement stage.")]
@@ -43,6 +45,12 @@ pub(crate) enum CalibrationStageOption {
     OptionRefinement,
     #[value(help = "Resume from the finalization stage.")]
     Finalization,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum CalibrationDiagnosticOption {
+    #[value(help = "Include option-surface node and tier shape diagnostics in the fit report.")]
+    OptionSurfaceShape,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]

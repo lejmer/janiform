@@ -2,6 +2,7 @@ use super::{
     CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CalibrationInMemoryStagePayloadState, CalibrationStageParameterArtifact,
     CalibrationStageParameterPayload, CalibrationStagedRunStageReport,
@@ -105,6 +106,25 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
             );
             apply_long_variance_to_return_components_state(payload_state);
         }
+        CalibrationStageParameterPayload::NewsShocks(payload) => {
+            payload_state.news_shocks_stage_payload =
+                Some(crate::stages::news_shocks::NewsShocksStageFittedPayload {
+                    schema_version: CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
+                    news_process_configuration: payload.news_process_configuration.clone(),
+                    surprise_deterministic_intensity_profile: payload
+                        .surprise_deterministic_intensity_profile
+                        .clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                });
+            apply_news_shocks_to_return_components_state(payload_state);
+        }
         CalibrationStageParameterPayload::MeanReversion(payload) => {
             payload_state.mean_reversion_stage_payload = Some(
                 crate::stages::mean_reversion::MeanReversionStageFittedPayload {
@@ -167,6 +187,10 @@ pub(super) fn update_in_memory_payload_state(
             payload_state.long_variance_stage_payload = report.fitted_stage_payload.clone();
             apply_long_variance_to_return_components_state(payload_state);
         }
+        CalibrationStagedRunStageReport::NewsShocks(report) => {
+            payload_state.news_shocks_stage_payload = report.fitted_stage_payload.clone();
+            apply_news_shocks_to_return_components_state(payload_state);
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             payload_state.mean_reversion_stage_payload = report.fitted_stage_payload.clone();
         }
@@ -198,6 +222,29 @@ fn apply_long_variance_to_return_components_state(
     return_components_payload
         .fitted_parameters
         .long_variance_parameters = long_variance_payload.fitted_parameters;
+}
+
+fn apply_news_shocks_to_return_components_state(
+    payload_state: &mut CalibrationInMemoryStagePayloadState,
+) {
+    let Some(news_shocks_payload) = payload_state.news_shocks_stage_payload.as_ref() else {
+        return;
+    };
+
+    let Some(return_components_payload) = payload_state.return_components_stage_payload.as_mut()
+    else {
+        return;
+    };
+
+    return_components_payload
+        .fitted_parameters
+        .news_process_configuration = news_shocks_payload.news_process_configuration.clone();
+
+    return_components_payload
+        .fitted_parameters
+        .surprise_deterministic_intensity_profile = news_shocks_payload
+        .surprise_deterministic_intensity_profile
+        .clone();
 }
 
 fn joint_refinement_payload_from_parameter_payload(

@@ -3470,7 +3470,8 @@ def _validate_hourly_news_intensity_source(raw_source: JsonObject, context: str)
                         f"{context}.known_scheduled_event_timestamps_utc values must be non-empty strings",
                     )
 
-            _require_number(raw_source, "surprise_baseline_intensity", context)
+            _require_number(raw_source, "surprise_open_baseline_intensity", context)
+            _require_number(raw_source, "surprise_closed_baseline_intensity", context)
 
             multipliers: JsonObject = _require_json_object_field(
                 raw_source,

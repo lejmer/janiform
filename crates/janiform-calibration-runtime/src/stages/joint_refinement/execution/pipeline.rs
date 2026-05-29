@@ -42,10 +42,11 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use super::super::objective::evaluate_joint_fitted_parameters;
 use super::super::setup::{
     RestartSeedsBuildInput, build_active_parameter_layout, build_baseline_parameter_vector,
-    build_parameter_bounds, build_restart_seeds, joint_refinement_final_simulation_seed_count,
-    observed_activity_log_shift, observed_activity_log_shift_for_joint_context,
-    parameter_vector_to_fitted_parameters, selected_hawkes_observed_open_event_rate_per_hour,
-    selected_return_components_candidate, stage_input_to_activity_input,
+    build_parameter_bounds, build_restart_seeds, checked_parameter_vector_to_fitted_parameters,
+    joint_refinement_final_simulation_seed_count, observed_activity_log_shift,
+    observed_activity_log_shift_for_joint_context,
+    selected_hawkes_observed_open_event_rate_per_hour, selected_return_components_candidate,
+    stage_input_to_activity_input,
 };
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::stage_resume::restart_search_artifacts_from_upstream_or_resume;
@@ -74,7 +75,6 @@ const JOINT_REFINEMENT_SELECTION_POLICY: &str =
 const FINAL_ASSEMBLY_CANDIDATE_FRONTIER_LABEL: &str = "candidate_frontier";
 const FINAL_ASSEMBLY_SIMULATION_SUMMARIES_LABEL: &str = "simulation_summaries";
 const FINAL_ASSEMBLY_COARSE_TICK_CONSISTENCY_LABEL: &str = "coarse_tick_consistency";
-const FINAL_ASSEMBLY_OPTION_SELECTION_SENSITIVITIES_LABEL: &str = "option_selection_sensitivities";
 const FINAL_ASSEMBLY_OPTION_CALIBRATION_DIAGNOSTICS_LABEL: &str = "option_calibration_diagnostics";
 const FINAL_ASSEMBLY_BASE_UNIT_LABELS: [&str; 3] = [
     FINAL_ASSEMBLY_CANDIDATE_FRONTIER_LABEL,
@@ -519,6 +519,7 @@ fn run_joint_refinement_pipeline_stage_internal(
             &prepared_bootstrap.bootstrap_context,
             &baseline_evaluation_artifacts,
             &restart_search_artifacts,
+            &stage_input.diagnostics,
             progress_sender.as_ref(),
         ) {
             Ok(artifacts) => artifacts,
@@ -963,15 +964,15 @@ fn validate_baseline_parameter_round_trip(
     baseline_parameter_vector: &[f64],
     bootstrap_context: &JointRefinementContext,
 ) -> Result<(), JointRefinementStageExecutionFailure> {
-    let _decoded_fitted_parameters =
-        parameter_vector_to_fitted_parameters(baseline_parameter_vector, bootstrap_context)
-            .ok_or_else(|| {
-                JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-            error_message:
-                "joint refinement baseline parameter vector failed to decode into fitted parameters"
-                    .to_string(),
-        }
-            })?;
+    let _decoded_fitted_parameters = checked_parameter_vector_to_fitted_parameters(
+        baseline_parameter_vector,
+        bootstrap_context,
+    )
+    .map_err(|source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+        error_message: format!(
+            "joint refinement baseline parameter vector failed to decode into fitted parameters: {source}"
+        ),
+    })?;
 
     Ok(())
 }
@@ -1691,6 +1692,7 @@ fn run_option_refinement_if_enabled(
         restart_search_artifacts
             .option_refinement_candidate_frontier
             .as_slice(),
+        stage_input.option_refinement_candidate_count_override,
         stage_input.option_refinement_wall_clock_budget_millis,
         option_context_fingerprint.as_str(),
         progress_sender,
@@ -2019,19 +2021,17 @@ fn assemble_final_stage_outputs(
     bootstrap_context: &JointRefinementContext,
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     restart_search_artifacts: &RestartSearchArtifacts,
+    diagnostics_request: &crate::diagnostics::types::CalibrationDiagnosticsRequest,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Result<FinalAssemblyArtifacts, JointRefinementStageExecutionFailure> {
     let mut final_assembly_progress = FinalAssemblyProgressTracker::new(
         progress_sender,
-        final_assembly_progress_unit_count(restart_search_artifacts),
+        final_assembly_progress_unit_count(restart_search_artifacts, diagnostics_request),
     );
 
-    let include_option_selection_sensitivities = restart_search_artifacts
-        .selected_option_selection_tier_pricing_artifact
-        .is_some();
-
-    let include_option_calibration_diagnostics =
-        final_assembly_includes_option_calibration_diagnostics(restart_search_artifacts);
+    let include_option_calibration_diagnostics = diagnostics_request
+        .option_surface_shape_requested()
+        && final_assembly_has_option_calibration_diagnostic_inputs(restart_search_artifacts);
 
     let selectable_restart_outcomes = build_selectable_restart_outcomes(
         restart_search_artifacts.restart_outcomes.as_slice(),
@@ -2072,13 +2072,10 @@ fn assemble_final_stage_outputs(
     );
 
     let final_seed_evaluation_wall_clock_millis = elapsed_millis(final_seed_evaluation_started_at);
-
     let remaining_final_assembly_started_at = Instant::now();
-
     let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
 
     final_assembly_progress.complete_and_emit(FINAL_ASSEMBLY_SIMULATION_SUMMARIES_LABEL);
-
     final_assembly_progress.emit(FINAL_ASSEMBLY_COARSE_TICK_CONSISTENCY_LABEL);
 
     let coarse_tick_consistency = resolve_selected_coarse_tick_consistency(
@@ -2091,70 +2088,35 @@ fn assemble_final_stage_outputs(
 
     final_assembly_progress.complete_and_emit(FINAL_ASSEMBLY_COARSE_TICK_CONSISTENCY_LABEL);
 
-    if include_option_selection_sensitivities {
-        final_assembly_progress.emit(FINAL_ASSEMBLY_OPTION_SELECTION_SENSITIVITIES_LABEL);
-    }
-
     let selection_artifact_for_diagnostics = restart_search_artifacts
         .selected_option_selection_tier_pricing_artifact
         .as_deref()
-        .map(|selection_artifact| {
-            resolve_option_surface_tier_pricing_artifact(
-                OptionSurfaceTierPricingArtifactResolutionInput {
-                    context: bootstrap_context,
-                    fitted_parameters: &restart_search_artifacts
-                        .best_restart
-                        .final_evaluation
-                        .fitted_parameters,
-                    tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
-                    source_dynamics_parameter_bits: selection_artifact
-                        .cache_key
-                        .source_dynamics_parameter_bits
-                        .as_slice(),
-                    pricing_parameter_bits: selection_artifact
-                        .cache_key
-                        .pricing_parameter_bits
-                        .as_slice(),
-                    include_node_price_sensitivities: true,
-                    theta_warm_start_state: None,
-                    progress: OptionPricingProgressInput::none(),
-                },
-            )
-        })
-        .transpose()
-        .map_err(|error_message| {
-            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
-        })?;
-
-    if include_option_selection_sensitivities {
-        final_assembly_progress
-            .complete_and_emit(FINAL_ASSEMBLY_OPTION_SELECTION_SENSITIVITIES_LABEL);
-    }
+        .filter(|_| include_option_calibration_diagnostics);
 
     if include_option_calibration_diagnostics {
         final_assembly_progress.emit(FINAL_ASSEMBLY_OPTION_CALIBRATION_DIAGNOSTICS_LABEL);
     }
 
-    let option_calibration_diagnostics = build_option_calibration_diagnostics(
-        bootstrap_context,
-        restart_search_artifacts
-            .selected_option_search_tier_pricing_artifact
-            .as_deref(),
-        selection_artifact_for_diagnostics
-            .as_deref()
-            .or(restart_search_artifacts
-                .selected_option_selection_tier_pricing_artifact
-                .as_deref()),
-        restart_search_artifacts
-            .selected_option_audit_tier_pricing_artifact
-            .as_deref(),
-        restart_search_artifacts
-            .option_search_selection_agreement
-            .clone(),
-    )
-    .map_err(|error_message| {
-        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
-    })?;
+    let option_calibration_diagnostics = if include_option_calibration_diagnostics {
+        build_option_calibration_diagnostics(
+            bootstrap_context,
+            restart_search_artifacts
+                .selected_option_search_tier_pricing_artifact
+                .as_deref(),
+            selection_artifact_for_diagnostics,
+            restart_search_artifacts
+                .selected_option_audit_tier_pricing_artifact
+                .as_deref(),
+            restart_search_artifacts
+                .option_search_selection_agreement
+                .clone(),
+        )
+        .map_err(|error_message| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+        })?
+    } else {
+        None
+    };
 
     if include_option_calibration_diagnostics {
         final_assembly_progress
@@ -2174,33 +2136,25 @@ fn assemble_final_stage_outputs(
     })
 }
 
-fn final_assembly_progress_unit_count(restart_search_artifacts: &RestartSearchArtifacts) -> usize {
+fn final_assembly_progress_unit_count(
+    restart_search_artifacts: &RestartSearchArtifacts,
+    diagnostics_request: &crate::diagnostics::types::CalibrationDiagnosticsRequest,
+) -> usize {
     FINAL_ASSEMBLY_BASE_UNIT_LABELS.len()
         + usize::from(
-            restart_search_artifacts
-                .selected_option_selection_tier_pricing_artifact
-                .is_some(),
+            diagnostics_request.option_surface_shape_requested()
+                && final_assembly_has_option_calibration_diagnostic_inputs(
+                    restart_search_artifacts,
+                ),
         )
-        + usize::from(final_assembly_includes_option_calibration_diagnostics(
-            restart_search_artifacts,
-        ))
 }
 
-fn final_assembly_includes_option_calibration_diagnostics(
+fn final_assembly_has_option_calibration_diagnostic_inputs(
     restart_search_artifacts: &RestartSearchArtifacts,
 ) -> bool {
     restart_search_artifacts
-        .selected_option_search_tier_pricing_artifact
+        .selected_option_selection_tier_pricing_artifact
         .is_some()
-        || restart_search_artifacts
-            .selected_option_selection_tier_pricing_artifact
-            .is_some()
-        || restart_search_artifacts
-            .selected_option_audit_tier_pricing_artifact
-            .is_some()
-        || restart_search_artifacts
-            .option_search_selection_agreement
-            .is_some()
 }
 
 fn resolve_selected_coarse_tick_consistency(

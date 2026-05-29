@@ -7,10 +7,12 @@ use super::super::{
     CalibrationStagedRunStageReport, ExchangeCalendarRegistry, HawkesStageExecutionInput,
     HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
     LongVarianceStageExecutionInput, LongVarianceStageReturnComponentsInput,
-    MeanReversionStageReturnComponentsInput, ReturnComponentsStageActivityInput,
+    MeanReversionStageReturnComponentsInput, NewsShocksStageExecutionInput,
+    NewsShocksStageReturnComponentsInput, ReturnComponentsStageActivityInput,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageProgressUpdate,
     run_hawkes_calibration_stage, run_long_variance_calibration_stage,
-    run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
+    run_mean_reversion_calibration_stage, run_news_shocks_calibration_stage,
+    run_return_components_calibration_stage,
     run_return_components_calibration_stage_with_progress_observer,
     run_seasonality_calibration_stage,
 };
@@ -31,6 +33,7 @@ pub(in crate::staged_runner) fn run_stage_for_staged_execution(
         CalibrationStage::Hawkes => run_hawkes_staged_execution_stage(input),
         CalibrationStage::ReturnComponents => run_return_components_staged_execution_stage(input),
         CalibrationStage::LongVariance => run_long_variance_staged_execution_stage(input),
+        CalibrationStage::NewsShocks => run_news_shocks_staged_execution_stage(input),
         CalibrationStage::MeanReversion => run_mean_reversion_staged_execution_stage(input),
         CalibrationStage::JointRefinement
         | CalibrationStage::OptionRefinement
@@ -308,6 +311,64 @@ fn long_variance_return_components_input(
                     run_spec,
                     CalibrationStage::ReturnComponents,
                     CalibrationStage::LongVariance,
+                ),
+            },
+        ),
+    }
+}
+
+fn run_news_shocks_staged_execution_stage(
+    input: RunStageForStagedExecutionInput<'_, '_>,
+) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
+    let stage_input = NewsShocksStageExecutionInput {
+        return_components_input: Some(news_shocks_return_components_input(
+            input.run_spec,
+            input.payload_state,
+        )?),
+        return_components_stage_payload: input
+            .payload_state
+            .return_components_stage_payload
+            .clone(),
+    };
+
+    Ok(CalibrationStagedRunStageReport::NewsShocks(Box::new(
+        run_news_shocks_calibration_stage(input.run_spec, stage_input),
+    )))
+}
+
+fn news_shocks_return_components_input(
+    run_spec: &CalibrationRunSpec,
+    payload_state: &CalibrationInMemoryStagePayloadState,
+) -> Result<NewsShocksStageReturnComponentsInput, CalibrationStagedRunFailure> {
+    match expected_stage_handoff_transport(
+        run_spec,
+        CalibrationStage::ReturnComponents,
+        CalibrationStage::NewsShocks,
+    ) {
+        CalibrationStageHandoffTransport::InMemoryOutput => {
+            let Some(return_components_stage_payload) =
+                payload_state.return_components_stage_payload.as_ref()
+            else {
+                return Err(
+                    CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                        required_stage: CalibrationStage::ReturnComponents,
+                        consuming_stage: CalibrationStage::NewsShocks,
+                    },
+                );
+            };
+
+            Ok(NewsShocksStageReturnComponentsInput::InMemoryOutput {
+                selected_candidate_id: return_components_stage_payload
+                    .selected_candidate_id
+                    .clone(),
+            })
+        }
+        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
+            NewsShocksStageReturnComponentsInput::PersistedArtifactReference {
+                artifact_reference: expected_stage_handoff_artifact_reference(
+                    run_spec,
+                    CalibrationStage::ReturnComponents,
+                    CalibrationStage::NewsShocks,
                 ),
             },
         ),

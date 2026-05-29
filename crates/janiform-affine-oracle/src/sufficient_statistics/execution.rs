@@ -14,6 +14,7 @@ use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionStep, evolve_hawkes_state,
 };
+use janiform_model_kernels::news::NewsComponentMarkScaleConfiguration;
 
 use super::constants::{
     BATCH_SEED_PARTITION_SUBSTREAM_DOMAIN, MAX_INTERVAL_STATISTICS_COUNT,
@@ -642,8 +643,19 @@ fn solve_transform_slice_value(
         ),
         evaluation_point.z_plus,
         evaluation_point.z_minus,
+        ComplexScalar::new(0.0, 0.0),
         context.s_h,
         context.news_intensity,
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 1.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
+        },
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 1.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
+        },
         context.delta,
         context.initial_excitation_state,
     )
@@ -1315,7 +1327,7 @@ mod tests {
                     },
                 )
                 .expect("kernel parameters should construct"),
-                GammaSeverityMarkConfiguration::try_new(1.0, 1.0)
+                GammaSeverityMarkConfiguration::try_new(1.0)
                     .expect("gamma severity marks should construct"),
                 LongVarianceParameters::neutral(),
             )

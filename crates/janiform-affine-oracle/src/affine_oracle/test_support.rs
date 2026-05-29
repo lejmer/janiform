@@ -25,7 +25,7 @@ pub(crate) fn valid_equation_specification() -> ExponentialAffineTransformEquati
             },
         )
         .expect("valid kernel payload should construct"),
-        GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+        GammaSeverityMarkConfiguration::try_new(1.8)
             .expect("valid gamma configuration should construct"),
         LongVarianceParameters::neutral(),
     )

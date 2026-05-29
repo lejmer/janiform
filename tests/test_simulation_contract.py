@@ -18,8 +18,6 @@ from janiform.simulation import (
     SeededTickSimulationValidationError,
 )
 from janiform.simulation.coarse import (
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
@@ -262,28 +260,24 @@ def _valid_news_process_configuration() -> NewsProcessConfiguration:
                 scheduled_event_timestamps_utc_nanos=(),
             ),
             surprise=SurpriseNewsArrivalConfiguration(
-                baseline_intensity=0.0,
+                open_baseline_intensity=0.0,
+                closed_baseline_intensity=0.0,
             ),
         ),
         shared_mark_law=SharedNewsMarkLawConfiguration(
             gamma_severity_marks=GammaSeverityMarkConfiguration(
                 shape_k=1.5,
-                scale_theta=0.9,
             ),
-            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
-                probability_positive=0.4,
-                eta_plus=1.3,
-                eta_minus=1.1,
-            ),
-            coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.75),
         ),
         known_component_mark_scales=NewsComponentMarkScaleConfiguration(
             activity_coupling_scale=0.6,
-            return_jump_scale=1.2,
+            return_jump_drift=0.0,
+            return_jump_volatility=1.2,
         ),
         surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
             activity_coupling_scale=0.6,
-            return_jump_scale=1.2,
+            return_jump_drift=0.0,
+            return_jump_volatility=1.2,
         ),
     )
 

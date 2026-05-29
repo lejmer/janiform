@@ -76,7 +76,8 @@ def test_provider_consumes_materialized_sources_for_hourly_grid(
                 datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC),
                 datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC),
             ],
-            surprise_baseline_intensity=0.1,
+            surprise_open_baseline_intensity=0.1,
+            surprise_closed_baseline_intensity=0.1,
             surprise_deterministic_time_multiplier_by_interval_index={0: 1.0, 1: 2.0, 2: 1.0},
         ),
     )

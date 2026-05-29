@@ -9,7 +9,6 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -53,29 +52,16 @@ pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParame
                     scheduled_event_timestamps_utc_nanos: Vec::new(),
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
+                    open_baseline_intensity: 0.0,
+                    closed_baseline_intensity: 0.0,
                 },
             },
             SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration {
-                    shape_k: 1.5,
-                    scale_theta: 0.8,
-                },
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                    probability_positive: 0.5,
-                    eta_plus: 1.2,
-                    eta_minus: 1.2,
-                },
-                coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.2 },
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5)
+                    .expect("test gamma severity should validate"),
             },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 0.0,
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 0.0,
-            },
+            NewsComponentMarkScaleConfiguration::neutral(),
+            NewsComponentMarkScaleConfiguration::neutral(),
         )
         .expect("test news process configuration should validate"),
         surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {

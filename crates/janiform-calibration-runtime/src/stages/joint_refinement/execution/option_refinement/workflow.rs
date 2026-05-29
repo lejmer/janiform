@@ -37,6 +37,7 @@ use super::pricing_block_optimizer::{
 use super::reduced_model::option_reduced_model_parameter_count;
 
 pub(crate) const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT: usize = 5;
+const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_SELECTION_CANDIDATE_COUNT: usize = 1;
 const OPTION_SELECTION_TIER_EVALUATION_BUDGET: usize = 1;
 
 #[derive(Debug)]
@@ -163,6 +164,7 @@ struct SelectionTierPricingProgressSnapshotSource<'a> {
     shared_progress_state: &'a OptionRefinementSharedProgressState,
     restart_id: &'a str,
     total_units: usize,
+    current_progress_percent: Cell<usize>,
 }
 
 impl OptionPricingProgressSnapshotSource for SelectionTierPricingProgressSnapshotSource<'_> {
@@ -170,8 +172,16 @@ impl OptionPricingProgressSnapshotSource for SelectionTierPricingProgressSnapsho
         &self,
         pricing_event_progress_percent: Option<usize>,
     ) -> OptionPricingProgressSnapshot {
-        let evaluation_progress_percent =
-            pricing_event_progress_percent.map(|progress_percent| progress_percent.min(99));
+        let evaluation_progress_percent = pricing_event_progress_percent.map(|progress_percent| {
+            let current_progress_percent = self
+                .current_progress_percent
+                .get()
+                .max(progress_percent.min(99));
+
+            self.current_progress_percent.set(current_progress_percent);
+
+            current_progress_percent
+        });
 
         if let Some(evaluation_progress_percent) = evaluation_progress_percent {
             self.shared_progress_state
@@ -437,9 +447,18 @@ pub(crate) fn desired_joint_refinement_option_refinement_candidate_count(
         .unwrap_or(JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT)
 }
 
+fn desired_joint_refinement_option_refinement_selection_candidate_count(
+    candidate_count_override: Option<usize>,
+) -> usize {
+    candidate_count_override
+        .filter(|candidate_count| *candidate_count > 0)
+        .unwrap_or(JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_SELECTION_CANDIDATE_COUNT)
+}
+
 pub(crate) fn run_option_refinement(
     context: &JointRefinementContext,
     dynamics_candidates: &[JointRefinementRestartOutcome],
+    selection_candidate_count_override: Option<usize>,
     wall_clock_budget_millis: Option<u64>,
     option_context_fingerprint: &str,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
@@ -474,6 +493,12 @@ pub(crate) fn run_option_refinement(
     );
 
     let search_candidates = search_tier_refinement.candidates;
+
+    let selection_candidate_count =
+        desired_joint_refinement_option_refinement_selection_candidate_count(
+            selection_candidate_count_override,
+        );
+
     if search_candidates.is_empty() {
         return Err(
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -484,7 +509,8 @@ pub(crate) fn run_option_refinement(
         );
     }
 
-    let selection_frontier = select_option_refinement_selection_frontier(search_candidates);
+    let selection_frontier =
+        select_option_refinement_selection_frontier(search_candidates, selection_candidate_count);
 
     let selection_candidates = evaluate_selection_tier_candidates(
         context,
@@ -516,29 +542,23 @@ pub(crate) fn run_option_refinement(
 }
 
 fn select_option_refinement_selection_frontier(
-    search_candidates: Vec<SearchTierCandidate>,
+    mut search_candidates: Vec<SearchTierCandidate>,
+    selection_candidate_count: usize,
 ) -> Vec<SearchTierCandidate> {
-    let Some(best_search_tier_score) = search_candidates
-        .iter()
-        .map(|candidate| candidate.search_tier_score)
-        .min_by(f64::total_cmp)
-    else {
-        return search_candidates;
-    };
+    search_candidates.sort_by(|left, right| {
+        left.search_tier_score
+            .total_cmp(&right.search_tier_score)
+            .then_with(|| left.source_rank.cmp(&right.source_rank))
+            .then_with(|| {
+                left.restart_outcome
+                    .restart_id
+                    .cmp(&right.restart_outcome.restart_id)
+            })
+    });
 
-    let effective_sample_count = search_candidates
-        .iter()
-        .map(option_refinement_effective_search_sample_count)
-        .max()
-        .unwrap_or(1);
-
-    let admissible_score_ceiling =
-        option_refinement_selection_score_ceiling(best_search_tier_score, effective_sample_count);
+    search_candidates.truncate(selection_candidate_count.max(1));
 
     search_candidates
-        .into_iter()
-        .filter(|candidate| candidate.search_tier_score <= admissible_score_ceiling)
-        .collect()
 }
 
 pub(super) fn option_refinement_effective_search_sample_count(
@@ -551,13 +571,6 @@ pub(super) fn option_refinement_effective_search_sample_count(
         .map(|maturity_score| maturity_score.maturity_weight)
         .sum::<usize>()
         .max(1)
-}
-
-fn option_refinement_selection_score_ceiling(
-    best_search_tier_score: f64,
-    effective_sample_count: usize,
-) -> f64 {
-    best_search_tier_score + option_score_resolution(best_search_tier_score, effective_sample_count)
 }
 
 fn context_with_option_pricing_cpu_count(
@@ -1237,6 +1250,7 @@ fn evaluate_parallel_selection_tier_candidate(
         shared_progress_state: shared_progress_state.as_ref(),
         restart_id,
         total_units,
+        current_progress_percent: Cell::new(0),
     };
 
     let selection_artifact = resolve_option_surface_tier_pricing_artifact(
@@ -1635,12 +1649,14 @@ mod tests {
 
     use super::{
         JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT,
+        JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_SELECTION_CANDIDATE_COUNT,
         OptionRefinementProgressContext, OptionRefinementSharedProgressState,
         OptionSearchSelectionRankInput, SelectionTierPricingProgressSnapshotSource,
         build_search_selection_agreement_diagnostics_from_scores,
         desired_joint_refinement_option_refinement_candidate_count,
+        desired_joint_refinement_option_refinement_selection_candidate_count,
         option_pricing_block_evaluation_budget, option_refinement_candidate_search_budget,
-        option_refinement_selection_score_ceiling, search_tier_refinement_failure_message,
+        search_tier_refinement_failure_message,
     };
 
     #[test]
@@ -1660,16 +1676,18 @@ mod tests {
     }
 
     #[test]
-    fn option_refinement_selection_score_ceiling_uses_spread_residual_uncertainty() {
-        let best_search_tier_score = 2.0;
-        let effective_sample_count = 16;
-
+    fn option_refinement_selection_candidate_count_defaults_to_one() {
         assert_eq!(
-            option_refinement_selection_score_ceiling(
-                best_search_tier_score,
-                effective_sample_count,
-            ),
-            best_search_tier_score + best_search_tier_score / 32.0f64.sqrt()
+            desired_joint_refinement_option_refinement_selection_candidate_count(None),
+            JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_SELECTION_CANDIDATE_COUNT,
+        );
+    }
+
+    #[test]
+    fn option_refinement_selection_candidate_count_honors_positive_override() {
+        assert_eq!(
+            desired_joint_refinement_option_refinement_selection_candidate_count(Some(3)),
+            3,
         );
     }
 
@@ -1940,6 +1958,7 @@ mod tests {
             shared_progress_state: &shared_progress_state,
             restart_id: "baseline",
             total_units: 1,
+            current_progress_percent: Cell::new(0),
         };
 
         let first_snapshot = progress_source.option_pricing_progress_snapshot(Some(100));
@@ -1953,8 +1972,8 @@ mod tests {
 
         assert_eq!(second_snapshot.current_evaluation_count, Some(1));
         assert_eq!(second_snapshot.total_evaluation_budget, Some(1));
-        assert_eq!(second_snapshot.evaluation_progress_percent, Some(25));
-        assert_eq!(second_snapshot.aggregate_progress_percent, Some(25));
+        assert_eq!(second_snapshot.evaluation_progress_percent, Some(99));
+        assert_eq!(second_snapshot.aggregate_progress_percent, Some(99));
     }
 
     #[test]

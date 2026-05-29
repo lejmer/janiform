@@ -34,6 +34,7 @@ pub use current_state::{
     estimate_current_state_from_observed_data, estimate_current_states_from_observed_data,
     estimate_current_states_from_observed_data_with_observer,
 };
+pub use diagnostics::types::{CalibrationDiagnosticsRequest, CalibrationExtendedDiagnosticKind};
 pub use execution_bridge::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
@@ -182,6 +183,11 @@ pub use stages::mean_reversion::{
     MeanReversionStageFittedPayload, MeanReversionStageObservation,
     MeanReversionStageReturnComponentsInput, MeanReversionStageSeasonalityInput,
     run_mean_reversion_calibration_stage,
+};
+pub use stages::news_shocks::{
+    NewsShocksStageExecutionFailure, NewsShocksStageExecutionInput,
+    NewsShocksStageExecutionMetadata, NewsShocksStageExecutionReport, NewsShocksStageFittedPayload,
+    NewsShocksStageReturnComponentsInput, run_news_shocks_calibration_stage,
 };
 pub use stages::return_components::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,

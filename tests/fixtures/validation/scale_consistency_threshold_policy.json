@@ -29,13 +29,13 @@
         {
           "threshold_id": "subhour/open_jump_abs_tail_expected_shortfall_ratio",
           "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
-          "max_absolute_delta": 0.20,
+          "max_absolute_delta": 0.2,
           "rationale": "Open-jump tail severity should remain aligned after fine-path aggregation."
         },
         {
           "threshold_id": "subhour/closed_gap_abs_tail_expected_shortfall_ratio",
           "metric_id": "closed_gap_abs_tail_expected_shortfall_ratio",
-          "max_absolute_delta": 0.20,
+          "max_absolute_delta": 0.2,
           "rationale": "Closed-gap tail severity should remain aligned after fine-path aggregation."
         },
         {
@@ -53,19 +53,19 @@
         {
           "threshold_id": "hourly/returns_central_variance",
           "metric_id": "returns_central_variance",
-          "max_absolute_delta": 0.50,
+          "max_absolute_delta": 0.5,
           "rationale": "Hourly variance alignment can allow modest aggregation drift while remaining suitable for release gating."
         },
         {
           "threshold_id": "hourly/returns_distribution_wasserstein_distance",
           "metric_id": "returns_distribution_wasserstein_distance",
-          "max_absolute_delta": 0.40,
+          "max_absolute_delta": 0.4,
           "rationale": "Hourly return-distribution distance should stay within a moderate governance band."
         },
         {
           "threshold_id": "hourly/volatility_abs_return_acf_distribution_distance",
           "metric_id": "volatility_abs_return_acf_distribution_distance",
-          "max_absolute_delta": 0.20,
+          "max_absolute_delta": 0.2,
           "rationale": "Hourly volatility clustering distance can be looser than subhour distance while still protecting scale coherence."
         },
         {

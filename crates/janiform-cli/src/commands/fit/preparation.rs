@@ -8,6 +8,7 @@ use janiform::calibration::market_data::{
 };
 use janiform::calibration::presets::ResolvedMarketProfile;
 use janiform::calibration::staged::{
+    CalibrationDiagnosticsRequest, CalibrationExtendedDiagnosticKind,
     CalibrationMarketDataCarryInput, CalibrationMarketDataMeanReversionConfiguration,
     CalibrationMarketDataOutputPreferences, CalibrationMarketDataPreparationRequest,
     CalibrationMarketDataWorkflowScope,
@@ -20,6 +21,7 @@ use janiform_workflows::fit::{
 
 use super::labels::workflow_scope_argument_label;
 use crate::commands::options;
+use crate::commands::options::CalibrationDiagnosticOption;
 use crate::commands::options::TickDataOptions;
 use crate::commands::options::WorkflowScope;
 use crate::commands::shared::market_data::prepare_market_data_command_inputs;
@@ -30,16 +32,18 @@ use crate::error::CliError;
 
 const FIT_PREPARATION_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.request.v1";
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct FitPreparationOverrides {
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+    pub(crate) option_refinement_candidate_count: Option<usize>,
+    pub(crate) diagnostics: Vec<CalibrationDiagnosticOption>,
     pub(crate) treat_calibration_warnings_as_errors: bool,
     pub(crate) stylized_fact_huber_cutoff: Option<f64>,
     pub(crate) stylized_fact_admissibility_z_threshold: Option<f64>,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct FitPreviewOptions {
     pub(crate) workflow_scope: Option<WorkflowScope>,
     pub(crate) execution_mode: Option<CalibrationExecutionMode>,
@@ -68,6 +72,21 @@ pub(crate) struct FitPreviewInputs {
     pub(crate) known_news_path: Option<PathBuf>,
     pub(crate) session_definition_path: Option<PathBuf>,
     pub(crate) market_profile: Option<ResolvedMarketProfile>,
+}
+
+fn calibration_diagnostics_request(
+    diagnostics: &[CalibrationDiagnosticOption],
+) -> CalibrationDiagnosticsRequest {
+    CalibrationDiagnosticsRequest {
+        extended: diagnostics
+            .iter()
+            .map(|diagnostic| match diagnostic {
+                CalibrationDiagnosticOption::OptionSurfaceShape => {
+                    CalibrationExtendedDiagnosticKind::OptionSurfaceShape
+                }
+            })
+            .collect(),
+    }
 }
 
 pub(crate) fn prepare_fit_preview(
@@ -169,9 +188,14 @@ pub(crate) fn prepare_fit_preview(
         treat_calibration_warnings_as_errors: preview_options
             .overrides
             .treat_calibration_warnings_as_errors,
-        joint_refinement_option_refinement_candidate_count_override: None,
+        joint_refinement_option_refinement_candidate_count_override: preview_options
+            .overrides
+            .option_refinement_candidate_count,
         joint_refinement_option_refinement_wall_clock_budget_millis: None,
         joint_refinement_audit_option_pricing_enabled: false,
+        diagnostics: calibration_diagnostics_request(
+            preview_options.overrides.diagnostics.as_slice(),
+        ),
         stylized_fact_huber_cutoff: preview_options.overrides.stylized_fact_huber_cutoff,
         stylized_fact_admissibility_z_threshold: preview_options
             .overrides

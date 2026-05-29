@@ -28,7 +28,6 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -1687,25 +1686,23 @@ fn build_news_process_configuration(
                 scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
             },
             surprise: SurpriseNewsArrivalConfiguration {
-                baseline_intensity: 0.0,
+                open_baseline_intensity: 0.0,
+                closed_baseline_intensity: 0.0,
             },
         },
         SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5)
                 .expect("news gamma severity configuration should construct"),
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                0.4, 1.3, 1.1,
-            )
-            .expect("news base shock configuration should construct"),
-            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: 0.6,
-            return_jump_scale: 1.2,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 1.2,
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: 0.6,
-            return_jump_scale: 1.2,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 1.2,
         },
     )
     .expect("news process configuration should construct")
@@ -1834,21 +1831,21 @@ impl ScriptedRandomnessFactory {
 
     fn combined_news_mark_draws(&self) -> Vec<f64> {
         const SEVERITY_DRAWS_PER_EVENT: usize = 3;
-        const BASE_SHOCK_DRAWS_PER_EVENT: usize = 2;
+        const RETURN_SHOCK_DRAWS_PER_EVENT: usize = 2;
 
         let severity_chunks = self.news_severity_draws.chunks(SEVERITY_DRAWS_PER_EVENT);
-        let base_shock_chunks = self
+        let return_shock_chunks = self
             .news_return_jump_draws
-            .chunks(BASE_SHOCK_DRAWS_PER_EVENT);
+            .chunks(RETURN_SHOCK_DRAWS_PER_EVENT);
         let combined_capacity = self
             .news_severity_draws
             .len()
             .saturating_add(self.news_return_jump_draws.len());
         let mut combined_draws = Vec::with_capacity(combined_capacity);
 
-        for (severity_chunk, base_shock_chunk) in severity_chunks.zip(base_shock_chunks) {
+        for (severity_chunk, return_shock_chunk) in severity_chunks.zip(return_shock_chunks) {
             combined_draws.extend_from_slice(severity_chunk);
-            combined_draws.extend_from_slice(base_shock_chunk);
+            combined_draws.extend_from_slice(return_shock_chunk);
         }
 
         let paired_event_count = self
@@ -1858,18 +1855,18 @@ impl ScriptedRandomnessFactory {
             .min(
                 self.news_return_jump_draws
                     .len()
-                    .div_ceil(BASE_SHOCK_DRAWS_PER_EVENT),
+                    .div_ceil(RETURN_SHOCK_DRAWS_PER_EVENT),
             );
         let paired_severity_draw_count = paired_event_count * SEVERITY_DRAWS_PER_EVENT;
-        let paired_base_shock_draw_count = paired_event_count * BASE_SHOCK_DRAWS_PER_EVENT;
+        let paired_return_shock_draw_count = paired_event_count * RETURN_SHOCK_DRAWS_PER_EVENT;
 
         if paired_severity_draw_count < self.news_severity_draws.len() {
             combined_draws
                 .extend_from_slice(&self.news_severity_draws[paired_severity_draw_count..]);
         }
-        if paired_base_shock_draw_count < self.news_return_jump_draws.len() {
+        if paired_return_shock_draw_count < self.news_return_jump_draws.len() {
             combined_draws
-                .extend_from_slice(&self.news_return_jump_draws[paired_base_shock_draw_count..]);
+                .extend_from_slice(&self.news_return_jump_draws[paired_return_shock_draw_count..]);
         }
 
         combined_draws

@@ -1355,7 +1355,7 @@ fn build_equation_specification() -> ExponentialAffineTransformEquationSpecifica
 
     ExponentialAffineTransformEquationSpecification::try_new(
         kernel_parameters,
-        GammaSeverityMarkConfiguration::try_new(1.8, 0.7).expect("gamma marks should be valid"),
+        GammaSeverityMarkConfiguration::try_new(1.8).expect("gamma marks should be valid"),
         LongVarianceParameters::neutral(),
     )
     .expect("equation specification should be valid")

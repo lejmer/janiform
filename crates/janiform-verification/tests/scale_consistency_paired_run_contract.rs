@@ -353,8 +353,7 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
     .expect("hawkes parameters should validate");
     let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
         hawkes_kernel_parameters,
-        GammaSeverityMarkConfiguration::try_new(2.0, 0.4)
-            .expect("gamma severity marks should validate"),
+        GammaSeverityMarkConfiguration::try_new(2.0).expect("gamma severity marks should validate"),
         LongVarianceParameters::neutral(),
     )
     .expect("equation specification should validate");

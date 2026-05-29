@@ -105,8 +105,12 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strikes": [90.0],
-        "maturity_intervals": [8766.0],
+        "strikes": [
+          90.0
+        ],
+        "maturity_intervals": [
+          8766.0
+        ],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -117,7 +121,7 @@
         "integration_step_count": 4096,
         "quadrature_rule": "midpoint",
         "stability_controls": {
-          "convergence_absolute_tolerance": 0.00001,
+          "convergence_absolute_tolerance": 1e-05,
           "convergence_relative_tolerance": 0.0001,
           "terminal_integrand_absolute_tolerance": 0.0005,
           "terminal_integrand_ratio_tolerance": 0.01,
@@ -144,8 +148,12 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strikes": [100.0],
-        "maturity_intervals": [8766.0],
+        "strikes": [
+          100.0
+        ],
+        "maturity_intervals": [
+          8766.0
+        ],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -156,7 +164,7 @@
         "integration_step_count": 4096,
         "quadrature_rule": "midpoint",
         "stability_controls": {
-          "convergence_absolute_tolerance": 0.00001,
+          "convergence_absolute_tolerance": 1e-05,
           "convergence_relative_tolerance": 0.0001,
           "terminal_integrand_absolute_tolerance": 0.0005,
           "terminal_integrand_ratio_tolerance": 0.01,
@@ -183,8 +191,12 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strikes": [110.0],
-        "maturity_intervals": [8766.0],
+        "strikes": [
+          110.0
+        ],
+        "maturity_intervals": [
+          8766.0
+        ],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -195,7 +207,7 @@
         "integration_step_count": 4096,
         "quadrature_rule": "midpoint",
         "stability_controls": {
-          "convergence_absolute_tolerance": 0.00001,
+          "convergence_absolute_tolerance": 1e-05,
           "convergence_relative_tolerance": 0.0001,
           "terminal_integrand_absolute_tolerance": 0.0005,
           "terminal_integrand_ratio_tolerance": 0.01,
@@ -222,8 +234,12 @@
       "payoff_type": "put",
       "market_inputs": {
         "spot": 100.0,
-        "strikes": [90.0],
-        "maturity_intervals": [8766.0],
+        "strikes": [
+          90.0
+        ],
+        "maturity_intervals": [
+          8766.0
+        ],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -234,7 +250,7 @@
         "integration_step_count": 4096,
         "quadrature_rule": "midpoint",
         "stability_controls": {
-          "convergence_absolute_tolerance": 0.00001,
+          "convergence_absolute_tolerance": 1e-05,
           "convergence_relative_tolerance": 0.0001,
           "terminal_integrand_absolute_tolerance": 0.0005,
           "terminal_integrand_ratio_tolerance": 0.01,
@@ -261,8 +277,12 @@
       "payoff_type": "put",
       "market_inputs": {
         "spot": 100.0,
-        "strikes": [100.0],
-        "maturity_intervals": [8766.0],
+        "strikes": [
+          100.0
+        ],
+        "maturity_intervals": [
+          8766.0
+        ],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -273,7 +293,7 @@
         "integration_step_count": 4096,
         "quadrature_rule": "midpoint",
         "stability_controls": {
-          "convergence_absolute_tolerance": 0.00001,
+          "convergence_absolute_tolerance": 1e-05,
           "convergence_relative_tolerance": 0.0001,
           "terminal_integrand_absolute_tolerance": 0.0005,
           "terminal_integrand_ratio_tolerance": 0.01,
@@ -300,8 +320,12 @@
       "payoff_type": "put",
       "market_inputs": {
         "spot": 100.0,
-        "strikes": [110.0],
-        "maturity_intervals": [8766.0],
+        "strikes": [
+          110.0
+        ],
+        "maturity_intervals": [
+          8766.0
+        ],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -312,7 +336,7 @@
         "integration_step_count": 4096,
         "quadrature_rule": "midpoint",
         "stability_controls": {
-          "convergence_absolute_tolerance": 0.00001,
+          "convergence_absolute_tolerance": 1e-05,
           "convergence_relative_tolerance": 0.0001,
           "terminal_integrand_absolute_tolerance": 0.0005,
           "terminal_integrand_ratio_tolerance": 0.01,
@@ -339,8 +363,12 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strikes": [100.0],
-        "maturity_intervals": [8766.0],
+        "strikes": [
+          100.0
+        ],
+        "maturity_intervals": [
+          8766.0
+        ],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -351,10 +379,10 @@
         "integration_step_count": 2,
         "quadrature_rule": "midpoint",
         "stability_controls": {
-          "convergence_absolute_tolerance": 0.00000001,
-          "convergence_relative_tolerance": 0.00000001,
-          "terminal_integrand_absolute_tolerance": 0.00000001,
-          "terminal_integrand_ratio_tolerance": 0.000001,
+          "convergence_absolute_tolerance": 1e-08,
+          "convergence_relative_tolerance": 1e-08,
+          "terminal_integrand_absolute_tolerance": 1e-08,
+          "terminal_integrand_ratio_tolerance": 1e-06,
           "quality_gate": "enforce_failure"
         }
       },

@@ -272,7 +272,7 @@ fn build_run_request(seed: u64, horizon_interval_count: usize) -> SufficientStat
 
     let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
         kernel_parameters,
-        GammaSeverityMarkConfiguration::try_new(1.7, 0.8)
+        GammaSeverityMarkConfiguration::try_new(1.7)
             .expect("fixture gamma mark configuration should construct"),
         LongVarianceParameters::neutral(),
     )

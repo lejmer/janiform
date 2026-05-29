@@ -2,13 +2,13 @@ use janiform_foundations::randomness::{SimulationRandomnessStream, sample_standa
 
 pub(crate) fn sample_gamma_shape_scale<R>(
     shape_k: f64,
-    scale_theta: f64,
+    scale: f64,
     randomness_stream: &mut R,
 ) -> f64
 where
     R: SimulationRandomnessStream + ?Sized,
 {
-    sample_gamma_unit_scale(shape_k, randomness_stream) * scale_theta
+    sample_gamma_unit_scale(shape_k, randomness_stream) * scale
 }
 
 fn sample_gamma_unit_scale<R>(shape_k: f64, randomness_stream: &mut R) -> f64
@@ -55,15 +55,4 @@ where
             return d * v;
         }
     }
-}
-
-pub(crate) fn sample_exponential_with_rate<R>(rate: f64, randomness_stream: &mut R) -> f64
-where
-    R: SimulationRandomnessStream + ?Sized,
-{
-    let uniform_draw = randomness_stream
-        .next_unit_interval_f64()
-        .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
-
-    -uniform_draw.ln() / rate
 }

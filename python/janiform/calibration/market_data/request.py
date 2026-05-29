@@ -22,8 +22,9 @@ from .contracts import (
     validate_option_surface_scope,
     validate_tick_price_input_policy,
 )
-from ..errors import calibration_error
+from ..diagnostics import CalibrationDiagnosticsRequest
 from ..effort import CalibrationEffortOptions, STANDARD_CALIBRATION_EFFORT
+from ..errors import calibration_error
 from ..staged import CalibrationStage, CalibrationStageSolverSettings
 from ...contracts.base import (
     ContractModel,
@@ -74,6 +75,9 @@ class MarketDataCalibrationRequest(ContractModel):
     joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
     joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None
     joint_refinement_audit_option_pricing_enabled: bool = False
+    diagnostics: CalibrationDiagnosticsRequest = field(
+        default_factory=CalibrationDiagnosticsRequest
+    )
     stylized_fact_huber_cutoff: Optional[float] = None
     stylized_fact_admissibility_z_threshold: Optional[float] = None
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
@@ -116,6 +120,18 @@ class MarketDataCalibrationRequest(ContractModel):
             raise calibration_error(
                 "joint_refinement_audit_option_pricing_enabled",
                 "requires option_surface_source",
+            )
+
+        if not isinstance(self.diagnostics, CalibrationDiagnosticsRequest):
+            raise calibration_error(
+                "diagnostics",
+                "must be a CalibrationDiagnosticsRequest",
+            )
+
+        if self.diagnostics.option_surface_shape_requested() and self.option_surface_source is None:
+            raise calibration_error(
+                "diagnostics.extended",
+                "option_surface_shape requires option_surface_source",
             )
 
         validate_option_surface_scope(
@@ -443,6 +459,20 @@ class MarketDataCalibrationRequest(ContractModel):
                 )
                 if "joint_refinement_audit_option_pricing_enabled" in raw_payload
                 else False
+            ),
+            diagnostics=(
+                CalibrationDiagnosticsRequest.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "diagnostics",
+                        "diagnostics",
+                        calibration_error,
+                    ),
+                    field_path="diagnostics",
+                )
+                if "diagnostics" in raw_payload
+                and raw_payload["diagnostics"] is not None
+                else CalibrationDiagnosticsRequest()
             ),
             stylized_fact_huber_cutoff=(
                 require_positive_finite_number(

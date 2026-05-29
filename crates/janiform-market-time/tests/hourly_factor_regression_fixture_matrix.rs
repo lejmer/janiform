@@ -360,7 +360,8 @@ fn build_contract_for_canonical_case(
             } => (hourly_factors.clone(), materialization_method.clone()),
             HourlyNewsIntensitySourceFixture::Materialized {
                 known_scheduled_event_timestamps_utc,
-                surprise_baseline_intensity,
+                surprise_open_baseline_intensity,
+                surprise_closed_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index,
             } => {
                 let known_scheduled_event_timestamps_utc_nanos =
@@ -378,7 +379,8 @@ fn build_contract_for_canonical_case(
                         interval_duration_nanos: NANOS_PER_HOUR,
                         known_scheduled_event_timestamps_utc_nanos:
                             &known_scheduled_event_timestamps_utc_nanos,
-                        surprise_baseline_intensity: *surprise_baseline_intensity,
+                        surprise_open_baseline_intensity: *surprise_open_baseline_intensity,
+                        surprise_closed_baseline_intensity: *surprise_closed_baseline_intensity,
                         surprise_deterministic_time_multiplier_by_interval_index:
                             &parsed_surprise_time_multipliers,
                     },

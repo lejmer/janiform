@@ -37,6 +37,13 @@ pub(crate) fn long_variance_retained_stationary_level_floor() -> f64 {
     1.0 / LONG_VARIANCE_STATIONARY_COMPONENT_COUNT
 }
 
+pub(crate) fn long_variance_retained_stationary_level_acceptance_floor() -> f64 {
+    // The accepted boundary is one representable value below the mathematical
+    // floor so parameters projected onto the floor round-trip through
+    // independent event-drift multiplication and division.
+    long_variance_retained_stationary_level_floor().next_down()
+}
+
 pub(crate) fn long_variance_event_feedback_drift_budget(mean_reversion_rate: f64) -> Option<f64> {
     if !mean_reversion_rate.is_finite() || mean_reversion_rate <= 0.0 {
         return None;
@@ -123,5 +130,22 @@ pub(crate) fn project_long_variance_event_loadings_to_stationary_budget(
     LongVarianceSideEventLoadings {
         buy_event_loading: event_loadings.buy_event_loading * scale,
         sell_event_loading: event_loadings.sell_event_loading * scale,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        long_variance_retained_stationary_level_acceptance_floor,
+        long_variance_retained_stationary_level_floor,
+    };
+
+    #[test]
+    fn retained_stationary_level_acceptance_floor_closes_boundary_round_trips() {
+        let retained_floor = long_variance_retained_stationary_level_floor();
+        let acceptance_floor = long_variance_retained_stationary_level_acceptance_floor();
+
+        assert!(acceptance_floor < retained_floor);
+        assert_eq!(acceptance_floor.next_up(), retained_floor);
     }
 }

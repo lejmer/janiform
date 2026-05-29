@@ -113,13 +113,13 @@ pub(crate) use janiform_calibration_artifacts::{
     LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
     MeanReversionStageCandidateDiagnostics, MeanReversionStageDiagnostics,
     MeanReversionStageParameterArtifactInput, MeanReversionStageParameterPayload,
-    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    ReturnComponentsStageParameterPayload, SeasonalityStageNormalizationMetadata,
-    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
-    SurpriseNewsDeterministicIntensityProfile, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
-    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
-    calibration_committed_artifact_run_directory,
+    NewsShocksStageParameterArtifactInput, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
+    SeasonalityStageNormalizationMetadata, SeasonalityStageParameterArtifactInput,
+    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
+    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
+    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -312,7 +312,6 @@ pub(crate) use janiform_model_kernels::hawkes::{
     HawkesStructuredRhoSelfDominancePolicy,
 };
 pub(crate) use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration, SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
@@ -997,9 +996,14 @@ fn assert_surprise_news_arrival_configuration_match(
     context: &str,
 ) {
     assert_f64_within_one_ulp(
-        actual_configuration.baseline_intensity,
-        expected_configuration.baseline_intensity,
-        &format!("{context} baseline_intensity"),
+        actual_configuration.open_baseline_intensity,
+        expected_configuration.open_baseline_intensity,
+        &format!("{context} open_baseline_intensity"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.closed_baseline_intensity,
+        expected_configuration.closed_baseline_intensity,
+        &format!("{context} closed_baseline_intensity"),
     );
 }
 
@@ -1012,39 +1016,6 @@ fn assert_shared_news_mark_law_configuration_match(
         actual_configuration.gamma_severity_marks.shape_k,
         expected_configuration.gamma_severity_marks.shape_k,
         &format!("{context} gamma_severity_marks.shape_k"),
-    );
-    assert_f64_within_one_ulp(
-        actual_configuration.gamma_severity_marks.scale_theta,
-        expected_configuration.gamma_severity_marks.scale_theta,
-        &format!("{context} gamma_severity_marks.scale_theta"),
-    );
-    assert_f64_within_one_ulp(
-        actual_configuration
-            .double_exponential_base_shock
-            .probability_positive,
-        expected_configuration
-            .double_exponential_base_shock
-            .probability_positive,
-        &format!("{context} double_exponential_base_shock.probability_positive"),
-    );
-    assert_f64_within_one_ulp(
-        actual_configuration.double_exponential_base_shock.eta_plus,
-        expected_configuration
-            .double_exponential_base_shock
-            .eta_plus,
-        &format!("{context} double_exponential_base_shock.eta_plus"),
-    );
-    assert_f64_within_one_ulp(
-        actual_configuration.double_exponential_base_shock.eta_minus,
-        expected_configuration
-            .double_exponential_base_shock
-            .eta_minus,
-        &format!("{context} double_exponential_base_shock.eta_minus"),
-    );
-    assert_f64_within_one_ulp(
-        actual_configuration.coupled_gap_marks.sigma_g,
-        expected_configuration.coupled_gap_marks.sigma_g,
-        &format!("{context} coupled_gap_marks.sigma_g"),
     );
 }
 
@@ -1059,9 +1030,14 @@ fn assert_news_component_mark_scale_configuration_match(
         &format!("{context} activity_coupling_scale"),
     );
     assert_f64_within_one_ulp(
-        actual_configuration.return_jump_scale,
-        expected_configuration.return_jump_scale,
-        &format!("{context} return_jump_scale"),
+        actual_configuration.return_jump_drift,
+        expected_configuration.return_jump_drift,
+        &format!("{context} return_jump_drift"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.return_jump_volatility,
+        expected_configuration.return_jump_volatility,
+        &format!("{context} return_jump_volatility"),
     );
 }
 
@@ -1798,6 +1774,50 @@ fn stage_parameter_artifact_input(
                 }),
             ))
         }
+        CalibrationStagedRunStageReport::NewsShocks(report) => {
+            let payload = report.fitted_stage_payload.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::NewsShocks,
+                    error_message: "successful news-shocks stage is missing its payload"
+                        .to_string(),
+                },
+            )?;
+            let metadata = report.metadata.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::NewsShocks,
+                    error_message: "successful news-shocks stage is missing metadata".to_string(),
+                },
+            )?;
+
+            Ok(CalibrationStageParameterArtifactInput::NewsShocks(
+                Box::new(NewsShocksStageParameterArtifactInput {
+                    metadata: CalibrationStageParameterBuildMetadata {
+                        stage_output_schema_version: metadata
+                            .stage_output_schema_version
+                            .to_string(),
+                        run_global_seed: metadata.run_global_seed,
+                        stage_seed: metadata.stage_seed,
+                        stage_seed_source: metadata.stage_seed_source,
+                        stage_seed_derivation_policy: metadata
+                            .stage_seed_derivation_policy
+                            .to_string(),
+                        solver_settings: metadata.solver_settings.clone(),
+                    },
+                    news_process_configuration: payload.news_process_configuration.clone(),
+                    surprise_deterministic_intensity_profile: payload
+                        .surprise_deterministic_intensity_profile
+                        .clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                }),
+            ))
+        }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             Ok(CalibrationStageParameterArtifactInput::JointRefinement(
                 Box::new(joint_refinement_like_stage_parameter_artifact_input(
@@ -2309,6 +2329,7 @@ pub(crate) fn staged_run_inputs(
         option_refinement_candidate_count_override: Some(1),
         option_refinement_wall_clock_budget_millis: None,
         audit_option_pricing_enabled: false,
+        diagnostics: Default::default(),
         option_refinement_pricing_input: None,
     }
 }
@@ -2743,6 +2764,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
+                    diagnostics: Default::default(),
                     option_pricing_input: None,
                 },
             )
@@ -2940,13 +2962,8 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
         close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
         open_session_sell_share_proxy: 0.52,
         shared_mark_law_template: SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("gamma severity mark configuration should validate"),
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                0.45, 8.0, 10.0,
-            )
-            .expect("double-exponential base-shock configuration should validate"),
-            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
         },
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),

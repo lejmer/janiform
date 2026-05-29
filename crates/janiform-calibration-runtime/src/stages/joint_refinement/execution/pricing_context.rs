@@ -548,12 +548,18 @@ fn build_option_hourly_factor_contract(
                     .known
                     .scheduled_event_timestamps_utc_nanos
                     .as_slice(),
-                surprise_baseline_intensity: return_components_payload
+                surprise_open_baseline_intensity: return_components_payload
                     .fitted_parameters
                     .news_process_configuration
                     .arrivals
                     .surprise
-                    .baseline_intensity,
+                    .open_baseline_intensity,
+                surprise_closed_baseline_intensity: return_components_payload
+                    .fitted_parameters
+                    .news_process_configuration
+                    .arrivals
+                    .surprise
+                    .closed_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index:
                     surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
             }),
@@ -867,6 +873,7 @@ fn run_option_grid_batch_pricing(
                 aggregate_progress_percent: snapshot.aggregate_progress_percent,
                 current_item_label: Some(format_option_pricing_work_item(&progress, &event)),
                 current_restart_id: progress.current_restart_id.map(str::to_string),
+                current_work_item_status: Some(pricing_progress_phase_status(&event).to_string()),
                 active_restart_count: snapshot.active_restart_count,
                 current_evaluation_count: snapshot.current_evaluation_count,
                 total_evaluation_budget: snapshot.total_evaluation_budget,
@@ -905,6 +912,16 @@ fn run_option_grid_batch_pricing(
     );
 
     pricing_result.map_err(|source| format!("joint option pricing evaluation failed: {source}"))
+}
+
+fn pricing_progress_phase_status(event: &PricingProgressEvent) -> &'static str {
+    match event.phase {
+        PricingProgressPhase::GroupProgress => "pricing groups",
+        PricingProgressPhase::MaturityProgress => "pricing maturities",
+        PricingProgressPhase::IntervalProgress => "pricing intervals",
+        PricingProgressPhase::TransitionRowProgress => "transition rows",
+        PricingProgressPhase::StrikePricingProgress => "pricing strikes",
+    }
 }
 
 fn option_pricing_progress_snapshot(
@@ -3001,12 +3018,18 @@ mod tests {
                         .known
                         .scheduled_event_timestamps_utc_nanos
                         .as_slice(),
-                    surprise_baseline_intensity: return_components_payload
+                    surprise_open_baseline_intensity: return_components_payload
                         .fitted_parameters
                         .news_process_configuration
                         .arrivals
                         .surprise
-                        .baseline_intensity,
+                        .open_baseline_intensity,
+                    surprise_closed_baseline_intensity: return_components_payload
+                        .fitted_parameters
+                        .news_process_configuration
+                        .arrivals
+                        .surprise
+                        .closed_baseline_intensity,
                     surprise_deterministic_time_multiplier_by_interval_index:
                         surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
                 }),

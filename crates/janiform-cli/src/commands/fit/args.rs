@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
+use crate::commands::options::CalibrationDiagnosticOption;
 use crate::commands::options::CalibrationStageOption;
 use crate::commands::options::ExecutionMode;
 use crate::commands::options::RunIdentityOptions;
@@ -81,6 +82,24 @@ By default, janiform fit writes a durable run directory for downstream CLI comma
         help = "Joint-refinement restart candidate budget."
     )]
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Option-refinement candidate count for search and selection tiers."
+    )]
+    pub(crate) option_refinement_candidate_count: Option<usize>,
+
+    #[arg(
+        long = "diagnostic",
+        value_enum,
+        value_name = "KIND",
+        help = "Enable an opt-in calibration diagnostic.",
+        long_help = "Enable an opt-in calibration diagnostic.
+
+Repeat this option to request more than one diagnostic. Diagnostics can add report size or extra finalization work, so regular fit runs keep them off unless requested."
+    )]
+    pub(crate) diagnostics: Vec<CalibrationDiagnosticOption>,
 
     #[arg(
         long,
@@ -228,6 +247,21 @@ pub(crate) struct FitPlanCommand {
         help = "Joint-refinement restart candidate budget."
     )]
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Option-refinement candidate count for search and selection tiers."
+    )]
+    pub(crate) option_refinement_candidate_count: Option<usize>,
+
+    #[arg(
+        long = "diagnostic",
+        value_enum,
+        value_name = "KIND",
+        help = "Enable an opt-in calibration diagnostic in the prepared plan."
+    )]
+    pub(crate) diagnostics: Vec<CalibrationDiagnosticOption>,
 
     #[arg(
         long,

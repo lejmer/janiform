@@ -12,7 +12,7 @@ from .....hourly_factors import (
 )
 from .....pricing import PricingIntervalSchedule
 from ....errors import calibration_error
-from ..payloads import resolved_known_news_event_timestamps, surprise_baseline_intensity
+from ..payloads import resolved_known_news_event_timestamps, surprise_baseline_intensities
 from ..seasonality import (
     build_runtime_hourly_seasonality_source_from_model,
     surprise_deterministic_time_multiplier_by_interval_index,
@@ -29,6 +29,10 @@ def build_model_pricing_hourly_factor_contract(
     range_start_utc: datetime,
     range_end_utc: datetime,
 ) -> Any:
+    surprise_open_baseline_intensity, surprise_closed_baseline_intensity = (
+        surprise_baseline_intensities(model)
+    )
+
     return provide_hourly_factor_contract(
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
@@ -45,7 +49,8 @@ def build_model_pricing_hourly_factor_contract(
         ),
         news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
             known_scheduled_event_timestamps_utc=resolved_known_news_event_timestamps(model),
-            surprise_baseline_intensity=surprise_baseline_intensity(model),
+            surprise_open_baseline_intensity=surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity=surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index=(
                 surprise_deterministic_time_multiplier_by_interval_index(
                     model,

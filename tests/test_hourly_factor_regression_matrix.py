@@ -350,7 +350,8 @@ def _parse_news_intensity_provider_source(
 
             return HourlyNewsIntensityProviderMaterializedSource(
                 known_scheduled_event_timestamps_utc=known_scheduled_event_timestamps_utc,
-                surprise_baseline_intensity=float(raw_source["surprise_baseline_intensity"]),
+                surprise_open_baseline_intensity=float(raw_source["surprise_open_baseline_intensity"]),
+                surprise_closed_baseline_intensity=float(raw_source["surprise_closed_baseline_intensity"]),
                 surprise_deterministic_time_multiplier_by_interval_index=(
                     surprise_deterministic_time_multiplier_by_interval_index
                 ),

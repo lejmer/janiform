@@ -53,7 +53,8 @@ pub(super) enum ParsedHourlyProviderNewsIntensitySource {
     },
     Materialized {
         known_scheduled_event_timestamps_utc_nanos: Vec<i64>,
-        surprise_baseline_intensity: f64,
+        surprise_open_baseline_intensity: f64,
+        surprise_closed_baseline_intensity: f64,
         surprise_deterministic_time_multiplier_by_interval_index: Vec<(u64, f64)>,
     },
 }
@@ -223,7 +224,7 @@ fn materialize_hourly_seasonality_factors(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, surprise_baseline_intensity, *, known_scheduled_event_timestamps_utc = None, surprise_deterministic_time_multiplier_by_interval_index = None))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, surprise_open_baseline_intensity, surprise_closed_baseline_intensity, *, known_scheduled_event_timestamps_utc = None, surprise_deterministic_time_multiplier_by_interval_index = None))]
 #[expect(
     clippy::too_many_arguments,
     reason = "PyO3 boundary mirrors the public Python keyword API."
@@ -235,7 +236,8 @@ fn materialize_hourly_news_intensity_factors(
     range_start_utc: &str,
     range_end_utc: &str,
     interval_duration_nanos: i64,
-    surprise_baseline_intensity: f64,
+    surprise_open_baseline_intensity: f64,
+    surprise_closed_baseline_intensity: f64,
     known_scheduled_event_timestamps_utc: Option<&Bound<'_, PyAny>>,
     surprise_deterministic_time_multiplier_by_interval_index: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyHourlyNewsIntensityMaterializationResult> {
@@ -313,7 +315,8 @@ fn materialize_hourly_news_intensity_factors(
                     interval_duration_nanos,
                     known_scheduled_event_timestamps_utc_nanos:
                         &parsed_known_scheduled_event_timestamps_utc_nanos,
-                    surprise_baseline_intensity,
+                    surprise_open_baseline_intensity,
+                    surprise_closed_baseline_intensity,
                     surprise_deterministic_time_multiplier_by_interval_index:
                         &parsed_surprise_deterministic_time_multiplier_by_interval_index,
                 },
@@ -406,11 +409,13 @@ fn provide_hourly_factor_contract(
                 }),
                 Some(ParsedHourlyProviderNewsIntensitySource::Materialized {
                     known_scheduled_event_timestamps_utc_nanos,
-                    surprise_baseline_intensity,
+                    surprise_open_baseline_intensity,
+                    surprise_closed_baseline_intensity,
                     surprise_deterministic_time_multiplier_by_interval_index,
                 }) => Some(HourlyNewsIntensityFactorSource::Materialized {
                     known_scheduled_event_timestamps_utc_nanos,
-                    surprise_baseline_intensity: *surprise_baseline_intensity,
+                    surprise_open_baseline_intensity: *surprise_open_baseline_intensity,
+                    surprise_closed_baseline_intensity: *surprise_closed_baseline_intensity,
                     surprise_deterministic_time_multiplier_by_interval_index,
                 }),
                 None => None,
@@ -709,19 +714,35 @@ pub(super) fn parse_hourly_provider_news_intensity_source(
                 );
             }
 
-            let surprise_baseline_value = source_mapping
-                .contains("surprise_baseline_intensity")?
-                .then(|| source_mapping.get_item("surprise_baseline_intensity"))
+            let surprise_open_baseline_value = source_mapping
+                .contains("surprise_open_baseline_intensity")?
+                .then(|| source_mapping.get_item("surprise_open_baseline_intensity"))
                 .ok_or_else(|| {
                     SeasonalityInputValidationError::new_err(
-                        "news_intensity_source with source_kind='materialized' is missing required field 'surprise_baseline_intensity'",
+                        "news_intensity_source with source_kind='materialized' is missing required field 'surprise_open_baseline_intensity'",
                     )
                 })??;
 
-            let surprise_baseline_intensity: f64 =
-                surprise_baseline_value.extract().map_err(|_| {
+            let surprise_open_baseline_intensity: f64 =
+                surprise_open_baseline_value.extract().map_err(|_| {
                     SeasonalityInputValidationError::new_err(
-                        "news_intensity_source field 'surprise_baseline_intensity' must be a float",
+                        "news_intensity_source field 'surprise_open_baseline_intensity' must be a float",
+                    )
+                })?;
+
+            let surprise_closed_baseline_value = source_mapping
+                .contains("surprise_closed_baseline_intensity")?
+                .then(|| source_mapping.get_item("surprise_closed_baseline_intensity"))
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(
+                        "news_intensity_source with source_kind='materialized' is missing required field 'surprise_closed_baseline_intensity'",
+                    )
+                })??;
+
+            let surprise_closed_baseline_intensity: f64 =
+                surprise_closed_baseline_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "news_intensity_source field 'surprise_closed_baseline_intensity' must be a float",
                     )
                 })?;
 
@@ -767,7 +788,8 @@ pub(super) fn parse_hourly_provider_news_intensity_source(
 
             Ok(ParsedHourlyProviderNewsIntensitySource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos,
-                surprise_baseline_intensity,
+                surprise_open_baseline_intensity,
+                surprise_closed_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index,
             })
         }
@@ -857,9 +879,14 @@ fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
         } => SeasonalityInputValidationError::new_err(format!(
             "known_scheduled_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
         )),
-        HourlyFactorContractError::InvalidSurpriseBaselineIntensity { value } => {
+        HourlyFactorContractError::InvalidSurpriseOpenBaselineIntensity { value } => {
             SeasonalityInputValidationError::new_err(format!(
-                "surprise_baseline_intensity must be a finite non-negative value, found {value}"
+                "surprise_open_baseline_intensity must be a finite non-negative value, found {value}"
+            ))
+        }
+        HourlyFactorContractError::InvalidSurpriseClosedBaselineIntensity { value } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "surprise_closed_baseline_intensity must be a finite non-negative value, found {value}"
             ))
         }
         HourlyFactorContractError::SurpriseDeterministicTimeMultiplierIntervalOutOfRange {

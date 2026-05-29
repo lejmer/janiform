@@ -208,19 +208,12 @@ class GammaSeverityMarkConfiguration(ContractModel):
     """Gamma mark law used for news severity in the pricing contract."""
 
     shape_k: float
-    scale_theta: float
 
     def __post_init__(self) -> None:
         require_positive_finite_number(
             {"shape_k": self.shape_k},
             "shape_k",
             "shape_k",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_number(
-            {"scale_theta": self.scale_theta},
-            "scale_theta",
-            "scale_theta",
             PRICING_ERROR_FACTORY,
         )
 
@@ -239,13 +232,7 @@ class GammaSeverityMarkConfiguration(ContractModel):
                 "shape_k",
                 f"{field_path}.shape_k",
                 PRICING_ERROR_FACTORY,
-            ),
-            scale_theta=require_positive_finite_number(
-                raw_payload,
-                "scale_theta",
-                f"{field_path}.scale_theta",
-                PRICING_ERROR_FACTORY,
-            ),
+            )
         )
 
 

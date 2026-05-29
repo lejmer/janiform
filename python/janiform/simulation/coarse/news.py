@@ -1,28 +1,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
-from ..shared.errors import (
-    SIMULATION_ERROR_FACTORY,
-    SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
-    _simulation_error,
-    _simulation_integration_error,
-)
+from ..._timestamps import hours_to_exact_nanoseconds
+from ...calendar import CalendarRegistry, CalendarRegistryLoadError
 from ...contracts.base import (
     ContractModel,
+    require_finite_number,
+    require_finite_scalar,
     require_mapping,
     require_non_negative_finite_number,
     require_non_negative_finite_scalar,
-    require_positive_finite_number,
     require_non_negative_integer,
     require_positive_finite_scalar,
     require_sequence,
     require_string,
     serialize_deterministic_json,
 )
-from ..._timestamps import hours_to_exact_nanoseconds
-from ...calendar import CalendarRegistry, CalendarRegistryLoadError
+from ..shared.errors import (
+    SIMULATION_ERROR_FACTORY,
+    SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+    _simulation_error,
+    _simulation_integration_error,
+)
 
 
 NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION = "news.process.configuration.v1"
@@ -37,6 +38,8 @@ COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY = (
 COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY = (
     "interval_delta_must_map_to_an_exact_fixed_width_utc_nanosecond_grid.v1"
 )
+
+
 def _prefix_nested_field_path(
     field_path: str,
     *,
@@ -89,84 +92,8 @@ def _validate_calendar_registry_artifact_payload(
 
 
 @dataclass(frozen=True, slots=True)
-class DoubleExponentialBaseShockConfiguration(ContractModel):
-    probability_positive: float
-    eta_plus: float
-    eta_minus: float
-
-    def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.eta_plus, "eta_plus", SIMULATION_ERROR_FACTORY)
-        require_positive_finite_scalar(self.eta_minus, "eta_minus", SIMULATION_ERROR_FACTORY)
-        require_positive_finite_scalar(
-            self.probability_positive,
-            "probability_positive",
-            SIMULATION_ERROR_FACTORY,
-        )
-        if self.probability_positive >= 1.0:
-            raise _simulation_error("probability_positive", "must be strictly less than 1.0")
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> DoubleExponentialBaseShockConfiguration:
-        if not isinstance(raw_payload, dict):
-            raise _simulation_error(field_path, "must be an object")
-
-        return DoubleExponentialBaseShockConfiguration(
-            probability_positive=require_positive_finite_number(
-                raw_payload,
-                "probability_positive",
-                f"{field_path}.probability_positive",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            eta_plus=require_positive_finite_number(
-                raw_payload,
-                "eta_plus",
-                f"{field_path}.eta_plus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            eta_minus=require_positive_finite_number(
-                raw_payload,
-                "eta_minus",
-                f"{field_path}.eta_minus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class CoupledGapMarkConfiguration(ContractModel):
-    sigma_g: float
-
-    def __post_init__(self) -> None:
-        require_non_negative_finite_scalar(self.sigma_g, "sigma_g", SIMULATION_ERROR_FACTORY)
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> CoupledGapMarkConfiguration:
-        if not isinstance(raw_payload, dict):
-            raise _simulation_error(field_path, "must be an object")
-
-        return CoupledGapMarkConfiguration(
-            sigma_g=require_non_negative_finite_number(
-                raw_payload,
-                "sigma_g",
-                f"{field_path}.sigma_g",
-                SIMULATION_ERROR_FACTORY,
-            )
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class SharedNewsMarkLawConfiguration(ContractModel):
     gamma_severity_marks: Any
-    double_exponential_base_shock: DoubleExponentialBaseShockConfiguration
-    coupled_gap_marks: CoupledGapMarkConfiguration
 
     @staticmethod
     def from_mapping(
@@ -189,24 +116,6 @@ class SharedNewsMarkLawConfiguration(ContractModel):
                         SIMULATION_ERROR_FACTORY,
                     ),
                     field_path=f"{field_path}.gamma_severity_marks",
-                ),
-                double_exponential_base_shock=DoubleExponentialBaseShockConfiguration.from_mapping(
-                    require_mapping(
-                        raw_payload,
-                        "double_exponential_base_shock",
-                        f"{field_path}.double_exponential_base_shock",
-                        SIMULATION_ERROR_FACTORY,
-                    ),
-                    field_path=f"{field_path}.double_exponential_base_shock",
-                ),
-                coupled_gap_marks=CoupledGapMarkConfiguration.from_mapping(
-                    require_mapping(
-                        raw_payload,
-                        "coupled_gap_marks",
-                        f"{field_path}.coupled_gap_marks",
-                        SIMULATION_ERROR_FACTORY,
-                    ),
-                    field_path=f"{field_path}.coupled_gap_marks",
                 ),
             )
         except VanillaOptionPricingValidationError as e:
@@ -259,12 +168,18 @@ class KnownNewsArrivalConfiguration(ContractModel):
 
 @dataclass(frozen=True, slots=True)
 class SurpriseNewsArrivalConfiguration(ContractModel):
-    baseline_intensity: float
+    open_baseline_intensity: float
+    closed_baseline_intensity: float
 
     def __post_init__(self) -> None:
         require_non_negative_finite_scalar(
-            self.baseline_intensity,
-            "baseline_intensity",
+            self.open_baseline_intensity,
+            "open_baseline_intensity",
+            SIMULATION_ERROR_FACTORY,
+        )
+        require_non_negative_finite_scalar(
+            self.closed_baseline_intensity,
+            "closed_baseline_intensity",
             SIMULATION_ERROR_FACTORY,
         )
 
@@ -278,12 +193,18 @@ class SurpriseNewsArrivalConfiguration(ContractModel):
             raise _simulation_error(field_path, "must be an object")
 
         return SurpriseNewsArrivalConfiguration(
-            baseline_intensity=require_non_negative_finite_number(
+            open_baseline_intensity=require_non_negative_finite_number(
                 raw_payload,
-                "baseline_intensity",
-                f"{field_path}.baseline_intensity",
+                "open_baseline_intensity",
+                f"{field_path}.open_baseline_intensity",
                 SIMULATION_ERROR_FACTORY,
-            )
+            ),
+            closed_baseline_intensity=require_non_negative_finite_number(
+                raw_payload,
+                "closed_baseline_intensity",
+                f"{field_path}.closed_baseline_intensity",
+                SIMULATION_ERROR_FACTORY,
+            ),
         )
 
 
@@ -321,7 +242,8 @@ class NewsArrivalConfiguration(ContractModel):
 @dataclass(frozen=True, slots=True)
 class NewsComponentMarkScaleConfiguration(ContractModel):
     activity_coupling_scale: float
-    return_jump_scale: float
+    return_jump_drift: float
+    return_jump_volatility: float
 
     def __post_init__(self) -> None:
         require_non_negative_finite_scalar(
@@ -329,11 +251,26 @@ class NewsComponentMarkScaleConfiguration(ContractModel):
             "activity_coupling_scale",
             SIMULATION_ERROR_FACTORY,
         )
-        require_non_negative_finite_scalar(
-            self.return_jump_scale,
-            "return_jump_scale",
+
+        require_finite_scalar(
+            self.return_jump_drift,
+            "return_jump_drift",
             SIMULATION_ERROR_FACTORY,
         )
+
+        require_non_negative_finite_scalar(
+            self.return_jump_volatility,
+            "return_jump_volatility",
+            SIMULATION_ERROR_FACTORY,
+        )
+
+        if self.activity_coupling_scale == 0.0 and (
+            self.return_jump_drift != 0.0 or self.return_jump_volatility != 0.0
+        ):
+            raise _simulation_error(
+                "activity_coupling_scale",
+                "must be positive when return_jump_drift or return_jump_volatility is non-zero",
+            )
 
     @staticmethod
     def from_mapping(
@@ -351,10 +288,16 @@ class NewsComponentMarkScaleConfiguration(ContractModel):
                 f"{field_path}.activity_coupling_scale",
                 SIMULATION_ERROR_FACTORY,
             ),
-            return_jump_scale=require_non_negative_finite_number(
+            return_jump_drift=require_finite_number(
                 raw_payload,
-                "return_jump_scale",
-                f"{field_path}.return_jump_scale",
+                "return_jump_drift",
+                f"{field_path}.return_jump_drift",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            return_jump_volatility=require_non_negative_finite_number(
+                raw_payload,
+                "return_jump_volatility",
+                f"{field_path}.return_jump_volatility",
                 SIMULATION_ERROR_FACTORY,
             ),
         )
@@ -433,8 +376,6 @@ __all__ = [
     "COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY",
     "COARSE_SIMULATION_INTERVAL_TIMING_POLICY",
     "NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION",
-    "CoupledGapMarkConfiguration",
-    "DoubleExponentialBaseShockConfiguration",
     "KnownNewsArrivalConfiguration",
     "NewsArrivalConfiguration",
     "NewsComponentMarkScaleConfiguration",

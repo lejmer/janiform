@@ -11,6 +11,7 @@ use crate::stages::long_variance::LongVarianceStageFittedPayload;
 use crate::stages::mean_reversion::{
     MeanReversionStageFittedPayload, MeanReversionStageSeasonalityInput,
 };
+use crate::stages::news_shocks::NewsShocksStageFittedPayload;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::SeasonalityStageNormalizedPayload;
 
@@ -23,6 +24,7 @@ pub(crate) struct CalibrationInMemoryStagePayloadState {
     pub(crate) hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub(crate) return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
     pub(crate) long_variance_stage_payload: Option<LongVarianceStageFittedPayload>,
+    pub(crate) news_shocks_stage_payload: Option<NewsShocksStageFittedPayload>,
     pub(crate) mean_reversion_stage_payload: Option<MeanReversionStageFittedPayload>,
     pub(crate) joint_refinement_stage_payload: Option<JointRefinementStageFittedPayload>,
     pub(crate) option_refinement_stage_payload: Option<JointRefinementStageFittedPayload>,

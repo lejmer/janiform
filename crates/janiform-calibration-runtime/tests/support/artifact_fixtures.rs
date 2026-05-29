@@ -26,7 +26,6 @@ use super::shared::{
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION, CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
@@ -378,28 +377,22 @@ fn regression_news_process_configuration() -> NewsProcessConfiguration {
                 scheduled_event_timestamps_utc_nanos: Vec::new(),
             },
             surprise: SurpriseNewsArrivalConfiguration {
-                baseline_intensity: 0.0,
+                open_baseline_intensity: 0.0,
+                closed_baseline_intensity: 0.0,
             },
         },
         SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration {
-                shape_k: 1.5,
-                scale_theta: 0.8,
-            },
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-                probability_positive: 0.5,
-                eta_plus: 1.2,
-                eta_minus: 1.2,
-            },
-            coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.2 },
+            gamma_severity_marks: GammaSeverityMarkConfiguration { shape_k: 1.5 },
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: 0.0,
-            return_jump_scale: 0.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: 0.0,
-            return_jump_scale: 0.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
         },
     )
     .expect("regression news process configuration should validate")

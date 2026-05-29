@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 #[cfg(test)]
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -59,7 +61,10 @@ use super::return_clock_restart_seeds::{
     JointReturnClockExposureSeedsBuildInput, ReturnClockExposureRestartSeedProfile,
     joint_return_clock_exposure_restart_seeds, return_clock_exposure_restart_seed_profile,
 };
-use crate::stages::long_variance::policy::long_variance_retained_stationary_level_floor;
+use crate::stages::long_variance::policy::{
+    long_variance_retained_stationary_level_acceptance_floor,
+    long_variance_retained_stationary_level_floor,
+};
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
     JointRefinementStagePricingBlockFittedParameters, ReturnComponentsStageFittedParameters,
@@ -123,6 +128,13 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
     parameter_vector: &[f64],
     context: &JointRefinementContext,
 ) -> Option<JointRefinementStageFittedParameters> {
+    checked_parameter_vector_to_fitted_parameters(parameter_vector, context).ok()
+}
+
+pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_parameters(
+    parameter_vector: &[f64],
+    context: &JointRefinementContext,
+) -> Result<JointRefinementStageFittedParameters, JointRefinementParameterDecodeError> {
     let option_pricing_only = context.option_pricing_refinement_enabled;
 
     let mut structured_alpha = context.baseline_hawkes_fitted_parameters.structured_alpha;
@@ -158,8 +170,12 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
         structured_alpha.a_cross *= cross_excitation_scale;
         structured_alpha.delta_cross *= cross_excitation_scale;
 
-        let alpha_loadings =
-            HawkesKernelLoadings::try_from_structured_alpha(structured_alpha).ok()?;
+        let alpha_loadings = HawkesKernelLoadings::try_from_structured_alpha(structured_alpha)
+            .map_err(|source| {
+                parameter_decode_error(format!(
+                    "scaled Hawkes alpha loadings are invalid: {source}"
+                ))
+            })?;
 
         let rho_loadings = HawkesKernelLoadings::try_from_structured_rho(
             context.baseline_hawkes_fitted_parameters.structured_rho,
@@ -167,7 +183,11 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
                 .baseline_hawkes_fitted_parameters
                 .self_dominance_policy,
         )
-        .ok()?;
+        .map_err(|source| {
+            parameter_decode_error(format!(
+                "baseline Hawkes rho loadings are invalid: {source}"
+            ))
+        })?;
 
         let beta = context
             .baseline_hawkes_fitted_parameters
@@ -181,10 +201,20 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
             stationary_open_event_rate_per_hour,
             alpha_loadings,
             beta,
-        )?;
+        )
+        .ok_or_else(|| {
+            parameter_decode_error(format!(
+                "scaled Hawkes stationary event rate cannot be converted to a positive baseline intensity: stationary_open_event_rate_per_hour={stationary_open_event_rate_per_hour} beta={beta} alpha={alpha_loadings:?}"
+            ))
+        })?;
 
         let kernel_parameters =
-            HawkesKernelParameters::try_new(lambda_bar, beta, alpha_loadings, rho_loadings).ok()?;
+            HawkesKernelParameters::try_new(lambda_bar, beta, alpha_loadings, rho_loadings)
+                .map_err(|source| {
+                    parameter_decode_error(format!(
+                        "scaled Hawkes kernel parameters are invalid: {source}"
+                    ))
+                })?;
 
         janiform_calibration_artifacts::HawkesStageFittedParameters {
             kernel_parameters,
@@ -200,7 +230,13 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
     };
 
     let modeled_open_event_rate_per_hour =
-        crate::stages::hawkes::stationary_open_event_rate_per_hour(&hawkes_fitted_parameters)?;
+        crate::stages::hawkes::stationary_open_event_rate_per_hour(&hawkes_fitted_parameters)
+            .ok_or_else(|| {
+                parameter_decode_error(format!(
+                    "scaled Hawkes kernel has no finite stationary open event rate: kernel={:?}",
+                    hawkes_fitted_parameters.kernel_parameters
+                ))
+            })?;
 
     let aggregated_15m_sample = build_continuous_calibration_sample_from_aggregated_intervals(
         context.observed_data.observed_15m_intervals.as_slice(),
@@ -213,7 +249,14 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
         parameter_vector_to_nig_search_point(parameter_vector, &context.active_parameter_layout);
 
     let nig_shared_plus_shift_configuration =
-        nig_configuration_from_search_point(&aggregated_15m_sample, nig_search_point)?;
+        nig_configuration_from_search_point(&aggregated_15m_sample, nig_search_point).ok_or_else(
+            || {
+                parameter_decode_error(format!(
+                    "NIG coordinates do not decode for the modeled 15m sample: search_point={nig_search_point:?} modeled_open_event_rate_per_hour={modeled_open_event_rate_per_hour} observed_open_event_rate_per_hour={}",
+                    context.observed_data.observed_open_event_rate_per_hour
+                ))
+            },
+        )?;
 
     let (return_components_fitted_parameters, pricing_block_fitted_parameters) =
         if option_pricing_only {
@@ -246,18 +289,26 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
                 .active_parameter_layout
                 .surprise_baseline_scale_index
             {
+                let surprise_scale = parameter_vector[index].exp();
+
                 news_process_configuration.arrivals.surprise = SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: news_process_configuration
+                    open_baseline_intensity: news_process_configuration
                         .arrivals
                         .surprise
-                        .baseline_intensity
-                        * parameter_vector[index].exp(),
+                        .open_baseline_intensity
+                        * surprise_scale,
+                    closed_baseline_intensity: news_process_configuration
+                        .arrivals
+                        .surprise
+                        .closed_baseline_intensity
+                        * surprise_scale,
                 };
             }
 
             let baseline_return_clock_exposure_parameters = context
                 .baseline_return_components_fitted_parameters
                 .return_clock_exposure_parameters;
+
             let return_clock_exposure_parameters = ReturnClockExposureParameters::try_new(
                 baseline_return_clock_exposure_parameters.buy_excitation_return_clock_scale
                     * parameter_vector[context
@@ -270,11 +321,16 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
                         .log_sell_excitation_return_clock_scale_index]
                         .exp(),
             )
-            .ok()?;
+            .map_err(|source| {
+                parameter_decode_error(format!(
+                    "return-clock exposure parameters are invalid: {source}"
+                ))
+            })?;
 
             let baseline_long_variance_parameters = context
                 .baseline_return_components_fitted_parameters
                 .long_variance_parameters;
+
             let long_variance_parameters = LongVarianceParameters::try_new(
                 baseline_long_variance_parameters.mean_reversion_rate
                     * parameter_vector[context
@@ -291,14 +347,28 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
                     .active_parameter_layout
                     .long_variance_sell_event_loading_index],
             )
-            .ok()?;
+            .map_err(|source| {
+                parameter_decode_error(format!("long-variance parameters are invalid: {source}"))
+            })?;
+
             let stationary_long_variance_level = long_variance_parameters
                 .stationary_mean_reversion_level_for_hawkes_kernel(
                     hawkes_fitted_parameters.kernel_parameters,
                 )
-                .ok()?;
-            if stationary_long_variance_level < long_variance_retained_stationary_level_floor() {
-                return None;
+                .map_err(|source| {
+                    parameter_decode_error(format!(
+                        "long-variance stationary level is invalid: {source} parameters={long_variance_parameters:?} hawkes_kernel={:?}",
+                        hawkes_fitted_parameters.kernel_parameters
+                    ))
+                })?;
+            if stationary_long_variance_level
+                < long_variance_retained_stationary_level_acceptance_floor()
+            {
+                return Err(parameter_decode_error(format!(
+                    "long-variance stationary level is below the retained floor: stationary_long_variance_level={stationary_long_variance_level} retained_floor={} acceptance_floor={}",
+                    long_variance_retained_stationary_level_floor(),
+                    long_variance_retained_stationary_level_acceptance_floor()
+                )));
             }
 
             let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
@@ -322,12 +392,16 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
             return_components_fitted_parameters
                 .news_process_configuration
                 .validate()
-                .ok()?;
+                .map_err(|source| {
+                    parameter_decode_error(format!(
+                        "news process configuration is invalid after joint scaling: {source}"
+                    ))
+                })?;
 
             (return_components_fitted_parameters, None)
         };
 
-    Some(JointRefinementStageFittedParameters {
+    Ok(JointRefinementStageFittedParameters {
         hawkes_fitted_parameters,
         return_components_fitted_parameters,
         pricing_block_fitted_parameters,
@@ -337,14 +411,35 @@ pub(in crate::stages::joint_refinement) fn parameter_vector_to_fitted_parameters
 fn pricing_kernel_parameters_from_option_vector(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
-) -> Option<VanillaOptionPricingKernelParameters> {
+) -> Result<VanillaOptionPricingKernelParameters, JointRefinementParameterDecodeError> {
     let layout = &context.active_parameter_layout;
 
     VanillaOptionPricingKernelParameters::try_new(
         parameter_vector[layout.option_pricing_log_buy_activity_premium_index].exp(),
         parameter_vector[layout.option_pricing_log_sell_activity_premium_index].exp(),
     )
-    .ok()
+    .map_err(|source| {
+        parameter_decode_error(format!(
+            "option-pricing activity premium parameters are invalid: {source}"
+        ))
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::stages::joint_refinement) struct JointRefinementParameterDecodeError {
+    message: String,
+}
+
+impl Display for JointRefinementParameterDecodeError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message.as_str())
+    }
+}
+
+impl Error for JointRefinementParameterDecodeError {}
+
+fn parameter_decode_error(message: String) -> JointRefinementParameterDecodeError {
+    JointRefinementParameterDecodeError { message }
 }
 
 pub(in crate::stages::joint_refinement) fn parameter_vector_to_nig_search_point(
@@ -403,6 +498,7 @@ pub(in crate::stages::joint_refinement) fn build_baseline_parameter_vector(
     parameter_vector[active_parameter_layout.log_sell_excitation_return_clock_scale_index] = 0.0;
 
     let long_variance_parameters = return_components_fitted_parameters.long_variance_parameters;
+
     parameter_vector[active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index] =
         0.0;
     parameter_vector[active_parameter_layout.long_variance_vol_of_vol_index] =
@@ -462,13 +558,18 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
         next_index += 1;
     }
 
-    let surprise_baseline_scale_index = (return_components_fitted_parameters
+    let combined_surprise_arrival_intensity = return_components_fitted_parameters
         .news_process_configuration
         .arrivals
         .surprise
-        .baseline_intensity
-        > 0.0)
-        .then_some(next_index);
+        .open_baseline_intensity
+        + return_components_fitted_parameters
+            .news_process_configuration
+            .arrivals
+            .surprise
+            .closed_baseline_intensity;
+    let surprise_baseline_scale_index =
+        (combined_surprise_arrival_intensity > 0.0).then_some(next_index);
     if surprise_baseline_scale_index.is_some() {
         next_index += 1;
     }

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_model_kernels::hawkes::HawkesEventSide;
 
+use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
@@ -185,6 +186,7 @@ pub struct JointRefinementStageExecutionInput {
     pub option_refinement_candidate_count_override: Option<usize>,
     pub option_refinement_wall_clock_budget_millis: Option<u64>,
     pub audit_option_pricing_enabled: bool,
+    pub diagnostics: CalibrationDiagnosticsRequest,
     pub option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 

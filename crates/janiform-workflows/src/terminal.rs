@@ -55,12 +55,18 @@ pub fn terminal_summary_policy(
     }
 }
 
-/// Mark terminal progress as completed and clear the live view.
-pub fn complete_terminal_progress(progress_adapter: &mut ProgressAdapter, status: &str) {
+/// Mark terminal progress as completed and leave the final snapshot visible.
+pub fn complete_terminal_progress(
+    progress_adapter: &mut ProgressAdapter,
+    status: &str,
+) -> Result<(), WorkflowError> {
     progress_adapter.observe(ProgressEvent::RunCompleted {
         status: status.to_string(),
     });
-    progress_adapter.finish_and_clear();
+
+    progress_adapter
+        .finish_and_keep()
+        .map_err(|source| WorkflowError::OutputWrite { source })
 }
 
 pub(crate) fn emit_terminal_start_summary(

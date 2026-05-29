@@ -59,6 +59,14 @@ impl TerminalAffineCumulantArgument {
     fn fourier_argument_tangent(interval_return_weight: f64) -> ComplexScalar {
         ComplexScalar::new(0.0, -interval_return_weight)
     }
+
+    fn return_loading(self, interval_return_weight: f64) -> ComplexScalar {
+        self.value.scale(interval_return_weight)
+    }
+
+    fn return_loading_tangent(interval_return_weight: f64) -> ComplexScalar {
+        ComplexScalar::new(interval_return_weight, 0.0)
+    }
 }
 
 impl TerminalAffineCumulantCache {
@@ -215,6 +223,7 @@ fn build_terminal_affine_schedule_interval_input(
         sell_side_characteristic_exponent,
         buy_side_characteristic_exponent_tangent,
         sell_side_characteristic_exponent_tangent,
+        interval_return_weight,
     );
 
     let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
@@ -229,8 +238,19 @@ fn build_terminal_affine_schedule_interval_input(
             activity_transform_inputs.activity_loadings,
             activity_transform_inputs.z_plus,
             activity_transform_inputs.z_minus,
+            argument.return_loading(interval_return_weight),
             interval_factors.s_h,
             news_intensity,
+            context
+                .pricing_request
+                .model_parameters
+                .news_process_configuration
+                .known_component_mark_scales,
+            context
+                .pricing_request
+                .model_parameters
+                .news_process_configuration
+                .surprise_component_mark_scales,
             interval_delta,
             context.pricing_request.boundary_input.hawkes_boundary_state,
         );
@@ -259,6 +279,7 @@ fn build_terminal_affine_activity_transform_inputs(
     sell_side_characteristic_exponent: ComplexScalar,
     buy_side_characteristic_exponent_tangent: ComplexScalar,
     sell_side_characteristic_exponent_tangent: ComplexScalar,
+    interval_return_weight: f64,
 ) -> TerminalAffineActivityTransformInputs {
     let exposure_parameters = context
         .pricing_request
@@ -314,6 +335,9 @@ fn build_terminal_affine_activity_transform_inputs(
             ),
             z_plus: ComplexScalar::new(0.0, 0.0),
             z_minus: ComplexScalar::new(0.0, 0.0),
+            news_return_loading: TerminalAffineCumulantArgument::return_loading_tangent(
+                interval_return_weight,
+            ),
         },
         buy_activity_premium_tangent: ExponentialAffineTransformInputTangent {
             activity_loadings: ExponentialAffineTransformActivityLoadings::new(
@@ -324,6 +348,7 @@ fn build_terminal_affine_activity_transform_inputs(
             ),
             z_plus: buy_kernel_inputs.log_activity_premium_z_derivative,
             z_minus: ComplexScalar::new(0.0, 0.0),
+            news_return_loading: ComplexScalar::new(0.0, 0.0),
         },
         sell_activity_premium_tangent: ExponentialAffineTransformInputTangent {
             activity_loadings: ExponentialAffineTransformActivityLoadings::new(
@@ -334,6 +359,7 @@ fn build_terminal_affine_activity_transform_inputs(
             ),
             z_plus: ComplexScalar::new(0.0, 0.0),
             z_minus: sell_kernel_inputs.log_activity_premium_z_derivative,
+            news_return_loading: ComplexScalar::new(0.0, 0.0),
         },
     }
 }

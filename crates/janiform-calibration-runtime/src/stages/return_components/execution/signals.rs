@@ -36,6 +36,8 @@ pub(crate) struct ReturnComponentsStagePreparedCandidateGenerationInput {
     pub(crate) derived_close_open_gap_candidates:
         Vec<ReturnComponentsDetectedCloseOpenGapCandidate>,
     pub(crate) close_open_gap_detection_filter: String,
+    pub(crate) source_window_open_exposure_hours: f64,
+    pub(crate) source_window_closed_exposure_hours: f64,
 }
 
 #[derive(Debug, Clone, Copy)]

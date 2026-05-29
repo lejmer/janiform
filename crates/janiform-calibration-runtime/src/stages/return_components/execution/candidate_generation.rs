@@ -4,9 +4,8 @@ use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, SurpriseNewsDeterministicIntensityProfile,
 };
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
-    SurpriseNewsArrivalConfiguration,
+    KnownNewsArrivalConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration, SurpriseNewsArrivalConfiguration,
 };
 
 use super::super::activity_coupling_fit;
@@ -69,6 +68,8 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
     derived_close_open_gap_candidates: &[super::super::contracts::ReturnComponentsDetectedCloseOpenGapCandidate],
     close_open_gap_detection_filter: &str,
+    source_window_open_exposure_hours: f64,
+    source_window_closed_exposure_hours: f64,
     activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
     stage_seed: u64,
     stage_solver_settings: &CalibrationOptimizerSettings,
@@ -230,6 +231,9 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             .iter()
             .map(|episode| episode.terminal_timestamp_utc_nanos)
             .collect::<Vec<_>>(),
+        sorted_signals.close_open_gap_candidates.len(),
+        source_window_open_exposure_hours,
+        source_window_closed_exposure_hours,
     );
 
     send_return_components_progress(
@@ -421,8 +425,11 @@ fn build_surprise_arrival_families(
     fitted_surprise_arrival_layer: &surprise_intensity_fit::FittedSurpriseNewsArrivalLayer,
 ) -> ReturnComponentsSurpriseNewsArrivalCandidateFamily {
     ReturnComponentsSurpriseNewsArrivalCandidateFamily {
-        baseline_intensity: round_candidate_value(
-            fitted_surprise_arrival_layer.baseline_intensity_per_hour,
+        open_baseline_intensity: round_candidate_value(
+            fitted_surprise_arrival_layer.open_baseline_intensity_per_hour,
+        ),
+        closed_baseline_intensity: round_candidate_value(
+            fitted_surprise_arrival_layer.closed_baseline_intensity_per_hour,
         ),
         weekly_hour_utc_multipliers: fitted_surprise_arrival_layer
             .deterministic_intensity_profile
@@ -438,7 +445,11 @@ fn build_return_jump_mark_scale_families(
     fitted_return_jump_mark_layer: &mark_layer_fit::FittedReturnJumpMarkLayer,
 ) -> ReturnComponentsReturnJumpMarkScaleCandidateFamily {
     ReturnComponentsReturnJumpMarkScaleCandidateFamily {
-        sigma_g: fitted_return_jump_mark_layer.sigma_g,
+        known_return_jump_drift: fitted_return_jump_mark_layer.known_return_jump_drift,
+        known_return_jump_volatility: fitted_return_jump_mark_layer.known_return_jump_volatility,
+        surprise_return_jump_drift: fitted_return_jump_mark_layer.surprise_return_jump_drift,
+        surprise_return_jump_volatility: fitted_return_jump_mark_layer
+            .surprise_return_jump_volatility,
     }
 }
 
@@ -750,10 +761,6 @@ fn build_news_process_configuration_from_candidate_families(
     return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     activity_coupling_family: &ReturnComponentsActivityCouplingCandidateFamily,
 ) -> Result<NewsProcessConfiguration, ReturnComponentsStageCandidateGenerationInputError> {
-    let mut shared_mark_law = candidate_generation_input.shared_mark_law_template;
-    shared_mark_law.coupled_gap_marks =
-        CoupledGapMarkConfiguration::new(return_jump_family.sigma_g);
-
     NewsProcessConfiguration::try_new(
         NewsArrivalConfiguration {
             known: KnownNewsArrivalConfiguration {
@@ -762,17 +769,20 @@ fn build_news_process_configuration_from_candidate_families(
                     .clone(),
             },
             surprise: SurpriseNewsArrivalConfiguration {
-                baseline_intensity: surprise_arrival_family.baseline_intensity,
+                open_baseline_intensity: surprise_arrival_family.open_baseline_intensity,
+                closed_baseline_intensity: surprise_arrival_family.closed_baseline_intensity,
             },
         },
-        shared_mark_law,
+        candidate_generation_input.shared_mark_law_template,
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: activity_coupling_family.known_activity_coupling_scale,
-            return_jump_scale: 1.0,
+            return_jump_drift: return_jump_family.known_return_jump_drift,
+            return_jump_volatility: return_jump_family.known_return_jump_volatility,
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: activity_coupling_family.surprise_activity_coupling_scale,
-            return_jump_scale: 1.0,
+            return_jump_drift: return_jump_family.surprise_return_jump_drift,
+            return_jump_volatility: return_jump_family.surprise_return_jump_volatility,
         },
     )
     .map_err(|source| {

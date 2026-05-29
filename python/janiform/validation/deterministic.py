@@ -310,14 +310,24 @@ def validate_news_intensity_source(
             return {
                 "source_kind": source_kind.value,
                 "known_scheduled_event_timestamps_utc": known_scheduled_event_timestamps_utc,
-                "surprise_baseline_intensity": require_finite_scalar(
+                "surprise_open_baseline_intensity": require_non_negative_finite_scalar(
                     require_field(
                         news_intensity_source,
-                        "surprise_baseline_intensity",
-                        f"{context}.surprise_baseline_intensity",
+                        "surprise_open_baseline_intensity",
+                        f"{context}.surprise_open_baseline_intensity",
                         VALIDATION_ERROR_FACTORY,
                     ),
-                    f"{context}.surprise_baseline_intensity",
+                    f"{context}.surprise_open_baseline_intensity",
+                    VALIDATION_ERROR_FACTORY,
+                ),
+                "surprise_closed_baseline_intensity": require_non_negative_finite_scalar(
+                    require_field(
+                        news_intensity_source,
+                        "surprise_closed_baseline_intensity",
+                        f"{context}.surprise_closed_baseline_intensity",
+                        VALIDATION_ERROR_FACTORY,
+                    ),
+                    f"{context}.surprise_closed_baseline_intensity",
                     VALIDATION_ERROR_FACTORY,
                 ),
                 "surprise_deterministic_time_multiplier_by_interval_index": normalized_multipliers,

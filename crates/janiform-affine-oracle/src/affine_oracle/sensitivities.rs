@@ -1,13 +1,14 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_foundations::complex_math::{
-    ComplexScalar, complex_exponential, complex_multiply, complex_pow_real_exponent_principal,
-};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 
 use super::contracts::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformInput,
     ExponentialAffineTransformOutput, ExponentialAffineTransformOutputError,
+};
+use super::news_transform::{
+    GammaNormalNewsTransformComponents, evaluate_gamma_normal_news_transform_tangent,
 };
 use super::rhs::evaluate_exponential_affine_transform_ode_rhs;
 use super::runge_kutta::{combine_complex_runge_kutta, combine_d_vector_runge_kutta};
@@ -532,29 +533,26 @@ fn evaluate_news_parameter_sensitivity_derivative(
 ) -> ComplexScalar {
     let equation_specification = transform_input.equation_specification;
 
-    let gamma_configuration = equation_specification.gamma_severity_mark_configuration;
+    let activity_loading = integration_state
+        .d_vector
+        .dot_loadings(equation_specification.r());
 
-    let one_minus_theta_d_dot_r = ComplexScalar::new(1.0, 0.0).subtract(
-        integration_state
-            .d_vector
-            .dot_loadings(equation_specification.r())
-            .scale(gamma_configuration.scale_theta),
-    );
+    let activity_loading_tangent = parameter_state
+        .d_vector
+        .dot_loadings(equation_specification.r());
 
-    let gamma_power = complex_pow_real_exponent_principal(
-        one_minus_theta_d_dot_r,
-        -(gamma_configuration.shape_k + 1.0),
-    );
-
-    let gamma_prefactor = transform_input.news_intensity.total_nu_h()
-        * gamma_configuration.shape_k
-        * gamma_configuration.scale_theta;
-
-    complex_multiply(
-        gamma_power.scale(gamma_prefactor),
-        parameter_state
-            .d_vector
-            .dot_loadings(equation_specification.r()),
+    evaluate_gamma_normal_news_transform_tangent(
+        GammaNormalNewsTransformComponents {
+            gamma_severity_mark_configuration: equation_specification
+                .gamma_severity_mark_configuration,
+            news_intensity: transform_input.news_intensity,
+            known_component_mark_scales: transform_input.known_news_component_mark_scales,
+            surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
+            activity_loading,
+            return_loading: transform_input.news_return_loading,
+        },
+        activity_loading_tangent,
+        ComplexScalar::new(0.0, 0.0),
     )
 }
 

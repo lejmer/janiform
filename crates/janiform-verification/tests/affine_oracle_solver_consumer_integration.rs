@@ -26,7 +26,6 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -181,7 +180,7 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
                 },
             )
             .expect("fixture hawkes kernel parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("fixture gamma mark configuration should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -238,23 +237,22 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
                     scheduled_event_timestamps_utc_nanos: vec![],
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
+                    open_baseline_intensity: 0.0,
+                    closed_baseline_intensity: 0.0,
                 },
             },
             SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8, 0.9),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
-                    0.35, 2.1, 3.0,
-                ),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8),
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 1.0,
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 1.0,
             },
         )
         .expect("pricing fixture news process configuration should construct"),

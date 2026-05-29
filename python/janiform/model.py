@@ -407,17 +407,20 @@ class JaniformModel:
         raw_metadata = payload.get("metadata")
         raw_resolved_configuration = payload.get("resolved_configuration")
         raw_session_resolution = payload.get("session_resolution")
+
         report_preparation_payload = (
             _model_sibling_report_preparation_payload(model_path)
             if not isinstance(raw_resolved_configuration, dict)
             or not isinstance(raw_session_resolution, dict)
             else None
         )
+
         if not isinstance(raw_session_resolution, dict):
             raw_session_resolution = _required_preparation_payload_field(
                 report_preparation_payload,
                 "session_resolution",
             )
+
         if not isinstance(raw_resolved_configuration, dict) and isinstance(
             raw_session_resolution,
             dict,
@@ -425,6 +428,7 @@ class JaniformModel:
             raw_resolved_configuration = _resolved_configuration_payload_from_session_resolution(
                 raw_session_resolution
             )
+
         if not isinstance(raw_resolved_configuration, dict):
             raw_resolved_configuration = _required_preparation_payload_field(
                 report_preparation_payload,
@@ -435,10 +439,12 @@ class JaniformModel:
             raise calibration_error("parameters", "must be an object")
         if not isinstance(raw_metadata, dict):
             raise calibration_error("metadata", "must be an object")
+
         raw_metadata = _model_metadata_with_recovered_input_inference(
             raw_metadata,
             report_preparation_payload,
         )
+
         if not isinstance(raw_resolved_configuration, dict):
             raise calibration_error("resolved_configuration", "must be an object")
         if not isinstance(raw_session_resolution, dict):
@@ -570,6 +576,7 @@ def _recovered_input_inference_payload(
     tick_data_source = request.get("tick_data_source")
     column_mapping = request.get("column_mapping")
     normalization_policy = request.get("normalization_policy")
+
     if (
         not isinstance(tick_data_source, dict)
         or not isinstance(column_mapping, dict)
@@ -589,6 +596,7 @@ def _recovered_input_inference_payload(
         "timestamp_timezone_source": "explicit",
         "normalization_policy": normalization_policy,
     }
+
     if isinstance(request.get("run_id"), str):
         recovered_input_inference["run_id"] = request["run_id"]
     if isinstance(request.get("workflow_scope"), str):

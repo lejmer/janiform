@@ -2,9 +2,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::configuration::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
-    NewsIntensityConfiguration, SharedNewsMarkLawConfiguration,
+    SharedNewsMarkLawConfiguration, StandardNormalNewsReturnShockSampler,
 };
 use super::errors::NewsProcessConfigurationError;
 use super::interface::{ComposableNewsMarkPipeline, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION};
@@ -22,8 +21,7 @@ pub struct NewsProcessConfiguration {
 pub type DefaultNewsMarkPipeline = ComposableNewsMarkPipeline<
     NewsArrivalConfiguration,
     GammaSeverityMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
-    CoupledGapMarkConfiguration,
+    StandardNormalNewsReturnShockSampler,
 >;
 
 impl NewsProcessConfiguration {
@@ -93,31 +91,14 @@ impl NewsProcessConfiguration {
     /// Component mapping:
     /// - arrival intensity: known-schedule and surprise-background component model
     /// - severity sampler: Gamma(shape, scale)
-    /// - base-shock sampler: Kou double-exponential
-    /// - coupled constructor: `sigma_g * sqrt(U) * epsilon`
+    /// - return-shock sampler: standard normal draw
+    /// - coupled construction: `a U` activity and `m U + sigma sqrt(U) Z_N` return jump
     pub fn default_mark_pipeline(&self) -> DefaultNewsMarkPipeline {
         DefaultNewsMarkPipeline::new(
             self.arrivals.clone(),
             self.shared_mark_law.gamma_severity_marks,
-            self.shared_mark_law.double_exponential_base_shock,
-            self.shared_mark_law.coupled_gap_marks,
+            StandardNormalNewsReturnShockSampler,
         )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct NewsIntensityConfigurationPayload {
-    closed_window_baseline_intensity: f64,
-}
-
-impl<'de> Deserialize<'de> for NewsIntensityConfiguration {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let payload = NewsIntensityConfigurationPayload::deserialize(deserializer)?;
-        Self::try_new(payload.closed_window_baseline_intensity).map_err(serde::de::Error::custom)
     }
 }
 

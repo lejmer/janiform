@@ -186,9 +186,16 @@ pub(crate) fn run_hourly_factor_materialize_news_intensity(
         &input_path,
     )?;
 
-    let surprise_baseline_intensity = f64_field(
+    let surprise_open_baseline_intensity = f64_field(
         input_fields,
-        "surprise_baseline_intensity",
+        "surprise_open_baseline_intensity",
+        "hourly news-intensity input",
+        &input_path,
+    )?;
+
+    let surprise_closed_baseline_intensity = f64_field(
+        input_fields,
+        "surprise_closed_baseline_intensity",
         "hourly news-intensity input",
         &input_path,
     )?;
@@ -209,7 +216,8 @@ pub(crate) fn run_hourly_factor_materialize_news_intensity(
             range_utc: resolved.range_start_utc..resolved.range_end_utc,
             interval_duration_nanos: resolved.interval_duration_nanos,
             known_scheduled_event_timestamps_utc_nanos: &known_timestamps,
-            surprise_baseline_intensity,
+            surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index: &surprise_multipliers,
         })
         .map_err(|source| hourly_factor_argument_error("materialize news intensity", source))?;

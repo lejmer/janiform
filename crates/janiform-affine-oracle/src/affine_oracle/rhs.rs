@@ -1,7 +1,8 @@
-use janiform_foundations::complex_math::{
-    ComplexScalar, complex_exponential, complex_multiply, complex_pow_real_exponent_principal,
-};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 
+use super::news_transform::{
+    GammaNormalNewsTransformComponents, evaluate_gamma_normal_news_transform,
+};
 use super::{ExponentialAffineTransformDVector, ExponentialAffineTransformInput};
 
 /// Shared Hamiltonian values evaluated at one ODE state vector `D`.
@@ -94,7 +95,7 @@ pub fn evaluate_exponential_affine_transform_hamiltonians(
 /// - `D_+-' = -beta * D_+- + H_plus_endogenous`
 /// - `D_-+' = -beta * D_-+ + H_minus_endogenous`
 /// - `D_--' = -beta * D_-- + H_minus_endogenous`
-/// - `C' = s_h * lambda_bar * (H_plus_baseline + H_minus_baseline) + nu_h_total * ((1 - theta_U * (D · r))^(-k_U) - 1)`
+/// - `C' = s_h * lambda_bar * (H_plus_baseline + H_minus_baseline) + known_news + surprise_news`
 pub fn evaluate_exponential_affine_transform_ode_rhs(
     transform_input: ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
@@ -149,18 +150,13 @@ fn evaluate_gamma_moment_news_term(
     d_vector: ExponentialAffineTransformDVector,
 ) -> ComplexScalar {
     let equation_specification = transform_input.equation_specification;
-    let gamma_configuration = equation_specification.gamma_severity_mark_configuration;
 
-    let one_minus_theta_d_dot_r = ComplexScalar::new(1.0, 0.0).subtract(
-        d_vector
-            .dot_loadings(equation_specification.r())
-            .scale(gamma_configuration.scale_theta),
-    );
-
-    let gamma_moment =
-        complex_pow_real_exponent_principal(one_minus_theta_d_dot_r, -gamma_configuration.shape_k);
-
-    gamma_moment
-        .subtract(ComplexScalar::new(1.0, 0.0))
-        .scale(transform_input.news_intensity.total_nu_h())
+    evaluate_gamma_normal_news_transform(GammaNormalNewsTransformComponents {
+        gamma_severity_mark_configuration: equation_specification.gamma_severity_mark_configuration,
+        news_intensity: transform_input.news_intensity,
+        known_component_mark_scales: transform_input.known_news_component_mark_scales,
+        surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
+        activity_loading: d_vector.dot_loadings(equation_specification.r()),
+        return_loading: transform_input.news_return_loading,
+    })
 }

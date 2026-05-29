@@ -391,6 +391,28 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                     CALIBRATION_STAGE_SEED_DERIVATION_POLICY
                 );
             }
+            CalibrationStagedRunStageReport::NewsShocks(news_shocks_report) => {
+                let metadata = news_shocks_report
+                    .metadata
+                    .as_ref()
+                    .expect("news-shocks stage metadata should be present");
+                assert_eq!(metadata.run_global_seed, 17);
+                assert_eq!(
+                    metadata.stage_seed,
+                    derive_calibration_stage_seed_from_global_seed(
+                        17,
+                        CalibrationStage::NewsShocks
+                    )
+                );
+                assert_eq!(
+                    metadata.stage_seed_source,
+                    CalibrationStageSeedSource::DerivedFromGlobalSeed
+                );
+                assert_eq!(
+                    metadata.stage_seed_derivation_policy,
+                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+            }
             CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report) => {
                 let metadata = mean_reversion_report
                     .metadata
@@ -1615,6 +1637,7 @@ fn normalized_report_for_reproducibility(
             | CalibrationStagedRunStageReport::Hawkes(_)
             | CalibrationStagedRunStageReport::ReturnComponents(_)
             | CalibrationStagedRunStageReport::LongVariance(_)
+            | CalibrationStagedRunStageReport::NewsShocks(_)
             | CalibrationStagedRunStageReport::MeanReversion(_) => {}
         }
     }

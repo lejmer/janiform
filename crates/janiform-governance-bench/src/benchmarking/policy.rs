@@ -28,7 +28,6 @@ pub struct OraclePricerSufficientStatisticsBenchmarkModelParameters {
     pub hawkes_alpha: HawkesKernelLoadings,
     pub hawkes_rho: HawkesKernelLoadings,
     pub gamma_shape_k: f64,
-    pub gamma_scale_theta: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -179,10 +178,7 @@ impl OraclePricerSufficientStatisticsBenchmarkPolicy {
         .map_err(|source| {
             OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidHawkesParameters { source }
         })?;
-        GammaSeverityMarkConfiguration::try_new(
-            model_parameters.gamma_shape_k,
-            model_parameters.gamma_scale_theta,
-        )
+        GammaSeverityMarkConfiguration::try_new(model_parameters.gamma_shape_k)
         .map_err(|source| {
             OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidGammaMarkConfiguration { source }
         })?;

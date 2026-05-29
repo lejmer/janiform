@@ -979,10 +979,9 @@ mod tests {
         MeanReversionBoundaryState, MeanReversionFittedParameters,
         MeanReversionRuntimeIntervalAnchors,
     };
-    use janiform_model_kernels::news::DoubleExponentialBaseShockConfiguration;
     use janiform_model_kernels::news::{
-        CoupledGapMarkConfiguration, GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration,
-        NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+        GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
         SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
     };
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
@@ -1007,8 +1006,7 @@ mod tests {
                 },
             )
             .expect("kernel parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
-                .expect("gamma marks should construct"),
+            GammaSeverityMarkConfiguration::try_new(1.8).expect("gamma marks should construct"),
             LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct");
@@ -1056,24 +1054,23 @@ mod tests {
                         scheduled_event_timestamps_utc_nanos: vec![],
                     },
                     surprise: SurpriseNewsArrivalConfiguration {
-                        baseline_intensity: 0.0,
+                        open_baseline_intensity: 0.0,
+                        closed_baseline_intensity: 0.0,
                     },
                 },
                 SharedNewsMarkLawConfiguration {
-                    gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.4, 0.6)
+                    gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.4)
                         .expect("gamma marks should construct"),
-                    double_exponential_base_shock:
-                        DoubleExponentialBaseShockConfiguration::try_new(0.45, 1.2, 1.1)
-                            .expect("base shock configuration should construct"),
-                    coupled_gap_marks: CoupledGapMarkConfiguration::new(0.8),
                 },
                 NewsComponentMarkScaleConfiguration {
                     activity_coupling_scale: 0.7,
-                    return_jump_scale: 1.1,
+                    return_jump_drift: 0.0,
+                    return_jump_volatility: 0.0,
                 },
                 NewsComponentMarkScaleConfiguration {
                     activity_coupling_scale: 0.5,
-                    return_jump_scale: 0.9,
+                    return_jump_drift: 0.0,
+                    return_jump_volatility: 0.0,
                 },
             )
             .expect("news process configuration should construct"),

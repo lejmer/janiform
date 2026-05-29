@@ -1,4 +1,61 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// Extended calibration diagnostics that are intentionally opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationExtendedDiagnosticKind {
+    /// Include option-surface node, maturity, tier, and selection diagnostics.
+    OptionSurfaceShape,
+}
+
+impl CalibrationExtendedDiagnosticKind {
+    /// Serialized value used by request payloads and user-facing errors.
+    pub const fn as_field_value(self) -> &'static str {
+        match self {
+            Self::OptionSurfaceShape => "option_surface_shape",
+        }
+    }
+}
+
+/// Request for extended calibration diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationDiagnosticsRequest {
+    /// Extended diagnostics to include in addition to the baseline fit report.
+    #[serde(default)]
+    pub extended: Vec<CalibrationExtendedDiagnosticKind>,
+}
+
+impl CalibrationDiagnosticsRequest {
+    /// Return whether this request includes the given diagnostic kind.
+    pub fn includes(&self, diagnostic_kind: CalibrationExtendedDiagnosticKind) -> bool {
+        self.extended.contains(&diagnostic_kind)
+    }
+
+    /// Return whether option-surface shape diagnostics were requested.
+    pub fn option_surface_shape_requested(&self) -> bool {
+        self.includes(CalibrationExtendedDiagnosticKind::OptionSurfaceShape)
+    }
+
+    /// Validate request invariants before calibration starts.
+    pub fn validate(&self) -> Result<(), String> {
+        for (diagnostic_position, diagnostic_kind) in self.extended.iter().enumerate() {
+            if self
+                .extended
+                .iter()
+                .take(diagnostic_position)
+                .any(|previous_diagnostic_kind| previous_diagnostic_kind == diagnostic_kind)
+            {
+                return Err(format!(
+                    "extended diagnostic `{}` was requested more than once",
+                    diagnostic_kind.as_field_value()
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -185,4 +242,37 @@ pub struct CalibrationDiagnosticArtifactBundle {
 pub struct CalibrationDiagnosticArtifactReference {
     pub artifact_family: String,
     pub relative_path: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CalibrationDiagnosticsRequest, CalibrationExtendedDiagnosticKind};
+
+    #[test]
+    fn diagnostics_request_matches_requested_extended_kind() {
+        let request = CalibrationDiagnosticsRequest {
+            extended: vec![CalibrationExtendedDiagnosticKind::OptionSurfaceShape],
+        };
+
+        assert!(request.option_surface_shape_requested());
+        assert!(request.includes(CalibrationExtendedDiagnosticKind::OptionSurfaceShape));
+    }
+
+    #[test]
+    fn diagnostics_request_rejects_duplicate_extended_kind() {
+        let request = CalibrationDiagnosticsRequest {
+            extended: vec![
+                CalibrationExtendedDiagnosticKind::OptionSurfaceShape,
+                CalibrationExtendedDiagnosticKind::OptionSurfaceShape,
+            ],
+        };
+
+        assert_eq!(
+            request.validate(),
+            Err(
+                "extended diagnostic `option_surface_shape` was requested more than once"
+                    .to_string()
+            )
+        );
+    }
 }

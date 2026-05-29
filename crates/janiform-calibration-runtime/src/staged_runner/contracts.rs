@@ -11,12 +11,14 @@ use super::{
     JointRefinementStageExecutionReport, JointRefinementStageProgressPhase,
     LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
-    MeanReversionStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
+    MeanReversionStageExecutionReport, NewsShocksStageExecutionMetadata,
+    NewsShocksStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
     ReturnComponentsStageProgressPhase, SeasonalityStageExecutionInput,
     SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
 };
 use crate::JointRefinementStageOptionPricingInput;
+use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::stages::joint_refinement::JointRefinementProgressCandidateAssessment;
 use serde::{Serialize, Serializer};
 
@@ -33,6 +35,7 @@ pub struct CalibrationStagedRunInputs {
     pub option_refinement_candidate_count_override: Option<usize>,
     pub option_refinement_wall_clock_budget_millis: Option<u64>,
     pub audit_option_pricing_enabled: bool,
+    pub diagnostics: CalibrationDiagnosticsRequest,
     pub option_refinement_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 
@@ -47,6 +50,7 @@ pub enum CalibrationStagedRunStageReport {
     Hawkes(Box<HawkesStageExecutionReport>),
     ReturnComponents(Box<ReturnComponentsStageExecutionReport>),
     LongVariance(Box<LongVarianceStageExecutionReport>),
+    NewsShocks(Box<NewsShocksStageExecutionReport>),
     MeanReversion(Box<MeanReversionStageExecutionReport>),
     JointRefinement(Box<JointRefinementStageExecutionReport>),
     OptionRefinement(Box<JointRefinementStageExecutionReport>),
@@ -176,6 +180,32 @@ impl CalibrationStageExecutionMetadataForCheckpoint for LongVarianceStageExecuti
     }
 }
 
+impl CalibrationStageExecutionMetadataForCheckpoint for NewsShocksStageExecutionMetadata {
+    fn stage_output_schema_version(&self) -> &'static str {
+        self.stage_output_schema_version
+    }
+
+    fn run_global_seed(&self) -> u64 {
+        self.run_global_seed
+    }
+
+    fn stage_seed(&self) -> u64 {
+        self.stage_seed
+    }
+
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
+        self.stage_seed_source
+    }
+
+    fn stage_seed_derivation_policy(&self) -> &'static str {
+        self.stage_seed_derivation_policy
+    }
+
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
+        &self.solver_settings
+    }
+}
+
 impl CalibrationStageExecutionMetadataForCheckpoint for JointRefinementStageExecutionMetadata {
     fn stage_output_schema_version(&self) -> &'static str {
         self.stage_output_schema_version
@@ -248,6 +278,7 @@ impl CalibrationStagedRunStageReport {
             Self::Hawkes(_) => CalibrationStage::Hawkes,
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
             Self::LongVariance(_) => CalibrationStage::LongVariance,
+            Self::NewsShocks(_) => CalibrationStage::NewsShocks,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
             Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
@@ -261,6 +292,7 @@ impl CalibrationStagedRunStageReport {
             Self::Hawkes(report) => report.status,
             Self::ReturnComponents(report) => report.status,
             Self::LongVariance(report) => report.status,
+            Self::NewsShocks(report) => report.status,
             Self::MeanReversion(report) => report.status,
             Self::JointRefinement(report) => report.status,
             Self::OptionRefinement(report) => report.status,
@@ -278,6 +310,9 @@ impl CalibrationStagedRunStageReport {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::LongVariance(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::NewsShocks(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::MeanReversion(report) => {

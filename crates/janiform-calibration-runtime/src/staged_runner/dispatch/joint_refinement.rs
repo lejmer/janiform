@@ -81,6 +81,7 @@ pub(super) fn run_joint_refinement_like_stage(
         | CalibrationStage::Hawkes
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
+        | CalibrationStage::NewsShocks
         | CalibrationStage::MeanReversion => {
             Err(CalibrationStagedRunFailure::MissingStageInput { stage: input.stage })
         }
@@ -182,6 +183,9 @@ pub(super) fn joint_refinement_like_stage_input(
         option_refinement_wall_clock_budget_millis: option_refinement_settings
             .wall_clock_budget_millis,
         audit_option_pricing_enabled: option_refinement_settings.audit_option_pricing_enabled,
+        // Intentional copy because the stage input owns the diagnostic request while
+        // staged-run inputs remain available for later stage dispatch.
+        diagnostics: staged_run_inputs.diagnostics.clone(),
         option_pricing_input: option_refinement_settings.option_pricing_input,
     })
 }
@@ -355,6 +359,7 @@ fn option_refinement_dispatch_settings(
         | CalibrationStage::Hawkes
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
+        | CalibrationStage::NewsShocks
         | CalibrationStage::MeanReversion => Err(CalibrationStagedRunFailure::MissingStageInput {
             stage: consuming_stage,
         }),

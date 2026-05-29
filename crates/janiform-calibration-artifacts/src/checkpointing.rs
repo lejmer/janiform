@@ -199,10 +199,6 @@ fn execution_stage_orders_are_compatible(
     run_execution_order: &[CalibrationStage],
     completed_stage: CalibrationStage,
 ) -> bool {
-    if !run_execution_order.starts_with(checkpoint_execution_order) {
-        return false;
-    }
-
     let Some(checkpoint_completed_position) = checkpoint_execution_order
         .iter()
         .position(|stage| *stage == completed_stage)
@@ -375,6 +371,69 @@ impl Display for CalibrationStageCheckpointCompatibilityError {
 }
 
 impl Error for CalibrationStageCheckpointCompatibilityError {}
+
+#[cfg(test)]
+mod tests {
+    use super::execution_stage_orders_are_compatible;
+    use crate::contracts::CalibrationStage;
+
+    #[test]
+    fn execution_stage_order_allows_optional_downstream_stage_after_completed_checkpoint_stage() {
+        let checkpoint_order = vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+            CalibrationStage::Finalization,
+        ];
+        let run_order = vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+            CalibrationStage::OptionRefinement,
+            CalibrationStage::Finalization,
+        ];
+
+        assert!(execution_stage_orders_are_compatible(
+            checkpoint_order.as_slice(),
+            run_order.as_slice(),
+            CalibrationStage::JointRefinement
+        ));
+    }
+
+    #[test]
+    fn execution_stage_order_rejects_different_completed_prefix() {
+        let checkpoint_order = vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+        ];
+        let run_order = vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+        ];
+
+        assert!(!execution_stage_orders_are_compatible(
+            checkpoint_order.as_slice(),
+            run_order.as_slice(),
+            CalibrationStage::JointRefinement
+        ));
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CalibrationCheckpointReferenceTarget {
     LastSuccess,

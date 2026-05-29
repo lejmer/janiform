@@ -536,7 +536,8 @@ fn news_intensity_materializer_supports_known_only_component() {
                     .timestamp_nanos_opt()
                     .expect("timestamp fixture must be in range"),
             ],
-            surprise_baseline_intensity: 0.0,
+            surprise_open_baseline_intensity: 0.0,
+            surprise_closed_baseline_intensity: 0.0,
             surprise_deterministic_time_multiplier_by_interval_index: &[],
         })
         .expect("news intensity materialization should succeed");
@@ -565,7 +566,8 @@ fn news_intensity_materializer_supports_known_only_component() {
         DEFAULT_SURPRISE_NEWS_INTENSITY_CONTROL_POLICY
     );
     assert_eq!(output.metadata.known_news_calendar_anchor_count, 2);
-    assert_eq!(output.metadata.surprise_baseline_intensity, 0.0);
+    assert_eq!(output.metadata.surprise_open_baseline_intensity, 0.0);
+    assert_eq!(output.metadata.surprise_closed_baseline_intensity, 0.0);
     assert_eq!(output.diagnostics.interval_count, 3);
     assert_eq!(
         output.diagnostics.known_component_non_zero_interval_count,
@@ -610,7 +612,8 @@ fn news_intensity_materializer_supports_surprise_only_component() {
                 ..parse_timestamp("2026-02-07T03:00:00Z"),
             interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
             known_scheduled_event_timestamps_utc_nanos: &[],
-            surprise_baseline_intensity: 0.4,
+            surprise_open_baseline_intensity: 0.4,
+            surprise_closed_baseline_intensity: 0.4,
             surprise_deterministic_time_multiplier_by_interval_index: &[
                 (0, 1.0),
                 (1, 0.5),
@@ -665,7 +668,8 @@ fn news_intensity_materializer_supports_combined_known_and_surprise_components()
                     .timestamp_nanos_opt()
                     .expect("timestamp fixture must be in range"),
             ],
-            surprise_baseline_intensity: 0.1,
+            surprise_open_baseline_intensity: 0.1,
+            surprise_closed_baseline_intensity: 0.1,
             surprise_deterministic_time_multiplier_by_interval_index: &[
                 (0, 1.0),
                 (1, 2.0),
@@ -709,7 +713,8 @@ fn news_intensity_materializer_normalizes_known_news_to_per_hour_intensity() {
             known_scheduled_event_timestamps_utc_nanos: &[parse_timestamp("2026-02-02T14:05:00Z")
                 .timestamp_nanos_opt()
                 .expect("timestamp fixture must be in range")],
-            surprise_baseline_intensity: 0.0,
+            surprise_open_baseline_intensity: 0.0,
+            surprise_closed_baseline_intensity: 0.0,
             surprise_deterministic_time_multiplier_by_interval_index: &[],
         })
         .expect("sub-hour known-news materialization should succeed");
@@ -738,7 +743,8 @@ fn news_intensity_materializer_rejects_non_increasing_known_calendar_anchor_inpu
                     .timestamp_nanos_opt()
                     .expect("timestamp fixture must be in range"),
             ],
-            surprise_baseline_intensity: 0.4,
+            surprise_open_baseline_intensity: 0.4,
+            surprise_closed_baseline_intensity: 0.4,
             surprise_deterministic_time_multiplier_by_interval_index: &[],
         })
         .expect_err("non-increasing known timestamps must fail");
@@ -761,14 +767,15 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
                 ..parse_timestamp("2026-02-02T16:00:00Z"),
             interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
             known_scheduled_event_timestamps_utc_nanos: &[],
-            surprise_baseline_intensity: -0.1,
+            surprise_open_baseline_intensity: -0.1,
+            surprise_closed_baseline_intensity: 0.0,
             surprise_deterministic_time_multiplier_by_interval_index: &[],
         })
         .expect_err("negative surprise baseline must fail");
 
     assert_eq!(
         baseline_error,
-        HourlyFactorContractError::InvalidSurpriseBaselineIntensity { value: -0.1 }
+        HourlyFactorContractError::InvalidSurpriseOpenBaselineIntensity { value: -0.1 }
     );
 
     let multiplier_error =
@@ -779,7 +786,8 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
                 ..parse_timestamp("2026-02-02T16:00:00Z"),
             interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
             known_scheduled_event_timestamps_utc_nanos: &[],
-            surprise_baseline_intensity: 0.5,
+            surprise_open_baseline_intensity: 0.5,
+            surprise_closed_baseline_intensity: 0.5,
             surprise_deterministic_time_multiplier_by_interval_index: &[(0, -0.2)],
         })
         .expect_err("negative surprise multiplier must fail");
@@ -799,7 +807,8 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
                 ..parse_timestamp("2026-02-02T16:00:00Z"),
             interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
             known_scheduled_event_timestamps_utc_nanos: &[],
-            surprise_baseline_intensity: 0.5,
+            surprise_open_baseline_intensity: 0.5,
+            surprise_closed_baseline_intensity: 0.5,
             surprise_deterministic_time_multiplier_by_interval_index: &[(2, 1.0)],
         })
         .expect_err("out-of-range surprise multiplier interval index must fail"),

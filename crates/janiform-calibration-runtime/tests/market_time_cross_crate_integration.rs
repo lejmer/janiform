@@ -68,7 +68,8 @@ fn pricing_path_consumes_market_time_hourly_factor_provider() {
                     .timestamp_nanos_opt()
                     .expect("timestamp fixture must be in range"),
             ],
-            surprise_baseline_intensity: 0.1,
+            surprise_open_baseline_intensity: 0.1,
+            surprise_closed_baseline_intensity: 0.1,
             surprise_deterministic_time_multiplier_by_interval_index: &[
                 (0, 1.0),
                 (1, 2.0),
@@ -321,7 +322,8 @@ fn deterministic_news_intensity_provider_request() -> HourlyFactorProviderReques
         }),
         news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
             known_scheduled_event_timestamps_utc_nanos: &[],
-            surprise_baseline_intensity: 0.4,
+            surprise_open_baseline_intensity: 0.4,
+            surprise_closed_baseline_intensity: 0.4,
             surprise_deterministic_time_multiplier_by_interval_index:
                 &SURPRISE_NEWS_TIME_MULTIPLIERS,
         }),
