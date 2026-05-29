@@ -10,8 +10,8 @@ from pyarrow import parquet
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.market_data import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
-    CalibrationCoarseTrainingColumnMapping,
-    CalibrationCoarseTrainingTimestampSemantics,
+    CalibrationCoarseDataColumnMapping,
+    CalibrationCoarseDataTimestampSemantics,
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
@@ -59,18 +59,18 @@ FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
 )
 
 
-def test_coarse_training_timestamp_semantics_default_to_bar_open_time() -> None:
+def test_coarse_data_timestamp_semantics_default_to_bar_open_time() -> None:
     assert (
-        CalibrationCoarseTrainingColumnMapping().timestamp_semantics
-        == CalibrationCoarseTrainingTimestampSemantics.BAR_OPEN_TIME
+        CalibrationCoarseDataColumnMapping().timestamp_semantics
+        == CalibrationCoarseDataTimestampSemantics.BAR_OPEN_TIME
     )
 
-    parsed = CalibrationCoarseTrainingColumnMapping.from_mapping(
+    parsed = CalibrationCoarseDataColumnMapping.from_mapping(
         {"timestamp_semantics": "bar_close_time"},
-        field_path="column_mapping.coarse_training",
+        field_path="column_mapping.coarse_data",
     )
 
-    assert parsed.timestamp_semantics == CalibrationCoarseTrainingTimestampSemantics.BAR_CLOSE_TIME
+    assert parsed.timestamp_semantics == CalibrationCoarseDataTimestampSemantics.BAR_CLOSE_TIME
 
 
 def test_translate_market_data_request_seasonality_only_selects_only_seasonality_stage(

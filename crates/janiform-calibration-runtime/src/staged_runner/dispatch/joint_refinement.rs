@@ -180,7 +180,7 @@ pub(super) fn joint_refinement_like_stage_input(
             consuming_stage,
             staged_run_inputs,
         )?,
-        coarse_training_records: staged_run_inputs.coarse_training_records.clone(),
+        coarse_data_records: staged_run_inputs.coarse_data_records.clone(),
         tick_objective_data_usage_policy: staged_run_inputs.tick_objective_data_usage_policy,
         calibration_effort: staged_run_inputs.joint_refinement_calibration_effort,
         restart_candidate_budget_override: staged_run_inputs

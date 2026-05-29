@@ -8,7 +8,7 @@ from ....pricing import PricingIntervalSchedulePolicy
 from ...diagnostics import CalibrationDiagnosticsRequest
 from ...effort import CalibrationEffortOptions
 from ...market_data.contracts import (
-    CalibrationCoarseTrainingColumnMapping,
+    CalibrationCoarseDataColumnMapping,
     CalibrationKnownNewsColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
@@ -58,7 +58,7 @@ class PreparedFitWorkflow:
 class FitPreparationConfiguration:
     workflow_scope_override: Optional[CalibrationMarketDataWorkflowScope]
     tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping]
-    coarse_training_column_mapping: Optional[CalibrationCoarseTrainingColumnMapping]
+    coarse_data_column_mapping: Optional[CalibrationCoarseDataColumnMapping]
     normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy]
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping]
     price_coordinate_policy: PriceCoordinatePolicy

@@ -46,10 +46,10 @@ class MarketDataTranslationDiagnostics:
     selected_stages: tuple[CalibrationStage, ...]
     executed_preprocessing_steps: tuple[str, ...]
     tick_record_count: int
-    coarse_training_record_count: int
-    coarse_training_return_interval_count: int
-    coarse_training_overlap_interval_count: int
-    coarse_training_independent_interval_count: int
+    coarse_data_record_count: int
+    coarse_data_return_interval_count: int
+    coarse_data_overlap_interval_count: int
+    coarse_data_independent_interval_count: int
     option_surface_record_count: int
     known_news_event_count: int
     known_news_events_outside_source_window_count: int
@@ -68,7 +68,7 @@ class MarketDataTranslationDiagnostics:
 @dataclass(frozen=True, slots=True)
 class MarketDataTranslationProvenance:
     tick_data_summary: LoadedMarketDataSourceSummary
-    coarse_training_summary: Optional[LoadedMarketDataSourceSummary]
+    coarse_data_summary: Optional[LoadedMarketDataSourceSummary]
     option_surface_summary: Optional[LoadedMarketDataSourceSummary]
     known_news_summary: Optional[LoadedMarketDataSourceSummary]
     calibration_evidence_routing: dict[str, Any]
@@ -77,7 +77,7 @@ class MarketDataTranslationProvenance:
     selected_stages: tuple[CalibrationStage, ...]
     session_definition_path: Optional[str]
     derived_trade_events_data_reference: str
-    derived_coarse_training_data_reference: Optional[str]
+    derived_coarse_data_reference: Optional[str]
     derived_option_surface_data_reference: Optional[str]
     derivation_policies: tuple[str, ...]
     deterministic_defaults_applied: tuple[str, ...]
@@ -445,15 +445,15 @@ def _market_data_translation_diagnostics_from_payload(
         selected_stages=tuple(CalibrationStage(stage) for stage in raw_payload["selected_stages"]),
         executed_preprocessing_steps=tuple(raw_payload["executed_preprocessing_steps"]),
         tick_record_count=int(raw_payload["tick_record_count"]),
-        coarse_training_record_count=int(raw_payload["coarse_training_record_count"]),
-        coarse_training_return_interval_count=int(
-            raw_payload["coarse_training_return_interval_count"]
+        coarse_data_record_count=int(raw_payload["coarse_data_record_count"]),
+        coarse_data_return_interval_count=int(
+            raw_payload["coarse_data_return_interval_count"]
         ),
-        coarse_training_overlap_interval_count=int(
-            raw_payload["coarse_training_overlap_interval_count"]
+        coarse_data_overlap_interval_count=int(
+            raw_payload["coarse_data_overlap_interval_count"]
         ),
-        coarse_training_independent_interval_count=int(
-            raw_payload["coarse_training_independent_interval_count"]
+        coarse_data_independent_interval_count=int(
+            raw_payload["coarse_data_independent_interval_count"]
         ),
         option_surface_record_count=int(raw_payload["option_surface_record_count"]),
         known_news_event_count=int(raw_payload["known_news_event_count"]),
@@ -483,12 +483,12 @@ def _market_data_translation_provenance_from_payload(
             raw_payload["tick_data_summary"],
             field_path="provenance.tick_data_summary",
         ),
-        coarse_training_summary=(
+        coarse_data_summary=(
             _source_summary_from_payload(
-                raw_payload["coarse_training_summary"]["source_summary"],
-                field_path="provenance.coarse_training_summary.source_summary",
+                raw_payload["coarse_data_summary"]["source_summary"],
+                field_path="provenance.coarse_data_summary.source_summary",
             )
-            if raw_payload.get("coarse_training_summary") is not None
+            if raw_payload.get("coarse_data_summary") is not None
             else None
         ),
         option_surface_summary=(
@@ -516,8 +516,8 @@ def _market_data_translation_provenance_from_payload(
         selected_stages=tuple(CalibrationStage(stage) for stage in raw_payload["selected_stages"]),
         session_definition_path=raw_payload.get("session_definition_path"),
         derived_trade_events_data_reference=str(raw_payload["derived_trade_events_data_reference"]),
-        derived_coarse_training_data_reference=raw_payload.get(
-            "derived_coarse_training_data_reference"
+        derived_coarse_data_reference=raw_payload.get(
+            "derived_coarse_data_reference"
         ),
         derived_option_surface_data_reference=raw_payload.get(
             "derived_option_surface_data_reference"

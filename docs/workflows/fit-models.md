@@ -31,7 +31,7 @@ To fit a model we need the market observations and the context required to inter
 | Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used. |
 | Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                    |
 | Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                      |
-| Coarse training data   | No       | Optional OHLCV or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval close-time observations. |
+| Coarse data data   | No       | Optional OHLCV or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval close-time observations. |
 | Option surface         | No       | Needed for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                       |
 
 For repeatable work, make the context explicit. Market profile inference is convenient for quick runs, but production code should not rely on it.
@@ -50,13 +50,13 @@ model: JaniformModel = estimator.fit(
 )
 ```
 
-Pass `coarse_training_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and routes coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
-Coarse timestamp columns are interpreted as bar-open times by default. For sources stamped at bar close, use `CalibrationCoarseTrainingTimestampSemantics.BAR_CLOSE_TIME` in Python or pass `--coarse-timestamp-semantics bar-close-time` in the CLI.
+Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and routes coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
+Coarse timestamp columns are interpreted as bar-open times by default. For sources stamped at bar close, use `CalibrationCoarseDataTimestampSemantics.BAR_CLOSE_TIME` in Python or pass `--coarse-timestamp-semantics bar-close-time` in the CLI.
 
 ```python
 model: JaniformModel = estimator.fit(
     tick_data_path=Path("data") / "eurusd_ticks.parquet",
-    coarse_training_path=Path("data") / "eurusd_1h_bars.parquet",
+    coarse_data_path=Path("data") / "eurusd_1h_bars.parquet",
 )
 ```
 
@@ -141,7 +141,7 @@ With optional coarse historical data:
 ```bash
 janiform fit \
   --tick-data-path data/eurusd_ticks.parquet \
-  --coarse-training-path data/eurusd_1h_bars.parquet \
+  --coarse-data-path data/eurusd_1h_bars.parquet \
   --run-id eurusd-fit
 ```
 

@@ -52,7 +52,7 @@ pub(crate) fn render_plan_human(
                     "Coarse",
                     prepared
                         .inputs
-                        .coarse_training_path
+                        .coarse_data_path
                         .as_deref()
                         .map(format_path)
                         .unwrap_or_else(|| "none".to_string()),
@@ -103,7 +103,7 @@ pub(crate) fn render_inspect_human(
                     "Coarse",
                     prepared
                         .inputs
-                        .coarse_training_path
+                        .coarse_data_path
                         .as_deref()
                         .map(format_path)
                         .unwrap_or_else(|| "none".to_string()),

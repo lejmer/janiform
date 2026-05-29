@@ -70,7 +70,7 @@ pub(crate) struct PreparedFitPreview {
 #[derive(Debug)]
 pub(crate) struct FitPreviewInputs {
     pub(crate) tick_data_path: PathBuf,
-    pub(crate) coarse_training_path: Option<PathBuf>,
+    pub(crate) coarse_data_path: Option<PathBuf>,
     pub(crate) option_surface_path: Option<PathBuf>,
     pub(crate) known_news_path: Option<PathBuf>,
     pub(crate) session_definition_path: Option<PathBuf>,
@@ -143,7 +143,7 @@ pub(crate) fn prepare_fit_preview(
 
     let preview_inputs = FitPreviewInputs {
         tick_data_path: prepared_inputs.tick_data_path,
-        coarse_training_path: prepared_inputs.coarse_training_path,
+        coarse_data_path: prepared_inputs.coarse_data_path,
         option_surface_path: prepared_inputs.option_surface_path,
         known_news_path: prepared_inputs.known_news_path,
         session_definition_path: prepared_inputs.session_definition_path,
@@ -162,7 +162,7 @@ pub(crate) fn prepare_fit_preview(
         schema_version: FIT_PREPARATION_REQUEST_SCHEMA_VERSION.to_string(),
         run_id: run_id.clone(),
         tick_data_source: prepared_inputs.tick_data_source,
-        coarse_training_source: prepared_inputs.coarse_training_source,
+        coarse_data_source: prepared_inputs.coarse_data_source,
         session_configuration: prepared_inputs.session_configuration,
         column_mapping: prepared_inputs.column_mapping,
         workflow_scope: effective_workflow_scope,
@@ -258,11 +258,11 @@ pub(crate) fn prepare_fit_preview(
         inputs.tick_price_column.as_deref(),
     );
 
-    if inputs.coarse_training_path.is_some() {
+    if inputs.coarse_data_path.is_some() {
         explicit_values.push((
-            "coarse training".to_string(),
+            "coarse data".to_string(),
             preview_inputs
-                .coarse_training_path
+                .coarse_data_path
                 .as_ref()
                 .map(|path| format_path(path))
                 .unwrap_or_else(|| "none".to_string()),

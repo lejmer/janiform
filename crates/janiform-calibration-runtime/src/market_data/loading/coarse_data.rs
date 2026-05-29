@@ -5,13 +5,13 @@ use super::coarse_intervals::{
     resolve_row_interval, timestamp_semantics, validate_coarse_record_intervals,
 };
 use super::column_resolution::{
-    resolve_coarse_training_column_mapping, resolved_coarse_training_kind,
+    resolve_coarse_data_column_mapping, resolved_coarse_data_kind,
 };
 use super::contracts::{
-    MarketDataCoarseTrainingColumnMapping, MarketDataCoarseTrainingKind,
-    MarketDataCoarseTrainingLoadingInput, MarketDataCoarseTrainingSummary,
-    MarketDataCoarseTrainingTimestampSemantics, MarketDataInputFileFormat, MarketDataLoadingError,
-    MarketDataNormalizedCoarseTrainingRecord, MarketDataSourceSummary,
+    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataKind,
+    MarketDataCoarseDataLoadingInput, MarketDataCoarseDataSummary,
+    MarketDataCoarseDataTimestampSemantics, MarketDataInputFileFormat, MarketDataLoadingError,
+    MarketDataNormalizedCoarseDataRecord, MarketDataSourceSummary,
 };
 use super::normalization::{normalize_optional_numeric_value, normalize_timestamp_value};
 use super::rows::{
@@ -20,9 +20,9 @@ use super::rows::{
 use super::shared::{RawRow, dedup_vec, file_format_string};
 
 #[derive(Debug, Clone)]
-pub(super) struct CoarseTrainingLoadOutput {
-    pub(super) records: Vec<MarketDataNormalizedCoarseTrainingRecord>,
-    pub(super) summary: MarketDataCoarseTrainingSummary,
+pub(super) struct CoarseDataLoadOutput {
+    pub(super) records: Vec<MarketDataNormalizedCoarseDataRecord>,
+    pub(super) summary: MarketDataCoarseDataSummary,
 }
 
 #[derive(Debug, Clone)]
@@ -38,29 +38,29 @@ pub(super) struct LoadedCoarseRow {
     pub(super) source_row_number: usize,
 }
 
-pub(super) fn load_coarse_training_records(
-    input: &MarketDataCoarseTrainingLoadingInput,
+pub(super) fn load_coarse_data_records(
+    input: &MarketDataCoarseDataLoadingInput,
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
-) -> Result<CoarseTrainingLoadOutput, MarketDataLoadingError> {
-    let available_columns = load_source_columns(&input.source, "coarse_training_input.source")?;
+) -> Result<CoarseDataLoadOutput, MarketDataLoadingError> {
+    let available_columns = load_source_columns(&input.source, "coarse_data_input.source")?;
 
-    let resolved_column_mapping = resolve_coarse_training_column_mapping(
+    let resolved_column_mapping = resolve_coarse_data_column_mapping(
         available_columns.as_slice(),
         &input.column_mapping,
         &input.source.path,
     )?;
 
-    let required_columns = required_coarse_training_source_columns(&resolved_column_mapping);
+    let required_columns = required_coarse_data_source_columns(&resolved_column_mapping);
 
     validate_columns_exist(
         &available_columns,
         &required_columns,
-        "column_mapping.coarse_training",
+        "column_mapping.coarse_data",
         &input.source.path,
     )?;
 
-    let raw_rows = load_rows(&input.source, "coarse_training_input.source")?;
+    let raw_rows = load_rows(&input.source, "coarse_data_input.source")?;
 
     let source_row_count = source_row_count(&input.source, raw_rows.len())?;
 
@@ -72,7 +72,7 @@ pub(super) fn load_coarse_training_records(
 
     loaded_rows.sort_by_key(|row| (row.timestamp_utc_nanos, row.source_row_number));
 
-    let inferred_kind = resolved_coarse_training_kind(&resolved_column_mapping);
+    let inferred_kind = resolved_coarse_data_kind(&resolved_column_mapping);
 
     let explicit_intervals = resolved_column_mapping.interval_start_column.is_some()
         && resolved_column_mapping.interval_end_column.is_some();
@@ -100,7 +100,7 @@ pub(super) fn load_coarse_training_records(
     )
     .to_string();
 
-    let summary = MarketDataCoarseTrainingSummary {
+    let summary = MarketDataCoarseDataSummary {
         source_summary: MarketDataSourceSummary {
             path: input.source.path.clone(),
             file_format: file_format_string(input.source.file_format).to_string(),
@@ -126,7 +126,7 @@ pub(super) fn load_coarse_training_records(
         retained_mean_reversion_observation_count: records.len(),
     };
 
-    Ok(CoarseTrainingLoadOutput { records, summary })
+    Ok(CoarseDataLoadOutput { records, summary })
 }
 
 fn source_row_count(
@@ -137,11 +137,11 @@ fn source_row_count(
         MarketDataInputFileFormat::Csv => Ok(loaded_row_count),
         MarketDataInputFileFormat::Parquet => Ok(probe_source_row_count_estimate(
             source,
-            "coarse_training_input.source",
+            "coarse_data_input.source",
         )?
         .unwrap_or(loaded_row_count)),
         MarketDataInputFileFormat::Json => Err(MarketDataLoadingError::InvalidValue {
-            field_path: "coarse_training_input.source.file_format".to_string(),
+            field_path: "coarse_data_input.source.file_format".to_string(),
             message: "must be one of: csv, parquet".to_string(),
         }),
     }
@@ -149,7 +149,7 @@ fn source_row_count(
 
 fn normalize_coarse_rows(
     raw_rows: &[RawRow],
-    column_mapping: &MarketDataCoarseTrainingColumnMapping,
+    column_mapping: &MarketDataCoarseDataColumnMapping,
     source_path: &str,
 ) -> Result<Vec<LoadedCoarseRow>, MarketDataLoadingError> {
     let mut rows = Vec::with_capacity(raw_rows.len());
@@ -171,19 +171,19 @@ fn normalize_coarse_rows(
 fn normalize_coarse_row(
     raw_row: &RawRow,
     source_row_number: usize,
-    column_mapping: &MarketDataCoarseTrainingColumnMapping,
+    column_mapping: &MarketDataCoarseDataColumnMapping,
     source_path: &str,
 ) -> Result<LoadedCoarseRow, MarketDataLoadingError> {
     let timestamp_column = column_mapping.timestamp_column.as_deref().ok_or_else(|| {
         MarketDataLoadingError::InvalidValue {
-            field_path: "column_mapping.coarse_training.timestamp_column".to_string(),
+            field_path: "column_mapping.coarse_data.timestamp_column".to_string(),
             message: "could not resolve a coarse timestamp column".to_string(),
         }
     })?;
 
     let close_column = column_mapping.close_column.as_deref().ok_or_else(|| {
         MarketDataLoadingError::InvalidValue {
-            field_path: "column_mapping.coarse_training.close_column".to_string(),
+            field_path: "column_mapping.coarse_data.close_column".to_string(),
             message: "could not resolve a coarse close column".to_string(),
         }
     })?;
@@ -191,7 +191,7 @@ fn normalize_coarse_row(
     Ok(LoadedCoarseRow {
         timestamp_utc_nanos: normalize_timestamp_value(
             raw_row.get(timestamp_column),
-            &format!("coarse_training_input.source.rows[{source_row_number}].{timestamp_column}"),
+            &format!("coarse_data_input.source.rows[{source_row_number}].{timestamp_column}"),
             None,
             source_path,
         )?,
@@ -248,7 +248,7 @@ fn optional_timestamp(
 
     normalize_timestamp_value(
         raw_row.get(column_name),
-        &format!("coarse_training_input.source.rows[{source_row_number}].{column_name}"),
+        &format!("coarse_data_input.source.rows[{source_row_number}].{column_name}"),
         None,
         source_path,
     )
@@ -263,13 +263,13 @@ fn required_price(
 ) -> Result<f64, MarketDataLoadingError> {
     normalize_optional_numeric_value(
         raw_row.get(column_name),
-        &format!("coarse_training_input.source.rows[{source_row_number}].{column_name}"),
+        &format!("coarse_data_input.source.rows[{source_row_number}].{column_name}"),
         source_path,
         false,
         false,
     )?
     .ok_or_else(|| MarketDataLoadingError::InvalidValue {
-        field_path: format!("coarse_training_input.source.rows[{source_row_number}].{column_name}"),
+        field_path: format!("coarse_data_input.source.rows[{source_row_number}].{column_name}"),
         message: format!("must contain a strictly positive value. source_path={source_path}"),
     })
 }
@@ -286,7 +286,7 @@ fn optional_price(
 
     normalize_optional_numeric_value(
         raw_row.get(column_name),
-        &format!("coarse_training_input.source.rows[{source_row_number}].{column_name}"),
+        &format!("coarse_data_input.source.rows[{source_row_number}].{column_name}"),
         source_path,
         false,
         false,
@@ -305,7 +305,7 @@ fn optional_volume(
 
     normalize_optional_numeric_value(
         raw_row.get(column_name),
-        &format!("coarse_training_input.source.rows[{source_row_number}].{column_name}"),
+        &format!("coarse_data_input.source.rows[{source_row_number}].{column_name}"),
         source_path,
         true,
         false,
@@ -314,12 +314,12 @@ fn optional_volume(
 
 fn materialize_coarse_records(
     loaded_rows: &[LoadedCoarseRow],
-    inferred_kind: MarketDataCoarseTrainingKind,
+    inferred_kind: MarketDataCoarseDataKind,
     nominal_interval_nanos: i64,
-    timestamp_semantics: MarketDataCoarseTrainingTimestampSemantics,
+    timestamp_semantics: MarketDataCoarseDataTimestampSemantics,
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
-) -> Result<Vec<MarketDataNormalizedCoarseTrainingRecord>, MarketDataLoadingError> {
+) -> Result<Vec<MarketDataNormalizedCoarseDataRecord>, MarketDataLoadingError> {
     let mut previous_close_price: Option<f64> = None;
     let mut records = Vec::with_capacity(loaded_rows.len());
 
@@ -353,7 +353,7 @@ fn materialize_coarse_records(
             _ => None,
         };
 
-        records.push(MarketDataNormalizedCoarseTrainingRecord {
+        records.push(MarketDataNormalizedCoarseDataRecord {
             interval_start_utc_nanos: interval.interval_start_utc_nanos,
             interval_end_utc_nanos: interval.interval_end_utc_nanos,
             observation_timestamp_utc_nanos: row.timestamp_utc_nanos,
@@ -377,9 +377,9 @@ fn materialize_coarse_records(
 
 fn validate_ohlc_shape(
     row: &LoadedCoarseRow,
-    inferred_kind: MarketDataCoarseTrainingKind,
+    inferred_kind: MarketDataCoarseDataKind,
 ) -> Result<(), MarketDataLoadingError> {
-    if inferred_kind != MarketDataCoarseTrainingKind::Ohlcv {
+    if inferred_kind != MarketDataCoarseDataKind::Ohlcv {
         return Ok(());
     }
 
@@ -388,7 +388,7 @@ fn validate_ohlc_shape(
     else {
         return Err(MarketDataLoadingError::InvalidValue {
             field_path: format!(
-                "coarse_training_input.source.rows[{}]",
+                "coarse_data_input.source.rows[{}]",
                 row.source_row_number
             ),
             message: "OHLCV coarse data requires open, high, low, and close values".to_string(),
@@ -403,7 +403,7 @@ fn validate_ohlc_shape(
     {
         return Err(MarketDataLoadingError::InvalidValue {
             field_path: format!(
-                "coarse_training_input.source.rows[{}]",
+                "coarse_data_input.source.rows[{}]",
                 row.source_row_number
             ),
             message: "OHLC prices must satisfy low <= open, close <= high".to_string(),
@@ -413,15 +413,15 @@ fn validate_ohlc_shape(
     Ok(())
 }
 
-fn coarse_kind_label(kind: MarketDataCoarseTrainingKind) -> &'static str {
+fn coarse_kind_label(kind: MarketDataCoarseDataKind) -> &'static str {
     match kind {
-        MarketDataCoarseTrainingKind::Ohlcv => "ohlcv",
-        MarketDataCoarseTrainingKind::CloseOnly => "close_only",
+        MarketDataCoarseDataKind::Ohlcv => "ohlcv",
+        MarketDataCoarseDataKind::CloseOnly => "close_only",
     }
 }
 
-fn required_coarse_training_source_columns(
-    column_mapping: &MarketDataCoarseTrainingColumnMapping,
+fn required_coarse_data_source_columns(
+    column_mapping: &MarketDataCoarseDataColumnMapping,
 ) -> Vec<String> {
     let mut columns = Vec::new();
 

@@ -180,8 +180,8 @@ Disk execution writes a run directory with the fitted model, fit report, progres
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
-* `--coarse-training-path <PATH>` — Optional coarse historical training file.
-* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+* `--coarse-data-path <PATH>` — Optional coarse historical training file.
+* `--coarse-data-format <COARSE_DATA_FORMAT>` — Coarse historical training file format.
 
   Possible values:
   - `csv`:
@@ -191,7 +191,7 @@ Disk execution writes a run directory with the fitted model, fit report, progres
   - `json`:
     Read JSON.
 
-* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-data-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
 * `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
 
@@ -408,8 +408,8 @@ This command resolves the supplied market-data inputs and calibration scope, the
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
-* `--coarse-training-path <PATH>` — Optional coarse historical training file.
-* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+* `--coarse-data-path <PATH>` — Optional coarse historical training file.
+* `--coarse-data-format <COARSE_DATA_FORMAT>` — Coarse historical training file format.
 
   Possible values:
   - `csv`:
@@ -419,7 +419,7 @@ This command resolves the supplied market-data inputs and calibration scope, the
   - `json`:
     Read JSON.
 
-* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-data-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
 * `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
 
@@ -582,8 +582,8 @@ This command prepares the same calibration plan used by the default fit command,
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
-* `--coarse-training-path <PATH>` — Optional coarse historical training file.
-* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+* `--coarse-data-path <PATH>` — Optional coarse historical training file.
+* `--coarse-data-format <COARSE_DATA_FORMAT>` — Coarse historical training file format.
 
   Possible values:
   - `csv`:
@@ -593,7 +593,7 @@ This command prepares the same calibration plan used by the default fit command,
   - `json`:
     Read JSON.
 
-* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-data-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
 * `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
 
@@ -824,8 +824,8 @@ This command validates fit inputs and writes the prepared input file consumed by
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
-* `--coarse-training-path <PATH>` — Optional coarse historical training file.
-* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+* `--coarse-data-path <PATH>` — Optional coarse historical training file.
+* `--coarse-data-format <COARSE_DATA_FORMAT>` — Coarse historical training file format.
 
   Possible values:
   - `csv`:
@@ -835,7 +835,7 @@ This command validates fit inputs and writes the prepared input file consumed by
   - `json`:
     Read JSON.
 
-* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-data-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
 * `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
 
@@ -1225,8 +1225,8 @@ This command reads a saved Janiform model and an observed option snapshot, then 
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
-* `--coarse-training-path <PATH>` — Optional coarse historical training file.
-* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+* `--coarse-data-path <PATH>` — Optional coarse historical training file.
+* `--coarse-data-format <COARSE_DATA_FORMAT>` — Coarse historical training file format.
 
   Possible values:
   - `csv`:
@@ -1236,7 +1236,7 @@ This command reads a saved Janiform model and an observed option snapshot, then 
   - `json`:
     Read JSON.
 
-* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-data-provenance-label <LABEL>` — Coarse historical training provenance label.
 * `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
 * `--coarse-timestamp-semantics <COARSE_TIMESTAMP_SEMANTICS>` — Coarse data timestamp semantics.
 

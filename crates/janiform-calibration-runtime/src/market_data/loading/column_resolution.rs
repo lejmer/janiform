@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::market_data::presets::MarketDataColumnAliasHint;
 
 use super::contracts::{
-    MarketDataCoarseTrainingColumnMapping, MarketDataCoarseTrainingKind, MarketDataLoadingError,
+    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataKind, MarketDataLoadingError,
     MarketDataNormalizationPolicy, MarketDataOptionQuoteInputPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataTickDataColumnMapping,
     MarketDataTickPriceInputPolicy,
@@ -484,11 +484,11 @@ pub(super) fn resolve_option_surface_column_mapping(
     })
 }
 
-pub(super) fn resolve_coarse_training_column_mapping(
+pub(super) fn resolve_coarse_data_column_mapping(
     available_columns: &[String],
-    column_mapping: &MarketDataCoarseTrainingColumnMapping,
+    column_mapping: &MarketDataCoarseDataColumnMapping,
     source_path: &str,
-) -> Result<MarketDataCoarseTrainingColumnMapping, MarketDataLoadingError> {
+) -> Result<MarketDataCoarseDataColumnMapping, MarketDataLoadingError> {
     let available_by_normalized = normalized_source_columns(available_columns);
 
     let interval_start_column = resolve_optional_column(
@@ -513,7 +513,7 @@ pub(super) fn resolve_coarse_training_column_mapping(
             None,
             &available_by_normalized,
             COARSE_TIMESTAMP_ALIASES.as_slice(),
-            "column_mapping.coarse_training.timestamp_column",
+            "column_mapping.coarse_data.timestamp_column",
             source_path,
         )?),
     };
@@ -522,11 +522,11 @@ pub(super) fn resolve_coarse_training_column_mapping(
         column_mapping.close_column.as_deref(),
         &available_by_normalized,
         COARSE_CLOSE_ALIASES.as_slice(),
-        "column_mapping.coarse_training.close_column",
+        "column_mapping.coarse_data.close_column",
         source_path,
     )?);
 
-    Ok(MarketDataCoarseTrainingColumnMapping {
+    Ok(MarketDataCoarseDataColumnMapping {
         timestamp_column,
         timestamp_semantics: column_mapping.timestamp_semantics,
         interval_start_column,
@@ -555,17 +555,17 @@ pub(super) fn resolve_coarse_training_column_mapping(
     })
 }
 
-pub(super) fn resolved_coarse_training_kind(
-    column_mapping: &MarketDataCoarseTrainingColumnMapping,
-) -> MarketDataCoarseTrainingKind {
+pub(super) fn resolved_coarse_data_kind(
+    column_mapping: &MarketDataCoarseDataColumnMapping,
+) -> MarketDataCoarseDataKind {
     if column_mapping.open_column.is_some()
         && column_mapping.high_column.is_some()
         && column_mapping.low_column.is_some()
     {
-        return MarketDataCoarseTrainingKind::Ohlcv;
+        return MarketDataCoarseDataKind::Ohlcv;
     }
 
-    MarketDataCoarseTrainingKind::CloseOnly
+    MarketDataCoarseDataKind::CloseOnly
 }
 
 pub(super) fn resolve_option_surface_quote_input_policy(

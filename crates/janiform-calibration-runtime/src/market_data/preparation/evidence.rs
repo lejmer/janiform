@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::{
-    MarketDataLoadingOutput, MarketDataNormalizedCoarseTrainingRecord,
+    MarketDataLoadingOutput, MarketDataNormalizedCoarseDataRecord,
     MarketDataNormalizedTickOutput,
 };
 
@@ -19,18 +19,18 @@ pub(super) fn calibration_evidence_routing_payload(
             "retained_record_count": loading_output.tick_data_summary.retained_row_count,
             "objective_data_usage_policy": tick_objective_data_usage_policy,
         },
-        "coarse_training": loading_output.coarse_training_summary.as_ref().map(|summary| {
+        "coarse_data": loading_output.coarse_data_summary.as_ref().map(|summary| {
             serde_json::json!({
                 "role": "optional_slow_return_variance_mean_reversion_gap_tail_evidence",
                 "inferred_kind": summary.inferred_kind,
                 "retained_record_count": summary.source_summary.retained_row_count,
                 "return_interval_count": summary.retained_return_interval_count,
                 "overlap_interval_count": coarse_overlap_interval_count(
-                    loading_output.coarse_training_records.as_deref(),
+                    loading_output.coarse_data_records.as_deref(),
                     normalized_tick_output,
                 ),
                 "independent_interval_count": coarse_independent_interval_count(
-                    loading_output.coarse_training_records.as_deref(),
+                    loading_output.coarse_data_records.as_deref(),
                     normalized_tick_output,
                 ),
             })
@@ -45,7 +45,7 @@ pub(super) fn calibration_evidence_routing_payload(
 }
 
 pub(super) fn coarse_overlap_interval_count(
-    coarse_records: Option<&[MarketDataNormalizedCoarseTrainingRecord]>,
+    coarse_records: Option<&[MarketDataNormalizedCoarseDataRecord]>,
     normalized_tick_output: &MarketDataNormalizedTickOutput,
 ) -> usize {
     let Some(coarse_records) = coarse_records else {
@@ -67,7 +67,7 @@ pub(super) fn coarse_overlap_interval_count(
 }
 
 pub(super) fn coarse_independent_interval_count(
-    coarse_records: Option<&[MarketDataNormalizedCoarseTrainingRecord]>,
+    coarse_records: Option<&[MarketDataNormalizedCoarseDataRecord]>,
     normalized_tick_output: &MarketDataNormalizedTickOutput,
 ) -> usize {
     let Some(coarse_records) = coarse_records else {

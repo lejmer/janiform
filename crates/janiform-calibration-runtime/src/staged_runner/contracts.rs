@@ -19,7 +19,7 @@ use super::{
 };
 use crate::JointRefinementStageOptionPricingInput;
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
-use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 use crate::stages::joint_refinement::JointRefinementProgressCandidateAssessment;
 use serde::{Serialize, Serializer};
@@ -30,7 +30,7 @@ pub struct CalibrationStagedRunInputs {
     pub hawkes_candidate_inputs: Option<Vec<HawkesStageCandidateInput>>,
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
-    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
     pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,

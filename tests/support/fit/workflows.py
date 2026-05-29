@@ -99,9 +99,9 @@ def _fit_workflow_runner_from_staged_runner(
         tick_data_path: str | Path,
         tick_data_format: Optional[CalibrationInputFileFormat],
         tick_data_provenance_label: str,
-        coarse_training_path: Optional[str | Path],
-        coarse_training_format: CalibrationInputFileFormat,
-        coarse_training_provenance_label: str,
+        coarse_data_path: Optional[str | Path],
+        coarse_data_format: CalibrationInputFileFormat,
+        coarse_data_provenance_label: str,
         option_surface_path: Optional[str | Path],
         option_surface_format: CalibrationInputFileFormat,
         option_surface_provenance_label: str,
@@ -110,9 +110,9 @@ def _fit_workflow_runner_from_staged_runner(
         progress_callback: Any,
     ) -> NativeFitWorkflowOutput:
         _ = option_surface_provenance_label
-        _ = coarse_training_path
-        _ = coarse_training_format
-        _ = coarse_training_provenance_label
+        _ = coarse_data_path
+        _ = coarse_data_format
+        _ = coarse_data_provenance_label
         _ = carry
 
         if progress_event is not None and progress_callback is not None:
@@ -503,10 +503,10 @@ def _preparation_diagnostics_payload(
         "selected_stages": list(selected_stages),
         "executed_preprocessing_steps": [],
         "tick_record_count": 3,
-        "coarse_training_record_count": 0,
-        "coarse_training_return_interval_count": 0,
-        "coarse_training_overlap_interval_count": 0,
-        "coarse_training_independent_interval_count": 0,
+        "coarse_data_record_count": 0,
+        "coarse_data_return_interval_count": 0,
+        "coarse_data_overlap_interval_count": 0,
+        "coarse_data_independent_interval_count": 0,
         "option_surface_record_count": 0,
         "known_news_event_count": 0,
         "known_news_events_outside_source_window_count": 0,
@@ -545,7 +545,7 @@ def _preparation_provenance_payload(
             "canonical_value_field": "trade_price",
             "value_mapping_policy": "explicit_price_column",
         },
-        "coarse_training_summary": None,
+        "coarse_data_summary": None,
         "option_surface_summary": None,
         "known_news_summary": None,
         "calibration_evidence_routing": {
@@ -557,7 +557,7 @@ def _preparation_provenance_payload(
                     configuration.preparation.tick_objective_data_usage_policy.value
                 ),
             },
-            "coarse_training": None,
+            "coarse_data": None,
             "options": None,
         },
         "normalization_policy": {
@@ -571,7 +571,7 @@ def _preparation_provenance_payload(
         "selected_stages": list(selected_stages),
         "session_definition_path": None,
         "derived_trade_events_data_reference": "memory://prepared/ticks",
-        "derived_coarse_training_data_reference": None,
+        "derived_coarse_data_reference": None,
         "derived_option_surface_data_reference": None,
         "derivation_policies": [],
         "deterministic_defaults_applied": [],
@@ -589,7 +589,7 @@ def _staged_request_payload(
         "data_inputs": {
             "exchange_code": _exchange_code_for_session(_session_preset_name(configuration)),
             "trade_events_data_reference": "memory://prepared/ticks",
-            "coarse_training_data_reference": None,
+            "coarse_data_reference": None,
             "option_surface_data_reference": None,
         },
         "execution_mode": "memory",

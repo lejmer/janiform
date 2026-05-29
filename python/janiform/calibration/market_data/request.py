@@ -62,7 +62,7 @@ class MarketDataCalibrationRequest(ContractModel):
     column_mapping: CalibrationMarketDataColumnMapping = field(
         default_factory=CalibrationMarketDataColumnMapping
     )
-    coarse_training_source: Optional[CalibrationInputFileReference] = None
+    coarse_data_source: Optional[CalibrationInputFileReference] = None
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = ()
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None
     option_surface_source: Optional[CalibrationInputFileReference] = None
@@ -115,19 +115,19 @@ class MarketDataCalibrationRequest(ContractModel):
             raise calibration_error("option_surface_source.file_format", "must be one of: csv, parquet")
 
         if (
-            self.coarse_training_source is not None
-            and self.coarse_training_source.file_format
+            self.coarse_data_source is not None
+            and self.coarse_data_source.file_format
             not in (
                 CalibrationInputFileFormat.CSV,
                 CalibrationInputFileFormat.PARQUET,
             )
         ):
-            raise calibration_error("coarse_training_source.file_format", "must be one of: csv, parquet")
+            raise calibration_error("coarse_data_source.file_format", "must be one of: csv, parquet")
 
-        if self.coarse_training_source is None and self.column_mapping.coarse_training is not None:
+        if self.coarse_data_source is None and self.column_mapping.coarse_data is not None:
             raise calibration_error(
-                "column_mapping.coarse_training",
-                "must not be provided when coarse_training_source is omitted",
+                "column_mapping.coarse_data",
+                "must not be provided when coarse_data_source is omitted",
             )
 
         validate_tick_price_input_policy(
@@ -315,18 +315,18 @@ class MarketDataCalibrationRequest(ContractModel):
                 require_mapping(raw_payload, "tick_data_source", "tick_data_source", calibration_error),
                 field_path="tick_data_source",
             ),
-            coarse_training_source=(
+            coarse_data_source=(
                 CalibrationInputFileReference.from_mapping(
                     require_mapping(
                         raw_payload,
-                        "coarse_training_source",
-                        "coarse_training_source",
+                        "coarse_data_source",
+                        "coarse_data_source",
                         calibration_error,
                     ),
-                    field_path="coarse_training_source",
+                    field_path="coarse_data_source",
                 )
-                if "coarse_training_source" in raw_payload
-                and raw_payload["coarse_training_source"] is not None
+                if "coarse_data_source" in raw_payload
+                and raw_payload["coarse_data_source"] is not None
                 else None
             ),
             session_configuration=CalibrationSessionConfigurationInput.from_mapping(

@@ -326,7 +326,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            coarse_training_records: None,
+            coarse_data_records: None,
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
@@ -364,7 +364,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 payload: Some(build_mean_reversion_stage_success_payload()),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            coarse_training_records: None,
+            coarse_data_records: None,
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
@@ -432,7 +432,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
-                    coarse_training_records: None,
+                    coarse_data_records: None,
                     tick_objective_data_usage_policy:
                         CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
@@ -468,7 +468,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
-                    coarse_training_records: None,
+                    coarse_data_records: None,
                     tick_objective_data_usage_policy:
                         CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
@@ -546,7 +546,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
             payload: build_mean_reversion_stage_success_payload(),
         },
         candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-        coarse_training_records: None,
+        coarse_data_records: None,
         tick_objective_data_usage_policy:
             CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
         calibration_effort: None,
@@ -620,7 +620,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            coarse_training_records: None,
+            coarse_data_records: None,
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
@@ -687,7 +687,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            coarse_training_records: None,
+            coarse_data_records: None,
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,

@@ -5,9 +5,9 @@ use janiform_foundations::time::{
     checked_interval_count_between_utc_nanos,
 };
 
-use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
-use crate::stages::coarse_training::coarse_training_interval_observations;
+use crate::stages::coarse_data::coarse_data_interval_observations;
 use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketThresholds, build_observed_open_session_interval_observations,
     business_time_bucket_thresholds, mean_absolute_observed_return_by_utc_hour,
@@ -45,7 +45,7 @@ pub(crate) struct JointRefinementObservedDataBuildInput<'a> {
     pub(crate) observed_signal_preparation:
         &'a ReturnComponentsStageJointRefinementObservedSignalPreparation,
     pub(crate) candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
-    pub(crate) coarse_training_records: Option<&'a [MarketDataNormalizedCoarseTrainingRecord]>,
+    pub(crate) coarse_data_records: Option<&'a [MarketDataNormalizedCoarseDataRecord]>,
     pub(crate) tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub(crate) observed_open_event_rate_per_hour: f64,
 }
@@ -59,7 +59,7 @@ pub(crate) fn build_observed_data(
         return_components_fitted_parameters,
         observed_signal_preparation,
         candidate_generation_input,
-        coarse_training_records,
+        coarse_data_records,
         tick_objective_data_usage_policy,
         observed_open_event_rate_per_hour,
     } = input;
@@ -98,8 +98,8 @@ pub(crate) fn build_observed_data(
         NANOS_PER_HOUR,
     );
 
-    let coarse_intervals = coarse_training_records
-        .map(coarse_training_interval_observations)
+    let coarse_intervals = coarse_data_records
+        .map(coarse_data_interval_observations)
         .unwrap_or_default();
 
     let observed_slow_horizon_intervals = if coarse_intervals.is_empty() {

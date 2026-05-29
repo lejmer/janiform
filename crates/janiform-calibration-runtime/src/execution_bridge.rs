@@ -29,7 +29,7 @@ use janiform_model_kernels::news::{
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
-use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;
@@ -81,7 +81,7 @@ pub struct CalibrationStagedExecutionInput {
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
     #[serde(default)]
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -706,7 +706,7 @@ impl CalibrationStagedExecutionInput {
             return_components_candidate_generation_input: self
                 .return_components_candidate_generation_input
                 .map(CalibrationReturnComponentsStageCandidateGenerationInput::into_core),
-            coarse_training_records: self.coarse_training_records,
+            coarse_data_records: self.coarse_data_records,
             tick_objective_data_usage_policy: self.tick_objective_data_usage_policy,
             mean_reversion_stage_input: self
                 .mean_reversion_stage_input
@@ -1473,7 +1473,7 @@ mod tests {
                     },
                 },
             ),
-            coarse_training_records: None,
+            coarse_data_records: None,
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             mean_reversion_stage_input: Some(CalibrationMeanReversionStageExecutionInput {

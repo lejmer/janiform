@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_model_kernels::hawkes::HawkesEventSide;
@@ -69,7 +69,7 @@ pub struct JointRefinementStageExecutionInput {
     pub return_components_input: CalibrationStagePayloadSource<ReturnComponentsStageFittedPayload>,
     pub mean_reversion_input: CalibrationStagePayloadSource<MeanReversionStageFittedPayload>,
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
-    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub calibration_effort: Option<CalibrationEffortOptions>,
     pub restart_candidate_budget_override: Option<usize>,

@@ -13,9 +13,9 @@ use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 
-use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
-use crate::stages::coarse_training::coarse_training_interval_observations;
+use crate::stages::coarse_data::coarse_data_interval_observations;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
 use crate::stages::joint_metrics::build_observed_open_session_interval_observations;
@@ -48,7 +48,7 @@ struct LongVarianceFittedStagePayloadBuildInput<'a> {
     hawkes_stage_payload: &'a HawkesStageFittedPayload,
     return_components_stage_payload: &'a ReturnComponentsStageFittedPayload,
     candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
-    coarse_training_records: Option<&'a [MarketDataNormalizedCoarseTrainingRecord]>,
+    coarse_data_records: Option<&'a [MarketDataNormalizedCoarseDataRecord]>,
     tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
 }
 
@@ -58,7 +58,7 @@ pub struct LongVarianceStageExecutionInput {
     pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
     pub candidate_generation_input: Option<ReturnComponentsStageCandidateGenerationInput>,
-    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
 }
 
@@ -184,7 +184,7 @@ pub fn run_long_variance_calibration_stage(
             hawkes_stage_payload: &hawkes_stage_payload,
             return_components_stage_payload: &return_components_stage_payload,
             candidate_generation_input: &candidate_generation_input,
-            coarse_training_records: execution_input.coarse_training_records.as_deref(),
+            coarse_data_records: execution_input.coarse_data_records.as_deref(),
             tick_objective_data_usage_policy: execution_input.tick_objective_data_usage_policy,
         }) {
             Ok(fitted_stage_payload) => fitted_stage_payload,
@@ -228,7 +228,7 @@ fn build_long_variance_fitted_stage_payload(
         hawkes_stage_payload,
         return_components_stage_payload,
         candidate_generation_input,
-        coarse_training_records,
+        coarse_data_records,
         tick_objective_data_usage_policy,
     } = input;
 
@@ -250,7 +250,7 @@ fn build_long_variance_fitted_stage_payload(
         calendar_registry,
         run_spec.data_inputs.exchange_code.as_str(),
         candidate_generation_input,
-        coarse_training_records,
+        coarse_data_records,
         tick_objective_data_usage_policy,
     );
 
@@ -357,7 +357,7 @@ fn observed_long_variance_intervals(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-    coarse_training_records: Option<&[MarketDataNormalizedCoarseTrainingRecord]>,
+    coarse_data_records: Option<&[MarketDataNormalizedCoarseDataRecord]>,
     tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
 ) -> ObservedLongVarianceIntervals {
     let observed_returns = retained_open_session_returns_for_tick_objectives(
@@ -386,8 +386,8 @@ fn observed_long_variance_intervals(
         NANOS_PER_HOUR,
     );
 
-    let coarse_intervals = coarse_training_records
-        .map(coarse_training_interval_observations)
+    let coarse_intervals = coarse_data_records
+        .map(coarse_data_interval_observations)
         .unwrap_or_default();
 
     ObservedLongVarianceIntervals {

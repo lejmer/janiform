@@ -672,8 +672,8 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD",
-        "CalibrationCoarseTrainingColumnMapping",
-        "CalibrationCoarseTrainingTimestampSemantics",
+        "CalibrationCoarseDataColumnMapping",
+        "CalibrationCoarseDataTimestampSemantics",
         "CalibrationDuplicateRecordPolicy",
         "CalibrationFlatCarryInput",
         "CalibrationInputFileFormat",
@@ -732,8 +732,8 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
     calibration_market_data_workflow_module = import_module("janiform.calibration.market_data.workflow")
 
     assert {
-        "CalibrationCoarseTrainingColumnMapping",
-        "CalibrationCoarseTrainingTimestampSemantics",
+        "CalibrationCoarseDataColumnMapping",
+        "CalibrationCoarseDataTimestampSemantics",
         "CalibrationInputFileReference",
         "CalibrationMarketDataWorkflowScope",
         "CalibrationMarketDataPreprocessingSettings",

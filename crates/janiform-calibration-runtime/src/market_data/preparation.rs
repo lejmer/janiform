@@ -31,11 +31,11 @@ use crate::{
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
     CalibrationStagedExecutionInput, CalibrationStagedExecutionRuntimeResources,
-    MarketDataCoarseTrainingColumnMapping, MarketDataCoarseTrainingLoadingInput,
-    MarketDataCoarseTrainingTimestampSemantics, MarketDataInputFileReference,
+    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataLoadingInput,
+    MarketDataCoarseDataTimestampSemantics, MarketDataInputFileReference,
     MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput,
     MarketDataLoadingRequest, MarketDataNormalizationPolicy,
-    MarketDataNormalizedCoarseTrainingRecord, MarketDataNormalizedTickOutput,
+    MarketDataNormalizedCoarseDataRecord, MarketDataNormalizedTickOutput,
     MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
     MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingSettings,
@@ -64,8 +64,8 @@ const RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID: &str =
     "continuous_nig_fit_uses_filtered_observed_open_session_returns_and_stage_search.v1";
 const OPTION_SURFACE_UNUSABLE_QUOTE_FILTER_POLICY_ID: &str =
     "option_surface_rows_without_usable_bid_ask_quotes_are_filtered.v1";
-const COARSE_TRAINING_EVIDENCE_POLICY_ID: &str =
-    "coarse_training_fixed_interval_evidence_routes_to_slow_physical_targets.v1";
+const COARSE_DATA_EVIDENCE_POLICY_ID: &str =
+    "coarse_data_fixed_interval_evidence_routes_to_slow_physical_targets.v1";
 const DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID: &str = "seasonality.session_filter=open_only";
 const DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID: &str =
     "seasonality.sparse_hour_event_threshold=1";
@@ -85,8 +85,8 @@ const DEFAULT_INTRADAY_JUMP_POLICY_ID: &str =
     "intraday_jump_detection.material_threshold=4x_median_abs_open_return";
 const MEAN_REVERSION_OPEN_SESSION_GRID_KIND: &str =
     "market_data_open_session_log_price_interval_grid.v1";
-const MEAN_REVERSION_COARSE_TRAINING_GRID_KIND: &str =
-    "market_data_coarse_training_close_price_interval_grid.v1";
+const MEAN_REVERSION_COARSE_DATA_GRID_KIND: &str =
+    "market_data_coarse_data_close_price_interval_grid.v1";
 const MEAN_REVERSION_OPEN_SESSION_ALIGNMENT_POLICY: &str =
     "last_observed_open_session_log_price_per_complete_utc_interval.v1";
 const MEAN_REVERSION_BOUNDARY_INTERVAL_DERIVATION_POLICY: &str =
@@ -111,7 +111,7 @@ pub enum CalibrationMarketDataWorkflowScope {
 pub struct CalibrationMarketDataColumnMapping {
     pub tick_data: MarketDataTickDataColumnMapping,
     #[serde(default)]
-    pub coarse_training: Option<MarketDataCoarseTrainingColumnMapping>,
+    pub coarse_data: Option<MarketDataCoarseDataColumnMapping>,
     #[serde(default)]
     pub option_surface: Option<MarketDataOptionSurfaceColumnMapping>,
     #[serde(default)]
@@ -160,7 +160,7 @@ pub struct CalibrationMarketDataPreparationRequest {
     pub run_id: String,
     pub tick_data_source: MarketDataInputFileReference,
     #[serde(default)]
-    pub coarse_training_source: Option<MarketDataInputFileReference>,
+    pub coarse_data_source: Option<MarketDataInputFileReference>,
     pub session_configuration: MarketDataSessionConfiguration,
     pub column_mapping: CalibrationMarketDataColumnMapping,
     pub workflow_scope: CalibrationMarketDataWorkflowScope,
@@ -225,10 +225,10 @@ pub struct CalibrationMarketDataPreparationDiagnostics {
     pub selected_stages: Vec<CalibrationStage>,
     pub executed_preprocessing_steps: Vec<String>,
     pub tick_record_count: usize,
-    pub coarse_training_record_count: usize,
-    pub coarse_training_return_interval_count: usize,
-    pub coarse_training_overlap_interval_count: usize,
-    pub coarse_training_independent_interval_count: usize,
+    pub coarse_data_record_count: usize,
+    pub coarse_data_return_interval_count: usize,
+    pub coarse_data_overlap_interval_count: usize,
+    pub coarse_data_independent_interval_count: usize,
     pub option_surface_record_count: usize,
     pub known_news_event_count: usize,
     pub known_news_events_outside_source_window_count: usize,
@@ -247,7 +247,7 @@ pub struct CalibrationMarketDataPreparationDiagnostics {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CalibrationMarketDataPreparationProvenance {
     pub tick_data_summary: Value,
-    pub coarse_training_summary: Option<Value>,
+    pub coarse_data_summary: Option<Value>,
     pub option_surface_summary: Option<Value>,
     pub known_news_summary: Option<Value>,
     pub calibration_evidence_routing: Value,
@@ -256,7 +256,7 @@ pub struct CalibrationMarketDataPreparationProvenance {
     pub selected_stages: Vec<CalibrationStage>,
     pub session_definition_path: Option<String>,
     pub derived_trade_events_data_reference: String,
-    pub derived_coarse_training_data_reference: Option<String>,
+    pub derived_coarse_data_reference: Option<String>,
     pub derived_option_surface_data_reference: Option<String>,
     pub derivation_policies: Vec<String>,
     pub deterministic_defaults_applied: Vec<String>,
@@ -387,7 +387,7 @@ struct PreparedMarketDataPlanBuildInput {
     cpu_count: Option<usize>,
     selected_stages: Vec<CalibrationStage>,
     trade_events_data_reference: String,
-    coarse_training_data_reference: Option<String>,
+    coarse_data_reference: Option<String>,
     option_surface_data_reference: Option<String>,
     normalized_tick_output: MarketDataNormalizedTickOutput,
     loading_output: MarketDataLoadingOutput,
@@ -421,7 +421,7 @@ pub fn prepare_market_data_calibration_plan(
     let (
         loading_request,
         trade_events_data_reference,
-        coarse_training_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
     ) = build_loading_request(&request, &selected_stages)?;
 
@@ -432,7 +432,7 @@ pub fn prepare_market_data_calibration_plan(
         cpu_count,
         selected_stages,
         trade_events_data_reference,
-        coarse_training_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
         normalized_tick_output: loaded_market_data.normalized_tick_output,
         loading_output: loaded_market_data.loading_output,
@@ -457,7 +457,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     let (
         loading_request,
         trade_events_data_reference,
-        coarse_training_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
     ) = build_loading_request(&request, &selected_stages)?;
 
@@ -477,7 +477,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
         cpu_count,
         selected_stages,
         trade_events_data_reference,
-        coarse_training_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
         normalized_tick_output: normalized_tick_output.clone(),
         loading_output,
@@ -558,7 +558,7 @@ fn stable_seed_from_run_id(run_id: &str) -> u64 {
 
 fn executed_preprocessing_steps(
     workflow_scope: CalibrationMarketDataWorkflowScope,
-    coarse_training_present: bool,
+    coarse_data_present: bool,
     option_surface_present: bool,
     known_news_present: bool,
 ) -> Vec<String> {
@@ -589,9 +589,9 @@ fn executed_preprocessing_steps(
         preprocessing_steps.push("option_surface_quote_normalization".to_string());
     }
 
-    if coarse_training_present {
-        preprocessing_steps.push("coarse_training_evidence_loading".to_string());
-        preprocessing_steps.push("coarse_training_fixed_interval_resolution".to_string());
+    if coarse_data_present {
+        preprocessing_steps.push("coarse_data_evidence_loading".to_string());
+        preprocessing_steps.push("coarse_data_fixed_interval_resolution".to_string());
         preprocessing_steps.push("multi_resolution_evidence_routing".to_string());
     }
 
@@ -658,10 +658,10 @@ fn build_loading_request(
         )
     });
 
-    let coarse_training_data_reference = request.coarse_training_source.as_ref().map(|source| {
+    let coarse_data_reference = request.coarse_data_source.as_ref().map(|source| {
         build_dataset_reference(
             request.run_id.as_str(),
-            "coarse-training",
+            "coarse-data",
             source.provenance_label.as_str(),
         )
     });
@@ -720,19 +720,19 @@ fn build_loading_request(
         }
     };
 
-    let coarse_training_input = match (
-        request.coarse_training_source.as_ref(),
-        request.column_mapping.coarse_training.clone(),
+    let coarse_data_input = match (
+        request.coarse_data_source.as_ref(),
+        request.column_mapping.coarse_data.clone(),
     ) {
-        (Some(source), Some(column_mapping)) => Some(MarketDataCoarseTrainingLoadingInput {
+        (Some(source), Some(column_mapping)) => Some(MarketDataCoarseDataLoadingInput {
             source: source.clone(),
             column_mapping,
         }),
-        (Some(source), None) => Some(MarketDataCoarseTrainingLoadingInput {
+        (Some(source), None) => Some(MarketDataCoarseDataLoadingInput {
             source: source.clone(),
-            column_mapping: MarketDataCoarseTrainingColumnMapping {
+            column_mapping: MarketDataCoarseDataColumnMapping {
                 timestamp_column: None,
-                timestamp_semantics: MarketDataCoarseTrainingTimestampSemantics::default(),
+                timestamp_semantics: MarketDataCoarseDataTimestampSemantics::default(),
                 interval_start_column: None,
                 interval_end_column: None,
                 open_column: None,
@@ -745,7 +745,7 @@ fn build_loading_request(
         (None, None) => None,
         (None, Some(_)) => {
             return Err(CalibrationMarketDataPreparationError::from(
-                "coarse_training_source is required when column_mapping.coarse_training is provided"
+                "coarse_data_source is required when column_mapping.coarse_data is provided"
                     .to_string(),
             ));
         }
@@ -757,7 +757,7 @@ fn build_loading_request(
             trade_events_data_reference: trade_events_data_reference.clone(),
             tick_data_source: request.tick_data_source.clone(),
             tick_data_column_mapping: request.column_mapping.tick_data.clone(),
-            coarse_training_input,
+            coarse_data_input,
             normalization_policy: request.normalization_policy.clone(),
             preprocessing_settings: request.preprocessing_settings.clone(),
             option_surface_input,
@@ -767,7 +767,7 @@ fn build_loading_request(
                 .contains(&CalibrationStage::ReturnComponents),
         },
         trade_events_data_reference,
-        coarse_training_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
     ))
 }
@@ -839,9 +839,9 @@ fn mean_reversion_stage_input_from_request(
         );
 
     let coarse_price_observations = loading_output
-        .coarse_training_records
+        .coarse_data_records
         .as_deref()
-        .map(coarse_training_mean_reversion_observations)
+        .map(coarse_data_mean_reversion_observations)
         .map(|observations| {
             mean_reversion_stage_observations_relative_to_reference_price(
                 observations.as_slice(),
@@ -859,7 +859,7 @@ fn mean_reversion_stage_input_from_request(
     let grid_kind = if coarse_price_observations.is_empty() {
         MEAN_REVERSION_OPEN_SESSION_GRID_KIND
     } else {
-        MEAN_REVERSION_COARSE_TRAINING_GRID_KIND
+        MEAN_REVERSION_COARSE_DATA_GRID_KIND
     };
 
     let observed_session_duration_hours = loading_output
@@ -1247,8 +1247,8 @@ fn mean_reversion_stage_observations_relative_to_reference_price(
         .collect()
 }
 
-fn coarse_training_mean_reversion_observations(
-    records: &[MarketDataNormalizedCoarseTrainingRecord],
+fn coarse_data_mean_reversion_observations(
+    records: &[MarketDataNormalizedCoarseDataRecord],
 ) -> Vec<CalibrationMeanReversionStageObservation> {
     records
         .iter()
@@ -1604,7 +1604,7 @@ fn prepared_market_data_plan_from_loading_output(
         cpu_count,
         selected_stages,
         trade_events_data_reference,
-        coarse_training_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
         normalized_tick_output,
         loading_output,
@@ -1623,7 +1623,7 @@ fn prepared_market_data_plan_from_loading_output(
         CalibrationRunDataInputs {
             exchange_code: request.session_configuration.exchange_code.clone(),
             trade_events_data_reference: trade_events_data_reference.clone(),
-            coarse_training_data_reference: coarse_training_data_reference.clone(),
+            coarse_data_reference: coarse_data_reference.clone(),
             option_surface_data_reference: option_surface_data_reference.clone(),
         },
         request.output_preferences.execution_mode,
@@ -1665,7 +1665,7 @@ fn prepared_market_data_plan_from_loading_output(
             .preprocessing_output
             .return_components_candidate_generation_input
             .clone(),
-        coarse_training_records: loading_output.coarse_training_records.clone(),
+        coarse_data_records: loading_output.coarse_data_records.clone(),
         tick_objective_data_usage_policy: request.tick_objective_data_usage_policy,
         mean_reversion_stage_input: mean_reversion_stage_input_from_request(
             &request,
@@ -1698,27 +1698,27 @@ fn prepared_market_data_plan_from_loading_output(
         selected_stages: selected_stages.clone(),
         executed_preprocessing_steps: executed_preprocessing_steps(
             request.workflow_scope,
-            loading_output.coarse_training_summary.is_some(),
+            loading_output.coarse_data_summary.is_some(),
             loading_output.option_surface_summary.is_some(),
             loading_output.known_news_summary.is_some(),
         ),
         tick_record_count: loading_output.tick_data_summary.retained_row_count,
-        coarse_training_record_count: loading_output
-            .coarse_training_summary
+        coarse_data_record_count: loading_output
+            .coarse_data_summary
             .as_ref()
             .map(|summary| summary.source_summary.retained_row_count)
             .unwrap_or(0),
-        coarse_training_return_interval_count: loading_output
-            .coarse_training_summary
+        coarse_data_return_interval_count: loading_output
+            .coarse_data_summary
             .as_ref()
             .map(|summary| summary.retained_return_interval_count)
             .unwrap_or(0),
-        coarse_training_overlap_interval_count: coarse_overlap_interval_count(
-            loading_output.coarse_training_records.as_deref(),
+        coarse_data_overlap_interval_count: coarse_overlap_interval_count(
+            loading_output.coarse_data_records.as_deref(),
             &normalized_tick_output,
         ),
-        coarse_training_independent_interval_count: coarse_independent_interval_count(
-            loading_output.coarse_training_records.as_deref(),
+        coarse_data_independent_interval_count: coarse_independent_interval_count(
+            loading_output.coarse_data_records.as_deref(),
             &normalized_tick_output,
         ),
         option_surface_record_count: loading_output
@@ -1791,8 +1791,8 @@ fn prepared_market_data_plan_from_loading_output(
         derivation_policies.push(OPTION_SURFACE_UNUSABLE_QUOTE_FILTER_POLICY_ID.to_string());
     }
 
-    if loading_output.coarse_training_summary.is_some() {
-        derivation_policies.push(COARSE_TRAINING_EVIDENCE_POLICY_ID.to_string());
+    if loading_output.coarse_data_summary.is_some() {
+        derivation_policies.push(COARSE_DATA_EVIDENCE_POLICY_ID.to_string());
     }
 
     let provenance = CalibrationMarketDataPreparationProvenance {
@@ -1803,14 +1803,14 @@ fn prepared_market_data_plan_from_loading_output(
                 ))
             },
         )?,
-        coarse_training_summary: loading_output
-            .coarse_training_summary
+        coarse_data_summary: loading_output
+            .coarse_data_summary
             .as_ref()
             .map(serde_json::to_value)
             .transpose()
             .map_err(|source| {
                 CalibrationMarketDataPreparationError::from(format!(
-                    "failed to serialize coarse-training summary: {source}"
+                    "failed to serialize coarse-data summary: {source}"
                 ))
             })?,
         option_surface_summary: loading_output
@@ -1857,7 +1857,7 @@ fn prepared_market_data_plan_from_loading_output(
             None
         },
         derived_trade_events_data_reference: trade_events_data_reference,
-        derived_coarse_training_data_reference: coarse_training_data_reference,
+        derived_coarse_data_reference: coarse_data_reference,
         derived_option_surface_data_reference: option_surface_data_reference,
         derivation_policies,
         deterministic_defaults_applied: deterministic_defaults_applied(&request),

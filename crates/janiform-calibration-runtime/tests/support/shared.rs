@@ -2319,7 +2319,7 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
-        coarse_training_records: None,
+        coarse_data_records: None,
         tick_objective_data_usage_policy:
             CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
         mean_reversion_stage_input: if include_return_candidate_generation_input {
@@ -2762,7 +2762,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
-                    coarse_training_records: None,
+                    coarse_data_records: None,
                     tick_objective_data_usage_policy:
                         CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,

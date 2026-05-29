@@ -272,7 +272,7 @@ fn run_long_variance_staged_execution_stage(
             .staged_run_inputs
             .return_components_candidate_generation_input
             .clone(),
-        coarse_training_records: input.staged_run_inputs.coarse_training_records.clone(),
+        coarse_data_records: input.staged_run_inputs.coarse_data_records.clone(),
         tick_objective_data_usage_policy: input.staged_run_inputs.tick_objective_data_usage_policy,
     };
 

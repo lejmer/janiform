@@ -2,8 +2,8 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::coarse_data::LoadedCoarseRow;
 use super::contracts::{
-    MarketDataCoarseTrainingTimestampSemantics, MarketDataLoadingError,
-    MarketDataNormalizedCoarseTrainingRecord,
+    MarketDataCoarseDataTimestampSemantics, MarketDataLoadingError,
+    MarketDataNormalizedCoarseDataRecord,
 };
 
 const COARSE_TIMESTAMP_OPEN_SEMANTICS: &str = "timestamp_is_bar_open_time.v1";
@@ -23,7 +23,7 @@ pub(super) struct CoarseInterval {
 pub(super) fn resolve_row_interval(
     row: &LoadedCoarseRow,
     nominal_interval_nanos: i64,
-    timestamp_semantics: MarketDataCoarseTrainingTimestampSemantics,
+    timestamp_semantics: MarketDataCoarseDataTimestampSemantics,
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
 ) -> Result<CoarseInterval, MarketDataLoadingError> {
@@ -32,7 +32,7 @@ pub(super) fn resolve_row_interval(
             if end <= start {
                 return Err(MarketDataLoadingError::InvalidValue {
                     field_path: format!(
-                        "coarse_training_input.source.rows[{}]",
+                        "coarse_data_input.source.rows[{}]",
                         row.source_row_number
                     ),
                     message: "interval_end_column must be later than interval_start_column"
@@ -48,7 +48,7 @@ pub(super) fn resolve_row_interval(
         (Some(_), None) | (None, Some(_)) => {
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: format!(
-                    "coarse_training_input.source.rows[{}]",
+                    "coarse_data_input.source.rows[{}]",
                     row.source_row_number
                 ),
                 message: "coarse interval columns must provide both start and end".to_string(),
@@ -58,13 +58,13 @@ pub(super) fn resolve_row_interval(
     }
 
     match timestamp_semantics {
-        MarketDataCoarseTrainingTimestampSemantics::BarOpenTime => resolve_open_timestamp_interval(
+        MarketDataCoarseDataTimestampSemantics::BarOpenTime => resolve_open_timestamp_interval(
             row,
             nominal_interval_nanos,
             calendar_registry,
             exchange_code,
         ),
-        MarketDataCoarseTrainingTimestampSemantics::BarCloseTime => {
+        MarketDataCoarseDataTimestampSemantics::BarCloseTime => {
             resolve_close_timestamp_interval(
                 row,
                 nominal_interval_nanos,
@@ -86,7 +86,7 @@ fn resolve_open_timestamp_interval(
         .checked_add(nominal_interval_nanos)
         .ok_or_else(|| MarketDataLoadingError::InvalidValue {
             field_path: format!(
-                "coarse_training_input.source.rows[{}]",
+                "coarse_data_input.source.rows[{}]",
                 row.source_row_number
             ),
             message: "timestamp plus inferred coarse interval is outside i64 range".to_string(),
@@ -108,7 +108,7 @@ fn resolve_open_timestamp_interval(
             .checked_add(effective_duration_nanos)
             .ok_or_else(|| MarketDataLoadingError::InvalidValue {
                 field_path: format!(
-                    "coarse_training_input.source.rows[{}]",
+                    "coarse_data_input.source.rows[{}]",
                     row.source_row_number
                 ),
                 message: "timestamp plus effective coarse interval is outside i64 range"
@@ -128,7 +128,7 @@ fn resolve_close_timestamp_interval(
         .checked_sub(nominal_interval_nanos)
         .ok_or_else(|| MarketDataLoadingError::InvalidValue {
             field_path: format!(
-                "coarse_training_input.source.rows[{}]",
+                "coarse_data_input.source.rows[{}]",
                 row.source_row_number
             ),
             message: "timestamp minus inferred coarse interval is outside i64 range".to_string(),
@@ -149,7 +149,7 @@ fn resolve_close_timestamp_interval(
             .checked_sub(effective_duration_nanos)
             .ok_or_else(|| MarketDataLoadingError::InvalidValue {
                 field_path: format!(
-                    "coarse_training_input.source.rows[{}]",
+                    "coarse_data_input.source.rows[{}]",
                     row.source_row_number
                 ),
                 message: "timestamp minus effective coarse interval is outside i64 range"
@@ -175,7 +175,7 @@ fn effective_market_open_duration_nanos(
         )
         .map_err(|source| MarketDataLoadingError::InvalidValue {
             field_path: format!(
-                "coarse_training_input.source.rows[{}]",
+                "coarse_data_input.source.rows[{}]",
                 row.source_row_number
             ),
             message: format!("market-session interval exposure failed: {source}"),
@@ -189,7 +189,7 @@ fn effective_market_open_duration_nanos(
 }
 
 pub(super) fn validate_coarse_record_intervals(
-    records: &[MarketDataNormalizedCoarseTrainingRecord],
+    records: &[MarketDataNormalizedCoarseDataRecord],
 ) -> Result<(), MarketDataLoadingError> {
     let mut previous_interval_end: Option<i64> = None;
 
@@ -197,7 +197,7 @@ pub(super) fn validate_coarse_record_intervals(
         if record.interval_end_utc_nanos <= record.interval_start_utc_nanos {
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: format!(
-                    "coarse_training_input.source.rows[{}]",
+                    "coarse_data_input.source.rows[{}]",
                     record.source_row_number
                 ),
                 message: "coarse interval end must be later than interval start".to_string(),
@@ -207,7 +207,7 @@ pub(super) fn validate_coarse_record_intervals(
         if previous_interval_end.is_some_and(|end| record.interval_start_utc_nanos < end) {
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: format!(
-                    "coarse_training_input.source.rows[{}]",
+                    "coarse_data_input.source.rows[{}]",
                     record.source_row_number
                 ),
                 message: "coarse intervals must not overlap after timestamp normalization"
@@ -238,7 +238,7 @@ pub(super) fn infer_nominal_interval_nanos(
 
     if positive_deltas.is_empty() {
         return Err(MarketDataLoadingError::InvalidValue {
-            field_path: "coarse_training_input.source".to_string(),
+            field_path: "coarse_data_input.source".to_string(),
             message:
                 "requires at least two strictly increasing timestamps to infer a fixed interval"
                     .to_string(),
@@ -260,7 +260,7 @@ pub(super) fn infer_explicit_nominal_interval_nanos(
         else {
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: format!(
-                    "coarse_training_input.source.rows[{}]",
+                    "coarse_data_input.source.rows[{}]",
                     row.source_row_number
                 ),
                 message: "coarse interval columns must provide both start and end".to_string(),
@@ -270,7 +270,7 @@ pub(super) fn infer_explicit_nominal_interval_nanos(
         if end <= start {
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: format!(
-                    "coarse_training_input.source.rows[{}]",
+                    "coarse_data_input.source.rows[{}]",
                     row.source_row_number
                 ),
                 message: "interval_end_column must be later than interval_start_column".to_string(),
@@ -282,7 +282,7 @@ pub(super) fn infer_explicit_nominal_interval_nanos(
 
     if positive_durations.is_empty() {
         return Err(MarketDataLoadingError::InvalidValue {
-            field_path: "coarse_training_input.source".to_string(),
+            field_path: "coarse_data_input.source".to_string(),
             message: "requires at least one explicit coarse interval".to_string(),
         });
     }
@@ -294,15 +294,15 @@ pub(super) fn infer_explicit_nominal_interval_nanos(
 
 pub(super) fn timestamp_semantics(
     explicit_intervals: bool,
-    timestamp_semantics: MarketDataCoarseTrainingTimestampSemantics,
+    timestamp_semantics: MarketDataCoarseDataTimestampSemantics,
 ) -> &'static str {
     if explicit_intervals {
         return COARSE_EXPLICIT_INTERVAL_SEMANTICS;
     }
 
     match timestamp_semantics {
-        MarketDataCoarseTrainingTimestampSemantics::BarOpenTime => COARSE_TIMESTAMP_OPEN_SEMANTICS,
-        MarketDataCoarseTrainingTimestampSemantics::BarCloseTime => {
+        MarketDataCoarseDataTimestampSemantics::BarOpenTime => COARSE_TIMESTAMP_OPEN_SEMANTICS,
+        MarketDataCoarseDataTimestampSemantics::BarCloseTime => {
             COARSE_TIMESTAMP_CLOSE_SEMANTICS
         }
     }
@@ -375,8 +375,8 @@ mod tests {
         interval_start_utc_nanos: i64,
         interval_end_utc_nanos: i64,
         source_row_number: usize,
-    ) -> MarketDataNormalizedCoarseTrainingRecord {
-        MarketDataNormalizedCoarseTrainingRecord {
+    ) -> MarketDataNormalizedCoarseDataRecord {
+        MarketDataNormalizedCoarseDataRecord {
             interval_start_utc_nanos,
             interval_end_utc_nanos,
             observation_timestamp_utc_nanos: interval_end_utc_nanos,
@@ -400,7 +400,7 @@ mod tests {
         let interval = resolve_row_interval(
             &row(10_000),
             1_000,
-            MarketDataCoarseTrainingTimestampSemantics::default(),
+            MarketDataCoarseDataTimestampSemantics::default(),
             &calendar_registry,
             "XUTC",
         )
@@ -409,7 +409,7 @@ mod tests {
         assert_eq!(interval.interval_start_utc_nanos, 10_000);
         assert_eq!(interval.interval_end_utc_nanos, 11_000);
         assert_eq!(
-            timestamp_semantics(false, MarketDataCoarseTrainingTimestampSemantics::default()),
+            timestamp_semantics(false, MarketDataCoarseDataTimestampSemantics::default()),
             "timestamp_is_bar_open_time.v1"
         );
     }
@@ -421,7 +421,7 @@ mod tests {
         let interval = resolve_row_interval(
             &row(10_000),
             1_000,
-            MarketDataCoarseTrainingTimestampSemantics::BarCloseTime,
+            MarketDataCoarseDataTimestampSemantics::BarCloseTime,
             &calendar_registry,
             "XUTC",
         )
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(
             timestamp_semantics(
                 false,
-                MarketDataCoarseTrainingTimestampSemantics::BarCloseTime
+                MarketDataCoarseDataTimestampSemantics::BarCloseTime
             ),
             "timestamp_is_bar_close_time.v1"
         );
@@ -483,7 +483,7 @@ mod tests {
                 field_path,
                 message,
             } => {
-                assert_eq!(field_path, "coarse_training_input.source.rows[2]");
+                assert_eq!(field_path, "coarse_data_input.source.rows[2]");
                 assert_eq!(
                     message,
                     "coarse intervals must not overlap after timestamp normalization"

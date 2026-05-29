@@ -787,7 +787,7 @@ fn prepare_observed_inputs(
             .fitted_parameters,
         observed_signal_preparation: &resolved_stage_payloads.observed_signal_preparation,
         candidate_generation_input: &stage_input.candidate_generation_input,
-        coarse_training_records: stage_input.coarse_training_records.as_deref(),
+        coarse_data_records: stage_input.coarse_data_records.as_deref(),
         tick_objective_data_usage_policy: stage_input.tick_objective_data_usage_policy,
         observed_open_event_rate_per_hour,
     })

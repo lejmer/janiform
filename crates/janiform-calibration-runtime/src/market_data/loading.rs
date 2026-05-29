@@ -19,13 +19,13 @@ mod test_support;
 pub use calendar_materialization::build_market_data_session_definition_json;
 pub use contracts::{
     DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD,
-    MarketDataCoarseTrainingColumnMapping, MarketDataCoarseTrainingKind,
-    MarketDataCoarseTrainingLoadingInput, MarketDataCoarseTrainingSummary,
-    MarketDataCoarseTrainingTimestampSemantics, MarketDataDuplicateRecordPolicy,
+    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataKind,
+    MarketDataCoarseDataLoadingInput, MarketDataCoarseDataSummary,
+    MarketDataCoarseDataTimestampSemantics, MarketDataDuplicateRecordPolicy,
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
     MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataLoadingOutput,
     MarketDataLoadingRequest, MarketDataNormalizationPolicy,
-    MarketDataNormalizedCoarseTrainingRecord, MarketDataNormalizedOptionSurfaceOutput,
+    MarketDataNormalizedCoarseDataRecord, MarketDataNormalizedOptionSurfaceOutput,
     MarketDataNormalizedOptionSurfaceRecord, MarketDataNormalizedTickOutput,
     MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
     MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,

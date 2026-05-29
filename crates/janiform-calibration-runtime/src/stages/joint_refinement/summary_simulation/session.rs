@@ -1436,7 +1436,7 @@ pub(crate) mod tests {
                 return_components_fitted_parameters: &return_components_payload.fitted_parameters,
                 observed_signal_preparation: &observed_signal_preparation,
                 candidate_generation_input: &candidate_generation_input,
-                coarse_training_records: None,
+                coarse_data_records: None,
                 tick_objective_data_usage_policy:
                     crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy::AllAvailable,
                 observed_open_event_rate_per_hour,

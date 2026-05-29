@@ -80,10 +80,10 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
     selected_stages: tuple[CalibrationStage, ...]
     executed_preprocessing_steps: tuple[str, ...]
     tick_record_count: int
-    coarse_training_record_count: int
-    coarse_training_return_interval_count: int
-    coarse_training_overlap_interval_count: int
-    coarse_training_independent_interval_count: int
+    coarse_data_record_count: int
+    coarse_data_return_interval_count: int
+    coarse_data_overlap_interval_count: int
+    coarse_data_independent_interval_count: int
     option_surface_record_count: int
     known_news_event_count: int
     known_news_events_outside_source_window_count: int
@@ -114,15 +114,15 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
                 for step in raw_payload["executed_preprocessing_steps"]
             ),
             tick_record_count=int(raw_payload["tick_record_count"]),
-            coarse_training_record_count=int(raw_payload["coarse_training_record_count"]),
-            coarse_training_return_interval_count=int(
-                raw_payload["coarse_training_return_interval_count"]
+            coarse_data_record_count=int(raw_payload["coarse_data_record_count"]),
+            coarse_data_return_interval_count=int(
+                raw_payload["coarse_data_return_interval_count"]
             ),
-            coarse_training_overlap_interval_count=int(
-                raw_payload["coarse_training_overlap_interval_count"]
+            coarse_data_overlap_interval_count=int(
+                raw_payload["coarse_data_overlap_interval_count"]
             ),
-            coarse_training_independent_interval_count=int(
-                raw_payload["coarse_training_independent_interval_count"]
+            coarse_data_independent_interval_count=int(
+                raw_payload["coarse_data_independent_interval_count"]
             ),
             option_surface_record_count=int(raw_payload["option_surface_record_count"]),
             known_news_event_count=int(raw_payload["known_news_event_count"]),
@@ -147,7 +147,7 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
 @dataclass(frozen=True, slots=True)
 class MarketDataCalibrationPreparationProvenance(ContractModel):
     tick_data_summary: MarketDataCalibrationSourceSummary
-    coarse_training_summary: Optional[MarketDataCalibrationSourceSummary]
+    coarse_data_summary: Optional[MarketDataCalibrationSourceSummary]
     option_surface_summary: Optional[MarketDataCalibrationSourceSummary]
     known_news_summary: Optional[MarketDataCalibrationSourceSummary]
     calibration_evidence_routing: dict[str, Any]
@@ -156,7 +156,7 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
     selected_stages: tuple[CalibrationStage, ...]
     session_definition_path: Optional[str]
     derived_trade_events_data_reference: str
-    derived_coarse_training_data_reference: Optional[str]
+    derived_coarse_data_reference: Optional[str]
     derived_option_surface_data_reference: Optional[str]
     derivation_policies: tuple[str, ...]
     deterministic_defaults_applied: tuple[str, ...]
@@ -170,11 +170,11 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
             tick_data_summary=MarketDataCalibrationSourceSummary.from_mapping(
                 raw_payload["tick_data_summary"]
             ),
-            coarse_training_summary=(
+            coarse_data_summary=(
                 MarketDataCalibrationSourceSummary.from_mapping(
-                    raw_payload["coarse_training_summary"]["source_summary"]
+                    raw_payload["coarse_data_summary"]["source_summary"]
                 )
-                if raw_payload.get("coarse_training_summary") is not None
+                if raw_payload.get("coarse_data_summary") is not None
                 else None
             ),
             option_surface_summary=(
@@ -209,9 +209,9 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
             derived_trade_events_data_reference=str(
                 raw_payload["derived_trade_events_data_reference"]
             ),
-            derived_coarse_training_data_reference=(
-                str(raw_payload["derived_coarse_training_data_reference"])
-                if raw_payload.get("derived_coarse_training_data_reference") is not None
+            derived_coarse_data_reference=(
+                str(raw_payload["derived_coarse_data_reference"])
+                if raw_payload.get("derived_coarse_data_reference") is not None
                 else None
             ),
             derived_option_surface_data_reference=(
@@ -304,15 +304,15 @@ def _build_market_data_preparation_diagnostics(
         selected_stages=diagnostics.selected_stages,
         executed_preprocessing_steps=diagnostics.executed_preprocessing_steps,
         tick_record_count=diagnostics.tick_record_count,
-        coarse_training_record_count=diagnostics.coarse_training_record_count,
-        coarse_training_return_interval_count=(
-            diagnostics.coarse_training_return_interval_count
+        coarse_data_record_count=diagnostics.coarse_data_record_count,
+        coarse_data_return_interval_count=(
+            diagnostics.coarse_data_return_interval_count
         ),
-        coarse_training_overlap_interval_count=(
-            diagnostics.coarse_training_overlap_interval_count
+        coarse_data_overlap_interval_count=(
+            diagnostics.coarse_data_overlap_interval_count
         ),
-        coarse_training_independent_interval_count=(
-            diagnostics.coarse_training_independent_interval_count
+        coarse_data_independent_interval_count=(
+            diagnostics.coarse_data_independent_interval_count
         ),
         option_surface_record_count=diagnostics.option_surface_record_count,
         known_news_event_count=diagnostics.known_news_event_count,
@@ -335,9 +335,9 @@ def _build_market_data_preparation_provenance(
 ) -> MarketDataCalibrationPreparationProvenance:
     return MarketDataCalibrationPreparationProvenance(
         tick_data_summary=_build_market_data_source_summary(provenance.tick_data_summary),
-        coarse_training_summary=(
-            _build_market_data_source_summary(provenance.coarse_training_summary)
-            if provenance.coarse_training_summary is not None
+        coarse_data_summary=(
+            _build_market_data_source_summary(provenance.coarse_data_summary)
+            if provenance.coarse_data_summary is not None
             else None
         ),
         option_surface_summary=(
@@ -356,8 +356,8 @@ def _build_market_data_preparation_provenance(
         selected_stages=provenance.selected_stages,
         session_definition_path=provenance.session_definition_path,
         derived_trade_events_data_reference=provenance.derived_trade_events_data_reference,
-        derived_coarse_training_data_reference=(
-            provenance.derived_coarse_training_data_reference
+        derived_coarse_data_reference=(
+            provenance.derived_coarse_data_reference
         ),
         derived_option_surface_data_reference=provenance.derived_option_surface_data_reference,
         derivation_policies=provenance.derivation_policies,

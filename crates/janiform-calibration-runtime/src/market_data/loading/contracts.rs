@@ -15,7 +15,7 @@ pub struct MarketDataLoadingRequest {
     pub tick_data_source: MarketDataInputFileReference,
     pub tick_data_column_mapping: MarketDataTickDataColumnMapping,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub coarse_training_input: Option<MarketDataCoarseTrainingLoadingInput>,
+    pub coarse_data_input: Option<MarketDataCoarseDataLoadingInput>,
     pub normalization_policy: MarketDataNormalizationPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
@@ -70,18 +70,18 @@ pub struct MarketDataTickDataColumnMapping {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataCoarseTrainingLoadingInput {
+pub struct MarketDataCoarseDataLoadingInput {
     pub source: MarketDataInputFileReference,
-    pub column_mapping: MarketDataCoarseTrainingColumnMapping,
+    pub column_mapping: MarketDataCoarseDataColumnMapping,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataCoarseTrainingColumnMapping {
+pub struct MarketDataCoarseDataColumnMapping {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp_column: Option<String>,
     #[serde(default)]
-    pub timestamp_semantics: MarketDataCoarseTrainingTimestampSemantics,
+    pub timestamp_semantics: MarketDataCoarseDataTimestampSemantics,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interval_start_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -100,7 +100,7 @@ pub struct MarketDataCoarseTrainingColumnMapping {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum MarketDataCoarseTrainingTimestampSemantics {
+pub enum MarketDataCoarseDataTimestampSemantics {
     #[default]
     BarOpenTime,
     BarCloseTime,
@@ -108,7 +108,7 @@ pub enum MarketDataCoarseTrainingTimestampSemantics {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum MarketDataCoarseTrainingKind {
+pub enum MarketDataCoarseDataKind {
     Ohlcv,
     CloseOnly,
 }
@@ -303,9 +303,9 @@ pub struct MarketDataLoadingOutput {
     pub preprocessing_output: MarketDataTranslationPreprocessingOutput,
     pub tick_data_summary: MarketDataSourceSummary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub coarse_training_summary: Option<MarketDataCoarseTrainingSummary>,
+    pub coarse_data_summary: Option<MarketDataCoarseDataSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub option_surface_summary: Option<MarketDataSourceSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -352,10 +352,10 @@ pub struct MarketDataNormalizedOptionSurfaceOutput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataCoarseTrainingSummary {
+pub struct MarketDataCoarseDataSummary {
     pub source_summary: MarketDataSourceSummary,
-    pub inferred_kind: MarketDataCoarseTrainingKind,
-    pub resolved_column_mapping: MarketDataCoarseTrainingColumnMapping,
+    pub inferred_kind: MarketDataCoarseDataKind,
+    pub resolved_column_mapping: MarketDataCoarseDataColumnMapping,
     pub timestamp_semantics: String,
     pub interval_inference_policy: String,
     pub nominal_interval_nanos: i64,
@@ -365,7 +365,7 @@ pub struct MarketDataCoarseTrainingSummary {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataNormalizedCoarseTrainingRecord {
+pub struct MarketDataNormalizedCoarseDataRecord {
     pub interval_start_utc_nanos: i64,
     pub interval_end_utc_nanos: i64,
     pub observation_timestamp_utc_nanos: i64,

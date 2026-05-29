@@ -48,7 +48,7 @@ class CalibrationTickObjectiveDataUsagePolicy(StrEnum):
     ALL_AVAILABLE = "all_available"
 
 
-class CalibrationCoarseTrainingTimestampSemantics(StrEnum):
+class CalibrationCoarseDataTimestampSemantics(StrEnum):
     BAR_OPEN_TIME = "bar_open_time"
     BAR_CLOSE_TIME = "bar_close_time"
 
@@ -573,10 +573,10 @@ class CalibrationTickDataColumnMapping(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class CalibrationCoarseTrainingColumnMapping(ContractModel):
+class CalibrationCoarseDataColumnMapping(ContractModel):
     timestamp_column: Optional[str] = None
-    timestamp_semantics: CalibrationCoarseTrainingTimestampSemantics = (
-        CalibrationCoarseTrainingTimestampSemantics.BAR_OPEN_TIME
+    timestamp_semantics: CalibrationCoarseDataTimestampSemantics = (
+        CalibrationCoarseDataTimestampSemantics.BAR_OPEN_TIME
     )
     interval_start_column: Optional[str] = None
     interval_end_column: Optional[str] = None
@@ -600,10 +600,10 @@ class CalibrationCoarseTrainingColumnMapping(ContractModel):
             if field_value is not None and not field_value.strip():
                 raise calibration_error(field_name, "must be non-empty when provided")
 
-        if not isinstance(self.timestamp_semantics, CalibrationCoarseTrainingTimestampSemantics):
+        if not isinstance(self.timestamp_semantics, CalibrationCoarseDataTimestampSemantics):
             raise calibration_error(
                 "timestamp_semantics",
-                "must be a CalibrationCoarseTrainingTimestampSemantics",
+                "must be a CalibrationCoarseDataTimestampSemantics",
             )
 
     @staticmethod
@@ -611,7 +611,7 @@ class CalibrationCoarseTrainingColumnMapping(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> CalibrationCoarseTrainingColumnMapping:
+    ) -> CalibrationCoarseDataColumnMapping:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
@@ -626,7 +626,7 @@ class CalibrationCoarseTrainingColumnMapping(ContractModel):
             "volume_column": raw_payload.get("volume_column"),
         }
 
-        timestamp_semantics = _parse_coarse_training_timestamp_semantics(
+        timestamp_semantics = _parse_coarse_data_timestamp_semantics(
             raw_payload.get("timestamp_semantics"),
             f"{field_path}.timestamp_semantics",
         )
@@ -638,7 +638,7 @@ class CalibrationCoarseTrainingColumnMapping(ContractModel):
                     "must be a string when provided",
                 )
 
-        return CalibrationCoarseTrainingColumnMapping(
+        return CalibrationCoarseDataColumnMapping(
             timestamp_column=raw_optional_fields["timestamp_column"],
             timestamp_semantics=timestamp_semantics,
             interval_start_column=raw_optional_fields["interval_start_column"],
@@ -651,18 +651,18 @@ class CalibrationCoarseTrainingColumnMapping(ContractModel):
         )
 
 
-def _parse_coarse_training_timestamp_semantics(
+def _parse_coarse_data_timestamp_semantics(
     raw_value: Any,
     field_path: str,
-) -> CalibrationCoarseTrainingTimestampSemantics:
+) -> CalibrationCoarseDataTimestampSemantics:
     if raw_value is None:
-        return CalibrationCoarseTrainingTimestampSemantics.BAR_OPEN_TIME
+        return CalibrationCoarseDataTimestampSemantics.BAR_OPEN_TIME
 
     return require_str_enum_value(
         raw_value,
         field_path,
         calibration_error,
-        enum_type=CalibrationCoarseTrainingTimestampSemantics,
+        enum_type=CalibrationCoarseDataTimestampSemantics,
         allowed_values_message="must be one of: bar_open_time, bar_close_time",
     )
 
@@ -785,7 +785,7 @@ class CalibrationMarketDataColumnMapping(ContractModel):
     tick_data: CalibrationTickDataColumnMapping = field(
         default_factory=CalibrationTickDataColumnMapping
     )
-    coarse_training: Optional[CalibrationCoarseTrainingColumnMapping] = None
+    coarse_data: Optional[CalibrationCoarseDataColumnMapping] = None
     option_surface: Optional[CalibrationOptionSurfaceColumnMapping] = None
     known_news: Optional[CalibrationKnownNewsColumnMapping] = None
 
@@ -808,18 +808,18 @@ class CalibrationMarketDataColumnMapping(ContractModel):
                 if "tick_data" in raw_payload and raw_payload["tick_data"] is not None
                 else CalibrationTickDataColumnMapping()
             ),
-            coarse_training=(
-                CalibrationCoarseTrainingColumnMapping.from_mapping(
+            coarse_data=(
+                CalibrationCoarseDataColumnMapping.from_mapping(
                     require_mapping(
                         raw_payload,
-                        "coarse_training",
-                        f"{field_path}.coarse_training",
+                        "coarse_data",
+                        f"{field_path}.coarse_data",
                         calibration_error,
                     ),
-                    field_path=f"{field_path}.coarse_training",
+                    field_path=f"{field_path}.coarse_data",
                 )
-                if "coarse_training" in raw_payload
-                and raw_payload["coarse_training"] is not None
+                if "coarse_data" in raw_payload
+                and raw_payload["coarse_data"] is not None
                 else None
             ),
             option_surface=(
@@ -1114,8 +1114,8 @@ def validate_known_news_inputs(
 __all__ = [
     "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
     "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
-    "CalibrationCoarseTrainingColumnMapping",
-    "CalibrationCoarseTrainingTimestampSemantics",
+    "CalibrationCoarseDataColumnMapping",
+    "CalibrationCoarseDataTimestampSemantics",
     "CalibrationDuplicateRecordPolicy",
     "CalibrationFlatCarryInput",
     "CalibrationExecutionMode",

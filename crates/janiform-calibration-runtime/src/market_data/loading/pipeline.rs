@@ -9,7 +9,7 @@ use crate::market_data::preprocessing::{
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
-use super::coarse_data::load_coarse_training_records;
+use super::coarse_data::load_coarse_data_records;
 use super::column_resolution::{
     resolve_option_surface_column_mapping, resolve_option_surface_quote_input_policy,
     resolve_tick_data_column_mapping, resolve_tick_price_input_policy,
@@ -210,10 +210,10 @@ pub fn prepare_market_data_loading_from_phases(
         None
     };
 
-    let coarse_training_output = if let Some(coarse_training_input) = &request.coarse_training_input
+    let coarse_data_output = if let Some(coarse_data_input) = &request.coarse_data_input
     {
-        Some(load_coarse_training_records(
-            coarse_training_input,
+        Some(load_coarse_data_records(
+            coarse_data_input,
             &calendar_registry,
             &request.session_configuration.exchange_code,
         )?)
@@ -235,7 +235,7 @@ pub fn prepare_market_data_loading_from_phases(
         None => (Vec::new(), None),
     };
 
-    let (coarse_training_records, coarse_training_summary) = match coarse_training_output {
+    let (coarse_data_records, coarse_data_summary) = match coarse_data_output {
         Some(output) => (Some(output.records), Some(output.summary)),
         None => (None, None),
     };
@@ -282,8 +282,8 @@ pub fn prepare_market_data_loading_from_phases(
         session_resolution,
         preprocessing_output,
         tick_data_summary: normalized_tick_output.tick_data_summary.clone(),
-        coarse_training_summary,
-        coarse_training_records,
+        coarse_data_summary,
+        coarse_data_records,
         option_surface_summary,
         option_surface_records: option_surface_records
             .map(|records| materialize_option_surface_records_for_payload(records.as_slice())),

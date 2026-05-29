@@ -313,8 +313,8 @@ fn preparation_request_input_paths(
         preparation_request.tick_data_source.path
     )];
 
-    if let Some(coarse_training_source) = &preparation_request.coarse_training_source {
-        input_paths.push(format!("coarse: {}", coarse_training_source.path));
+    if let Some(coarse_data_source) = &preparation_request.coarse_data_source {
+        input_paths.push(format!("coarse: {}", coarse_data_source.path));
     }
 
     if let Some(option_surface_source) = &preparation_request.option_surface_source {
