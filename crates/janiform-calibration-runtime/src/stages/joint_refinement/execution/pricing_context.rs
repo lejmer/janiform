@@ -357,17 +357,16 @@ fn estimate_option_pricing_current_state(
 fn validate_option_spot(
     option_pricing_input: &JointRefinementStageOptionPricingInput,
 ) -> Result<f64, JointRefinementStageExecutionFailure> {
-    let option_spot = option_pricing_input
-        .current_state_estimation_input
-        .observed_spot;
+    let option_spot = option_pricing_input.option_valuation_spot;
     if option_spot.is_finite() && option_spot > 0.0 {
         return Ok(option_spot);
     }
 
     Err(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-            error_message: "joint option calibration requires a strictly positive observed spot"
-                .to_string(),
+            error_message:
+                "joint option calibration requires a strictly positive option valuation spot"
+                    .to_string(),
         },
     )
 }
@@ -2017,6 +2016,7 @@ mod tests {
                 discount_rate: 0.01,
                 carry_rate: 0.005,
             },
+            option_valuation_spot: 100.0,
             current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: valuation_time_utc_nanos,
                 observed_spot: 100.0,
@@ -2836,6 +2836,9 @@ mod tests {
             pricing_interval_schedule_policy: option_pricing_fixture
                 .pricing_interval_schedule_policy,
             carry_input: option_pricing_fixture.carry_input,
+            option_valuation_spot: option_pricing_fixture
+                .current_state_estimation_input
+                .observed_spot,
             current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: option_pricing_fixture
                     .current_state_estimation_input
@@ -3177,6 +3180,7 @@ mod tests {
                     .pricing_interval_schedule_policy
                     .clone(),
                 carry_input: option_pricing_input.carry_input.clone(),
+                option_valuation_spot: option_pricing_input.option_valuation_spot,
                 current_state_estimation_input: option_pricing_input
                     .current_state_estimation_input
                     .clone(),

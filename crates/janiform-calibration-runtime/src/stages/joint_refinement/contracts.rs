@@ -169,6 +169,7 @@ pub struct JointRefinementStageOptionPricingInput {
     pub valuation_time_utc_nanos: i64,
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     pub carry_input: JointRefinementStageCarryInput,
+    pub option_valuation_spot: f64,
     pub current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput,
     pub option_snapshot_nodes: Vec<JointRefinementStageOptionSnapshotNode>,
 }

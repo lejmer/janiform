@@ -32,7 +32,10 @@ use super::super::objective_scoring_policy_fit;
 use super::super::price_range_policy_fit;
 use super::super::signal_partition_fit;
 use super::super::surprise_episode_selection_fit;
-use super::candidate_generation::generate_return_components_stage_candidate_inputs;
+use super::candidate_generation::{
+    ReturnComponentsStageCandidateGenerationRequest,
+    generate_return_components_stage_candidate_inputs,
+};
 use super::diagnostics::collect_return_components_exact_likelihood_constraint_violations;
 use super::signals::{
     ReturnComponentsStageActivityCalibrationContext, derive_continuous_fit_business_time_scales,
@@ -605,15 +608,17 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
             .expect("solver settings should validate");
 
     let generated_candidates = generate_return_components_stage_candidate_inputs(
-        &candidate_generation_input,
-        &[],
-        "test_filter",
-        1.0,
-        1.0,
-        None,
-        17,
-        &solver_settings,
-        None,
+        ReturnComponentsStageCandidateGenerationRequest {
+            candidate_generation_input: &candidate_generation_input,
+            derived_close_open_gap_candidates: &[],
+            close_open_gap_detection_filter: "test_filter",
+            source_window_open_exposure_hours: 1.0,
+            source_window_closed_exposure_hours: 1.0,
+            activity_calibration_context: None,
+            stage_seed: 17,
+            stage_solver_settings: &solver_settings,
+            progress_sender: None,
+        },
     )
     .expect("candidate generation should succeed");
 

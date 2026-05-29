@@ -2346,6 +2346,7 @@ pub(crate) fn joint_refinement_stage_option_pricing_input_fixture()
             discount_rate: 0.0,
             carry_rate: 0.0,
         },
+        option_valuation_spot: 100.0,
         current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
             state_time_utc_nanos: valuation_time_utc_nanos,
             observed_spot: 100.0,

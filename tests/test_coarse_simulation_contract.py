@@ -194,7 +194,10 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                 known=KnownNewsArrivalConfiguration(
                     scheduled_event_timestamps_utc_nanos=(1704206700000000000,),
                 ),
-                surprise=SurpriseNewsArrivalConfiguration(baseline_intensity=0.0),
+                surprise=SurpriseNewsArrivalConfiguration(
+                    open_baseline_intensity=0.0,
+                    closed_baseline_intensity=0.0,
+                ),
             ),
             shared_mark_law=SharedNewsMarkLawConfiguration(
                 gamma_severity_marks=GammaSeverityMarkConfiguration(

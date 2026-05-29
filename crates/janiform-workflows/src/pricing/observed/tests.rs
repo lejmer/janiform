@@ -285,6 +285,8 @@ fn observed_primary_artifact_matches_native_result_shape() {
         valuation_time_utc,
         nodes: &[node],
         snapshot_results: &[snapshot_result],
+        price_coordinate_resolution: None,
+        warnings: &[],
         physical_distribution: None,
         execution_duration: Duration::from_secs(2),
     })
@@ -346,6 +348,8 @@ fn observed_artifacts_write_physical_distribution_sidecars_when_present() {
         valuation_time_utc,
         nodes: &[node],
         snapshot_results: &[snapshot_result],
+        price_coordinate_resolution: None,
+        warnings: &[],
         physical_distribution: Some(&diagnostics),
         execution_duration: Duration::from_secs(2),
     })

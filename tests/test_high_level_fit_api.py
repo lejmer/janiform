@@ -3957,8 +3957,10 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         "preparation_provenance",
         "prepared_data_reference",
         "prepared_payload_path",
+        "price_coordinate_resolution",
         "staged_execution_input_path",
         "staged_response",
+        "warnings",
     }
 
 

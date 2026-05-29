@@ -27,7 +27,7 @@ from janiform.calibration.fit._runtime.payloads import (
     mean_reversion_fitted_parameters_for_model,
     prepare_model_runtime_factors_for_model,
     resolved_known_news_event_timestamps,
-    surprise_baseline_intensity,
+    surprise_baseline_intensities,
 )
 from janiform.calibration.fit._runtime.seasonality import build_runtime_hourly_seasonality_source_from_model
 from janiform.calibration.fit._runtime.seasonality import surprise_deterministic_time_multiplier_by_interval_index
@@ -1793,6 +1793,9 @@ def _materialize_endogenous_mean_reversion_anchor_values(
             horizon_interval_count=full_interval_count,
             interval=interval,
         )
+        surprise_open_baseline_intensity, surprise_closed_baseline_intensity = (
+            surprise_baseline_intensities(model)
+        )
 
         hourly_factor_contract = provide_hourly_factor_contract(
             calendar_registry=runtime_factors.calendar_registry,
@@ -1810,7 +1813,8 @@ def _materialize_endogenous_mean_reversion_anchor_values(
             ),
             news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
                 known_scheduled_event_timestamps_utc=resolved_known_news_event_timestamps(model),
-                surprise_baseline_intensity=surprise_baseline_intensity(model),
+                surprise_open_baseline_intensity=surprise_open_baseline_intensity,
+                surprise_closed_baseline_intensity=surprise_closed_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index=(
                     surprise_deterministic_time_multiplier_by_interval_index(
                         model,

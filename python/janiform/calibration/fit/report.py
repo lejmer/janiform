@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from ...contracts import serialize_pretty_json
 from ..market_data.contracts import CalibrationMarketDataWorkflowScope
+from ..market_data.price_coordinates import ResolvedPriceCoordinateSet
 from ..market_data.workflow import (
     MarketDataCalibrationPreparationDiagnostics,
     MarketDataCalibrationPreparationProvenance,
@@ -25,6 +26,8 @@ class JaniformFitReport:
     session_resolution: MarketDataSessionResolution
     preparation_diagnostics: MarketDataCalibrationPreparationDiagnostics
     preparation_provenance: MarketDataCalibrationPreparationProvenance
+    price_coordinate_resolution: Optional[ResolvedPriceCoordinateSet]
+    warnings: tuple[str, ...]
     staged_request: StagedCalibrationRequest
     prepared_data_reference: Optional[str]
     prepared_payload_path: Optional[str]
@@ -42,6 +45,12 @@ class JaniformFitReport:
             "session_resolution": self.session_resolution.to_payload(),
             "preparation_diagnostics": self.preparation_diagnostics.to_payload(),
             "preparation_provenance": self.preparation_provenance.to_payload(),
+            "price_coordinate_resolution": (
+                None
+                if self.price_coordinate_resolution is None
+                else self.price_coordinate_resolution.to_payload()
+            ),
+            "warnings": list(self.warnings),
             "prepared_data_reference": self.prepared_data_reference,
             "prepared_payload_path": self.prepared_payload_path,
             "staged_execution_input_path": self.staged_execution_input_path,

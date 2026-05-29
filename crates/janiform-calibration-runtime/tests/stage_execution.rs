@@ -589,9 +589,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
     .expect("return-components fixture should produce fitted payload");
 
     let mut option_pricing_input = joint_refinement_stage_option_pricing_input_fixture();
-    option_pricing_input
-        .current_state_estimation_input
-        .observed_spot = 0.0;
+    option_pricing_input.option_valuation_spot = 0.0;
 
     let report = run_joint_refinement_calibration_stage(
         &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
@@ -630,7 +628,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
         report.failure,
         Some(JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
             ref error_message,
-        }) if error_message.contains("strictly positive observed spot")
+        }) if error_message.contains("strictly positive option valuation spot")
     ));
 }
 

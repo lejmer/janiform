@@ -233,6 +233,17 @@ Disk execution writes a run directory with the fitted model, fit report, progres
   - `implied-volatility-column`:
     Use the explicit option implied-volatility column.
 
+* `--price-coordinate-policy <PRICE_COORDINATE_POLICY>` — Price-coordinate policy for option workflows.
+
+  Possible values:
+  - `auto`:
+    Infer separate coordinates when option data requires it.
+  - `single`:
+    Use one tick price coordinate for dynamics and option valuation.
+  - `continuous-fit-raw-option-anchor`:
+    Require continuous dynamics with a raw option valuation anchor.
+
+* `--option-forward-parity-warning-threshold <RELATIVE>` — Relative put-call parity warning threshold for option valuation coordinates.
 * `--option-surface-valuation-time-utc <UTC>` — Option valuation time as an RFC 3339 UTC timestamp.
 * `--known-news-path <PATH>` — Known-news input path.
 * `--known-news-format <KNOWN_NEWS_FORMAT>` — Known-news file format.
@@ -286,6 +297,15 @@ Disk execution writes a run directory with the fitted model, fit report, progres
 * `--cpu-count <COUNT>` — CPU count available to calibration preparation.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--option-refinement-candidate-count <COUNT>` — Option-refinement candidate count for search and selection tiers.
+* `--diagnostic <KIND>` — Enable an opt-in calibration diagnostic.
+
+   Repeat this option to request more than one diagnostic. Diagnostics can add report size or extra finalization work, so regular fit runs keep them off unless requested.
+
+  Possible values:
+  - `option-surface-shape`:
+    Include option-surface node and tier shape diagnostics in the fit report.
+
 * `--treat-calibration-warnings-as-errors` — Treat calibration warning outcomes as fit failures for automation.
 * `--stylized-fact-huber-cutoff <Z>` — Stylized-fact Huber cutoff for the calibration objective.
 * `--stylized-fact-admissibility-z-threshold <Z>` — Stylized-fact admissibility z-threshold for the calibration objective.
@@ -303,6 +323,8 @@ Disk execution writes a run directory with the fitted model, fit report, progres
     Resume from the return-component stage.
   - `long-variance`:
     Resume from the long-variance stage.
+  - `news-shocks`:
+    Resume from the news-shocks stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
@@ -403,6 +425,17 @@ This command resolves the supplied market-data inputs and calibration scope, the
   - `implied-volatility-column`:
     Use the explicit option implied-volatility column.
 
+* `--price-coordinate-policy <PRICE_COORDINATE_POLICY>` — Price-coordinate policy for option workflows.
+
+  Possible values:
+  - `auto`:
+    Infer separate coordinates when option data requires it.
+  - `single`:
+    Use one tick price coordinate for dynamics and option valuation.
+  - `continuous-fit-raw-option-anchor`:
+    Require continuous dynamics with a raw option valuation anchor.
+
+* `--option-forward-parity-warning-threshold <RELATIVE>` — Relative put-call parity warning threshold for option valuation coordinates.
 * `--option-surface-valuation-time-utc <UTC>` — Option valuation time as an RFC 3339 UTC timestamp.
 * `--known-news-path <PATH>` — Known-news input path.
 * `--known-news-format <KNOWN_NEWS_FORMAT>` — Known-news file format.
@@ -530,6 +563,17 @@ This command prepares the same calibration plan used by the default fit command,
   - `implied-volatility-column`:
     Use the explicit option implied-volatility column.
 
+* `--price-coordinate-policy <PRICE_COORDINATE_POLICY>` — Price-coordinate policy for option workflows.
+
+  Possible values:
+  - `auto`:
+    Infer separate coordinates when option data requires it.
+  - `single`:
+    Use one tick price coordinate for dynamics and option valuation.
+  - `continuous-fit-raw-option-anchor`:
+    Require continuous dynamics with a raw option valuation anchor.
+
+* `--option-forward-parity-warning-threshold <RELATIVE>` — Relative put-call parity warning threshold for option valuation coordinates.
 * `--option-surface-valuation-time-utc <UTC>` — Option valuation time as an RFC 3339 UTC timestamp.
 * `--known-news-path <PATH>` — Known-news input path.
 * `--known-news-format <KNOWN_NEWS_FORMAT>` — Known-news file format.
@@ -565,6 +609,13 @@ This command prepares the same calibration plan used by the default fit command,
 * `--cpu-count <COUNT>` — CPU count available to calibration planning.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--option-refinement-candidate-count <COUNT>` — Option-refinement candidate count for search and selection tiers.
+* `--diagnostic <KIND>` — Enable an opt-in calibration diagnostic in the prepared plan.
+
+  Possible values:
+  - `option-surface-shape`:
+    Include option-surface node and tier shape diagnostics in the fit report.
+
 * `--treat-calibration-warnings-as-errors` — Treat calibration warning outcomes as fit failures for automation.
 * `--stylized-fact-huber-cutoff <Z>` — Stylized-fact Huber cutoff for the calibration objective.
 * `--stylized-fact-admissibility-z-threshold <Z>` — Stylized-fact admissibility z-threshold for the calibration objective.
@@ -616,6 +667,8 @@ This advanced command is useful when a separate process prepares calibration inp
     Resume from the return-component stage.
   - `long-variance`:
     Resume from the long-variance stage.
+  - `news-shocks`:
+    Resume from the news-shocks stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
@@ -716,6 +769,17 @@ This command validates fit inputs and writes the prepared input file consumed by
   - `implied-volatility-column`:
     Use the explicit option implied-volatility column.
 
+* `--price-coordinate-policy <PRICE_COORDINATE_POLICY>` — Price-coordinate policy for option workflows.
+
+  Possible values:
+  - `auto`:
+    Infer separate coordinates when option data requires it.
+  - `single`:
+    Use one tick price coordinate for dynamics and option valuation.
+  - `continuous-fit-raw-option-anchor`:
+    Require continuous dynamics with a raw option valuation anchor.
+
+* `--option-forward-parity-warning-threshold <RELATIVE>` — Relative put-call parity warning threshold for option valuation coordinates.
 * `--option-surface-valuation-time-utc <UTC>` — Option valuation time as an RFC 3339 UTC timestamp.
 * `--known-news-path <PATH>` — Known-news input path.
 * `--known-news-format <KNOWN_NEWS_FORMAT>` — Known-news file format.
@@ -784,6 +848,8 @@ This command runs a prepared calibration input file. Disk runs write the fitted 
     Resume from the return-component stage.
   - `long-variance`:
     Resume from the long-variance stage.
+  - `news-shocks`:
+    Resume from the news-shocks stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
@@ -1068,6 +1134,17 @@ This command reads a saved Janiform model and an observed option snapshot, then 
   - `implied-volatility-column`:
     Use the explicit option implied-volatility column.
 
+* `--price-coordinate-policy <PRICE_COORDINATE_POLICY>` — Price-coordinate policy for option workflows.
+
+  Possible values:
+  - `auto`:
+    Infer separate coordinates when option data requires it.
+  - `single`:
+    Use one tick price coordinate for dynamics and option valuation.
+  - `continuous-fit-raw-option-anchor`:
+    Require continuous dynamics with a raw option valuation anchor.
+
+* `--option-forward-parity-warning-threshold <RELATIVE>` — Relative put-call parity warning threshold for option valuation coordinates.
 * `--option-surface-valuation-time-utc <UTC>` — Option valuation time as an RFC 3339 UTC timestamp.
 * `--known-news-path <PATH>` — Known-news input path.
 * `--known-news-format <KNOWN_NEWS_FORMAT>` — Known-news file format.

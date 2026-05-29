@@ -14,6 +14,7 @@ use janiform_calibration_runtime::{
     MarketDataOptionSurfaceColumnMapping, MarketDataSessionConfiguration,
     MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingSettings,
+    OptionForwardParityWarningPolicy, PriceCoordinatePolicy,
     build_market_data_session_definition_json, infer_bundled_market_profile_from_tick_data_path,
     infer_market_data_fit_inputs, normalize_market_data_source,
     prepare_market_data_calibration_plan, resolve_market_data_session_configuration,
@@ -78,6 +79,12 @@ pub struct FitPreparationConfiguration {
     /// Optional option surface column mapping.
     #[serde(default)]
     pub option_surface_column_mapping: Option<MarketDataOptionSurfaceColumnMapping>,
+    /// Price-coordinate policy for option workflows.
+    #[serde(default)]
+    pub price_coordinate_policy: PriceCoordinatePolicy,
+    /// Put-call parity warning policy for option valuation coordinates.
+    #[serde(default)]
+    pub option_forward_parity_warning_policy: OptionForwardParityWarningPolicy,
     /// Output preferences.
     pub output_preferences: CalibrationMarketDataOutputPreferences,
     /// Optimizer settings by stage.
@@ -333,9 +340,11 @@ pub(crate) fn prepare_fit_workflow_with_observer(
             "diagnostics": prepared_plan.diagnostics,
             "provenance": prepared_plan.provenance,
             "session_resolution": prepared_plan.session_resolution,
+            "price_coordinate_resolution": prepared_plan.price_coordinate_resolution,
             "resolved_configuration": resolved_configuration,
             "input_inference": input_inference,
             "reference_price": prepared_plan.reference_price,
+            "warnings": prepared_plan.warnings,
             "fit_warning": prepared_plan.fit_warning,
         }),
         session_definition_json: prepared_plan
@@ -605,6 +614,12 @@ fn build_preparation_request(
         option_surface_source: input.option_surface_source,
         option_surface_valuation_time_utc: input.request.option_surface_valuation_time_utc.clone(),
         carry: input.request.carry.clone(),
+        price_coordinate_policy: input.request.configuration.price_coordinate_policy,
+        option_forward_parity_warning_policy: input
+            .request
+            .configuration
+            .option_forward_parity_warning_policy
+            .clone(),
         pricing_interval_schedule_policy: input
             .request
             .configuration

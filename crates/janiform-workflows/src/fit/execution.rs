@@ -218,6 +218,7 @@ fn emit_completion_summary(
     emit_terminal_completion_view(&observer.terminal_output, |terminal_output| {
         let rendered = match fit_completion_view(
             &output.report,
+            &output.report_payload,
             paths,
             output.event_log_path.as_path(),
             output.execution_duration,

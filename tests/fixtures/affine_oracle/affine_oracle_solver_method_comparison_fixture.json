@@ -114,10 +114,24 @@
           "real": 0.95,
           "imaginary": 0.02
         },
+        "news_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
         "s_h": 1.1,
         "news_intensity": {
           "known_nu_h": 0.0,
           "surprise_nu_h": 0.08
+        },
+        "known_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "surprise_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
         },
         "delta": 1.0,
         "initial_state": {
@@ -138,9 +152,9 @@
             "expected_passed": true,
             "expected_failure_codes": [],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 2.6667479e-10,
+              "c_at_delta_absolute_difference": 2.6449543e-10,
               "d_component_absolute_difference": 8.4638205e-10,
-              "transform_value_absolute_difference": 2.6824393e-10,
+              "transform_value_absolute_difference": 2.6936003e-10,
               "absolute_tolerance": 1e-10
             }
           },
@@ -155,9 +169,9 @@
               "transform_value_tolerance_exceeded"
             ],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 0.00096333368280099,
+              "c_at_delta_absolute_difference": 0.00095477621936624,
               "d_component_absolute_difference": 0.00202892763618862,
-              "transform_value_absolute_difference": 0.00060832438423836,
+              "transform_value_absolute_difference": 0.0006124804220613,
               "absolute_tolerance": 1e-10
             }
           }
@@ -226,10 +240,24 @@
           "real": 0.95,
           "imaginary": 0.02
         },
+        "news_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
         "s_h": 1.1,
         "news_intensity": {
           "known_nu_h": 0.0,
           "surprise_nu_h": 0.08
+        },
+        "known_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "surprise_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
         },
         "delta": 0.5,
         "initial_state": {
@@ -250,9 +278,9 @@
             "expected_passed": true,
             "expected_failure_codes": [],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 1.328082e-11,
+              "c_at_delta_absolute_difference": 1.317169e-11,
               "d_component_absolute_difference": 4.173245e-11,
-              "transform_value_absolute_difference": 1.865308e-11,
+              "transform_value_absolute_difference": 1.872791e-11,
               "absolute_tolerance": 1e-10
             }
           },
@@ -267,9 +295,9 @@
               "transform_value_tolerance_exceeded"
             ],
             "expected_output_difference": {
-              "c_at_delta_absolute_difference": 0.00037882391573102,
+              "c_at_delta_absolute_difference": 0.00037545886229318,
               "d_component_absolute_difference": 0.00080568644994802,
-              "transform_value_absolute_difference": 0.00034733097743456,
+              "transform_value_absolute_difference": 0.0003496026393397,
               "absolute_tolerance": 1e-10
             }
           }

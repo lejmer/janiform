@@ -2,11 +2,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use janiform::calibration::market_data::ResolvedPriceCoordinateSet;
 use janiform_terminal_ui::{CompletionSummary, CompletionSummaryStatus, KeyValueRow, StartSummary};
 use serde_json::json;
 
 use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
+use crate::price_coordinates::price_coordinate_resolution_summary;
 
 use super::super::artifacts::{PricingArtifactPaths, pricing_artifact_paths};
 use super::physical_distribution::ObservedOptionsPhysicalDistributionDiagnosticsOutput;
@@ -28,6 +30,8 @@ pub(super) fn write_observed_artifacts_if_requested(
         valuation_time_utc,
         nodes,
         snapshot_results,
+        price_coordinate_resolution,
+        warnings,
         physical_distribution,
         execution_duration,
     } = input;
@@ -57,6 +61,8 @@ pub(super) fn write_observed_artifacts_if_requested(
         "valuation_time_utc": valuation_time_utc.to_rfc3339(),
         "nodes": nodes,
         "snapshot_results": snapshot_results,
+        "price_coordinate_resolution": price_coordinate_resolution,
+        "warnings": warnings,
         "physical_distribution": physical_distribution,
         "artifact_paths": null,
         "execution_duration_seconds": execution_duration.as_secs_f64(),
@@ -98,6 +104,8 @@ pub(super) fn write_observed_artifacts_if_requested(
             "primary_output_path": paths.primary_output_path,
             "snapshot_count": snapshot_results.len(),
             "node_count": snapshot_results.iter().map(|result| result.nodes.len()).sum::<usize>(),
+            "price_coordinate_resolution": price_coordinate_resolution,
+            "warnings": warnings,
             "physical_distribution_nodes_path": &paths.physical_distribution_nodes_path,
             "physical_distribution_report_path": &paths.physical_distribution_report_path,
             "physical_distribution": physical_distribution.map(|diagnostics| &diagnostics.report),
@@ -131,6 +139,8 @@ pub(super) struct ObservedArtifactWriteInput<'a> {
     pub(super) valuation_time_utc: DateTime<Utc>,
     pub(super) nodes: &'a [ObservedOptionsPricingNode],
     pub(super) snapshot_results: &'a [ObservedOptionsSnapshotResult],
+    pub(super) price_coordinate_resolution: Option<&'a ResolvedPriceCoordinateSet>,
+    pub(super) warnings: &'a [String],
     pub(super) physical_distribution:
         Option<&'a ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
     pub(super) execution_duration: Duration,
@@ -161,27 +171,50 @@ pub(super) fn observed_options_completion_summary(
         .filter(|node| node.model_price.is_some())
         .count();
 
+    let mut rows = vec![
+        KeyValueRow::new("Snapshots", output.snapshot_results.len().to_string()),
+        KeyValueRow::new("Priced nodes", priced_node_count.to_string()),
+        KeyValueRow::new(
+            "Failed nodes",
+            output
+                .nodes
+                .len()
+                .saturating_sub(priced_node_count)
+                .to_string(),
+        ),
+    ];
+
+    if let Some(price_coordinate_summary) = observed_price_coordinate_summary(output) {
+        rows.push(KeyValueRow::block(
+            "Price coordinates",
+            price_coordinate_summary,
+        ));
+    }
+
+    if !output.warnings.is_empty() {
+        rows.push(KeyValueRow::block("Warnings", output.warnings.join("\n")));
+    }
+
     CompletionSummary {
-        status: CompletionSummaryStatus::Succeeded,
+        status: if output.warnings.is_empty() {
+            CompletionSummaryStatus::Succeeded
+        } else {
+            CompletionSummaryStatus::SucceededWithWarnings
+        },
         title: format!(
             "Observed option pricing completed in {}",
             janiform_terminal_ui::format_elapsed_label(elapsed)
         ),
-        rows: vec![
-            KeyValueRow::new("Snapshots", output.snapshot_results.len().to_string()),
-            KeyValueRow::new("Priced nodes", priced_node_count.to_string()),
-            KeyValueRow::new(
-                "Failed nodes",
-                output
-                    .nodes
-                    .len()
-                    .saturating_sub(priced_node_count)
-                    .to_string(),
-            ),
-        ],
+        rows,
     }
 }
 
 pub(super) fn observed_pricing_run_id(scope: &str) -> String {
     format!("{scope}_price_{}", Utc::now().format("%Y%m%dT%H%M%SZ"))
+}
+
+fn observed_price_coordinate_summary(output: &ObservedOptionsPricingOutput) -> Option<String> {
+    let resolution = serde_json::to_value(&output.price_coordinate_resolution).ok()?;
+
+    price_coordinate_resolution_summary(&resolution)
 }

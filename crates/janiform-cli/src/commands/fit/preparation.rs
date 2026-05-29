@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::calibration::market_data::{
-    PreparedMarketDataCalibrationPlan, infer_market_data_run_id_from_path,
-    prepare_market_data_calibration_plan,
+    OptionForwardParityWarningPolicy, PreparedMarketDataCalibrationPlan,
+    infer_market_data_run_id_from_path, prepare_market_data_calibration_plan,
 };
 use janiform::calibration::presets::ResolvedMarketProfile;
 use janiform::calibration::staged::{
@@ -24,6 +24,7 @@ use crate::commands::options;
 use crate::commands::options::CalibrationDiagnosticOption;
 use crate::commands::options::TickDataOptions;
 use crate::commands::options::WorkflowScope;
+use crate::commands::shared::calibration::price_coordinate_policy;
 use crate::commands::shared::market_data::prepare_market_data_command_inputs;
 use crate::commands::shared::output::write_pretty_json_file;
 use crate::commands::shared::output_paths::default_run_output_directory;
@@ -180,6 +181,14 @@ pub(crate) fn prepare_fit_preview(
             discount_rate: 0.0,
             carry_rate: 0.0,
         }),
+        price_coordinate_policy: inputs
+            .price_coordinate_policy
+            .map(price_coordinate_policy)
+            .unwrap_or_default(),
+        option_forward_parity_warning_policy: inputs
+            .option_forward_parity_warning_threshold
+            .map(|relative_threshold| OptionForwardParityWarningPolicy { relative_threshold })
+            .unwrap_or_default(),
         pricing_interval_schedule_policy: Default::default(),
         dynamics_search_restart_candidate_budget: preview_options
             .overrides
@@ -419,6 +428,8 @@ pub(crate) fn fit_warnings(prepared: &PreparedFitPreview) -> Vec<String> {
     if let Some(warning) = &prepared.plan.fit_warning {
         warnings.push(warning.clone());
     }
+
+    warnings.extend(prepared.plan.warnings.iter().cloned());
 
     for warning in &prepared.plan.session_resolution.ambiguity_warnings {
         warnings.push(warning.clone());

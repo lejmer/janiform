@@ -238,6 +238,8 @@ fn build_model_metadata(
         "simulation_output_preferences": {
             "reference_price": optional_preparation_field(preparation_payload, "reference_price"),
         },
+        "price_coordinate_resolution": optional_preparation_field(preparation_payload, "price_coordinate_resolution"),
+        "diagnostics": preparation_warning_diagnostics(preparation_payload),
         "diagnostic_artifacts": {
             "artifact_bundle_available": report.diagnostic_artifact_bundle.is_some(),
             "artifact_families": report.diagnostic_artifact_references.iter().map(|reference| reference.artifact_family.clone()).collect::<Vec<_>>(),
@@ -245,6 +247,27 @@ fn build_model_metadata(
         "input_inference": optional_preparation_field(preparation_payload, "input_inference"),
         "fit_report_summary": report_payload["summary"].clone(),
     })
+}
+
+fn preparation_warning_diagnostics(preparation_payload: Option<&Value>) -> Value {
+    let warnings = preparation_payload
+        .and_then(|payload| payload.get("warnings"))
+        .and_then(Value::as_array)
+        .map(|warnings| {
+            warnings
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|message| {
+                    json!({
+                        "severity": "warning",
+                        "message": message,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Value::Array(warnings)
 }
 
 fn preparation_field<'a>(

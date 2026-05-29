@@ -104,23 +104,36 @@ pub fn run_observed_options_pricing_with_observer(
         snapshot_groups,
         option_records,
         tick_records,
+        price_coordinate_resolution,
+        warnings,
+        option_valuation_spot,
+        option_valuation_tick_records,
     } = loaded_inputs;
+    let option_valuation_tick_records = option_valuation_tick_records.as_deref();
 
     let pricing_execution = match request.scope {
         ObservedOptionsPricingScope::Snapshot => price_snapshot_groups(
-            &request,
-            valuation_time_utc_nanos,
-            snapshot_groups,
-            option_records.as_slice(),
-            tick_records.as_slice(),
+            ObservedOptionsPricingGroupInput {
+                request: &request,
+                valuation_time_utc_nanos,
+                snapshot_groups,
+                option_records: option_records.as_slice(),
+                tick_records: tick_records.as_slice(),
+                option_valuation_spot,
+                option_valuation_tick_records,
+            },
             &mut observer.progress_adapter,
         )?,
         ObservedOptionsPricingScope::Surface => price_surface_groups(
-            &request,
-            valuation_time_utc_nanos,
-            snapshot_groups,
-            option_records.as_slice(),
-            tick_records.as_slice(),
+            ObservedOptionsPricingGroupInput {
+                request: &request,
+                valuation_time_utc_nanos,
+                snapshot_groups,
+                option_records: option_records.as_slice(),
+                tick_records: tick_records.as_slice(),
+                option_valuation_spot,
+                option_valuation_tick_records,
+            },
             &mut observer.progress_adapter,
         )?,
     };
@@ -190,6 +203,8 @@ pub fn run_observed_options_pricing_with_observer(
         valuation_time_utc: resolved_valuation_time_utc,
         nodes: nodes.as_slice(),
         snapshot_results: &pricing_execution.snapshot_results,
+        price_coordinate_resolution: price_coordinate_resolution.as_ref(),
+        warnings: warnings.as_slice(),
         physical_distribution: physical_distribution.as_ref(),
         execution_duration,
     })?;
@@ -218,6 +233,8 @@ pub fn run_observed_options_pricing_with_observer(
         valuation_time_utc: resolved_valuation_time_utc,
         nodes,
         snapshot_results: pricing_execution.snapshot_results,
+        price_coordinate_resolution,
+        warnings,
         physical_distribution,
         artifact_paths,
         execution_duration_seconds: execution_duration.as_secs_f64(),
@@ -267,6 +284,13 @@ fn validate_request(request: &ObservedOptionsPricingRequest) -> Result<(), Workf
         ));
     }
 
+    request
+        .option_forward_parity_warning_policy
+        .validate()
+        .map_err(|source| {
+            pricing_validation_error("option_forward_parity_warning_policy", source.to_string())
+        })?;
+
     if let Some(physical_distribution_diagnostics) =
         request.physical_distribution_diagnostics.as_ref()
     {
@@ -276,38 +300,42 @@ fn validate_request(request: &ObservedOptionsPricingRequest) -> Result<(), Workf
     Ok(())
 }
 
-fn price_surface_groups(
-    request: &ObservedOptionsPricingRequest,
+struct ObservedOptionsPricingGroupInput<'a> {
+    request: &'a ObservedOptionsPricingRequest,
     valuation_time_utc_nanos: i64,
     snapshot_groups: Vec<PreparedSnapshotGroup>,
-    option_records: &[MarketDataNormalizedOptionSurfaceRecord],
-    tick_records: &[MarketDataTranslationTickRecord],
+    option_records: &'a [MarketDataNormalizedOptionSurfaceRecord],
+    tick_records: &'a [MarketDataTranslationTickRecord],
+    option_valuation_spot: Option<f64>,
+    option_valuation_tick_records: Option<&'a [MarketDataTranslationTickRecord]>,
+}
+
+fn price_surface_groups(
+    input: ObservedOptionsPricingGroupInput<'_>,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
-    let expiry_count = snapshot_groups
+    let request = input.request;
+    let valuation_time_utc_nanos = input.valuation_time_utc_nanos;
+
+    let expiry_count = input
+        .snapshot_groups
         .iter()
         .map(|group| group.expiry_timestamp_utc_nanos)
         .collect::<BTreeSet<_>>()
         .len();
 
     if expiry_count > 1 {
-        return price_snapshot_groups(
-            request,
-            valuation_time_utc_nanos,
-            snapshot_groups,
-            option_records,
-            tick_records,
-            progress_adapter,
-        );
+        return price_snapshot_groups(input, progress_adapter);
     }
 
-    let selected_expiry_timestamp_utc_nanos = snapshot_groups
+    let selected_expiry_timestamp_utc_nanos = input
+        .snapshot_groups
         .first()
         .ok_or_else(|| pricing_validation_error("option_surface", "snapshot must not be empty"))?
         .expiry_timestamp_utc_nanos;
 
     let history = selected_expiry_history(
-        option_records,
+        input.option_records,
         valuation_time_utc_nanos,
         selected_expiry_timestamp_utc_nanos,
         request.option_type,
@@ -316,7 +344,7 @@ fn price_surface_groups(
     let valuation_times = resolve_single_expiry_surface_valuation_times(
         history.as_slice(),
         valuation_time_utc_nanos,
-        retained_snapshot_valuation_count(snapshot_groups.as_slice()),
+        retained_snapshot_valuation_count(input.snapshot_groups.as_slice()),
         request.valuation_count,
         request.use_all_valuation_times,
     );
@@ -339,8 +367,10 @@ fn price_surface_groups(
     let prepared_snapshots = prepare_observed_snapshots(
         request,
         snapshot_specs,
-        option_records,
-        tick_records,
+        input.option_records,
+        input.tick_records,
+        input.option_valuation_spot,
+        input.option_valuation_tick_records,
         progress_adapter,
     )?;
 
@@ -368,13 +398,10 @@ fn price_surface_groups(
 }
 
 fn price_snapshot_groups(
-    request: &ObservedOptionsPricingRequest,
-    valuation_time_utc_nanos: i64,
-    snapshot_groups: Vec<PreparedSnapshotGroup>,
-    option_records: &[MarketDataNormalizedOptionSurfaceRecord],
-    tick_records: &[MarketDataTranslationTickRecord],
+    input: ObservedOptionsPricingGroupInput<'_>,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
+    let request = input.request;
     let stage_count =
         observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
 
@@ -387,9 +414,11 @@ fn price_snapshot_groups(
 
     let mut prepared_snapshots = prepare_observed_snapshots(
         request,
-        vec![(valuation_time_utc_nanos, snapshot_groups)],
-        option_records,
-        tick_records,
+        vec![(input.valuation_time_utc_nanos, input.snapshot_groups)],
+        input.option_records,
+        input.tick_records,
+        input.option_valuation_spot,
+        input.option_valuation_tick_records,
         progress_adapter,
     )?;
 

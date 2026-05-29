@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy
 import pandas
@@ -43,8 +43,12 @@ from janiform.pricing import (
 from janiform.pricing._moneyness import calculate_optional_log_forward_moneyness
 from janiform.pricing.errors import _pricing_error
 from ..internal.common import native_datetime
+from ..internal.price_coordinates import resolve_price_coordinate_from_native_mapping
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
+
+if TYPE_CHECKING:
+    from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +95,8 @@ class JaniformObservedOptionSurfacePricingResult:
     valuation_time_utc: datetime
     nodes: tuple[JaniformObservedOptionSurfaceNode, ...]
     physical_distribution: Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput] = None
+    price_coordinate_resolution: Optional[ResolvedPriceCoordinateSet] = None
+    warnings: tuple[str, ...] = ()
     raw_results: tuple[JaniformObservedOptionSnapshotPricingResult, ...] = field(
         default=(),
         repr=False,
@@ -154,6 +160,15 @@ class JaniformObservedOptionSurfacePricingResult:
                     field_path=f"{field_path}.physical_distribution",
                 )
             ),
+            price_coordinate_resolution=(
+                resolve_price_coordinate_from_native_mapping(
+                    raw_payload["price_coordinate_resolution"],
+                    field_path=f"{field_path}.price_coordinate_resolution",
+                )
+                if raw_payload.get("price_coordinate_resolution") is not None
+                else None
+            ),
+            warnings=tuple(str(warning) for warning in raw_payload.get("warnings", [])),
             raw_results=snapshot_results,
         )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import pandas
 
@@ -41,6 +41,9 @@ from janiform.pricing.errors import _pricing_error
 from ..grids import JaniformVanillaOptionGridBatchPricingResult
 from ..internal.common import native_datetime, optional_float
 from ..physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsOutput
+
+if TYPE_CHECKING:
+    from ....calibration.market_data.price_coordinates import ResolvedPriceCoordinateSet
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +82,8 @@ class JaniformObservedOptionSnapshotPricingResult:
     spot: float
     nodes: tuple[JaniformObservedOptionSnapshotNode, ...]
     physical_distribution: Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput] = None
+    price_coordinate_resolution: Optional[ResolvedPriceCoordinateSet] = None
+    warnings: tuple[str, ...] = ()
     raw_result: Optional[JaniformVanillaOptionGridBatchPricingResult] = field(
         default=None,
         repr=False,

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ....._workflow_progress import WorkflowProgressMode
 from .....calibration.market_data.contracts import CalibrationOptionSurfaceColumnMapping
+from .....calibration.market_data.price_coordinates import PriceCoordinatePolicy
 from .....pricing import VanillaOptionPayoffType
 from ...internal.native_observed import (
     observed_surface_result_from_native_payload,
@@ -34,6 +35,8 @@ def price_option_surface_for_model(
     valuation_count: Optional[int] = None,
     use_all_valuation_times: bool = False,
     cpu_count: Optional[int] = None,
+    price_coordinate_policy: PriceCoordinatePolicy | str = PriceCoordinatePolicy.AUTO,
+    option_forward_parity_warning_threshold: Optional[float] = None,
     physical_distribution_diagnostics: (
         bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
     ) = False,
@@ -53,6 +56,8 @@ def price_option_surface_for_model(
         valuation_count=valuation_count,
         use_all_valuation_times=use_all_valuation_times,
         cpu_count=cpu_count,
+        price_coordinate_policy=price_coordinate_policy,
+        option_forward_parity_warning_threshold=option_forward_parity_warning_threshold,
         physical_distribution_diagnostics=physical_distribution_diagnostics,
         output_path=output_path,
         silent=silent,
