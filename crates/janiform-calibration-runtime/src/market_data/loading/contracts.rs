@@ -148,18 +148,13 @@ pub enum MarketDataOptionQuoteInputPolicy {
 
 /// Policy for resolving price coordinates when option strikes live in a different source
 /// coordinate than the fitted continuous return series.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceCoordinatePolicy {
+    #[default]
     Auto,
     Single,
     ContinuousFitRawOptionAnchor,
-}
-
-impl Default for PriceCoordinatePolicy {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 /// Default relative put-call parity warning threshold for option coordinate validation.

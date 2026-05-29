@@ -28,7 +28,10 @@ use super::super::contracts::{
     ReturnComponentsStageHandoffOutput, ReturnComponentsStageProgressPhase,
     ReturnComponentsStageProgressUpdate,
 };
-use super::candidate_generation::generate_return_components_stage_candidate_inputs;
+use super::candidate_generation::{
+    ReturnComponentsStageCandidateGenerationRequest,
+    generate_return_components_stage_candidate_inputs,
+};
 use super::close_open_gap::prepare_candidate_generation_input;
 use super::diagnostics::collect_return_components_stage_constraint_violations;
 use super::signals::resolve_activity_calibration_context;
@@ -348,28 +351,26 @@ fn generate_stage_candidates(
         ),
     );
 
+    let prepared_input = &preflight.prepared_candidate_generation_input;
+
     let generated_candidates = generate_return_components_stage_candidate_inputs(
-        &preflight
-            .prepared_candidate_generation_input
-            .candidate_generation_input,
-        preflight
-            .prepared_candidate_generation_input
-            .derived_close_open_gap_candidates
-            .as_slice(),
-        preflight
-            .prepared_candidate_generation_input
-            .close_open_gap_detection_filter
-            .as_str(),
-        preflight
-            .prepared_candidate_generation_input
-            .source_window_open_exposure_hours,
-        preflight
-            .prepared_candidate_generation_input
-            .source_window_closed_exposure_hours,
-        resolve_activity_calibration_context(&stage_input.activity_input),
-        stage_seed,
-        &preflight.stage_solver_settings,
-        progress_sender,
+        ReturnComponentsStageCandidateGenerationRequest {
+            candidate_generation_input: &prepared_input.candidate_generation_input,
+            derived_close_open_gap_candidates: prepared_input
+                .derived_close_open_gap_candidates
+                .as_slice(),
+            close_open_gap_detection_filter: prepared_input
+                .close_open_gap_detection_filter
+                .as_str(),
+            source_window_open_exposure_hours: prepared_input.source_window_open_exposure_hours,
+            source_window_closed_exposure_hours: prepared_input.source_window_closed_exposure_hours,
+            activity_calibration_context: resolve_activity_calibration_context(
+                &stage_input.activity_input,
+            ),
+            stage_seed,
+            stage_solver_settings: &preflight.stage_solver_settings,
+            progress_sender,
+        },
     )
     .map_err(
         |source| ReturnComponentsStageExecutionFailure::CandidateGenerationFailed {

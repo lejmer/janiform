@@ -55,6 +55,20 @@ pub(super) struct ReturnComponentsStageCandidateGenerationOutput {
         surprise_intensity_fit::FittedSurpriseNewsArrivalLayer,
 }
 
+pub(super) struct ReturnComponentsStageCandidateGenerationRequest<'a> {
+    pub(super) candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
+    pub(super) derived_close_open_gap_candidates:
+        &'a [super::super::contracts::ReturnComponentsDetectedCloseOpenGapCandidate],
+    pub(super) close_open_gap_detection_filter: &'a str,
+    pub(super) source_window_open_exposure_hours: f64,
+    pub(super) source_window_closed_exposure_hours: f64,
+    pub(super) activity_calibration_context:
+        Option<ReturnComponentsStageActivityCalibrationContext>,
+    pub(super) stage_seed: u64,
+    pub(super) stage_solver_settings: &'a CalibrationOptimizerSettings,
+    pub(super) progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
+}
+
 #[derive(Debug, Clone)]
 struct ReturnComponentsStageCandidateFamilySets {
     fitted_continuous_return_layer: continuous_layer_fit::FittedContinuousReturnLayer,
@@ -65,19 +79,17 @@ struct ReturnComponentsStageCandidateFamilySets {
 }
 
 pub(super) fn generate_return_components_stage_candidate_inputs(
-    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-    derived_close_open_gap_candidates: &[super::super::contracts::ReturnComponentsDetectedCloseOpenGapCandidate],
-    close_open_gap_detection_filter: &str,
-    source_window_open_exposure_hours: f64,
-    source_window_closed_exposure_hours: f64,
-    activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
-    stage_seed: u64,
-    stage_solver_settings: &CalibrationOptimizerSettings,
-    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
+    request: ReturnComponentsStageCandidateGenerationRequest<'_>,
 ) -> Result<
     ReturnComponentsStageCandidateGenerationOutput,
     ReturnComponentsStageCandidateGenerationInputError,
 > {
+    let candidate_generation_input = request.candidate_generation_input;
+    let close_open_gap_detection_filter = request.close_open_gap_detection_filter;
+    let progress_sender = request.progress_sender;
+    let stage_seed = request.stage_seed;
+    let stage_solver_settings = request.stage_solver_settings;
+
     send_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SignalPartitionFit,
@@ -158,7 +170,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
 
     let sorted_signals = sort_candidate_generation_signals(
         candidate_generation_input,
-        derived_close_open_gap_candidates,
+        request.derived_close_open_gap_candidates,
         fitted_signal_partition_layer,
         &fitted_surprise_episode_selection_layer,
     );
@@ -183,7 +195,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         summarize_candidate_generation_signals(
             candidate_generation_input,
             &sorted_signals,
-            activity_calibration_context,
+            request.activity_calibration_context,
         );
 
     send_return_components_progress(
@@ -232,8 +244,8 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             .map(|episode| episode.terminal_timestamp_utc_nanos)
             .collect::<Vec<_>>(),
         sorted_signals.close_open_gap_candidates.len(),
-        source_window_open_exposure_hours,
-        source_window_closed_exposure_hours,
+        request.source_window_open_exposure_hours,
+        request.source_window_closed_exposure_hours,
     );
 
     send_return_components_progress(
