@@ -450,7 +450,8 @@
     "known_news_calendar_anchor_policy",
     "surprise_news_intensity_control_policy",
     "known_news_calendar_anchor_count",
-    "surprise_baseline_intensity",
+    "surprise_open_baseline_intensity",
+    "surprise_closed_baseline_intensity",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -464,7 +465,8 @@
     "known_news_calendar_anchor_policy",
     "surprise_news_intensity_control_policy",
     "known_news_calendar_anchor_count",
-    "surprise_baseline_intensity",
+    "surprise_open_baseline_intensity",
+    "surprise_closed_baseline_intensity",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -600,8 +602,8 @@
 ### `HourlyNewsIntensityMaterializationSettings`
 
 - Kind: `contract_model`
-- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
-- Fields: `known_scheduled_event_timestamps_utc`, `surprise_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
+- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
+- Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
 <a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensityproviderexplicitsource"></a>
 ### `HourlyNewsIntensityProviderExplicitSource`
@@ -614,8 +616,8 @@
 ### `HourlyNewsIntensityProviderMaterializedSource`
 
 - Kind: `contract_model`
-- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
-- Fields: `known_scheduled_event_timestamps_utc`, `surprise_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
+- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
+- Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
 <a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensityprovidersource"></a>
 ### `HourlyNewsIntensityProviderSource`
@@ -900,7 +902,8 @@
     "known_news_calendar_anchor_policy",
     "surprise_news_intensity_control_policy",
     "known_news_calendar_anchor_count",
-    "surprise_baseline_intensity",
+    "surprise_open_baseline_intensity",
+    "surprise_closed_baseline_intensity",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -914,7 +917,8 @@
     "known_news_calendar_anchor_policy",
     "surprise_news_intensity_control_policy",
     "known_news_calendar_anchor_count",
-    "surprise_baseline_intensity",
+    "surprise_open_baseline_intensity",
+    "surprise_closed_baseline_intensity",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -1010,8 +1014,8 @@
 ### `HourlyNewsIntensityMaterializationSettings`
 
 - Kind: `contract_model`
-- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
-- Fields: `known_scheduled_event_timestamps_utc`, `surprise_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
+- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
+- Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
 <a id="python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityproviderexplicitsource"></a>
 ### `HourlyNewsIntensityProviderExplicitSource`
@@ -1024,8 +1028,8 @@
 ### `HourlyNewsIntensityProviderMaterializedSource`
 
 - Kind: `contract_model`
-- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
-- Fields: `known_scheduled_event_timestamps_utc`, `surprise_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
+- Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
+- Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
 <a id="python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityprovidersource"></a>
 ### `HourlyNewsIntensityProviderSource`
@@ -2249,15 +2253,13 @@
 | [`CoarseSimulationPathProvenance`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathprovenance) | contract_model | 13 fields |
 | [`CoarseSimulationPathRecord`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathrecord) | contract_model | 12 fields |
 | [`CoarseSimulationRunRequest`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationrunrequest) | contract_model | 7 fields |
-| [`CoupledGapMarkConfiguration`](#python-api-symbol-janiform-simulation-coarse-coupledgapmarkconfiguration) | contract_model | 1 fields |
-| [`DoubleExponentialBaseShockConfiguration`](#python-api-symbol-janiform-simulation-coarse-doubleexponentialbaseshockconfiguration) | contract_model | 3 fields |
 | [`KnownNewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-knownnewsarrivalconfiguration) | contract_model | 1 fields |
 | [`NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-news-process-configuration-schema-version) | constant | constant value |
 | [`NewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-newsarrivalconfiguration) | contract_model | 2 fields |
-| [`NewsComponentMarkScaleConfiguration`](#python-api-symbol-janiform-simulation-coarse-newscomponentmarkscaleconfiguration) | contract_model | 2 fields |
+| [`NewsComponentMarkScaleConfiguration`](#python-api-symbol-janiform-simulation-coarse-newscomponentmarkscaleconfiguration) | contract_model | 3 fields |
 | [`NewsProcessConfiguration`](#python-api-symbol-janiform-simulation-coarse-newsprocessconfiguration) | contract_model | 5 fields |
-| [`SharedNewsMarkLawConfiguration`](#python-api-symbol-janiform-simulation-coarse-sharednewsmarklawconfiguration) | contract_model | 3 fields |
-| [`SurpriseNewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration) | contract_model | 1 fields |
+| [`SharedNewsMarkLawConfiguration`](#python-api-symbol-janiform-simulation-coarse-sharednewsmarklawconfiguration) | contract_model | 1 fields |
+| [`SurpriseNewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration) | contract_model | 2 fields |
 | [`deserialize_coarse_simulation_path`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-path) | function | (payload_json: 'str') -> 'CoarseSimulationPath' |
 | [`deserialize_coarse_simulation_run_request`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-run-request) | function | (payload_json: 'str') -> 'CoarseSimulationRunRequest' |
 | [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-coarse-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
@@ -2387,20 +2389,6 @@
 - Signature: `(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'`
 - Fields: `schema_version`, `seed`, `start_time_utc_nanos`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
 
-<a id="python-api-symbol-janiform-simulation-coarse-coupledgapmarkconfiguration"></a>
-### `CoupledGapMarkConfiguration`
-
-- Kind: `contract_model`
-- Signature: `(sigma_g: 'float') -> 'None'`
-- Fields: `sigma_g`
-
-<a id="python-api-symbol-janiform-simulation-coarse-doubleexponentialbaseshockconfiguration"></a>
-### `DoubleExponentialBaseShockConfiguration`
-
-- Kind: `contract_model`
-- Signature: `(probability_positive: 'float', eta_plus: 'float', eta_minus: 'float') -> 'None'`
-- Fields: `probability_positive`, `eta_plus`, `eta_minus`
-
 <a id="python-api-symbol-janiform-simulation-coarse-knownnewsarrivalconfiguration"></a>
 ### `KnownNewsArrivalConfiguration`
 
@@ -2425,8 +2413,8 @@
 ### `NewsComponentMarkScaleConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(activity_coupling_scale: 'float', return_jump_scale: 'float') -> 'None'`
-- Fields: `activity_coupling_scale`, `return_jump_scale`
+- Signature: `(activity_coupling_scale: 'float', return_jump_drift: 'float', return_jump_volatility: 'float') -> 'None'`
+- Fields: `activity_coupling_scale`, `return_jump_drift`, `return_jump_volatility`
 
 <a id="python-api-symbol-janiform-simulation-coarse-newsprocessconfiguration"></a>
 ### `NewsProcessConfiguration`
@@ -2439,15 +2427,15 @@
 ### `SharedNewsMarkLawConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(gamma_severity_marks: 'Any', double_exponential_base_shock: 'DoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CoupledGapMarkConfiguration') -> 'None'`
-- Fields: `gamma_severity_marks`, `double_exponential_base_shock`, `coupled_gap_marks`
+- Signature: `(gamma_severity_marks: 'Any') -> 'None'`
+- Fields: `gamma_severity_marks`
 
 <a id="python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration"></a>
 ### `SurpriseNewsArrivalConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(baseline_intensity: 'float') -> 'None'`
-- Fields: `baseline_intensity`
+- Signature: `(open_baseline_intensity: 'float', closed_baseline_intensity: 'float') -> 'None'`
+- Fields: `open_baseline_intensity`, `closed_baseline_intensity`
 
 <a id="python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-path"></a>
 ### `deserialize_coarse_simulation_path`
@@ -2995,8 +2983,8 @@
 ### `GammaSeverityMarkConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(shape_k: 'float', scale_theta: 'float') -> 'None'`
-- Fields: `shape_k`, `scale_theta`
+- Signature: `(shape_k: 'float') -> 'None'`
+- Fields: `shape_k`
 
 <a id="python-api-symbol-janiform-pricing-meanreversionanchormodel"></a>
 ### `MeanReversionAnchorModel`
@@ -3384,8 +3372,8 @@
 ### `GammaSeverityMarkConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(shape_k: 'float', scale_theta: 'float') -> 'None'`
-- Fields: `shape_k`, `scale_theta`
+- Signature: `(shape_k: 'float') -> 'None'`
+- Fields: `shape_k`
 
 <a id="python-api-symbol-janiform-pricing-contracts-meanreversionanchormodel"></a>
 ### `MeanReversionAnchorModel`

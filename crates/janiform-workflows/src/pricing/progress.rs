@@ -72,9 +72,7 @@ pub(super) fn complete_pricing_progress(
         return Ok(());
     };
 
-    complete_terminal_progress(progress_adapter, "completed");
-
-    Ok(())
+    complete_terminal_progress(progress_adapter, "completed")
 }
 
 pub(super) fn pricing_progress_phase_label(phase: PricingProgressPhase) -> &'static str {

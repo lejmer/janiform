@@ -14,7 +14,8 @@ use super::derived_contracts::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct FittedSurpriseNewsArrivalLayer {
-    pub baseline_intensity_per_hour: f64,
+    pub open_baseline_intensity_per_hour: f64,
+    pub closed_baseline_intensity_per_hour: f64,
     pub deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
 }
 
@@ -22,8 +23,11 @@ pub(super) fn fit_surprise_news_arrival_layer(
     window_start_utc_nanos: i64,
     window_end_utc_nanos: i64,
     selected_surprise_episode_timestamps_utc_nanos: &[i64],
+    selected_closed_gap_count: usize,
+    source_window_open_exposure_hours: f64,
+    source_window_closed_exposure_hours: f64,
 ) -> FittedSurpriseNewsArrivalLayer {
-    let effective_event_count = selected_surprise_episode_timestamps_utc_nanos
+    let effective_open_event_count = selected_surprise_episode_timestamps_utc_nanos
         .iter()
         .filter(|&&timestamp_utc_nanos| {
             timestamp_utc_nanos >= window_start_utc_nanos
@@ -31,12 +35,15 @@ pub(super) fn fit_surprise_news_arrival_layer(
         })
         .count();
 
-    let source_window_duration_hours =
-        duration_nanos_to_hours(window_end_utc_nanos.saturating_sub(window_start_utc_nanos));
+    let open_exposure_hours =
+        source_window_open_exposure_hours.max(return_components_stage_positive_domain_floor());
+    let closed_exposure_hours =
+        source_window_closed_exposure_hours.max(return_components_stage_positive_domain_floor());
 
-    if source_window_duration_hours <= 0.0 || effective_event_count == 0 {
+    if effective_open_event_count == 0 && selected_closed_gap_count == 0 {
         return FittedSurpriseNewsArrivalLayer {
-            baseline_intensity_per_hour: 0.0,
+            open_baseline_intensity_per_hour: 0.0,
+            closed_baseline_intensity_per_hour: 0.0,
             deterministic_intensity_profile: unit_weekly_profile(
                 return_components_stage_surprise_intensity_weekly_profile_bucket_count(),
             ),
@@ -44,8 +51,9 @@ pub(super) fn fit_surprise_news_arrival_layer(
     }
 
     FittedSurpriseNewsArrivalLayer {
-        baseline_intensity_per_hour: effective_event_count as f64
-            / source_window_duration_hours.max(return_components_stage_positive_domain_floor()),
+        open_baseline_intensity_per_hour: effective_open_event_count as f64 / open_exposure_hours,
+        closed_baseline_intensity_per_hour: selected_closed_gap_count as f64
+            / closed_exposure_hours,
         deterministic_intensity_profile: fit_surprise_news_deterministic_intensity_profile(
             window_start_utc_nanos,
             window_end_utc_nanos,
@@ -66,19 +74,23 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
 
     let exposure_hours_by_bucket =
         exposure_hours_by_weekly_bucket(window_start_utc_nanos, window_end_utc_nanos, bucket_count);
+
     let total_exposure_hours = exposure_hours_by_bucket.iter().sum::<f64>();
     if total_exposure_hours <= 0.0 {
         return unit_weekly_profile(bucket_count);
     }
 
     let mut event_count_by_bucket = vec![0.0; bucket_count];
+
     for &timestamp_utc_nanos in selected_surprise_episode_timestamps_utc_nanos {
         if timestamp_utc_nanos < window_start_utc_nanos
             || timestamp_utc_nanos >= window_end_utc_nanos
         {
             continue;
         }
+
         let bucket_index = weekly_hour_bucket_index(timestamp_utc_nanos);
+
         event_count_by_bucket[bucket_index] += 1.0;
     }
 
@@ -94,14 +106,19 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
     }
 
     let shrinkage_event_mass = (total_event_count / bucket_count as f64).max(1.0);
+
     let mut weekly_hour_utc_multipliers = Vec::with_capacity(bucket_count);
+
     for bucket_index in 0..bucket_count {
         let bucket_exposure_hours = exposure_hours_by_bucket[bucket_index]
             .max(return_components_stage_positive_domain_floor());
+
         let bucket_expected_count = baseline_intensity * bucket_exposure_hours;
+
         let bucket_multiplier = (event_count_by_bucket[bucket_index] + shrinkage_event_mass)
             / (bucket_expected_count + shrinkage_event_mass)
                 .max(return_components_stage_positive_domain_floor());
+
         weekly_hour_utc_multipliers.push(
             if bucket_multiplier.is_finite() && bucket_multiplier > 0.0 {
                 bucket_multiplier
@@ -185,6 +202,7 @@ fn exposure_hours_by_weekly_bucket(
         };
 
         let segment_end = next_hour_boundary.min(window_end);
+
         let segment_duration_hours = duration_nanos_to_hours(
             segment_end
                 .timestamp_nanos_opt()
@@ -230,6 +248,7 @@ mod tests {
             .unwrap()
             .timestamp_nanos_opt()
             .unwrap();
+
         let window_end_utc_nanos = Utc
             .with_ymd_and_hms(2025, 1, 13, 0, 0, 0)
             .single()
@@ -269,6 +288,7 @@ mod tests {
             .iter()
             .sum::<f64>()
             / fitted_profile.weekly_hour_utc_multipliers.len() as f64;
+
         assert!((weighted_mean - 1.0).abs() <= 1.0e-12);
         assert!(
             fitted_profile.weekly_hour_utc_multipliers[9]
@@ -284,6 +304,7 @@ mod tests {
             .unwrap()
             .timestamp_nanos_opt()
             .unwrap();
+
         let window_end_utc_nanos = Utc
             .with_ymd_and_hms(2025, 1, 13, 0, 0, 0)
             .single()
@@ -291,10 +312,17 @@ mod tests {
             .timestamp_nanos_opt()
             .unwrap();
 
-        let fitted_layer =
-            fit_surprise_news_arrival_layer(window_start_utc_nanos, window_end_utc_nanos, &[]);
+        let fitted_layer = fit_surprise_news_arrival_layer(
+            window_start_utc_nanos,
+            window_end_utc_nanos,
+            &[],
+            0,
+            1.0,
+            1.0,
+        );
 
-        assert_eq!(fitted_layer.baseline_intensity_per_hour, 0.0);
+        assert_eq!(fitted_layer.open_baseline_intensity_per_hour, 0.0);
+        assert_eq!(fitted_layer.closed_baseline_intensity_per_hour, 0.0);
         assert!(
             fitted_layer
                 .deterministic_intensity_profile

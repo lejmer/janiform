@@ -97,9 +97,7 @@ pub(super) fn complete_simulation_progress(
         return Ok(());
     };
 
-    complete_terminal_progress(progress_adapter, "completed");
-
-    Ok(())
+    complete_terminal_progress(progress_adapter, "completed")
 }
 
 pub(super) fn emit_start_summary(

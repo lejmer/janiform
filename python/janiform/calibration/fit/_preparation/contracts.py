@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 from typing import Optional
 
+from ....pricing import PricingIntervalSchedulePolicy
+from ...diagnostics import CalibrationDiagnosticsRequest
+from ...effort import CalibrationEffortOptions
 from ...market_data.contracts import (
     CalibrationKnownNewsColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
@@ -24,8 +27,6 @@ from ...presets.references import (
 from ...presets.registry import PresetRegistry
 from ...presets.resolution import ResolvedPresetWorkflowConfiguration
 from ...staged import CalibrationStageSolverSettings
-from ....pricing import PricingIntervalSchedulePolicy
-from ...effort import CalibrationEffortOptions
 from .._inference import FitInference
 
 
@@ -64,6 +65,7 @@ class FitPreparationConfiguration:
     joint_refinement_option_refinement_candidate_count_override: Optional[int]
     joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     joint_refinement_audit_option_pricing_enabled: bool
+    diagnostics: CalibrationDiagnosticsRequest
     stylized_fact_huber_cutoff: Optional[float]
     stylized_fact_admissibility_z_threshold: Optional[float]
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration

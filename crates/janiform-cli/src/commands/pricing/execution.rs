@@ -121,6 +121,7 @@ pub(crate) fn run_price_observed_options_command(
         cpu_count: command.cpu_count,
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection::default(),
         pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::default(),
+        spectral_collocation_node_count_override: None,
         physical_distribution_diagnostics,
         output_path: Some(output_path),
     };

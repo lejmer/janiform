@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "e21b853b8900ff2dc7231ab2a9891e44260148a9186139747ba69fa34bed23bf",
+  "approved_snapshot_sha256": "af0c0ef04cd7ba8828e1186ca89e2d73f4bdf9f5bb21d82325440d1940c2a652",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1487,6 +1487,26 @@
         "janiform.calibration.fit",
         "janiform.calibration.staged",
         "janiform.long_variance",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-28",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "design/janiform_compact_model_spec.tex"
+      ],
+      "rationale": "News and gap shocks now use shape-only unit-mean Gamma severity and coupled Gamma-normal return marks with open and closed surprise intensity controls, so the public contracts remove the legacy free Gamma scale, Kou mark, coupled-gap, and single surprise-intensity fields.",
+      "snapshot_sha256": "af0c0ef04cd7ba8828e1186ca89e2d73f4bdf9f5bb21d82325440d1940c2a652",
+      "summary": "Approve public coupled Gamma-normal news shock contracts.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.hourly_factors",
         "janiform.pricing",
         "janiform.pricing.contracts",
         "janiform.simulation",

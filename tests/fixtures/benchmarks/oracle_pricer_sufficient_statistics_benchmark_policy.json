@@ -22,8 +22,7 @@
       "minus_plus": 0.02,
       "minus_minus": 0.04
     },
-    "gamma_shape_k": 1.8,
-    "gamma_scale_theta": 0.75
+    "gamma_shape_k": 1.8
   },
   "oracle_solver_probes": {
     "u_probe_min": 0.0005,

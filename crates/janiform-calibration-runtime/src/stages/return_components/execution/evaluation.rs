@@ -187,11 +187,16 @@ pub fn evaluate_return_components_exact_candidate(
     );
 
     let surprise_arrival_family = ReturnComponentsSurpriseNewsArrivalCandidateFamily {
-        baseline_intensity: fitted_parameters
+        open_baseline_intensity: fitted_parameters
             .news_process_configuration
             .arrivals
             .surprise
-            .baseline_intensity,
+            .open_baseline_intensity,
+        closed_baseline_intensity: fitted_parameters
+            .news_process_configuration
+            .arrivals
+            .surprise
+            .closed_baseline_intensity,
         weekly_hour_utc_multipliers: fitted_parameters
             .surprise_deterministic_intensity_profile
             .weekly_hour_utc_multipliers
@@ -200,13 +205,26 @@ pub fn evaluate_return_components_exact_candidate(
             .surprise_deterministic_intensity_profile
             .profile_resolution_hours,
     };
+
     let return_jump_family = ReturnComponentsReturnJumpMarkScaleCandidateFamily {
-        sigma_g: fitted_parameters
+        known_return_jump_drift: fitted_parameters
             .news_process_configuration
-            .shared_mark_law
-            .coupled_gap_marks
-            .sigma_g,
+            .known_component_mark_scales
+            .return_jump_drift,
+        known_return_jump_volatility: fitted_parameters
+            .news_process_configuration
+            .known_component_mark_scales
+            .return_jump_volatility,
+        surprise_return_jump_drift: fitted_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales
+            .return_jump_drift,
+        surprise_return_jump_volatility: fitted_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales
+            .return_jump_volatility,
     };
+
     let activity_coupling_family = ReturnComponentsActivityCouplingCandidateFamily {
         known_activity_coupling_scale: fitted_parameters
             .news_process_configuration
@@ -228,18 +246,21 @@ pub fn evaluate_return_components_exact_candidate(
         &return_jump_family,
         candidate_generation_input.shared_mark_law_template,
     );
+
     let surprise_arrival_diagnostic = build_surprise_arrival_diagnostic(
         &fitted_diagnostic_policy,
         observed_summary_statistics,
         &surprise_arrival_family,
         &fitted_parameters.surprise_deterministic_intensity_profile,
     );
+
     let gap_diagnostic = build_gap_diagnostic(
         &fitted_diagnostic_policy,
         observed_summary_statistics,
         &return_jump_family,
         candidate_generation_input.shared_mark_law_template,
     );
+
     let activity_coupling_diagnostic = build_activity_coupling_diagnostic(
         &fitted_diagnostic_policy,
         observed_summary_statistics,

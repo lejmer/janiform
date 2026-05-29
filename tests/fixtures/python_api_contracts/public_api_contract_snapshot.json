@@ -2797,6 +2797,10 @@
               "value": "long_variance"
             },
             {
+              "name": "NEWS_SHOCKS",
+              "value": "news_shocks"
+            },
+            {
               "name": "MEAN_REVERSION",
               "value": "mean_reversion"
             },
@@ -3146,6 +3150,10 @@
             {
               "name": "LONG_VARIANCE",
               "value": "long_variance"
+            },
+            {
+              "name": "NEWS_SHOCKS",
+              "value": "news_shocks"
             },
             {
               "name": "MEAN_REVERSION",
@@ -4022,7 +4030,8 @@
               "known_news_calendar_anchor_policy",
               "surprise_news_intensity_control_policy",
               "known_news_calendar_anchor_count",
-              "surprise_baseline_intensity",
+              "surprise_open_baseline_intensity",
+              "surprise_closed_baseline_intensity",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -4036,7 +4045,8 @@
               "known_news_calendar_anchor_policy",
               "surprise_news_intensity_control_policy",
               "known_news_calendar_anchor_count",
-              "surprise_baseline_intensity",
+              "surprise_open_baseline_intensity",
+              "surprise_closed_baseline_intensity",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -4171,11 +4181,12 @@
         "HourlyNewsIntensityMaterializationSettings": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
-            "surprise_baseline_intensity",
+            "surprise_open_baseline_intensity",
+            "surprise_closed_baseline_intensity",
             "surprise_deterministic_time_multiplier_by_interval_index"
           ],
           "kind": "contract_model",
-          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
         "HourlyNewsIntensityProviderExplicitSource": {
           "field_names": [
@@ -4188,11 +4199,12 @@
         "HourlyNewsIntensityProviderMaterializedSource": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
-            "surprise_baseline_intensity",
+            "surprise_open_baseline_intensity",
+            "surprise_closed_baseline_intensity",
             "surprise_deterministic_time_multiplier_by_interval_index"
           ],
           "kind": "contract_model",
-          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
         "HourlyNewsIntensityProviderSource": {
           "kind": "constant",
@@ -4454,7 +4466,8 @@
               "known_news_calendar_anchor_policy",
               "surprise_news_intensity_control_policy",
               "known_news_calendar_anchor_count",
-              "surprise_baseline_intensity",
+              "surprise_open_baseline_intensity",
+              "surprise_closed_baseline_intensity",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -4468,7 +4481,8 @@
               "known_news_calendar_anchor_policy",
               "surprise_news_intensity_control_policy",
               "known_news_calendar_anchor_count",
-              "surprise_baseline_intensity",
+              "surprise_open_baseline_intensity",
+              "surprise_closed_baseline_intensity",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -4560,11 +4574,12 @@
         "HourlyNewsIntensityMaterializationSettings": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
-            "surprise_baseline_intensity",
+            "surprise_open_baseline_intensity",
+            "surprise_closed_baseline_intensity",
             "surprise_deterministic_time_multiplier_by_interval_index"
           ],
           "kind": "contract_model",
-          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
         "HourlyNewsIntensityProviderExplicitSource": {
           "field_names": [
@@ -4577,11 +4592,12 @@
         "HourlyNewsIntensityProviderMaterializedSource": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
-            "surprise_baseline_intensity",
+            "surprise_open_baseline_intensity",
+            "surprise_closed_baseline_intensity",
             "surprise_deterministic_time_multiplier_by_interval_index"
           ],
           "kind": "contract_model",
-          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
         "HourlyNewsIntensityProviderSource": {
           "kind": "constant",
@@ -4903,11 +4919,10 @@
         },
         "GammaSeverityMarkConfiguration": {
           "field_names": [
-            "shape_k",
-            "scale_theta"
+            "shape_k"
           ],
           "kind": "contract_model",
-          "signature": "(shape_k: 'float', scale_theta: 'float') -> 'None'"
+          "signature": "(shape_k: 'float') -> 'None'"
         },
         "MeanReversionAnchorModel": {
           "field_names": [
@@ -5478,11 +5493,10 @@
         },
         "GammaSeverityMarkConfiguration": {
           "field_names": [
-            "shape_k",
-            "scale_theta"
+            "shape_k"
           ],
           "kind": "contract_model",
-          "signature": "(shape_k: 'float', scale_theta: 'float') -> 'None'"
+          "signature": "(shape_k: 'float') -> 'None'"
         },
         "MeanReversionAnchorModel": {
           "field_names": [
@@ -7273,8 +7287,6 @@
         "CoarseSimulationPathProvenance",
         "CoarseSimulationPathRecord",
         "CoarseSimulationRunRequest",
-        "CoupledGapMarkConfiguration",
-        "DoubleExponentialBaseShockConfiguration",
         "KnownNewsArrivalConfiguration",
         "NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION",
         "NewsArrivalConfiguration",
@@ -7500,22 +7512,6 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'"
         },
-        "CoupledGapMarkConfiguration": {
-          "field_names": [
-            "sigma_g"
-          ],
-          "kind": "contract_model",
-          "signature": "(sigma_g: 'float') -> 'None'"
-        },
-        "DoubleExponentialBaseShockConfiguration": {
-          "field_names": [
-            "probability_positive",
-            "eta_plus",
-            "eta_minus"
-          ],
-          "kind": "contract_model",
-          "signature": "(probability_positive: 'float', eta_plus: 'float', eta_minus: 'float') -> 'None'"
-        },
         "KnownNewsArrivalConfiguration": {
           "field_names": [
             "scheduled_event_timestamps_utc_nanos"
@@ -7538,10 +7534,11 @@
         "NewsComponentMarkScaleConfiguration": {
           "field_names": [
             "activity_coupling_scale",
-            "return_jump_scale"
+            "return_jump_drift",
+            "return_jump_volatility"
           ],
           "kind": "contract_model",
-          "signature": "(activity_coupling_scale: 'float', return_jump_scale: 'float') -> 'None'"
+          "signature": "(activity_coupling_scale: 'float', return_jump_drift: 'float', return_jump_volatility: 'float') -> 'None'"
         },
         "NewsProcessConfiguration": {
           "field_names": [
@@ -7556,19 +7553,18 @@
         },
         "SharedNewsMarkLawConfiguration": {
           "field_names": [
-            "gamma_severity_marks",
-            "double_exponential_base_shock",
-            "coupled_gap_marks"
+            "gamma_severity_marks"
           ],
           "kind": "contract_model",
-          "signature": "(gamma_severity_marks: 'Any', double_exponential_base_shock: 'DoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CoupledGapMarkConfiguration') -> 'None'"
+          "signature": "(gamma_severity_marks: 'Any') -> 'None'"
         },
         "SurpriseNewsArrivalConfiguration": {
           "field_names": [
-            "baseline_intensity"
+            "open_baseline_intensity",
+            "closed_baseline_intensity"
           ],
           "kind": "contract_model",
-          "signature": "(baseline_intensity: 'float') -> 'None'"
+          "signature": "(open_baseline_intensity: 'float', closed_baseline_intensity: 'float') -> 'None'"
         },
         "deserialize_coarse_simulation_path": {
           "kind": "function",

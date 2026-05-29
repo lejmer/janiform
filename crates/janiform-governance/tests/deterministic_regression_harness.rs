@@ -395,7 +395,8 @@ fn parse_hourly_news_intensity_source(
         },
         HourlyNewsIntensitySourceFixture::Materialized {
             known_scheduled_event_timestamps_utc,
-            surprise_baseline_intensity,
+            surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index,
         } => {
             let known_scheduled_event_timestamps_utc_nanos: Vec<i64> =
@@ -422,7 +423,8 @@ fn parse_hourly_news_intensity_source(
 
             HourlyNewsIntensityRegressionSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos,
-                surprise_baseline_intensity: *surprise_baseline_intensity,
+                surprise_open_baseline_intensity: *surprise_open_baseline_intensity,
+                surprise_closed_baseline_intensity: *surprise_closed_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index:
                     parsed_surprise_deterministic_time_multiplier_by_interval_index,
             }

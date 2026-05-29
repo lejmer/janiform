@@ -1,7 +1,8 @@
 //! Re-exports for staged calibration runtime execution.
 
 pub use janiform_calibration_runtime::{
-    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationJointRefinementCarryInput,
+    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationDiagnosticsRequest,
+    CalibrationExtendedDiagnosticKind, CalibrationJointRefinementCarryInput,
     CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMarketDataCarryInput, CalibrationMarketDataColumnMapping,

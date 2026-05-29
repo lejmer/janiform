@@ -1299,8 +1299,17 @@ pub fn build_pricing_transform_input(
         ExponentialAffineTransformActivityLoadings::total_activity(u_plus, u_minus),
         z_plus,
         z_minus,
+        ComplexScalar::new(0.0, 0.0),
         seasonality_factor,
         news_intensity,
+        pricing_request
+            .model_parameters
+            .news_process_configuration
+            .known_component_mark_scales,
+        pricing_request
+            .model_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales,
         pricing_request.interval_delta,
         pricing_request.boundary_input.hawkes_boundary_state,
     )

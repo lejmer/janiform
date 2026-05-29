@@ -58,7 +58,8 @@ class HourlyNewsIntensityProviderExplicitSource(ContractModel):
 @dataclass(frozen=True, slots=True)
 class HourlyNewsIntensityProviderMaterializedSource(ContractModel):
     known_scheduled_event_timestamps_utc: Sequence[datetime]
-    surprise_baseline_intensity: float
+    surprise_open_baseline_intensity: float
+    surprise_closed_baseline_intensity: float
     surprise_deterministic_time_multiplier_by_interval_index: Optional[Mapping[int, float]] = None
 
 
@@ -230,7 +231,8 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
             "known_news_calendar_anchor_policy",
             "surprise_news_intensity_control_policy",
             "known_news_calendar_anchor_count",
-            "surprise_baseline_intensity",
+            "surprise_open_baseline_intensity",
+            "surprise_closed_baseline_intensity",
             "interval_boundary_policy",
             "interval_alignment_policy",
             "timezone_transition_policy",
@@ -246,7 +248,8 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
             "known_news_calendar_anchor_policy",
             "surprise_news_intensity_control_policy",
             "known_news_calendar_anchor_count",
-            "surprise_baseline_intensity",
+            "surprise_open_baseline_intensity",
+            "surprise_closed_baseline_intensity",
             "interval_boundary_policy",
             "interval_alignment_policy",
             "timezone_transition_policy",
@@ -272,7 +275,8 @@ class HourlyNewsIntensityMaterializationSettings(ContractModel):
     """Configuration for deterministic known and surprise materialization from `nu_news(t)` to hourly `nu_h`."""
 
     known_scheduled_event_timestamps_utc: Sequence[datetime]
-    surprise_baseline_intensity: float
+    surprise_open_baseline_intensity: float
+    surprise_closed_baseline_intensity: float
     surprise_deterministic_time_multiplier_by_interval_index: Optional[Mapping[int, float]] = None
 
 

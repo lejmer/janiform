@@ -468,8 +468,13 @@ impl PyHourlyNewsIntensityMaterializationResult {
     }
 
     #[getter]
-    fn surprise_baseline_intensity(&self) -> f64 {
-        self.output.metadata.surprise_baseline_intensity
+    fn surprise_open_baseline_intensity(&self) -> f64 {
+        self.output.metadata.surprise_open_baseline_intensity
+    }
+
+    #[getter]
+    fn surprise_closed_baseline_intensity(&self) -> f64 {
+        self.output.metadata.surprise_closed_baseline_intensity
     }
 
     #[getter]

@@ -147,7 +147,7 @@ pub fn run_staged_fit_execution_workflow(
         execution_duration,
     };
 
-    complete_progress_before_summary(&mut observer.progress_adapter, output.report.status);
+    complete_progress_before_summary(&mut observer.progress_adapter, output.report.status)?;
     emit_completion_summary(&observer, &request.paths, &output)?;
 
     Ok(output)
@@ -405,12 +405,12 @@ fn observe_output_materialization_progress(
 fn complete_progress_before_summary(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     status: CalibrationStageExecutionStatus,
-) {
+) -> Result<(), WorkflowError> {
     let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
-        return;
+        return Ok(());
     };
 
-    complete_terminal_progress(progress_adapter, stage_execution_status_label(status));
+    complete_terminal_progress(progress_adapter, stage_execution_status_label(status))
 }
 
 fn observe_run_events(input: RunEventObservationInput<'_, '_>) -> Result<(), WorkflowError> {

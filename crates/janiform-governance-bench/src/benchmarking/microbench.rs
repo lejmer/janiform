@@ -14,6 +14,7 @@ use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters, HawkesTransitionStep,
 };
+use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::builders::{
     build_equation_specification, build_oracle_transform_input, build_pricing_engine_settings,
@@ -328,7 +329,10 @@ impl MicrobenchmarkFixtureSet {
             }),
             Some(
                 unit_interval_from_seed(simulation_seed ^ 0xA5)
-                    * self.policy.model_parameters.gamma_scale_theta,
+                    * GammaSeverityMarkConfiguration::new(
+                        self.policy.model_parameters.gamma_shape_k,
+                    )
+                    .derived_unit_mean_scale(),
             ),
         );
 

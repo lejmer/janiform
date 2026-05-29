@@ -333,6 +333,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
+            diagnostics: Default::default(),
             option_pricing_input: None,
         },
     );
@@ -371,6 +372,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
+            diagnostics: Default::default(),
             option_pricing_input: None,
         },
     );
@@ -436,6 +438,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
+                    diagnostics: Default::default(),
                     option_pricing_input: None,
                 },
             );
@@ -469,6 +472,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
+                    diagnostics: Default::default(),
                     option_pricing_input: None,
                 },
             );
@@ -543,6 +547,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
         option_refinement_candidate_count_override: Some(1),
         option_refinement_wall_clock_budget_millis: None,
         audit_option_pricing_enabled: false,
+        diagnostics: Default::default(),
         option_pricing_input: None,
     };
 
@@ -615,6 +620,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
+            diagnostics: Default::default(),
             option_pricing_input: Some(option_pricing_input),
         },
     );
@@ -678,6 +684,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
+            diagnostics: Default::default(),
             option_pricing_input: None,
         },
     );

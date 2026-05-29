@@ -1,8 +1,6 @@
 """Public coarse-interval simulation ownership surface."""
 
 from .news import (
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
     NewsArrivalConfiguration,
@@ -61,8 +59,6 @@ __all__ = [
     "CoarseSimulationPathProvenance",
     "CoarseSimulationPathRecord",
     "CoarseSimulationRunRequest",
-    "CoupledGapMarkConfiguration",
-    "DoubleExponentialBaseShockConfiguration",
     "KnownNewsArrivalConfiguration",
     "NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION",
     "NewsArrivalConfiguration",

@@ -287,9 +287,16 @@ fn news_intensity_source(
                 "seasonality cases",
                 path,
             )?,
-            surprise_baseline_intensity: finite_f64_field(
+            surprise_open_baseline_intensity: finite_f64_field(
                 source,
-                "surprise_baseline_intensity",
+                "surprise_open_baseline_intensity",
+                context,
+                "seasonality cases",
+                path,
+            )?,
+            surprise_closed_baseline_intensity: finite_f64_field(
+                source,
+                "surprise_closed_baseline_intensity",
                 context,
                 "seasonality cases",
                 path,

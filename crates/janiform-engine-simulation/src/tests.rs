@@ -47,7 +47,6 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalComponent,
     NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
     NewsReturnJumpRoutingTarget, SharedNewsAccumulatorState, SharedNewsMarkLawConfiguration,
@@ -206,17 +205,13 @@ fn build_news_process_configuration(
                 scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
             },
             surprise: SurpriseNewsArrivalConfiguration {
-                baseline_intensity: 0.0,
+                open_baseline_intensity: 0.0,
+                closed_baseline_intensity: 0.0,
             },
         },
         SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5)
                 .expect("news gamma severity configuration should construct"),
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                0.4, 1.3, 1.1,
-            )
-            .expect("news base shock configuration should construct"),
-            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
         },
         default_news_component_mark_scales(),
         default_news_component_mark_scales(),
@@ -227,7 +222,8 @@ fn build_news_process_configuration(
 fn default_news_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
     NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 0.6,
-        return_jump_scale: 1.2,
+        return_jump_drift: 0.0,
+        return_jump_volatility: 1.2,
     }
 }
 
@@ -236,15 +232,24 @@ fn sample_expected_shared_news_marks(
 ) -> (f64, f64) {
     let sampled_mark_payload = build_news_process_configuration(Vec::new())
         .default_mark_pipeline()
-        .sample_coupled_marks(randomness_stream)
+        .sample_gamma_normal_marks(default_news_component_mark_scales(), randomness_stream)
         .expect("shared news mark sampling should succeed for test configuration");
 
     (
         sampled_mark_payload.shared_severity_mark,
-        sampled_mark_payload
-            .coupled_gap_mark_construction
-            .gap_jump_mark,
+        sampled_mark_payload.shared_return_shock_mark,
     )
+}
+
+fn expected_gamma_normal_return_jump(
+    mark_scales: NewsComponentMarkScaleConfiguration,
+    shared_severity_mark: f64,
+    shared_return_shock_mark: f64,
+) -> f64 {
+    mark_scales.return_jump_drift * shared_severity_mark
+        + mark_scales.return_jump_volatility
+            * shared_severity_mark.sqrt()
+            * shared_return_shock_mark
 }
 
 fn set_known_news_timestamps(
@@ -2034,7 +2039,11 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
         run_result
             .news_routing_totals
             .cumulative_open_window_return_jump_m_t_increment,
-        expected_mark_scales.return_jump_scale * expected_shared_return_jump_mark,
+        expected_gamma_normal_return_jump(
+            expected_mark_scales,
+            expected_shared_severity_mark,
+            expected_shared_return_jump_mark,
+        ),
     );
     assert_float_close(
         run_result
@@ -2132,7 +2141,11 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
         run_result
             .news_routing_totals
             .cumulative_closed_window_gap_g_t_increment,
-        expected_mark_scales.return_jump_scale * expected_shared_return_jump_mark,
+        expected_gamma_normal_return_jump(
+            expected_mark_scales,
+            expected_shared_severity_mark,
+            expected_shared_return_jump_mark,
+        ),
     );
     assert_float_close(
         run_result
@@ -2288,12 +2301,13 @@ fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
 }
 
 #[test]
-fn seeded_exogenous_mark_sampling_matches_shared_gamma_kou_reference_contract_for_fixed_seed() {
+fn seeded_exogenous_mark_sampling_matches_shared_gamma_normal_reference_contract_for_fixed_seed() {
     let root_seed = 98_771_u64;
     let interval_index = 3_u64;
     let mark_scales = NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 1.35,
-        return_jump_scale: 0.85,
+        return_jump_drift: 0.0,
+        return_jump_volatility: 0.85,
     };
 
     let news_mark_substream_seed = derive_simulation_substream_seed(
@@ -2325,18 +2339,23 @@ fn seeded_exogenous_mark_sampling_matches_shared_gamma_kou_reference_contract_fo
     );
     assert_float_close(
         observed_event_input.coupled_return_jump_mark,
-        mark_scales.return_jump_scale * expected_shared_return_jump_mark,
+        expected_gamma_normal_return_jump(
+            mark_scales,
+            expected_shared_severity_mark,
+            expected_shared_return_jump_mark,
+        ),
     );
 }
 
 #[test]
-fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_statistics() {
+fn seeded_exogenous_mark_sampling_preserves_shared_gamma_normal_sign_and_scale_statistics() {
     let root_seed = 98_772_u64;
     let interval_index = 4_u64;
     let sample_count = 8_192_u64;
     let mark_scales = NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 1.1,
-        return_jump_scale: 0.9,
+        return_jump_drift: 0.0,
+        return_jump_volatility: 0.9,
     };
 
     let news_mark_substream_seed = derive_simulation_substream_seed(
@@ -2377,8 +2396,11 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
 
         let expected_activity_coupling_mark =
             mark_scales.activity_coupling_scale * expected_shared_severity_mark;
-        let expected_return_jump_mark =
-            mark_scales.return_jump_scale * expected_shared_return_jump_mark;
+        let expected_return_jump_mark = expected_gamma_normal_return_jump(
+            mark_scales,
+            expected_shared_severity_mark,
+            expected_shared_return_jump_mark,
+        );
 
         assert!(observed_activity_coupling_mark.is_finite());
         assert!(observed_activity_coupling_mark >= 0.0);
@@ -2402,11 +2424,11 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
 
     assert!(
         observed_positive_return_count > 0,
-        "seeded return jumps should contain positive marks under symmetric Kou configuration"
+        "seeded return jumps should contain positive marks under centered Gamma-normal configuration"
     );
     assert!(
         observed_negative_return_count > 0,
-        "seeded return jumps should contain negative marks under symmetric Kou configuration"
+        "seeded return jumps should contain negative marks under centered Gamma-normal configuration"
     );
 
     let observed_activity_mean = observed_activity_sum / sample_count as f64;
@@ -3032,21 +3054,21 @@ impl ScriptedRandomnessFactory {
 
     fn combined_news_mark_draws(&self) -> Vec<f64> {
         const SEVERITY_DRAWS_PER_EVENT: usize = 3;
-        const BASE_SHOCK_DRAWS_PER_EVENT: usize = 2;
+        const RETURN_SHOCK_DRAWS_PER_EVENT: usize = 2;
 
         let severity_chunks = self.news_severity_draws.chunks(SEVERITY_DRAWS_PER_EVENT);
-        let base_shock_chunks = self
+        let return_shock_chunks = self
             .news_return_jump_draws
-            .chunks(BASE_SHOCK_DRAWS_PER_EVENT);
+            .chunks(RETURN_SHOCK_DRAWS_PER_EVENT);
         let combined_capacity = self
             .news_severity_draws
             .len()
             .saturating_add(self.news_return_jump_draws.len());
         let mut combined_draws = Vec::with_capacity(combined_capacity);
 
-        for (severity_chunk, base_shock_chunk) in severity_chunks.zip(base_shock_chunks) {
+        for (severity_chunk, return_shock_chunk) in severity_chunks.zip(return_shock_chunks) {
             combined_draws.extend_from_slice(severity_chunk);
-            combined_draws.extend_from_slice(base_shock_chunk);
+            combined_draws.extend_from_slice(return_shock_chunk);
         }
 
         let paired_event_count = self
@@ -3056,18 +3078,18 @@ impl ScriptedRandomnessFactory {
             .min(
                 self.news_return_jump_draws
                     .len()
-                    .div_ceil(BASE_SHOCK_DRAWS_PER_EVENT),
+                    .div_ceil(RETURN_SHOCK_DRAWS_PER_EVENT),
             );
         let paired_severity_draw_count = paired_event_count * SEVERITY_DRAWS_PER_EVENT;
-        let paired_base_shock_draw_count = paired_event_count * BASE_SHOCK_DRAWS_PER_EVENT;
+        let paired_return_shock_draw_count = paired_event_count * RETURN_SHOCK_DRAWS_PER_EVENT;
 
         if paired_severity_draw_count < self.news_severity_draws.len() {
             combined_draws
                 .extend_from_slice(&self.news_severity_draws[paired_severity_draw_count..]);
         }
-        if paired_base_shock_draw_count < self.news_return_jump_draws.len() {
+        if paired_return_shock_draw_count < self.news_return_jump_draws.len() {
             combined_draws
-                .extend_from_slice(&self.news_return_jump_draws[paired_base_shock_draw_count..]);
+                .extend_from_slice(&self.news_return_jump_draws[paired_return_shock_draw_count..]);
         }
 
         combined_draws

@@ -15,10 +15,10 @@ use super::shared::{
     CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsSignalSourceWindow,
     CalibrationReturnComponentsStageCandidateGenerationInput,
-    CalibrationSharedNewsMarkLawConfiguration, CoupledGapMarkConfiguration,
-    ExchangeCalendarDefinition, MarketDataTranslationReturnComponentsPreprocessingSettings,
-    OpenTickRecord, ResolvedKnownNewsRecord, TradeSign, Tz, arithmetic_mean,
-    fit_shared_news_mark_law_from_shock_samples, median_abs, round_to,
+    CalibrationSharedNewsMarkLawConfiguration, ExchangeCalendarDefinition,
+    MarketDataTranslationReturnComponentsPreprocessingSettings, OpenTickRecord,
+    ResolvedKnownNewsRecord, TradeSign, Tz, fit_shared_news_mark_law_from_shock_samples,
+    median_abs, round_to,
 };
 use janiform_calibration_artifacts::TickGridObservationModel;
 use janiform_foundations::time::duration_nanos_to_hours;
@@ -398,23 +398,7 @@ pub(super) fn derive_shared_mark_law_template(
         fallback_absolute_returns.as_slice(),
     );
 
-    let mean_abs_gap_return = arithmetic_mean(
-        close_open_boundary_observations
-            .iter()
-            .map(|observation| f64::abs(f64::ln(observation.open_price / observation.close_price)))
-            .collect::<Vec<_>>()
-            .as_slice(),
-    )
-    .unwrap_or(fitted_mark_law.coupled_gap_marks.sigma_g);
-
     CalibrationSharedNewsMarkLawConfiguration {
         gamma_severity_marks: fitted_mark_law.gamma_severity_marks,
-        double_exponential_base_shock: fitted_mark_law.double_exponential_base_shock,
-        coupled_gap_marks: CoupledGapMarkConfiguration {
-            sigma_g: fitted_mark_law
-                .coupled_gap_marks
-                .sigma_g
-                .max(round_to(mean_abs_gap_return.max(0.0), 12)),
-        },
     }
 }

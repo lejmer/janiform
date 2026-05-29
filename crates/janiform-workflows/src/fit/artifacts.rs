@@ -8,6 +8,7 @@ use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationStage, CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
     calibration_stage_parameter_artifact_load_error_message,
@@ -461,6 +462,11 @@ fn apply_stage_reports_to_model_parameters(
                     stage_parameters.long_variance = Some(long_variance_parameters(payload)?);
                 }
             }
+            CalibrationStagedRunStageReport::NewsShocks(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    stage_parameters.news_shocks = Some(news_shocks_parameters(payload)?);
+                }
+            }
             CalibrationStagedRunStageReport::MeanReversion(report) => {
                 if let Some(payload) = &report.fitted_stage_payload {
                     stage_parameters.mean_reversion = Some(mean_reversion_parameters(payload)?);
@@ -494,6 +500,7 @@ fn stage_report_stage(stage_report: &CalibrationStagedRunStageReport) -> Calibra
         CalibrationStagedRunStageReport::Hawkes(_) => CalibrationStage::Hawkes,
         CalibrationStagedRunStageReport::ReturnComponents(_) => CalibrationStage::ReturnComponents,
         CalibrationStagedRunStageReport::LongVariance(_) => CalibrationStage::LongVariance,
+        CalibrationStagedRunStageReport::NewsShocks(_) => CalibrationStage::NewsShocks,
         CalibrationStagedRunStageReport::MeanReversion(_) => CalibrationStage::MeanReversion,
         CalibrationStagedRunStageReport::JointRefinement(_) => CalibrationStage::JointRefinement,
         CalibrationStagedRunStageReport::OptionRefinement(_) => CalibrationStage::OptionRefinement,
@@ -518,6 +525,9 @@ fn apply_stage_parameter_artifact_to_model_parameters(
         }
         CalibrationStageParameterPayload::LongVariance(payload) => {
             stage_parameters.long_variance = Some(long_variance_parameters_from_artifact(payload)?);
+        }
+        CalibrationStageParameterPayload::NewsShocks(payload) => {
+            stage_parameters.news_shocks = Some(news_shocks_parameters_from_artifact(payload)?);
         }
         CalibrationStageParameterPayload::MeanReversion(payload) => {
             stage_parameters.mean_reversion =
@@ -546,6 +556,7 @@ struct ModelStageParameters {
     hawkes: Option<Value>,
     return_components: Option<Value>,
     long_variance: Option<Value>,
+    news_shocks: Option<Value>,
     mean_reversion: Option<Value>,
     joint_refinement: Option<Value>,
     option_refinement: Option<Value>,
@@ -588,6 +599,10 @@ impl ModelStageParameters {
 
         if let Some(long_variance) = self.long_variance {
             parameters.insert("long_variance".to_string(), long_variance);
+        }
+
+        if let Some(news_shocks) = self.news_shocks {
+            parameters.insert("news_shocks".to_string(), news_shocks);
         }
 
         if let Some(mean_reversion) = self.mean_reversion {
@@ -697,6 +712,34 @@ fn long_variance_parameters_from_artifact(
     }))
 }
 
+fn news_shocks_parameters(
+    payload: &janiform_calibration_runtime::NewsShocksStageFittedPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": payload.schema_version,
+        "news_process_configuration": serialize_payload(&payload.news_process_configuration)?,
+        "surprise_deterministic_intensity_profile": serialize_payload(&payload.surprise_deterministic_intensity_profile)?,
+        "diagnostics": serialize_payload(&payload.diagnostics)?,
+        "return_components_input_transport": payload.return_components_input_transport,
+        "return_components_selected_candidate_id": payload.return_components_selected_candidate_id,
+        "return_components_artifact_reference": payload.return_components_artifact_reference,
+    }))
+}
+
+fn news_shocks_parameters_from_artifact(
+    payload: &janiform_calibration_artifacts::NewsShocksStageParameterPayload,
+) -> Result<Value, WorkflowError> {
+    Ok(json!({
+        "schema_version": CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
+        "news_process_configuration": serialize_payload(&payload.news_process_configuration)?,
+        "surprise_deterministic_intensity_profile": serialize_payload(&payload.surprise_deterministic_intensity_profile)?,
+        "diagnostics": serialize_payload(&payload.diagnostics)?,
+        "return_components_input_transport": payload.return_components_input_transport,
+        "return_components_selected_candidate_id": payload.return_components_selected_candidate_id,
+        "return_components_artifact_reference": payload.return_components_artifact_reference,
+    }))
+}
+
 fn mean_reversion_parameters_from_artifact(
     payload: &janiform_calibration_artifacts::MeanReversionStageParameterPayload,
 ) -> Result<Value, WorkflowError> {
@@ -765,6 +808,9 @@ fn stage_statuses(report: &CalibrationStagedRunReport) -> Vec<Value> {
             CalibrationStagedRunStageReport::LongVariance(report) => {
                 json!({"stage": "long_variance", "status": report.status})
             }
+            CalibrationStagedRunStageReport::NewsShocks(report) => {
+                json!({"stage": "news_shocks", "status": report.status})
+            }
             CalibrationStagedRunStageReport::MeanReversion(report) => {
                 json!({"stage": "mean_reversion", "status": report.status})
             }
@@ -817,6 +863,14 @@ fn selected_candidate_ids(report: &CalibrationStagedRunReport) -> Value {
                 if let Some(payload) = &report.fitted_stage_payload {
                     selected.insert(
                         "long_variance".to_string(),
+                        Value::String(payload.diagnostics.selected_candidate_id.to_owned()),
+                    );
+                }
+            }
+            CalibrationStagedRunStageReport::NewsShocks(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    selected.insert(
+                        "news_shocks".to_string(),
                         Value::String(payload.diagnostics.selected_candidate_id.to_owned()),
                     );
                 }

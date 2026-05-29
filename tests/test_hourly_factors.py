@@ -408,7 +408,8 @@ def test_materialize_hourly_news_intensity_applies_closed_baseline_and_open_over
                 datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC),
                 datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC),
             ],
-            surprise_baseline_intensity=0.0,
+            surprise_open_baseline_intensity=0.0,
+            surprise_closed_baseline_intensity=0.0,
             surprise_deterministic_time_multiplier_by_interval_index={},
         ),
     )
@@ -449,7 +450,8 @@ def test_materialize_hourly_news_intensity_closed_logic_dominates_weekend_and_ov
         range_end_utc=datetime(2026, 2, 7, 3, 0, 0, tzinfo=UTC),
         settings=HourlyNewsIntensityMaterializationSettings(
             known_scheduled_event_timestamps_utc=[],
-            surprise_baseline_intensity=0.4,
+            surprise_open_baseline_intensity=0.4,
+            surprise_closed_baseline_intensity=0.4,
             surprise_deterministic_time_multiplier_by_interval_index={0: 1.0, 1: 0.5, 2: 2.0},
         ),
     )
@@ -486,7 +488,8 @@ def test_materialize_hourly_news_intensity_aligns_one_to_one_with_seasonality_gr
         range_end_utc=datetime(2026, 2, 2, 18, 0, 0, tzinfo=UTC),
         settings=HourlyNewsIntensityMaterializationSettings(
             known_scheduled_event_timestamps_utc=[],
-            surprise_baseline_intensity=0.5,
+            surprise_open_baseline_intensity=0.5,
+            surprise_closed_baseline_intensity=0.5,
             surprise_deterministic_time_multiplier_by_interval_index={1: 0.25},
         ),
     )
@@ -525,7 +528,8 @@ def test_materialize_hourly_news_intensity_rejects_out_of_range_override_indices
             range_end_utc=datetime(2026, 2, 2, 16, 0, 0, tzinfo=UTC),
             settings=HourlyNewsIntensityMaterializationSettings(
                 known_scheduled_event_timestamps_utc=[],
-                surprise_baseline_intensity=0.5,
+                surprise_open_baseline_intensity=0.5,
+                surprise_closed_baseline_intensity=0.5,
                 surprise_deterministic_time_multiplier_by_interval_index={2: 1.0},
             ),
         )

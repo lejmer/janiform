@@ -26,6 +26,7 @@ from ._preparation.contracts import (
     PreparedFitWorkflow,
 )
 from ._runtime.workflow import prepare_fit_workflow as prepare_native_fit_workflow
+from ..diagnostics import CalibrationDiagnosticsRequest
 from ..effort import CalibrationEffortOptions, STANDARD_CALIBRATION_EFFORT
 from .result import JaniformFitResult
 from ...model import JaniformModel
@@ -86,6 +87,7 @@ class JaniformEstimator:
     _joint_refinement_option_refinement_candidate_count_override: Optional[int]
     _joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     _joint_refinement_audit_option_pricing_enabled: bool
+    _diagnostics: CalibrationDiagnosticsRequest
     _stylized_fact_huber_cutoff: Optional[float]
     _stylized_fact_admissibility_z_threshold: Optional[float]
     _market_profile_reference: Optional[MarketProfileReference]
@@ -115,6 +117,7 @@ class JaniformEstimator:
         joint_refinement_option_refinement_candidate_count: Optional[int] = None,
         joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None,
         joint_refinement_audit_option_pricing: bool = False,
+        diagnostics: Optional[CalibrationDiagnosticsRequest] = None,
         stylized_fact_huber_cutoff: Optional[float] = None,
         stylized_fact_admissibility_z_threshold: Optional[float] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
@@ -206,6 +209,12 @@ class JaniformEstimator:
                 "must be finite and strictly positive when provided",
             )
 
+        if diagnostics is not None and not isinstance(diagnostics, CalibrationDiagnosticsRequest):
+            raise calibration_error(
+                "diagnostics",
+                "must be a CalibrationDiagnosticsRequest when provided",
+            )
+
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
         self._normalization_policy = normalization_policy
@@ -231,6 +240,7 @@ class JaniformEstimator:
         self._joint_refinement_audit_option_pricing_enabled = (
             joint_refinement_audit_option_pricing
         )
+        self._diagnostics = CalibrationDiagnosticsRequest() if diagnostics is None else diagnostics
         self._stylized_fact_huber_cutoff = stylized_fact_huber_cutoff
         self._stylized_fact_admissibility_z_threshold = (
             stylized_fact_admissibility_z_threshold
@@ -367,6 +377,7 @@ class JaniformEstimator:
             joint_refinement_audit_option_pricing_enabled=(
                 self._joint_refinement_audit_option_pricing_enabled
             ),
+            diagnostics=self._diagnostics,
             stylized_fact_huber_cutoff=self._stylized_fact_huber_cutoff,
             stylized_fact_admissibility_z_threshold=(
                 self._stylized_fact_admissibility_z_threshold

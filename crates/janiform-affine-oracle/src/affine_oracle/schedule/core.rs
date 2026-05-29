@@ -1,6 +1,4 @@
-use janiform_foundations::complex_math::{
-    ComplexScalar, complex_exponential, complex_multiply, complex_pow_real_exponent_principal,
-};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::long_variance::{
     LongVarianceState, LongVarianceStationaryLevelForHawkesKernelError,
@@ -10,6 +8,10 @@ use super::super::EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION;
 use super::super::contracts::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformInput,
     ExponentialAffineTransformOutputError,
+};
+use super::super::news_transform::{
+    GammaNormalNewsTransformComponents, evaluate_gamma_normal_news_transform,
+    evaluate_gamma_normal_news_transform_tangent, gamma_normal_news_domain_metric,
 };
 use super::super::runge_kutta::{combine_complex_runge_kutta, combine_d_vector_runge_kutta};
 use super::super::solver::{
@@ -506,15 +508,27 @@ fn evaluate_schedule_base_rhs(
                 .scale(0.5 * long_variance_parameters.vol_of_vol.powi(2)),
         )
         .plus(
-            hamiltonians
-                .h_plus_baseline
-                .plus(hamiltonians.h_minus_baseline)
-                .scale(baseline_rate),
+            transform_input
+                .activity_loadings
+                .u_plus_baseline
+                .plus(transform_input.activity_loadings.u_minus_baseline)
+                .scale(-baseline_rate),
         );
+
+    let baseline_event_term = hamiltonians
+        .h_plus_baseline
+        .plus(transform_input.activity_loadings.u_plus_baseline)
+        .plus(
+            hamiltonians
+                .h_minus_baseline
+                .plus(transform_input.activity_loadings.u_minus_baseline),
+        )
+        .scale(baseline_rate);
 
     let c_derivative = base_state
         .long_variance_loading
         .scale(long_variance_parameters.mean_reversion_rate * long_variance_level)
+        .plus(baseline_event_term)
         .plus(evaluate_news_base_rhs(transform_input, base_state.d_vector));
 
     Ok(ScheduleAffineRhs {
@@ -580,27 +594,31 @@ fn evaluate_schedule_tangent_rhs(
 
     let direct = direct_tangent.activity_loadings;
 
-    let h_plus_baseline_derivative = plus_state_derivative
-        .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
-        .subtract(direct.u_plus_baseline);
+    let baseline_rate =
+        transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar;
 
     let h_plus_endogenous_derivative = plus_state_derivative
         .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
         .subtract(direct.u_plus_endogenous);
 
-    let h_minus_baseline_derivative = minus_state_derivative
-        .plus(complex_multiply(direct_tangent.z_minus, exp_d_dot_k_minus))
-        .subtract(direct.u_minus_baseline);
-
     let h_minus_endogenous_derivative = minus_state_derivative
         .plus(complex_multiply(direct_tangent.z_minus, exp_d_dot_k_minus))
         .subtract(direct.u_minus_endogenous);
 
-    let news_derivative =
-        evaluate_news_tangent_rhs(transform_input, base_state.d_vector, tangent_state.d_vector);
+    let baseline_event_derivative = plus_state_derivative
+        .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
+        .plus(
+            minus_state_derivative
+                .plus(complex_multiply(direct_tangent.z_minus, exp_d_dot_k_minus)),
+        )
+        .scale(baseline_rate);
 
-    let baseline_rate =
-        transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar;
+    let news_derivative = evaluate_news_tangent_rhs(
+        transform_input,
+        base_state.d_vector,
+        tangent_state.d_vector,
+        direct_tangent.news_return_loading,
+    );
 
     Ok(AffineState {
         d_vector: ExponentialAffineTransformDVector::new(
@@ -636,13 +654,15 @@ fn evaluate_schedule_tangent_rhs(
                 .scale(long_variance_parameters.vol_of_vol.powi(2)),
             )
             .plus(
-                h_plus_baseline_derivative
-                    .plus(h_minus_baseline_derivative)
-                    .scale(baseline_rate),
+                direct
+                    .u_plus_baseline
+                    .plus(direct.u_minus_baseline)
+                    .scale(-baseline_rate),
             ),
         c_value: tangent_state
             .long_variance_loading
             .scale(long_variance_parameters.mean_reversion_rate * long_variance_level)
+            .plus(baseline_event_derivative)
             .plus(news_derivative),
     })
 }
@@ -741,28 +761,22 @@ fn evaluate_news_tangent_rhs(
     transform_input: ExponentialAffineTransformInput,
     base_d_vector: ExponentialAffineTransformDVector,
     tangent_d_vector: ExponentialAffineTransformDVector,
+    return_loading_tangent: ComplexScalar,
 ) -> ComplexScalar {
     let equation_specification = transform_input.equation_specification;
-    let gamma_configuration = equation_specification.gamma_severity_mark_configuration;
 
-    let one_minus_theta_d_dot_r = ComplexScalar::new(1.0, 0.0).subtract(
-        base_d_vector
-            .dot_loadings(equation_specification.r())
-            .scale(gamma_configuration.scale_theta),
-    );
-
-    let gamma_power = complex_pow_real_exponent_principal(
-        one_minus_theta_d_dot_r,
-        -(gamma_configuration.shape_k + 1.0),
-    );
-
-    let gamma_prefactor = transform_input.news_intensity.total_nu_h()
-        * gamma_configuration.shape_k
-        * gamma_configuration.scale_theta;
-
-    complex_multiply(
-        gamma_power.scale(gamma_prefactor),
+    evaluate_gamma_normal_news_transform_tangent(
+        GammaNormalNewsTransformComponents {
+            gamma_severity_mark_configuration: equation_specification
+                .gamma_severity_mark_configuration,
+            news_intensity: transform_input.news_intensity,
+            known_component_mark_scales: transform_input.known_news_component_mark_scales,
+            surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
+            activity_loading: base_d_vector.dot_loadings(equation_specification.r()),
+            return_loading: transform_input.news_return_loading,
+        },
         tangent_d_vector.dot_loadings(equation_specification.r()),
+        return_loading_tangent,
     )
 }
 
@@ -771,17 +785,15 @@ fn evaluate_news_base_rhs(
     base_d_vector: ExponentialAffineTransformDVector,
 ) -> ComplexScalar {
     let equation_specification = transform_input.equation_specification;
-    let gamma_configuration = equation_specification.gamma_severity_mark_configuration;
 
-    let one_minus_theta_d_dot_r = ComplexScalar::new(1.0, 0.0).subtract(
-        base_d_vector
-            .dot_loadings(equation_specification.r())
-            .scale(gamma_configuration.scale_theta),
-    );
-
-    complex_pow_real_exponent_principal(one_minus_theta_d_dot_r, -gamma_configuration.shape_k)
-        .subtract(ComplexScalar::new(1.0, 0.0))
-        .scale(transform_input.news_intensity.total_nu_h())
+    evaluate_gamma_normal_news_transform(GammaNormalNewsTransformComponents {
+        gamma_severity_mark_configuration: equation_specification.gamma_severity_mark_configuration,
+        news_intensity: transform_input.news_intensity,
+        known_component_mark_scales: transform_input.known_news_component_mark_scales,
+        surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
+        activity_loading: base_d_vector.dot_loadings(equation_specification.r()),
+        return_loading: transform_input.news_return_loading,
+    })
 }
 
 fn evaluate_schedule_guard_checkpoint(
@@ -792,15 +804,24 @@ fn evaluate_schedule_guard_checkpoint(
 ) -> Option<ExponentialAffineTransformGuardFailure> {
     let checkpoint_time = completed_step_count as f64 * step_size;
 
-    let d_dot_r = state
-        .d_vector
-        .dot_loadings(transform_input.equation_specification.r());
+    let d_dot_r = gamma_normal_news_domain_metric(GammaNormalNewsTransformComponents {
+        gamma_severity_mark_configuration: transform_input
+            .equation_specification
+            .gamma_severity_mark_configuration,
+        news_intensity: transform_input.news_intensity,
+        known_component_mark_scales: transform_input.known_news_component_mark_scales,
+        surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
+        activity_loading: state
+            .d_vector
+            .dot_loadings(transform_input.equation_specification.r()),
+        return_loading: transform_input.news_return_loading,
+    });
 
     let d_dot_r_upper_bound = 1.0
         / transform_input
             .equation_specification
             .gamma_severity_mark_configuration
-            .scale_theta;
+            .derived_unit_mean_scale();
 
     if !state.c_value.is_finite()
         || !state.long_variance_loading.is_finite()
@@ -880,6 +901,7 @@ mod tests {
     };
     use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
     use janiform_model_kernels::long_variance::LongVarianceState;
+    use janiform_model_kernels::news::NewsComponentMarkScaleConfiguration;
 
     fn transform_input(
         activity_loadings: ExponentialAffineTransformActivityLoadings,
@@ -889,9 +911,12 @@ mod tests {
             activity_loadings,
             ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(0.95, 0.02),
+            ComplexScalar::new(0.0, 0.0),
             1.1,
             ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
                 .expect("news intensity components should construct"),
+            NewsComponentMarkScaleConfiguration::neutral(),
+            NewsComponentMarkScaleConfiguration::neutral(),
             1.0,
             standard_initial_state(),
         )
@@ -972,6 +997,7 @@ mod tests {
             ),
             z_plus: ComplexScalar::new(0.0, 0.0),
             z_minus: ComplexScalar::new(0.0, 0.0),
+            news_return_loading: ComplexScalar::new(0.0, 0.0),
         };
 
         let analytic =

@@ -290,7 +290,7 @@ def resolved_known_news_event_timestamps(model: JaniformModel) -> tuple[datetime
     )
 
 
-def surprise_baseline_intensity(model: JaniformModel) -> float:
+def surprise_baseline_intensities(model: JaniformModel) -> tuple[float, float]:
     news_process_configuration = require_payload_mapping(
         return_components_fitted_parameters_payload(model),
         "news_process_configuration",
@@ -309,13 +309,25 @@ def surprise_baseline_intensity(model: JaniformModel) -> float:
         "return_components.fitted_parameters.news_process_configuration.arrivals.surprise",
     )
 
-    baseline_intensity = surprise.get("baseline_intensity")
-    if not isinstance(baseline_intensity, int | float) or isinstance(baseline_intensity, bool):
+    open_baseline_intensity = surprise.get("open_baseline_intensity")
+    if not isinstance(open_baseline_intensity, int | float) or isinstance(
+        open_baseline_intensity,
+        bool,
+    ):
         raise RuntimeError(
-            "JaniformModel is missing a numeric surprise baseline intensity in the fitted model payload"
+            "JaniformModel is missing a numeric open surprise baseline intensity in the fitted model payload"
         )
 
-    return float(baseline_intensity)
+    closed_baseline_intensity = surprise.get("closed_baseline_intensity")
+    if not isinstance(closed_baseline_intensity, int | float) or isinstance(
+        closed_baseline_intensity,
+        bool,
+    ):
+        raise RuntimeError(
+            "JaniformModel is missing a numeric closed surprise baseline intensity in the fitted model payload"
+        )
+
+    return float(open_baseline_intensity), float(closed_baseline_intensity)
 
 
 def require_payload_mapping(payload: Mapping[str, Any], field_name: str, field_path: str) -> Mapping[str, Any]:

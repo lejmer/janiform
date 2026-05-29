@@ -229,7 +229,7 @@ fn build_grid_batch_execution_input(
         interval_delta,
         interval_factors,
         optional_output_selection: request.optional_output_selection,
-        spectral_collocation_node_count_override: None,
+        spectral_collocation_node_count_override: request.spectral_collocation_node_count_override,
         cpu_count,
     })
 }

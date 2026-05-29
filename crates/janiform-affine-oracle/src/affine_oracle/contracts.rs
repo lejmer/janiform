@@ -9,7 +9,10 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceParametersError};
-use janiform_model_kernels::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
+use janiform_model_kernels::news::{
+    GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
+    NewsComponentMarkScaleConfigurationError, NewsMarkConfigurationError,
+};
 
 /// Canonical equation specification shared by pricing and sufficient-statistics solver consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -331,8 +334,11 @@ pub struct ExponentialAffineTransformInput {
     pub activity_loadings: ExponentialAffineTransformActivityLoadings,
     pub z_plus: ComplexScalar,
     pub z_minus: ComplexScalar,
+    pub news_return_loading: ComplexScalar,
     pub s_h: f64,
     pub news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    pub known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    pub surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
     pub delta: f64,
     pub initial_state: HawkesExcitationState,
 }
@@ -344,8 +350,11 @@ impl ExponentialAffineTransformInput {
         activity_loadings: ExponentialAffineTransformActivityLoadings,
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
+        news_return_loading: ComplexScalar,
         s_h: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
+        known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
         delta: f64,
         initial_state: HawkesExcitationState,
     ) -> Self {
@@ -354,8 +363,11 @@ impl ExponentialAffineTransformInput {
             activity_loadings,
             z_plus,
             z_minus,
+            news_return_loading,
             s_h,
             news_intensity,
+            known_news_component_mark_scales,
+            surprise_news_component_mark_scales,
             delta,
             initial_state,
         }
@@ -367,8 +379,11 @@ impl ExponentialAffineTransformInput {
         activity_loadings: ExponentialAffineTransformActivityLoadings,
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
+        news_return_loading: ComplexScalar,
         s_h: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
+        known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
         delta: f64,
         initial_state: HawkesExcitationState,
     ) -> Result<Self, ExponentialAffineTransformInputError> {
@@ -377,8 +392,11 @@ impl ExponentialAffineTransformInput {
             activity_loadings,
             z_plus,
             z_minus,
+            news_return_loading,
             s_h,
             news_intensity,
+            known_news_component_mark_scales,
+            surprise_news_component_mark_scales,
             delta,
             initial_state,
         );
@@ -399,6 +417,7 @@ impl ExponentialAffineTransformInput {
 
         ensure_finite_complex_input("z_plus", self.z_plus)?;
         ensure_finite_complex_input("z_minus", self.z_minus)?;
+        ensure_finite_complex_input("news_return_loading", self.news_return_loading)?;
 
         if !self.s_h.is_finite() || self.s_h < 0.0 {
             return Err(
@@ -409,6 +428,20 @@ impl ExponentialAffineTransformInput {
         self.news_intensity.validate().map_err(|source| {
             ExponentialAffineTransformInputError::InvalidNewsIntensityInput { source }
         })?;
+
+        self.known_news_component_mark_scales
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineTransformInputError::InvalidKnownNewsComponentMarkScales { source }
+            })?;
+
+        self.surprise_news_component_mark_scales
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineTransformInputError::InvalidSurpriseNewsComponentMarkScales {
+                    source,
+                }
+            })?;
 
         if !self.delta.is_finite() || self.delta <= 0.0 {
             return Err(ExponentialAffineTransformInputError::InvalidDelta { value: self.delta });
@@ -423,6 +456,7 @@ impl ExponentialAffineTransformInput {
         self.activity_loadings.is_zero()
             && self.z_plus == ComplexScalar::new(1.0, 0.0)
             && self.z_minus == ComplexScalar::new(1.0, 0.0)
+            && self.news_return_loading == ComplexScalar::new(0.0, 0.0)
     }
 }
 
@@ -433,6 +467,12 @@ pub enum ExponentialAffineTransformInputError {
     },
     InvalidNewsIntensityInput {
         source: ExponentialAffineTransformNewsIntensityInputError,
+    },
+    InvalidKnownNewsComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
+    InvalidSurpriseNewsComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
     },
     InvalidActivityLoadings {
         source: ExponentialAffineTransformActivityLoadingsError,
@@ -468,6 +508,14 @@ impl Display for ExponentialAffineTransformInputError {
                     "transform input news_intensity is invalid: {source}"
                 )
             }
+            Self::InvalidKnownNewsComponentMarkScales { source } => write!(
+                formatter,
+                "transform input known_news_component_mark_scales are invalid: {source}"
+            ),
+            Self::InvalidSurpriseNewsComponentMarkScales { source } => write!(
+                formatter,
+                "transform input surprise_news_component_mark_scales are invalid: {source}"
+            ),
             Self::InvalidActivityLoadings { source } => {
                 write!(
                     formatter,
@@ -499,6 +547,8 @@ impl Error for ExponentialAffineTransformInputError {
         match self {
             Self::InvalidEquationSpecification { source } => Some(source),
             Self::InvalidNewsIntensityInput { source } => Some(source),
+            Self::InvalidKnownNewsComponentMarkScales { source } => Some(source),
+            Self::InvalidSurpriseNewsComponentMarkScales { source } => Some(source),
             Self::InvalidActivityLoadings { source } => Some(source),
             _ => None,
         }

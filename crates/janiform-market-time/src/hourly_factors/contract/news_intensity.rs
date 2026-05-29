@@ -28,8 +28,8 @@ use super::types::{
 /// Component policy:
 /// - Known component intensity is the interval-scheduled arrival count normalized to per-hour
 ///   intensity over each bucket `[start, end)`.
-/// - Surprise component intensity is `surprise_baseline_intensity *
-///   surprise_deterministic_time_multiplier`, where the multiplier defaults to `1.0`.
+/// - Surprise component intensity is the market-state exposure weighted open/closed baseline
+///   intensity times the deterministic multiplier, where the multiplier defaults to `1.0`.
 /// - Total interval intensity is `known_component + surprise_component`.
 #[derive(Debug, Clone)]
 pub struct HourlyNewsIntensityMaterializationInput<'a> {
@@ -38,7 +38,8 @@ pub struct HourlyNewsIntensityMaterializationInput<'a> {
     pub range_utc: Range<DateTime<Utc>>,
     pub interval_duration_nanos: i64,
     pub known_scheduled_event_timestamps_utc_nanos: &'a [i64],
-    pub surprise_baseline_intensity: f64,
+    pub surprise_open_baseline_intensity: f64,
+    pub surprise_closed_baseline_intensity: f64,
     pub surprise_deterministic_time_multiplier_by_interval_index: &'a [(u64, f64)],
 }
 
@@ -51,7 +52,8 @@ pub fn materialize_hourly_news_intensity_factors(
         range_utc,
         interval_duration_nanos,
         known_scheduled_event_timestamps_utc_nanos,
-        surprise_baseline_intensity,
+        surprise_open_baseline_intensity,
+        surprise_closed_baseline_intensity,
         surprise_deterministic_time_multiplier_by_interval_index,
     } = input;
 
@@ -61,7 +63,8 @@ pub fn materialize_hourly_news_intensity_factors(
                 .to_vec(),
         },
         surprise: SurpriseNewsArrivalConfiguration {
-            baseline_intensity: surprise_baseline_intensity,
+            open_baseline_intensity: surprise_open_baseline_intensity,
+            closed_baseline_intensity: surprise_closed_baseline_intensity,
         },
     };
 
@@ -128,12 +131,23 @@ pub fn materialize_hourly_news_intensity_factors(
             .copied()
             .enumerate()
     {
+        let interval_start_utc_nanos = interval_indexing.interval_start_utc_nanos[interval_index];
+        let interval_end_utc_nanos = interval_indexing.interval_end_utc_nanos[interval_index];
+        let market_state_exposure = calendar_registry
+            .resolve_market_state_exposure_in_utc_interval(
+                exchange_code,
+                interval_start_utc_nanos,
+                interval_end_utc_nanos,
+            )
+            .map_err(map_calendar_resolve_error)?;
+
         let interval_intensity_output = arrival_configuration
             .evaluate_with_deterministic_time_multiplier(NewsArrivalIntensityEvaluationInput {
-                interval_start_utc_nanos: interval_indexing.interval_start_utc_nanos
-                    [interval_index],
-                interval_end_utc_nanos: interval_indexing.interval_end_utc_nanos[interval_index],
+                interval_start_utc_nanos,
+                interval_end_utc_nanos,
                 surprise_deterministic_time_multiplier,
+                surprise_open_window_share: market_state_exposure.open_window_share,
+                surprise_closed_window_share: market_state_exposure.closed_window_share,
             })
             .map_err(|source| {
                 map_news_component_intensity_evaluation_error(interval_index, source)
@@ -218,7 +232,8 @@ pub fn materialize_hourly_news_intensity_factors(
             known_news_calendar_anchor_policy: DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY,
             surprise_news_intensity_control_policy: DEFAULT_SURPRISE_NEWS_INTENSITY_CONTROL_POLICY,
             known_news_calendar_anchor_count: known_scheduled_event_timestamps_utc_nanos.len(),
-            surprise_baseline_intensity,
+            surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity,
             interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
             interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
             timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
@@ -257,8 +272,40 @@ fn map_news_arrival_configuration_error(
             previous_timestamp_utc_nanos,
             current_timestamp_utc_nanos,
         },
-        NewsArrivalConfigurationError::InvalidSurpriseBaselineIntensity { value } => {
-            HourlyFactorContractError::InvalidSurpriseBaselineIntensity { value }
+        NewsArrivalConfigurationError::InvalidSurpriseOpenBaselineIntensity { value } => {
+            HourlyFactorContractError::InvalidSurpriseOpenBaselineIntensity { value }
+        }
+        NewsArrivalConfigurationError::InvalidSurpriseClosedBaselineIntensity { value } => {
+            HourlyFactorContractError::InvalidSurpriseClosedBaselineIntensity { value }
+        }
+    }
+}
+
+fn map_calendar_resolve_error(
+    source: crate::calendar::ExchangeCalendarResolveError,
+) -> HourlyFactorContractError {
+    match source {
+        crate::calendar::ExchangeCalendarResolveError::MissingExchangeId { exchange_code } => {
+            HourlyFactorContractError::MissingExchangeId { exchange_code }
+        }
+        crate::calendar::ExchangeCalendarResolveError::InvalidTimezoneName {
+            exchange_code,
+            timezone_name,
+        } => HourlyFactorContractError::InvalidTimezoneName {
+            exchange_code,
+            timezone_name,
+        },
+        crate::calendar::ExchangeCalendarResolveError::NonIncreasingInterval {
+            start_utc_nanos,
+            end_utc_nanos,
+        } => HourlyFactorContractError::NonIncreasingRange {
+            range_start_utc_nanos: start_utc_nanos,
+            range_end_utc_nanos: end_utc_nanos,
+        },
+        crate::calendar::ExchangeCalendarResolveError::TimestampOutOfRange { .. } => {
+            HourlyFactorContractError::TimestampOutOfRange {
+                field: "range_start_utc",
+            }
         }
     }
 }
@@ -294,6 +341,18 @@ fn map_news_component_intensity_evaluation_error(
             interval_index: interval_index as u64,
             value,
         },
+        NewsComponentIntensityEvaluationError::InvalidSurpriseOpenWindowShare { value } => {
+            HourlyFactorContractError::InvalidSurpriseComponentNewsIntensityFactor {
+                interval_index,
+                value,
+            }
+        }
+        NewsComponentIntensityEvaluationError::InvalidSurpriseClosedWindowShare { value } => {
+            HourlyFactorContractError::InvalidSurpriseComponentNewsIntensityFactor {
+                interval_index,
+                value,
+            }
+        }
         NewsComponentIntensityEvaluationError::KnownScheduledArrivalCountOverflow { value } => {
             HourlyFactorContractError::KnownScheduledArrivalCountOverflow {
                 interval_index,

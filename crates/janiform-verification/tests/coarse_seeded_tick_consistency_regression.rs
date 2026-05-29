@@ -32,7 +32,6 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -674,7 +673,7 @@ fn build_sufficient_statistics_model_inputs(
     SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
         equation_specification: ExponentialAffineTransformEquationSpecification::try_new(
             build_kernel_parameters(),
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+            GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("sufficient-statistics gamma severity configuration should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -715,17 +714,13 @@ fn build_news_process_configuration(
                 scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
             },
             surprise: SurpriseNewsArrivalConfiguration {
-                baseline_intensity: 0.0,
+                open_baseline_intensity: 0.0,
+                closed_baseline_intensity: 0.0,
             },
         },
         SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5)
                 .expect("news gamma severity configuration should construct"),
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                0.4, 1.3, 1.1,
-            )
-            .expect("news base shock configuration should construct"),
-            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
         },
         default_news_component_mark_scales(),
         default_news_component_mark_scales(),
@@ -765,7 +760,8 @@ fn default_initial_excitation_state() -> HawkesExcitationState {
 fn default_news_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
     NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 0.6,
-        return_jump_scale: 1.2,
+        return_jump_drift: 0.0,
+        return_jump_volatility: 1.2,
     }
 }
 

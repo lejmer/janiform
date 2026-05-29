@@ -32,9 +32,9 @@
         "interval_grid_label": "hourly_grid",
         "delta_upper_bound": 1.0,
         "tolerance_window": {
-          "c_at_delta_absolute_tolerance": 0.00050,
-          "d_component_absolute_tolerance": 0.00050,
-          "transform_value_absolute_tolerance": 0.00050
+          "c_at_delta_absolute_tolerance": 0.0005,
+          "d_component_absolute_tolerance": 0.0005,
+          "transform_value_absolute_tolerance": 0.0005
         }
       }
     ],
@@ -79,8 +79,7 @@
             }
           },
           "gamma_severity_mark_configuration": {
-            "shape_k": 1.8,
-            "scale_theta": 0.9
+            "shape_k": 1.8
           },
           "long_variance_parameters": {
             "mean_reversion_rate": 1.0,
@@ -142,7 +141,7 @@
               "c_at_delta_absolute_difference": 2.6667479e-10,
               "d_component_absolute_difference": 8.4638205e-10,
               "transform_value_absolute_difference": 2.6824393e-10,
-              "absolute_tolerance": 1.0e-10
+              "absolute_tolerance": 1e-10
             }
           },
           {
@@ -159,7 +158,7 @@
               "c_at_delta_absolute_difference": 0.00096333368280099,
               "d_component_absolute_difference": 0.00202892763618862,
               "transform_value_absolute_difference": 0.00060832438423836,
-              "absolute_tolerance": 1.0e-10
+              "absolute_tolerance": 1e-10
             }
           }
         ]
@@ -192,8 +191,7 @@
             }
           },
           "gamma_severity_mark_configuration": {
-            "shape_k": 1.8,
-            "scale_theta": 0.9
+            "shape_k": 1.8
           },
           "long_variance_parameters": {
             "mean_reversion_rate": 1.0,
@@ -255,7 +253,7 @@
               "c_at_delta_absolute_difference": 1.328082e-11,
               "d_component_absolute_difference": 4.173245e-11,
               "transform_value_absolute_difference": 1.865308e-11,
-              "absolute_tolerance": 1.0e-10
+              "absolute_tolerance": 1e-10
             }
           },
           {
@@ -272,7 +270,7 @@
               "c_at_delta_absolute_difference": 0.00037882391573102,
               "d_component_absolute_difference": 0.00080568644994802,
               "transform_value_absolute_difference": 0.00034733097743456,
-              "absolute_tolerance": 1.0e-10
+              "absolute_tolerance": 1e-10
             }
           }
         ]

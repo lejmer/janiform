@@ -41,6 +41,14 @@ You can render a CLI report with:
 janiform report fit .janiform/runs/<run-id>
 ```
 
+Extended diagnostics that add report size or finalization work are opt-in. In the CLI, request them with repeated `--diagnostic` options, for example:
+
+```bash
+janiform fit --diagnostic option-surface-shape ...
+```
+
+`option-surface-shape` includes option quote universe, tier construction, selected node residuals, maturity scores, and option search/selection agreement diagnostics when an option surface is part of the fit.
+
 The same ideas apply whether the report is a Python object or saved as JSON. The diagnostics are mostly about the final calibration stage. By that point Janiform has already learned separate pieces of the model, such as activity behavior and return behavior. The final stage puts those pieces together, tries complete fitted models, simulates from them, and compares the simulated behavior with the training data.
 
 In the report, two sections matter most:

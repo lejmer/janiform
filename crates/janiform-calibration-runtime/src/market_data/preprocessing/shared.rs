@@ -4,6 +4,11 @@ pub(super) use std::str::FromStr;
 pub(super) use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Timelike, Utc};
 pub(super) use chrono_tz::Tz;
 
+use super::contracts::{MarketDataTranslationPreprocessingError, MarketDataTranslationTickRecord};
+pub(super) use super::contracts::{
+    MarketDataTranslationReturnComponentsPreprocessingSettings,
+    MarketDataTranslationSeasonalityPreprocessingSettings,
+};
 pub(super) use crate::execution_bridge::{
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
     CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
@@ -38,13 +43,6 @@ pub(super) use janiform_market_time::calendar::{
 pub(super) use janiform_model_kernels::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
-};
-pub(super) use janiform_model_kernels::news::CoupledGapMarkConfiguration;
-
-use super::contracts::{MarketDataTranslationPreprocessingError, MarketDataTranslationTickRecord};
-pub(super) use super::contracts::{
-    MarketDataTranslationReturnComponentsPreprocessingSettings,
-    MarketDataTranslationSeasonalityPreprocessingSettings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

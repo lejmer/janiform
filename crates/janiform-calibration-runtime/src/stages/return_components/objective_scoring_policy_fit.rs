@@ -51,7 +51,7 @@ pub(crate) fn score_candidate_metric_buckets(
     price_range_sanity_diagnostic: &ReturnComponentsStagePriceRangeSanityDiagnostic,
 ) -> ReturnComponentsStageObjectiveMetricBuckets {
     let surprise_arrival_fit = zero_aware_relative_error(
-        surprise_arrival_diagnostic.fitted_surprise_arrival_intensity_per_hour,
+        surprise_arrival_diagnostic.fitted_surprise_open_arrival_intensity_per_hour,
         surprise_arrival_diagnostic.observed_jump_frequency_per_hour,
         objective_scoring_policy.arrival_frequency_zero_floor,
     ) + surprise_arrival_diagnostic.surprise_arrival_profile_fit_error;

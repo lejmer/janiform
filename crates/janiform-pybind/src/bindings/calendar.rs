@@ -90,6 +90,17 @@ fn map_resolve_error(error: ExchangeCalendarResolveError) -> PyErr {
         } => CalendarInvalidTimezoneError::new_err(format!(
             "invalid timezone `{timezone_name}` configured for exchange `{exchange_code}`"
         )),
+        ExchangeCalendarResolveError::NonIncreasingInterval {
+            start_utc_nanos,
+            end_utc_nanos,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "calendar interval start must be earlier than end, received start={start_utc_nanos}, end={end_utc_nanos}"
+        )),
+        ExchangeCalendarResolveError::TimestampOutOfRange {
+            timestamp_utc_nanos,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "timestamp {timestamp_utc_nanos} is outside the supported nanosecond range"
+        )),
     }
 }
 

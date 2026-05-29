@@ -90,6 +90,23 @@ pub struct LongVarianceStageDiagnostics {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewsShocksStageDiagnostics {
+    pub estimation_policy: String,
+    pub selected_candidate_id: String,
+    pub surprise_open_intensity: f64,
+    pub surprise_closed_intensity: f64,
+    pub severity_shape: f64,
+    pub expected_severity: f64,
+    pub expected_sqrt_severity: f64,
+    pub known_activity_coupling_scale: f64,
+    pub surprise_activity_coupling_scale: f64,
+    pub known_return_jump_drift: f64,
+    pub known_return_jump_volatility: f64,
+    pub surprise_return_jump_drift: f64,
+    pub surprise_return_jump_volatility: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeanReversionStageCalibrationGrid {
     pub calibration_grid_kind: String,
     pub calibration_grid_interval_hours: f64,

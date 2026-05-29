@@ -99,30 +99,24 @@ def successful_full_model_staged_runner_payload(
                                     "scheduled_event_timestamps_utc_nanos": [],
                                 },
                                 "surprise": {
-                                    "baseline_intensity": 0.0,
+                                    "open_baseline_intensity": 0.0,
+                                    "closed_baseline_intensity": 0.0,
                                 },
                             },
                             "shared_mark_law": {
                                 "gamma_severity_marks": {
                                     "shape_k": 1.5,
-                                    "scale_theta": 0.9,
-                                },
-                                "double_exponential_base_shock": {
-                                    "probability_positive": 0.4,
-                                    "eta_plus": 1.3,
-                                    "eta_minus": 1.1,
-                                },
-                                "coupled_gap_marks": {
-                                    "sigma_g": 0.75,
                                 },
                             },
                             "known_component_mark_scales": {
                                 "activity_coupling_scale": 0.0,
-                                "return_jump_scale": 1.2,
+                                "return_jump_drift": 0.0,
+                                "return_jump_volatility": 0.0,
                             },
                             "surprise_component_mark_scales": {
                                 "activity_coupling_scale": 0.0,
-                                "return_jump_scale": 1.2,
+                                "return_jump_drift": 0.0,
+                                "return_jump_volatility": 0.0,
                             },
                         },
                         "surprise_deterministic_intensity_profile": {
@@ -279,30 +273,24 @@ def successful_full_model_staged_runner_payload(
                                         "scheduled_event_timestamps_utc_nanos": [],
                                     },
                                     "surprise": {
-                                        "baseline_intensity": 0.02,
+                                        "open_baseline_intensity": 0.02,
+                                    "closed_baseline_intensity": 0.02,
                                     },
                                 },
                                 "shared_mark_law": {
                                     "gamma_severity_marks": {
                                         "shape_k": 1.4,
-                                        "scale_theta": 0.6,
-                                    },
-                                    "double_exponential_base_shock": {
-                                        "probability_positive": 0.35,
-                                        "eta_plus": 2.1,
-                                        "eta_minus": 3.0,
-                                    },
-                                    "coupled_gap_marks": {
-                                        "sigma_g": 0.8,
                                     },
                                 },
                                 "known_component_mark_scales": {
                                     "activity_coupling_scale": 0.6,
-                                    "return_jump_scale": 1.0,
+                                    "return_jump_drift": 0.0,
+                                    "return_jump_volatility": 1.0,
                                 },
                                 "surprise_component_mark_scales": {
                                     "activity_coupling_scale": 0.6,
-                                    "return_jump_scale": 1.0,
+                                    "return_jump_drift": 0.0,
+                                    "return_jump_volatility": 1.0,
                                 },
                             },
                             "surprise_deterministic_intensity_profile": {
@@ -381,30 +369,24 @@ def successful_full_model_staged_runner_payload(
                                     "scheduled_event_timestamps_utc_nanos": [],
                                 },
                                 "surprise": {
-                                    "baseline_intensity": 0.02,
+                                    "open_baseline_intensity": 0.02,
+                                    "closed_baseline_intensity": 0.02,
                                 },
                             },
                             "shared_mark_law": {
                                 "gamma_severity_marks": {
                                     "shape_k": 1.4,
-                                    "scale_theta": 0.6,
-                                },
-                                "double_exponential_base_shock": {
-                                    "probability_positive": 0.35,
-                                    "eta_plus": 2.1,
-                                    "eta_minus": 3.0,
-                                },
-                                "coupled_gap_marks": {
-                                    "sigma_g": 0.8,
                                 },
                             },
                             "known_component_mark_scales": {
                                 "activity_coupling_scale": 0.6,
-                                "return_jump_scale": 1.0,
+                                "return_jump_drift": 0.0,
+                                "return_jump_volatility": 1.0,
                             },
                             "surprise_component_mark_scales": {
                                 "activity_coupling_scale": 0.6,
-                                "return_jump_scale": 1.0,
+                                "return_jump_drift": 0.0,
+                                "return_jump_volatility": 1.0,
                             },
                         },
                         "surprise_deterministic_intensity_profile": {

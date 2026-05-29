@@ -53,13 +53,12 @@ pub(crate) fn build_hourly_factor_contract(
             .as_slice(),
     )?;
 
-    let surprise_baseline_intensity = context
+    let surprise_arrival_configuration = context
         .fitted_parameters
         .return_components_fitted_parameters
         .news_process_configuration
         .arrivals
-        .surprise
-        .baseline_intensity;
+        .surprise;
 
     janiform_calibration_runtime::load_hourly_factor_contract_for_calibration(
         &context.calendar_registry,
@@ -71,7 +70,10 @@ pub(crate) fn build_hourly_factor_contract(
             seasonality_source: Some(seasonality_source),
             news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: known_news_timestamps.as_slice(),
-                surprise_baseline_intensity,
+                surprise_open_baseline_intensity: surprise_arrival_configuration
+                    .open_baseline_intensity,
+                surprise_closed_baseline_intensity: surprise_arrival_configuration
+                    .closed_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index: surprise_multipliers
                     .as_slice(),
             }),

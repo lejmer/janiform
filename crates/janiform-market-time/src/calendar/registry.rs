@@ -3,6 +3,9 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
+use janiform_foundations::time::{
+    NANOS_PER_MINUTE, checked_ceil_to_interval_utc_nanos, utc_datetime_from_nanos,
+};
 use serde_json::Value;
 
 use crate::calendar::definition::resolve_market_state_for_definition_at_utc;
@@ -18,6 +21,15 @@ use crate::calendar::types::{
 use crate::calendar::validation::{require_non_empty, validate_iso_date};
 
 const CALENDAR_REGISTRY_SCHEMA_VERSION: &str = "calendar.registry.v1";
+
+/// Open and closed exposure for a UTC interval under a loaded exchange calendar.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MarketStateIntervalExposure {
+    pub open_window_nanos: i64,
+    pub closed_window_nanos: i64,
+    pub open_window_share: f64,
+    pub closed_window_share: f64,
+}
 
 /// Immutable in-memory calendar registry keyed by exchange code.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +135,66 @@ impl ExchangeCalendarRegistry {
         ))
     }
 
+    /// Resolve open and closed exposure over a UTC interval.
+    ///
+    /// Session contracts are minute-resolution, so this routine evaluates the calendar
+    /// state over minute-bounded segments and sums exact nanosecond exposure.
+    pub fn resolve_market_state_exposure_in_utc_interval(
+        &self,
+        exchange_code: &str,
+        start_utc_nanos: i64,
+        end_utc_nanos: i64,
+    ) -> Result<MarketStateIntervalExposure, ExchangeCalendarResolveError> {
+        if end_utc_nanos <= start_utc_nanos {
+            return Err(ExchangeCalendarResolveError::NonIncreasingInterval {
+                start_utc_nanos,
+                end_utc_nanos,
+            });
+        }
+
+        if utc_datetime_from_nanos(start_utc_nanos).is_none() {
+            return Err(ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: start_utc_nanos,
+            });
+        }
+
+        if utc_datetime_from_nanos(end_utc_nanos).is_none() {
+            return Err(ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: end_utc_nanos,
+            });
+        }
+
+        let mut open_window_nanos = 0_i64;
+        let mut current_utc_nanos = start_utc_nanos;
+
+        while current_utc_nanos < end_utc_nanos {
+            let segment_end_utc_nanos =
+                next_minute_segment_boundary(current_utc_nanos, end_utc_nanos)?;
+
+            let current_timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(current_utc_nanos);
+
+            let segment_state =
+                self.resolve_market_state_at_utc(exchange_code, current_timestamp_utc)?;
+
+            if segment_state == MarketState::Open {
+                open_window_nanos += segment_end_utc_nanos - current_utc_nanos;
+            }
+
+            current_utc_nanos = segment_end_utc_nanos;
+        }
+
+        let total_window_nanos = end_utc_nanos - start_utc_nanos;
+        let closed_window_nanos = total_window_nanos - open_window_nanos;
+        let open_window_share = open_window_nanos as f64 / total_window_nanos as f64;
+
+        Ok(MarketStateIntervalExposure {
+            open_window_nanos,
+            closed_window_nanos,
+            open_window_share,
+            closed_window_share: 1.0 - open_window_share,
+        })
+    }
+
     /// Preprocess timestamp events for deterministic seasonality workflows.
     pub fn preprocess_timestamp_events(
         &self,
@@ -164,6 +236,27 @@ impl ExchangeCalendarRegistry {
 
         Ok((definition, timezone))
     }
+}
+
+fn next_minute_segment_boundary(
+    current_utc_nanos: i64,
+    end_utc_nanos: i64,
+) -> Result<i64, ExchangeCalendarResolveError> {
+    let next_minute_boundary = if current_utc_nanos.rem_euclid(NANOS_PER_MINUTE) == 0 {
+        current_utc_nanos.checked_add(NANOS_PER_MINUTE).ok_or(
+            ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: current_utc_nanos,
+            },
+        )?
+    } else {
+        checked_ceil_to_interval_utc_nanos(current_utc_nanos, NANOS_PER_MINUTE).ok_or(
+            ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: current_utc_nanos,
+            },
+        )?
+    };
+
+    Ok(next_minute_boundary.min(end_utc_nanos))
 }
 
 /// Loader for parsing exchange calendar registry artifacts.

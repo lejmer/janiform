@@ -47,9 +47,9 @@ fn theta_warm_start_state_records_terminal_theta_hint() {
 
 #[test]
 fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
-    let mut model_parameters = valid_model_parameters();
+    let base_model_parameters = valid_model_parameters();
 
-    let execution_input = single_node_grid_execution_input(model_parameters.clone(), true);
+    let execution_input = single_node_grid_execution_input(base_model_parameters.clone(), true);
 
     let pricing_result =
         run_vanilla_option_grid_batch_pricing(execution_input).expect("pricing run should succeed");
@@ -64,6 +64,7 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
 
     let log_premium_step = 1.0e-5_f64;
 
+    let mut model_parameters = base_model_parameters.clone();
     model_parameters.pricing_kernel_parameters =
         VanillaOptionPricingKernelParameters::try_new(log_premium_step.exp(), 1.0)
             .expect("positive buy activity premium perturbation should stay valid");
@@ -81,6 +82,27 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
         (node_sensitivity.buy_activity_premium_derivative - finite_difference).abs() <= 1.0e-4,
         "analytic buy activity premium sensitivity {} should match finite difference {}",
         node_sensitivity.buy_activity_premium_derivative,
+        finite_difference,
+    );
+
+    let mut model_parameters = base_model_parameters.clone();
+    model_parameters.pricing_kernel_parameters =
+        VanillaOptionPricingKernelParameters::try_new(1.0, log_premium_step.exp())
+            .expect("positive sell activity premium perturbation should stay valid");
+
+    let positive_price = single_node_price(model_parameters.clone());
+
+    model_parameters.pricing_kernel_parameters =
+        VanillaOptionPricingKernelParameters::try_new(1.0, (-log_premium_step).exp())
+            .expect("negative sell activity premium perturbation should stay valid");
+
+    let negative_price = single_node_price(model_parameters);
+
+    let finite_difference = (positive_price - negative_price) / (2.0 * log_premium_step);
+    assert!(
+        (node_sensitivity.sell_activity_premium_derivative - finite_difference).abs() <= 1.0e-4,
+        "analytic sell activity premium sensitivity {} should match finite difference {}",
+        node_sensitivity.sell_activity_premium_derivative,
         finite_difference,
     );
 }

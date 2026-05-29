@@ -373,18 +373,19 @@ pub(crate) fn build_timestamped_news_event_input(
     randomness_stream: &mut dyn SimulationRandomnessStream,
     _interval_index: usize,
 ) -> Result<SharedNewsEventTimestampedInput, NewsMarkInterfaceError> {
-    let sampled_mark_payload = mark_pipeline.sample_coupled_marks(randomness_stream)?;
+    let sampled_mark_payload =
+        mark_pipeline.sample_gamma_normal_marks(mark_scales, randomness_stream)?;
 
     Ok(SharedNewsEventTimestampedInput {
         event_timestamp_utc_nanos,
         event_generation_order,
         news_arrival_component,
-        shared_severity_mark: sampled_mark_payload.shared_severity_mark
-            * mark_scales.activity_coupling_scale,
+        shared_severity_mark: sampled_mark_payload
+            .gamma_normal_mark_construction
+            .activity_shock_mark,
         coupled_return_jump_mark: sampled_mark_payload
-            .coupled_gap_mark_construction
-            .gap_jump_mark
-            * mark_scales.return_jump_scale,
+            .gamma_normal_mark_construction
+            .return_jump_mark,
     })
 }
 

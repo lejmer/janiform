@@ -22,6 +22,7 @@ pub struct ExponentialAffineTransformInputTangent {
     pub activity_loadings: ExponentialAffineTransformActivityLoadings,
     pub z_plus: ComplexScalar,
     pub z_minus: ComplexScalar,
+    pub news_return_loading: ComplexScalar,
 }
 
 impl ExponentialAffineTransformInputTangent {
@@ -36,6 +37,7 @@ impl ExponentialAffineTransformInputTangent {
             ),
             z_plus: ComplexScalar::new(0.0, 0.0),
             z_minus: ComplexScalar::new(0.0, 0.0),
+            news_return_loading: ComplexScalar::new(0.0, 0.0),
         }
     }
 
@@ -47,6 +49,7 @@ impl ExponentialAffineTransformInputTangent {
 
         ensure_finite_complex_tangent("z_plus", self.z_plus)?;
         ensure_finite_complex_tangent("z_minus", self.z_minus)?;
+        ensure_finite_complex_tangent("news_return_loading", self.news_return_loading)?;
 
         Ok(())
     }

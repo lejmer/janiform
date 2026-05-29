@@ -751,7 +751,10 @@ class SeededTickSimulationNativeResult:
     def known_news_calendar_anchor_count(self) -> int: ...
 
     @property
-    def surprise_baseline_intensity(self) -> float: ...
+    def surprise_open_baseline_intensity(self) -> float: ...
+
+    @property
+    def surprise_closed_baseline_intensity(self) -> float: ...
 
     @property
     def interval_boundary_policy(self) -> str: ...
@@ -888,7 +891,8 @@ def materialize_hourly_news_intensity_factors(
     range_start_utc: str,
     range_end_utc: str,
     interval_duration_nanos: int,
-    surprise_baseline_intensity: float,
+    surprise_open_baseline_intensity: float,
+    surprise_closed_baseline_intensity: float,
     *,
     known_scheduled_event_timestamps_utc: Optional[Any] = None,
     surprise_deterministic_time_multiplier_by_interval_index: Optional[Any] = None,

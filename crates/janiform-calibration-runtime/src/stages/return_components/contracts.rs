@@ -19,9 +19,8 @@ use janiform_calibration_artifacts::{
 };
 use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration,
-    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
-    SurpriseNewsArrivalConfiguration,
+    KnownNewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+    SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
@@ -851,6 +850,12 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         timestamp_utc_nanos: i64,
         error_message: String,
     },
+    SourceWindowStateExposureResolutionFailed {
+        exchange_code: String,
+        window_start_utc_nanos: i64,
+        window_end_utc_nanos: i64,
+        error_message: String,
+    },
     InvalidCloseBoundaryTransition {
         exchange_code: String,
         close_timestamp_utc_nanos: i64,
@@ -1108,6 +1113,15 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
                 formatter,
                 "failed to resolve market state for exchange `{exchange_code}` at boundary timestamp {timestamp_utc_nanos}: {error_message}"
             ),
+            Self::SourceWindowStateExposureResolutionFailed {
+                exchange_code,
+                window_start_utc_nanos,
+                window_end_utc_nanos,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to resolve market-state exposure for exchange `{exchange_code}` over source window [{window_start_utc_nanos}, {window_end_utc_nanos}): {error_message}"
+            ),
             Self::InvalidCloseBoundaryTransition {
                 exchange_code,
                 close_timestamp_utc_nanos,
@@ -1210,7 +1224,8 @@ impl ReturnComponentsKnownNewsArrivalCandidateFamily {
 /// Explicit surprise-news arrival control family generated from detected jumps and gaps.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsSurpriseNewsArrivalCandidateFamily {
-    pub baseline_intensity: f64,
+    pub open_baseline_intensity: f64,
+    pub closed_baseline_intensity: f64,
     pub weekly_hour_utc_multipliers: Vec<f64>,
     pub profile_resolution_hours: usize,
 }
@@ -1218,7 +1233,8 @@ pub struct ReturnComponentsSurpriseNewsArrivalCandidateFamily {
 impl ReturnComponentsSurpriseNewsArrivalCandidateFamily {
     pub(super) fn validate(&self) -> Result<(), ReturnComponentsStageCandidateInputError> {
         SurpriseNewsArrivalConfiguration {
-            baseline_intensity: self.baseline_intensity,
+            open_baseline_intensity: self.open_baseline_intensity,
+            closed_baseline_intensity: self.closed_baseline_intensity,
         }
         .validate()
         .map_err(|source| {
@@ -1273,21 +1289,56 @@ impl ReturnComponentsSurpriseNewsArrivalCandidateFamily {
 /// Explicit return-jump mark-scale candidate family generated from jump and gap bins.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ReturnComponentsReturnJumpMarkScaleCandidateFamily {
-    pub sigma_g: f64,
+    pub known_return_jump_drift: f64,
+    pub known_return_jump_volatility: f64,
+    pub surprise_return_jump_drift: f64,
+    pub surprise_return_jump_volatility: f64,
 }
 
 impl ReturnComponentsReturnJumpMarkScaleCandidateFamily {
     pub(super) fn validate(self) -> Result<(), ReturnComponentsStageCandidateInputError> {
-        CoupledGapMarkConfiguration::new(self.sigma_g)
-            .construct_gap_jump_mark(1.0, 1.0)
-            .map_err(|source| {
-                ReturnComponentsStageCandidateInputError::InvalidReturnJumpMarkScaleFamily {
-                    error_message: source.to_string(),
-                }
-            })?;
+        validate_return_jump_candidate_values(
+            "known",
+            self.known_return_jump_drift,
+            self.known_return_jump_volatility,
+        )?;
+
+        validate_return_jump_candidate_values(
+            "surprise",
+            self.surprise_return_jump_drift,
+            self.surprise_return_jump_volatility,
+        )?;
 
         Ok(())
     }
+}
+
+fn validate_return_jump_candidate_values(
+    component_name: &'static str,
+    return_jump_drift: f64,
+    return_jump_volatility: f64,
+) -> Result<(), ReturnComponentsStageCandidateInputError> {
+    if !return_jump_drift.is_finite() {
+        return Err(
+            ReturnComponentsStageCandidateInputError::InvalidReturnJumpMarkScaleFamily {
+                error_message: format!(
+                    "{component_name}_return_jump_drift must be finite, found {return_jump_drift}"
+                ),
+            },
+        );
+    }
+
+    if !return_jump_volatility.is_finite() || return_jump_volatility < 0.0 {
+        return Err(
+            ReturnComponentsStageCandidateInputError::InvalidReturnJumpMarkScaleFamily {
+                error_message: format!(
+                    "{component_name}_return_jump_volatility must be finite and non-negative, found {return_jump_volatility}"
+                ),
+            },
+        );
+    }
+
+    Ok(())
 }
 
 /// Explicit news-to-Hawkes activity-coupling candidate family.
@@ -1301,7 +1352,8 @@ impl ReturnComponentsActivityCouplingCandidateFamily {
     pub(super) fn validate(self) -> Result<(), ReturnComponentsStageCandidateInputError> {
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: self.known_activity_coupling_scale,
-            return_jump_scale: 1.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
         }
         .validate()
         .map_err(|source| {
@@ -1312,7 +1364,8 @@ impl ReturnComponentsActivityCouplingCandidateFamily {
 
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: self.surprise_activity_coupling_scale,
-            return_jump_scale: 1.0,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 0.0,
         }
         .validate()
         .map_err(|source| {
@@ -1770,7 +1823,8 @@ pub struct ReturnComponentsStageJumpDiagnostic {
     pub observed_jump_count: usize,
     pub observed_mean_abs_jump_return: f64,
     pub fitted_mean_abs_jump_return: f64,
-    pub fitted_sigma_g: f64,
+    pub fitted_return_jump_drift: f64,
+    pub fitted_return_jump_volatility: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1778,7 +1832,8 @@ pub struct ReturnComponentsStageSurpriseArrivalDiagnostic {
     pub evidence_state: String,
     pub observed_jump_count: usize,
     pub observed_jump_frequency_per_hour: f64,
-    pub fitted_surprise_arrival_intensity_per_hour: f64,
+    pub fitted_surprise_open_arrival_intensity_per_hour: f64,
+    pub fitted_surprise_closed_arrival_intensity_per_hour: f64,
     pub surprise_arrival_profile_fit_error: f64,
 }
 
@@ -1789,7 +1844,8 @@ pub struct ReturnComponentsStageGapDiagnostic {
     pub observed_gap_frequency_per_hour: f64,
     pub observed_mean_abs_gap_return: f64,
     pub fitted_mean_abs_gap_return: f64,
-    pub fitted_sigma_g: f64,
+    pub fitted_return_jump_drift: f64,
+    pub fitted_return_jump_volatility: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

@@ -376,7 +376,12 @@ def _serialize_news_intensity_provider_source(
                     known_scheduled_event_timestamp_utc.isoformat()
                     for known_scheduled_event_timestamp_utc in normalized_known_scheduled_event_timestamps_utc
                 ],
-                "surprise_baseline_intensity": news_intensity_source.surprise_baseline_intensity,
+                "surprise_open_baseline_intensity": (
+                    news_intensity_source.surprise_open_baseline_intensity
+                ),
+                "surprise_closed_baseline_intensity": (
+                    news_intensity_source.surprise_closed_baseline_intensity
+                ),
                 "surprise_deterministic_time_multiplier_by_interval_index": (
                     surprise_deterministic_time_multiplier_by_interval_index
                 ),
@@ -583,7 +588,8 @@ def materialize_hourly_news_intensity_factors(
                 normalized_range_start_utc.isoformat(),
                 normalized_range_end_utc.isoformat(),
                 interval_duration_nanos,
-                settings.surprise_baseline_intensity,
+                settings.surprise_open_baseline_intensity,
+                settings.surprise_closed_baseline_intensity,
                 known_scheduled_event_timestamps_utc=[
                     known_scheduled_event_timestamp_utc.isoformat()
                     for known_scheduled_event_timestamp_utc in normalized_known_scheduled_event_timestamps_utc

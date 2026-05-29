@@ -122,7 +122,9 @@ pub use errors::{
     ExchangeCalendarResolveError, ExchangeCalendarValidationError,
     TimestampEventPreprocessingError,
 };
-pub use registry::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
+pub use registry::{
+    ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketStateIntervalExposure,
+};
 pub use types::{
     CalendarDate, CalendarRuleMetadata, CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact,
     ExchangeCalendarArtifact, ExchangeCalendarDefinition, ExchangeCalendarRegistryArtifact,

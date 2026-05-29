@@ -261,7 +261,8 @@ pub enum HourlyNewsIntensitySourceFixture {
     },
     Materialized {
         known_scheduled_event_timestamps_utc: Vec<String>,
-        surprise_baseline_intensity: f64,
+        surprise_open_baseline_intensity: f64,
+        surprise_closed_baseline_intensity: f64,
         surprise_deterministic_time_multiplier_by_interval_index: BTreeMap<String, f64>,
     },
 }
@@ -2690,12 +2691,18 @@ fn validate_hourly_canonical_output_case(
         }
         HourlyNewsIntensitySourceFixture::Materialized {
             known_scheduled_event_timestamps_utc,
-            surprise_baseline_intensity,
+            surprise_open_baseline_intensity,
+            surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index,
         } => {
             validate_finite_non_negative(
-                *surprise_baseline_intensity,
-                "canonical_output_cases.news_intensity_source.surprise_baseline_intensity",
+                *surprise_open_baseline_intensity,
+                "canonical_output_cases.news_intensity_source.surprise_open_baseline_intensity",
+            )?;
+
+            validate_finite_non_negative(
+                *surprise_closed_baseline_intensity,
+                "canonical_output_cases.news_intensity_source.surprise_closed_baseline_intensity",
             )?;
 
             for known_timestamp_utc in known_scheduled_event_timestamps_utc {

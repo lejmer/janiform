@@ -21,6 +21,7 @@ use super::solver_settings::{
     DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID, has_missing_stage_solver_settings,
     resolve_solver_settings_by_stage,
 };
+use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::stages::mean_reversion::mean_reversion_full_model_required_source_observation_count;
 use crate::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationJointRefinementCarryInput,
@@ -172,6 +173,8 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub joint_refinement_audit_option_pricing_enabled: bool,
     #[serde(default)]
+    pub diagnostics: CalibrationDiagnosticsRequest,
+    #[serde(default)]
     pub stylized_fact_huber_cutoff: Option<f64>,
     #[serde(default)]
     pub stylized_fact_admissibility_z_threshold: Option<f64>,
@@ -314,6 +317,22 @@ fn validate_joint_refinement_audit_option_pricing(
     Ok(())
 }
 
+fn validate_calibration_diagnostics_request(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if request.diagnostics.option_surface_shape_requested()
+        && request.option_surface_source.is_none()
+    {
+        return Err(CalibrationMarketDataPreparationError::from(
+            "diagnostics.extended option_surface_shape requires option_surface_source".to_string(),
+        ));
+    }
+
+    request.diagnostics.validate().map_err(|source| {
+        CalibrationMarketDataPreparationError::from(format!("diagnostics {source}"))
+    })
+}
+
 struct LoadedMarketDataPhases {
     normalized_tick_output: MarketDataNormalizedTickOutput,
     loading_output: MarketDataLoadingOutput,
@@ -340,6 +359,7 @@ pub fn prepare_market_data_calibration_plan(
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
+    validate_calibration_diagnostics_request(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
     let (loading_request, trade_events_data_reference, option_surface_data_reference) =
@@ -368,6 +388,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
+    validate_calibration_diagnostics_request(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
     let (loading_request, trade_events_data_reference, option_surface_data_reference) =
@@ -407,6 +428,7 @@ fn selected_stages_for_scope(
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::Finalization,
@@ -416,6 +438,7 @@ fn selected_stages_for_scope(
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::OptionRefinement,
@@ -1428,6 +1451,7 @@ fn prepared_market_data_plan_from_loading_output(
             .joint_refinement_option_refinement_wall_clock_budget_millis,
         joint_refinement_audit_option_pricing_enabled: request
             .joint_refinement_audit_option_pricing_enabled,
+        diagnostics: request.diagnostics.clone(),
         joint_refinement_option_pricing_input: joint_refinement_option_pricing_input_from_request(
             &request,
             &loading_output,

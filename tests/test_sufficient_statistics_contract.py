@@ -271,7 +271,6 @@ def _valid_run_request_model() -> SufficientStatisticsRunRequest:
                 ),
                 gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
                     shape_k=1.8,
-                    scale_theta=0.7,
                 ),
                 long_variance_parameters=LongVarianceParameters.neutral(),
             ),

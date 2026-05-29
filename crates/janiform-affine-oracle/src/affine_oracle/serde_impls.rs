@@ -3,7 +3,9 @@ use serde::Deserialize;
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform_model_kernels::long_variance::LongVarianceParameters;
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::news::{
+    GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
+};
 
 use super::{
     ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformDVector,
@@ -101,8 +103,11 @@ struct ExponentialAffineTransformInputPayload {
     activity_loadings: ExponentialAffineTransformActivityLoadings,
     z_plus: ComplexScalarPayload,
     z_minus: ComplexScalarPayload,
+    news_return_loading: ComplexScalarPayload,
     s_h: f64,
     news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
     delta: f64,
     initial_state: HawkesExcitationStatePayload,
 }
@@ -119,8 +124,11 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformInput {
             payload.activity_loadings,
             payload.z_plus.into(),
             payload.z_minus.into(),
+            payload.news_return_loading.into(),
             payload.s_h,
             payload.news_intensity,
+            payload.known_news_component_mark_scales,
+            payload.surprise_news_component_mark_scales,
             payload.delta,
             payload.initial_state.into(),
         )

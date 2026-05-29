@@ -12,7 +12,10 @@ pub enum NewsArrivalConfigurationError {
         previous_timestamp_utc_nanos: i64,
         current_timestamp_utc_nanos: i64,
     },
-    InvalidSurpriseBaselineIntensity {
+    InvalidSurpriseOpenBaselineIntensity {
+        value: f64,
+    },
+    InvalidSurpriseClosedBaselineIntensity {
         value: f64,
     },
 }
@@ -31,9 +34,13 @@ impl Display for NewsArrivalConfigurationError {
                 formatter,
                 "known.scheduled_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
             ),
-            Self::InvalidSurpriseBaselineIntensity { value } => write!(
+            Self::InvalidSurpriseOpenBaselineIntensity { value } => write!(
                 formatter,
-                "surprise.baseline_intensity must be a finite non-negative value, found {value}"
+                "surprise.open_baseline_intensity must be a finite non-negative value, found {value}"
+            ),
+            Self::InvalidSurpriseClosedBaselineIntensity { value } => write!(
+                formatter,
+                "surprise.closed_baseline_intensity must be a finite non-negative value, found {value}"
             ),
         }
     }
@@ -57,6 +64,12 @@ pub enum NewsComponentIntensityEvaluationError {
         value: i64,
     },
     InvalidSurpriseDeterministicTimeMultiplier {
+        value: f64,
+    },
+    InvalidSurpriseOpenWindowShare {
+        value: f64,
+    },
+    InvalidSurpriseClosedWindowShare {
         value: f64,
     },
     KnownScheduledArrivalCountOverflow {
@@ -96,6 +109,14 @@ impl Display for NewsComponentIntensityEvaluationError {
                 formatter,
                 "surprise_deterministic_time_multiplier must be finite and non-negative, found {value}"
             ),
+            Self::InvalidSurpriseOpenWindowShare { value } => write!(
+                formatter,
+                "surprise_open_window_share must be finite and between 0 and 1, found {value}"
+            ),
+            Self::InvalidSurpriseClosedWindowShare { value } => write!(
+                formatter,
+                "surprise_closed_window_share must be finite and between 0 and 1, found {value}"
+            ),
             Self::KnownScheduledArrivalCountOverflow { value } => write!(
                 formatter,
                 "known scheduled arrival count overflowed u64 conversion, found {value}"
@@ -127,8 +148,19 @@ impl Error for NewsComponentIntensityEvaluationError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NewsComponentMarkScaleConfigurationError {
-    InvalidActivityCouplingScale { value: f64 },
-    InvalidReturnJumpScale { value: f64 },
+    InvalidActivityCouplingScale {
+        value: f64,
+    },
+    InvalidReturnJumpDrift {
+        value: f64,
+    },
+    InvalidReturnJumpVolatility {
+        value: f64,
+    },
+    ReturnJumpWithoutActivityCoupling {
+        return_jump_drift: f64,
+        return_jump_volatility: f64,
+    },
 }
 
 impl Display for NewsComponentMarkScaleConfigurationError {
@@ -138,9 +170,19 @@ impl Display for NewsComponentMarkScaleConfigurationError {
                 formatter,
                 "activity_coupling_scale must be a finite non-negative value, found {value}"
             ),
-            Self::InvalidReturnJumpScale { value } => write!(
+            Self::InvalidReturnJumpDrift { value } => {
+                write!(formatter, "return_jump_drift must be finite, found {value}")
+            }
+            Self::InvalidReturnJumpVolatility { value } => write!(
                 formatter,
-                "return_jump_scale must be a finite non-negative value, found {value}"
+                "return_jump_volatility must be a finite non-negative value, found {value}"
+            ),
+            Self::ReturnJumpWithoutActivityCoupling {
+                return_jump_drift,
+                return_jump_volatility,
+            } => write!(
+                formatter,
+                "return-jump parameters require positive activity_coupling_scale, found return_jump_drift={return_jump_drift} and return_jump_volatility={return_jump_volatility}"
             ),
         }
     }
@@ -149,31 +191,8 @@ impl Display for NewsComponentMarkScaleConfigurationError {
 impl Error for NewsComponentMarkScaleConfigurationError {}
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum NewsIntensityError {
-    InvalidClosedWindowBaselineIntensity { value: f64 },
-}
-
-impl Display for NewsIntensityError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidClosedWindowBaselineIntensity { value } => write!(
-                formatter,
-                "closed_window_baseline_intensity must be a finite non-negative value, found {value}"
-            ),
-        }
-    }
-}
-
-impl Error for NewsIntensityError {}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum NewsMarkConfigurationError {
     InvalidGammaShapeK { value: f64 },
-    InvalidGammaScaleTheta { value: f64 },
-    InvalidPositiveJumpProbability { value: f64 },
-    InvalidEtaPlus { value: f64 },
-    InvalidEtaMinus { value: f64 },
-    InvalidSigmaG { value: f64 },
 }
 
 impl Display for NewsMarkConfigurationError {
@@ -185,26 +204,6 @@ impl Display for NewsMarkConfigurationError {
                     "gamma severity shape_k must be finite and strictly positive, found {value}"
                 )
             }
-            Self::InvalidGammaScaleTheta { value } => write!(
-                formatter,
-                "gamma severity scale_theta must be finite and strictly positive, found {value}"
-            ),
-            Self::InvalidPositiveJumpProbability { value } => write!(
-                formatter,
-                "double_exponential_base_shock.probability_positive must be finite and strictly between 0 and 1, found {value}"
-            ),
-            Self::InvalidEtaPlus { value } => write!(
-                formatter,
-                "double_exponential_base_shock.eta_plus must be finite and strictly positive, found {value}"
-            ),
-            Self::InvalidEtaMinus { value } => write!(
-                formatter,
-                "double_exponential_base_shock.eta_minus must be finite and strictly positive, found {value}"
-            ),
-            Self::InvalidSigmaG { value } => write!(
-                formatter,
-                "coupled_gap_marks.sigma_g must be finite and non-negative, found {value}"
-            ),
         }
     }
 }
@@ -220,12 +219,6 @@ pub enum NewsProcessConfigurationError {
         source: NewsArrivalConfigurationError,
     },
     InvalidGammaSeverityMarkConfiguration {
-        source: NewsMarkConfigurationError,
-    },
-    InvalidBaseShockConfiguration {
-        source: NewsMarkConfigurationError,
-    },
-    InvalidCoupledGapMarkConfiguration {
         source: NewsMarkConfigurationError,
     },
     InvalidKnownComponentMarkScales {
@@ -245,8 +238,6 @@ impl Display for NewsProcessConfigurationError {
             ),
             Self::InvalidArrivalConfiguration { source } => write!(formatter, "{source}"),
             Self::InvalidGammaSeverityMarkConfiguration { source } => write!(formatter, "{source}"),
-            Self::InvalidBaseShockConfiguration { source } => write!(formatter, "{source}"),
-            Self::InvalidCoupledGapMarkConfiguration { source } => write!(formatter, "{source}"),
             Self::InvalidKnownComponentMarkScales { source } => write!(formatter, "{source}"),
             Self::InvalidSurpriseComponentMarkScales { source } => write!(formatter, "{source}"),
         }
@@ -258,42 +249,12 @@ impl Error for NewsProcessConfigurationError {
         match self {
             Self::InvalidArrivalConfiguration { source } => Some(source),
             Self::InvalidGammaSeverityMarkConfiguration { source } => Some(source),
-            Self::InvalidBaseShockConfiguration { source } => Some(source),
-            Self::InvalidCoupledGapMarkConfiguration { source } => Some(source),
             Self::InvalidKnownComponentMarkScales { source } => Some(source),
             Self::InvalidSurpriseComponentMarkScales { source } => Some(source),
             Self::UnsupportedSchemaVersion { .. } => None,
         }
     }
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum NewsDeterministicIntensityEvaluationError {
-    InvalidClosedWindowShare { value: f64 },
-    InvalidDeterministicTimeMultiplier { value: f64 },
-    InvalidEvaluatedIntensity { value: f64 },
-}
-
-impl Display for NewsDeterministicIntensityEvaluationError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidClosedWindowShare { value } => write!(
-                formatter,
-                "closed_window_share must be finite and in [0, 1], found {value}"
-            ),
-            Self::InvalidDeterministicTimeMultiplier { value } => write!(
-                formatter,
-                "deterministic_time_multiplier must be finite and non-negative, found {value}"
-            ),
-            Self::InvalidEvaluatedIntensity { value } => write!(
-                formatter,
-                "evaluated deterministic news intensity must be finite and non-negative, found {value}"
-            ),
-        }
-    }
-}
-
-impl Error for NewsDeterministicIntensityEvaluationError {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GammaSeverityMarkSamplingError {
@@ -328,77 +289,59 @@ impl Error for GammaSeverityMarkSamplingError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum DoubleExponentialBaseShockSamplingError {
-    InvalidConfiguration { source: NewsMarkConfigurationError },
-    InvalidSampledMark { value: f64 },
+pub enum GammaNormalNewsMarkConstructionError {
+    InvalidComponentMarkScaleConfiguration {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
+    InvalidSharedSeverityMark {
+        value: f64,
+    },
+    InvalidStandardNormalMark {
+        value: f64,
+    },
+    InvalidConstructedActivityShockMark {
+        value: f64,
+    },
+    InvalidConstructedReturnJumpMark {
+        value: f64,
+    },
 }
 
-impl Display for DoubleExponentialBaseShockSamplingError {
+impl Display for GammaNormalNewsMarkConstructionError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidConfiguration { source } => {
-                write!(
-                    formatter,
-                    "double-exponential base-shock configuration is invalid for sampling: {source}"
-                )
-            }
-            Self::InvalidSampledMark { value } => write!(
+            Self::InvalidComponentMarkScaleConfiguration { source } => write!(
                 formatter,
-                "double-exponential base-shock sampling produced a non-finite mark, found {value}"
+                "news component mark scale configuration is invalid for Gamma-normal construction: {source}"
             ),
-        }
-    }
-}
-
-impl Error for DoubleExponentialBaseShockSamplingError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::InvalidConfiguration { source } => Some(source),
-            Self::InvalidSampledMark { .. } => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CoupledGapMarkConstructionError {
-    InvalidConfiguration { source: NewsMarkConfigurationError },
-    InvalidSharedSeverityMark { value: f64 },
-    InvalidSharedBaseShockMark { value: f64 },
-    InvalidConstructedGapMark { value: f64 },
-}
-
-impl Display for CoupledGapMarkConstructionError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidConfiguration { source } => {
-                write!(
-                    formatter,
-                    "coupled gap-mark configuration is invalid for construction: {source}"
-                )
-            }
             Self::InvalidSharedSeverityMark { value } => write!(
                 formatter,
                 "shared severity mark must be finite and non-negative, found {value}"
             ),
-            Self::InvalidSharedBaseShockMark { value } => write!(
+            Self::InvalidStandardNormalMark { value } => write!(
                 formatter,
-                "shared base-shock mark must be finite, found {value}"
+                "standard normal return-shock mark must be finite, found {value}"
             ),
-            Self::InvalidConstructedGapMark { value } => write!(
+            Self::InvalidConstructedActivityShockMark { value } => write!(
                 formatter,
-                "constructed coupled gap mark must be finite, found {value}"
+                "constructed news activity-shock mark must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidConstructedReturnJumpMark { value } => write!(
+                formatter,
+                "constructed news return-jump mark must be finite, found {value}"
             ),
         }
     }
 }
 
-impl Error for CoupledGapMarkConstructionError {
+impl Error for GammaNormalNewsMarkConstructionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidConfiguration { source } => Some(source),
+            Self::InvalidComponentMarkScaleConfiguration { source } => Some(source),
             Self::InvalidSharedSeverityMark { .. }
-            | Self::InvalidSharedBaseShockMark { .. }
-            | Self::InvalidConstructedGapMark { .. } => None,
+            | Self::InvalidStandardNormalMark { .. }
+            | Self::InvalidConstructedActivityShockMark { .. }
+            | Self::InvalidConstructedReturnJumpMark { .. } => None,
         }
     }
 }

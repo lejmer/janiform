@@ -188,6 +188,7 @@ fn stage_report_warning_messages(stage_report: &CalibrationStagedRunStageReport)
         | CalibrationStagedRunStageReport::Hawkes(_)
         | CalibrationStagedRunStageReport::ReturnComponents(_)
         | CalibrationStagedRunStageReport::LongVariance(_)
+        | CalibrationStagedRunStageReport::NewsShocks(_)
         | CalibrationStagedRunStageReport::MeanReversion(_) => &[],
     }
 }

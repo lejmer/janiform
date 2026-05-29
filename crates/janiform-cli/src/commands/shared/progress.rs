@@ -175,9 +175,9 @@ impl TerminalCommandProgress {
             status: "completed".to_string(),
         });
 
-        adapter.finish_and_clear();
-
-        Ok(())
+        adapter
+            .finish_and_keep()
+            .map_err(|source| CliError::OutputWrite { source })
     }
 
     fn start_stage(&mut self, phase: &str, stage_number: usize) {

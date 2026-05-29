@@ -16,9 +16,7 @@ use crate::sufficient_statistics::{
 use janiform_foundations::linear_algebra::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::MeanReversionRuntimeIntervalAnchors;
-use janiform_model_kernels::news::{
-    CoupledGapMarkConstructionError, NewsProcessConfiguration, NewsProcessConfigurationError,
-};
+use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 use janiform_model_kernels::nig::{
     NigIncrementSamplingError, NigSharedPlusShiftConfiguration,
     NigSharedPlusShiftConfigurationError,
@@ -162,9 +160,6 @@ pub enum EndogenousAnchorMaterializationError {
         interval_index: usize,
         source: NigIncrementSamplingError,
     },
-    ExpectedGapJumpMarkFailure {
-        source: CoupledGapMarkConstructionError,
-    },
     NonFiniteCoreExpectedIncrement {
         interval_index: usize,
         value: f64,
@@ -245,10 +240,6 @@ impl Display for EndogenousAnchorMaterializationError {
                 formatter,
                 "endogenous-anchor sell-side expected increment failed at interval {interval_index}: {source}"
             ),
-            Self::ExpectedGapJumpMarkFailure { source } => write!(
-                formatter,
-                "endogenous-anchor expected gap jump mark failed to evaluate: {source}"
-            ),
             Self::NonFiniteCoreExpectedIncrement {
                 interval_index,
                 value,
@@ -284,7 +275,6 @@ impl Error for EndogenousAnchorMaterializationError {
             Self::TransformSliceExpectationFailure { source, .. } => Some(source.as_ref()),
             Self::BuySideExpectationFailure { source, .. } => Some(source),
             Self::SellSideExpectationFailure { source, .. } => Some(source),
-            Self::ExpectedGapJumpMarkFailure { source } => Some(source),
             _ => None,
         }
     }
@@ -333,36 +323,6 @@ pub fn materialize_endogenous_anchor_path(
                 },
             }
         })?;
-
-    let expected_square_root_severity_mark = news_process_configuration
-        .shared_mark_law
-        .gamma_severity_marks
-        .expected_square_root_severity_mark()
-        .map_err(|source| {
-            EndogenousAnchorMaterializationError::InvalidNewsProcessConfiguration {
-                source: NewsProcessConfigurationError::InvalidGammaSeverityMarkConfiguration {
-                    source,
-                },
-            }
-        })?;
-
-    let expected_base_shock_mark = news_process_configuration
-        .shared_mark_law
-        .double_exponential_base_shock
-        .expected_base_shock_mark()
-        .map_err(|source| {
-            EndogenousAnchorMaterializationError::InvalidNewsProcessConfiguration {
-                source: NewsProcessConfigurationError::InvalidBaseShockConfiguration { source },
-            }
-        })?;
-
-    let expected_gap_jump_mark = news_process_configuration
-        .shared_mark_law
-        .coupled_gap_marks
-        .expected_gap_jump_mark(expected_square_root_severity_mark, expected_base_shock_mark)
-        .map_err(
-            |source| EndogenousAnchorMaterializationError::ExpectedGapJumpMarkFailure { source },
-        )?;
 
     let mut expected_hawkes_state_path = Vec::with_capacity(interval_factors.len() + 1);
 
@@ -426,11 +386,10 @@ pub fn materialize_endogenous_anchor_path(
             factors,
             news_process_configuration
                 .known_component_mark_scales
-                .return_jump_scale,
+                .return_jump_drift,
             news_process_configuration
                 .surprise_component_mark_scales
-                .return_jump_scale,
-            expected_gap_jump_mark,
+                .return_jump_drift,
         );
 
         let core_expected_increment = expected_buy_increment - expected_sell_increment
@@ -698,14 +657,14 @@ fn expected_scaled_news_loading_rate(
 
 fn expected_scaled_news_arrival_contribution(
     factors: EndogenousAnchorIntervalFactors,
-    known_component_scale: f64,
-    surprise_component_scale: f64,
-    expected_mark: f64,
+    known_component_expected_return_jump: f64,
+    surprise_component_expected_return_jump: f64,
 ) -> f64 {
     let expected_known_contribution =
-        factors.expected_known_arrival_count() * known_component_scale * expected_mark;
+        factors.expected_known_arrival_count() * known_component_expected_return_jump;
+
     let expected_surprise_contribution =
-        factors.expected_surprise_arrival_count() * surprise_component_scale * expected_mark;
+        factors.expected_surprise_arrival_count() * surprise_component_expected_return_jump;
 
     expected_known_contribution + expected_surprise_contribution
 }
@@ -730,7 +689,6 @@ mod tests {
     use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
     use janiform_model_kernels::long_variance::LongVarianceParameters;
     use janiform_model_kernels::news::{
-        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
         NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
         SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
@@ -757,7 +715,7 @@ mod tests {
                 },
             )
             .expect("hawkes parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
+            GammaSeverityMarkConfiguration::try_new(2.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -772,25 +730,23 @@ mod tests {
                     scheduled_event_timestamps_utc_nanos: Vec::new(),
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
+                    open_baseline_intensity: 0.0,
+                    closed_baseline_intensity: 0.0,
                 },
             },
             SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0)
                     .expect("gamma configuration should construct"),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                    0.6, 2.0, 3.0,
-                )
-                .expect("base-shock configuration should construct"),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.7),
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 0.0,
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 0.0,
             },
         )
         .expect("news process configuration should construct");
@@ -837,7 +793,7 @@ mod tests {
                 },
             )
             .expect("hawkes parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(4.0, 0.25)
+            GammaSeverityMarkConfiguration::try_new(4.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -852,51 +808,27 @@ mod tests {
                     scheduled_event_timestamps_utc_nanos: Vec::new(),
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
+                    open_baseline_intensity: 0.0,
+                    closed_baseline_intensity: 0.0,
                 },
             },
             SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(4.0, 0.25)
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(4.0)
                     .expect("gamma configuration should construct"),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                    0.75, 1.0, 4.0,
-                )
-                .expect("base-shock configuration should construct"),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.5),
             },
             NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 1.2,
+                activity_coupling_scale: 0.5,
+                return_jump_drift: 1.2,
+                return_jump_volatility: 0.0,
             },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 0.0,
-            },
+            NewsComponentMarkScaleConfiguration::neutral(),
         )
         .expect("news process configuration should construct");
 
         let interval_factors = EndogenousAnchorIntervalFactors::try_new(0.0, 2.0, 0.0, 0.5)
             .expect("interval factors should construct");
 
-        let expected_gap_jump_mark = news_process_configuration
-            .shared_mark_law
-            .coupled_gap_marks
-            .expected_gap_jump_mark(
-                news_process_configuration
-                    .shared_mark_law
-                    .gamma_severity_marks
-                    .expected_square_root_severity_mark()
-                    .expect("square-root severity moment should evaluate"),
-                news_process_configuration
-                    .shared_mark_law
-                    .double_exponential_base_shock
-                    .expected_base_shock_mark()
-                    .expect("base-shock moment should evaluate"),
-            )
-            .expect("gap-jump moment should evaluate");
-
-        let expected_anchor_increment =
-            interval_factors.expected_known_arrival_count() * 1.2 * expected_gap_jump_mark;
+        let expected_anchor_increment = interval_factors.expected_known_arrival_count() * 1.2;
 
         let materialization = materialize_endogenous_anchor_path(
             "explicit_runtime_interval_grid_alignment.v1",
@@ -937,7 +869,7 @@ mod tests {
                 },
             )
             .expect("hawkes parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
+            GammaSeverityMarkConfiguration::try_new(2.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
         )
@@ -952,26 +884,16 @@ mod tests {
                     scheduled_event_timestamps_utc_nanos: Vec::new(),
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
+                    open_baseline_intensity: 0.0,
+                    closed_baseline_intensity: 0.0,
                 },
             },
             SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0, 0.5)
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(2.0)
                     .expect("gamma configuration should construct"),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                    0.6, 2.0, 3.0,
-                )
-                .expect("base-shock configuration should construct"),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.7),
             },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 1.0,
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.0,
-                return_jump_scale: 1.0,
-            },
+            NewsComponentMarkScaleConfiguration::neutral(),
+            NewsComponentMarkScaleConfiguration::neutral(),
         )
         .expect("news process configuration should construct");
 

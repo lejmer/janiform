@@ -1993,7 +1993,6 @@ mod tests {
         MeanReversionRuntimeIntervalAnchors,
     };
     use janiform_model_kernels::news::{
-        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
         NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
         SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
@@ -2361,8 +2360,7 @@ mod tests {
 
         let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
             hawkes_kernel_parameters,
-            GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
-                .expect("gamma marks should construct"),
+            GammaSeverityMarkConfiguration::try_new(1.8).expect("gamma marks should construct"),
             LongVarianceParameters::neutral(),
         )
         .expect("equation specification should construct");
@@ -2428,25 +2426,23 @@ mod tests {
                     scheduled_event_timestamps_utc_nanos: vec![1_704_069_000_000_000_000],
                 },
                 surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.2,
+                    open_baseline_intensity: 0.2,
+                    closed_baseline_intensity: 0.2,
                 },
             },
             SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.4, 0.6)
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.4)
                     .expect("gamma marks should construct"),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                    0.45, 1.2, 1.1,
-                )
-                .expect("base shock configuration should construct"),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.8),
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 0.7,
-                return_jump_scale: 1.1,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 0.0,
             },
             NewsComponentMarkScaleConfiguration {
                 activity_coupling_scale: 0.5,
-                return_jump_scale: 0.9,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 0.0,
             },
         )
         .expect("news process configuration should construct")

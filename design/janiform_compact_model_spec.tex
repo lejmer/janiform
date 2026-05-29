@@ -91,6 +91,8 @@
     \(N_t^\pm\) are counting processes with intensities \(\lambda_t^\pm\).
     Seasonality modulates only the immigrant baseline \( \bar{\lambda} \), while
     self- and cross-excitation remain in the common reaction state \(Y_t\).
+    The long-variance state in Section 6 scales baseline return clocks, not
+    baseline event-arrival intensities.
 
     \section*{4. Deterministic Seasonality and News Intensity}
     \[
@@ -111,7 +113,10 @@
 
     On an implementation interval \(h=[t_h,t_{h+1})\), known arrivals are the
     persisted scheduled timestamps in that interval.
-    The known component's interval intensity is therefore the scheduled count divided by the interval duration:
+    The known component's interval count is deterministic conditional on the
+    schedule.
+    For interval-factor storage the corresponding rate is the
+    scheduled count divided by the interval duration:
     \[
         \nu_h^{\mathrm{known}}
         =
@@ -119,12 +124,20 @@
             \left|\{\tau_m^{\mathrm{known}}\in[t_h,t_{h+1})\}\right|
         }{\Delta_h}.
     \]
-    The surprise component uses a persisted baseline intensity and a
-    non-negative deterministic interval multiplier \(m_h^{\mathrm{surprise}}\):
+    The surprise component uses separate open- and closed-session persisted
+    baseline intensities and a non-negative deterministic interval multiplier
+    \(m_h^{\mathrm{surprise}}\).
+    Let \(w_h^{\mathrm{open}}\) and
+    \(w_h^{\mathrm{closed}}\) be the interval fractions in open and closed
+    market state:
     \[
         \nu_h^{\mathrm{surprise}}
         =
-        \nu_0^{\mathrm{surprise}}m_h^{\mathrm{surprise}}.
+        m_h^{\mathrm{surprise}}
+        \left(
+            w_h^{\mathrm{open}}\nu_0^{\mathrm{surprise,open}}
+            +w_h^{\mathrm{closed}}\nu_0^{\mathrm{surprise,closed}}
+        \right).
     \]
     Equivalently, the deterministic calendar profiles below materialize the
     interval multipliers consumed by the runtime:
@@ -146,27 +159,21 @@
     At news times \(\tau_m^{c}\), with \(c\in\{\mathrm{known},\mathrm{surprise}\}\):
     \[
         U_m\sim\Gamma(k_U,\theta_U),\qquad
-        \varepsilon_m\sim\text{Kou}(p,\eta_+,\eta_-).
+        \theta_U=\frac{1}{k_U},\qquad
+        Z_m^N\sim\mathcal N(0,1).
     \]
-    Here \(\Gamma(k_U,\theta_U)\) is the shape-scale parameterization (shape \(k_U\), scale \(\theta_U\)).
-
-    Kou base-shock density:
-    \[
-        f_{\varepsilon}(x)=
-        \begin{cases}
-            p\,\eta_+e^{-\eta_+ x}, & x\ge 0,\\
-            (1-p)\,\eta_-e^{\eta_- x}, & x<0,
-        \end{cases}
-        \qquad
-        \eta_+,\eta_->0,\quad p\in(0,1).
-    \]
-
-    The shared severity and return mark are component-scaled before dispatch.
-    Let \(a_c\ge0\) denote the activity-coupling scale and \(b_c\ge0\) the
-    return-jump scale for component \(c\).
+    Here \(\Gamma(k_U,\theta_U)\) is the shape-scale parameterization with
+    unit mean for identifiability.
+    The shared severity drives both the activity
+    shock and the return shock, so a news return jump without Hawkes excitation
+    is not a valid model event.
+    Let \(a_c\ge0\) denote the activity-coupling scale, \(m_c\in\mathbb R\) the
+    signed return-jump drift, and \(\sigma_c\ge0\) the return-jump volatility
+    for component \(c\).
     Then
     \begin{gather*}
-        \zeta_m^{c}=b_c\sigma_G\sqrt{U_m^{c}}\,\varepsilon_m^{c},\\
+        J_m^{c}=a_cU_m^{c},\qquad
+        \zeta_m^{c}=m_cU_m^{c}+\sigma_c\sqrt{U_m^{c}}\,Z_m^{N,c},\\
         J_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t} a_{\mathrm{known}}U_m^{\mathrm{known}},
         \qquad
         J_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t} a_{\mathrm{surprise}}U_m^{\mathrm{surprise}},
@@ -176,13 +183,16 @@
         \qquad
         M_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t}\mathbf{1}_{\mathrm{open}}(\tau_m^{\mathrm{surprise}})\,\zeta_m^{\mathrm{surprise}},\\
         M_t=M_t^{\mathrm{known}}+M_t^{\mathrm{surprise}}.\\
-        G_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m^{\mathrm{known}})\,\zeta_m^{\mathrm{known}},
+        G_t^{\mathrm{known}}=\sum_{r(\tau_m^{\mathrm{known}})\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m^{\mathrm{known}})\,\zeta_m^{\mathrm{known}},
         \qquad
-        G_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m^{\mathrm{surprise}})\,\zeta_m^{\mathrm{surprise}},\\
+        G_t^{\mathrm{surprise}}=\sum_{r(\tau_m^{\mathrm{surprise}})\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m^{\mathrm{surprise}})\,\zeta_m^{\mathrm{surprise}},\\
         G_t=G_t^{\mathrm{known}}+G_t^{\mathrm{surprise}}.\\
     \end{gather*}
+    Here \(r(\tau)\) is the first reopening time after a closed-window arrival.
     Open-window news jumps are applied on the first post-arrival open tick via \(M_t\).
-    Closed-window news jumps are applied on the first reopening tick via \(G_t\).
+    Closed-window news jumps are stored until the first reopening tick via \(G_t\).
+    A component with \(a_c=0\) must have \(m_c=\sigma_c=0\), so every active
+    news return-jump channel also excites activity.
 
     \section*{6. NIG Business-Time Drivers}
     For \(L^\pm\), define exponents \(\psi_\pm\) by
@@ -242,6 +252,27 @@
     \]
     where \(\lambda_{\mathrm{stat}}^\pm\) are the stationary side intensities under
     mean-normalized seasonal baseline exposure.
+    They are computed from the full
+    mean stationary Hawkes system, including endogenous descendants and
+    exogenous news excitation:
+    \[
+        \boldsymbol{\lambda}_{\mathrm{stat}}
+        =
+        \left(I-\mathbf{A}_{\alpha}/\beta\right)^{-1}
+        \left(
+            \boldsymbol{\lambda}_0+\boldsymbol{\lambda}_{\mathrm{news}}
+        \right),
+    \]
+    where \(\boldsymbol{\lambda}_0=(\bar{\lambda},\bar{\lambda})^\top\) for the
+    shared-baseline model and \(\boldsymbol{\lambda}_{\mathrm{news}}\) is the
+    mean direct excitation rate induced by coupled news marks. The first-moment
+    long-variance guard requires
+    \[
+        \kappa_z>
+        \chi_+\lambda_{\mathrm{stat}}^+
+        +
+        \chi_-\lambda_{\mathrm{stat}}^-.
+    \]
 
     Baseline return clocks use long-variance exposure:
     \[
@@ -264,7 +295,8 @@
         B_{Z,h}^- + \eta_-E_h^-,
     \]
     with \(\eta_+>0\) and \(\eta_->0\).
-    Calendar seasonality controls baseline event opportunity.
+    Calendar seasonality controls deterministic baseline event opportunity.
+    \(Z_t\) scales realized baseline return-clock exposure around that deterministic opportunity.
     Long variance carries persistent stochastic variance uncertainty.
     Hawkes excitation controls short- and medium-horizon stochastic volatility through
     realized endogenous activity and through event feedback into \(Z_t\).
@@ -333,21 +365,29 @@
     This is the excitation branching condition.
     It is independent of deterministic baseline seasonality because \(s(t)\) does not scale descendant excitation.
 
-    \section*{8. Layer Independence Assumption}
+    \section*{8. Primitive Innovation Independence}
+    The primitive innovation sources are independent before state coupling:
     \[
-        \mathcal{L}\ \perp\!\!\!\perp\ \mathcal{H}\ \perp\!\!\!\perp\ \mathcal{N}\ \perp\!\!\!\perp\ \mathcal{Z},
+        \mathcal{L}^{\mathrm{prim}}\ \perp\!\!\!\perp\ \mathcal{H}^{\mathrm{prim}}\ \perp\!\!\!\perp\ \mathcal{N}^{\mathrm{prim}}\ \perp\!\!\!\perp\ \mathcal{Z}^{\mathrm{prim}},
     \]
-    where \(\mathcal{L}\) is the Lévy layer \((L^+,L^-)\), \(\mathcal{H}\) is the Hawkes-layer primitive innovation source for \(N^\pm\), \(\mathcal{N}\) is the news layer \(\big(N^{\mathrm{news}},\{U_m,\varepsilon_m\}_{m\ge1}\big)\), and \(\mathcal{Z}\) is the Brownian innovation source for long variance.
-    No additional cross-layer dependence is introduced beyond the explicit coupling through \(dJ_t\) in \(dY_t^{ij}\) and through \(dN_t^\pm\) in \(dZ_t\).
+    where \(\mathcal{L}^{\mathrm{prim}}\) contains the Lévy innovations for
+    \((L^+,L^-)\), \(\mathcal{H}^{\mathrm{prim}}\) contains the point-process
+    randomness conditional on the current Hawkes state, \(\mathcal{N}^{\mathrm{prim}}\)
+    contains news arrivals and marks \(\big(N^{\mathrm{news}},\{U_m,Z_m^N\}_{m\ge1}\big)\),
+    and \(\mathcal{Z}^{\mathrm{prim}}\) contains the Brownian innovation for long variance.
+    Realized layers are dependent through the explicit state couplings
+    \(dJ_t\) in \(dY_t^{ij}\), \(dN_t^\pm\) in \(dZ_t\), and \(Z_t\) in the
+    baseline return clocks.
 
     \section*{9. Affine One-Interval Transform}
     For piecewise-constant \(s_h,\nu_h\) on \([0,\Delta]\), with \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\), define
     \[
-        F(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi\mid \mathbf{Y}_0,Z_0)
+        F(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q\mid \mathbf{Y}_0,Z_0)
         =
         \mathbb{E}\!\left[
                         e^{-u_+^B B_Z^+-u_+^E E^+-u_-^B B_Z^--u_-^E E^-+\xi Z_\Delta}\,
                         z_+^{N^+}z_-^{N^-}
+                        e^{q(M_\Delta+G_\Delta)}
                         \mid \mathbf{Y}_0,Z_0
         \right]
         =
@@ -367,6 +407,12 @@
         H_+^E(\mathbf{D},V)=z_+\exp(\mathbf{D}\cdot\mathbf{k}_++V\chi_+)-1-u_+^E,
         \quad
         H_-^E(\mathbf{D},V)=z_-\exp(\mathbf{D}\cdot\mathbf{k}_-+V\chi_-)-1-u_-^E.\\
+        M_c(q,r)
+        =
+        \left(
+            1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+        \right)^{-k_U},\\
+        \ell_c(q,r)=\log M_c(q,r),\\
         \begin{aligned}
             D_{++}'(\tau) &= -\beta D_{++}(\tau) + H_+^E(\mathbf{D}(\tau),V(\tau)),\\
             D_{+-}'(\tau) &= -\beta D_{+-}(\tau) + H_+^E(\mathbf{D}(\tau),V(\tau)),\\
@@ -377,16 +423,23 @@
         =
         -\kappa_z V(\tau)
         +\frac{1}{2}\sigma_z^2V(\tau)^2
-        +s_h\bar{\lambda}\big(
-            H_+^B(\mathbf{D}(\tau),V(\tau))
-            +H_-^B(\mathbf{D}(\tau),V(\tau))
-        \big),\\
+        -s_h\bar{\lambda}\big(u_+^B+u_-^B\big),\\
         C'(\tau)
         =
         \kappa_z\bar z V(\tau)
-        +\nu_h\Big(\big(1-\theta_U(\mathbf{D}(\tau)\cdot\mathbf{r})\big)^{-k_U}-1\Big),\\
+        +s_h\bar{\lambda}\Big(
+            H_+^B(\mathbf{D}(\tau),V(\tau))+u_+^B
+            +H_-^B(\mathbf{D}(\tau),V(\tau))+u_-^B
+        \Big)\\
+        +\nu_h^{\mathrm{known}}\ell_{\mathrm{known}}(q,\mathbf{D}(\tau)\cdot\mathbf{r})
+        +\nu_h^{\mathrm{surprise}}\Big(M_{\mathrm{surprise}}(q,\mathbf{D}(\tau)\cdot\mathbf{r})-1\Big),\\
     \end{gather*}
-    where \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\).
+    where \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\). The
+    known-news term is deterministic-arrival random-mark. Scheduled timestamps
+    are applied at their persisted event times, and \(\nu_h^{\mathrm{known}}\)
+    is only the equivalent interval-rate representation used by piecewise-constant
+    transform storage.
+    The surprise-news term remains compound Poisson.
     Setting \(u_\pm^B=u_\pm^E\) recovers the total integrated-activity query.
     Pricing and sufficient-statistics paths can therefore request either total
     activity or separate baseline and excitation loadings from the same affine
@@ -394,9 +447,29 @@
 
     The domain condition is
     \[
-        \mathbf{D}(\tau)\cdot\mathbf{r}<\frac{1}{\theta_U}\quad\forall\tau\in[0,\Delta],
+        \operatorname{Re}\!\left(
+            (\mathbf{D}(\tau)\cdot\mathbf{r})a_c+qm_c+\frac{1}{2}q^2\sigma_c^2
+        \right)<\frac{1}{\theta_U}\quad\forall c,\tau\in[0,\Delta],
     \]
     together with the long-variance Riccati domain needed to keep \(V(\tau)\) finite.
+
+    The terminal cumulant adapter maps the mathematical moment argument \(v\)
+    into affine activity loadings via the side cumulants:
+    \[
+        a_+(v)=\log\mathbb E[e^{v(L_1^+-m_+)}],
+        \qquad
+        a_-(v)=\log\mathbb E[e^{-v(L_1^--m_-)}].
+    \]
+    With return-clock exposures \(\eta_+,\eta_-\), the affine query receives
+    \[
+        u_+^B=-a_+(v),\qquad
+        u_+^E=-\eta_+a_+(v),\qquad
+        u_-^B=-a_-(v),\qquad
+        u_-^E=-\eta_-a_-(v),\qquad
+        z_+=e^{\gamma_+},\qquad
+        z_-=e^{\gamma_-},\qquad
+        q=v.
+    \]
 
     \section*{10. Terminal Affine Pricing Measure}
     For valuation time \(t\), expiry \(T\), and deterministic anchor component \(d_{t,T}\), write
@@ -416,7 +489,7 @@
             \mid\mathcal F_t
         \right],
     \]
-    evaluated by the affine schedule oracle over the full Hawkes and long-variance state.
+    evaluated by the affine schedule oracle over the full Hawkes, long-variance, and coupled news state.
     The pricing-measure density is
     \[
         M_T(\theta,\gamma_+,\gamma_-)
@@ -447,7 +520,8 @@
         \right).
     \]
     The option-refinement coordinates are the activity-risk premiums
-    \(\gamma_+\) and \(\gamma_-\). The martingale tilt \(\theta\) is derived,
+    \(\gamma_+\) and \(\gamma_-\).
+    The martingale tilt \(\theta\) is derived,
     not fitted.
 
     \section*{11. Sufficient-Statistics Consistency}

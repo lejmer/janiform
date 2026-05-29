@@ -173,6 +173,13 @@ pub enum ExchangeCalendarResolveError {
         exchange_code: String,
         timezone_name: String,
     },
+    NonIncreasingInterval {
+        start_utc_nanos: i64,
+        end_utc_nanos: i64,
+    },
+    TimestampOutOfRange {
+        timestamp_utc_nanos: i64,
+    },
 }
 
 impl ExchangeCalendarResolveError {
@@ -203,6 +210,19 @@ impl Display for ExchangeCalendarResolveError {
                     "invalid timezone `{timezone_name}` configured for exchange `{exchange_code}`"
                 )
             }
+            Self::NonIncreasingInterval {
+                start_utc_nanos,
+                end_utc_nanos,
+            } => write!(
+                formatter,
+                "market-state interval must be increasing, found start={start_utc_nanos} and end={end_utc_nanos}"
+            ),
+            Self::TimestampOutOfRange {
+                timestamp_utc_nanos,
+            } => write!(
+                formatter,
+                "timestamp {timestamp_utc_nanos} is outside supported UTC nanosecond range"
+            ),
         }
     }
 }

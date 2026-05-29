@@ -20,7 +20,6 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
@@ -791,25 +790,23 @@ fn build_news_process_configuration() -> NewsProcessConfiguration {
                 scheduled_event_timestamps_utc_nanos: Vec::new(),
             },
             surprise: SurpriseNewsArrivalConfiguration {
-                baseline_intensity: 0.0,
+                open_baseline_intensity: 0.0,
+                closed_baseline_intensity: 0.0,
             },
         },
         SharedNewsMarkLawConfiguration {
-            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5)
                 .expect("news gamma severity configuration should construct"),
-            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                0.4, 1.3, 1.1,
-            )
-            .expect("news base shock configuration should construct"),
-            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: 0.6,
-            return_jump_scale: 1.2,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 1.2,
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: 0.6,
-            return_jump_scale: 1.2,
+            return_jump_drift: 0.0,
+            return_jump_volatility: 1.2,
         },
     )
     .expect("news process configuration should construct")

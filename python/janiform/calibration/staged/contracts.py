@@ -37,6 +37,7 @@ class CalibrationStage(StrEnum):
     HAWKES = "hawkes"
     RETURN_COMPONENTS = "return_components"
     LONG_VARIANCE = "long_variance"
+    NEWS_SHOCKS = "news_shocks"
     MEAN_REVERSION = "mean_reversion"
     JOINT_REFINEMENT = "joint_refinement"
     OPTION_REFINEMENT = "option_refinement"
