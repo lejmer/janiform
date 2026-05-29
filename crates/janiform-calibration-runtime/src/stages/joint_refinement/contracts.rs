@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_model_kernels::hawkes::HawkesEventSide;
 
@@ -13,126 +15,12 @@ use crate::stages::return_components::{
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
     CalibrationEffortOptions, CalibrationExecutionMode, CalibrationLossTermDiagnostic,
-    CalibrationOptimizerSettings, CalibrationStage, CalibrationStageHandoffTransport,
+    CalibrationOptimizerSettings, CalibrationStage, CalibrationStagePayloadSource,
     CalibrationStageSeedSource, JointRefinementStageCarryInput,
     JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
     JointRefinementStageOptimizerDiagnostics, JointRefinementStageOptionCalibrationDiagnostics,
     JointRefinementStageRestartEvaluationTimingDiagnostic, JointRefinementStageRuntimeProfile,
 };
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum JointRefinementStageHawkesInput {
-    InMemoryOutput {
-        payload: HawkesStageFittedPayload,
-    },
-    PersistedArtifactReference {
-        artifact_reference: String,
-        payload: Option<HawkesStageFittedPayload>,
-    },
-}
-
-impl JointRefinementStageHawkesInput {
-    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
-        match self {
-            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
-            Self::PersistedArtifactReference { .. } => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        }
-    }
-
-    pub fn artifact_reference(&self) -> Option<&str> {
-        match self {
-            Self::InMemoryOutput { .. } => None,
-            Self::PersistedArtifactReference {
-                artifact_reference, ..
-            } => Some(artifact_reference.as_str()),
-        }
-    }
-
-    pub fn payload(&self) -> Option<&HawkesStageFittedPayload> {
-        match self {
-            Self::InMemoryOutput { payload } => Some(payload),
-            Self::PersistedArtifactReference { payload, .. } => payload.as_ref(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum JointRefinementStageReturnComponentsInput {
-    InMemoryOutput {
-        payload: ReturnComponentsStageFittedPayload,
-    },
-    PersistedArtifactReference {
-        artifact_reference: String,
-        payload: Option<ReturnComponentsStageFittedPayload>,
-    },
-}
-
-impl JointRefinementStageReturnComponentsInput {
-    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
-        match self {
-            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
-            Self::PersistedArtifactReference { .. } => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        }
-    }
-
-    pub fn artifact_reference(&self) -> Option<&str> {
-        match self {
-            Self::InMemoryOutput { .. } => None,
-            Self::PersistedArtifactReference {
-                artifact_reference, ..
-            } => Some(artifact_reference.as_str()),
-        }
-    }
-
-    pub fn payload(&self) -> Option<&ReturnComponentsStageFittedPayload> {
-        match self {
-            Self::InMemoryOutput { payload } => Some(payload),
-            Self::PersistedArtifactReference { payload, .. } => payload.as_ref(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum JointRefinementStageMeanReversionInput {
-    InMemoryOutput {
-        payload: MeanReversionStageFittedPayload,
-    },
-    PersistedArtifactReference {
-        artifact_reference: String,
-        payload: Option<MeanReversionStageFittedPayload>,
-    },
-}
-
-impl JointRefinementStageMeanReversionInput {
-    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
-        match self {
-            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
-            Self::PersistedArtifactReference { .. } => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        }
-    }
-
-    pub fn artifact_reference(&self) -> Option<&str> {
-        match self {
-            Self::InMemoryOutput { .. } => None,
-            Self::PersistedArtifactReference {
-                artifact_reference, ..
-            } => Some(artifact_reference.as_str()),
-        }
-    }
-
-    pub fn payload(&self) -> Option<&MeanReversionStageFittedPayload> {
-        match self {
-            Self::InMemoryOutput { payload } => Some(payload),
-            Self::PersistedArtifactReference { payload, .. } => payload.as_ref(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageSeasonalityFactorsInput {
@@ -177,10 +65,12 @@ pub struct JointRefinementStageOptionPricingInput {
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageExecutionInput {
     pub seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput,
-    pub hawkes_input: JointRefinementStageHawkesInput,
-    pub return_components_input: JointRefinementStageReturnComponentsInput,
-    pub mean_reversion_input: JointRefinementStageMeanReversionInput,
+    pub hawkes_input: CalibrationStagePayloadSource<HawkesStageFittedPayload>,
+    pub return_components_input: CalibrationStagePayloadSource<ReturnComponentsStageFittedPayload>,
+    pub mean_reversion_input: CalibrationStagePayloadSource<MeanReversionStageFittedPayload>,
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub calibration_effort: Option<CalibrationEffortOptions>,
     pub restart_candidate_budget_override: Option<usize>,
     pub treat_inadmissible_calibration_warning_as_error: bool,

@@ -54,7 +54,8 @@ pub use data_inputs::{CalibrationRunDataInputs, CalibrationRunDataInputsError};
 pub use handoff_resume::{
     CalibrationResumeSettings, CalibrationResumeSettingsError, CalibrationResumeSource,
     CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffRoute,
-    CalibrationStageHandoffTransport,
+    CalibrationStageHandoffTransport, CalibrationStagePayloadSource,
+    CalibrationStageSelectedCandidateSource,
 };
 pub use objective::{
     CalibrationHardConstraintDiagnostic, CalibrationLossAdmissibility, CalibrationLossEvaluation,

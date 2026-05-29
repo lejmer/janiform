@@ -49,6 +49,9 @@ def run_fit_workflow(
     tick_data_path: str | Path,
     tick_data_format: Optional[CalibrationInputFileFormat],
     tick_data_provenance_label: str,
+    coarse_training_path: Optional[str | Path],
+    coarse_training_format: CalibrationInputFileFormat,
+    coarse_training_provenance_label: str,
     option_surface_path: Optional[str | Path],
     option_surface_format: CalibrationInputFileFormat,
     option_surface_provenance_label: str,
@@ -70,6 +73,9 @@ def run_fit_workflow(
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
+            coarse_training_path=coarse_training_path,
+            coarse_training_format=coarse_training_format,
+            coarse_training_provenance_label=coarse_training_provenance_label,
             option_surface_path=option_surface_path,
             option_surface_format=option_surface_format,
             option_surface_provenance_label=option_surface_provenance_label,
@@ -117,6 +123,9 @@ def prepare_fit_workflow(
     tick_data_path: str | Path,
     tick_data_format: Optional[CalibrationInputFileFormat],
     tick_data_provenance_label: str,
+    coarse_training_path: Optional[str | Path],
+    coarse_training_format: CalibrationInputFileFormat,
+    coarse_training_provenance_label: str,
     option_surface_path: Optional[str | Path],
     option_surface_format: CalibrationInputFileFormat,
     option_surface_provenance_label: str,
@@ -130,6 +139,9 @@ def prepare_fit_workflow(
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
+            coarse_training_path=coarse_training_path,
+            coarse_training_format=coarse_training_format,
+            coarse_training_provenance_label=coarse_training_provenance_label,
             option_surface_path=option_surface_path,
             option_surface_format=option_surface_format,
             option_surface_provenance_label=option_surface_provenance_label,
@@ -163,6 +175,9 @@ def _fit_preparation_request_payload(
     tick_data_path: str | Path,
     tick_data_format: Optional[CalibrationInputFileFormat],
     tick_data_provenance_label: str,
+    coarse_training_path: Optional[str | Path],
+    coarse_training_format: CalibrationInputFileFormat,
+    coarse_training_provenance_label: str,
     option_surface_path: Optional[str | Path],
     option_surface_format: CalibrationInputFileFormat,
     option_surface_provenance_label: str,
@@ -174,6 +189,11 @@ def _fit_preparation_request_payload(
         "tick_data_path": str(Path(tick_data_path)),
         "tick_data_format": _enum_value_or_none(tick_data_format),
         "tick_data_provenance_label": tick_data_provenance_label,
+        "coarse_training_path": (
+            str(Path(coarse_training_path)) if coarse_training_path is not None else None
+        ),
+        "coarse_training_format": _enum_value(coarse_training_format),
+        "coarse_training_provenance_label": coarse_training_provenance_label,
         "option_surface_path": (
             str(Path(option_surface_path)) if option_surface_path is not None else None
         ),
@@ -200,6 +220,11 @@ def _fit_preparation_configuration_payload(
             None
             if preparation.tick_data_column_mapping is None
             else preparation.tick_data_column_mapping.to_payload()
+        ),
+        "coarse_training_column_mapping": (
+            None
+            if preparation.coarse_training_column_mapping is None
+            else preparation.coarse_training_column_mapping.to_payload()
         ),
         "normalization_overrides": asdict(
             normalization_overrides_from_policy(preparation.normalization_policy)
@@ -230,6 +255,9 @@ def _fit_preparation_configuration_payload(
         ),
         "pricing_interval_schedule_policy": (
             preparation.pricing_interval_schedule_policy.to_payload()
+        ),
+        "tick_objective_data_usage_policy": (
+            _enum_value(preparation.tick_objective_data_usage_policy)
         ),
         "dynamics_search_restart_candidate_budget": (
             preparation.dynamics_search_restart_candidate_budget

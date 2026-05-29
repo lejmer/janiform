@@ -180,6 +180,26 @@ Disk execution writes a run directory with the fitted model, fit report, progres
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
+* `--coarse-training-path <PATH>` — Optional coarse historical training file.
+* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
+* `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
+* `--coarse-open-column <COLUMN>` — Coarse data open-price column.
+* `--coarse-high-column <COLUMN>` — Coarse data high-price column.
+* `--coarse-low-column <COLUMN>` — Coarse data low-price column.
+* `--coarse-close-column <COLUMN>` — Coarse data close-price column.
+* `--coarse-volume-column <COLUMN>` — Coarse data volume column.
 * `--tick-timestamp-column <COLUMN>` — Tick timestamp column.
 * `--tick-price-column <COLUMN>` — Tick price column.
 * `--tick-trade-sign-column <COLUMN>` — Tick trade sign column.
@@ -203,6 +223,14 @@ Disk execution writes a run directory with the fitted model, fit report, progres
     Keep the last record for each duplicate key.
 
 * `--keep-tick-source-order` — Keep tick source order instead of sorting by timestamp.
+* `--tick-objective-data-usage-policy <TICK_OBJECTIVE_DATA_USAGE_POLICY>` — Tick data usage policy for slower calibration objectives.
+
+  Possible values:
+  - `short-horizon-window`:
+    Use all ticks for seasonality and Hawkes, and a short recent tick window for slower objectives.
+  - `all-available`:
+    Use all available tick data in every tick-backed calibration objective.
+
 * `--option-surface-path <PATH>` — Observed option surface input file.
 * `--option-surface-format <OPTION_SURFACE_FORMAT>` — Option surface file format.
 
@@ -372,6 +400,26 @@ This command resolves the supplied market-data inputs and calibration scope, the
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
+* `--coarse-training-path <PATH>` — Optional coarse historical training file.
+* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
+* `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
+* `--coarse-open-column <COLUMN>` — Coarse data open-price column.
+* `--coarse-high-column <COLUMN>` — Coarse data high-price column.
+* `--coarse-low-column <COLUMN>` — Coarse data low-price column.
+* `--coarse-close-column <COLUMN>` — Coarse data close-price column.
+* `--coarse-volume-column <COLUMN>` — Coarse data volume column.
 * `--tick-timestamp-column <COLUMN>` — Tick timestamp column.
 * `--tick-price-column <COLUMN>` — Tick price column.
 * `--tick-trade-sign-column <COLUMN>` — Tick trade sign column.
@@ -395,6 +443,14 @@ This command resolves the supplied market-data inputs and calibration scope, the
     Keep the last record for each duplicate key.
 
 * `--keep-tick-source-order` — Keep tick source order instead of sorting by timestamp.
+* `--tick-objective-data-usage-policy <TICK_OBJECTIVE_DATA_USAGE_POLICY>` — Tick data usage policy for slower calibration objectives.
+
+  Possible values:
+  - `short-horizon-window`:
+    Use all ticks for seasonality and Hawkes, and a short recent tick window for slower objectives.
+  - `all-available`:
+    Use all available tick data in every tick-backed calibration objective.
+
 * `--option-surface-path <PATH>` — Observed option surface input file.
 * `--option-surface-format <OPTION_SURFACE_FORMAT>` — Option surface file format.
 
@@ -510,6 +566,26 @@ This command prepares the same calibration plan used by the default fit command,
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
+* `--coarse-training-path <PATH>` — Optional coarse historical training file.
+* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
+* `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
+* `--coarse-open-column <COLUMN>` — Coarse data open-price column.
+* `--coarse-high-column <COLUMN>` — Coarse data high-price column.
+* `--coarse-low-column <COLUMN>` — Coarse data low-price column.
+* `--coarse-close-column <COLUMN>` — Coarse data close-price column.
+* `--coarse-volume-column <COLUMN>` — Coarse data volume column.
 * `--tick-timestamp-column <COLUMN>` — Tick timestamp column.
 * `--tick-price-column <COLUMN>` — Tick price column.
 * `--tick-trade-sign-column <COLUMN>` — Tick trade sign column.
@@ -533,6 +609,14 @@ This command prepares the same calibration plan used by the default fit command,
     Keep the last record for each duplicate key.
 
 * `--keep-tick-source-order` — Keep tick source order instead of sorting by timestamp.
+* `--tick-objective-data-usage-policy <TICK_OBJECTIVE_DATA_USAGE_POLICY>` — Tick data usage policy for slower calibration objectives.
+
+  Possible values:
+  - `short-horizon-window`:
+    Use all ticks for seasonality and Hawkes, and a short recent tick window for slower objectives.
+  - `all-available`:
+    Use all available tick data in every tick-backed calibration objective.
+
 * `--option-surface-path <PATH>` — Observed option surface input file.
 * `--option-surface-format <OPTION_SURFACE_FORMAT>` — Option surface file format.
 
@@ -716,6 +800,26 @@ This command validates fit inputs and writes the prepared input file consumed by
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
+* `--coarse-training-path <PATH>` — Optional coarse historical training file.
+* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
+* `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
+* `--coarse-open-column <COLUMN>` — Coarse data open-price column.
+* `--coarse-high-column <COLUMN>` — Coarse data high-price column.
+* `--coarse-low-column <COLUMN>` — Coarse data low-price column.
+* `--coarse-close-column <COLUMN>` — Coarse data close-price column.
+* `--coarse-volume-column <COLUMN>` — Coarse data volume column.
 * `--tick-timestamp-column <COLUMN>` — Tick timestamp column.
 * `--tick-price-column <COLUMN>` — Tick price column.
 * `--tick-trade-sign-column <COLUMN>` — Tick trade sign column.
@@ -739,6 +843,14 @@ This command validates fit inputs and writes the prepared input file consumed by
     Keep the last record for each duplicate key.
 
 * `--keep-tick-source-order` — Keep tick source order instead of sorting by timestamp.
+* `--tick-objective-data-usage-policy <TICK_OBJECTIVE_DATA_USAGE_POLICY>` — Tick data usage policy for slower calibration objectives.
+
+  Possible values:
+  - `short-horizon-window`:
+    Use all ticks for seasonality and Hawkes, and a short recent tick window for slower objectives.
+  - `all-available`:
+    Use all available tick data in every tick-backed calibration objective.
+
 * `--option-surface-path <PATH>` — Observed option surface input file.
 * `--option-surface-format <OPTION_SURFACE_FORMAT>` — Option surface file format.
 
@@ -1081,6 +1193,26 @@ This command reads a saved Janiform model and an observed option snapshot, then 
     Read JSON.
 
 * `--tick-provenance-label <LABEL>` — Tick data provenance label.
+* `--coarse-training-path <PATH>` — Optional coarse historical training file.
+* `--coarse-training-format <COARSE_TRAINING_FORMAT>` — Coarse historical training file format.
+
+  Possible values:
+  - `csv`:
+    Read comma-separated values.
+  - `parquet`:
+    Read Apache Parquet.
+  - `json`:
+    Read JSON.
+
+* `--coarse-training-provenance-label <LABEL>` — Coarse historical training provenance label.
+* `--coarse-timestamp-column <COLUMN>` — Coarse data timestamp column.
+* `--coarse-interval-start-column <COLUMN>` — Coarse data interval-start column.
+* `--coarse-interval-end-column <COLUMN>` — Coarse data interval-end column.
+* `--coarse-open-column <COLUMN>` — Coarse data open-price column.
+* `--coarse-high-column <COLUMN>` — Coarse data high-price column.
+* `--coarse-low-column <COLUMN>` — Coarse data low-price column.
+* `--coarse-close-column <COLUMN>` — Coarse data close-price column.
+* `--coarse-volume-column <COLUMN>` — Coarse data volume column.
 * `--tick-timestamp-column <COLUMN>` — Tick timestamp column.
 * `--tick-price-column <COLUMN>` — Tick price column.
 * `--tick-trade-sign-column <COLUMN>` — Tick trade sign column.
@@ -1104,6 +1236,14 @@ This command reads a saved Janiform model and an observed option snapshot, then 
     Keep the last record for each duplicate key.
 
 * `--keep-tick-source-order` — Keep tick source order instead of sorting by timestamp.
+* `--tick-objective-data-usage-policy <TICK_OBJECTIVE_DATA_USAGE_POLICY>` — Tick data usage policy for slower calibration objectives.
+
+  Possible values:
+  - `short-horizon-window`:
+    Use all ticks for seasonality and Hawkes, and a short recent tick window for slower objectives.
+  - `all-available`:
+    Use all available tick data in every tick-backed calibration objective.
+
 * `--option-surface-path <PATH>` — Observed option surface input file.
 * `--option-surface-format <OPTION_SURFACE_FORMAT>` — Option surface file format.
 

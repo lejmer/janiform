@@ -29,6 +29,8 @@ use janiform_model_kernels::news::{
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
+use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;
 use super::staged_runner::{
@@ -78,6 +80,10 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    #[serde(default)]
+    pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mean_reversion_stage_input: Option<CalibrationMeanReversionStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -700,6 +706,8 @@ impl CalibrationStagedExecutionInput {
             return_components_candidate_generation_input: self
                 .return_components_candidate_generation_input
                 .map(CalibrationReturnComponentsStageCandidateGenerationInput::into_core),
+            coarse_training_records: self.coarse_training_records,
+            tick_objective_data_usage_policy: self.tick_objective_data_usage_policy,
             mean_reversion_stage_input: self
                 .mean_reversion_stage_input
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
@@ -1263,8 +1271,8 @@ mod tests {
         CalibrationReturnComponentsStageCandidateGenerationInput,
         CalibrationSeasonalityStageExecutionInput, CalibrationSharedNewsMarkLawConfiguration,
         CalibrationStagedExecutionBridgeError, CalibrationStagedExecutionInput,
-        CalibrationStagedExecutionRuntimeResources, CalibrationTimestampEventRecord,
-        HawkesStageObservedSourceRegime,
+        CalibrationStagedExecutionRuntimeResources, CalibrationTickObjectiveDataUsagePolicy,
+        CalibrationTimestampEventRecord, HawkesStageObservedSourceRegime,
     };
     use std::path::PathBuf;
 
@@ -1286,6 +1294,7 @@ mod tests {
             CalibrationRunDataInputs::try_new(
                 "XNYS",
                 "dataset://synthetic/trades/v1",
+                None,
                 Some("dataset://synthetic/options/v1".to_string()),
             )
             .expect("data inputs should validate"),
@@ -1464,6 +1473,9 @@ mod tests {
                     },
                 },
             ),
+            coarse_training_records: None,
+            tick_objective_data_usage_policy:
+                CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             mean_reversion_stage_input: Some(CalibrationMeanReversionStageExecutionInput {
                 calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
                 calibration_grid_interval_hours: 24.0,

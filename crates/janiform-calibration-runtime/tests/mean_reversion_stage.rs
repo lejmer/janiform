@@ -1,12 +1,13 @@
 mod support;
 
-use janiform_calibration_artifacts::{CalibrationExecutionMode, CalibrationStage};
+use janiform_calibration_artifacts::{
+    CalibrationExecutionMode, CalibrationStage, CalibrationStageSelectedCandidateSource,
+};
 use janiform_calibration_runtime::{
     CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
     CalibrationStagedRunStageReport, MeanReversionStageExecutionInput,
-    MeanReversionStageObservation, MeanReversionStageReturnComponentsInput,
-    MeanReversionStageSeasonalityInput, run_mean_reversion_calibration_stage,
-    run_staged_calibration_with_checkpointing,
+    MeanReversionStageObservation, MeanReversionStageSeasonalityInput,
+    run_mean_reversion_calibration_stage, run_staged_calibration_with_checkpointing,
 };
 use support::shared::{
     build_hawkes_stage_success_payload, build_return_components_stage_success_payload,
@@ -63,7 +64,7 @@ fn direct_stage_input(
     observations: Vec<MeanReversionStageObservation>,
 ) -> MeanReversionStageExecutionInput {
     MeanReversionStageExecutionInput {
-        return_components_input: Some(MeanReversionStageReturnComponentsInput::InMemoryOutput {
+        return_components_input: Some(CalibrationStageSelectedCandidateSource::InMemoryOutput {
             selected_candidate_id: "return_candidate_balanced".to_string(),
         }),
         seasonality_stage_input: Some(

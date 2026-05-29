@@ -42,6 +42,11 @@ class CalibrationMarketDataWorkflowScope(StrEnum):
     FULL_WITH_OPTION_SURFACE = "full_with_option_surface"
 
 
+class CalibrationTickObjectiveDataUsagePolicy(StrEnum):
+    SHORT_HORIZON_WINDOW = "short_horizon_window"
+    ALL_AVAILABLE = "all_available"
+
+
 class CalibrationDuplicateRecordPolicy(StrEnum):
     KEEP_FIRST = "keep_first"
     KEEP_LAST = "keep_last"
@@ -562,6 +567,69 @@ class CalibrationTickDataColumnMapping(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class CalibrationCoarseTrainingColumnMapping(ContractModel):
+    timestamp_column: Optional[str] = None
+    interval_start_column: Optional[str] = None
+    interval_end_column: Optional[str] = None
+    open_column: Optional[str] = None
+    high_column: Optional[str] = None
+    low_column: Optional[str] = None
+    close_column: Optional[str] = None
+    volume_column: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        for field_name, field_value in (
+            ("timestamp_column", self.timestamp_column),
+            ("interval_start_column", self.interval_start_column),
+            ("interval_end_column", self.interval_end_column),
+            ("open_column", self.open_column),
+            ("high_column", self.high_column),
+            ("low_column", self.low_column),
+            ("close_column", self.close_column),
+            ("volume_column", self.volume_column),
+        ):
+            if field_value is not None and not field_value.strip():
+                raise calibration_error(field_name, "must be non-empty when provided")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationCoarseTrainingColumnMapping:
+        if not isinstance(raw_payload, dict):
+            raise calibration_error(field_path, "must be an object")
+
+        raw_optional_fields = {
+            "timestamp_column": raw_payload.get("timestamp_column"),
+            "interval_start_column": raw_payload.get("interval_start_column"),
+            "interval_end_column": raw_payload.get("interval_end_column"),
+            "open_column": raw_payload.get("open_column"),
+            "high_column": raw_payload.get("high_column"),
+            "low_column": raw_payload.get("low_column"),
+            "close_column": raw_payload.get("close_column"),
+            "volume_column": raw_payload.get("volume_column"),
+        }
+        for field_name, field_value in raw_optional_fields.items():
+            if field_value is not None and not isinstance(field_value, str):
+                raise calibration_error(
+                    f"{field_path}.{field_name}",
+                    "must be a string when provided",
+                )
+
+        return CalibrationCoarseTrainingColumnMapping(
+            timestamp_column=raw_optional_fields["timestamp_column"],
+            interval_start_column=raw_optional_fields["interval_start_column"],
+            interval_end_column=raw_optional_fields["interval_end_column"],
+            open_column=raw_optional_fields["open_column"],
+            high_column=raw_optional_fields["high_column"],
+            low_column=raw_optional_fields["low_column"],
+            close_column=raw_optional_fields["close_column"],
+            volume_column=raw_optional_fields["volume_column"],
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CalibrationOptionSurfaceColumnMapping(ContractModel):
     quote_timestamp_column: Optional[str] = None
     expiry_timestamp_column: Optional[str] = None
@@ -678,6 +746,7 @@ class CalibrationMarketDataColumnMapping(ContractModel):
     tick_data: CalibrationTickDataColumnMapping = field(
         default_factory=CalibrationTickDataColumnMapping
     )
+    coarse_training: Optional[CalibrationCoarseTrainingColumnMapping] = None
     option_surface: Optional[CalibrationOptionSurfaceColumnMapping] = None
     known_news: Optional[CalibrationKnownNewsColumnMapping] = None
 
@@ -699,6 +768,20 @@ class CalibrationMarketDataColumnMapping(ContractModel):
                 )
                 if "tick_data" in raw_payload and raw_payload["tick_data"] is not None
                 else CalibrationTickDataColumnMapping()
+            ),
+            coarse_training=(
+                CalibrationCoarseTrainingColumnMapping.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "coarse_training",
+                        f"{field_path}.coarse_training",
+                        calibration_error,
+                    ),
+                    field_path=f"{field_path}.coarse_training",
+                )
+                if "coarse_training" in raw_payload
+                and raw_payload["coarse_training"] is not None
+                else None
             ),
             option_surface=(
                 CalibrationOptionSurfaceColumnMapping.from_mapping(
@@ -992,6 +1075,7 @@ def validate_known_news_inputs(
 __all__ = [
     "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
     "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+    "CalibrationCoarseTrainingColumnMapping",
     "CalibrationDuplicateRecordPolicy",
     "CalibrationFlatCarryInput",
     "CalibrationExecutionMode",
@@ -1011,6 +1095,7 @@ __all__ = [
     "CalibrationOptionSurfaceColumnMapping",
     "CalibrationSessionConfigurationInput",
     "CalibrationTickDataColumnMapping",
+    "CalibrationTickObjectiveDataUsagePolicy",
     "CalibrationTickPriceInputPolicy",
     "CalibrationTradeSign",
     "validate_known_news_inputs",

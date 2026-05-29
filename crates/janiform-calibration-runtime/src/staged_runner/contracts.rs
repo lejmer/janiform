@@ -19,6 +19,8 @@ use super::{
 };
 use crate::JointRefinementStageOptionPricingInput;
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
+use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 use crate::stages::joint_refinement::JointRefinementProgressCandidateAssessment;
 use serde::{Serialize, Serializer};
 
@@ -28,6 +30,8 @@ pub struct CalibrationStagedRunInputs {
     pub hawkes_candidate_inputs: Option<Vec<HawkesStageCandidateInput>>,
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
+    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
     pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
     pub joint_refinement_restart_candidate_budget_override: Option<usize>,
@@ -272,17 +276,18 @@ fn checkpoint_components_from_metadata<M: CalibrationStageExecutionMetadataForCh
 }
 
 impl CalibrationStagedRunStageReport {
-    pub(super) const fn stage(&self) -> CalibrationStage {
+    /// Return the calibration stage represented by this stage report.
+    pub const fn stage(&self) -> CalibrationStage {
         match self {
-            Self::Seasonality(_) => CalibrationStage::Seasonality,
-            Self::Hawkes(_) => CalibrationStage::Hawkes,
-            Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
-            Self::LongVariance(_) => CalibrationStage::LongVariance,
-            Self::NewsShocks(_) => CalibrationStage::NewsShocks,
-            Self::MeanReversion(_) => CalibrationStage::MeanReversion,
-            Self::JointRefinement(_) => CalibrationStage::JointRefinement,
-            Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
-            Self::Finalization(_) => CalibrationStage::Finalization,
+            Self::Seasonality(report) => report.stage,
+            Self::Hawkes(report) => report.stage,
+            Self::ReturnComponents(report) => report.stage,
+            Self::LongVariance(report) => report.stage,
+            Self::NewsShocks(report) => report.stage,
+            Self::MeanReversion(report) => report.stage,
+            Self::JointRefinement(report) => report.stage,
+            Self::OptionRefinement(report) => report.stage,
+            Self::Finalization(report) => report.stage,
         }
     }
 

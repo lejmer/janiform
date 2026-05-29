@@ -92,6 +92,16 @@ pub(crate) enum PriceCoordinatePolicyOption {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum TickObjectiveDataUsagePolicyOption {
+    #[value(
+        help = "Use all ticks for seasonality and Hawkes, and a short recent tick window for slower objectives."
+    )]
+    ShortHorizonWindow,
+    #[value(help = "Use all available tick data in every tick-backed calibration objective.")]
+    AllAvailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum DuplicateRecordPolicy {
     #[value(help = "Keep the first record for each duplicate key.")]
     KeepFirst,
@@ -193,6 +203,51 @@ When omitted, Janiform may infer a bundled market profile from the tick-data fil
     #[arg(long, value_name = "LABEL", help = "Tick data provenance label.")]
     pub(crate) tick_provenance_label: Option<String>,
 
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional coarse historical training file."
+    )]
+    pub(crate) coarse_training_path: Option<PathBuf>,
+
+    #[arg(long, value_enum, help = "Coarse historical training file format.")]
+    pub(crate) coarse_training_format: Option<InputFileFormat>,
+
+    #[arg(
+        long,
+        value_name = "LABEL",
+        help = "Coarse historical training provenance label."
+    )]
+    pub(crate) coarse_training_provenance_label: Option<String>,
+
+    #[arg(long, value_name = "COLUMN", help = "Coarse data timestamp column.")]
+    pub(crate) coarse_timestamp_column: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "COLUMN",
+        help = "Coarse data interval-start column."
+    )]
+    pub(crate) coarse_interval_start_column: Option<String>,
+
+    #[arg(long, value_name = "COLUMN", help = "Coarse data interval-end column.")]
+    pub(crate) coarse_interval_end_column: Option<String>,
+
+    #[arg(long, value_name = "COLUMN", help = "Coarse data open-price column.")]
+    pub(crate) coarse_open_column: Option<String>,
+
+    #[arg(long, value_name = "COLUMN", help = "Coarse data high-price column.")]
+    pub(crate) coarse_high_column: Option<String>,
+
+    #[arg(long, value_name = "COLUMN", help = "Coarse data low-price column.")]
+    pub(crate) coarse_low_column: Option<String>,
+
+    #[arg(long, value_name = "COLUMN", help = "Coarse data close-price column.")]
+    pub(crate) coarse_close_column: Option<String>,
+
+    #[arg(long, value_name = "COLUMN", help = "Coarse data volume column.")]
+    pub(crate) coarse_volume_column: Option<String>,
+
     #[arg(long, value_name = "COLUMN", help = "Tick timestamp column.")]
     pub(crate) tick_timestamp_column: Option<String>,
 
@@ -219,6 +274,13 @@ When omitted, Janiform may infer a bundled market profile from the tick-data fil
 
     #[arg(long, help = "Keep tick source order instead of sorting by timestamp.")]
     pub(crate) keep_tick_source_order: bool,
+
+    #[arg(
+        long,
+        value_enum,
+        help = "Tick data usage policy for slower calibration objectives."
+    )]
+    pub(crate) tick_objective_data_usage_policy: Option<TickObjectiveDataUsagePolicyOption>,
 
     #[arg(
         long,

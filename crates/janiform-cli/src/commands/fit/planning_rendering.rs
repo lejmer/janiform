@@ -49,6 +49,15 @@ pub(crate) fn render_plan_human(
                 ),
                 KeyValueRow::new("Ticks", format_path(&prepared.inputs.tick_data_path)),
                 KeyValueRow::new(
+                    "Coarse",
+                    prepared
+                        .inputs
+                        .coarse_training_path
+                        .as_deref()
+                        .map(format_path)
+                        .unwrap_or_else(|| "none".to_string()),
+                ),
+                KeyValueRow::new(
                     "Options",
                     prepared
                         .inputs
@@ -90,6 +99,15 @@ pub(crate) fn render_inspect_human(
             rows: vec![
                 KeyValueRow::new("Run", prepared.request.run_id.clone()),
                 KeyValueRow::new("Ticks", format_path(&prepared.inputs.tick_data_path)),
+                KeyValueRow::new(
+                    "Coarse",
+                    prepared
+                        .inputs
+                        .coarse_training_path
+                        .as_deref()
+                        .map(format_path)
+                        .unwrap_or_else(|| "none".to_string()),
+                ),
             ],
         }
         .render(&renderer),

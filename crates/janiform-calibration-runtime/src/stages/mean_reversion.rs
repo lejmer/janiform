@@ -11,8 +11,8 @@ use janiform_calibration_artifacts::{
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
-    MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
-    MeanReversionStageDiagnostics,
+    CalibrationStageSelectedCandidateSource, MeanReversionStageCalibrationGrid,
+    MeanReversionStageCandidateDiagnostics, MeanReversionStageDiagnostics,
 };
 use janiform_foundations::numeric::{GOLDEN_RATIO, clamp_to_unit_interval, coverage_ratio};
 use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
@@ -79,23 +79,6 @@ fn mean_reversion_flat_anchor_required_source_observation_count() -> usize {
     FLAT_ANCHOR_MEAN_REVERSION_IDENTIFIABLE_PARAMETER_COUNT.saturating_add(1)
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum MeanReversionStageReturnComponentsInput {
-    InMemoryOutput { selected_candidate_id: String },
-    PersistedArtifactReference { artifact_reference: String },
-}
-
-impl MeanReversionStageReturnComponentsInput {
-    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
-        match self {
-            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
-            Self::PersistedArtifactReference { .. } => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MeanReversionStageObservation {
     pub observation_timestamp_utc_nanos: i64,
@@ -127,7 +110,7 @@ impl MeanReversionStageSeasonalityInput {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeanReversionStageExecutionInput {
-    pub return_components_input: Option<MeanReversionStageReturnComponentsInput>,
+    pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
     pub seasonality_stage_input: Option<MeanReversionStageSeasonalityInput>,
     pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
@@ -251,10 +234,10 @@ pub fn run_mean_reversion_calibration_stage(
 
     let (return_components_selected_candidate_id, return_components_artifact_reference) =
         match return_components_input {
-            MeanReversionStageReturnComponentsInput::InMemoryOutput {
+            CalibrationStageSelectedCandidateSource::InMemoryOutput {
                 selected_candidate_id,
             } => (Some(selected_candidate_id.clone()), None),
-            MeanReversionStageReturnComponentsInput::PersistedArtifactReference {
+            CalibrationStageSelectedCandidateSource::PersistedArtifactReference {
                 artifact_reference,
             } => (None, Some(artifact_reference.clone())),
         };

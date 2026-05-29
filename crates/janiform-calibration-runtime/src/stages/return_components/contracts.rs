@@ -14,7 +14,7 @@ use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    CalibrationStageHandoffTransport, CalibrationStagePayloadSource, CalibrationStageSeedSource,
     ReturnComponentsStageFittedParameters, TickGridObservationModel,
 };
 use janiform_market_time::calendar::MarketState;
@@ -2297,58 +2297,10 @@ impl ReturnComponentsStageCandidateInput {
     }
 }
 
-/// Upstream activity-side handoff input resolved for return-components-stage execution.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ReturnComponentsStageActivityInput {
-    InMemoryOutput {
-        payload: HawkesStageFittedPayload,
-    },
-    PersistedArtifactReference {
-        artifact_reference: String,
-        payload: Option<HawkesStageFittedPayload>,
-    },
-}
-
-impl ReturnComponentsStageActivityInput {
-    pub(super) fn transport(&self) -> CalibrationStageHandoffTransport {
-        match self {
-            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
-            Self::PersistedArtifactReference { .. } => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        }
-    }
-
-    pub(super) fn artifact_reference(&self) -> Option<&str> {
-        match self {
-            Self::InMemoryOutput { .. } => None,
-            Self::PersistedArtifactReference {
-                artifact_reference, ..
-            } => Some(artifact_reference),
-        }
-    }
-
-    pub(super) fn selected_hawkes_candidate_id(&self) -> Option<&str> {
-        match self {
-            Self::InMemoryOutput { payload } => Some(payload.selected_candidate_id.as_str()),
-            Self::PersistedArtifactReference { payload, .. } => payload
-                .as_ref()
-                .map(|payload| payload.selected_candidate_id.as_str()),
-        }
-    }
-
-    pub(super) fn hawkes_payload(&self) -> Option<&HawkesStageFittedPayload> {
-        match self {
-            Self::InMemoryOutput { payload } => Some(payload),
-            Self::PersistedArtifactReference { payload, .. } => payload.as_ref(),
-        }
-    }
-}
-
 /// Input payload for standalone or pipeline-integrated return-components-stage execution.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnComponentsStageExecutionInput {
-    pub activity_input: ReturnComponentsStageActivityInput,
+    pub activity_input: CalibrationStagePayloadSource<HawkesStageFittedPayload>,
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
 }
 
@@ -2358,7 +2310,7 @@ impl ReturnComponentsStageExecutionInput {
         candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     ) -> Self {
         Self {
-            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+            activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
             },
             candidate_generation_input,
@@ -2382,7 +2334,7 @@ impl ReturnComponentsStageExecutionInput {
         candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     ) -> Self {
         Self {
-            activity_input: ReturnComponentsStageActivityInput::PersistedArtifactReference {
+            activity_input: CalibrationStagePayloadSource::PersistedArtifactReference {
                 artifact_reference: artifact_reference.into(),
                 payload: hawkes_payload,
             },

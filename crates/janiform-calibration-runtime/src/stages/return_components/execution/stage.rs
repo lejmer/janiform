@@ -760,8 +760,8 @@ fn build_return_components_stage_success_report(
         activity_selected_hawkes_candidate_id: match stage_input.activity_input.transport() {
             CalibrationStageHandoffTransport::InMemoryOutput => stage_input
                 .activity_input
-                .selected_hawkes_candidate_id()
-                .map(ToOwned::to_owned),
+                .payload()
+                .map(|payload| payload.selected_candidate_id.clone()),
             CalibrationStageHandoffTransport::PersistedArtifactReference => None,
         },
         activity_artifact_reference: stage_input

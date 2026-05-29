@@ -8,6 +8,7 @@ from ....pricing import PricingIntervalSchedulePolicy
 from ...diagnostics import CalibrationDiagnosticsRequest
 from ...effort import CalibrationEffortOptions
 from ...market_data.contracts import (
+    CalibrationCoarseTrainingColumnMapping,
     CalibrationKnownNewsColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
@@ -16,6 +17,7 @@ from ...market_data.contracts import (
     CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
+    CalibrationTickObjectiveDataUsagePolicy,
 )
 from ...market_data.price_coordinates import (
     OptionForwardParityWarningPolicy,
@@ -56,6 +58,7 @@ class PreparedFitWorkflow:
 class FitPreparationConfiguration:
     workflow_scope_override: Optional[CalibrationMarketDataWorkflowScope]
     tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping]
+    coarse_training_column_mapping: Optional[CalibrationCoarseTrainingColumnMapping]
     normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy]
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping]
     price_coordinate_policy: PriceCoordinatePolicy
@@ -65,6 +68,7 @@ class FitPreparationConfiguration:
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
+    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy
     dynamics_search_restart_candidate_budget: Optional[int]
     calibration_effort: CalibrationEffortOptions
     treat_calibration_warnings_as_errors: bool

@@ -13,39 +13,36 @@ pub(super) use crate::diagnostics::types::{
 };
 pub(super) use crate::stages::hawkes::{
     HawkesStageCandidateInput, HawkesStageExecutionInput, HawkesStageExecutionMetadata,
-    HawkesStageExecutionReport, HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
+    HawkesStageExecutionReport, HawkesStageFittedPayload, HawkesStageSeasonalityInput,
+    run_hawkes_calibration_stage,
 };
 pub(super) use crate::stages::joint_refinement::{
     FinalizationCalibrationStageEntrypointInput, JointRefinementStageExecutionInput,
     JointRefinementStageExecutionMetadata, JointRefinementStageExecutionReport,
-    JointRefinementStageHawkesInput, JointRefinementStageMeanReversionInput,
     JointRefinementStageOptionPricingInput, JointRefinementStageProgressPhase,
-    JointRefinementStageProgressUpdate, JointRefinementStageReturnComponentsInput,
-    JointRefinementStageRuntimeHandoff, JointRefinementStageSeasonalityFactorsInput,
+    JointRefinementStageProgressUpdate, JointRefinementStageRuntimeHandoff,
+    JointRefinementStageSeasonalityFactorsInput,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,
 };
 pub(super) use crate::stages::long_variance::{
     LongVarianceStageExecutionInput, LongVarianceStageExecutionMetadata,
-    LongVarianceStageExecutionReport, LongVarianceStageReturnComponentsInput,
-    run_long_variance_calibration_stage,
+    LongVarianceStageExecutionReport, run_long_variance_calibration_stage,
 };
 pub(super) use crate::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
-    MeanReversionStageExecutionReport, MeanReversionStageReturnComponentsInput,
-    run_mean_reversion_calibration_stage,
+    MeanReversionStageExecutionReport, run_mean_reversion_calibration_stage,
 };
 pub(super) use crate::stages::news_shocks::{
     NewsShocksStageExecutionInput, NewsShocksStageExecutionMetadata,
-    NewsShocksStageExecutionReport, NewsShocksStageReturnComponentsInput,
-    run_news_shocks_calibration_stage,
+    NewsShocksStageExecutionReport, run_news_shocks_calibration_stage,
 };
 pub(super) use crate::stages::return_components::{
-    ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateGenerationInput,
-    ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionMetadata,
-    ReturnComponentsStageExecutionReport, ReturnComponentsStageProgressPhase,
-    ReturnComponentsStageProgressUpdate, run_return_components_calibration_stage,
+    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionInput,
+    ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
+    ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
+    run_return_components_calibration_stage,
     run_return_components_calibration_stage_with_progress_observer,
 };
 pub(super) use crate::stages::seasonality::{
@@ -67,7 +64,8 @@ pub(super) use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
     CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
     CalibrationStageParameterOptimizerStateInput, CalibrationStageParameterPayload,
-    CalibrationStageSeedSource, calibration_stage_artifact_reference,
+    CalibrationStagePayloadSource, CalibrationStageSeedSource,
+    CalibrationStageSelectedCandidateSource, calibration_stage_artifact_reference,
     stage_output_artifact_references_for_stage,
 };
 pub(super) use janiform_market_time::calendar::ExchangeCalendarRegistry;

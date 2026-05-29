@@ -161,6 +161,7 @@ pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
     CalibrationRunDataInputs::try_new(
         "XNYS",
         "dataset://synthetic/trades/v1",
+        None,
         Some("dataset://synthetic/options/v1".to_string()),
     )
     .expect("data inputs should validate")

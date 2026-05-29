@@ -14,6 +14,8 @@ pub struct MarketDataLoadingRequest {
     pub trade_events_data_reference: String,
     pub tick_data_source: MarketDataInputFileReference,
     pub tick_data_column_mapping: MarketDataTickDataColumnMapping,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coarse_training_input: Option<MarketDataCoarseTrainingLoadingInput>,
     pub normalization_policy: MarketDataNormalizationPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
@@ -64,6 +66,41 @@ pub struct MarketDataTickDataColumnMapping {
     pub bid_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ask_column: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataCoarseTrainingLoadingInput {
+    pub source: MarketDataInputFileReference,
+    pub column_mapping: MarketDataCoarseTrainingColumnMapping,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataCoarseTrainingColumnMapping {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_start_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_end_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub high_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub low_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume_column: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketDataCoarseTrainingKind {
+    Ohlcv,
+    CloseOnly,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -256,6 +293,10 @@ pub struct MarketDataLoadingOutput {
     pub preprocessing_output: MarketDataTranslationPreprocessingOutput,
     pub tick_data_summary: MarketDataSourceSummary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coarse_training_summary: Option<MarketDataCoarseTrainingSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub option_surface_summary: Option<MarketDataSourceSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub option_surface_records: Option<Vec<MarketDataNormalizedOptionSurfaceRecord>>,
@@ -297,6 +338,45 @@ pub struct MarketDataNormalizedTickOutput {
 pub struct MarketDataNormalizedOptionSurfaceOutput {
     pub option_surface_records: Vec<MarketDataNormalizedOptionSurfaceRecord>,
     pub option_surface_summary: MarketDataSourceSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataCoarseTrainingSummary {
+    pub source_summary: MarketDataSourceSummary,
+    pub inferred_kind: MarketDataCoarseTrainingKind,
+    pub resolved_column_mapping: MarketDataCoarseTrainingColumnMapping,
+    pub timestamp_semantics: String,
+    pub interval_inference_policy: String,
+    pub nominal_interval_nanos: i64,
+    pub retained_return_interval_count: usize,
+    pub retained_mean_reversion_observation_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataNormalizedCoarseTrainingRecord {
+    pub interval_start_utc_nanos: i64,
+    pub interval_end_utc_nanos: i64,
+    pub observation_timestamp_utc_nanos: i64,
+    pub close_price: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub high_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub low_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_to_close_log_return: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_to_close_log_return: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_to_open_gap_log_return: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub high_low_log_range: Option<f64>,
+    pub source_row_number: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

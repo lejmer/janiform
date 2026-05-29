@@ -2,13 +2,13 @@ use std::path::Path;
 
 use super::super::{
     CalibrationInMemoryStagePayloadState, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunStageProgressEvent,
-    CalibrationStagedRunStageReport, ExchangeCalendarRegistry, JointRefinementStageExecutionInput,
-    JointRefinementStageHawkesInput, JointRefinementStageMeanReversionInput,
+    CalibrationStageHandoffTransport, CalibrationStagePayloadSource, CalibrationStagedRunFailure,
+    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
+    ExchangeCalendarRegistry, JointRefinementStageExecutionInput,
     JointRefinementStageOptionPricingInput, JointRefinementStageProgressUpdate,
-    JointRefinementStageReturnComponentsInput, JointRefinementStageRuntimeHandoff,
-    JointRefinementStageSeasonalityFactorsInput, ReturnComponentsStageCandidateGenerationInput,
+    JointRefinementStageRuntimeHandoff, JointRefinementStageSeasonalityFactorsInput,
+    ReturnComponentsStageCandidateGenerationInput,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,
@@ -158,21 +158,30 @@ pub(super) fn joint_refinement_like_stage_input(
             consuming_stage,
             payload_state,
         )?,
-        hawkes_input: joint_refinement_hawkes_input(run_spec, consuming_stage, payload_state)?,
-        return_components_input: joint_refinement_return_components_input(
+        hawkes_input: joint_refinement_payload_source(
             run_spec,
+            CalibrationStage::Hawkes,
             consuming_stage,
-            payload_state,
+            &payload_state.hawkes_stage_payload,
         )?,
-        mean_reversion_input: joint_refinement_mean_reversion_input(
+        return_components_input: joint_refinement_payload_source(
             run_spec,
+            CalibrationStage::ReturnComponents,
             consuming_stage,
-            payload_state,
+            &payload_state.return_components_stage_payload,
+        )?,
+        mean_reversion_input: joint_refinement_payload_source(
+            run_spec,
+            CalibrationStage::MeanReversion,
+            consuming_stage,
+            &payload_state.mean_reversion_stage_payload,
         )?,
         candidate_generation_input: joint_refinement_candidate_generation_input(
             consuming_stage,
             staged_run_inputs,
         )?,
+        coarse_training_records: staged_run_inputs.coarse_training_records.clone(),
+        tick_objective_data_usage_policy: staged_run_inputs.tick_objective_data_usage_policy,
         calibration_effort: staged_run_inputs.joint_refinement_calibration_effort,
         restart_candidate_budget_override: staged_run_inputs
             .joint_refinement_restart_candidate_budget_override,
@@ -218,101 +227,30 @@ fn joint_refinement_candidate_generation_input(
     Ok(candidate_generation_input)
 }
 
-fn joint_refinement_hawkes_input(
+fn joint_refinement_payload_source<T: Clone>(
     run_spec: &CalibrationRunSpec,
+    upstream_stage: CalibrationStage,
     consuming_stage: CalibrationStage,
-    payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<JointRefinementStageHawkesInput, CalibrationStagedRunFailure> {
-    let hawkes_stage_payload = cloned_in_memory_stage_payload(
-        &payload_state.hawkes_stage_payload,
-        CalibrationStage::Hawkes,
-        consuming_stage,
-    )?;
+    payload: &Option<T>,
+) -> Result<CalibrationStagePayloadSource<T>, CalibrationStagedRunFailure> {
+    let stage_payload = cloned_in_memory_stage_payload(payload, upstream_stage, consuming_stage)?;
 
-    match expected_stage_handoff_transport(run_spec, CalibrationStage::Hawkes, consuming_stage) {
+    match expected_stage_handoff_transport(run_spec, upstream_stage, consuming_stage) {
         CalibrationStageHandoffTransport::InMemoryOutput => {
-            Ok(JointRefinementStageHawkesInput::InMemoryOutput {
-                payload: hawkes_stage_payload,
+            Ok(CalibrationStagePayloadSource::InMemoryOutput {
+                payload: stage_payload,
             })
         }
-        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
-            JointRefinementStageHawkesInput::PersistedArtifactReference {
+        CalibrationStageHandoffTransport::PersistedArtifactReference => {
+            Ok(CalibrationStagePayloadSource::PersistedArtifactReference {
                 artifact_reference: expected_stage_handoff_artifact_reference(
                     run_spec,
-                    CalibrationStage::Hawkes,
+                    upstream_stage,
                     consuming_stage,
                 ),
-                payload: Some(hawkes_stage_payload),
-            },
-        ),
-    }
-}
-
-fn joint_refinement_return_components_input(
-    run_spec: &CalibrationRunSpec,
-    consuming_stage: CalibrationStage,
-    payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<JointRefinementStageReturnComponentsInput, CalibrationStagedRunFailure> {
-    let return_components_stage_payload = cloned_in_memory_stage_payload(
-        &payload_state.return_components_stage_payload,
-        CalibrationStage::ReturnComponents,
-        consuming_stage,
-    )?;
-
-    match expected_stage_handoff_transport(
-        run_spec,
-        CalibrationStage::ReturnComponents,
-        consuming_stage,
-    ) {
-        CalibrationStageHandoffTransport::InMemoryOutput => {
-            Ok(JointRefinementStageReturnComponentsInput::InMemoryOutput {
-                payload: return_components_stage_payload,
+                payload: Some(stage_payload),
             })
         }
-        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
-            JointRefinementStageReturnComponentsInput::PersistedArtifactReference {
-                artifact_reference: expected_stage_handoff_artifact_reference(
-                    run_spec,
-                    CalibrationStage::ReturnComponents,
-                    consuming_stage,
-                ),
-                payload: Some(return_components_stage_payload),
-            },
-        ),
-    }
-}
-
-fn joint_refinement_mean_reversion_input(
-    run_spec: &CalibrationRunSpec,
-    consuming_stage: CalibrationStage,
-    payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<JointRefinementStageMeanReversionInput, CalibrationStagedRunFailure> {
-    let mean_reversion_stage_payload = cloned_in_memory_stage_payload(
-        &payload_state.mean_reversion_stage_payload,
-        CalibrationStage::MeanReversion,
-        consuming_stage,
-    )?;
-
-    match expected_stage_handoff_transport(
-        run_spec,
-        CalibrationStage::MeanReversion,
-        consuming_stage,
-    ) {
-        CalibrationStageHandoffTransport::InMemoryOutput => {
-            Ok(JointRefinementStageMeanReversionInput::InMemoryOutput {
-                payload: mean_reversion_stage_payload,
-            })
-        }
-        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
-            JointRefinementStageMeanReversionInput::PersistedArtifactReference {
-                artifact_reference: expected_stage_handoff_artifact_reference(
-                    run_spec,
-                    CalibrationStage::MeanReversion,
-                    consuming_stage,
-                ),
-                payload: Some(mean_reversion_stage_payload),
-            },
-        ),
     }
 }
 

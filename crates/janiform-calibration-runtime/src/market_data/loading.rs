@@ -1,5 +1,7 @@
 mod bundled_sessions;
 mod calendar_materialization;
+mod coarse_data;
+mod coarse_intervals;
 pub(super) mod column_resolution;
 mod contracts;
 mod known_news;
@@ -16,19 +18,21 @@ mod test_support;
 
 pub use calendar_materialization::build_market_data_session_definition_json;
 pub use contracts::{
-    DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD, MarketDataDuplicateRecordPolicy,
-    MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
-    MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataLoadingOutput,
-    MarketDataLoadingRequest, MarketDataNormalizationPolicy,
-    MarketDataNormalizedOptionSurfaceOutput, MarketDataNormalizedOptionSurfaceRecord,
-    MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
-    MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
-    MarketDataSessionConfiguration, MarketDataSessionRecurringClosedWindowPayload,
-    MarketDataSessionRegularWindowPayload, MarketDataSessionResolutionPayload,
-    MarketDataSourceProbePayload, MarketDataSourceSummary, MarketDataTickDataColumnMapping,
-    MarketDataTickPriceInputPolicy, OptionForwardParityCheck, OptionForwardParityWarningPolicy,
-    PriceCoordinatePolicy, ResolvedPriceCoordinate, ResolvedPriceCoordinateSet,
-    ResolvedRollAdjustmentEvidence,
+    DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD,
+    MarketDataCoarseTrainingColumnMapping, MarketDataCoarseTrainingKind,
+    MarketDataCoarseTrainingLoadingInput, MarketDataCoarseTrainingSummary,
+    MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
+    MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingError,
+    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizationPolicy,
+    MarketDataNormalizedCoarseTrainingRecord, MarketDataNormalizedOptionSurfaceOutput,
+    MarketDataNormalizedOptionSurfaceRecord, MarketDataNormalizedTickOutput,
+    MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
+    MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
+    MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
+    MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy, OptionForwardParityCheck,
+    OptionForwardParityWarningPolicy, PriceCoordinatePolicy, ResolvedPriceCoordinate,
+    ResolvedPriceCoordinateSet, ResolvedRollAdjustmentEvidence,
 };
 pub use pipeline::{
     infer_market_data_option_quote_input_policy, infer_market_data_tick_price_input_policy,

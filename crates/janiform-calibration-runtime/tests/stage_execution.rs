@@ -8,13 +8,12 @@ use support::shared::{
     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
     CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageExecutionStatus, CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+    CalibrationStageExecutionStatus, CalibrationStagePayloadSource, CalibrationStageSeedOverride,
+    CalibrationStageSolverSettings, CalibrationTickObjectiveDataUsagePolicy,
     HawkesKernelValidationStatus, HawkesStageExecutionFailure, HawkesStageExecutionInput,
     HawkesStructuredAlphaParameterization, JointRefinementStageExecutionFailure,
     JointRefinementStageExecutionInput, JointRefinementStageFittedPayload,
-    JointRefinementStageHawkesInput, JointRefinementStageMeanReversionInput,
-    JointRefinementStageReturnComponentsInput, JointRefinementStageSeasonalityFactorsInput,
-    ReturnComponentsStageActivityInput, ReturnComponentsStageExecutionFailure,
+    JointRefinementStageSeasonalityFactorsInput, ReturnComponentsStageExecutionFailure,
     ReturnComponentsStageExecutionInput, SeasonalityStageExecutionFailure,
     SeasonalityStageExecutionInput, build_data_inputs, build_hawkes_stage_run_spec,
     build_hawkes_stage_success_payload, build_mean_reversion_stage_success_payload,
@@ -295,7 +294,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         &memory_run_spec,
         &calendar_registry,
         ReturnComponentsStageExecutionInput {
-            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+            activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
@@ -317,16 +316,19 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                 day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
             },
-            hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+            hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
-            return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+            return_components_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: return_components_payload.clone(),
             },
-            mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+            mean_reversion_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            coarse_training_records: None,
+            tick_objective_data_usage_policy:
+                CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
             restart_candidate_budget_override: Some(1),
             treat_inadmissible_calibration_warning_as_error: false,
@@ -349,23 +351,22 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
-            hawkes_input: JointRefinementStageHawkesInput::PersistedArtifactReference {
+            hawkes_input: CalibrationStagePayloadSource::PersistedArtifactReference {
                 artifact_reference: "artifact://hawkes/run-joint-stage-disk".to_string(),
                 payload: Some(hawkes_payload),
             },
-            return_components_input:
-                JointRefinementStageReturnComponentsInput::PersistedArtifactReference {
-                    artifact_reference: "artifact://return-components/run-joint-stage-disk"
-                        .to_string(),
-                    payload: Some(return_components_payload),
-                },
-            mean_reversion_input:
-                JointRefinementStageMeanReversionInput::PersistedArtifactReference {
-                    artifact_reference: "artifact://mean-reversion/run-joint-stage-disk"
-                        .to_string(),
-                    payload: Some(build_mean_reversion_stage_success_payload()),
-                },
+            return_components_input: CalibrationStagePayloadSource::PersistedArtifactReference {
+                artifact_reference: "artifact://return-components/run-joint-stage-disk".to_string(),
+                payload: Some(return_components_payload),
+            },
+            mean_reversion_input: CalibrationStagePayloadSource::PersistedArtifactReference {
+                artifact_reference: "artifact://mean-reversion/run-joint-stage-disk".to_string(),
+                payload: Some(build_mean_reversion_stage_success_payload()),
+            },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            coarse_training_records: None,
+            tick_objective_data_usage_policy:
+                CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
             restart_candidate_budget_override: Some(1),
             treat_inadmissible_calibration_warning_as_error: false,
@@ -399,7 +400,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 .run_spec,
                 &calendar_registry,
                 ReturnComponentsStageExecutionInput {
-                    activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                    activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: hawkes_payload.clone(),
                     },
                     candidate_generation_input:
@@ -420,18 +421,20 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
                     },
-                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                    hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: hawkes_payload.clone(),
                     },
-                    return_components_input:
-                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
-                            payload: return_components_payload.clone(),
-                        },
-                    mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+                    return_components_input: CalibrationStagePayloadSource::InMemoryOutput {
+                        payload: return_components_payload.clone(),
+                    },
+                    mean_reversion_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: build_mean_reversion_stage_success_payload(),
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    coarse_training_records: None,
+                    tick_objective_data_usage_policy:
+                        CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
                     treat_inadmissible_calibration_warning_as_error: false,
@@ -454,18 +457,20 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                         hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
                         day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
                     },
-                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                    hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: hawkes_payload.clone(),
                     },
-                    return_components_input:
-                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
-                            payload: return_components_payload.clone(),
-                        },
-                    mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+                    return_components_input: CalibrationStagePayloadSource::InMemoryOutput {
+                        payload: return_components_payload.clone(),
+                    },
+                    mean_reversion_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: build_mean_reversion_stage_success_payload(),
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    coarse_training_records: None,
+                    tick_objective_data_usage_policy:
+                        CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
                     treat_inadmissible_calibration_warning_as_error: false,
@@ -513,7 +518,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
         .run_spec,
         &calendar_registry,
         ReturnComponentsStageExecutionInput {
-            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+            activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
@@ -531,16 +536,19 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
             day_of_week_factor: seasonality_payload.day_of_week_factor,
             day_of_year_factor: seasonality_payload.day_of_year_factor,
         },
-        hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+        hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
             payload: hawkes_payload,
         },
-        return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+        return_components_input: CalibrationStagePayloadSource::InMemoryOutput {
             payload: return_components_payload,
         },
-        mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+        mean_reversion_input: CalibrationStagePayloadSource::InMemoryOutput {
             payload: build_mean_reversion_stage_success_payload(),
         },
         candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        coarse_training_records: None,
+        tick_objective_data_usage_policy:
+            CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
         calibration_effort: None,
         restart_candidate_budget_override: Some(1),
         treat_inadmissible_calibration_warning_as_error: false,
@@ -579,7 +587,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
         .run_spec,
         &calendar_registry,
         ReturnComponentsStageExecutionInput {
-            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+            activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
@@ -602,16 +610,19 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
-            hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+            hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
             },
-            return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+            return_components_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: return_components_payload,
             },
-            mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+            mean_reversion_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            coarse_training_records: None,
+            tick_objective_data_usage_policy:
+                CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
             restart_candidate_budget_override: Some(1),
             treat_inadmissible_calibration_warning_as_error: false,
@@ -646,7 +657,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
         .run_spec,
         &calendar_registry,
         ReturnComponentsStageExecutionInput {
-            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+            activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
@@ -666,16 +677,19 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
                 day_of_week_factor: seasonality_payload.day_of_week_factor,
                 day_of_year_factor: seasonality_payload.day_of_year_factor,
             },
-            hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+            hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
             },
-            return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+            return_components_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: return_components_payload,
             },
-            mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+            mean_reversion_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            coarse_training_records: None,
+            tick_objective_data_usage_policy:
+                CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
             restart_candidate_budget_override: Some(0),
             treat_inadmissible_calibration_warning_as_error: false,

@@ -863,9 +863,9 @@ pub(crate) mod tests {
         ReturnComponentsKnownNewsCalendarInput,
         ReturnComponentsObservedCloseOpenBoundaryObservation,
         ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
-        ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateGenerationInput,
-        ReturnComponentsStageExecutionInput, ReturnComponentsStageFittedPayload,
-        ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
+        ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionInput,
+        ReturnComponentsStageFittedPayload, ReturnComponentsStageObjectiveMetricWeights,
+        ReturnComponentsStageSignalSourceWindow,
         prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
         run_return_components_calibration_stage,
     };
@@ -1418,7 +1418,7 @@ pub(crate) mod tests {
                 &calendar_registry,
                 candidate_generation_input.clone(),
                 resolve_activity_calibration_context(
-                    &ReturnComponentsStageActivityInput::InMemoryOutput {
+                    &janiform_calibration_artifacts::CalibrationStagePayloadSource::InMemoryOutput {
                         payload: hawkes_payload.clone(),
                     },
                 ),
@@ -1435,6 +1435,8 @@ pub(crate) mod tests {
                 &return_components_payload.fitted_parameters,
                 &observed_signal_preparation,
                 &candidate_generation_input,
+                None,
+                crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy::AllAvailable,
                 observed_open_event_rate_per_hour,
             )
             .expect("joint refinement observed data should build");
@@ -1788,6 +1790,7 @@ pub(crate) mod tests {
         CalibrationRunDataInputs::try_new(
             "XNYS",
             "dataset://synthetic/trades/v1",
+            None,
             Some("dataset://synthetic/options/v1".to_string()),
         )
         .expect("data inputs should validate")

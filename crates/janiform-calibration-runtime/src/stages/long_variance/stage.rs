@@ -5,13 +5,17 @@ use janiform_calibration_artifacts::{
     CALIBRATION_LONG_VARIANCE_STAGE_HANDOFF_POLICY,
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStageSeedSource, LongVarianceStageDiagnostics,
+    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    CalibrationStageSelectedCandidateSource, LongVarianceStageDiagnostics,
     LongVarianceStageHorizonDiagnostic, stage_solver_settings_for_stage,
 };
 use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 
+use crate::market_data::loading::MarketDataNormalizedCoarseTrainingRecord;
+use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
+use crate::stages::coarse_training::coarse_training_interval_observations;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
 use crate::stages::joint_metrics::build_observed_open_session_interval_observations;
@@ -24,6 +28,9 @@ use crate::stages::long_variance::policy::long_variance_stationary_event_rates_f
 use crate::stages::return_components::ReturnComponentsStageCandidateGenerationInput;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
+use crate::stages::tick_objective_data::{
+    retained_open_session_returns_for_tick_objectives, source_window_for_retained_tick_objectives,
+};
 
 const LONG_VARIANCE_ESTIMATION_POLICY: &str =
     "observed_horizon_moment_initializer_with_standard_cir_dispersion_projection.v1";
@@ -34,29 +41,14 @@ pub(crate) const LONG_VARIANCE_OBJECTIVE_TERM_COUNT: usize =
 pub(crate) const LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT: usize =
     LONG_VARIANCE_ACTIVE_PARAMETER_COUNT;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum LongVarianceStageReturnComponentsInput {
-    InMemoryOutput { selected_candidate_id: String },
-    PersistedArtifactReference { artifact_reference: String },
-}
-
-impl LongVarianceStageReturnComponentsInput {
-    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
-        match self {
-            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
-            Self::PersistedArtifactReference { .. } => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LongVarianceStageExecutionInput {
-    pub return_components_input: Option<LongVarianceStageReturnComponentsInput>,
+    pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
     pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
     pub candidate_generation_input: Option<ReturnComponentsStageCandidateGenerationInput>,
+    pub coarse_training_records: Option<Vec<MarketDataNormalizedCoarseTrainingRecord>>,
+    pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -180,6 +172,8 @@ pub fn run_long_variance_calibration_stage(
         &hawkes_stage_payload,
         &return_components_stage_payload,
         &candidate_generation_input,
+        execution_input.coarse_training_records.as_deref(),
+        execution_input.tick_objective_data_usage_policy,
     ) {
         Ok(fitted_stage_payload) => fitted_stage_payload,
         Err(failure) => return failure_report(run_spec, failure),
@@ -215,10 +209,12 @@ pub fn run_long_variance_calibration_stage(
 fn build_long_variance_fitted_stage_payload(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
-    return_components_input: LongVarianceStageReturnComponentsInput,
+    return_components_input: CalibrationStageSelectedCandidateSource,
     hawkes_stage_payload: &HawkesStageFittedPayload,
     return_components_stage_payload: &ReturnComponentsStageFittedPayload,
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    coarse_training_records: Option<&[MarketDataNormalizedCoarseTrainingRecord]>,
+    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
 ) -> Result<LongVarianceStageFittedPayload, LongVarianceStageExecutionFailure> {
     let baseline_parameters = return_components_stage_payload
         .fitted_parameters
@@ -238,6 +234,8 @@ fn build_long_variance_fitted_stage_payload(
         calendar_registry,
         run_spec.data_inputs.exchange_code.as_str(),
         candidate_generation_input,
+        coarse_training_records,
+        tick_objective_data_usage_policy,
     );
 
     let fitted_parameters = estimate_long_variance_parameters(
@@ -261,10 +259,10 @@ fn build_long_variance_fitted_stage_payload(
 
     let (return_components_selected_candidate_id, return_components_artifact_reference) =
         match return_components_input {
-            LongVarianceStageReturnComponentsInput::InMemoryOutput {
+            CalibrationStageSelectedCandidateSource::InMemoryOutput {
                 selected_candidate_id,
             } => (Some(selected_candidate_id), None),
-            LongVarianceStageReturnComponentsInput::PersistedArtifactReference {
+            CalibrationStageSelectedCandidateSource::PersistedArtifactReference {
                 artifact_reference,
             } => (None, Some(artifact_reference)),
         };
@@ -280,17 +278,14 @@ fn build_long_variance_fitted_stage_payload(
 }
 
 fn selected_candidate_id<'a>(
-    return_components_input: &'a LongVarianceStageReturnComponentsInput,
+    return_components_input: &'a CalibrationStageSelectedCandidateSource,
     return_components_stage_payload: &'a ReturnComponentsStageFittedPayload,
 ) -> &'a str {
-    match return_components_input {
-        LongVarianceStageReturnComponentsInput::InMemoryOutput {
-            selected_candidate_id,
-        } => selected_candidate_id,
-        LongVarianceStageReturnComponentsInput::PersistedArtifactReference { .. } => {
-            &return_components_stage_payload.selected_candidate_id
-        }
-    }
+    return_components_input.selected_candidate_id().unwrap_or(
+        return_components_stage_payload
+            .selected_candidate_id
+            .as_str(),
+    )
 }
 
 fn long_variance_stage_diagnostics(
@@ -346,27 +341,46 @@ fn observed_long_variance_intervals(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    coarse_training_records: Option<&[MarketDataNormalizedCoarseTrainingRecord]>,
+    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
 ) -> ObservedLongVarianceIntervals {
-    let source_window = candidate_generation_input.known_news_calendar.source_window;
-    let observed_returns = candidate_generation_input
-        .observed_open_session_returns
-        .as_slice();
+    let observed_returns = retained_open_session_returns_for_tick_objectives(
+        candidate_generation_input,
+        tick_objective_data_usage_policy,
+    );
+
+    let source_window = source_window_for_retained_tick_objectives(
+        candidate_generation_input,
+        observed_returns.as_slice(),
+    );
+
+    let five_minute = build_observed_open_session_interval_observations(
+        calendar_registry,
+        exchange_code,
+        source_window,
+        observed_returns.as_slice(),
+        NANOS_PER_FIVE_MINUTES,
+    );
+
+    let tick_hourly = build_observed_open_session_interval_observations(
+        calendar_registry,
+        exchange_code,
+        source_window,
+        observed_returns.as_slice(),
+        NANOS_PER_HOUR,
+    );
+
+    let coarse_intervals = coarse_training_records
+        .map(coarse_training_interval_observations)
+        .unwrap_or_default();
 
     ObservedLongVarianceIntervals {
-        five_minute: build_observed_open_session_interval_observations(
-            calendar_registry,
-            exchange_code,
-            source_window,
-            observed_returns,
-            NANOS_PER_FIVE_MINUTES,
-        ),
-        hourly: build_observed_open_session_interval_observations(
-            calendar_registry,
-            exchange_code,
-            source_window,
-            observed_returns,
-            NANOS_PER_HOUR,
-        ),
+        five_minute,
+        hourly: if coarse_intervals.is_empty() {
+            tick_hourly
+        } else {
+            coarse_intervals
+        },
     }
 }
 

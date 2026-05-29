@@ -36,8 +36,8 @@ use crate::stages::return_components::{
 };
 
 use super::super::contracts::{
-    JointRefinementStageHawkesInput, JointRefinementStageObjectiveTermDiagnostic,
-    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
+    JointRefinementStageObjectiveTermDiagnostic, JointRefinementStageProgressPhase,
+    JointRefinementStageProgressUpdate,
 };
 use super::super::execution::{
     JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT,
@@ -3287,22 +3287,13 @@ pub(in crate::stages::joint_refinement) fn selected_hawkes_observed_open_event_r
 }
 
 pub(in crate::stages::joint_refinement) fn stage_input_to_activity_input(
-    hawkes_input: &JointRefinementStageHawkesInput,
-) -> crate::stages::return_components::ReturnComponentsStageActivityInput {
-    match hawkes_input {
-        JointRefinementStageHawkesInput::InMemoryOutput { payload } => {
-            crate::stages::return_components::ReturnComponentsStageActivityInput::InMemoryOutput {
-                payload: payload.clone(),
-            }
-        }
-        JointRefinementStageHawkesInput::PersistedArtifactReference {
-            artifact_reference,
-            payload,
-        } => crate::stages::return_components::ReturnComponentsStageActivityInput::PersistedArtifactReference {
-            artifact_reference: artifact_reference.clone(),
-            payload: payload.clone(),
-        },
-    }
+    hawkes_input: &janiform_calibration_artifacts::CalibrationStagePayloadSource<
+        HawkesStageFittedPayload,
+    >,
+) -> janiform_calibration_artifacts::CalibrationStagePayloadSource<HawkesStageFittedPayload> {
+    // Intentional copy because joint refinement builds a nested return-components input that owns
+    // the same upstream Hawkes source contract.
+    hawkes_input.clone()
 }
 
 #[cfg(test)]

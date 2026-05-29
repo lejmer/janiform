@@ -10,6 +10,8 @@ pub struct CalibrationRunDataInputs {
     pub exchange_code: String,
     pub trade_events_data_reference: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub coarse_training_data_reference: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub option_surface_data_reference: Option<String>,
 }
 
@@ -17,11 +19,13 @@ impl CalibrationRunDataInputs {
     pub fn try_new(
         exchange_code: impl Into<String>,
         trade_events_data_reference: impl Into<String>,
+        coarse_training_data_reference: Option<String>,
         option_surface_data_reference: Option<String>,
     ) -> Result<Self, CalibrationRunDataInputsError> {
         let data_inputs = Self {
             exchange_code: exchange_code.into(),
             trade_events_data_reference: trade_events_data_reference.into(),
+            coarse_training_data_reference,
             option_surface_data_reference,
         };
         data_inputs.validate()?;
@@ -43,6 +47,12 @@ impl CalibrationRunDataInputs {
             return Err(CalibrationRunDataInputsError::EmptyOptionSurfaceDataReference);
         }
 
+        if let Some(coarse_training_data_reference) = &self.coarse_training_data_reference
+            && coarse_training_data_reference.trim().is_empty()
+        {
+            return Err(CalibrationRunDataInputsError::EmptyCoarseTrainingDataReference);
+        }
+
         Ok(())
     }
 
@@ -56,6 +66,7 @@ pub enum CalibrationRunDataInputsError {
     MissingExchangeCode,
     MissingTradeEventsDataReference,
     EmptyOptionSurfaceDataReference,
+    EmptyCoarseTrainingDataReference,
 }
 
 impl Display for CalibrationRunDataInputsError {
@@ -74,6 +85,10 @@ impl Display for CalibrationRunDataInputsError {
             Self::EmptyOptionSurfaceDataReference => write!(
                 formatter,
                 "data_inputs.option_surface_data_reference must be non-empty when provided"
+            ),
+            Self::EmptyCoarseTrainingDataReference => write!(
+                formatter,
+                "data_inputs.coarse_training_data_reference must be non-empty when provided"
             ),
         }
     }

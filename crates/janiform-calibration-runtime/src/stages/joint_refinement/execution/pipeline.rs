@@ -787,6 +787,8 @@ fn prepare_observed_inputs(
             .fitted_parameters,
         &resolved_stage_payloads.observed_signal_preparation,
         &stage_input.candidate_generation_input,
+        stage_input.coarse_training_records.as_deref(),
+        stage_input.tick_objective_data_usage_policy,
         observed_open_event_rate_per_hour,
     )
     .map_err(|error_message| {

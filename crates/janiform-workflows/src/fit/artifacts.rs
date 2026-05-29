@@ -10,7 +10,7 @@ use janiform_calibration_artifacts::{
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
-    CalibrationStage, CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
+    CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
     calibration_stage_parameter_artifact_load_error_message,
     calibration_stage_parameter_artifact_path, load_calibration_stage_parameter_artifact_from_disk,
 };
@@ -431,7 +431,7 @@ fn apply_resumed_disk_stage_parameter_artifacts(
         if report
             .stage_reports
             .iter()
-            .any(|stage_report| stage_report_stage(stage_report) == stage)
+            .any(|stage_report| stage_report.stage() == stage)
         {
             continue;
         }
@@ -515,20 +515,6 @@ fn apply_stage_reports_to_model_parameters(
     }
 
     Ok(())
-}
-
-fn stage_report_stage(stage_report: &CalibrationStagedRunStageReport) -> CalibrationStage {
-    match stage_report {
-        CalibrationStagedRunStageReport::Seasonality(_) => CalibrationStage::Seasonality,
-        CalibrationStagedRunStageReport::Hawkes(_) => CalibrationStage::Hawkes,
-        CalibrationStagedRunStageReport::ReturnComponents(_) => CalibrationStage::ReturnComponents,
-        CalibrationStagedRunStageReport::LongVariance(_) => CalibrationStage::LongVariance,
-        CalibrationStagedRunStageReport::NewsShocks(_) => CalibrationStage::NewsShocks,
-        CalibrationStagedRunStageReport::MeanReversion(_) => CalibrationStage::MeanReversion,
-        CalibrationStagedRunStageReport::JointRefinement(_) => CalibrationStage::JointRefinement,
-        CalibrationStagedRunStageReport::OptionRefinement(_) => CalibrationStage::OptionRefinement,
-        CalibrationStagedRunStageReport::Finalization(_) => CalibrationStage::Finalization,
-    }
 }
 
 fn apply_stage_parameter_artifact_to_model_parameters(

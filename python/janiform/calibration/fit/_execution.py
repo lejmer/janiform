@@ -53,6 +53,9 @@ def fit_with_execution_configuration(
     tick_data_path: str | Path,
     tick_data_format: Optional[CalibrationInputFileFormat] = None,
     tick_data_provenance_label: str = "tick_data",
+    coarse_training_path: Optional[str | Path] = None,
+    coarse_training_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
+    coarse_training_provenance_label: str = "coarse_training",
     option_surface_path: Optional[str | Path] = None,
     option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
     option_surface_provenance_label: str = "option_surface",
@@ -64,6 +67,7 @@ def fit_with_execution_configuration(
 ) -> Union[JaniformModel, tuple[Optional[JaniformModel], JaniformFitReport]]:
     _validate_fit_input_labels(
         tick_data_provenance_label=tick_data_provenance_label,
+        coarse_training_provenance_label=coarse_training_provenance_label,
         option_surface_provenance_label=option_surface_provenance_label,
     )
 
@@ -75,6 +79,9 @@ def fit_with_execution_configuration(
         tick_data_path=tick_data_path,
         tick_data_format=tick_data_format,
         tick_data_provenance_label=tick_data_provenance_label,
+        coarse_training_path=coarse_training_path,
+        coarse_training_format=coarse_training_format,
+        coarse_training_provenance_label=coarse_training_provenance_label,
         option_surface_path=option_surface_path,
         option_surface_format=option_surface_format,
         option_surface_provenance_label=option_surface_provenance_label,
@@ -104,10 +111,17 @@ def fit_with_execution_configuration(
 def _validate_fit_input_labels(
     *,
     tick_data_provenance_label: str,
+    coarse_training_provenance_label: str,
     option_surface_provenance_label: str,
 ) -> None:
     if not tick_data_provenance_label.strip():
         raise calibration_error("tick_data_provenance_label", "must be a non-empty string")
+
+    if not coarse_training_provenance_label.strip():
+        raise calibration_error(
+            "coarse_training_provenance_label",
+            "must be a non-empty string",
+        )
 
     if not option_surface_provenance_label.strip():
         raise calibration_error("option_surface_provenance_label", "must be a non-empty string")
@@ -122,6 +136,9 @@ def _run_fit_with_native_progress(
     tick_data_path: str | Path,
     tick_data_format: Optional[CalibrationInputFileFormat],
     tick_data_provenance_label: str,
+    coarse_training_path: Optional[str | Path],
+    coarse_training_format: CalibrationInputFileFormat,
+    coarse_training_provenance_label: str,
     option_surface_path: Optional[str | Path],
     option_surface_format: CalibrationInputFileFormat,
     option_surface_provenance_label: str,
@@ -150,6 +167,9 @@ def _run_fit_with_native_progress(
                 tick_data_path=tick_data_path,
                 tick_data_format=tick_data_format,
                 tick_data_provenance_label=tick_data_provenance_label,
+                coarse_training_path=coarse_training_path,
+                coarse_training_format=coarse_training_format,
+                coarse_training_provenance_label=coarse_training_provenance_label,
                 option_surface_path=option_surface_path,
                 option_surface_format=option_surface_format,
                 option_surface_provenance_label=option_surface_provenance_label,

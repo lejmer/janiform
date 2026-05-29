@@ -90,8 +90,9 @@ pub(crate) use janiform_calibration_artifacts::{
     CalibrationStageParameterOptimizerAdapterMetadata, CalibrationStageParameterOptimizerState,
     CalibrationStageParameterOptimizerStateInput, CalibrationStageParameterOutputSchemaMetadata,
     CalibrationStageParameterPayload, CalibrationStageParameterSchemaMetadata,
-    CalibrationStageParameterSeedMetadata, CalibrationStageSeedOverride,
-    CalibrationStageSeedSource, CalibrationStageSolverSettings,
+    CalibrationStageParameterSeedMetadata, CalibrationStagePayloadSource,
+    CalibrationStageSeedOverride, CalibrationStageSeedSource,
+    CalibrationStageSelectedCandidateSource, CalibrationStageSolverSettings,
     CalibrationValidationMetricArtifact,
     CalibrationValidationMetricArtifactReferenceIntegrityError,
     CalibrationValidationMetricArtifactRole, CalibrationValidationMetricArtifactValidationError,
@@ -189,7 +190,8 @@ pub(crate) use janiform_calibration_runtime::{
     CalibrationStagedExecutionBridgeError, CalibrationStagedExecutionInput,
     CalibrationStagedExecutionPlan, CalibrationStagedExecutionRuntimeResources,
     CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport, CalibrationTimestampEventRecord,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationTickObjectiveDataUsagePolicy, CalibrationTimestampEventRecord,
     CalibrationTimestampEventSessionFilter, CloseSessionRequest, CloseSessionResponse,
     CurrentStateEstimationError, CurrentStateEstimationInput, CurrentStateEstimationOutput,
     HawkesStageCandidateDiagnostic, HawkesStageCandidateInput, HawkesStageCandidateInputError,
@@ -205,43 +207,41 @@ pub(crate) use janiform_calibration_runtime::{
     JointRefinementStageCurrentStateEstimationInput, JointRefinementStageExecutionFailure,
     JointRefinementStageExecutionInput, JointRefinementStageExecutionMetadata,
     JointRefinementStageExecutionReport, JointRefinementStageFittedPayload,
-    JointRefinementStageHawkesInput, JointRefinementStageMeanReversionInput,
     JointRefinementStageObjectiveTermDiagnostic, JointRefinementStageOptionPricingInput,
     JointRefinementStageOptionSnapshotNode, JointRefinementStageProgressPhase,
-    JointRefinementStageProgressUpdate, JointRefinementStageReturnComponentsInput,
-    JointRefinementStageSeasonalityFactorsInput, JointRefinementStageSimulationSummary,
-    JointRefinementSummarySimulationDiagnostics, JointRefinementSummarySimulationMemoryEstimate,
-    JointRefinementSummarySimulationSeedSummary, JointRefinementSummarySimulationSessionContext,
-    JointRefinementSummarySimulationSessionState, JointRefinementSummarySimulationWorkerRequest,
-    JointRefinementSummarySimulationWorkerResponse, JointRefinementWorkerRequestedOutput,
-    MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
-    MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingError,
-    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizationPolicy,
-    MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
-    MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
-    MarketDataSessionConfiguration, MarketDataSessionRecurringClosedWindowPayload,
-    MarketDataSessionRegularWindowPayload, MarketDataSessionResolutionPayload,
-    MarketDataSourceProbePayload, MarketDataSourceSummary, MarketDataTickDataColumnMapping,
-    MarketDataTickPriceInputPolicy, MarketDataTranslationKnownNewsRecord,
-    MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
-    MarketDataTranslationPreprocessingRequest, MarketDataTranslationPreprocessingSettings,
+    JointRefinementStageProgressUpdate, JointRefinementStageSeasonalityFactorsInput,
+    JointRefinementStageSimulationSummary, JointRefinementSummarySimulationDiagnostics,
+    JointRefinementSummarySimulationMemoryEstimate, JointRefinementSummarySimulationSeedSummary,
+    JointRefinementSummarySimulationSessionContext, JointRefinementSummarySimulationSessionState,
+    JointRefinementSummarySimulationWorkerRequest, JointRefinementSummarySimulationWorkerResponse,
+    JointRefinementWorkerRequestedOutput, MarketDataDuplicateRecordPolicy,
+    MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
+    MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataLoadingOutput,
+    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput,
+    MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
+    MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
+    MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
+    MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
+    MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
+    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
+    MarketDataTranslationPreprocessingSettings,
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
     MeanReversionStageExecutionFailure, MeanReversionStageExecutionInput,
     MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
     MeanReversionStageFittedPayload, MeanReversionStageObservation,
-    MeanReversionStageReturnComponentsInput, MeanReversionStageSeasonalityInput,
-    OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError,
-    ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
-    ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
-    ReturnComponentsKnownNewsArrivalCandidateFamily, ReturnComponentsKnownNewsCalendarInput,
-    ReturnComponentsObservedCloseOpenBoundaryObservation,
+    MeanReversionStageSeasonalityInput, OptionSurfaceCalibrationObservation,
+    OptionSurfaceCalibrationObservationError, ReturnComponentsActivityCouplingCandidateFamily,
+    ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedCloseOpenGapCandidate,
+    ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsArrivalCandidateFamily,
+    ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
     ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     ReturnComponentsStageActivityCalibrationContextSnapshot,
-    ReturnComponentsStageActivityCouplingDiagnostic, ReturnComponentsStageActivityInput,
-    ReturnComponentsStageCandidateDiagnostic, ReturnComponentsStageCandidateFamilies,
-    ReturnComponentsStageCandidateFamilyCounts, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageActivityCouplingDiagnostic, ReturnComponentsStageCandidateDiagnostic,
+    ReturnComponentsStageCandidateFamilies, ReturnComponentsStageCandidateFamilyCounts,
+    ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageCandidateGenerationInputError, ReturnComponentsStageCandidateInput,
     ReturnComponentsStageCandidateInputError, ReturnComponentsStageCandidateProvenance,
     ReturnComponentsStageCandidateSourceWindow, ReturnComponentsStageConstraintViolationDiagnostic,
@@ -1137,6 +1137,7 @@ pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
     CalibrationRunDataInputs::try_new(
         "XNYS",
         "dataset://synthetic/trades/v1",
+        None,
         Some("dataset://synthetic/options/v1".to_string()),
     )
     .expect("data inputs should validate")
@@ -2318,6 +2319,9 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
+        coarse_training_records: None,
+        tick_objective_data_usage_policy:
+            CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
         mean_reversion_stage_input: if include_return_candidate_generation_input {
             Some(mean_reversion_stage_execution_fixture())
         } else {
@@ -2699,7 +2703,7 @@ pub(crate) fn build_mean_reversion_stage_success_report() -> MeanReversionStageE
             execution_input.return_components_stage_payload =
                 Some(return_components_payload.clone());
             execution_input.return_components_input =
-                Some(MeanReversionStageReturnComponentsInput::InMemoryOutput {
+                Some(CalibrationStageSelectedCandidateSource::InMemoryOutput {
                     selected_candidate_id: return_components_payload.selected_candidate_id.clone(),
                 });
 
@@ -2747,18 +2751,20 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                         day_of_week_factor: seasonality_payload.day_of_week_factor,
                         day_of_year_factor: seasonality_payload.day_of_year_factor,
                     },
-                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                    hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: build_hawkes_stage_success_payload(),
                     },
-                    return_components_input:
-                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
-                            payload: build_return_components_stage_success_payload(),
-                        },
-                    mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+                    return_components_input: CalibrationStagePayloadSource::InMemoryOutput {
+                        payload: build_return_components_stage_success_payload(),
+                    },
+                    mean_reversion_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: build_mean_reversion_stage_success_payload(),
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    coarse_training_records: None,
+                    tick_objective_data_usage_policy:
+                        CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
                     treat_inadmissible_calibration_warning_as_error: false,
