@@ -4,14 +4,11 @@ use super::coarse_intervals::{
     infer_explicit_nominal_interval_nanos, infer_nominal_interval_nanos, interval_inference_policy,
     resolve_row_interval, timestamp_semantics, validate_coarse_record_intervals,
 };
-use super::column_resolution::{
-    resolve_coarse_data_column_mapping, resolved_coarse_data_kind,
-};
+use super::column_resolution::{resolve_coarse_data_column_mapping, resolved_coarse_data_kind};
 use super::contracts::{
-    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataKind,
-    MarketDataCoarseDataLoadingInput, MarketDataCoarseDataSummary,
-    MarketDataCoarseDataTimestampSemantics, MarketDataInputFileFormat, MarketDataLoadingError,
-    MarketDataNormalizedCoarseDataRecord, MarketDataSourceSummary,
+    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataKind, MarketDataCoarseDataLoadingInput,
+    MarketDataCoarseDataSummary, MarketDataCoarseDataTimestampSemantics, MarketDataInputFileFormat,
+    MarketDataLoadingError, MarketDataNormalizedCoarseDataRecord, MarketDataSourceSummary,
 };
 use super::normalization::{normalize_optional_numeric_value, normalize_timestamp_value};
 use super::rows::{
@@ -387,10 +384,7 @@ fn validate_ohlc_shape(
         (row.open_price, row.high_price, row.low_price)
     else {
         return Err(MarketDataLoadingError::InvalidValue {
-            field_path: format!(
-                "coarse_data_input.source.rows[{}]",
-                row.source_row_number
-            ),
+            field_path: format!("coarse_data_input.source.rows[{}]", row.source_row_number),
             message: "OHLCV coarse data requires open, high, low, and close values".to_string(),
         });
     };
@@ -402,10 +396,7 @@ fn validate_ohlc_shape(
         || high_price < low_price
     {
         return Err(MarketDataLoadingError::InvalidValue {
-            field_path: format!(
-                "coarse_data_input.source.rows[{}]",
-                row.source_row_number
-            ),
+            field_path: format!("coarse_data_input.source.rows[{}]", row.source_row_number),
             message: "OHLC prices must satisfy low <= open, close <= high".to_string(),
         });
     }

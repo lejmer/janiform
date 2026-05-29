@@ -211,21 +211,13 @@ When omitted, Janiform may infer a bundled market profile from the tick-data fil
     #[arg(long, value_name = "LABEL", help = "Tick data provenance label.")]
     pub(crate) tick_provenance_label: Option<String>,
 
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Optional coarse historical training file."
-    )]
+    #[arg(long, value_name = "PATH", help = "Optional coarse data file.")]
     pub(crate) coarse_data_path: Option<PathBuf>,
 
-    #[arg(long, value_enum, help = "Coarse historical training file format.")]
+    #[arg(long, value_enum, help = "Coarse data file format.")]
     pub(crate) coarse_data_format: Option<InputFileFormat>,
 
-    #[arg(
-        long,
-        value_name = "LABEL",
-        help = "Coarse historical training provenance label."
-    )]
+    #[arg(long, value_name = "LABEL", help = "Coarse data provenance label.")]
     pub(crate) coarse_data_provenance_label: Option<String>,
 
     #[arg(long, value_name = "COLUMN", help = "Coarse data timestamp column.")]

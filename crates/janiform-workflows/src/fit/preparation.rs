@@ -47,13 +47,13 @@ pub struct FitPreparationRequest {
     pub tick_data_format: Option<MarketDataInputFileFormat>,
     /// Tick-data provenance label.
     pub tick_data_provenance_label: String,
-    /// Optional coarse historical training source path.
+    /// Optional coarse data source path.
     #[serde(default)]
     pub coarse_data_path: Option<String>,
-    /// Coarse historical training file format.
+    /// Coarse data file format.
     #[serde(default = "default_coarse_data_file_format")]
     pub coarse_data_format: MarketDataInputFileFormat,
-    /// Coarse historical training provenance label.
+    /// Coarse data provenance label.
     #[serde(default = "default_coarse_data_provenance_label")]
     pub coarse_data_provenance_label: String,
     /// Optional option-surface source path.
@@ -83,7 +83,7 @@ pub struct FitPreparationConfiguration {
     /// Optional tick column mapping overrides.
     #[serde(default)]
     pub tick_data_column_mapping: Option<MarketDataTickDataColumnMapping>,
-    /// Optional coarse historical training column mapping.
+    /// Optional coarse data column mapping.
     #[serde(default)]
     pub coarse_data_column_mapping: Option<MarketDataCoarseDataColumnMapping>,
     /// Optional normalization policy overrides.

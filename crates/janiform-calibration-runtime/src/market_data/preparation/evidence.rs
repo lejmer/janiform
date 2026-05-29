@@ -1,8 +1,7 @@
 use serde_json::Value;
 
 use crate::{
-    MarketDataLoadingOutput, MarketDataNormalizedCoarseDataRecord,
-    MarketDataNormalizedTickOutput,
+    MarketDataLoadingOutput, MarketDataNormalizedCoarseDataRecord, MarketDataNormalizedTickOutput,
 };
 
 use super::CalibrationTickObjectiveDataUsagePolicy;

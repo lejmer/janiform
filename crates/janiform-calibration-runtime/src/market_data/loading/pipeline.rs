@@ -210,8 +210,7 @@ pub fn prepare_market_data_loading_from_phases(
         None
     };
 
-    let coarse_data_output = if let Some(coarse_data_input) = &request.coarse_data_input
-    {
+    let coarse_data_output = if let Some(coarse_data_input) = &request.coarse_data_input {
         Some(load_coarse_data_records(
             coarse_data_input,
             &calendar_registry,
