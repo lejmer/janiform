@@ -34,7 +34,8 @@ pub(crate) use coarse_consistency::{
     build_joint_coarse_interval_observations, build_joint_coarse_tick_consistency_metrics,
 };
 pub(crate) use inputs::{
-    build_observed_data, build_summary_simulation_session_context,
+    JointRefinementObservedDataBuildInput, build_observed_data,
+    build_summary_simulation_session_context,
     rescaled_observed_tick_calibration_sample_for_modeled_rate,
 };
 #[cfg(test)]

@@ -38,16 +38,32 @@ use super::{JointRefinementObservedData, build_exchange_calendar_registry_artifa
 // quantum is 1 / 0.01 observations per temporal block.
 const RETURN_SHAPE_EXTREME_TAIL_RANK_DENOMINATOR: usize = 100;
 
+pub(crate) struct JointRefinementObservedDataBuildInput<'a> {
+    pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
+    pub(crate) exchange_code: &'a str,
+    pub(crate) return_components_fitted_parameters: &'a ReturnComponentsStageFittedParameters,
+    pub(crate) observed_signal_preparation:
+        &'a ReturnComponentsStageJointRefinementObservedSignalPreparation,
+    pub(crate) candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
+    pub(crate) coarse_training_records: Option<&'a [MarketDataNormalizedCoarseTrainingRecord]>,
+    pub(crate) tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
+    pub(crate) observed_open_event_rate_per_hour: f64,
+}
+
 pub(crate) fn build_observed_data(
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
-    return_components_fitted_parameters: &ReturnComponentsStageFittedParameters,
-    observed_signal_preparation: &ReturnComponentsStageJointRefinementObservedSignalPreparation,
-    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-    coarse_training_records: Option<&[MarketDataNormalizedCoarseTrainingRecord]>,
-    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
-    observed_open_event_rate_per_hour: f64,
+    input: JointRefinementObservedDataBuildInput<'_>,
 ) -> Result<JointRefinementObservedData, String> {
+    let JointRefinementObservedDataBuildInput {
+        calendar_registry,
+        exchange_code,
+        return_components_fitted_parameters,
+        observed_signal_preparation,
+        candidate_generation_input,
+        coarse_training_records,
+        tick_objective_data_usage_policy,
+        observed_open_event_rate_per_hour,
+    } = input;
+
     let observed_returns = retained_open_session_returns_for_tick_objectives(
         candidate_generation_input,
         tick_objective_data_usage_policy,

@@ -27,6 +27,7 @@ from janiform.calibration.market_data import (
     CalibrationOptionSurfaceColumnMapping,
     CalibrationSessionConfigurationInput,
     CalibrationTickDataColumnMapping,
+    CalibrationTickObjectiveDataUsagePolicy,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
@@ -103,7 +104,12 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
         "joint_refinement_calibration_effort",
         "joint_refinement_audit_option_pricing_enabled",
         "treat_inadmissible_calibration_warning_as_error",
+        "tick_objective_data_usage_policy",
     }
+    assert (
+        prepared_payload["tick_objective_data_usage_policy"]
+        == CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW
+    )
     assert translation.diagnostics.tick_record_count == 3
 
 

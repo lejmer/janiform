@@ -381,6 +381,17 @@ struct LoadedMarketDataPhases {
     loading_output: MarketDataLoadingOutput,
 }
 
+struct PreparedMarketDataPlanBuildInput {
+    request: CalibrationMarketDataPreparationRequest,
+    cpu_count: Option<usize>,
+    selected_stages: Vec<CalibrationStage>,
+    trade_events_data_reference: String,
+    coarse_training_data_reference: Option<String>,
+    option_surface_data_reference: Option<String>,
+    normalized_tick_output: MarketDataNormalizedTickOutput,
+    loading_output: MarketDataLoadingOutput,
+}
+
 struct MeanReversionGridObservations {
     source_observation_count: usize,
     coverage_ratio: f64,
@@ -415,16 +426,16 @@ pub fn prepare_market_data_calibration_plan(
 
     let loaded_market_data = load_market_data_from_phases(loading_request)?;
 
-    prepared_market_data_plan_from_loading_output(
+    prepared_market_data_plan_from_loading_output(PreparedMarketDataPlanBuildInput {
         request,
         cpu_count,
         selected_stages,
         trade_events_data_reference,
         coarse_training_data_reference,
         option_surface_data_reference,
-        loaded_market_data.normalized_tick_output,
-        loaded_market_data.loading_output,
-    )
+        normalized_tick_output: loaded_market_data.normalized_tick_output,
+        loading_output: loaded_market_data.loading_output,
+    })
 }
 
 pub fn prepare_market_data_calibration_plan_from_phases(
@@ -460,16 +471,16 @@ pub fn prepare_market_data_calibration_plan_from_phases(
         ))
     })?;
 
-    prepared_market_data_plan_from_loading_output(
+    prepared_market_data_plan_from_loading_output(PreparedMarketDataPlanBuildInput {
         request,
         cpu_count,
         selected_stages,
         trade_events_data_reference,
         coarse_training_data_reference,
         option_surface_data_reference,
-        normalized_tick_output.clone(),
+        normalized_tick_output: normalized_tick_output.clone(),
         loading_output,
-    )
+    })
 }
 
 fn selected_stages_for_scope(
@@ -1584,15 +1595,19 @@ fn load_market_data_from_phases(
 }
 
 fn prepared_market_data_plan_from_loading_output(
-    request: CalibrationMarketDataPreparationRequest,
-    cpu_count: Option<usize>,
-    selected_stages: Vec<CalibrationStage>,
-    trade_events_data_reference: String,
-    coarse_training_data_reference: Option<String>,
-    option_surface_data_reference: Option<String>,
-    normalized_tick_output: MarketDataNormalizedTickOutput,
-    loading_output: MarketDataLoadingOutput,
+    input: PreparedMarketDataPlanBuildInput,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    let PreparedMarketDataPlanBuildInput {
+        request,
+        cpu_count,
+        selected_stages,
+        trade_events_data_reference,
+        coarse_training_data_reference,
+        option_surface_data_reference,
+        normalized_tick_output,
+        loading_output,
+    } = input;
+
     let objective_policy = calibration_objective_policy_from_request(&request)?;
 
     let prepared_option_pricing_input = joint_refinement_option_pricing_input_from_request(

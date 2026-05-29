@@ -52,10 +52,10 @@ use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::stage_resume::restart_search_artifacts_from_upstream_or_resume;
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementCandidateEvaluation,
-    JointRefinementContext, JointRefinementFidelityTier, JointRefinementProfilingState,
-    JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
-    OptionSurfaceTierPricingArtifactResolutionInput, PersistedRestartSelectionArtifacts,
-    build_joint_candidate_coarse_consistency_artifacts_result,
+    JointRefinementContext, JointRefinementFidelityTier, JointRefinementObservedDataBuildInput,
+    JointRefinementProfilingState, JointRefinementRestartOutcome, JointRefinementResumeStore,
+    OptionPricingProgressInput, OptionSurfaceTierPricingArtifactResolutionInput,
+    PersistedRestartSelectionArtifacts, build_joint_candidate_coarse_consistency_artifacts_result,
     build_joint_candidate_frontier_diagnostics, build_joint_finalist_seed_summaries,
     build_joint_refinement_like_stage_failure_report_with_runtime_profile,
     build_joint_restart_diagnostics, build_joint_simulation_summaries, build_observed_data,
@@ -779,18 +779,18 @@ fn prepare_observed_inputs(
         selected_hawkes_observed_open_event_rate_per_hour(resolved_stage_payloads.hawkes_payload)
             .ok_or(JointRefinementStageExecutionFailure::MissingHawkesPayload)?;
 
-    let observed_data = build_observed_data(
+    let observed_data = build_observed_data(JointRefinementObservedDataBuildInput {
         calendar_registry,
-        run_spec.data_inputs.exchange_code.as_str(),
-        &resolved_stage_payloads
+        exchange_code: run_spec.data_inputs.exchange_code.as_str(),
+        return_components_fitted_parameters: &resolved_stage_payloads
             .return_components_payload
             .fitted_parameters,
-        &resolved_stage_payloads.observed_signal_preparation,
-        &stage_input.candidate_generation_input,
-        stage_input.coarse_training_records.as_deref(),
-        stage_input.tick_objective_data_usage_policy,
+        observed_signal_preparation: &resolved_stage_payloads.observed_signal_preparation,
+        candidate_generation_input: &stage_input.candidate_generation_input,
+        coarse_training_records: stage_input.coarse_training_records.as_deref(),
+        tick_objective_data_usage_policy: stage_input.tick_objective_data_usage_policy,
         observed_open_event_rate_per_hour,
-    )
+    })
     .map_err(|error_message| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
     })?;

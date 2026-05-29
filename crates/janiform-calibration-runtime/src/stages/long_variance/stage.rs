@@ -41,6 +41,17 @@ pub(crate) const LONG_VARIANCE_OBJECTIVE_TERM_COUNT: usize =
 pub(crate) const LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT: usize =
     LONG_VARIANCE_ACTIVE_PARAMETER_COUNT;
 
+struct LongVarianceFittedStagePayloadBuildInput<'a> {
+    run_spec: &'a CalibrationRunSpec,
+    calendar_registry: &'a ExchangeCalendarRegistry,
+    return_components_input: CalibrationStageSelectedCandidateSource,
+    hawkes_stage_payload: &'a HawkesStageFittedPayload,
+    return_components_stage_payload: &'a ReturnComponentsStageFittedPayload,
+    candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
+    coarse_training_records: Option<&'a [MarketDataNormalizedCoarseTrainingRecord]>,
+    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LongVarianceStageExecutionInput {
     pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
@@ -165,19 +176,20 @@ pub fn run_long_variance_calibration_stage(
         );
     };
 
-    let fitted_stage_payload = match build_long_variance_fitted_stage_payload(
-        run_spec,
-        calendar_registry,
-        return_components_input,
-        &hawkes_stage_payload,
-        &return_components_stage_payload,
-        &candidate_generation_input,
-        execution_input.coarse_training_records.as_deref(),
-        execution_input.tick_objective_data_usage_policy,
-    ) {
-        Ok(fitted_stage_payload) => fitted_stage_payload,
-        Err(failure) => return failure_report(run_spec, failure),
-    };
+    let fitted_stage_payload =
+        match build_long_variance_fitted_stage_payload(LongVarianceFittedStagePayloadBuildInput {
+            run_spec,
+            calendar_registry,
+            return_components_input,
+            hawkes_stage_payload: &hawkes_stage_payload,
+            return_components_stage_payload: &return_components_stage_payload,
+            candidate_generation_input: &candidate_generation_input,
+            coarse_training_records: execution_input.coarse_training_records.as_deref(),
+            tick_objective_data_usage_policy: execution_input.tick_objective_data_usage_policy,
+        }) {
+            Ok(fitted_stage_payload) => fitted_stage_payload,
+            Err(failure) => return failure_report(run_spec, failure),
+        };
 
     let seed_metadata = janiform_calibration_artifacts::resolve_calibration_stage_seed_metadata(
         run_spec,
@@ -207,15 +219,19 @@ pub fn run_long_variance_calibration_stage(
 }
 
 fn build_long_variance_fitted_stage_payload(
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    return_components_input: CalibrationStageSelectedCandidateSource,
-    hawkes_stage_payload: &HawkesStageFittedPayload,
-    return_components_stage_payload: &ReturnComponentsStageFittedPayload,
-    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-    coarse_training_records: Option<&[MarketDataNormalizedCoarseTrainingRecord]>,
-    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
+    input: LongVarianceFittedStagePayloadBuildInput<'_>,
 ) -> Result<LongVarianceStageFittedPayload, LongVarianceStageExecutionFailure> {
+    let LongVarianceFittedStagePayloadBuildInput {
+        run_spec,
+        calendar_registry,
+        return_components_input,
+        hawkes_stage_payload,
+        return_components_stage_payload,
+        candidate_generation_input,
+        coarse_training_records,
+        tick_objective_data_usage_policy,
+    } = input;
+
     let baseline_parameters = return_components_stage_payload
         .fitted_parameters
         .long_variance_parameters;

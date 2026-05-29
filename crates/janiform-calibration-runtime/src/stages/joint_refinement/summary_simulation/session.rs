@@ -877,7 +877,8 @@ pub(crate) mod tests {
     };
     use crate::stages::{
         joint_refinement::execution::{
-            build_exchange_calendar_registry_artifact, build_observed_data,
+            JointRefinementObservedDataBuildInput, build_exchange_calendar_registry_artifact,
+            build_observed_data,
         },
         joint_refinement::setup::selected_hawkes_observed_open_event_rate_per_hour,
     };
@@ -1429,16 +1430,17 @@ pub(crate) mod tests {
                 selected_hawkes_observed_open_event_rate_per_hour(&hawkes_payload)
                     .expect("selected hawkes observed open-session event rate should resolve");
 
-            let observed_data = build_observed_data(
-                &calendar_registry,
-                "XNYS",
-                &return_components_payload.fitted_parameters,
-                &observed_signal_preparation,
-                &candidate_generation_input,
-                None,
-                crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy::AllAvailable,
+            let observed_data = build_observed_data(JointRefinementObservedDataBuildInput {
+                calendar_registry: &calendar_registry,
+                exchange_code: "XNYS",
+                return_components_fitted_parameters: &return_components_payload.fitted_parameters,
+                observed_signal_preparation: &observed_signal_preparation,
+                candidate_generation_input: &candidate_generation_input,
+                coarse_training_records: None,
+                tick_objective_data_usage_policy:
+                    crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy::AllAvailable,
                 observed_open_event_rate_per_hour,
-            )
+            })
             .expect("joint refinement observed data should build");
 
             let runtime_hourly_seasonality_factors =
