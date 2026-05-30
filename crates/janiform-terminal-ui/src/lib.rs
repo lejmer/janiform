@@ -25,6 +25,7 @@ pub use formatting::format_path_relative_to;
 pub use formatting::format_selected_candidate;
 pub use formatting::format_status_label;
 pub use formatting::format_token_as_kebab;
+pub use formatting::format_token_as_sentence_label;
 pub use formatting::format_token_as_words;
 pub use formatting::format_warning_count;
 pub use layout::AnalyticalResultTable;

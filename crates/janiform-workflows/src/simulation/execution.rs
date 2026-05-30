@@ -9,6 +9,10 @@ use janiform::simulation::{
 use crate::error::WorkflowError;
 use crate::progress::VolatileProgressGate;
 
+use super::labels::{
+    coarse_runtime_simulation_scope_label, direct_simulation_scope_label,
+    model_artifact_simulation_scope_label, seeded_tick_runtime_simulation_scope_label,
+};
 use super::model_artifact::run_simulation_from_model_artifact;
 use super::output::{DirectSimulationWorkflowOutput, ModelArtifactSimulationWorkflowOutput};
 use super::progress::{
@@ -16,7 +20,7 @@ use super::progress::{
     observe_gated_simulation_terminal_event, start_simulation_progress,
 };
 use super::request::{
-    CoarseSimulationWorkflowRequest, DirectSimulationWorkflowRequest, ModelArtifactSimulationKind,
+    CoarseSimulationWorkflowRequest, DirectSimulationWorkflowRequest,
     ModelArtifactSimulationWorkflowRequest, SeededTickEventSimulationWorkflowRequest,
 };
 use super::workflow::SimulationWorkflowObserver;
@@ -26,7 +30,7 @@ pub fn run_simulation_from_model_artifact_workflow(
     request: ModelArtifactSimulationWorkflowRequest,
     mut observer: SimulationWorkflowObserver<'_>,
 ) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
-    let scope_label = model_artifact_scope_label_for_request(&request).to_string();
+    let scope_label = model_artifact_simulation_scope_label(request.simulation_kind);
 
     // Intentional copy because the workflow request is consumed by execution,
     // while completion rendering still needs the display output path.
@@ -35,7 +39,7 @@ pub fn run_simulation_from_model_artifact_workflow(
     emit_start_summary(
         &observer.terminal_output,
         model_artifact_run_id(&request),
-        scope_label.as_str(),
+        scope_label,
         request.request_path.as_deref(),
         output_path.as_deref(),
     )?;
@@ -43,7 +47,7 @@ pub fn run_simulation_from_model_artifact_workflow(
     start_simulation_progress(
         observer.progress_adapter.as_deref_mut(),
         model_artifact_run_id(&request),
-        scope_label.as_str(),
+        scope_label,
         1,
         output_path.as_deref(),
     )?;
@@ -68,7 +72,7 @@ pub fn run_simulation_from_model_artifact_workflow(
 
     emit_completion_summary(
         &observer.terminal_output,
-        scope_label.as_str(),
+        scope_label,
         output_path.as_deref(),
         output.export_summary.as_ref(),
         output.execution_duration,
@@ -83,20 +87,29 @@ pub fn run_direct_simulation_workflow(
     request: DirectSimulationWorkflowRequest,
     mut observer: SimulationWorkflowObserver<'_>,
 ) -> Result<DirectSimulationWorkflowOutput, WorkflowError> {
+    let DirectSimulationWorkflowRequest {
+        job,
+        run_id,
+        request_path,
+        output_path,
+    } = request;
+
+    let scope_label = direct_simulation_scope_label(&job);
+
     emit_start_summary(
         &observer.terminal_output,
-        request.run_id.as_str(),
-        request.scope_label.as_str(),
-        request.request_path.as_deref(),
-        request.output_path.as_deref(),
+        run_id.as_str(),
+        scope_label,
+        request_path.as_deref(),
+        output_path.as_deref(),
     )?;
 
     start_simulation_progress(
         observer.progress_adapter.as_deref_mut(),
-        request.run_id.as_str(),
-        request.scope_label.as_str(),
+        run_id.as_str(),
+        scope_label,
         1,
-        request.output_path.as_deref(),
+        output_path.as_deref(),
     )?;
 
     let mut progress_error = None::<WorkflowError>;
@@ -113,18 +126,18 @@ pub fn run_direct_simulation_workflow(
             );
         };
 
-        request.job.run(&mut progress_observer)?
+        job.run(&mut progress_observer)?
     };
     let execution_duration = started_at.elapsed();
 
-    let export_summary = completed.export(request.output_path.as_deref())?;
+    let export_summary = completed.export(output_path.as_deref())?;
 
     complete_simulation_progress(observer.progress_adapter, progress_error)?;
 
     emit_completion_summary(
         &observer.terminal_output,
-        request.scope_label.as_str(),
-        request.output_path.as_deref(),
+        scope_label,
+        output_path.as_deref(),
         export_summary.as_ref(),
         execution_duration,
         completed.completion(),
@@ -145,7 +158,7 @@ pub fn run_coarse_simulation_workflow(
     run_direct_runtime_simulation_workflow(
         request.run_request,
         observer,
-        "Simulating coarse intervals",
+        coarse_runtime_simulation_scope_label(),
         run_coarse_simulation,
         run_coarse_simulation_with_observer,
     )
@@ -159,7 +172,7 @@ pub fn run_seeded_tick_event_simulation_workflow(
     run_direct_runtime_simulation_workflow(
         request.run_config,
         observer,
-        "Simulating seeded ticks",
+        seeded_tick_runtime_simulation_scope_label(),
         run_seeded_tick_event_simulation,
         run_seeded_tick_event_simulation_with_observer,
     )
@@ -231,22 +244,6 @@ where
 
 fn model_artifact_run_id(request: &ModelArtifactSimulationWorkflowRequest) -> &str {
     request.run_id.as_deref().unwrap_or("simulation")
-}
-
-fn model_artifact_scope_label_for_request(
-    request: &ModelArtifactSimulationWorkflowRequest,
-) -> &str {
-    request
-        .scope_label
-        .as_deref()
-        .unwrap_or_else(|| model_artifact_scope_label(request.simulation_kind))
-}
-
-fn model_artifact_scope_label(simulation_kind: ModelArtifactSimulationKind) -> &'static str {
-    match simulation_kind {
-        ModelArtifactSimulationKind::SeededTick => "seeded tick simulation",
-        ModelArtifactSimulationKind::CoarseInterval => "coarse interval simulation",
-    }
 }
 
 trait DirectSimulationCompletionFields {

@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use janiform_workflows::validation::{
-    StylizedFactsValidationCacheLevel, StylizedFactsValidationProgressEvent,
-    StylizedFactsValidationWorkflowRequest, build_stylized_facts_validation_plan,
-    run_stylized_facts_validation_workflow,
+    STYLIZED_FACTS_VALIDATION_STAGE_LABELS, StylizedFactsValidationCacheLevel,
+    StylizedFactsValidationProgressEvent, StylizedFactsValidationWorkflowRequest,
+    build_stylized_facts_validation_plan, run_stylized_facts_validation_workflow,
+    stylized_facts_validation_scope_label,
 };
 
 use super::args::{
@@ -62,17 +63,10 @@ fn run_validation(
 
     let mut progress = TerminalCommandProgress::start(
         context,
-        "validate stylized facts",
+        stylized_facts_validation_scope_label(),
         2,
         Some(output_dir.as_path()),
-        &[
-            "load empirical data",
-            "derive interval returns",
-            "simulate seeded paths",
-            "compute return-based metrics",
-            "compare metrics",
-            "write artifacts",
-        ],
+        STYLIZED_FACTS_VALIDATION_STAGE_LABELS,
     )?;
 
     let mut progress_error = None;

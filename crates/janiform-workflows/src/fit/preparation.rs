@@ -241,7 +241,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 ) -> Result<PreparedFitWorkflow, WorkflowError> {
     emit_preparation_progress(
         &mut observer,
-        "resolving workflow inputs",
+        "Resolving workflow inputs",
         "inferring workflow scope and market profile",
     )?;
 
@@ -262,7 +262,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 
     emit_preparation_progress(
         &mut observer,
-        "inferring input columns",
+        "Inferring input columns",
         "probing tick data and resolving normalization policy",
     )?;
 
@@ -289,7 +289,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 
     emit_preparation_progress(
         &mut observer,
-        "resolving presets",
+        "Resolving presets",
         "selecting session and known-news inputs",
     )?;
 
@@ -317,7 +317,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 
     emit_preparation_progress(
         &mut observer,
-        "building market-data request",
+        "Building market-data request",
         "assembling prepared calibration inputs",
     )?;
 
@@ -340,7 +340,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 
     emit_preparation_progress(
         &mut observer,
-        "loading market data",
+        "Loading market data",
         "normalizing source records and materializing runtime inputs",
     )?;
 

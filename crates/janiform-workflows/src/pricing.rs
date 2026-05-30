@@ -1,5 +1,6 @@
 mod artifacts;
 mod execution;
+mod labels;
 mod maturity;
 mod model_parameters;
 mod observed;

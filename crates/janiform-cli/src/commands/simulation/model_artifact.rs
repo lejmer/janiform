@@ -3,8 +3,8 @@ use janiform::simulation::SeededTickEventStateSnapshotCapture;
 use janiform_foundations::time::parse_utc_datetime;
 use janiform_workflows::simulation::{
     ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest,
-    SimulationWorkflowObserver, run_simulation_from_model_artifact_workflow,
-    simulation_output_preferences_from_model_payload,
+    SimulationWorkflowObserver, model_artifact_simulation_scope_label,
+    run_simulation_from_model_artifact_workflow, simulation_output_preferences_from_model_payload,
 };
 
 use super::SimulateCommand;
@@ -22,9 +22,6 @@ use crate::context::CommandContext;
 use crate::error::CliError;
 
 const DEFAULT_MODEL_ARTIFACT_SIMULATION_SEED: u64 = 0;
-const MODEL_ARTIFACT_SEEDED_TICK_SCOPE_LABEL: &str = "model artifact seeded tick simulation";
-const MODEL_ARTIFACT_COARSE_INTERVAL_SCOPE_LABEL: &str =
-    "model artifact coarse interval simulation";
 
 pub(crate) fn run_simulate_from_model_artifact_command(
     context: &CommandContext,
@@ -72,7 +69,6 @@ pub(crate) fn run_simulate_from_model_artifact_command(
     let workflow_request = ModelArtifactSimulationWorkflowRequest {
         model_payload,
         run_id: Some(run_id.clone()),
-        scope_label: Some(scope_label.to_string()),
         request_path: Some(model_path),
         simulation_kind,
         seed,
@@ -148,15 +144,6 @@ fn resolve_model_output_path(
     }
 
     resolved_path
-}
-
-fn model_artifact_simulation_scope_label(
-    simulation_kind: ModelArtifactSimulationKind,
-) -> &'static str {
-    match simulation_kind {
-        ModelArtifactSimulationKind::SeededTick => MODEL_ARTIFACT_SEEDED_TICK_SCOPE_LABEL,
-        ModelArtifactSimulationKind::CoarseInterval => MODEL_ARTIFACT_COARSE_INTERVAL_SCOPE_LABEL,
-    }
 }
 
 fn model_artifact_simulation_report_kind(

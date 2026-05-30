@@ -32,8 +32,9 @@ pub use janiform_engine_pricing::{
     intraday_discount_factor, intraday_forward_price, intraday_year_fraction,
     invert_vanilla_option_implied_volatility, load_hourly_factor_contract,
     materialize_schedule_interval_factors, materialize_schedule_interval_factors_with_cpu_count,
-    project_hawkes_intensities_coarse_interval, resolve_high_level_pricing_maturity_inputs,
-    run_vanilla_option_grid_batch_pricing, run_vanilla_option_grid_batch_pricing_with_observer,
-    run_vanilla_option_pricing, run_vanilla_option_surface_pricing,
-    run_vanilla_option_surface_pricing_with_observer, vanilla_option_terminal_payoff,
+    pricing_progress_phase_label, project_hawkes_intensities_coarse_interval,
+    resolve_high_level_pricing_maturity_inputs, run_vanilla_option_grid_batch_pricing,
+    run_vanilla_option_grid_batch_pricing_with_observer, run_vanilla_option_pricing,
+    run_vanilla_option_surface_pricing, run_vanilla_option_surface_pricing_with_observer,
+    vanilla_option_terminal_payoff,
 };

@@ -305,7 +305,6 @@ fn simulate_validation_path(
         ModelArtifactSimulationWorkflowRequest {
             model_payload,
             run_id: Some(format!("stylized_facts_validation_path_{path_position}")),
-            scope_label: Some("stylized facts validation".to_string()),
             request_path: None,
             simulation_kind: ModelArtifactSimulationKind::SeededTick,
             seed,

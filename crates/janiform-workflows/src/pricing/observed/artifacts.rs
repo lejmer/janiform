@@ -11,6 +11,10 @@ use crate::error::WorkflowError;
 use crate::price_coordinates::price_coordinate_resolution_summary;
 
 use super::super::artifacts::{PricingArtifactPaths, pricing_artifact_paths};
+use super::super::labels::{
+    observed_options_pricing_scope_label, observed_options_pricing_scope_token,
+    observed_options_pricing_workflow_label,
+};
 use super::physical_distribution::ObservedOptionsPhysicalDistributionDiagnosticsOutput;
 use super::types::{
     ObservedOptionsPricingNode, ObservedOptionsPricingOutput, ObservedOptionsPricingRequest,
@@ -57,7 +61,7 @@ pub(super) fn write_observed_artifacts_if_requested(
     let primary_payload = json!({
         "schema_version": "janiform.observed_options_pricing_result.v1",
         "run_id": run_id,
-        "scope": scope,
+        "scope": observed_options_pricing_scope_token(scope),
         "valuation_time_utc": valuation_time_utc.to_rfc3339(),
         "nodes": nodes,
         "snapshot_results": snapshot_results,
@@ -100,7 +104,7 @@ pub(super) fn write_observed_artifacts_if_requested(
         &paths.report_path,
         &json!({
             "schema_version": "janiform.workflow_report.v1",
-            "workflow": "price observed-options",
+            "workflow": observed_options_pricing_workflow_label(),
             "primary_output_path": paths.primary_output_path,
             "snapshot_count": snapshot_results.len(),
             "node_count": snapshot_results.iter().map(|result| result.nodes.len()).sum::<usize>(),
@@ -118,7 +122,7 @@ pub(super) fn write_observed_artifacts_if_requested(
         &paths.manifest_path,
         &json!({
             "schema_version": "janiform.run_manifest.v1",
-            "workflow": "price observed-options",
+            "workflow": observed_options_pricing_workflow_label(),
             "run_id": run_id,
             "run_directory": paths.run_directory,
             "primary_output_path": paths.primary_output_path,
@@ -154,7 +158,7 @@ pub(super) fn observed_options_start_summary(
         title: "Janiform price".to_string(),
         rows: vec![
             KeyValueRow::new("Run", run_id),
-            KeyValueRow::new("Scope", "observed options"),
+            KeyValueRow::new("Scope", observed_options_pricing_scope_label()),
             KeyValueRow::new("Ticks", request.tick_data_source.path.as_str()),
             KeyValueRow::new("Options", request.option_surface_source.path.as_str()),
         ],

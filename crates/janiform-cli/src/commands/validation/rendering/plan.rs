@@ -6,7 +6,8 @@ use janiform_terminal_ui::{
 };
 use janiform_workflows::validation::{
     StylizedFactsValidationDecisionMode, StylizedFactsValidationExecutionMode,
-    StylizedFactsValidationPlan,
+    StylizedFactsValidationPlan, StylizedFactsValidationProgressPhase,
+    stylized_facts_validation_phase_label,
 };
 
 use crate::commands::shared::output::write_json_payload;
@@ -142,7 +143,10 @@ fn interval_summary(plan: &StylizedFactsValidationPlan, renderer: &TerminalRende
 
 fn computation_checklist(plan: &StylizedFactsValidationPlan) -> StageChecklist {
     let simulation_label = format!(
-        "simulate seeded paths ({})",
+        "{} ({})",
+        stylized_facts_validation_phase_label(
+            StylizedFactsValidationProgressPhase::SimulateSeededPath
+        ),
         format_count(plan.simulation_path_count, "path", "paths")
     );
 
@@ -150,11 +154,17 @@ fn computation_checklist(plan: &StylizedFactsValidationPlan) -> StageChecklist {
         title: "Computation".to_string(),
         stages: vec![
             StageChecklistItem {
-                name: "load empirical data".to_string(),
+                name: stylized_facts_validation_phase_label(
+                    StylizedFactsValidationProgressPhase::LoadEmpiricalData,
+                )
+                .to_string(),
                 status: StageChecklistStatus::Pending,
             },
             StageChecklistItem {
-                name: "derive interval returns".to_string(),
+                name: stylized_facts_validation_phase_label(
+                    StylizedFactsValidationProgressPhase::DeriveIntervalReturns,
+                )
+                .to_string(),
                 status: StageChecklistStatus::Pending,
             },
             StageChecklistItem {
@@ -162,15 +172,18 @@ fn computation_checklist(plan: &StylizedFactsValidationPlan) -> StageChecklist {
                 status: StageChecklistStatus::Pending,
             },
             StageChecklistItem {
-                name: "compute return-based metrics".to_string(),
+                name: stylized_facts_validation_phase_label(
+                    StylizedFactsValidationProgressPhase::ComputeMetrics,
+                )
+                .to_string(),
                 status: StageChecklistStatus::Pending,
             },
             StageChecklistItem {
-                name: "compare empirical and simulated metrics".to_string(),
+                name: "Compare empirical and simulated metrics".to_string(),
                 status: StageChecklistStatus::Pending,
             },
             StageChecklistItem {
-                name: "write validation report".to_string(),
+                name: "Write validation report".to_string(),
                 status: StageChecklistStatus::Pending,
             },
         ],

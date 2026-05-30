@@ -21,17 +21,18 @@ use serde_json::{Value, json};
 use crate::error::WorkflowError;
 
 use super::super::artifacts::PricingArtifactPaths;
+use super::super::labels::observed_options_pricing_workflow_label;
 use super::physical_distribution::{
     ObservedOptionsPhysicalDistributionDiagnosticsOutput,
     ObservedOptionsPhysicalDistributionDiagnosticsRequest,
 };
 
 pub(super) const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
-pub(super) const LOAD_OBSERVED_DATA_STAGE: &str = "load observed data";
-pub(super) const PREPARE_VALUATION_STATES_STAGE: &str = "prepare valuation states";
-pub(super) const PRICE_VALUATION_SURFACE_STAGE: &str = "price valuation surface";
-pub(super) const PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE: &str = "diagnose physical distribution";
-pub(super) const WRITE_ARTIFACTS_STAGE: &str = "write artifacts";
+pub(super) const LOAD_OBSERVED_DATA_STAGE: &str = "Load observed data";
+pub(super) const PREPARE_VALUATION_STATES_STAGE: &str = "Prepare valuation states";
+pub(super) const PRICE_VALUATION_SURFACE_STAGE: &str = "Price valuation surface";
+pub(super) const PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE: &str = "Diagnose physical distribution";
+pub(super) const WRITE_ARTIFACTS_STAGE: &str = "Write artifacts";
 pub(super) const SURFACE_TASK_FINALIZATION_UNIT: usize = 1;
 
 /// Observed-options pricing scope.
@@ -147,7 +148,7 @@ impl ObservedOptionsPricingOutput {
 
         Ok(json!({
             "schema_version": "janiform.price_observed_options_run.v1",
-            "command_id": "price observed-options",
+            "command_id": observed_options_pricing_workflow_label(),
             "status": "completed",
             "run_id": self.run_id,
             "model_path": model_path,

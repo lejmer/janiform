@@ -17,12 +17,11 @@ use crate::price_coordinates::price_coordinate_resolution_summary;
 
 use super::events::{failed_stage_label, failure_reason, resume_availability};
 use super::input_paths::preparation_request_input_paths;
-use super::labels::workflow_scope_label;
+use super::labels::{fit_workflow_id, workflow_scope_label};
 use super::request::FitWorkflowPaths;
 use super::scope::workflow_scope_label_for_input;
 
 const FIT_RUN_SCHEMA_VERSION: &str = "janiform.fit_run.v1";
-const FIT_RUN_COMMAND_ID: &str = "fit";
 
 /// Output produced by shared fit workflow execution.
 #[derive(Debug)]
@@ -94,7 +93,7 @@ pub fn fit_completion_json_payload(
 
     json!({
         "schema_version": FIT_RUN_SCHEMA_VERSION,
-        "command_id": FIT_RUN_COMMAND_ID,
+        "command_id": fit_workflow_id(),
         "run_id": execution_input.request.run_id,
         "status": report.status,
         "model_path": report.status.is_successful().then_some(&paths.model_path),

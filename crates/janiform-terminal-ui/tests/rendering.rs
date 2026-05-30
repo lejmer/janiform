@@ -3,7 +3,7 @@ use janiform_terminal_ui::{
     KeyValueRow, SemanticStyle, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, TerminalRenderer, WarningBlock, format_count, format_duration_seconds,
     format_elapsed_label, format_file_size, format_path_relative_to, format_token_as_kebab,
-    format_token_as_words,
+    format_token_as_sentence_label, format_token_as_words,
 };
 use std::path::Path;
 
@@ -59,6 +59,10 @@ fn formatting_helpers_render_paths_and_file_sizes_for_summaries() {
     assert_eq!(
         format_token_as_words("return_components"),
         "return components"
+    );
+    assert_eq!(
+        format_token_as_sentence_label("return_components"),
+        "Return components"
     );
     assert_eq!(format_token_as_kebab("user_registered"), "user-registered");
 }

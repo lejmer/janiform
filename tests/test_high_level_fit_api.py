@@ -1179,28 +1179,28 @@ def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> 
     assert (
         calendar_registry.resolve_market_state(
             "FXSPOT",
-            datetime(2026, 2, 6, 18, 59, tzinfo=UTC),
+            datetime(2026, 2, 6, 21, 59, tzinfo=UTC),
         )
         == MarketState.OPEN
     )
     assert (
         calendar_registry.resolve_market_state(
             "FXSPOT",
-            datetime(2026, 2, 6, 19, 0, tzinfo=UTC),
+            datetime(2026, 2, 6, 22, 0, tzinfo=UTC),
         )
         == MarketState.CLOSED
     )
     assert (
         calendar_registry.resolve_market_state(
             "FXSPOT",
-            datetime(2026, 2, 8, 20, 59, tzinfo=UTC),
+            datetime(2026, 2, 8, 21, 59, tzinfo=UTC),
         )
         == MarketState.CLOSED
     )
     assert (
         calendar_registry.resolve_market_state(
             "FXSPOT",
-            datetime(2026, 2, 8, 21, 0, tzinfo=UTC),
+            datetime(2026, 2, 8, 22, 0, tzinfo=UTC),
         )
         == MarketState.OPEN
     )
@@ -2520,16 +2520,16 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 deviation_from_anchor_end=0.005,
             ),
             SimpleNamespace(
-                interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 20, 45, tzinfo=UTC)),
-                interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
+                interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 45, tzinfo=UTC)),
+                interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 22, 0, tzinfo=UTC)),
                 observed_log_price_end=999.0,
                 anchor_value_end=999.0,
                 pressure_state_end=999.0,
                 deviation_from_anchor_end=999.0,
             ),
             SimpleNamespace(
-                interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
-                interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 15, tzinfo=UTC)),
+                interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 22, 0, tzinfo=UTC)),
+                interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 22, 15, tzinfo=UTC)),
                 observed_log_price_end=0.05,
                 anchor_value_end=0.03,
                 pressure_state_end=0.01,
@@ -2549,7 +2549,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
 
     assert [row["timestamp_utc"] for row in sink.rows] == [
         datetime(2026, 2, 6, 19, 0, tzinfo=UTC),
-        datetime(2026, 2, 8, 21, 15, tzinfo=UTC),
+        datetime(2026, 2, 8, 22, 15, tzinfo=UTC),
     ]
     assert [row["mid_price"] for row in sink.rows] == pytest.approx(
         [

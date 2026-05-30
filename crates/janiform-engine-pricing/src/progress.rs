@@ -10,6 +10,17 @@ pub enum PricingProgressPhase {
     StrikePricingProgress,
 }
 
+/// Render a pricing progress phase for user-facing status output.
+pub const fn pricing_progress_phase_label(phase: PricingProgressPhase) -> &'static str {
+    match phase {
+        PricingProgressPhase::GroupProgress => "Pricing groups",
+        PricingProgressPhase::MaturityProgress => "Pricing maturities",
+        PricingProgressPhase::IntervalProgress => "Pricing intervals",
+        PricingProgressPhase::TransitionRowProgress => "Transition rows",
+        PricingProgressPhase::StrikePricingProgress => "Pricing strikes",
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PricingNodeProgressPhase {
@@ -76,6 +87,31 @@ impl PricingNodeProgress {
 
     pub const fn phase_only(phase: PricingNodeProgressPhase) -> Self {
         Self::new(phase, None, None, None, None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PricingProgressPhase, pricing_progress_phase_label};
+
+    #[test]
+    fn pricing_progress_phase_labels_are_sentence_case() {
+        assert_eq!(
+            [
+                pricing_progress_phase_label(PricingProgressPhase::GroupProgress),
+                pricing_progress_phase_label(PricingProgressPhase::MaturityProgress),
+                pricing_progress_phase_label(PricingProgressPhase::IntervalProgress),
+                pricing_progress_phase_label(PricingProgressPhase::TransitionRowProgress),
+                pricing_progress_phase_label(PricingProgressPhase::StrikePricingProgress),
+            ],
+            [
+                "Pricing groups",
+                "Pricing maturities",
+                "Pricing intervals",
+                "Transition rows",
+                "Pricing strikes",
+            ],
+        );
     }
 }
 

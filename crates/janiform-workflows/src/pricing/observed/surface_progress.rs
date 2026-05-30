@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform::pricing::{PricingProgressEvent, PricingProgressPhase};
+use janiform::pricing::{PricingProgressEvent, PricingProgressPhase, pricing_progress_phase_label};
 use janiform_terminal_ui::{
     ProgressAdapter, ProgressMeasure, ProgressWorkItemColumn, ProgressWorkItemMetric,
 };
@@ -10,10 +10,11 @@ use crate::progress::{
     progress_scaled_units,
 };
 
-use super::super::progress::pricing_progress_phase_label;
 use super::super::validation::pricing_validation_error;
 use super::progress::{ObservedWorkItemUpdate, emit_observed_stage_progress};
-use super::types::{ObservedOptionsSnapshotResult, SURFACE_TASK_FINALIZATION_UNIT};
+use super::types::{
+    ObservedOptionsSnapshotResult, PRICE_VALUATION_SURFACE_STAGE, SURFACE_TASK_FINALIZATION_UNIT,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SurfaceTaskProgressPlan {
@@ -128,7 +129,7 @@ impl SurfaceWorkerState {
             pass_units: "-".to_string(),
             sweep_units: "-".to_string(),
             interval_units: "-".to_string(),
-            phase: "starting".to_string(),
+            phase: "Starting".to_string(),
             completed_interval_pass_units: 0,
             completed_interval_pass_count: 0,
             completed_interval_sweep_count: 0,
@@ -524,7 +525,7 @@ pub(super) fn emit_surface_pricing_plan(
 ) -> Result<(), WorkflowError> {
     emit_observed_stage_progress(
         progress_adapter,
-        "price valuation surface",
+        PRICE_VALUATION_SURFACE_STAGE,
         surface_task_progress_measure(0, task_count)?,
         Some(format!(
             "pricing {task_count} valuation times on {}",
@@ -543,7 +544,7 @@ pub(super) fn emit_surface_interval_planning(
 ) -> Result<(), WorkflowError> {
     emit_observed_stage_progress(
         progress_adapter,
-        "price valuation surface",
+        PRICE_VALUATION_SURFACE_STAGE,
         ProgressMeasure::Unbounded,
         Some(format!(
             "planning pricing intervals for {task_count} valuation times"
@@ -565,7 +566,7 @@ pub(super) fn emit_surface_worker_started(
 
     emit_observed_stage_progress(
         progress_adapter,
-        "price valuation surface",
+        PRICE_VALUATION_SURFACE_STAGE,
         surface_task_progress_measure(input.completed_task_count, input.task_count)?,
         Some(format!(
             "pricing task {}/{} with {} intervals on {}",
@@ -589,7 +590,7 @@ pub(super) fn emit_surface_worker_progress(
 ) -> Result<(), WorkflowError> {
     emit_observed_stage_progress(
         progress_adapter,
-        "price valuation surface",
+        PRICE_VALUATION_SURFACE_STAGE,
         surface_task_progress_measure(input.completed_task_count, input.task_count)?,
         Some(format!(
             "{} on {}",
@@ -611,7 +612,7 @@ pub(super) fn emit_surface_worker_completed(
 ) -> Result<(), WorkflowError> {
     emit_observed_stage_progress(
         progress_adapter,
-        "price valuation surface",
+        PRICE_VALUATION_SURFACE_STAGE,
         surface_task_progress_measure(input.completed_task_count, input.task_count)?,
         Some(format!(
             "priced {}/{} valuation times on {}",

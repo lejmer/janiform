@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use janiform::calibration::current_state::CurrentStateEstimationBatchProgressEvent;
-use janiform::pricing::PricingProgressEvent;
+use janiform::pricing::{PricingProgressEvent, pricing_progress_phase_label};
 use janiform_terminal_ui::{
     ProgressAdapter, ProgressEvent, ProgressMeasure, ProgressWorkItemColumn, ProgressWorkItemMetric,
 };
@@ -9,7 +9,7 @@ use janiform_terminal_ui::{
 use crate::error::WorkflowError;
 use crate::progress::bounded_progress_measure;
 
-use super::super::progress::pricing_progress_phase_label;
+use super::super::labels::observed_options_pricing_progress_scope_label;
 use super::types::{
     LOAD_OBSERVED_DATA_STAGE, PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
     PREPARE_VALUATION_STATES_STAGE, PRICE_VALUATION_SURFACE_STAGE, WRITE_ARTIFACTS_STAGE,
@@ -75,7 +75,7 @@ pub(super) fn start_observed_pricing_progress(
 
     progress_adapter.observe(ProgressEvent::RunStarted {
         run_id: run_id.to_string(),
-        scope: "Observed options".to_string(),
+        scope: observed_options_pricing_progress_scope_label().to_string(),
         input_count: 1,
         output_path: output_path.map(janiform_terminal_ui::format_path),
         stage_sequence: observed_pricing_stage_sequence(include_physical_distribution_diagnostics),
@@ -191,7 +191,7 @@ pub(super) fn emit_valuation_state_progress(
 
     emit_observed_stage_progress(
         progress_adapter,
-        "prepare valuation states",
+        PREPARE_VALUATION_STATES_STAGE,
         bounded_progress_measure(completed_units, total_units)?,
         Some(format!(
             "replayed {}/{} ticks, prepared {}/{} valuation states",

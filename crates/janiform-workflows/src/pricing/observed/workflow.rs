@@ -187,7 +187,7 @@ pub fn run_observed_options_pricing_with_observer(
 
     emit_observed_stage_progress(
         &mut observer.progress_adapter,
-        "write artifacts",
+        WRITE_ARTIFACTS_STAGE,
         ProgressMeasure::Unbounded,
         Some("writing pricing artifacts".to_string()),
         ObservedWorkItemUpdate::none(),
@@ -211,7 +211,7 @@ pub fn run_observed_options_pricing_with_observer(
 
     emit_observed_stage_progress(
         &mut observer.progress_adapter,
-        "write artifacts",
+        WRITE_ARTIFACTS_STAGE,
         bounded_progress_measure(1, 1)?,
         Some(match artifact_paths.as_ref() {
             Some(_) => "wrote pricing artifacts".to_string(),

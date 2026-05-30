@@ -29,8 +29,8 @@ use super::progress::{
 use super::surface_progress::SurfaceTaskProgressPlan;
 use super::types::{
     DEFAULT_PRICING_INTERVAL_DURATION_NANOS, ObservedOptionsPricingNode,
-    ObservedOptionsPricingRequest, ObservedOptionsSnapshotResult, PreparedObservedSnapshot,
-    PreparedSnapshotGroup,
+    ObservedOptionsPricingRequest, ObservedOptionsSnapshotResult, PRICE_VALUATION_SURFACE_STAGE,
+    PreparedObservedSnapshot, PreparedSnapshotGroup,
 };
 
 pub(super) fn price_prepared_snapshot_with_terminal_progress(
@@ -43,7 +43,7 @@ pub(super) fn price_prepared_snapshot_with_terminal_progress(
 
     emit_observed_stage_progress(
         progress_adapter,
-        "price valuation surface",
+        PRICE_VALUATION_SURFACE_STAGE,
         bounded_progress_measure(0, 1)?,
         Some(format!(
             "pricing 1 valuation snapshot with {total_nodes} option nodes"
@@ -71,7 +71,7 @@ pub(super) fn price_prepared_snapshot_with_terminal_progress(
 
     emit_observed_stage_progress(
         progress_adapter,
-        "price valuation surface",
+        PRICE_VALUATION_SURFACE_STAGE,
         bounded_progress_measure(1, 1)?,
         Some("priced 1 valuation snapshot".to_string()),
         ObservedWorkItemUpdate::none(),

@@ -1,6 +1,7 @@
 use janiform::validation::tail_skew::TailSkewDatasetRole;
 use janiform_terminal_ui::{ProgressWorkItemColumn, ProgressWorkItemMetric};
 
+use super::super::labels::stylized_facts_validation_phase_label;
 use super::super::progress::{
     StylizedFactsValidationProgressEvent, StylizedFactsValidationProgressPhase,
 };
@@ -160,7 +161,10 @@ fn emit_metric_progress(
 ) {
     observer(StylizedFactsValidationProgressEvent {
         phase: StylizedFactsValidationProgressPhase::ComputeMetrics,
-        label: "compute return-based metrics".to_string(),
+        label: stylized_facts_validation_phase_label(
+            StylizedFactsValidationProgressPhase::ComputeMetrics,
+        )
+        .to_string(),
         step: super::super::execution::COMPUTE_METRICS_PHASE_STEP,
         total_steps: super::super::execution::VALIDATION_PHASE_COUNT,
         completed_units: Some(update.completed_units),

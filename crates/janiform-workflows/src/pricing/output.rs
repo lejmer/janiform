@@ -17,6 +17,10 @@ use janiform::pricing::{
 use crate::error::WorkflowError;
 
 use super::artifacts::PricingArtifactPaths;
+use super::labels::{
+    fitted_model_pricing_workflow_label, fitted_model_single_option_pricing_scope_label,
+    vanilla_option_grid_batch_pricing_scope_label, vanilla_option_surface_pricing_scope_label,
+};
 
 /// Completed fitted-model single-option pricing workflow.
 pub struct FittedModelSingleOptionPricingOutput {
@@ -41,7 +45,7 @@ impl FittedModelSingleOptionPricingOutput {
 
         Ok(json!({
             "schema_version": "janiform.price_run.v1",
-            "command_id": "price",
+            "command_id": fitted_model_pricing_workflow_label(),
             "status": "completed",
             "run_id": self.run_id,
             "model_path": model_path,
@@ -71,7 +75,7 @@ pub(super) fn pricing_start_summary(
 
     let mut rows = vec![
         KeyValueRow::new("Run", run_id),
-        KeyValueRow::new("Scope", "single vanilla option from fitted model"),
+        KeyValueRow::new("Scope", fitted_model_single_option_pricing_scope_label()),
         KeyValueRow::block("Inputs", input),
         KeyValueRow::new("Valuation", valuation_time_utc),
     ];
@@ -128,7 +132,7 @@ pub(super) fn grid_batch_pricing_start_summary(
         title: "Janiform price".to_string(),
         rows: vec![
             KeyValueRow::new("Run", "pricing"),
-            KeyValueRow::new("Scope", "vanilla option grid batch"),
+            KeyValueRow::new("Scope", vanilla_option_grid_batch_pricing_scope_label()),
             KeyValueRow::new(
                 "Grids",
                 format_count(input.request.grids.len(), "grid", "grids"),
@@ -175,7 +179,7 @@ pub(super) fn surface_pricing_start_summary(
         title: "Janiform price".to_string(),
         rows: vec![
             KeyValueRow::new("Run", "pricing"),
-            KeyValueRow::new("Scope", "vanilla option surface"),
+            KeyValueRow::new("Scope", vanilla_option_surface_pricing_scope_label()),
             KeyValueRow::new("Requested nodes", format_count(node_count, "node", "nodes")),
             KeyValueRow::new(
                 "Runtime intervals",

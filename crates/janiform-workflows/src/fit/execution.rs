@@ -30,7 +30,7 @@ use super::artifacts::{build_fit_report_payload, build_model_payload, write_pret
 use super::events::{
     append_artifact_event, progress_event_from_staged_event, run_events_from_staged_event,
 };
-use super::labels::stage_execution_status_label;
+use super::labels::{fit_workflow_id, fit_workflow_label, stage_execution_status_label};
 use super::output::FitWorkflowOutput;
 use super::output::{FitCompletionView, fit_completion_view, fit_start_summary};
 use super::request::{FitWorkflowPaths, StagedFitExecutionWorkflowRequest};
@@ -99,7 +99,7 @@ pub fn run_staged_fit_execution_workflow(
     })?;
 
     let event_paths = default_run_event_paths(request.paths.output_directory.as_path());
-    let workflow = WorkflowRef::labeled("fit", "Fit");
+    let workflow = WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label());
 
     let mut event_writer = RunEventLogWriter::create_with_policy(
         &event_paths.event_log_path,
@@ -393,7 +393,7 @@ fn observe_output_materialization_progress(
     };
 
     progress_adapter.observe(ProgressEvent::RunProgress {
-        phase: "finalizing outputs".to_string(),
+        phase: "Finalizing outputs".to_string(),
         measure: ProgressMeasure::Unbounded,
         latest_signal: Some(latest_signal.to_string()),
     });

@@ -201,7 +201,9 @@
       "status": "existing",
       "kind": "production",
       "layer": "terminal_ui",
-      "allowed_internal_dependencies": []
+      "allowed_internal_dependencies": [
+        "janiform-foundations"
+      ]
     },
     "janiform-workflows": {
       "status": "existing",

@@ -5,7 +5,7 @@ use janiform_workflows::simulation::{
     CoarseIntervalExportSettings, DirectSimulationCompleted, DirectSimulationCompletion,
     DirectSimulationJob, DirectSimulationWorkflowRequest, SeededTickExportSettings,
     SimulationExportSummary, SimulationOutputColumns, SimulationWorkflowObserver,
-    run_direct_simulation_workflow,
+    direct_simulation_scope_label, run_direct_simulation_workflow, simulation_workflow_label,
 };
 use serde_json::{Value, json};
 
@@ -17,9 +17,6 @@ use crate::commands::shared::terminal::{
 };
 use crate::context::{CommandContext, OutputMode};
 use crate::error::CliError;
-
-const SEEDED_TICK_SCOPE_LABEL: &str = "seeded tick simulation";
-const COARSE_INTERVAL_SCOPE_LABEL: &str = "coarse interval simulation";
 
 pub(crate) fn run_simulate_seeded_ticks_command(
     context: &CommandContext,
@@ -49,7 +46,6 @@ pub(crate) fn run_simulate_seeded_ticks_command(
         &request_path,
         output_path,
         "seeded",
-        SEEDED_TICK_SCOPE_LABEL,
         "seeded_tick",
         DirectSimulationJob::SeededTick {
             run_config: Box::new(run_config),
@@ -96,7 +92,6 @@ pub(crate) fn run_simulate_coarse_interval_command(
         &request_path,
         output_path,
         "coarse",
-        COARSE_INTERVAL_SCOPE_LABEL,
         "coarse_interval",
         DirectSimulationJob::CoarseInterval {
             request: Box::new(request),
@@ -116,18 +111,18 @@ fn execute_direct_simulation(
     request_path: &Path,
     output_path: Option<PathBuf>,
     run_id_prefix: &str,
-    scope_label: &str,
     report_kind: &str,
     job: DirectSimulationJob,
 ) -> Result<(), CliError> {
     let run_id = direct_simulation_run_id(run_id_prefix);
+    let scope_label = direct_simulation_scope_label(&job);
+
     let mut progress_adapter = terminal_progress_adapter_for_context(context);
 
     let output = run_direct_simulation_workflow(
         DirectSimulationWorkflowRequest {
             job,
             run_id: run_id.clone(),
-            scope_label: scope_label.to_string(),
             request_path: Some(request_path.to_path_buf()),
             output_path: output_path.clone(),
         },
@@ -235,7 +230,7 @@ pub(super) fn emit_completion(
             if let Some(output_path) = output_path {
                 write_json_payload(&json!({
                     "schema_version": "janiform.simulation_run.v1",
-                    "command_id": "simulate",
+                    "command_id": simulation_workflow_label(),
                     "status": "completed",
                     "simulation_kind": simulation_kind,
                     "seed": completion.seed,
@@ -267,7 +262,7 @@ pub(super) fn write_report_and_manifest(
         &report_path,
         &json!({
             "schema_version": "janiform.workflow_report.v1",
-            "workflow": "simulate",
+            "workflow": simulation_workflow_label(),
             "simulation_kind": simulation_kind,
             "primary_output_path": output_path,
             "diagnostics": diagnostics,
@@ -279,7 +274,7 @@ pub(super) fn write_report_and_manifest(
         &manifest_path,
         &json!({
             "schema_version": "janiform.run_manifest.v1",
-            "workflow": "simulate",
+            "workflow": simulation_workflow_label(),
             "run_id": run_id,
             "run_directory": run_directory,
             "primary_output_path": output_path,

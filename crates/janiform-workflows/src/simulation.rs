@@ -3,6 +3,7 @@
 pub mod artifacts;
 pub mod direct;
 mod execution;
+mod labels;
 pub mod model_artifact;
 mod output;
 pub mod output_preferences;
@@ -22,6 +23,9 @@ pub use direct::{
 pub use execution::{
     run_coarse_simulation_workflow, run_direct_simulation_workflow,
     run_seeded_tick_event_simulation_workflow, run_simulation_from_model_artifact_workflow,
+};
+pub use labels::{
+    direct_simulation_scope_label, model_artifact_simulation_scope_label, simulation_workflow_label,
 };
 pub use model_artifact::run_simulation_from_model_artifact;
 pub use output::{DirectSimulationWorkflowOutput, ModelArtifactSimulationWorkflowOutput};

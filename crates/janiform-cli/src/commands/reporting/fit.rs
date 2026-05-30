@@ -9,7 +9,7 @@ use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::format_elapsed_label;
-use janiform_terminal_ui::format_token_as_words;
+use janiform_terminal_ui::format_token_as_sentence_label;
 use serde_json::Value;
 
 use crate::commands::reporting::ReportFitCommand;
@@ -280,7 +280,7 @@ fn render_failure_summary(
             failed_phase
                 .label
                 .clone()
-                .unwrap_or_else(|| format_token_as_words(&failed_phase.phase_id)),
+                .unwrap_or_else(|| format_token_as_sentence_label(&failed_phase.phase_id)),
         ));
     }
 

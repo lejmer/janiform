@@ -3,6 +3,7 @@ use std::path::Path;
 
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::format_artifact_path;
+use janiform_terminal_ui::format_token_as_sentence_label;
 use serde::Serialize;
 use serde_json::Map;
 use serde_json::Value;
@@ -309,9 +310,7 @@ fn render_scalar_value(value: &Value) -> String {
     }
 }
 
-fn split_object_fields<'a>(
-    fields: &'a Map<String, Value>,
-) -> (JsonFieldRows<'a>, JsonFieldRows<'a>) {
+fn split_object_fields(fields: &Map<String, Value>) -> (JsonFieldRows<'_>, JsonFieldRows<'_>) {
     let mut scalar_fields = Vec::new();
     let mut detail_fields = Vec::new();
 
@@ -338,14 +337,7 @@ fn heading_level(depth: usize) -> usize {
 }
 
 fn humanize_key(key: &str) -> String {
-    let label = key.replace(['_', '-'], " ");
-    let mut characters = label.chars();
-
-    let Some(first_character) = characters.next() else {
-        return String::new();
-    };
-
-    format!("{}{}", first_character.to_uppercase(), characters.as_str())
+    format_token_as_sentence_label(&key.replace('-', "_"))
 }
 
 fn html_styles() -> &'static str {

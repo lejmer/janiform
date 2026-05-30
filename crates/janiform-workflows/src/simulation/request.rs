@@ -19,15 +19,13 @@ const DEFAULT_SEEDED_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1024;
 
 /// Complete simulation-from-model-artifact workflow request.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelArtifactSimulationWorkflowRequest {
     /// Persisted `JaniformModel` payload.
     pub model_payload: Value,
     /// Optional stable workflow run id shown in terminal summaries.
     #[serde(default)]
     pub run_id: Option<String>,
-    /// Optional human-readable workflow scope shown in terminal summaries.
-    #[serde(default)]
-    pub scope_label: Option<String>,
     /// Optional request artifact path when the boundary loaded the request from disk.
     #[serde(default)]
     pub request_path: Option<PathBuf>,
@@ -102,8 +100,6 @@ pub struct DirectSimulationWorkflowRequest {
     pub job: DirectSimulationJob,
     /// Stable workflow run id shown in terminal summaries.
     pub run_id: String,
-    /// Human-readable simulation scope.
-    pub scope_label: String,
     /// Optional request artifact path when the boundary loaded the request from disk.
     pub request_path: Option<PathBuf>,
     /// Optional primary output path.
