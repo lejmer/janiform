@@ -110,6 +110,7 @@ pub use pricing_kernel::{
 };
 pub use progress::{
     PricingNodeProgress, PricingNodeProgressPhase, PricingProgressEvent, PricingProgressPhase,
+    pricing_progress_phase_label,
 };
 pub use runner::{
     VanillaOptionPricingExecutionInput, VanillaOptionPricingExecutionInputError,

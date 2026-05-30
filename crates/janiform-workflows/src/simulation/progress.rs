@@ -137,8 +137,8 @@ pub(super) fn emit_completion_summary(
 
 fn simulation_progress_phase_label(phase: SimulationProgressPhase) -> &'static str {
     match phase {
-        SimulationProgressPhase::SeededTickIntervals => "seeded tick intervals",
-        SimulationProgressPhase::CoarseIntervals => "coarse intervals",
+        SimulationProgressPhase::SeededTickIntervals => "Seeded tick intervals",
+        SimulationProgressPhase::CoarseIntervals => "Coarse intervals",
     }
 }
 

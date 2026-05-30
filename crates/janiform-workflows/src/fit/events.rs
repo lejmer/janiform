@@ -23,7 +23,7 @@ use janiform_terminal_ui::{
 use crate::error::WorkflowError;
 use crate::progress::{progress_count_label, progress_position_label};
 
-use super::labels::{stage_execution_status_label, stage_label};
+use super::labels::{fit_progress_scope_label, stage_execution_status_label, stage_label};
 
 /// Convert a staged runtime observer event into durable run events.
 pub fn run_events_from_staged_event(
@@ -190,7 +190,7 @@ pub fn progress_event_from_staged_event(
             ..
         } => Some(ProgressEvent::RunStarted {
             run_id: run_id.clone(),
-            scope: "Calibrating".to_string(),
+            scope: fit_progress_scope_label().to_string(),
             input_count: 1,
             output_path: None,
             stage_sequence: stage_sequence

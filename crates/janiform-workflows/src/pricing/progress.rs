@@ -1,4 +1,4 @@
-use janiform::pricing::{PricingProgressEvent, PricingProgressPhase};
+use janiform::pricing::{PricingProgressEvent, pricing_progress_phase_label};
 use janiform_terminal_ui::{
     CompletionSummary, ProgressAdapter, ProgressEvent, StartSummary, TerminalSummaryPolicy,
 };
@@ -73,16 +73,6 @@ pub(super) fn complete_pricing_progress(
     };
 
     complete_terminal_progress(progress_adapter, "completed")
-}
-
-pub(super) fn pricing_progress_phase_label(phase: PricingProgressPhase) -> &'static str {
-    match phase {
-        PricingProgressPhase::GroupProgress => "pricing groups",
-        PricingProgressPhase::MaturityProgress => "pricing maturities",
-        PricingProgressPhase::IntervalProgress => "pricing intervals",
-        PricingProgressPhase::TransitionRowProgress => "transition rows",
-        PricingProgressPhase::StrikePricingProgress => "pricing strikes",
-    }
 }
 
 fn pricing_progress_signal(event: &PricingProgressEvent) -> String {

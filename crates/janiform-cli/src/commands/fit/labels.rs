@@ -6,10 +6,10 @@ pub(crate) fn optional_label(value: Option<&str>) -> String {
 
 pub(crate) fn workflow_scope_argument_label(scope: WorkflowScope) -> String {
     match scope {
-        WorkflowScope::Full => "full",
-        WorkflowScope::SeasonalityOnly => "seasonality only",
-        WorkflowScope::FullWithoutOptionSurface => "full without option surface",
-        WorkflowScope::FullWithOptionSurface => "full with option surface",
+        WorkflowScope::Full => "Full",
+        WorkflowScope::SeasonalityOnly => "Seasonality only",
+        WorkflowScope::FullWithoutOptionSurface => "Full without option surface",
+        WorkflowScope::FullWithOptionSurface => "Full with option surface",
     }
     .to_string()
 }

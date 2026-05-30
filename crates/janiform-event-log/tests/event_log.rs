@@ -39,7 +39,7 @@ fn writer_persists_replayable_log_and_latest_state_snapshot() {
             EventDeliveryPriority::Required,
             RunEventPayload::Lifecycle(RunLifecycleEvent::RunStarted {
                 scope_id: "full".to_string(),
-                scope_label: Some("full calibration".to_string()),
+                scope_label: Some("Full calibration".to_string()),
                 inputs: vec!["ticks.parquet".to_string()],
                 output_directory: Some(run_directory.display().to_string()),
                 stage_sequence: vec![stage.clone()],
@@ -215,7 +215,7 @@ fn live_replay_ignores_only_malformed_unterminated_trailing_line() {
         EventDeliveryPriority::Required,
         RunEventPayload::Lifecycle(RunLifecycleEvent::RunStarted {
             scope_id: "seasonality_only".to_string(),
-            scope_label: Some("seasonality only".to_string()),
+            scope_label: Some("Seasonality only".to_string()),
             inputs: vec!["ticks.csv".to_string()],
             output_directory: Some(run_directory.display().to_string()),
             stage_sequence: Vec::new(),

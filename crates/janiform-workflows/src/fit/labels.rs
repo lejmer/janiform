@@ -3,7 +3,27 @@ use janiform_calibration_runtime::{
     CalibrationMarketDataWorkflowScope, CalibrationStageExecutionStatus, MarketDataInputFileFormat,
     MarketDataTickPriceInputPolicy,
 };
-use janiform_terminal_ui::format_token_as_words;
+use janiform_terminal_ui::format_token_as_sentence_label;
+
+/// Stable fit workflow identifier used by event logs.
+pub(super) const fn fit_workflow_id() -> &'static str {
+    "fit"
+}
+
+/// Human-readable fit workflow label used by event logs.
+pub(super) const fn fit_workflow_label() -> &'static str {
+    "Fit"
+}
+
+/// Human-readable progress scope label for fit workflows.
+pub(super) const fn fit_progress_scope_label() -> &'static str {
+    "Calibrating"
+}
+
+/// Human-readable progress scope label for fit preparation.
+pub(super) const fn fit_preparation_progress_scope_label() -> &'static str {
+    "Preparing fit"
+}
 
 /// Render a market-data file format for workflow summaries.
 pub const fn market_data_file_format_label(format: MarketDataInputFileFormat) -> &'static str {
@@ -25,12 +45,12 @@ pub const fn tick_price_policy_label(policy: MarketDataTickPriceInputPolicy) -> 
 /// Render a workflow scope for terminal summaries.
 pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> &'static str {
     match scope {
-        CalibrationMarketDataWorkflowScope::SeasonalityOnly => "seasonality only",
+        CalibrationMarketDataWorkflowScope::SeasonalityOnly => "Seasonality only",
         CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface => {
-            "full calibration without option surface"
+            "Full calibration without option surface"
         }
         CalibrationMarketDataWorkflowScope::FullWithOptionSurface => {
-            "full calibration with option snapshot"
+            "Full calibration with option snapshot"
         }
     }
 }
@@ -38,12 +58,12 @@ pub const fn workflow_scope_label(scope: CalibrationMarketDataWorkflowScope) -> 
 /// Render a persisted workflow-scope token for terminal summaries.
 pub fn workflow_scope_label_from_token(scope: &str) -> String {
     match scope {
-        "seasonality_only" => "seasonality only".to_string(),
-        "full_without_option_surface" => "full calibration without option snapshot".to_string(),
-        "full_with_option_surface" => "full calibration with option snapshot".to_string(),
-        "underlying_only" => "underlying calibration".to_string(),
-        "joint_option_calibrated" => "joint option calibration".to_string(),
-        other => format_token_as_words(other),
+        "seasonality_only" => "Seasonality only".to_string(),
+        "full_without_option_surface" => "Full calibration without option surface".to_string(),
+        "full_with_option_surface" => "Full calibration with option snapshot".to_string(),
+        "underlying_only" => "Underlying calibration".to_string(),
+        "joint_option_calibrated" => "Joint option calibration".to_string(),
+        other => format_token_as_sentence_label(other),
     }
 }
 
@@ -83,7 +103,7 @@ pub fn stage_label_from_token(stage: &str) -> String {
         "joint_refinement" => "Refine dynamics",
         "option_refinement" => "Fit option surface",
         "finalization" => "Finalize model",
-        other => return format_token_as_words(other),
+        other => return format_token_as_sentence_label(other),
     };
 
     label.to_string()

@@ -2010,7 +2010,7 @@ fn inspect_run_replay_ignores_trailing_partial_event_row() {
         janiform_event_log::RunEventPayload::Lifecycle(
             janiform_event_log::RunLifecycleEvent::RunStarted {
                 scope_id: "seasonality_only".to_string(),
-                scope_label: Some("seasonality only".to_string()),
+                scope_label: Some("Seasonality only".to_string()),
                 inputs: vec!["ticks.csv".to_string()],
                 output_directory: Some(run_directory.display().to_string()),
                 stage_sequence: Vec::new(),

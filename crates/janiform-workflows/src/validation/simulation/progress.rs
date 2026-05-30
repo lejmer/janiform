@@ -1,6 +1,7 @@
 use janiform_terminal_ui::{ProgressWorkItemColumn, ProgressWorkItemMetric};
 
 use super::super::artifacts::SimulationPathManifest;
+use super::super::labels::stylized_facts_validation_phase_label;
 use super::super::progress::{
     StylizedFactsValidationProgressEvent, StylizedFactsValidationProgressPhase,
 };
@@ -15,7 +16,10 @@ pub(super) fn emit_simulation_plan(
 ) {
     observer(StylizedFactsValidationProgressEvent {
         phase: StylizedFactsValidationProgressPhase::SimulateSeededPath,
-        label: "simulate seeded paths".to_string(),
+        label: stylized_facts_validation_phase_label(
+            StylizedFactsValidationProgressPhase::SimulateSeededPath,
+        )
+        .to_string(),
         step: 3,
         total_steps: super::super::execution::VALIDATION_PHASE_COUNT,
         completed_units: Some(0),
@@ -170,7 +174,10 @@ fn emit_simulation_progress(
 ) {
     observer(StylizedFactsValidationProgressEvent {
         phase: StylizedFactsValidationProgressPhase::SimulateSeededPath,
-        label: "simulate seeded paths".to_string(),
+        label: stylized_facts_validation_phase_label(
+            StylizedFactsValidationProgressPhase::SimulateSeededPath,
+        )
+        .to_string(),
         step: 3,
         total_steps: super::super::execution::VALIDATION_PHASE_COUNT,
         completed_units: Some(completed_units),

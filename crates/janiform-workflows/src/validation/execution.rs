@@ -18,6 +18,7 @@ use super::empirical::{
     observed_interval_count, parsed_intervals, prepare_empirical_input,
     prepare_empirical_plan_summary, tick_returns,
 };
+use super::labels::stylized_facts_validation_phase_label;
 use super::metrics::{
     ComparisonRequestBuildInput, bootstrap_configuration_for_options, build_comparison_request,
     threshold_policy_for_options,
@@ -243,7 +244,10 @@ fn run_raw_data_validation(
     observe(
         observer,
         StylizedFactsValidationProgressPhase::DeriveIntervalReturns,
-        "derive interval returns".to_string(),
+        stylized_facts_validation_phase_label(
+            StylizedFactsValidationProgressPhase::DeriveIntervalReturns,
+        )
+        .to_string(),
         2,
     );
 
@@ -291,7 +295,8 @@ fn run_raw_data_validation(
     observe(
         observer,
         StylizedFactsValidationProgressPhase::CompareMetrics,
-        "compare metrics".to_string(),
+        stylized_facts_validation_phase_label(StylizedFactsValidationProgressPhase::CompareMetrics)
+            .to_string(),
         5,
     );
 
@@ -306,7 +311,8 @@ fn run_raw_data_validation(
     observe(
         observer,
         StylizedFactsValidationProgressPhase::WriteArtifacts,
-        "write artifacts".to_string(),
+        stylized_facts_validation_phase_label(StylizedFactsValidationProgressPhase::WriteArtifacts)
+            .to_string(),
         6,
     );
 
@@ -332,7 +338,10 @@ fn load_empirical_returns(
     observe(
         observer,
         StylizedFactsValidationProgressPhase::LoadEmpiricalData,
-        "load empirical data".to_string(),
+        stylized_facts_validation_phase_label(
+            StylizedFactsValidationProgressPhase::LoadEmpiricalData,
+        )
+        .to_string(),
         1,
     );
 

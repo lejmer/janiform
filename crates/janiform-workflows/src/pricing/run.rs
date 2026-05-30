@@ -18,6 +18,10 @@ use crate::terminal::{TerminalProgressMode, stderr_progress_adapter, terminal_su
 
 use super::FittedModelSingleOptionPricingOutput;
 use super::execution::run_fitted_model_single_option_pricing_workflow;
+use super::labels::{
+    vanilla_option_grid_batch_pricing_progress_scope_label,
+    vanilla_option_surface_pricing_progress_scope_label,
+};
 use super::output::{
     grid_batch_pricing_completion_summary, grid_batch_pricing_start_summary,
     surface_pricing_completion_summary, surface_pricing_start_summary,
@@ -55,7 +59,7 @@ pub fn run_vanilla_option_grid_batch_pricing_with_terminal_progress(
     run_pricing_with_terminal_progress(
         execution_input,
         progress_mode,
-        "Pricing grid",
+        vanilla_option_grid_batch_pricing_progress_scope_label(),
         grid_batch_pricing_start_summary,
         grid_batch_pricing_completion_summary,
         run_vanilla_option_grid_batch_pricing_core,
@@ -71,7 +75,7 @@ pub fn run_vanilla_option_surface_pricing_with_terminal_progress(
     run_pricing_with_terminal_progress(
         execution_input,
         progress_mode,
-        "Pricing surface",
+        vanilla_option_surface_pricing_progress_scope_label(),
         surface_pricing_start_summary,
         surface_pricing_completion_summary,
         run_vanilla_option_surface_pricing_core,

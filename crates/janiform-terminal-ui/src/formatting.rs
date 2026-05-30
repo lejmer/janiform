@@ -54,6 +54,18 @@ pub fn format_token_as_words(value: &str) -> String {
     value.trim().replace('_', " ")
 }
 
+/// Render a machine token as a sentence-style label.
+pub fn format_token_as_sentence_label(value: &str) -> String {
+    let label = format_token_as_words(value);
+    let mut characters = label.chars();
+
+    let Some(first_character) = characters.next() else {
+        return String::new();
+    };
+
+    format!("{}{}", first_character.to_uppercase(), characters.as_str())
+}
+
 /// Render a machine token with hyphen separators.
 pub fn format_token_as_kebab(value: &str) -> String {
     value.trim().replace('_', "-")

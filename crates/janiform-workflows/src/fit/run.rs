@@ -8,6 +8,7 @@ use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
 use crate::error::WorkflowError;
 
 use super::execution::{fit_workflow_paths, run_staged_fit_execution_workflow};
+use super::labels::fit_preparation_progress_scope_label;
 use super::output::FitWorkflowOutput;
 use super::output::fit_preparation_start_summary;
 use super::preparation::{
@@ -121,7 +122,7 @@ fn observe_preparation_started(
 
     progress_adapter.observe(ProgressEvent::RunStarted {
         run_id: preparation_progress_run_id(request),
-        scope: "Preparing fit".to_string(),
+        scope: fit_preparation_progress_scope_label().to_string(),
         input_count: preparation_input_count(request),
         output_path: None,
         stage_sequence: Vec::new(),

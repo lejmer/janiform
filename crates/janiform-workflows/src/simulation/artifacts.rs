@@ -16,6 +16,8 @@ use serde_json::{Value, json};
 use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
+use super::labels::simulation_workflow_label;
+
 /// Default number of simulation output rows written per artifact batch.
 pub const DEFAULT_SIMULATION_EXPORT_BATCH_SIZE: usize = 256;
 
@@ -140,7 +142,7 @@ pub(super) fn write_model_artifact_simulation_sidecars(
         &report_path,
         &json!({
             "schema_version": "janiform.workflow_report.v1",
-            "workflow": "simulate",
+            "workflow": simulation_workflow_label(),
             "primary_output_path": output_path,
             "response": response_payload,
         }),
@@ -151,7 +153,7 @@ pub(super) fn write_model_artifact_simulation_sidecars(
         &manifest_path,
         &json!({
             "schema_version": "janiform.run_manifest.v1",
-            "workflow": "simulate",
+            "workflow": simulation_workflow_label(),
             "run_id": run_id,
             "run_directory": run_directory,
             "primary_output_path": output_path,

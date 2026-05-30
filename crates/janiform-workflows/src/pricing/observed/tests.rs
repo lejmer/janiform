@@ -187,7 +187,7 @@ fn surface_worker_interval_operator_completion_stays_running_until_task_done() {
     assert_eq!(worker_state.progress_percent, 43);
     assert_eq!(worker_state.pass_units, "1/3 done");
     assert_eq!(worker_state.sweep_units, "1");
-    assert_eq!(worker_state.phase, "pricing intervals");
+    assert_eq!(worker_state.phase, "Pricing intervals");
 
     worker_state.complete();
 
@@ -215,7 +215,7 @@ fn surface_worker_strike_progress_uses_later_pricing_phase_units() {
 
     assert_eq!(worker_state.progress_percent, 95);
     assert_eq!(worker_state.pass_units, "3/3 done");
-    assert_eq!(worker_state.phase, "pricing strikes");
+    assert_eq!(worker_state.phase, "Pricing strikes");
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn surface_worker_group_progress_advances_strike_row_units() {
 
     assert_eq!(worker_state.progress_percent, 92);
     assert_eq!(worker_state.pass_units, "3/3 done");
-    assert_eq!(worker_state.phase, "pricing groups");
+    assert_eq!(worker_state.phase, "Pricing groups");
 }
 
 #[test]

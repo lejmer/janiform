@@ -13,6 +13,7 @@ use crate::error::WorkflowError;
 use crate::model::{build_hourly_factor_contract, fitted_model_context, model_reference_price};
 
 use super::artifacts::{pricing_artifact_paths, write_pricing_artifacts};
+use super::labels::fitted_model_single_option_pricing_progress_scope_label;
 use super::maturity::{
     finalize_single_maturity_resolution, resolve_single_maturity,
     runtime_schedule_hourly_factor_contract_coverage,
@@ -108,14 +109,14 @@ pub fn run_fitted_model_single_option_pricing_workflow(
     start_pricing_progress(
         observer.progress_adapter.as_deref_mut(),
         progress_run_id,
-        "Pricing",
+        fitted_model_single_option_pricing_progress_scope_label(),
         1,
         pricing_request.output_path.as_deref(),
     )?;
 
     if let Some(progress_adapter) = observer.progress_adapter.as_deref_mut() {
         progress_adapter.observe(ProgressEvent::RunProgress {
-            phase: "pricing workflow".to_string(),
+            phase: "Pricing workflow".to_string(),
             measure: ProgressMeasure::Unbounded,
             latest_signal: Some("preparing runtime inputs and executing pricing".to_string()),
         });

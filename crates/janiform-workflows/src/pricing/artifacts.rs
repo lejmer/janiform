@@ -7,6 +7,8 @@ use serde_json::json;
 use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 
+use super::labels::fitted_model_pricing_workflow_label;
+
 /// Pricing artifact paths.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PricingArtifactPaths {
@@ -64,7 +66,7 @@ pub(super) fn write_pricing_artifacts(
         &paths.report_path,
         &json!({
             "schema_version": "janiform.workflow_report.v1",
-            "workflow": "price",
+            "workflow": fitted_model_pricing_workflow_label(),
             "primary_output_path": paths.primary_output_path,
             "response": run_result.response,
             "run_diagnostics": run_result.run_diagnostics,
@@ -76,7 +78,7 @@ pub(super) fn write_pricing_artifacts(
         &paths.manifest_path,
         &json!({
             "schema_version": "janiform.run_manifest.v1",
-            "workflow": "price",
+            "workflow": fitted_model_pricing_workflow_label(),
             "run_id": run_id,
             "run_directory": paths.run_directory,
             "primary_output_path": paths.primary_output_path,

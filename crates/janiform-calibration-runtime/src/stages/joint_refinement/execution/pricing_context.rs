@@ -15,7 +15,7 @@ use janiform_engine_pricing::{
     VanillaOptionNodePriceSensitivity, VanillaOptionPayoffType,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
-    materialize_schedule_interval_factors_with_cpu_count,
+    materialize_schedule_interval_factors_with_cpu_count, pricing_progress_phase_label,
 };
 use janiform_foundations::time::{
     NANOS_PER_HOUR, ceil_to_hour_utc_nanos, checked_interval_count_between_utc_nanos,
@@ -872,7 +872,9 @@ fn run_option_grid_batch_pricing(
                 aggregate_progress_percent: snapshot.aggregate_progress_percent,
                 current_item_label: Some(format_option_pricing_work_item(&progress, &event)),
                 current_restart_id: progress.current_restart_id.map(str::to_string),
-                current_work_item_status: Some(pricing_progress_phase_status(&event).to_string()),
+                current_work_item_status: Some(
+                    pricing_progress_phase_label(event.phase).to_string(),
+                ),
                 active_restart_count: snapshot.active_restart_count,
                 current_evaluation_count: snapshot.current_evaluation_count,
                 total_evaluation_budget: snapshot.total_evaluation_budget,
@@ -911,16 +913,6 @@ fn run_option_grid_batch_pricing(
     );
 
     pricing_result.map_err(|source| format!("joint option pricing evaluation failed: {source}"))
-}
-
-fn pricing_progress_phase_status(event: &PricingProgressEvent) -> &'static str {
-    match event.phase {
-        PricingProgressPhase::GroupProgress => "pricing groups",
-        PricingProgressPhase::MaturityProgress => "pricing maturities",
-        PricingProgressPhase::IntervalProgress => "pricing intervals",
-        PricingProgressPhase::TransitionRowProgress => "transition rows",
-        PricingProgressPhase::StrikePricingProgress => "pricing strikes",
-    }
 }
 
 fn option_pricing_progress_snapshot(

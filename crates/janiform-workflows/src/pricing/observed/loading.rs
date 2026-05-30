@@ -40,7 +40,7 @@ pub(super) fn load_observed_pricing_inputs(
 
     emit_observed_stage_progress(
         progress_adapter,
-        "load observed data",
+        LOAD_OBSERVED_DATA_STAGE,
         ProgressMeasure::Unbounded,
         Some("loading observed ticks and option quotes".to_string()),
         ObservedWorkItemUpdate::none(),
@@ -73,7 +73,7 @@ pub(super) fn load_observed_pricing_inputs(
 
     emit_observed_stage_progress(
         progress_adapter,
-        "load observed data",
+        LOAD_OBSERVED_DATA_STAGE,
         bounded_progress_measure(1, 1)?,
         Some(format!(
             "loaded {} ticks and {} option quotes",
