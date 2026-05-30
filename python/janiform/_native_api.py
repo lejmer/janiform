@@ -9,8 +9,12 @@ def native_module() -> ModuleType:
 
 
 def run_cli() -> int:
-    native = native_module()
-    return int(native.run_cli())
+    # Avoid emitting a traceback on interrupt
+    try:
+        native = native_module()
+        return int(native.run_cli())
+    except KeyboardInterrupt:
+        return 2
 
 
 def native_exception_matches(
