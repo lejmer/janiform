@@ -7,7 +7,8 @@ use janiform_calibration_runtime::{
     CalibrationMarketDataColumnMapping, CalibrationMarketDataKnownNewsInput,
     CalibrationMarketDataMeanReversionConfiguration, CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
-    CalibrationStagedExecutionInput, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
+    CalibrationStagedExecutionInput, CalibrationTickObjectiveDataUsagePolicy,
+    DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataCoarseDataColumnMapping,
     MarketDataFitInputInferenceRequest, MarketDataFitMarketProfileDefaults,
     MarketDataFitNormalizationOverrides, MarketDataInputFileFormat, MarketDataInputFileReference,
     MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
@@ -26,6 +27,8 @@ use serde_json::Value;
 use serde_json::json;
 
 use crate::error::WorkflowError;
+
+use super::input_paths::preparation_request_input_paths;
 
 const MARKET_DATA_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.request.v1";
 const MARKET_DATA_PREPARATION_SCHEMA_VERSION: &str = "calibration.market_data.preparation.v1";
@@ -46,6 +49,15 @@ pub struct FitPreparationRequest {
     pub tick_data_format: Option<MarketDataInputFileFormat>,
     /// Tick-data provenance label.
     pub tick_data_provenance_label: String,
+    /// Optional coarse data source path.
+    #[serde(default)]
+    pub coarse_data_path: Option<String>,
+    /// Coarse data file format.
+    #[serde(default = "default_coarse_data_file_format")]
+    pub coarse_data_format: MarketDataInputFileFormat,
+    /// Coarse data provenance label.
+    #[serde(default = "default_coarse_data_provenance_label")]
+    pub coarse_data_provenance_label: String,
     /// Optional option-surface source path.
     #[serde(default)]
     pub option_surface_path: Option<String>,
@@ -73,6 +85,9 @@ pub struct FitPreparationConfiguration {
     /// Optional tick column mapping overrides.
     #[serde(default)]
     pub tick_data_column_mapping: Option<MarketDataTickDataColumnMapping>,
+    /// Optional coarse data column mapping.
+    #[serde(default)]
+    pub coarse_data_column_mapping: Option<MarketDataCoarseDataColumnMapping>,
     /// Optional normalization policy overrides.
     #[serde(default)]
     pub normalization_overrides: MarketDataFitNormalizationOverrides,
@@ -99,6 +114,9 @@ pub struct FitPreparationConfiguration {
     /// Pricing interval schedule policy.
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
+    /// Policy for how much tick evidence slower objectives may consume.
+    #[serde(default)]
+    pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     /// Optional dynamics restart budget override.
     #[serde(default)]
     pub dynamics_search_restart_candidate_budget: Option<usize>,
@@ -196,6 +214,7 @@ struct PreparationRequestBuildInput<'a> {
     workflow_scope: CalibrationMarketDataWorkflowScope,
     run_id: &'a str,
     tick_data_source: MarketDataInputFileReference,
+    coarse_data_source: Option<MarketDataInputFileReference>,
     option_surface_source: Option<MarketDataInputFileReference>,
     tick_data_column_mapping: MarketDataTickDataColumnMapping,
     normalization_policy: MarketDataNormalizationPolicy,
@@ -265,6 +284,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
         message: format!("failed to infer fit inputs: {source}"),
     })?;
 
+    let coarse_data_source = coarse_data_source(&request)?;
     let option_surface_source = option_surface_source(&request)?;
 
     emit_preparation_progress(
@@ -306,6 +326,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
         workflow_scope,
         run_id: &input_inference.run_id,
         tick_data_source: input_inference.tick_data_source.clone(),
+        coarse_data_source,
         option_surface_source,
         tick_data_column_mapping: input_inference.tick_data_column_mapping.clone(),
         normalization_policy: input_inference.normalization_policy.clone(),
@@ -333,7 +354,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 
     Ok(PreparedFitWorkflow {
         execution_input: prepared_plan.execution_input,
-        input_paths: fit_workflow_input_paths(&preparation_request),
+        input_paths: preparation_request_input_paths(&preparation_request),
         preparation_payload: json!({
             "schema_version": MARKET_DATA_PREPARATION_SCHEMA_VERSION,
             "request": preparation_request,
@@ -515,6 +536,34 @@ fn option_surface_source(
     }))
 }
 
+fn default_coarse_data_file_format() -> MarketDataInputFileFormat {
+    MarketDataInputFileFormat::Parquet
+}
+
+fn default_coarse_data_provenance_label() -> String {
+    "coarse_data".to_string()
+}
+
+fn coarse_data_source(
+    request: &FitPreparationRequest,
+) -> Result<Option<MarketDataInputFileReference>, WorkflowError> {
+    let Some(coarse_data_path) = &request.coarse_data_path else {
+        return Ok(None);
+    };
+
+    if coarse_data_path.trim().is_empty() {
+        return Err(WorkflowError::FitExecutionFailed {
+            message: "coarse_data_path must be non-empty when provided".to_string(),
+        });
+    }
+
+    Ok(Some(MarketDataInputFileReference {
+        path: coarse_data_path.clone(),
+        file_format: request.coarse_data_format,
+        provenance_label: request.coarse_data_provenance_label.clone(),
+    }))
+}
+
 fn empty_tick_data_column_mapping() -> MarketDataTickDataColumnMapping {
     MarketDataTickDataColumnMapping {
         timestamp_column: None,
@@ -586,6 +635,11 @@ fn build_preparation_request(
 
     let column_mapping = CalibrationMarketDataColumnMapping {
         tick_data: input.tick_data_column_mapping,
+        coarse_data: input
+            .request
+            .configuration
+            .coarse_data_column_mapping
+            .clone(),
         option_surface: input
             .request
             .configuration
@@ -600,6 +654,7 @@ fn build_preparation_request(
         schema_version: MARKET_DATA_REQUEST_SCHEMA_VERSION.to_string(),
         run_id: input.run_id.to_string(),
         tick_data_source: input.tick_data_source,
+        coarse_data_source: input.coarse_data_source,
         session_configuration,
         column_mapping,
         workflow_scope: input.workflow_scope,
@@ -625,6 +680,10 @@ fn build_preparation_request(
             .configuration
             .pricing_interval_schedule_policy
             .clone(),
+        tick_objective_data_usage_policy: input
+            .request
+            .configuration
+            .tick_objective_data_usage_policy,
         dynamics_search_restart_candidate_budget: input
             .request
             .configuration
@@ -821,23 +880,6 @@ fn mean_reversion_configuration(
                     .clone()
             }),
     )
-}
-
-fn fit_workflow_input_paths(request: &CalibrationMarketDataPreparationRequest) -> Vec<String> {
-    let mut input_paths = vec![format!("ticks: {}", request.tick_data_source.path)];
-
-    if let Some(option_surface_source) = &request.option_surface_source {
-        input_paths.push(format!("options: {}", option_surface_source.path));
-    }
-
-    if let Some(known_news_inputs) = &request.known_news_inputs {
-        input_paths.push(format!(
-            "known news: {}",
-            known_news_inputs.calendar_source.path
-        ));
-    }
-
-    input_paths
 }
 
 fn session_windows(

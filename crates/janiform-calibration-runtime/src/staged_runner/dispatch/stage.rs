@@ -2,13 +2,13 @@ use std::path::Path;
 
 use super::super::{
     CalibrationInMemoryStagePayloadState, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunStageProgressEvent,
-    CalibrationStagedRunStageReport, ExchangeCalendarRegistry, HawkesStageExecutionInput,
+    CalibrationStageHandoffTransport, CalibrationStagePayloadSource,
+    CalibrationStageSelectedCandidateSource, CalibrationStagedRunFailure,
+    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
+    ExchangeCalendarRegistry, HawkesStageExecutionInput, HawkesStageFittedPayload,
     HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
-    LongVarianceStageExecutionInput, LongVarianceStageReturnComponentsInput,
-    MeanReversionStageReturnComponentsInput, NewsShocksStageExecutionInput,
-    NewsShocksStageReturnComponentsInput, ReturnComponentsStageActivityInput,
+    LongVarianceStageExecutionInput, NewsShocksStageExecutionInput,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageProgressUpdate,
     run_hawkes_calibration_stage, run_long_variance_calibration_stage,
     run_mean_reversion_calibration_stage, run_news_shocks_calibration_stage,
@@ -168,7 +168,7 @@ fn run_return_components_staged_execution_stage(
 fn return_components_activity_input(
     run_spec: &CalibrationRunSpec,
     payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<ReturnComponentsStageActivityInput, CalibrationStagedRunFailure> {
+) -> Result<CalibrationStagePayloadSource<HawkesStageFittedPayload>, CalibrationStagedRunFailure> {
     match expected_stage_handoff_transport(
         run_spec,
         CalibrationStage::Hawkes,
@@ -181,12 +181,12 @@ fn return_components_activity_input(
                 CalibrationStage::ReturnComponents,
             )?;
 
-            Ok(ReturnComponentsStageActivityInput::InMemoryOutput {
+            Ok(CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_stage_payload,
             })
         }
-        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
-            ReturnComponentsStageActivityInput::PersistedArtifactReference {
+        CalibrationStageHandoffTransport::PersistedArtifactReference => {
+            Ok(CalibrationStagePayloadSource::PersistedArtifactReference {
                 artifact_reference: expected_stage_handoff_artifact_reference(
                     run_spec,
                     CalibrationStage::Hawkes,
@@ -194,8 +194,8 @@ fn return_components_activity_input(
                 ),
                 // Persisted handoffs can carry an in-memory copy for same-process consumers.
                 payload: payload_state.hawkes_stage_payload.clone(),
-            },
-        ),
+            })
+        }
     }
 }
 
@@ -256,8 +256,9 @@ fn run_long_variance_staged_execution_stage(
     input: RunStageForStagedExecutionInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
     let stage_input = LongVarianceStageExecutionInput {
-        return_components_input: Some(long_variance_return_components_input(
+        return_components_input: Some(return_components_selected_candidate_source(
             input.run_spec,
+            CalibrationStage::LongVariance,
             input.payload_state,
         )?),
         hawkes_stage_payload: input.payload_state.hawkes_stage_payload.clone(),
@@ -271,6 +272,8 @@ fn run_long_variance_staged_execution_stage(
             .staged_run_inputs
             .return_components_candidate_generation_input
             .clone(),
+        coarse_data_records: input.staged_run_inputs.coarse_data_records.clone(),
+        tick_objective_data_usage_policy: input.staged_run_inputs.tick_objective_data_usage_policy,
     };
 
     Ok(CalibrationStagedRunStageReport::LongVariance(Box::new(
@@ -278,51 +281,13 @@ fn run_long_variance_staged_execution_stage(
     )))
 }
 
-fn long_variance_return_components_input(
-    run_spec: &CalibrationRunSpec,
-    payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<LongVarianceStageReturnComponentsInput, CalibrationStagedRunFailure> {
-    match expected_stage_handoff_transport(
-        run_spec,
-        CalibrationStage::ReturnComponents,
-        CalibrationStage::LongVariance,
-    ) {
-        CalibrationStageHandoffTransport::InMemoryOutput => {
-            let Some(return_components_stage_payload) =
-                payload_state.return_components_stage_payload.as_ref()
-            else {
-                return Err(
-                    CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
-                        required_stage: CalibrationStage::ReturnComponents,
-                        consuming_stage: CalibrationStage::LongVariance,
-                    },
-                );
-            };
-
-            Ok(LongVarianceStageReturnComponentsInput::InMemoryOutput {
-                selected_candidate_id: return_components_stage_payload
-                    .selected_candidate_id
-                    .clone(),
-            })
-        }
-        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
-            LongVarianceStageReturnComponentsInput::PersistedArtifactReference {
-                artifact_reference: expected_stage_handoff_artifact_reference(
-                    run_spec,
-                    CalibrationStage::ReturnComponents,
-                    CalibrationStage::LongVariance,
-                ),
-            },
-        ),
-    }
-}
-
 fn run_news_shocks_staged_execution_stage(
     input: RunStageForStagedExecutionInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
     let stage_input = NewsShocksStageExecutionInput {
-        return_components_input: Some(news_shocks_return_components_input(
+        return_components_input: Some(return_components_selected_candidate_source(
             input.run_spec,
+            CalibrationStage::NewsShocks,
             input.payload_state,
         )?),
         return_components_stage_payload: input
@@ -336,45 +301,6 @@ fn run_news_shocks_staged_execution_stage(
     )))
 }
 
-fn news_shocks_return_components_input(
-    run_spec: &CalibrationRunSpec,
-    payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<NewsShocksStageReturnComponentsInput, CalibrationStagedRunFailure> {
-    match expected_stage_handoff_transport(
-        run_spec,
-        CalibrationStage::ReturnComponents,
-        CalibrationStage::NewsShocks,
-    ) {
-        CalibrationStageHandoffTransport::InMemoryOutput => {
-            let Some(return_components_stage_payload) =
-                payload_state.return_components_stage_payload.as_ref()
-            else {
-                return Err(
-                    CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
-                        required_stage: CalibrationStage::ReturnComponents,
-                        consuming_stage: CalibrationStage::NewsShocks,
-                    },
-                );
-            };
-
-            Ok(NewsShocksStageReturnComponentsInput::InMemoryOutput {
-                selected_candidate_id: return_components_stage_payload
-                    .selected_candidate_id
-                    .clone(),
-            })
-        }
-        CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
-            NewsShocksStageReturnComponentsInput::PersistedArtifactReference {
-                artifact_reference: expected_stage_handoff_artifact_reference(
-                    run_spec,
-                    CalibrationStage::ReturnComponents,
-                    CalibrationStage::NewsShocks,
-                ),
-            },
-        ),
-    }
-}
-
 fn run_mean_reversion_staged_execution_stage(
     input: RunStageForStagedExecutionInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
@@ -384,8 +310,9 @@ fn run_mean_reversion_staged_execution_stage(
         });
     };
 
-    stage_input.return_components_input = Some(mean_reversion_return_components_input(
+    stage_input.return_components_input = Some(return_components_selected_candidate_source(
         input.run_spec,
+        CalibrationStage::MeanReversion,
         input.payload_state,
     )?);
 
@@ -401,14 +328,15 @@ fn run_mean_reversion_staged_execution_stage(
     )))
 }
 
-fn mean_reversion_return_components_input(
+fn return_components_selected_candidate_source(
     run_spec: &CalibrationRunSpec,
+    consuming_stage: CalibrationStage,
     payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<MeanReversionStageReturnComponentsInput, CalibrationStagedRunFailure> {
+) -> Result<CalibrationStageSelectedCandidateSource, CalibrationStagedRunFailure> {
     match expected_stage_handoff_transport(
         run_spec,
         CalibrationStage::ReturnComponents,
-        CalibrationStage::MeanReversion,
+        consuming_stage,
     ) {
         CalibrationStageHandoffTransport::InMemoryOutput => {
             let Some(return_components_stage_payload) =
@@ -417,24 +345,23 @@ fn mean_reversion_return_components_input(
                 return Err(
                     CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
                         required_stage: CalibrationStage::ReturnComponents,
-                        consuming_stage: CalibrationStage::MeanReversion,
+                        consuming_stage,
                     },
                 );
             };
 
-            Ok(MeanReversionStageReturnComponentsInput::InMemoryOutput {
-                // The downstream contract only needs the candidate identifier, not the payload.
+            Ok(CalibrationStageSelectedCandidateSource::InMemoryOutput {
                 selected_candidate_id: return_components_stage_payload
                     .selected_candidate_id
                     .clone(),
             })
         }
         CalibrationStageHandoffTransport::PersistedArtifactReference => Ok(
-            MeanReversionStageReturnComponentsInput::PersistedArtifactReference {
+            CalibrationStageSelectedCandidateSource::PersistedArtifactReference {
                 artifact_reference: expected_stage_handoff_artifact_reference(
                     run_spec,
                     CalibrationStage::ReturnComponents,
-                    CalibrationStage::MeanReversion,
+                    consuming_stage,
                 ),
             },
         ),
@@ -450,10 +377,12 @@ fn run_joint_refinement_like_staged_execution_stage(
         input.staged_run_inputs,
         input.payload_state,
     )?;
+
     let upstream_joint_refinement_handoff = input
         .payload_state
         .joint_refinement_runtime_handoff
         .as_ref();
+
     let upstream_option_refinement_handoff = input
         .payload_state
         .option_refinement_runtime_handoff

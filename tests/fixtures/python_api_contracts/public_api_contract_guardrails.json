@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "96c1d96a7b7664b864ba42ab590d0480780ac26ed6b2564e4d2362f993169b41",
+  "approved_snapshot_sha256": "8eec57cd395a04e5cd515616b4d3caa5c6015b72635f8063f25be0b59628d359",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1528,6 +1528,54 @@
         "janiform.calibration.market_data",
         "janiform.pricing.fitted.market_snapshot",
         "janiform.pricing.fitted.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-05-29",
+      "rationale": "Calibration requests now accept optional coarse historical data and an explicit tick-objective usage policy, so the public contract snapshot must include the new typed request fields and diagnostics.",
+      "snapshot_sha256": "f1e0199e2678261777fa9452707694b3921e5d287262a4a0018c5fea22af1692",
+      "summary": "Expose multi-resolution coarse data evidence in the Python calibration boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.calibration.market_data.request",
+        "janiform.calibration.market_data.translation",
+        "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-05-30",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Coarse historical bars now expose typed timestamp semantics so the default industry-standard open-time interpretation is explicit while close-time sources remain selectable.",
+      "snapshot_sha256": "0d8dc0cb1121d0cae306104acb86b676ed7abdaffef908b85cf24d27322ceb2c",
+      "summary": "Expose coarse timestamp semantics in the Python calibration boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-30",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "The public calibration boundary now names optional lower-frequency OHLCV and close-only inputs as coarse data, matching the existing tick data wording and avoiding a finance-ambiguous training label.",
+      "snapshot_sha256": "8eec57cd395a04e5cd515616b4d3caa5c6015b72635f8063f25be0b59628d359",
+      "summary": "Rename lower-frequency calibration evidence fields and CLI flags to coarse data.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.calibration.market_data.request",
+        "janiform.calibration.market_data.translation",
+        "janiform.calibration.market_data.workflow"
       ]
     }
   ],

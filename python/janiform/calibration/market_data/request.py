@@ -11,13 +11,14 @@ from .contracts import (
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsInput,
-    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
+    CalibrationMeanReversionConfiguration,
     CalibrationSessionConfigurationInput,
+    CalibrationTickObjectiveDataUsagePolicy,
     validate_known_news_inputs,
     validate_option_surface_scope,
     validate_tick_price_input_policy,
@@ -61,6 +62,7 @@ class MarketDataCalibrationRequest(ContractModel):
     column_mapping: CalibrationMarketDataColumnMapping = field(
         default_factory=CalibrationMarketDataColumnMapping
     )
+    coarse_data_source: Optional[CalibrationInputFileReference] = None
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = ()
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None
     option_surface_source: Optional[CalibrationInputFileReference] = None
@@ -82,6 +84,9 @@ class MarketDataCalibrationRequest(ContractModel):
     stylized_fact_admissibility_z_threshold: Optional[float] = None
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
+    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy = (
+        CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW
+    )
 
     def __post_init__(self) -> None:
         if self.schema_version != CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION:
@@ -109,10 +114,27 @@ class MarketDataCalibrationRequest(ContractModel):
         ):
             raise calibration_error("option_surface_source.file_format", "must be one of: csv, parquet")
 
+        if (
+            self.coarse_data_source is not None
+            and self.coarse_data_source.file_format
+            not in (
+                CalibrationInputFileFormat.CSV,
+                CalibrationInputFileFormat.PARQUET,
+            )
+        ):
+            raise calibration_error("coarse_data_source.file_format", "must be one of: csv, parquet")
+
+        if self.coarse_data_source is None and self.column_mapping.coarse_data is not None:
+            raise calibration_error(
+                "column_mapping.coarse_data",
+                "must not be provided when coarse_data_source is omitted",
+            )
+
         validate_tick_price_input_policy(
             workflow_scope=self.workflow_scope,
             normalization_policy=self.normalization_policy,
         )
+
         if (
             self.joint_refinement_audit_option_pricing_enabled
             and self.option_surface_source is None
@@ -142,6 +164,7 @@ class MarketDataCalibrationRequest(ContractModel):
             option_surface_valuation_time_utc=self.option_surface_valuation_time_utc,
             carry=self.carry,
         )
+
         validate_known_news_inputs(
             known_news_inputs=self.known_news_inputs,
             known_news_column_mapping=self.column_mapping.known_news,
@@ -291,6 +314,20 @@ class MarketDataCalibrationRequest(ContractModel):
             tick_data_source=CalibrationInputFileReference.from_mapping(
                 require_mapping(raw_payload, "tick_data_source", "tick_data_source", calibration_error),
                 field_path="tick_data_source",
+            ),
+            coarse_data_source=(
+                CalibrationInputFileReference.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "coarse_data_source",
+                        "coarse_data_source",
+                        calibration_error,
+                    ),
+                    field_path="coarse_data_source",
+                )
+                if "coarse_data_source" in raw_payload
+                and raw_payload["coarse_data_source"] is not None
+                else None
             ),
             session_configuration=CalibrationSessionConfigurationInput.from_mapping(
                 require_mapping(raw_payload, "session_configuration", "session_configuration", calibration_error),
@@ -513,6 +550,19 @@ class MarketDataCalibrationRequest(ContractModel):
                 )
                 if "mean_reversion" in raw_payload and raw_payload["mean_reversion"] is not None
                 else None
+            ),
+            tick_objective_data_usage_policy=(
+                CalibrationTickObjectiveDataUsagePolicy(
+                    require_string(
+                        raw_payload,
+                        "tick_objective_data_usage_policy",
+                        "tick_objective_data_usage_policy",
+                        calibration_error,
+                    )
+                )
+                if "tick_objective_data_usage_policy" in raw_payload
+                and raw_payload["tick_objective_data_usage_policy"] is not None
+                else CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW
             ),
         )
 

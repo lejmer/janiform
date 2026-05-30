@@ -704,6 +704,8 @@ mod tests {
                 canonical_value_field: None,
                 value_mapping_policy: None,
             },
+            coarse_data_summary: None,
+            coarse_data_records: None,
             option_surface_summary: None,
             option_surface_records: None,
             known_news_summary: None,

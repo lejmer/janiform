@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use janiform_calibration_artifacts::CalibrationStagePayloadSource;
 use janiform_foundations::numeric::{
     arithmetic_mean_or_zero as arithmetic_mean, smallest_positive_value,
     strictly_positive_machine_value,
@@ -7,12 +8,12 @@ use janiform_foundations::numeric::{
 
 use super::super::contracts::{
     ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
-    ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageActivityInput,
-    ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageObservedSignalSummaryStatistics, ReturnComponentsStageSignalSourceWindow,
     ReturnComponentsSurpriseJumpEpisode,
 };
 use super::super::{continuous_fit, signal_partition_fit, surprise_episode_selection_fit};
+use crate::stages::hawkes::HawkesStageFittedPayload;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReturnComponentsStageSortedSignalInputs {
@@ -47,9 +48,10 @@ pub(crate) struct ReturnComponentsStageActivityCalibrationContext {
 }
 
 pub(crate) fn resolve_activity_calibration_context(
-    activity_input: &ReturnComponentsStageActivityInput,
+    activity_input: &CalibrationStagePayloadSource<HawkesStageFittedPayload>,
 ) -> Option<ReturnComponentsStageActivityCalibrationContext> {
-    let hawkes_payload = activity_input.hawkes_payload()?;
+    let hawkes_payload = activity_input.payload()?;
+
     let selected_candidate = hawkes_payload
         .candidate_diagnostics
         .iter()
@@ -58,6 +60,7 @@ pub(crate) fn resolve_activity_calibration_context(
     let modeled_open_event_rate_per_hour = selected_candidate
         .implied_metrics
         .model_implied_open_event_rate_per_hour;
+
     let representative_interarrival_hours = selected_candidate
         .source_regime
         .open_session_mean_interarrival_seconds
@@ -86,19 +89,23 @@ pub(crate) fn sort_candidate_generation_signals(
     let mut known_return_samples = candidate_generation_input
         .realized_known_news_return_samples
         .clone();
+
     known_return_samples.sort_by_key(|sample| sample.event_timestamp_utc_nanos);
 
     let mut observed_open_session_returns = candidate_generation_input
         .observed_open_session_returns
         .clone();
+
     observed_open_session_returns.sort_by_key(|observation| observation.return_timestamp_utc_nanos);
 
     let mut intraday_jump_candidates = candidate_generation_input
         .detected_intraday_jump_candidates
         .clone();
+
     intraday_jump_candidates.sort_by_key(|candidate| candidate.jump_timestamp_utc_nanos);
 
     let mut close_open_gap_candidates = derived_close_open_gap_candidates.to_vec();
+
     close_open_gap_candidates.sort_by_key(|candidate| {
         (
             candidate.close_timestamp_utc_nanos,
@@ -115,6 +122,7 @@ pub(crate) fn sort_candidate_generation_signals(
                 .iter()
                 .map(|sample| sample.closed_window_gap_return.abs()),
         );
+
         magnitudes.extend(
             close_open_gap_candidates
                 .iter()
@@ -127,13 +135,16 @@ pub(crate) fn sort_candidate_generation_signals(
     let surprise_jump_episodes = fitted_surprise_episode_selection_layer
         .surprise_jump_episodes
         .clone();
+
     let selected_surprise_jump_episodes = fitted_surprise_episode_selection_layer
         .selected_surprise_jump_episodes
         .clone();
+
     let exogenous_jump_timestamps: BTreeSet<i64> = selected_surprise_jump_episodes
         .iter()
         .flat_map(|episode| episode.member_jump_timestamps_utc_nanos.iter().copied())
         .collect();
+
     let known_news_attributed_open_return_timestamps: BTreeSet<i64> = known_return_samples
         .iter()
         .filter_map(|sample| sample.attributed_open_return_timestamp_utc_nanos)
@@ -161,6 +172,7 @@ pub(crate) fn sort_candidate_generation_signals(
             })
             .collect();
     }
+
     if continuous_fit_returns.is_empty() {
         continuous_fit_returns = observed_open_session_returns.clone();
     }
@@ -418,6 +430,7 @@ fn compute_observed_log_price_span(timestamped_returns: &[(i64, f64)]) -> f64 {
     }
 
     let mut sorted_returns = timestamped_returns.to_vec();
+
     sorted_returns.sort_by_key(|(timestamp_utc_nanos, _)| *timestamp_utc_nanos);
 
     let mut cumulative_return = 0.0_f64;
@@ -426,6 +439,7 @@ fn compute_observed_log_price_span(timestamped_returns: &[(i64, f64)]) -> f64 {
 
     for (_, return_increment) in sorted_returns {
         cumulative_return += return_increment;
+
         minimum_cumulative_return = minimum_cumulative_return.min(cumulative_return);
         maximum_cumulative_return = maximum_cumulative_return.max(cumulative_return);
     }

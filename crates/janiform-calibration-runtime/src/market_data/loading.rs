@@ -1,5 +1,7 @@
 mod bundled_sessions;
 mod calendar_materialization;
+mod coarse_data;
+mod coarse_intervals;
 pub(super) mod column_resolution;
 mod contracts;
 mod known_news;
@@ -16,10 +18,12 @@ mod test_support;
 
 pub use calendar_materialization::build_market_data_session_definition_json;
 pub use contracts::{
-    DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD, MarketDataDuplicateRecordPolicy,
+    DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD, MarketDataCoarseDataColumnMapping,
+    MarketDataCoarseDataKind, MarketDataCoarseDataLoadingInput, MarketDataCoarseDataSummary,
+    MarketDataCoarseDataTimestampSemantics, MarketDataDuplicateRecordPolicy,
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
     MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataLoadingOutput,
-    MarketDataLoadingRequest, MarketDataNormalizationPolicy,
+    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataNormalizedCoarseDataRecord,
     MarketDataNormalizedOptionSurfaceOutput, MarketDataNormalizedOptionSurfaceRecord,
     MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,

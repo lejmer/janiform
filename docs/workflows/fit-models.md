@@ -11,14 +11,16 @@ A fit run has two jobs:
 1. Turn raw market data into a validated calibration input.
 2. Run the calibration and produce a fitted model.
 
-Tick data is always required. Option surface data is optional and changes the calibration target:
+Tick data is always required. Coarse historical data and option surface data are optional and change the calibration target:
 
-| Input set               | Best for                                                                     |
-|-------------------------|------------------------------------------------------------------------------|
-| Tick data only          | You need a model for simulation, model validation, or model-implied pricing. |
-| Tick data + option data | You need a model to price options.                                           |
+| Input set                    | Best for                                                                                         |
+|------------------------------|--------------------------------------------------------------------------------------------------|
+| Tick data only               | You need a model for simulation, model validation, or model-implied pricing.                     |
+| Tick data + coarse data      | You want tick-level activity fit and slower return, variance, mean-reversion, gap, or tail fit. |
+| Tick data + option data      | You need a model to price options.                                                              |
+| Tick + coarse + option data  | You want slower physical evidence and option-surface evidence in one calibration.                |
 
-Option data does not replace tick data. It adds a forward-looking constraint on top of the underlying history.
+Coarse and option data do not replace tick data. Coarse data supplies slower physical evidence when available, and option data adds a forward-looking constraint on top of the underlying history.
 
 ## Inputs
 
@@ -29,6 +31,7 @@ To fit a model we need the market observations and the context required to inter
 | Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used. |
 | Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                    |
 | Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                      |
+| Coarse data           | No       | Optional lower-frequency OHLCV bars or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval open-time observations by default. |
 | Option surface         | No       | Needed for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                       |
 
 For repeatable work, make the context explicit. Market profile inference is convenient for quick runs, but production code should not rely on it.
@@ -44,6 +47,16 @@ from janiform.model import JaniformModel
 estimator = JaniformEstimator(market_profile="eurusd_spot")
 model: JaniformModel = estimator.fit(
     tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet",
+)
+```
+
+In Janiform, coarse data means lower-frequency price observations such as one-minute, hourly, daily, or close-only bars. Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and routes coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
+Coarse timestamp columns are interpreted as bar-open times by default. For sources stamped at bar close, use `CalibrationCoarseDataTimestampSemantics.BAR_CLOSE_TIME` in Python or pass `--coarse-timestamp-semantics bar-close-time` in the CLI.
+
+```python
+model: JaniformModel = estimator.fit(
+    tick_data_path=Path("data") / "eurusd_ticks.parquet",
+    coarse_data_path=Path("data") / "eurusd_1h_bars.parquet",
 )
 ```
 
@@ -121,6 +134,15 @@ The tick-data path can also be supplied positionally for the main fit command an
 
 ```bash
 janiform fit data/Synthetic_EURUSD_Data_1M_ticks.parquet --run-id eurusd-fit
+```
+
+With optional coarse historical data:
+
+```bash
+janiform fit \
+  --tick-data-path data/eurusd_ticks.parquet \
+  --coarse-data-path data/eurusd_1h_bars.parquet \
+  --run-id eurusd-fit
 ```
 
 For option-aware calibration:

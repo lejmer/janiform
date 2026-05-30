@@ -1,4 +1,5 @@
 pub(crate) mod adaptive_direct_search;
+pub(crate) mod coarse_data;
 pub(crate) mod hawkes;
 pub(crate) mod joint_metrics;
 pub(crate) mod joint_refinement;
@@ -9,3 +10,4 @@ pub(crate) mod optimization;
 pub(crate) mod return_components;
 pub(crate) mod seasonality;
 pub(crate) mod seasonality_runtime;
+pub(crate) mod tick_objective_data;

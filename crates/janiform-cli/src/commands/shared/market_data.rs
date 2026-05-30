@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use janiform::calibration::market_data::{
-    DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataInputFileReference,
+    DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataCoarseDataColumnMapping,
+    MarketDataCoarseDataTimestampSemantics, MarketDataInputFileReference,
     MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataSessionConfiguration,
     MarketDataTickDataColumnMapping, infer_bundled_market_profile_from_tick_data_path,
@@ -16,6 +17,7 @@ use janiform::calibration::staged::{
 };
 
 use crate::commands::options;
+use crate::commands::options::CoarseTimestampSemanticsOption;
 use crate::commands::options::TickDataOptions;
 use crate::commands::shared::calibration::duplicate_record_policy;
 use crate::commands::shared::calibration::option_quote_input_policy;
@@ -32,10 +34,12 @@ const DEFAULT_KNOWN_NEWS_TIMESTAMP_COLUMN: &str = "event_timestamp_utc";
 #[derive(Debug)]
 pub(crate) struct PreparedMarketDataCommandInputs {
     pub(crate) tick_data_path: PathBuf,
+    pub(crate) coarse_data_path: Option<PathBuf>,
     pub(crate) option_surface_path: Option<PathBuf>,
     pub(crate) known_news_path: Option<PathBuf>,
     pub(crate) session_definition_path: Option<PathBuf>,
     pub(crate) tick_data_source: MarketDataInputFileReference,
+    pub(crate) coarse_data_source: Option<MarketDataInputFileReference>,
     pub(crate) option_surface_source: Option<MarketDataInputFileReference>,
     pub(crate) known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
     pub(crate) market_profile: Option<ResolvedMarketProfile>,
@@ -50,6 +54,7 @@ pub(crate) fn prepare_market_data_command_inputs(
     workflow_scope: CalibrationMarketDataWorkflowScope,
 ) -> Result<PreparedMarketDataCommandInputs, CliError> {
     validate_option_arguments(inputs)?;
+    validate_coarse_data_arguments(inputs)?;
     validate_known_news_arguments(inputs)?;
 
     let tick_data_path = required_input_file(context, "--tick-data-path", &inputs.tick_data_path)?;
@@ -127,6 +132,15 @@ pub(crate) fn prepare_market_data_command_inputs(
         message: source.to_string(),
     })?;
 
+    let coarse_data_path = optional_input_file(
+        context,
+        "--coarse-data-path",
+        inputs.coarse_data_path.as_ref(),
+    )?;
+
+    let (coarse_data_source, coarse_data_mapping) =
+        prepare_coarse_data_inputs(inputs, &coarse_data_path)?;
+
     let option_surface_path = optional_input_file(
         context,
         "--option-surface-path",
@@ -183,10 +197,12 @@ pub(crate) fn prepare_market_data_command_inputs(
 
     Ok(PreparedMarketDataCommandInputs {
         tick_data_path,
+        coarse_data_path,
         option_surface_path,
         known_news_path,
         session_definition_path,
         tick_data_source,
+        coarse_data_source,
         option_surface_source,
         known_news_inputs,
         market_profile,
@@ -197,11 +213,62 @@ pub(crate) fn prepare_market_data_command_inputs(
         },
         column_mapping: CalibrationMarketDataColumnMapping {
             tick_data: tick_mapping,
+            coarse_data: coarse_data_mapping,
             option_surface: option_surface_mapping,
             known_news: known_news_mapping,
         },
         normalization_policy,
     })
+}
+
+fn prepare_coarse_data_inputs(
+    inputs: &TickDataOptions,
+    coarse_data_path: &Option<PathBuf>,
+) -> Result<
+    (
+        Option<MarketDataInputFileReference>,
+        Option<MarketDataCoarseDataColumnMapping>,
+    ),
+    CliError,
+> {
+    let Some(path) = coarse_data_path else {
+        return Ok((None, None));
+    };
+
+    let source = market_data_input_file_reference(
+        "--coarse-data-path",
+        path,
+        inputs.coarse_data_format,
+        inputs.coarse_data_provenance_label.as_deref(),
+        "coarse-data",
+    )?;
+
+    let mapping = MarketDataCoarseDataColumnMapping {
+        timestamp_column: inputs.coarse_timestamp_column.clone(),
+        timestamp_semantics: coarse_timestamp_semantics(inputs.coarse_timestamp_semantics),
+        interval_start_column: inputs.coarse_interval_start_column.clone(),
+        interval_end_column: inputs.coarse_interval_end_column.clone(),
+        open_column: inputs.coarse_open_column.clone(),
+        high_column: inputs.coarse_high_column.clone(),
+        low_column: inputs.coarse_low_column.clone(),
+        close_column: inputs.coarse_close_column.clone(),
+        volume_column: inputs.coarse_volume_column.clone(),
+    };
+
+    Ok((Some(source), Some(mapping)))
+}
+
+fn coarse_timestamp_semantics(
+    option: Option<CoarseTimestampSemanticsOption>,
+) -> MarketDataCoarseDataTimestampSemantics {
+    match option {
+        Some(CoarseTimestampSemanticsOption::BarOpenTime) | None => {
+            MarketDataCoarseDataTimestampSemantics::BarOpenTime
+        }
+        Some(CoarseTimestampSemanticsOption::BarCloseTime) => {
+            MarketDataCoarseDataTimestampSemantics::BarCloseTime
+        }
+    }
 }
 
 fn prepare_option_surface_inputs(
@@ -306,6 +373,30 @@ fn validate_option_arguments(inputs: &TickDataOptions) -> Result<(), CliError> {
     {
         return Err(CliError::MissingRequiredArgument {
             argument_name: "--option-surface-path",
+        });
+    }
+
+    Ok(())
+}
+
+fn validate_coarse_data_arguments(inputs: &TickDataOptions) -> Result<(), CliError> {
+    if inputs.coarse_data_path.is_some() {
+        return Ok(());
+    }
+
+    if inputs.coarse_data_format.is_some()
+        || inputs.coarse_data_provenance_label.is_some()
+        || inputs.coarse_timestamp_column.is_some()
+        || inputs.coarse_interval_start_column.is_some()
+        || inputs.coarse_interval_end_column.is_some()
+        || inputs.coarse_open_column.is_some()
+        || inputs.coarse_high_column.is_some()
+        || inputs.coarse_low_column.is_some()
+        || inputs.coarse_close_column.is_some()
+        || inputs.coarse_volume_column.is_some()
+    {
+        return Err(CliError::MissingRequiredArgument {
+            argument_name: "--coarse-data-path",
         });
     }
 

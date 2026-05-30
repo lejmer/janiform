@@ -17,6 +17,8 @@ use janiform_foundations::time::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod evidence;
+
 use super::solver_settings::{
     DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID, has_missing_stage_solver_settings,
     resolve_solver_settings_by_stage,
@@ -29,16 +31,21 @@ use crate::{
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
     CalibrationStagedExecutionInput, CalibrationStagedExecutionRuntimeResources,
-    MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
-    MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput, MarketDataLoadingRequest,
-    MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput,
-    MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
-    MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
-    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingSettings,
-    OptionForwardParityWarningPolicy, PriceCoordinatePolicy, PriceCoordinateResolutionInput,
-    ResolvedPriceCoordinateSet, normalize_market_data_source,
-    prepare_market_data_loading_from_phases, resolve_market_data_session_configuration,
-    resolve_price_coordinates,
+    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataLoadingInput,
+    MarketDataCoarseDataTimestampSemantics, MarketDataInputFileReference,
+    MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput,
+    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataNormalizedCoarseDataRecord,
+    MarketDataNormalizedTickOutput, MarketDataOptionSurfaceColumnMapping,
+    MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
+    MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
+    MarketDataTranslationPreprocessingSettings, OptionForwardParityWarningPolicy,
+    PriceCoordinatePolicy, PriceCoordinateResolutionInput, ResolvedPriceCoordinateSet,
+    normalize_market_data_source, prepare_market_data_loading_from_phases,
+    resolve_market_data_session_configuration, resolve_price_coordinates,
+};
+use evidence::{
+    calibration_evidence_routing_payload, coarse_independent_interval_count,
+    coarse_overlap_interval_count,
 };
 
 const PREPARED_MARKET_DATA_DERIVATION_POLICY_ID: &str =
@@ -56,6 +63,8 @@ const RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID: &str =
     "continuous_nig_fit_uses_filtered_observed_open_session_returns_and_stage_search.v1";
 const OPTION_SURFACE_UNUSABLE_QUOTE_FILTER_POLICY_ID: &str =
     "option_surface_rows_without_usable_bid_ask_quotes_are_filtered.v1";
+const COARSE_DATA_EVIDENCE_POLICY_ID: &str =
+    "coarse_data_fixed_interval_evidence_routes_to_slow_physical_targets.v1";
 const DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID: &str = "seasonality.session_filter=open_only";
 const DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID: &str =
     "seasonality.sparse_hour_event_threshold=1";
@@ -75,6 +84,8 @@ const DEFAULT_INTRADAY_JUMP_POLICY_ID: &str =
     "intraday_jump_detection.material_threshold=4x_median_abs_open_return";
 const MEAN_REVERSION_OPEN_SESSION_GRID_KIND: &str =
     "market_data_open_session_log_price_interval_grid.v1";
+const MEAN_REVERSION_COARSE_DATA_GRID_KIND: &str =
+    "market_data_coarse_data_close_price_interval_grid.v1";
 const MEAN_REVERSION_OPEN_SESSION_ALIGNMENT_POLICY: &str =
     "last_observed_open_session_log_price_per_complete_utc_interval.v1";
 const MEAN_REVERSION_BOUNDARY_INTERVAL_DERIVATION_POLICY: &str =
@@ -98,6 +109,8 @@ pub enum CalibrationMarketDataWorkflowScope {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationMarketDataColumnMapping {
     pub tick_data: MarketDataTickDataColumnMapping,
+    #[serde(default)]
+    pub coarse_data: Option<MarketDataCoarseDataColumnMapping>,
     #[serde(default)]
     pub option_surface: Option<MarketDataOptionSurfaceColumnMapping>,
     #[serde(default)]
@@ -145,6 +158,8 @@ pub struct CalibrationMarketDataPreparationRequest {
     pub schema_version: String,
     pub run_id: String,
     pub tick_data_source: MarketDataInputFileReference,
+    #[serde(default)]
+    pub coarse_data_source: Option<MarketDataInputFileReference>,
     pub session_configuration: MarketDataSessionConfiguration,
     pub column_mapping: CalibrationMarketDataColumnMapping,
     pub workflow_scope: CalibrationMarketDataWorkflowScope,
@@ -188,6 +203,19 @@ pub struct CalibrationMarketDataPreparationRequest {
     pub known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
     #[serde(default)]
     pub mean_reversion: Option<CalibrationMarketDataMeanReversionConfiguration>,
+    #[serde(default)]
+    pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
+}
+
+/// Controls tick-return retention for objective stages after seasonality and Hawkes fitting.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationTickObjectiveDataUsagePolicy {
+    /// Retain the default recent one-week tick window for slower tick-backed objectives.
+    #[default]
+    ShortHorizonWindow,
+    /// Retain all available tick returns for every tick-backed objective stage.
+    AllAvailable,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -196,6 +224,10 @@ pub struct CalibrationMarketDataPreparationDiagnostics {
     pub selected_stages: Vec<CalibrationStage>,
     pub executed_preprocessing_steps: Vec<String>,
     pub tick_record_count: usize,
+    pub coarse_data_record_count: usize,
+    pub coarse_data_return_interval_count: usize,
+    pub coarse_data_overlap_interval_count: usize,
+    pub coarse_data_independent_interval_count: usize,
     pub option_surface_record_count: usize,
     pub known_news_event_count: usize,
     pub known_news_events_outside_source_window_count: usize,
@@ -214,13 +246,16 @@ pub struct CalibrationMarketDataPreparationDiagnostics {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CalibrationMarketDataPreparationProvenance {
     pub tick_data_summary: Value,
+    pub coarse_data_summary: Option<Value>,
     pub option_surface_summary: Option<Value>,
     pub known_news_summary: Option<Value>,
+    pub calibration_evidence_routing: Value,
     pub normalization_policy: Value,
     pub workflow_scope: CalibrationMarketDataWorkflowScope,
     pub selected_stages: Vec<CalibrationStage>,
     pub session_definition_path: Option<String>,
     pub derived_trade_events_data_reference: String,
+    pub derived_coarse_data_reference: Option<String>,
     pub derived_option_surface_data_reference: Option<String>,
     pub derivation_policies: Vec<String>,
     pub deterministic_defaults_applied: Vec<String>,
@@ -346,6 +381,17 @@ struct LoadedMarketDataPhases {
     loading_output: MarketDataLoadingOutput,
 }
 
+struct PreparedMarketDataPlanBuildInput {
+    request: CalibrationMarketDataPreparationRequest,
+    cpu_count: Option<usize>,
+    selected_stages: Vec<CalibrationStage>,
+    trade_events_data_reference: String,
+    coarse_data_reference: Option<String>,
+    option_surface_data_reference: Option<String>,
+    normalized_tick_output: MarketDataNormalizedTickOutput,
+    loading_output: MarketDataLoadingOutput,
+}
+
 struct MeanReversionGridObservations {
     source_observation_count: usize,
     coverage_ratio: f64,
@@ -370,19 +416,26 @@ pub fn prepare_market_data_calibration_plan(
     validate_calibration_diagnostics_request(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
-    let (loading_request, trade_events_data_reference, option_surface_data_reference) =
-        build_loading_request(&request, &selected_stages)?;
+
+    let (
+        loading_request,
+        trade_events_data_reference,
+        coarse_data_reference,
+        option_surface_data_reference,
+    ) = build_loading_request(&request, &selected_stages)?;
+
     let loaded_market_data = load_market_data_from_phases(loading_request)?;
 
-    prepared_market_data_plan_from_loading_output(
+    prepared_market_data_plan_from_loading_output(PreparedMarketDataPlanBuildInput {
         request,
         cpu_count,
         selected_stages,
         trade_events_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
-        loaded_market_data.normalized_tick_output,
-        loaded_market_data.loading_output,
-    )
+        normalized_tick_output: loaded_market_data.normalized_tick_output,
+        loading_output: loaded_market_data.loading_output,
+    })
 }
 
 pub fn prepare_market_data_calibration_plan_from_phases(
@@ -399,8 +452,13 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     validate_calibration_diagnostics_request(&request)?;
 
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
-    let (loading_request, trade_events_data_reference, option_surface_data_reference) =
-        build_loading_request(&request, &selected_stages)?;
+
+    let (
+        loading_request,
+        trade_events_data_reference,
+        coarse_data_reference,
+        option_surface_data_reference,
+    ) = build_loading_request(&request, &selected_stages)?;
 
     let loading_output = prepare_market_data_loading_from_phases(
         loading_request,
@@ -413,15 +471,16 @@ pub fn prepare_market_data_calibration_plan_from_phases(
         ))
     })?;
 
-    prepared_market_data_plan_from_loading_output(
+    prepared_market_data_plan_from_loading_output(PreparedMarketDataPlanBuildInput {
         request,
         cpu_count,
         selected_stages,
         trade_events_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
-        normalized_tick_output.clone(),
+        normalized_tick_output: normalized_tick_output.clone(),
         loading_output,
-    )
+    })
 }
 
 fn selected_stages_for_scope(
@@ -498,6 +557,7 @@ fn stable_seed_from_run_id(run_id: &str) -> u64 {
 
 fn executed_preprocessing_steps(
     workflow_scope: CalibrationMarketDataWorkflowScope,
+    coarse_data_present: bool,
     option_surface_present: bool,
     known_news_present: bool,
 ) -> Vec<String> {
@@ -526,6 +586,12 @@ fn executed_preprocessing_steps(
 
     if option_surface_present {
         preprocessing_steps.push("option_surface_quote_normalization".to_string());
+    }
+
+    if coarse_data_present {
+        preprocessing_steps.push("coarse_data_evidence_loading".to_string());
+        preprocessing_steps.push("coarse_data_fixed_interval_resolution".to_string());
+        preprocessing_steps.push("multi_resolution_evidence_routing".to_string());
     }
 
     preprocessing_steps
@@ -568,8 +634,15 @@ fn deterministic_defaults_applied(
 fn build_loading_request(
     request: &CalibrationMarketDataPreparationRequest,
     selected_stages: &[CalibrationStage],
-) -> Result<(MarketDataLoadingRequest, String, Option<String>), CalibrationMarketDataPreparationError>
-{
+) -> Result<
+    (
+        MarketDataLoadingRequest,
+        String,
+        Option<String>,
+        Option<String>,
+    ),
+    CalibrationMarketDataPreparationError,
+> {
     let trade_events_data_reference = build_dataset_reference(
         request.run_id.as_str(),
         "ticks",
@@ -580,6 +653,14 @@ fn build_loading_request(
         build_dataset_reference(
             request.run_id.as_str(),
             "options",
+            source.provenance_label.as_str(),
+        )
+    });
+
+    let coarse_data_reference = request.coarse_data_source.as_ref().map(|source| {
+        build_dataset_reference(
+            request.run_id.as_str(),
+            "coarse-data",
             source.provenance_label.as_str(),
         )
     });
@@ -638,12 +719,44 @@ fn build_loading_request(
         }
     };
 
+    let coarse_data_input = match (
+        request.coarse_data_source.as_ref(),
+        request.column_mapping.coarse_data.clone(),
+    ) {
+        (Some(source), Some(column_mapping)) => Some(MarketDataCoarseDataLoadingInput {
+            source: source.clone(),
+            column_mapping,
+        }),
+        (Some(source), None) => Some(MarketDataCoarseDataLoadingInput {
+            source: source.clone(),
+            column_mapping: MarketDataCoarseDataColumnMapping {
+                timestamp_column: None,
+                timestamp_semantics: MarketDataCoarseDataTimestampSemantics::default(),
+                interval_start_column: None,
+                interval_end_column: None,
+                open_column: None,
+                high_column: None,
+                low_column: None,
+                close_column: None,
+                volume_column: None,
+            },
+        }),
+        (None, None) => None,
+        (None, Some(_)) => {
+            return Err(CalibrationMarketDataPreparationError::from(
+                "coarse_data_source is required when column_mapping.coarse_data is provided"
+                    .to_string(),
+            ));
+        }
+    };
+
     Ok((
         MarketDataLoadingRequest {
             session_configuration: request.session_configuration.clone(),
             trade_events_data_reference: trade_events_data_reference.clone(),
             tick_data_source: request.tick_data_source.clone(),
             tick_data_column_mapping: request.column_mapping.tick_data.clone(),
+            coarse_data_input,
             normalization_policy: request.normalization_policy.clone(),
             preprocessing_settings: request.preprocessing_settings.clone(),
             option_surface_input,
@@ -653,6 +766,7 @@ fn build_loading_request(
                 .contains(&CalibrationStage::ReturnComponents),
         },
         trade_events_data_reference,
+        coarse_data_reference,
         option_surface_data_reference,
     ))
 }
@@ -689,6 +803,7 @@ fn mean_reversion_stage_input_from_request(
     let default_mean_reversion_configuration = CalibrationMarketDataMeanReversionConfiguration {
         calibration_grid_interval_hours: None,
     };
+
     let mean_reversion_configuration = request
         .mean_reversion
         .as_ref()
@@ -697,6 +812,7 @@ fn mean_reversion_stage_input_from_request(
     let boundary_observations = return_components_input
         .map(|input| input.observed_close_open_boundary_observations.as_slice())
         .unwrap_or(&[]);
+
     let boundary_open_observations = mean_reversion_stage_observations_relative_to_reference_price(
         boundary_observations
             .iter()
@@ -710,6 +826,7 @@ fn mean_reversion_stage_input_from_request(
             .as_slice(),
         loading_output.reference_price,
     );
+
     let open_session_price_observations =
         mean_reversion_stage_observations_relative_to_reference_price(
             loading_output
@@ -719,6 +836,31 @@ fn mean_reversion_stage_input_from_request(
                 .unwrap_or(&[]),
             loading_output.reference_price,
         );
+
+    let coarse_price_observations = loading_output
+        .coarse_data_records
+        .as_deref()
+        .map(coarse_data_mean_reversion_observations)
+        .map(|observations| {
+            mean_reversion_stage_observations_relative_to_reference_price(
+                observations.as_slice(),
+                loading_output.reference_price,
+            )
+        })
+        .unwrap_or_default();
+
+    let primary_price_observations = if coarse_price_observations.is_empty() {
+        open_session_price_observations.as_slice()
+    } else {
+        coarse_price_observations.as_slice()
+    };
+
+    let grid_kind = if coarse_price_observations.is_empty() {
+        MEAN_REVERSION_OPEN_SESSION_GRID_KIND
+    } else {
+        MEAN_REVERSION_COARSE_DATA_GRID_KIND
+    };
+
     let observed_session_duration_hours = loading_output
         .preprocessing_output
         .mean_reversion_observed_session_duration_hours
@@ -728,7 +870,7 @@ fn mean_reversion_stage_input_from_request(
     let Some(resolved_grid_observations) = resolve_mean_reversion_grid_observations(
         mean_reversion_configuration.calibration_grid_interval_hours,
         boundary_open_observations.as_slice(),
-        open_session_price_observations.as_slice(),
+        primary_price_observations,
         observed_session_duration_hours,
     ) else {
         return Err(CalibrationMarketDataPreparationError::from(
@@ -737,11 +879,11 @@ fn mean_reversion_stage_input_from_request(
         ));
     };
 
-    if open_session_price_observations.is_empty() {
+    if primary_price_observations.is_empty() {
         return Ok(Some(CalibrationMeanReversionStageExecutionInput {
             calibration_grid_kind: format!(
                 "{}:{}:{}",
-                MEAN_REVERSION_OPEN_SESSION_GRID_KIND,
+                grid_kind,
                 MEAN_REVERSION_OPEN_SESSION_ALIGNMENT_POLICY,
                 resolved_grid_observations.interval_policy
             ),
@@ -756,7 +898,7 @@ fn mean_reversion_stage_input_from_request(
     Ok(Some(CalibrationMeanReversionStageExecutionInput {
         calibration_grid_kind: format!(
             "{}:{}:{}",
-            MEAN_REVERSION_OPEN_SESSION_GRID_KIND,
+            grid_kind,
             MEAN_REVERSION_OPEN_SESSION_ALIGNMENT_POLICY,
             resolved_grid_observations.interval_policy
         ),
@@ -950,6 +1092,7 @@ fn selected_option_snapshot_nodes_from_loading_output(
     };
 
     let mut selected_nodes = Vec::new();
+
     for record in option_surface_records {
         if record.quote_timestamp_utc_nanos != selected_quote_timestamp_utc_nanos {
             continue;
@@ -961,12 +1104,14 @@ fn selected_option_snapshot_nodes_from_loading_output(
                 record.source_row_number
             ))
         })?;
+
         let ask_price = record.ask_price.ok_or_else(|| {
             CalibrationMarketDataPreparationError::from(format!(
                 "joint option calibration requires ask prices for option row {}",
                 record.source_row_number
             ))
         })?;
+
         if !bid_price.is_finite() || !ask_price.is_finite() || ask_price <= bid_price {
             return Err(CalibrationMarketDataPreparationError::from(format!(
                 "joint option calibration requires strictly positive bid/ask width for option row {}",
@@ -1038,6 +1183,7 @@ fn joint_option_current_state_estimation_input(
         let Some(price) = tick_record.price else {
             continue;
         };
+
         let Some(trade_sign) = tick_record.trade_sign.as_deref() else {
             continue;
         };
@@ -1066,6 +1212,7 @@ fn joint_option_current_state_estimation_input(
                     .to_string(),
             )
         })?;
+
     let observed_log_return = observed_spot.ln() - reference_price.ln();
 
     Ok(CalibrationJointRefinementCurrentStateEstimationInput {
@@ -1099,6 +1246,19 @@ fn mean_reversion_stage_observations_relative_to_reference_price(
         .collect()
 }
 
+fn coarse_data_mean_reversion_observations(
+    records: &[MarketDataNormalizedCoarseDataRecord],
+) -> Vec<CalibrationMeanReversionStageObservation> {
+    records
+        .iter()
+        .filter(|record| record.close_price.is_finite() && record.close_price > 0.0)
+        .map(|record| CalibrationMeanReversionStageObservation {
+            observation_timestamp_utc_nanos: record.observation_timestamp_utc_nanos,
+            observed_log_price: record.close_price.ln(),
+        })
+        .collect()
+}
+
 fn mean_reversion_grid_observations_from_open_session_prices(
     open_session_price_observations: &[CalibrationMeanReversionStageObservation],
     calibration_grid_interval_hours: f64,
@@ -1118,6 +1278,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
             observations: Vec::new(),
         };
     };
+
     let Some(last_observation) = open_session_price_observations.last() else {
         return MeanReversionGridObservations {
             source_observation_count: 0,
@@ -1125,6 +1286,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
             observations: Vec::new(),
         };
     };
+
     if last_observation.observation_timestamp_utc_nanos
         <= first_observation.observation_timestamp_utc_nanos
     {
@@ -1138,6 +1300,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
     let source_window_start_utc_nanos = first_observation.observation_timestamp_utc_nanos;
     let source_window_end_utc_nanos = last_observation.observation_timestamp_utc_nanos;
     let source_duration_nanos = source_window_end_utc_nanos - source_window_start_utc_nanos;
+
     if source_duration_nanos < interval_nanos {
         return MeanReversionGridObservations {
             source_observation_count: 0,
@@ -1172,6 +1335,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
 
             interval_end_utc_nanos = interval_end_utc_nanos.saturating_add(interval_nanos);
             interval_has_direct_observation = false;
+
             if interval_end_utc_nanos > source_window_end_utc_nanos {
                 break;
             }
@@ -1186,6 +1350,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
     }
 
     let source_observation_count = covered_interval_count;
+
     MeanReversionGridObservations {
         source_observation_count,
         coverage_ratio: coverage_ratio(source_observation_count, observations.len()),
@@ -1293,8 +1458,10 @@ fn mean_reversion_grid_has_identifiable_full_model_coverage(
     resolved_grid_observations: &ResolvedMeanReversionGridObservations,
 ) -> bool {
     let grid_observations = &resolved_grid_observations.grid_observations;
+
     let required_source_observation_count =
         mean_reversion_full_model_required_source_observation_count();
+
     let retained_observation_count = grid_observations.observations.len();
     if retained_observation_count < required_source_observation_count {
         return false;
@@ -1376,6 +1543,7 @@ fn median_positive_interval_hours(positive_interval_hours: &mut [f64]) -> Option
     }
 
     positive_interval_hours.sort_by(|left, right| left.total_cmp(right));
+
     let midpoint = positive_interval_hours.len() / 2;
 
     if positive_interval_hours.len() % 2 == 1 {
@@ -1428,14 +1596,19 @@ fn load_market_data_from_phases(
 }
 
 fn prepared_market_data_plan_from_loading_output(
-    request: CalibrationMarketDataPreparationRequest,
-    cpu_count: Option<usize>,
-    selected_stages: Vec<CalibrationStage>,
-    trade_events_data_reference: String,
-    option_surface_data_reference: Option<String>,
-    normalized_tick_output: MarketDataNormalizedTickOutput,
-    loading_output: MarketDataLoadingOutput,
+    input: PreparedMarketDataPlanBuildInput,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    let PreparedMarketDataPlanBuildInput {
+        request,
+        cpu_count,
+        selected_stages,
+        trade_events_data_reference,
+        coarse_data_reference,
+        option_surface_data_reference,
+        normalized_tick_output,
+        loading_output,
+    } = input;
+
     let objective_policy = calibration_objective_policy_from_request(&request)?;
 
     let prepared_option_pricing_input = joint_refinement_option_pricing_input_from_request(
@@ -1449,6 +1622,7 @@ fn prepared_market_data_plan_from_loading_output(
         CalibrationRunDataInputs {
             exchange_code: request.session_configuration.exchange_code.clone(),
             trade_events_data_reference: trade_events_data_reference.clone(),
+            coarse_data_reference: coarse_data_reference.clone(),
             option_surface_data_reference: option_surface_data_reference.clone(),
         },
         request.output_preferences.execution_mode,
@@ -1490,6 +1664,8 @@ fn prepared_market_data_plan_from_loading_output(
             .preprocessing_output
             .return_components_candidate_generation_input
             .clone(),
+        coarse_data_records: loading_output.coarse_data_records.clone(),
+        tick_objective_data_usage_policy: request.tick_objective_data_usage_policy,
         mean_reversion_stage_input: mean_reversion_stage_input_from_request(
             &request,
             &selected_stages,
@@ -1521,10 +1697,29 @@ fn prepared_market_data_plan_from_loading_output(
         selected_stages: selected_stages.clone(),
         executed_preprocessing_steps: executed_preprocessing_steps(
             request.workflow_scope,
+            loading_output.coarse_data_summary.is_some(),
             loading_output.option_surface_summary.is_some(),
             loading_output.known_news_summary.is_some(),
         ),
         tick_record_count: loading_output.tick_data_summary.retained_row_count,
+        coarse_data_record_count: loading_output
+            .coarse_data_summary
+            .as_ref()
+            .map(|summary| summary.source_summary.retained_row_count)
+            .unwrap_or(0),
+        coarse_data_return_interval_count: loading_output
+            .coarse_data_summary
+            .as_ref()
+            .map(|summary| summary.retained_return_interval_count)
+            .unwrap_or(0),
+        coarse_data_overlap_interval_count: coarse_overlap_interval_count(
+            loading_output.coarse_data_records.as_deref(),
+            &normalized_tick_output,
+        ),
+        coarse_data_independent_interval_count: coarse_independent_interval_count(
+            loading_output.coarse_data_records.as_deref(),
+            &normalized_tick_output,
+        ),
         option_surface_record_count: loading_output
             .option_surface_summary
             .as_ref()
@@ -1586,12 +1781,17 @@ fn prepared_market_data_plan_from_loading_output(
     ) {
         derivation_policies.push(DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID.to_string());
     }
+
     if loading_output
         .option_surface_summary
         .as_ref()
         .is_some_and(|summary| summary.dropped_invalid_row_count > 0)
     {
         derivation_policies.push(OPTION_SURFACE_UNUSABLE_QUOTE_FILTER_POLICY_ID.to_string());
+    }
+
+    if loading_output.coarse_data_summary.is_some() {
+        derivation_policies.push(COARSE_DATA_EVIDENCE_POLICY_ID.to_string());
     }
 
     let provenance = CalibrationMarketDataPreparationProvenance {
@@ -1602,6 +1802,16 @@ fn prepared_market_data_plan_from_loading_output(
                 ))
             },
         )?,
+        coarse_data_summary: loading_output
+            .coarse_data_summary
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|source| {
+                CalibrationMarketDataPreparationError::from(format!(
+                    "failed to serialize coarse-data summary: {source}"
+                ))
+            })?,
         option_surface_summary: loading_output
             .option_surface_summary
             .as_ref()
@@ -1622,6 +1832,11 @@ fn prepared_market_data_plan_from_loading_output(
                     "failed to serialize known-news summary: {source}"
                 ))
             })?,
+        calibration_evidence_routing: calibration_evidence_routing_payload(
+            &loading_output,
+            &normalized_tick_output,
+            request.tick_objective_data_usage_policy,
+        ),
         normalization_policy: serde_json::to_value(&request.normalization_policy).map_err(
             |source| {
                 CalibrationMarketDataPreparationError::from(format!(
@@ -1641,6 +1856,7 @@ fn prepared_market_data_plan_from_loading_output(
             None
         },
         derived_trade_events_data_reference: trade_events_data_reference,
+        derived_coarse_data_reference: coarse_data_reference,
         derived_option_surface_data_reference: option_surface_data_reference,
         derivation_policies,
         deterministic_defaults_applied: deterministic_defaults_applied(&request),

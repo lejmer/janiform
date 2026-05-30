@@ -41,32 +41,14 @@ pub(crate) fn render_plan_human(
     sections.push(
         StartSummary {
             title: "Janiform fit plan".to_string(),
-            rows: vec![
+            rows: fit_summary_rows(
                 KeyValueRow::new("Run", prepared.request.run_id.clone()),
-                KeyValueRow::new(
+                Some(KeyValueRow::new(
                     "Scope",
                     workflow_scope_label(prepared.request.workflow_scope),
-                ),
-                KeyValueRow::new("Ticks", format_path(&prepared.inputs.tick_data_path)),
-                KeyValueRow::new(
-                    "Options",
-                    prepared
-                        .inputs
-                        .option_surface_path
-                        .as_deref()
-                        .map(format_path)
-                        .unwrap_or_else(|| "none".to_string()),
-                ),
-                KeyValueRow::new(
-                    "Known news",
-                    prepared
-                        .inputs
-                        .known_news_path
-                        .as_deref()
-                        .map(format_path)
-                        .unwrap_or_else(|| "none".to_string()),
-                ),
-            ],
+                )),
+                prepared,
+            ),
         }
         .render(&renderer),
     );
@@ -87,10 +69,11 @@ pub(crate) fn render_inspect_human(
     let mut sections = vec![
         StartSummary {
             title: "Janiform fit inspect".to_string(),
-            rows: vec![
+            rows: fit_summary_rows(
                 KeyValueRow::new("Run", prepared.request.run_id.clone()),
-                KeyValueRow::new("Ticks", format_path(&prepared.inputs.tick_data_path)),
-            ],
+                None,
+                prepared,
+            ),
         }
         .render(&renderer),
         value_section("Explicit user inputs", &prepared.explicit_values).render(&renderer),
@@ -126,24 +109,61 @@ pub(crate) fn render_staged_plan_human(
     [
         StartSummary {
             title: "Janiform fit staged plan".to_string(),
-            rows: vec![
+            rows: fit_summary_rows(
                 KeyValueRow::new("Run", prepared.request.run_id.clone()),
-                KeyValueRow::new(
+                Some(KeyValueRow::new(
                     "Scope",
                     workflow_scope_label(prepared.request.workflow_scope),
-                ),
-                KeyValueRow::new(
-                    "Execution input",
-                    staged_artifact_path
-                        .map(format_path)
-                        .unwrap_or_else(|| "not written".to_string()),
-                ),
-            ],
+                )),
+                prepared,
+            )
+            .into_iter()
+            .chain([KeyValueRow::new(
+                "Execution input",
+                staged_artifact_path
+                    .map(format_path)
+                    .unwrap_or_else(|| "not written".to_string()),
+            )])
+            .collect(),
         }
         .render(&renderer),
         stage_checklist(prepared).render(&renderer),
     ]
     .join("\n\n")
+}
+
+fn fit_summary_rows(
+    run_row: KeyValueRow,
+    scope_row: Option<KeyValueRow>,
+    prepared: &PreparedFitPreview,
+) -> Vec<KeyValueRow> {
+    let mut rows = vec![run_row];
+
+    if let Some(scope_row) = scope_row {
+        rows.push(scope_row);
+    }
+
+    rows.extend([
+        KeyValueRow::new("Ticks", format_path(&prepared.inputs.tick_data_path)),
+        KeyValueRow::new(
+            "Coarse data",
+            optional_path_label(prepared.inputs.coarse_data_path.as_deref()),
+        ),
+        KeyValueRow::new(
+            "Options",
+            optional_path_label(prepared.inputs.option_surface_path.as_deref()),
+        ),
+        KeyValueRow::new(
+            "Known news",
+            optional_path_label(prepared.inputs.known_news_path.as_deref()),
+        ),
+    ]);
+
+    rows
+}
+
+fn optional_path_label(path: Option<&Path>) -> String {
+    path.map(format_path).unwrap_or_else(|| "none".to_string())
 }
 
 fn inferred_summary(prepared: &PreparedFitPreview) -> StartSummary {

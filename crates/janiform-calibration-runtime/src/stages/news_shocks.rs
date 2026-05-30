@@ -5,7 +5,8 @@ use janiform_calibration_artifacts::{
     CALIBRATION_NEWS_SHOCKS_STAGE_HANDOFF_POLICY,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStageSeedSource, NewsShocksStageDiagnostics,
+    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    CalibrationStageSelectedCandidateSource, NewsShocksStageDiagnostics,
     SurpriseNewsDeterministicIntensityProfile, stage_solver_settings_for_stage,
 };
 use janiform_model_kernels::news::NewsProcessConfiguration;
@@ -16,26 +17,9 @@ use crate::stages::seasonality::CalibrationStageExecutionStatus;
 const NEWS_SHOCKS_ESTIMATION_POLICY: &str =
     "joint_residual_activity_surprise_gap_estimator_with_coupled_activity_return_marks.v1";
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum NewsShocksStageReturnComponentsInput {
-    InMemoryOutput { selected_candidate_id: String },
-    PersistedArtifactReference { artifact_reference: String },
-}
-
-impl NewsShocksStageReturnComponentsInput {
-    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
-        match self {
-            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
-            Self::PersistedArtifactReference { .. } => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct NewsShocksStageExecutionInput {
-    pub return_components_input: Option<NewsShocksStageReturnComponentsInput>,
+    pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
 }
 
@@ -173,7 +157,7 @@ pub fn run_news_shocks_calibration_stage(
 }
 
 fn build_news_shocks_fitted_stage_payload(
-    return_components_input: NewsShocksStageReturnComponentsInput,
+    return_components_input: CalibrationStageSelectedCandidateSource,
     return_components_stage_payload: &ReturnComponentsStageFittedPayload,
 ) -> Result<NewsShocksStageFittedPayload, NewsShocksStageExecutionFailure> {
     return_components_stage_payload
@@ -197,10 +181,10 @@ fn build_news_shocks_fitted_stage_payload(
 
     let (return_components_selected_candidate_id, return_components_artifact_reference) =
         match return_components_input {
-            NewsShocksStageReturnComponentsInput::InMemoryOutput {
+            CalibrationStageSelectedCandidateSource::InMemoryOutput {
                 selected_candidate_id,
             } => (Some(selected_candidate_id), None),
-            NewsShocksStageReturnComponentsInput::PersistedArtifactReference {
+            CalibrationStageSelectedCandidateSource::PersistedArtifactReference {
                 artifact_reference,
             } => (None, Some(artifact_reference)),
         };
@@ -225,17 +209,14 @@ fn build_news_shocks_fitted_stage_payload(
 }
 
 fn selected_candidate_id<'a>(
-    return_components_input: &'a NewsShocksStageReturnComponentsInput,
+    return_components_input: &'a CalibrationStageSelectedCandidateSource,
     return_components_stage_payload: &'a ReturnComponentsStageFittedPayload,
 ) -> &'a str {
-    match return_components_input {
-        NewsShocksStageReturnComponentsInput::InMemoryOutput {
-            selected_candidate_id,
-        } => selected_candidate_id,
-        NewsShocksStageReturnComponentsInput::PersistedArtifactReference { .. } => {
-            &return_components_stage_payload.selected_candidate_id
-        }
-    }
+    return_components_input.selected_candidate_id().unwrap_or(
+        return_components_stage_payload
+            .selected_candidate_id
+            .as_str(),
+    )
 }
 
 fn news_shocks_stage_diagnostics(

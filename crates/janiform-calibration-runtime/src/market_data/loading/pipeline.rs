@@ -9,6 +9,7 @@ use crate::market_data::preprocessing::{
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
+use super::coarse_data::load_coarse_data_records;
 use super::column_resolution::{
     resolve_option_surface_column_mapping, resolve_option_surface_quote_input_policy,
     resolve_tick_data_column_mapping, resolve_tick_price_input_policy,
@@ -209,6 +210,16 @@ pub fn prepare_market_data_loading_from_phases(
         None
     };
 
+    let coarse_data_output = if let Some(coarse_data_input) = &request.coarse_data_input {
+        Some(load_coarse_data_records(
+            coarse_data_input,
+            &calendar_registry,
+            &request.session_configuration.exchange_code,
+        )?)
+    } else {
+        None
+    };
+
     let option_surface_output = if let Some(option_surface_input) = &request.option_surface_input {
         Some(load_option_surface_records(
             option_surface_input,
@@ -221,6 +232,11 @@ pub fn prepare_market_data_loading_from_phases(
     let (known_news_records, known_news_summary) = match known_news_output {
         Some(output) => (output.known_news_records, Some(output.summary)),
         None => (Vec::new(), None),
+    };
+
+    let (coarse_data_records, coarse_data_summary) = match coarse_data_output {
+        Some(output) => (Some(output.records), Some(output.summary)),
+        None => (None, None),
     };
 
     let (option_surface_quote_values, option_surface_summary, option_surface_records) =
@@ -265,6 +281,8 @@ pub fn prepare_market_data_loading_from_phases(
         session_resolution,
         preprocessing_output,
         tick_data_summary: normalized_tick_output.tick_data_summary.clone(),
+        coarse_data_summary,
+        coarse_data_records,
         option_surface_summary,
         option_surface_records: option_surface_records
             .map(|records| materialize_option_surface_records_for_payload(records.as_slice())),
@@ -886,6 +904,7 @@ fn tick_price_policy_string(policy: MarketDataTickPriceInputPolicy) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use std::sync::Arc;
 
     use arrow_array::{
@@ -895,10 +914,38 @@ mod tests {
 
     use super::{
         MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataNormalizationPolicy,
-        MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
-        normalize_market_data_source,
+        MarketDataNormalizedTickOutput, MarketDataTickDataColumnMapping,
+        MarketDataTickPriceInputPolicy, normalize_market_data_source,
     };
     use crate::market_data::loading::test_support::{unique_test_path, write_parquet_record_batch};
+
+    fn normalize_projected_parquet_tick_source(
+        parquet_path: &Path,
+    ) -> MarketDataNormalizedTickOutput {
+        normalize_market_data_source(
+            &MarketDataInputFileReference {
+                path: parquet_path.to_string_lossy().into_owned(),
+                file_format: MarketDataInputFileFormat::Parquet,
+                provenance_label: "ticks".to_string(),
+            },
+            &MarketDataTickDataColumnMapping {
+                timestamp_column: Some("event_time".to_string()),
+                price_column: Some("trade_price".to_string()),
+                trade_sign_column: Some("trade_side".to_string()),
+                bid_column: None,
+                ask_column: None,
+            },
+            &MarketDataNormalizationPolicy {
+                timestamp_timezone: "UTC".to_string(),
+                sort_records_by_timestamp: true,
+                duplicate_record_policy: None,
+                tick_price_input_policy: Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn),
+                option_quote_input_policy: None,
+            },
+            false,
+        )
+        .expect("projected parquet tick normalization should succeed")
+    }
 
     #[test]
     fn normalize_market_data_source_reads_projected_parquet_tick_columns() {
@@ -928,29 +975,7 @@ mod tests {
             ],
         );
 
-        let normalized = normalize_market_data_source(
-            &MarketDataInputFileReference {
-                path: parquet_path.to_string_lossy().into_owned(),
-                file_format: MarketDataInputFileFormat::Parquet,
-                provenance_label: "ticks".to_string(),
-            },
-            &MarketDataTickDataColumnMapping {
-                timestamp_column: Some("event_time".to_string()),
-                price_column: Some("trade_price".to_string()),
-                trade_sign_column: Some("trade_side".to_string()),
-                bid_column: None,
-                ask_column: None,
-            },
-            &MarketDataNormalizationPolicy {
-                timestamp_timezone: "UTC".to_string(),
-                sort_records_by_timestamp: true,
-                duplicate_record_policy: None,
-                tick_price_input_policy: Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn),
-                option_quote_input_policy: None,
-            },
-            false,
-        )
-        .expect("projected parquet tick normalization should succeed");
+        let normalized = normalize_projected_parquet_tick_source(parquet_path.as_path());
 
         assert_eq!(normalized.tick_records.len(), 2);
         assert_eq!(normalized.tick_records[0].price, Some(10.0));
@@ -993,29 +1018,7 @@ mod tests {
             ],
         );
 
-        let normalized = normalize_market_data_source(
-            &MarketDataInputFileReference {
-                path: parquet_path.to_string_lossy().into_owned(),
-                file_format: MarketDataInputFileFormat::Parquet,
-                provenance_label: "ticks".to_string(),
-            },
-            &MarketDataTickDataColumnMapping {
-                timestamp_column: Some("event_time".to_string()),
-                price_column: Some("trade_price".to_string()),
-                trade_sign_column: Some("trade_side".to_string()),
-                bid_column: None,
-                ask_column: None,
-            },
-            &MarketDataNormalizationPolicy {
-                timestamp_timezone: "UTC".to_string(),
-                sort_records_by_timestamp: true,
-                duplicate_record_policy: None,
-                tick_price_input_policy: Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn),
-                option_quote_input_policy: None,
-            },
-            false,
-        )
-        .expect("projected decimal parquet tick normalization should succeed");
+        let normalized = normalize_projected_parquet_tick_source(parquet_path.as_path());
 
         assert_eq!(normalized.tick_records.len(), 2);
         assert_eq!(normalized.tick_records[0].price, Some(1.09125));

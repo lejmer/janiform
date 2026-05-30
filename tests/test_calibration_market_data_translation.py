@@ -10,12 +10,13 @@ from pyarrow import parquet
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.market_data import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
+    CalibrationCoarseDataColumnMapping,
+    CalibrationCoarseDataTimestampSemantics,
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
-    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
@@ -23,10 +24,12 @@ from janiform.calibration.market_data import (
     CalibrationMarketDataReturnComponentsPreprocessingSettings,
     CalibrationMarketDataSeasonalityPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
+    CalibrationMeanReversionConfiguration,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
     CalibrationSessionConfigurationInput,
     CalibrationTickDataColumnMapping,
+    CalibrationTickObjectiveDataUsagePolicy,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
@@ -54,6 +57,20 @@ FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
     CalibrationStage.JOINT_REFINEMENT,
     CalibrationStage.FINALIZATION,
 )
+
+
+def test_coarse_data_timestamp_semantics_default_to_bar_open_time() -> None:
+    assert (
+        CalibrationCoarseDataColumnMapping().timestamp_semantics
+        == CalibrationCoarseDataTimestampSemantics.BAR_OPEN_TIME
+    )
+
+    parsed = CalibrationCoarseDataColumnMapping.from_mapping(
+        {"timestamp_semantics": "bar_close_time"},
+        field_path="column_mapping.coarse_data",
+    )
+
+    assert parsed.timestamp_semantics == CalibrationCoarseDataTimestampSemantics.BAR_CLOSE_TIME
 
 
 def test_translate_market_data_request_seasonality_only_selects_only_seasonality_stage(
@@ -103,7 +120,12 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
         "joint_refinement_calibration_effort",
         "joint_refinement_audit_option_pricing_enabled",
         "treat_inadmissible_calibration_warning_as_error",
+        "tick_objective_data_usage_policy",
     }
+    assert (
+        prepared_payload["tick_objective_data_usage_policy"]
+        == CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW
+    )
     assert translation.diagnostics.tick_record_count == 3
 
 

@@ -10,6 +10,5 @@ pub(crate) use stage::{
 pub use stage::{
     LongVarianceStageExecutionFailure, LongVarianceStageExecutionInput,
     LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
-    LongVarianceStageFittedPayload, LongVarianceStageReturnComponentsInput,
-    run_long_variance_calibration_stage,
+    LongVarianceStageFittedPayload, run_long_variance_calibration_stage,
 };

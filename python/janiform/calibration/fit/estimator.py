@@ -33,6 +33,7 @@ from ..effort import CalibrationEffortOptions, STANDARD_CALIBRATION_EFFORT
 from ..errors import calibration_error
 from ..market_data.contracts import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
+    CalibrationCoarseDataColumnMapping,
     CalibrationExecutionMode,
     CalibrationFlatCarryInput,
     CalibrationInputFileFormat,
@@ -43,6 +44,7 @@ from ..market_data.contracts import (
     CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
+    CalibrationTickObjectiveDataUsagePolicy,
 )
 from ..market_data.price_coordinates import (
     DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD,
@@ -81,6 +83,7 @@ _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfi
 class JaniformEstimator:
     _workflow_scope_override: Optional[CalibrationMarketDataWorkflowScope]
     _tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping]
+    _coarse_data_column_mapping: Optional[CalibrationCoarseDataColumnMapping]
     _normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy]
     _option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping]
     _price_coordinate_policy: PriceCoordinatePolicy
@@ -90,6 +93,7 @@ class JaniformEstimator:
     _preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
+    _tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy
     _dynamics_search_restart_candidate_budget: Optional[int]
     _calibration_effort: CalibrationEffortOptions
     _treat_calibration_warnings_as_errors: bool
@@ -113,6 +117,7 @@ class JaniformEstimator:
         *,
         workflow_scope: Optional[CalibrationMarketDataWorkflowScope] = None,
         tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = None,
+        coarse_data_column_mapping: Optional[CalibrationCoarseDataColumnMapping] = None,
         normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = None,
         option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
         price_coordinate_policy: PriceCoordinatePolicy | str = PriceCoordinatePolicy.AUTO,
@@ -122,6 +127,9 @@ class JaniformEstimator:
         preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
+        tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy = (
+            CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW
+        ),
         dynamics_search_restart_candidate_budget: Optional[int] = None,
         calibration_effort: CalibrationEffortOptions = STANDARD_CALIBRATION_EFFORT,
         treat_calibration_warnings_as_errors: bool = False,
@@ -166,6 +174,25 @@ class JaniformEstimator:
                 "mean_reversion",
                 "must be a CalibrationMeanReversionConfiguration when provided",
             )
+
+        if (
+            coarse_data_column_mapping is not None
+            and not isinstance(coarse_data_column_mapping, CalibrationCoarseDataColumnMapping)
+        ):
+            raise calibration_error(
+                "coarse_data_column_mapping",
+                "must be a CalibrationCoarseDataColumnMapping when provided",
+            )
+
+        if not isinstance(
+            tick_objective_data_usage_policy,
+            CalibrationTickObjectiveDataUsagePolicy,
+        ):
+            raise calibration_error(
+                "tick_objective_data_usage_policy",
+                "must be a CalibrationTickObjectiveDataUsagePolicy",
+            )
+
         if (
             dynamics_search_restart_candidate_budget is not None
             and dynamics_search_restart_candidate_budget <= 0
@@ -240,6 +267,7 @@ class JaniformEstimator:
 
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
+        self._coarse_data_column_mapping = coarse_data_column_mapping
         self._normalization_policy = normalization_policy
         self._option_surface_column_mapping = option_surface_column_mapping
         self._price_coordinate_policy = coerce_price_coordinate_policy(price_coordinate_policy)
@@ -259,6 +287,7 @@ class JaniformEstimator:
             if pricing_interval_schedule_policy is None
             else pricing_interval_schedule_policy
         )
+        self._tick_objective_data_usage_policy = tick_objective_data_usage_policy
         self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
         self._calibration_effort = calibration_effort
         self._treat_calibration_warnings_as_errors = treat_calibration_warnings_as_errors
@@ -293,6 +322,9 @@ class JaniformEstimator:
         tick_data_path: str | Path,
         tick_data_format: Optional[CalibrationInputFileFormat] = None,
         tick_data_provenance_label: str = "tick_data",
+        coarse_data_path: Optional[str | Path] = None,
+        coarse_data_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
+        coarse_data_provenance_label: str = "coarse_data",
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
@@ -313,6 +345,9 @@ class JaniformEstimator:
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
+            coarse_data_path=coarse_data_path,
+            coarse_data_format=coarse_data_format,
+            coarse_data_provenance_label=coarse_data_provenance_label,
             option_surface_path=option_surface_path,
             option_surface_format=option_surface_format,
             option_surface_provenance_label=option_surface_provenance_label,
@@ -331,6 +366,9 @@ class JaniformEstimator:
         tick_data_path: str | Path,
         tick_data_format: Optional[CalibrationInputFileFormat] = None,
         tick_data_provenance_label: str = "tick_data",
+        coarse_data_path: Optional[str | Path] = None,
+        coarse_data_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
+        coarse_data_provenance_label: str = "coarse_data",
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
@@ -351,6 +389,9 @@ class JaniformEstimator:
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
+            coarse_data_path=coarse_data_path,
+            coarse_data_format=coarse_data_format,
+            coarse_data_provenance_label=coarse_data_provenance_label,
             option_surface_path=option_surface_path,
             option_surface_format=option_surface_format,
             option_surface_provenance_label=option_surface_provenance_label,
@@ -383,6 +424,7 @@ class JaniformEstimator:
         return FitPreparationConfiguration(
             workflow_scope_override=self._workflow_scope_override,
             tick_data_column_mapping=self._tick_data_column_mapping,
+            coarse_data_column_mapping=self._coarse_data_column_mapping,
             normalization_policy=self._normalization_policy,
             option_surface_column_mapping=self._option_surface_column_mapping,
             price_coordinate_policy=self._price_coordinate_policy,
@@ -396,6 +438,7 @@ class JaniformEstimator:
                 if pricing_interval_schedule_policy is None
                 else pricing_interval_schedule_policy
             ),
+            tick_objective_data_usage_policy=self._tick_objective_data_usage_policy,
             dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
             calibration_effort=self._calibration_effort,
             treat_calibration_warnings_as_errors=(
@@ -455,9 +498,12 @@ class JaniformEstimator:
         tick_data_path: str | Path,
         tick_data_format: Optional[CalibrationInputFileFormat],
         tick_data_provenance_label: str,
-        option_surface_path: Optional[str | Path],
-        option_surface_format: CalibrationInputFileFormat,
-        option_surface_provenance_label: str,
+        coarse_data_path: Optional[str | Path] = None,
+        coarse_data_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
+        coarse_data_provenance_label: str = "coarse_data",
+        option_surface_path: Optional[str | Path] = None,
+        option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
+        option_surface_provenance_label: str = "option_surface",
         option_surface_valuation_time_utc: Optional[datetime] = None,
         carry: Optional[CalibrationFlatCarryInput] = None,
     ) -> PreparedFitWorkflow:
@@ -474,6 +520,9 @@ class JaniformEstimator:
                 tick_data_path=tick_data_path,
                 tick_data_format=tick_data_format,
                 tick_data_provenance_label=tick_data_provenance_label,
+                coarse_data_path=coarse_data_path,
+                coarse_data_format=coarse_data_format,
+                coarse_data_provenance_label=coarse_data_provenance_label,
                 option_surface_path=option_surface_path,
                 option_surface_format=option_surface_format,
                 option_surface_provenance_label=option_surface_provenance_label,
@@ -561,9 +610,8 @@ class JaniformEstimator:
 
         return nullcontext()
 
-    def _default_endogenous_mean_reversion_configuration(
-        self,
-    ) -> CalibrationMeanReversionConfiguration:
+    @staticmethod
+    def _default_endogenous_mean_reversion_configuration() -> CalibrationMeanReversionConfiguration:
         return _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION
 
 

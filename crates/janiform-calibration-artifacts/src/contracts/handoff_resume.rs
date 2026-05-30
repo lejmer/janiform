@@ -39,6 +39,88 @@ impl CalibrationStageHandoffRoute {
     }
 }
 
+/// Source for a stage payload that may be carried in memory or referenced through an artifact.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "transport", rename_all = "snake_case")]
+pub enum CalibrationStagePayloadSource<T> {
+    InMemoryOutput {
+        payload: T,
+    },
+    PersistedArtifactReference {
+        artifact_reference: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        payload: Option<T>,
+    },
+}
+
+impl<T> CalibrationStagePayloadSource<T> {
+    /// Return the handoff transport represented by this source.
+    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
+        match self {
+            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
+            Self::PersistedArtifactReference { .. } => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        }
+    }
+
+    /// Return the artifact reference when the source is persisted.
+    pub fn artifact_reference(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput { .. } => None,
+            Self::PersistedArtifactReference {
+                artifact_reference, ..
+            } => Some(artifact_reference.as_str()),
+        }
+    }
+
+    /// Return the attached payload when one is available.
+    pub fn payload(&self) -> Option<&T> {
+        match self {
+            Self::InMemoryOutput { payload } => Some(payload),
+            Self::PersistedArtifactReference { payload, .. } => payload.as_ref(),
+        }
+    }
+}
+
+/// Source for a selected stage candidate when only its identifier is needed downstream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "transport", rename_all = "snake_case")]
+pub enum CalibrationStageSelectedCandidateSource {
+    InMemoryOutput { selected_candidate_id: String },
+    PersistedArtifactReference { artifact_reference: String },
+}
+
+impl CalibrationStageSelectedCandidateSource {
+    /// Return the handoff transport represented by this source.
+    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
+        match self {
+            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
+            Self::PersistedArtifactReference { .. } => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        }
+    }
+
+    /// Return the artifact reference when the source is persisted.
+    pub fn artifact_reference(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput { .. } => None,
+            Self::PersistedArtifactReference { artifact_reference } => Some(artifact_reference),
+        }
+    }
+
+    /// Return the selected candidate id when the source carries an in-memory candidate selection.
+    pub fn selected_candidate_id(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput {
+                selected_candidate_id,
+            } => Some(selected_candidate_id),
+            Self::PersistedArtifactReference { .. } => None,
+        }
+    }
+}
+
 /// One directed stage handoff contract entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalibrationStageHandoff {

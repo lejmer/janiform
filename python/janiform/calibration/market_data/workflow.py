@@ -80,6 +80,10 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
     selected_stages: tuple[CalibrationStage, ...]
     executed_preprocessing_steps: tuple[str, ...]
     tick_record_count: int
+    coarse_data_record_count: int
+    coarse_data_return_interval_count: int
+    coarse_data_overlap_interval_count: int
+    coarse_data_independent_interval_count: int
     option_surface_record_count: int
     known_news_event_count: int
     known_news_events_outside_source_window_count: int
@@ -110,6 +114,16 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
                 for step in raw_payload["executed_preprocessing_steps"]
             ),
             tick_record_count=int(raw_payload["tick_record_count"]),
+            coarse_data_record_count=int(raw_payload["coarse_data_record_count"]),
+            coarse_data_return_interval_count=int(
+                raw_payload["coarse_data_return_interval_count"]
+            ),
+            coarse_data_overlap_interval_count=int(
+                raw_payload["coarse_data_overlap_interval_count"]
+            ),
+            coarse_data_independent_interval_count=int(
+                raw_payload["coarse_data_independent_interval_count"]
+            ),
             option_surface_record_count=int(raw_payload["option_surface_record_count"]),
             known_news_event_count=int(raw_payload["known_news_event_count"]),
             known_news_events_outside_source_window_count=int(
@@ -133,13 +147,16 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
 @dataclass(frozen=True, slots=True)
 class MarketDataCalibrationPreparationProvenance(ContractModel):
     tick_data_summary: MarketDataCalibrationSourceSummary
+    coarse_data_summary: Optional[MarketDataCalibrationSourceSummary]
     option_surface_summary: Optional[MarketDataCalibrationSourceSummary]
     known_news_summary: Optional[MarketDataCalibrationSourceSummary]
+    calibration_evidence_routing: dict[str, Any]
     normalization_policy: CalibrationMarketDataNormalizationPolicy
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
     session_definition_path: Optional[str]
     derived_trade_events_data_reference: str
+    derived_coarse_data_reference: Optional[str]
     derived_option_surface_data_reference: Optional[str]
     derivation_policies: tuple[str, ...]
     deterministic_defaults_applied: tuple[str, ...]
@@ -152,6 +169,13 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
         return MarketDataCalibrationPreparationProvenance(
             tick_data_summary=MarketDataCalibrationSourceSummary.from_mapping(
                 raw_payload["tick_data_summary"]
+            ),
+            coarse_data_summary=(
+                MarketDataCalibrationSourceSummary.from_mapping(
+                    raw_payload["coarse_data_summary"]["source_summary"]
+                )
+                if raw_payload.get("coarse_data_summary") is not None
+                else None
             ),
             option_surface_summary=(
                 MarketDataCalibrationSourceSummary.from_mapping(
@@ -167,6 +191,7 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
                 if raw_payload.get("known_news_summary") is not None
                 else None
             ),
+            calibration_evidence_routing=dict(raw_payload["calibration_evidence_routing"]),
             normalization_policy=CalibrationMarketDataNormalizationPolicy.from_mapping(
                 raw_payload["normalization_policy"],
                 field_path="preparation_provenance.normalization_policy",
@@ -183,6 +208,11 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
             ),
             derived_trade_events_data_reference=str(
                 raw_payload["derived_trade_events_data_reference"]
+            ),
+            derived_coarse_data_reference=(
+                str(raw_payload["derived_coarse_data_reference"])
+                if raw_payload.get("derived_coarse_data_reference") is not None
+                else None
             ),
             derived_option_surface_data_reference=(
                 str(raw_payload["derived_option_surface_data_reference"])
@@ -274,6 +304,16 @@ def _build_market_data_preparation_diagnostics(
         selected_stages=diagnostics.selected_stages,
         executed_preprocessing_steps=diagnostics.executed_preprocessing_steps,
         tick_record_count=diagnostics.tick_record_count,
+        coarse_data_record_count=diagnostics.coarse_data_record_count,
+        coarse_data_return_interval_count=(
+            diagnostics.coarse_data_return_interval_count
+        ),
+        coarse_data_overlap_interval_count=(
+            diagnostics.coarse_data_overlap_interval_count
+        ),
+        coarse_data_independent_interval_count=(
+            diagnostics.coarse_data_independent_interval_count
+        ),
         option_surface_record_count=diagnostics.option_surface_record_count,
         known_news_event_count=diagnostics.known_news_event_count,
         known_news_events_outside_source_window_count=diagnostics.known_news_events_outside_source_window_count,
@@ -295,6 +335,11 @@ def _build_market_data_preparation_provenance(
 ) -> MarketDataCalibrationPreparationProvenance:
     return MarketDataCalibrationPreparationProvenance(
         tick_data_summary=_build_market_data_source_summary(provenance.tick_data_summary),
+        coarse_data_summary=(
+            _build_market_data_source_summary(provenance.coarse_data_summary)
+            if provenance.coarse_data_summary is not None
+            else None
+        ),
         option_surface_summary=(
             _build_market_data_source_summary(provenance.option_surface_summary)
             if provenance.option_surface_summary is not None
@@ -305,11 +350,15 @@ def _build_market_data_preparation_provenance(
             if provenance.known_news_summary is not None
             else None
         ),
+        calibration_evidence_routing=provenance.calibration_evidence_routing,
         normalization_policy=provenance.normalization_policy,
         workflow_scope=provenance.workflow_scope,
         selected_stages=provenance.selected_stages,
         session_definition_path=provenance.session_definition_path,
         derived_trade_events_data_reference=provenance.derived_trade_events_data_reference,
+        derived_coarse_data_reference=(
+            provenance.derived_coarse_data_reference
+        ),
         derived_option_surface_data_reference=provenance.derived_option_surface_data_reference,
         derivation_policies=provenance.derivation_policies,
         deterministic_defaults_applied=provenance.deterministic_defaults_applied,

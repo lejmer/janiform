@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::market_data::presets::MarketDataColumnAliasHint;
 
 use super::contracts::{
-    MarketDataLoadingError, MarketDataNormalizationPolicy, MarketDataOptionQuoteInputPolicy,
+    MarketDataCoarseDataColumnMapping, MarketDataCoarseDataKind, MarketDataLoadingError,
+    MarketDataNormalizationPolicy, MarketDataOptionQuoteInputPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataTickDataColumnMapping,
     MarketDataTickPriceInputPolicy,
 };
@@ -149,6 +150,59 @@ const OPTION_IMPLIED_VOLATILITY_ALIASES: [&str; 7] = [
     "mid_iv",
     "volatility",
 ];
+const COARSE_TIMESTAMP_ALIASES: [&str; 15] = [
+    "timestamp",
+    "timestamp_utc",
+    "bar_timestamp",
+    "bar_close_timestamp",
+    "close_timestamp",
+    "close_time",
+    "time",
+    "datetime",
+    "date_time",
+    "date",
+    "ts",
+    "ts_utc",
+    "interval_timestamp",
+    "period_end",
+    "window_end",
+];
+const COARSE_INTERVAL_START_ALIASES: [&str; 9] = [
+    "interval_start",
+    "interval_start_utc",
+    "bar_start",
+    "bar_start_utc",
+    "start_timestamp",
+    "start_timestamp_utc",
+    "start_time",
+    "period_start",
+    "window_start",
+];
+const COARSE_INTERVAL_END_ALIASES: [&str; 9] = [
+    "interval_end",
+    "interval_end_utc",
+    "bar_end",
+    "bar_end_utc",
+    "end_timestamp",
+    "end_timestamp_utc",
+    "end_time",
+    "period_end",
+    "window_end",
+];
+const COARSE_OPEN_ALIASES: [&str; 5] = ["open", "open_price", "openprice", "o", "bar_open"];
+const COARSE_HIGH_ALIASES: [&str; 5] = ["high", "high_price", "highprice", "h", "bar_high"];
+const COARSE_LOW_ALIASES: [&str; 5] = ["low", "low_price", "lowprice", "l", "bar_low"];
+const COARSE_CLOSE_ALIASES: [&str; 8] = [
+    "close",
+    "close_price",
+    "closeprice",
+    "c",
+    "bar_close",
+    "settle",
+    "settlement",
+    "last",
+];
+const COARSE_VOLUME_ALIASES: [&str; 5] = ["volume", "vol", "v", "bar_volume", "trade_volume"];
 
 pub(in crate::market_data) struct TickColumnCandidates {
     pub(in crate::market_data) timestamp: Vec<String>,
@@ -219,6 +273,7 @@ pub(in crate::market_data) fn resolve_tick_data_column_mapping_with_alias_hints(
     alias_hints: &[MarketDataColumnAliasHint],
 ) -> Result<MarketDataTickDataColumnMapping, MarketDataLoadingError> {
     let available_by_normalized = normalized_source_columns(available_columns);
+
     let timestamp_column = Some(resolve_required_column(
         column_mapping.timestamp_column.as_deref(),
         &available_by_normalized,
@@ -227,6 +282,7 @@ pub(in crate::market_data) fn resolve_tick_data_column_mapping_with_alias_hints(
         "column_mapping.tick_data.timestamp_column",
         source_path,
     )?);
+
     let trade_sign_column = resolve_optional_column(
         column_mapping.trade_sign_column.as_deref(),
         &available_by_normalized,
@@ -288,6 +344,7 @@ pub(super) fn resolve_tick_price_input_policy(
     column_mapping: &MarketDataTickDataColumnMapping,
 ) -> Option<MarketDataTickPriceInputPolicy> {
     let available_by_normalized = normalized_source_columns(available_columns);
+
     let price_column = resolve_optional_column(
         column_mapping.price_column.as_deref(),
         &available_by_normalized,
@@ -302,11 +359,13 @@ pub(super) fn resolve_tick_price_input_policy(
         &available_by_normalized,
         TICK_BID_ALIASES.as_slice(),
     );
+
     let ask_column = resolve_optional_column(
         column_mapping.ask_column.as_deref(),
         &available_by_normalized,
         TICK_ASK_ALIASES.as_slice(),
     );
+
     if bid_column.is_some() && ask_column.is_some() {
         return Some(MarketDataTickPriceInputPolicy::BidAskMidpoint);
     }
@@ -321,6 +380,7 @@ pub(super) fn resolve_option_surface_column_mapping(
     source_path: &str,
 ) -> Result<MarketDataOptionSurfaceColumnMapping, MarketDataLoadingError> {
     let available_by_normalized = normalized_source_columns(available_columns);
+
     let quote_timestamp_column = Some(resolve_required_column(
         column_mapping.quote_timestamp_column.as_deref(),
         &available_by_normalized,
@@ -328,6 +388,7 @@ pub(super) fn resolve_option_surface_column_mapping(
         "column_mapping.option_surface.quote_timestamp_column",
         source_path,
     )?);
+
     let expiry_timestamp_column = Some(resolve_required_column(
         column_mapping.expiry_timestamp_column.as_deref(),
         &available_by_normalized,
@@ -335,6 +396,7 @@ pub(super) fn resolve_option_surface_column_mapping(
         "column_mapping.option_surface.expiry_timestamp_column",
         source_path,
     )?);
+
     let strike_column = Some(resolve_required_column(
         column_mapping.strike_column.as_deref(),
         &available_by_normalized,
@@ -342,6 +404,7 @@ pub(super) fn resolve_option_surface_column_mapping(
         "column_mapping.option_surface.strike_column",
         source_path,
     )?);
+
     let option_type_column = Some(resolve_required_column(
         column_mapping.option_type_column.as_deref(),
         &available_by_normalized,
@@ -421,6 +484,90 @@ pub(super) fn resolve_option_surface_column_mapping(
     })
 }
 
+pub(super) fn resolve_coarse_data_column_mapping(
+    available_columns: &[String],
+    column_mapping: &MarketDataCoarseDataColumnMapping,
+    source_path: &str,
+) -> Result<MarketDataCoarseDataColumnMapping, MarketDataLoadingError> {
+    let available_by_normalized = normalized_source_columns(available_columns);
+
+    let interval_start_column = resolve_optional_column(
+        column_mapping.interval_start_column.as_deref(),
+        &available_by_normalized,
+        COARSE_INTERVAL_START_ALIASES.as_slice(),
+    );
+
+    let interval_end_column = resolve_optional_column(
+        column_mapping.interval_end_column.as_deref(),
+        &available_by_normalized,
+        COARSE_INTERVAL_END_ALIASES.as_slice(),
+    );
+
+    let timestamp_column = match (
+        column_mapping.timestamp_column.as_deref(),
+        interval_end_column.as_deref(),
+    ) {
+        (Some(explicit), _) => Some(explicit.to_string()),
+        (None, Some(interval_end_column)) => Some(interval_end_column.to_string()),
+        (None, None) => Some(resolve_required_column(
+            None,
+            &available_by_normalized,
+            COARSE_TIMESTAMP_ALIASES.as_slice(),
+            "column_mapping.coarse_data.timestamp_column",
+            source_path,
+        )?),
+    };
+
+    let close_column = Some(resolve_required_column(
+        column_mapping.close_column.as_deref(),
+        &available_by_normalized,
+        COARSE_CLOSE_ALIASES.as_slice(),
+        "column_mapping.coarse_data.close_column",
+        source_path,
+    )?);
+
+    Ok(MarketDataCoarseDataColumnMapping {
+        timestamp_column,
+        timestamp_semantics: column_mapping.timestamp_semantics,
+        interval_start_column,
+        interval_end_column,
+        open_column: resolve_optional_column(
+            column_mapping.open_column.as_deref(),
+            &available_by_normalized,
+            COARSE_OPEN_ALIASES.as_slice(),
+        ),
+        high_column: resolve_optional_column(
+            column_mapping.high_column.as_deref(),
+            &available_by_normalized,
+            COARSE_HIGH_ALIASES.as_slice(),
+        ),
+        low_column: resolve_optional_column(
+            column_mapping.low_column.as_deref(),
+            &available_by_normalized,
+            COARSE_LOW_ALIASES.as_slice(),
+        ),
+        close_column,
+        volume_column: resolve_optional_column(
+            column_mapping.volume_column.as_deref(),
+            &available_by_normalized,
+            COARSE_VOLUME_ALIASES.as_slice(),
+        ),
+    })
+}
+
+pub(super) fn resolved_coarse_data_kind(
+    column_mapping: &MarketDataCoarseDataColumnMapping,
+) -> MarketDataCoarseDataKind {
+    if column_mapping.open_column.is_some()
+        && column_mapping.high_column.is_some()
+        && column_mapping.low_column.is_some()
+    {
+        return MarketDataCoarseDataKind::Ohlcv;
+    }
+
+    MarketDataCoarseDataKind::CloseOnly
+}
+
 pub(super) fn resolve_option_surface_quote_input_policy(
     available_columns: &[String],
     column_mapping: &MarketDataOptionSurfaceColumnMapping,
@@ -432,11 +579,13 @@ pub(super) fn resolve_option_surface_quote_input_policy(
     }
 
     let available_by_normalized = normalized_source_columns(available_columns);
+
     let bid_column = resolve_optional_column(
         column_mapping.bid_column.as_deref(),
         &available_by_normalized,
         OPTION_BID_ALIASES.as_slice(),
     );
+
     let ask_column = resolve_optional_column(
         column_mapping.ask_column.as_deref(),
         &available_by_normalized,
@@ -545,6 +694,7 @@ fn ordered_candidates(
 ) -> Vec<String> {
     let available_by_normalized = normalized_source_columns_by_all_matches(available_columns);
     let aliases = aliases_for_canonical_name(default_aliases, alias_hints, canonical_name);
+
     let mut candidates = Vec::new();
 
     for alias in aliases {
