@@ -143,7 +143,7 @@ Workflow split:
   janiform fit plan     validate inputs and preview the planned run
   janiform fit staged   run from a prepared calibration input file
 
-Disk execution writes a run directory with the fitted model, fit report, progress log, latest status snapshot, and checkpoints. Use inspect and report to follow a run in progress or review a completed run.
+By default, Janiform writes a run directory under .janiform/runs/ with the fitted model, fit report, progress log, latest status snapshot, and checkpoints. Use inspect and report to follow a run in progress or review a completed run.
 
 **Usage:** `janiform fit [OPTIONS] [COMMAND]`
 
