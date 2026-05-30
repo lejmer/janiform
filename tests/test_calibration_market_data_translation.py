@@ -621,7 +621,7 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
                 "2026-02-05T12:00:00Z,107.0,sell",
                 "2026-02-06T00:00:00Z,108.0,buy",
                 "2026-02-06T18:00:00Z,109.0,sell",
-                "2026-02-08T21:00:00Z,110.0,buy",
+                "2026-02-08T22:00:00Z,110.0,buy",
                 "2026-02-09T00:00:00Z,111.0,sell",
                 "2026-02-09T12:00:00Z,112.0,buy",
             ]
@@ -646,7 +646,7 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
         mean_reversion=CalibrationMeanReversionConfiguration(
         ),
         exchange_code="FXSPOT",
-        session_timezone="UTC",
+        session_timezone="America/New_York",
     )
 
     translation = translate_market_data_request_to_prepared_calibration(request)
@@ -771,12 +771,13 @@ def test_built_in_session_resolution_does_not_require_source_file_access() -> No
     session_resolution = resolve_market_data_session(
         session_configuration=CalibrationSessionConfigurationInput(
             exchange_code="FXSPOT",
-            session_timezone="UTC",
+            session_timezone="America/New_York",
         ),
     )
 
     assert session_resolution.exchange_code == "FXSPOT"
-    assert session_resolution.resolved_timezone_name == "UTC"
+    assert session_resolution.resolved_timezone_name == "America/New_York"
+    assert session_resolution.open_session_duration_hours_per_week == 120.0
     assert session_resolution.selected_policy_id == "sources.sessions.fx_spot_24_5.v1"
 
 

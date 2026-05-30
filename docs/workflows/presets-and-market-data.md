@@ -16,7 +16,7 @@ Janiform has three preset categories:
 
 Market profiles are the most convenient entrypoint. They can select a session and recommend or apply a known-news calendar. Session and known-news presets remain available as lower-level overrides when you need precise control.
 
-Bundled presets include common profiles such as `eurusd_spot`, `btcusd_spot`, `us_equity_cash`, and `es_futures_globex`. The exact set available in the installed package can be inspected with `PresetRegistry` in Python or with `janiform presets list`.
+Bundled presets include major-currency FX spot profiles such as `eurusd_spot`, `usdjpy_spot`, and `gbpusd_spot`, plus common non-FX profiles such as `btcusd_spot`, `us_equity_cash`, and `es_futures_globex`. The exact set available in the installed package can be inspected with `PresetRegistry` in Python or with `janiform presets list`.
 
 ## Inputs
 

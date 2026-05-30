@@ -36,6 +36,18 @@ def test_market_profile_inference_uses_embedded_instrument_token() -> None:
     assert inferred_profile["exchange_code"] == "FXSPOT"
 
 
+def test_market_profile_inference_accepts_separated_major_fx_pair_tokens() -> None:
+    inferred_profile = infer_bundled_market_profile_for_tick_data_path(
+        "broker_USD-JPY_1M_ticks.parquet"
+    )
+
+    assert inferred_profile is not None
+    assert inferred_profile["profile_name"] == "usdjpy_spot"
+    assert inferred_profile["session_preset_name"] == "fx_spot_24_5"
+    assert inferred_profile["exchange_code"] == "FXSPOT"
+    assert inferred_profile["known_news_preset_name"] == "none"
+
+
 def test_market_profile_inference_accepts_two_character_futures_root() -> None:
     inferred_profile = infer_bundled_market_profile_for_tick_data_path(
         "ES_continuous_ticks.parquet"

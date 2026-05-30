@@ -1,0 +1,69 @@
+{
+  "category": "market_profile",
+  "configuration": {
+    "column_alias_hints": [
+      {
+        "aliases": [
+          "event_timestamp_utc",
+          "timestamp_utc",
+          "ts_utc"
+        ],
+        "canonical_name": "timestamp"
+      }
+    ],
+    "default_calibration_hint_ids": [
+      "fx_spot_defaults"
+    ],
+    "known_news_policy": "suggest_only",
+    "known_news_reference": {
+      "configuration": null,
+      "override_patch": null,
+      "preset_name": "none",
+      "registry_scope": "built_in",
+      "usage_mode": "named"
+    },
+    "profile_name": "eurchf_spot",
+    "session_reference": {
+      "configuration": null,
+      "exchange_code_hint": null,
+      "override_patch": null,
+      "preset_name": "fx_spot_24_5",
+      "registry_scope": "built_in",
+      "timezone_name_hint": null,
+      "usage_mode": "named"
+    },
+    "timestamp_timezone_name": "UTC"
+  },
+  "metadata": {
+    "description": "Default EUR/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+    "display_name": "EUR/CHF Spot",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:83515b02c9b128f396dbd075f75dc7335ce9b4f2a731c7ebb6312de2e496f2a4",
+      "generated_on": "2026-05-30",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.market_profiles.eurchf_spot.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "none@2026.03"
+        },
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "fx_spot_24_5@2026.05"
+        },
+        {
+          "source_name": "major_fx_currency_pair_universe",
+          "version_label": "captured_2026-05-30"
+        }
+      ]
+    },
+    "version_label": "2026.05"
+  },
+  "preset_name": "eurchf_spot",
+  "schema_version": "preset.artifact.market_profile.v1"
+}

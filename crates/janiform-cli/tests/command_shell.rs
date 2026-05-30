@@ -933,7 +933,7 @@ fn presets_list_terminal_output_aligns_table_columns() {
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
     assert!(stdout.contains(
-        "Category        Scope     Name                 Version\nmarket-profile  built-in  btcusd_spot          2026.03"
+        "Category        Scope     Name                 Version\nmarket-profile  built-in  audcad_spot          2026.05"
     ));
 }
 
@@ -1014,7 +1014,7 @@ fn presets_show_session_expanded_renders_window_tables() {
         "Regular Session Windows\n\nWeekday    Open   Close  Label\nMonday     00:00  24:00  spot"
     ));
     assert!(stdout.contains(
-        "Recurring Closed Windows\n\nStart Weekday  Start  End Weekday  End    Reason\nFriday         19:00  Sunday       21:00  weekend_close"
+        "Recurring Closed Windows\n\nStart Weekday  Start  End Weekday  End    Reason\nFriday         17:00  Sunday       17:00  weekend_close"
     ));
 }
 
