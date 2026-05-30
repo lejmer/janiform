@@ -1,6 +1,7 @@
 use std::sync::mpsc::Sender;
 
 use janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic;
+use janiform_foundations::progress::WorkItemStatus;
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
@@ -8,11 +9,7 @@ use crate::stages::joint_refinement::contracts::{
 
 use super::super::super::JointRefinementRestartOutcome;
 use super::super::workflow::emit_joint_refinement_progress;
-use super::{
-    RESTART_WORK_ITEM_STATUS_COMPLETED, RESTART_WORK_ITEM_STATUS_QUEUED,
-    RESTART_WORK_ITEM_STATUS_REJECTED, RESTART_WORK_ITEM_STATUS_RUNNING,
-    RESTART_WORK_ITEM_STATUS_WAITING, RestartProbeResult, RestartProbeState,
-};
+use super::{RestartProbeResult, RestartProbeState};
 
 pub(super) fn restart_probe_evaluation_timing_diagnostic(
     state: &RestartProbeState,
@@ -81,7 +78,11 @@ pub(super) fn emit_batched_restart_progress(
             aggregate_progress_percent: Some(aggregate_progress_percent),
             current_item_label: Some(current_state.restart_id.clone()),
             current_restart_id: Some(current_state.restart_id.clone()),
-            current_work_item_status: Some(restart_probe_state_status(current_state).to_string()),
+            current_work_item_status: Some(
+                restart_probe_state_status(current_state)
+                    .as_str()
+                    .to_string(),
+            ),
             active_restart_count: Some(active_restart_count(states)),
             current_evaluation_count: Some(current_state.evaluation_count),
             total_evaluation_budget: Some(current_state.max_evaluation_count),
@@ -173,7 +174,7 @@ pub(super) fn emit_restart_finalization_progress(
             aggregate_progress_percent: Some(aggregate_progress_percent),
             current_item_label: Some(outcome.restart_id.clone()),
             current_restart_id: Some(outcome.restart_id.clone()),
-            current_work_item_status: Some(restart_outcome_status(outcome).to_string()),
+            current_work_item_status: Some(restart_outcome_status(outcome).as_str().to_string()),
             active_restart_count: Some(
                 total_restart_count.saturating_sub(completed_finalization_count),
             ),
@@ -231,7 +232,7 @@ pub(super) fn emit_restart_finalization_started(
             aggregate_progress_percent: Some(aggregate_progress_percent),
             current_item_label: Some(state.restart_id.clone()),
             current_restart_id: Some(state.restart_id.clone()),
-            current_work_item_status: Some(RESTART_WORK_ITEM_STATUS_RUNNING.to_string()),
+            current_work_item_status: Some(WorkItemStatus::Running.as_str().to_string()),
             active_restart_count: Some(total_restart_count),
             current_evaluation_count: Some(state.evaluation_count),
             total_evaluation_budget: Some(state.max_evaluation_count),
@@ -264,24 +265,24 @@ pub(super) fn emit_restart_finalization_started(
     );
 }
 
-fn restart_probe_state_status(state: &RestartProbeState) -> &'static str {
+fn restart_probe_state_status(state: &RestartProbeState) -> WorkItemStatus {
     if state.in_flight_count > 0 {
-        return RESTART_WORK_ITEM_STATUS_RUNNING;
+        return WorkItemStatus::Running;
     }
 
     if state.evaluation_count == 0 {
-        return RESTART_WORK_ITEM_STATUS_WAITING;
+        return WorkItemStatus::Waiting;
     }
 
     if state.completed {
         return if state.best_objective.is_some() {
-            RESTART_WORK_ITEM_STATUS_COMPLETED
+            WorkItemStatus::Finishing
         } else {
-            RESTART_WORK_ITEM_STATUS_REJECTED
+            WorkItemStatus::Rejected
         };
     }
 
-    RESTART_WORK_ITEM_STATUS_QUEUED
+    WorkItemStatus::Queued
 }
 
 fn active_restart_count(states: &[RestartProbeState]) -> usize {
@@ -304,12 +305,12 @@ fn best_restart_probe_state(states: &[RestartProbeState]) -> Option<(String, f64
         .min_by(|left, right| left.1.total_cmp(&right.1))
 }
 
-fn restart_outcome_status(outcome: &JointRefinementRestartOutcome) -> &'static str {
+fn restart_outcome_status(outcome: &JointRefinementRestartOutcome) -> WorkItemStatus {
     if outcome.final_evaluation.invalid_reason.is_some() {
-        return RESTART_WORK_ITEM_STATUS_REJECTED;
+        return WorkItemStatus::Rejected;
     }
 
-    RESTART_WORK_ITEM_STATUS_COMPLETED
+    WorkItemStatus::Completed
 }
 
 fn best_partial_restart_outcome(
@@ -341,4 +342,44 @@ fn best_restart_outcome(
             )
         })
         .min_by(|left, right| left.1.total_cmp(&right.1))
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform_foundations::progress::WorkItemStatus;
+
+    use super::super::RestartProbeState;
+    use super::restart_probe_state_status;
+
+    fn completed_search_state() -> RestartProbeState {
+        RestartProbeState {
+            restart_id: "tick_moment_04".to_string(),
+            seed_vector: vec![0.0],
+            accepted_vector: vec![0.0],
+            best_vector: vec![0.0],
+            accepted_objective: Some(34.301131),
+            best_objective: Some(34.301131),
+            poll_best_vector: None,
+            poll_best_objective: None,
+            mesh_radii: vec![1.0],
+            next_poll_direction_position: 0,
+            completed_poll_rounds: 0,
+            evaluation_count: 146,
+            max_evaluation_count: 146,
+            in_flight_count: 0,
+            stop_reason: "restart_pool_budget".to_string(),
+            completed: true,
+            exact_likelihood_evaluator_counts: None,
+        }
+    }
+
+    #[test]
+    fn completed_probe_search_waits_for_finalization_before_completed_status() {
+        let state = completed_search_state();
+
+        assert_eq!(
+            restart_probe_state_status(&state),
+            WorkItemStatus::Finishing
+        );
+    }
 }

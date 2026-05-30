@@ -16,5 +16,6 @@ doctest = false
 comfy-table = { workspace = true }
 console = { workspace = true }
 indicatif = { workspace = true }
+janiform-foundations = { path = "../janiform-foundations" }
 textwrap = { workspace = true }
 thiserror = "2.0.17"

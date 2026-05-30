@@ -1,3 +1,4 @@
+use janiform_foundations::progress::WorkItemStatus;
 use janiform_terminal_ui::{
     ProgressAdapter, ProgressContractError, ProgressEvent, ProgressMeasure, ProgressWorkItemColumn,
     ProgressWorkItemMetric,
@@ -112,7 +113,10 @@ fn adapter_coalesces_structured_events_until_draw() {
         vec!["Eval", "Assessment"]
     );
     assert_eq!(snapshot.work_items[0].label, "seed baseline");
-    assert_eq!(snapshot.work_items[0].status, "completed");
+    assert_eq!(
+        snapshot.work_items[0].status,
+        WorkItemStatus::Completed.as_str()
+    );
     assert_eq!(
         snapshot.work_items[0]
             .metrics
@@ -203,9 +207,9 @@ fn adapter_seeds_planned_work_items_as_waiting() {
             .map(|work_item| (work_item.label.as_str(), work_item.status.as_str()))
             .collect::<Vec<_>>(),
         vec![
-            ("baseline", "waiting"),
-            ("activity_aligned", "waiting"),
-            ("midpoint", "waiting")
+            ("baseline", WorkItemStatus::Waiting.as_str()),
+            ("activity_aligned", WorkItemStatus::Waiting.as_str()),
+            ("midpoint", WorkItemStatus::Waiting.as_str())
         ]
     );
     assert_eq!(
@@ -242,7 +246,7 @@ fn adapter_uses_explicit_work_item_status_when_provided() {
         measure: ProgressMeasure::bounded(1, 4).expect("test progress should be valid"),
         work_item_label: Some("tick_moment_21".to_string()),
         work_item_progress_percent: Some(25),
-        work_item_status: Some("queued".to_string()),
+        work_item_status: Some(WorkItemStatus::Queued.as_str().to_string()),
         planned_work_item_labels: Vec::new(),
         work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Eval")],
         work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "1/4")],
@@ -257,7 +261,7 @@ fn adapter_uses_explicit_work_item_status_when_provided() {
             .iter()
             .map(|work_item| (work_item.label.as_str(), work_item.status.as_str()))
             .collect::<Vec<_>>(),
-        vec![("tick_moment_21", "queued")]
+        vec![("tick_moment_21", WorkItemStatus::Queued.as_str())]
     );
 }
 
@@ -311,7 +315,7 @@ fn adapter_keeps_completed_work_item_when_late_progress_arrives() {
         .find(|work_item| work_item.label == "halton_02")
         .expect("completed work item should remain present");
 
-    assert_eq!(work_item.status, "completed");
+    assert_eq!(work_item.status, WorkItemStatus::Completed.as_str());
     assert!(work_item.progress.starts_with("100%"));
     assert_eq!(
         work_item.metrics.get("eval").map(String::as_str),
