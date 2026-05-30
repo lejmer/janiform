@@ -46,7 +46,7 @@ impl ProgressRenderState {
 
         if let Some(reason) = &self.snapshot.failure_reason {
             lines.push(self.workflow_status_line(scope, "failed", total_elapsed.as_deref()));
-            lines.push(format!("   {}", self.labeled_value("Reason:", reason)));
+            lines.push(format!("  {}", self.labeled_value("Reason:", reason)));
 
             return;
         }
@@ -81,7 +81,7 @@ impl ProgressRenderState {
     fn push_phase_and_progress_lines(&self, lines: &mut Vec<String>) {
         if let Some(phase) = &self.snapshot.phase {
             lines.push(String::new());
-            lines.push(format!("   {}", self.labeled_value("Phase:", phase)));
+            lines.push(format!("  {}", self.labeled_value("Phase:", phase)));
         }
 
         if let Some(progress_line) = self.progress_line() {
@@ -120,18 +120,18 @@ impl ProgressRenderState {
 
     fn push_run_metadata_lines(&self, lines: &mut Vec<String>) {
         if let Some(run_id) = &self.snapshot.run_id {
-            lines.push(format!("   {}", self.labeled_value("Run:", run_id)));
+            lines.push(format!("  {}", self.labeled_value("Run:", run_id)));
         }
 
         if let Some(input_count) = self.snapshot.input_count {
             lines.push(format!(
-                "   {}",
+                "  {}",
                 self.labeled_value("Inputs:", &input_count.to_string())
             ));
         }
 
         if let Some(output_path) = &self.snapshot.output_path {
-            lines.push(format!("   {}", self.labeled_value("Output:", output_path)));
+            lines.push(format!("  {}", self.labeled_value("Output:", output_path)));
         }
     }
 
@@ -167,11 +167,11 @@ impl ProgressRenderState {
 
         match signal {
             Some(signal) => format!(
-                "   {} {progress}, {}",
+                "  {} {progress}, {}",
                 self.styled_label("Progress:"),
                 self.styled_value(signal)
             ),
-            None => format!("   {} {progress}", self.styled_label("Progress:")),
+            None => format!("  {} {progress}", self.styled_label("Progress:")),
         }
     }
 
@@ -180,17 +180,17 @@ impl ProgressRenderState {
 
         match signal {
             Some(signal) => format!(
-                "   {} {progress}, {}",
+                "  {} {progress}, {}",
                 self.styled_label("Progress:"),
                 self.styled_value(signal)
             ),
-            None => format!("   {} {progress}", self.styled_label("Progress:")),
+            None => format!("  {} {progress}", self.styled_label("Progress:")),
         }
     }
 
     fn unbounded_progress_line(&self, signal: &str) -> String {
         format!(
-            "   {} {}",
+            "  {} {}",
             self.styled_label("Progress:"),
             self.styled_value(signal)
         )
