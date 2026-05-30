@@ -28,6 +28,8 @@ use serde_json::json;
 
 use crate::error::WorkflowError;
 
+use super::input_paths::preparation_request_input_paths;
+
 const MARKET_DATA_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.request.v1";
 const MARKET_DATA_PREPARATION_SCHEMA_VERSION: &str = "calibration.market_data.preparation.v1";
 const DEFAULT_KNOWN_NEWS_TIMESTAMP_COLUMN: &str = "event_timestamp_utc";
@@ -352,7 +354,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
 
     Ok(PreparedFitWorkflow {
         execution_input: prepared_plan.execution_input,
-        input_paths: fit_workflow_input_paths(&preparation_request),
+        input_paths: preparation_request_input_paths(&preparation_request),
         preparation_payload: json!({
             "schema_version": MARKET_DATA_PREPARATION_SCHEMA_VERSION,
             "request": preparation_request,
@@ -878,27 +880,6 @@ fn mean_reversion_configuration(
                     .clone()
             }),
     )
-}
-
-fn fit_workflow_input_paths(request: &CalibrationMarketDataPreparationRequest) -> Vec<String> {
-    let mut input_paths = vec![format!("ticks: {}", request.tick_data_source.path)];
-
-    if let Some(coarse_data_source) = &request.coarse_data_source {
-        input_paths.push(format!("coarse: {}", coarse_data_source.path));
-    }
-
-    if let Some(option_surface_source) = &request.option_surface_source {
-        input_paths.push(format!("options: {}", option_surface_source.path));
-    }
-
-    if let Some(known_news_inputs) = &request.known_news_inputs {
-        input_paths.push(format!(
-            "known news: {}",
-            known_news_inputs.calendar_source.path
-        ));
-    }
-
-    input_paths
 }
 
 fn session_windows(

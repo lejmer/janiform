@@ -16,6 +16,7 @@ use crate::error::WorkflowError;
 use crate::price_coordinates::price_coordinate_resolution_summary;
 
 use super::events::{failed_stage_label, failure_reason, resume_availability};
+use super::input_paths::preparation_request_input_paths;
 use super::labels::workflow_scope_label;
 use super::request::FitWorkflowPaths;
 use super::scope::workflow_scope_label_for_input;
@@ -303,32 +304,6 @@ fn option_participation(execution_input: &CalibrationStagedExecutionInput) -> St
         .as_ref()
         .map(|input| format!("{} nodes", input.option_snapshot_nodes.len()))
         .unwrap_or_else(|| "none".to_string())
-}
-
-fn preparation_request_input_paths(
-    preparation_request: &CalibrationMarketDataPreparationRequest,
-) -> Vec<String> {
-    let mut input_paths = vec![format!(
-        "ticks: {}",
-        preparation_request.tick_data_source.path
-    )];
-
-    if let Some(coarse_data_source) = &preparation_request.coarse_data_source {
-        input_paths.push(format!("coarse: {}", coarse_data_source.path));
-    }
-
-    if let Some(option_surface_source) = &preparation_request.option_surface_source {
-        input_paths.push(format!("options: {}", option_surface_source.path));
-    }
-
-    if let Some(known_news_inputs) = &preparation_request.known_news_inputs {
-        input_paths.push(format!(
-            "known news: {}",
-            known_news_inputs.calendar_source.path
-        ));
-    }
-
-    input_paths
 }
 
 fn preparation_known_news_participation(

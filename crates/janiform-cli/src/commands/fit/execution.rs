@@ -182,6 +182,10 @@ impl ExecutionArtifacts<'_> {
                     format_path(&prepared.inputs.tick_data_path)
                 )];
 
+                if let Some(coarse_data_path) = &prepared.inputs.coarse_data_path {
+                    paths.push(format!("coarse data: {}", format_path(coarse_data_path)));
+                }
+
                 if let Some(option_surface_path) = &prepared.inputs.option_surface_path {
                     paths.push(format!("options: {}", format_path(option_surface_path)));
                 }
@@ -194,16 +198,34 @@ impl ExecutionArtifacts<'_> {
             }
             Self::StagedInput {
                 execution_input_path,
-            } => vec![
-                format!("staged input: {}", format_path(execution_input_path)),
-                format!(
-                    "ticks: {}",
-                    execution_input
-                        .request
-                        .data_inputs
-                        .trade_events_data_reference
-                ),
-            ],
+            } => {
+                let mut paths = vec![
+                    format!("staged input: {}", format_path(execution_input_path)),
+                    format!(
+                        "ticks: {}",
+                        execution_input
+                            .request
+                            .data_inputs
+                            .trade_events_data_reference
+                    ),
+                ];
+
+                if let Some(coarse_data_reference) =
+                    &execution_input.request.data_inputs.coarse_data_reference
+                {
+                    paths.push(format!("coarse data: {coarse_data_reference}"));
+                }
+
+                if let Some(option_surface_data_reference) = &execution_input
+                    .request
+                    .data_inputs
+                    .option_surface_data_reference
+                {
+                    paths.push(format!("options: {option_surface_data_reference}"));
+                }
+
+                paths
+            }
         }
     }
 

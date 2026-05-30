@@ -1562,6 +1562,109 @@ fn fit_plan_json_prepares_seasonality_without_running_calibration() {
 }
 
 #[test]
+fn fit_terminal_summary_lists_coarse_data_input() {
+    let workspace = temporary_run_directory("fit-coarse-input-summary");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    let coarse_data_path = workspace.join("coarse.csv");
+    write_tick_csv(&tick_data_path);
+    write_coarse_data_csv(&coarse_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--color",
+            "never",
+            "fit",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--coarse-data-path",
+            coarse_data_path
+                .to_str()
+                .expect("coarse path should be valid UTF-8"),
+            "--coarse-data-format",
+            "csv",
+            "--exchange-code",
+            "XNYS",
+            "--workflow-scope",
+            "seasonality-only",
+            "--run-id",
+            "coarse-input-summary-test",
+            "--no-persist",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+    assert!(
+        stdout.contains("coarse data:"),
+        "fit summary should include coarse data input:\n{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            coarse_data_path
+                .to_str()
+                .expect("coarse path should be valid UTF-8")
+        ),
+        "fit summary should include the coarse data path:\n{stdout}"
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn fit_plan_json_includes_coarse_data_input_file() {
+    let workspace = temporary_run_directory("fit-plan-coarse-input");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    let coarse_data_path = workspace.join("coarse.csv");
+    write_tick_csv(&tick_data_path);
+    write_coarse_data_csv(&coarse_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--coarse-data-path",
+            coarse_data_path
+                .to_str()
+                .expect("coarse path should be valid UTF-8"),
+            "--coarse-data-format",
+            "csv",
+            "--exchange-code",
+            "XNYS",
+            "--workflow-scope",
+            "seasonality-only",
+            "--run-id",
+            "coarse-input-plan-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(
+        payload["input_files"]["coarse_data"]["path"],
+        coarse_data_path
+            .to_str()
+            .expect("coarse path should be valid UTF-8")
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
 fn fit_plan_accepts_explicit_market_profile_preset() {
     let workspace = temporary_run_directory("fit-plan-market-profile");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
@@ -2120,6 +2223,14 @@ fn write_tick_csv(path: &std::path::Path) {
         "timestamp,price,side\n2026-04-20T14:30:00Z,10.0,buy\n2026-04-20T14:31:00Z,10.1,sell\n2026-04-20T14:32:00Z,10.2,buy\n",
     )
     .expect("tick CSV should be writable");
+}
+
+fn write_coarse_data_csv(path: &std::path::Path) {
+    std::fs::write(
+        path,
+        "timestamp,close\n2026-04-20T14:30:00Z,10.0\n2026-04-20T14:31:00Z,10.1\n2026-04-20T14:32:00Z,10.2\n",
+    )
+    .expect("coarse data CSV should be writable");
 }
 
 fn write_model_with_tick_source(model_path: &std::path::Path, tick_path: &std::path::Path) {

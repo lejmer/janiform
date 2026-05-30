@@ -76,6 +76,7 @@ pub(crate) fn staged_plan_json(
 fn input_files_json(prepared: &PreparedFitPreview) -> Value {
     json!({
         "ticks": prepared.request.tick_data_source,
+        "coarse_data": prepared.request.coarse_data_source,
         "options": prepared.request.option_surface_source,
         "known_news": prepared.request.known_news_inputs.as_ref().map(|input| &input.calendar_source),
         "session_definition": prepared.inputs.session_definition_path,

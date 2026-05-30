@@ -1,6 +1,7 @@
 mod artifacts;
 mod events;
 mod execution;
+mod input_paths;
 mod labels;
 mod output;
 mod preparation;
