@@ -208,7 +208,7 @@ pub struct CompactTable {
 }
 
 impl CompactTable {
-    /// Render the table with library-managed column alignment.
+    /// Render the table with column alignment.
     pub fn render(&self, renderer: &TerminalRenderer) -> String {
         if self.headers.is_empty() {
             return String::new();
