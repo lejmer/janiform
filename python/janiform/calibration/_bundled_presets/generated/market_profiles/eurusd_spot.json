@@ -40,8 +40,8 @@
     "provenance": {
       "bundle_id": "janiform_bundled_presets",
       "bundle_version": "v1",
-      "content_hash": "sha256:29be85b9bd163b64ca32f18b488d92d61593da38b91badc91fe2189a99ba8582",
-      "generated_on": "2026-03-12",
+      "content_hash": "sha256:cf9a27618e9da9858054d3eda720ec58d0e97590d36ff7a6eaaa0b60e6c24eab",
+      "generated_on": "2026-05-30",
       "generator_id": "janiform.curated_preset_generator",
       "generator_version": "1.0.0",
       "source_manifest_ids": [
@@ -54,11 +54,15 @@
         },
         {
           "source_name": "bundled_session_reference",
-          "version_label": "fx_spot_24_5@2026.03"
+          "version_label": "fx_spot_24_5@2026.05"
+        },
+        {
+          "source_name": "major_fx_currency_pair_universe",
+          "version_label": "captured_2026-05-30"
         }
       ]
     },
-    "version_label": "2026.03"
+    "version_label": "2026.05"
   },
   "preset_name": "eurusd_spot",
   "schema_version": "preset.artifact.market_profile.v1"

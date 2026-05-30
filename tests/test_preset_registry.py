@@ -37,9 +37,42 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 BUNDLED_PRESET_ROOT = (
     REPOSITORY_ROOT / "python" / "janiform" / "calibration" / "_bundled_presets" / "generated"
 )
+EXPECTED_MARKET_PROFILE_NAMES = {
+    "audcad_spot",
+    "audchf_spot",
+    "audjpy_spot",
+    "audnzd_spot",
+    "audusd_spot",
+    "btcusd_spot",
+    "cadchf_spot",
+    "cadjpy_spot",
+    "chfjpy_spot",
+    "es_futures_globex",
+    "euraud_spot",
+    "eurcad_spot",
+    "eurchf_spot",
+    "eurgbp_spot",
+    "eurjpy_spot",
+    "eurnzd_spot",
+    "eurusd_spot",
+    "gbpaud_spot",
+    "gbpcad_spot",
+    "gbpchf_spot",
+    "gbpjpy_spot",
+    "gbpnzd_spot",
+    "gbpusd_spot",
+    "nzdcad_spot",
+    "nzdchf_spot",
+    "nzdjpy_spot",
+    "nzdusd_spot",
+    "us_equity_cash",
+    "usdcad_spot",
+    "usdchf_spot",
+    "usdjpy_spot",
+}
 
 
-def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> None:
+def test_bundled_registry_loads_v1_preset_set_and_fx_session_hours() -> None:
     registry = PresetRegistry()
 
     assert {entry.preset_name for entry in registry.list_presets(category=PresetCategory.SESSION)} == {
@@ -56,17 +89,17 @@ def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> 
     }
     assert {
         entry.preset_name for entry in registry.list_presets(category=PresetCategory.MARKET_PROFILE)
-    } == {"btcusd_spot", "es_futures_globex", "eurusd_spot", "us_equity_cash"}
+    } == EXPECTED_MARKET_PROFILE_NAMES
 
     _, fx_session = registry.resolve_session(preset_name="fx_spot_24_5")
 
-    assert fx_session.configuration.timezone_name == "UTC"
+    assert fx_session.configuration.timezone_name == "America/New_York"
     assert fx_session.configuration.recurring_closed_windows == (
         MarketDataSessionRecurringClosedWindow(
             start_weekday="Friday",
-            start_time="19:00",
+            start_time="17:00",
             end_weekday="Sunday",
-            end_time="21:00",
+            end_time="17:00",
             reason="weekend_close",
         ),
     )

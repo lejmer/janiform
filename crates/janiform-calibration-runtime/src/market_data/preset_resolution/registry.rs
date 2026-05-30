@@ -21,91 +21,59 @@ struct BundledPresetSource {
     artifact_json: &'static str,
 }
 
+macro_rules! bundled_preset_source {
+    ($artifact_path:literal) => {
+        BundledPresetSource {
+            artifact_path: $artifact_path,
+            artifact_json: include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../python/janiform/calibration/_bundled_presets/generated/",
+                $artifact_path
+            )),
+        }
+    };
+}
+
 const BUNDLED_PRESET_ARTIFACTS: &[BundledPresetSource] = &[
-    BundledPresetSource {
-        artifact_path: "sessions/XCME.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/sessions/XCME.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "sessions/XNAS.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/sessions/XNAS.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "sessions/XNYS.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/sessions/XNYS.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "sessions/crypto_24_7.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/sessions/crypto_24_7.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "sessions/fx_spot_24_5.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/sessions/fx_spot_24_5.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "known_news/eu_us_macro_fx_core.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/known_news/eu_us_macro_fx_core.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "known_news/none.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/known_news/none.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "known_news/us_macro_core.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/known_news/us_macro_core.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "market_profiles/btcusd_spot.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/market_profiles/btcusd_spot.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "market_profiles/es_futures_globex.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/market_profiles/es_futures_globex.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "market_profiles/eurusd_spot.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/market_profiles/eurusd_spot.json"
-        )),
-    },
-    BundledPresetSource {
-        artifact_path: "market_profiles/us_equity_cash.json",
-        artifact_json: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../python/janiform/calibration/_bundled_presets/generated/market_profiles/us_equity_cash.json"
-        )),
-    },
+    bundled_preset_source!("sessions/XCME.json"),
+    bundled_preset_source!("sessions/XNAS.json"),
+    bundled_preset_source!("sessions/XNYS.json"),
+    bundled_preset_source!("sessions/crypto_24_7.json"),
+    bundled_preset_source!("sessions/fx_spot_24_5.json"),
+    bundled_preset_source!("known_news/eu_us_macro_fx_core.json"),
+    bundled_preset_source!("known_news/none.json"),
+    bundled_preset_source!("known_news/us_macro_core.json"),
+    bundled_preset_source!("market_profiles/audcad_spot.json"),
+    bundled_preset_source!("market_profiles/audchf_spot.json"),
+    bundled_preset_source!("market_profiles/audjpy_spot.json"),
+    bundled_preset_source!("market_profiles/audnzd_spot.json"),
+    bundled_preset_source!("market_profiles/audusd_spot.json"),
+    bundled_preset_source!("market_profiles/btcusd_spot.json"),
+    bundled_preset_source!("market_profiles/cadchf_spot.json"),
+    bundled_preset_source!("market_profiles/cadjpy_spot.json"),
+    bundled_preset_source!("market_profiles/chfjpy_spot.json"),
+    bundled_preset_source!("market_profiles/es_futures_globex.json"),
+    bundled_preset_source!("market_profiles/euraud_spot.json"),
+    bundled_preset_source!("market_profiles/eurcad_spot.json"),
+    bundled_preset_source!("market_profiles/eurchf_spot.json"),
+    bundled_preset_source!("market_profiles/eurgbp_spot.json"),
+    bundled_preset_source!("market_profiles/eurjpy_spot.json"),
+    bundled_preset_source!("market_profiles/eurnzd_spot.json"),
+    bundled_preset_source!("market_profiles/eurusd_spot.json"),
+    bundled_preset_source!("market_profiles/gbpaud_spot.json"),
+    bundled_preset_source!("market_profiles/gbpcad_spot.json"),
+    bundled_preset_source!("market_profiles/gbpchf_spot.json"),
+    bundled_preset_source!("market_profiles/gbpjpy_spot.json"),
+    bundled_preset_source!("market_profiles/gbpnzd_spot.json"),
+    bundled_preset_source!("market_profiles/gbpusd_spot.json"),
+    bundled_preset_source!("market_profiles/nzdcad_spot.json"),
+    bundled_preset_source!("market_profiles/nzdchf_spot.json"),
+    bundled_preset_source!("market_profiles/nzdjpy_spot.json"),
+    bundled_preset_source!("market_profiles/nzdusd_spot.json"),
+    bundled_preset_source!("market_profiles/us_equity_cash.json"),
+    bundled_preset_source!("market_profiles/usdcad_spot.json"),
+    bundled_preset_source!("market_profiles/usdchf_spot.json"),
+    bundled_preset_source!("market_profiles/usdjpy_spot.json"),
 ];
 
 /// Return the runtime index for bundled preset artifacts embedded in Rust.
@@ -324,6 +292,7 @@ impl RuntimePresetRegistry {
                 metadata,
                 provenance,
             )?;
+
             let sort_key = preset_index_entry_sort_key(&entry)?;
 
             keyed_entries.push((sort_key, entry));
@@ -352,6 +321,7 @@ impl RuntimePresetRegistry {
         let Some(registry_payload) = optional_object_field(request, "registry", "registry")? else {
             return Ok(());
         };
+
         let Some(raw_artifacts) = registry_payload.get("user_registered_presets") else {
             return Ok(());
         };
@@ -361,6 +331,7 @@ impl RuntimePresetRegistry {
         }
 
         let artifacts = array_value(raw_artifacts, "registry.user_registered_presets")?;
+
         for (artifact_index, artifact) in artifacts.iter().enumerate() {
             // User preset payloads are registry-owned after request validation.
             self.register_artifact(
@@ -397,6 +368,7 @@ impl RuntimePresetRegistry {
         )?;
 
         let key = (scope, category, preset_name.to_string());
+
         if self.artifacts.insert(key, artifact).is_some() {
             return Err(payload_error(
                 field_path,
@@ -448,7 +420,9 @@ fn requested_preset(
 ) -> PresetResolutionResult<(PresetCategory, &str, Option<PresetRegistryScope>)> {
     let category =
         PresetCategory::from_str(string_field(request, "category", "category")?, "category")?;
+
     let preset_name = string_field(request, "preset_name", "preset_name")?;
+
     let registry_scope =
         PresetRegistryScope::from_optional_value(request.get("registry_scope"), "registry_scope")?;
 
@@ -457,6 +431,7 @@ fn requested_preset(
 
 fn preset_index_entry_sort_key(entry: &Value) -> PresetResolutionResult<(u8, String, String)> {
     let entry = object_value(entry, "preset_index_entry")?;
+
     let category = PresetCategory::from_str(
         string_field(entry, "category", "preset_index_entry.category")?,
         "preset_index_entry.category",
@@ -480,7 +455,9 @@ fn built_in_artifact_path(
                 &format!("must be valid preset artifact JSON: {source}"),
             )
         })?;
+
         let artifact = object_value(&artifact, &format!("bundled_presets[{artifact_index}]"))?;
+
         let source_category = PresetCategory::from_str(
             string_field(
                 artifact,
@@ -489,6 +466,7 @@ fn built_in_artifact_path(
             )?,
             &format!("bundled_presets[{artifact_index}].category"),
         )?;
+
         let source_preset_name = string_field(
             artifact,
             "preset_name",
@@ -547,8 +525,10 @@ fn resolve_named_dependency_artifact(
         "preset_name",
         &format!("{field_path}.preset_name"),
     )?;
+
     let registry_scope =
         required_registry_scope(reference, &format!("{field_path}.registry_scope"))?;
+
     let (_, artifact) = registry.resolve(category, preset_name, Some(registry_scope))?;
 
     // Snapshot payloads own dependency artifacts independently from the registry cache.

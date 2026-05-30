@@ -10,6 +10,7 @@ use serde::Serialize;
 
 // Bundled market-profile roots include two-character symbols such as ES and US.
 const MIN_MARKET_PROFILE_INSTRUMENT_TOKEN_LENGTH: usize = 2;
+const ISO_4217_CURRENCY_CODE_LENGTH: usize = 3;
 const BUNDLED_MARKET_PROFILE_SOURCE_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../presets/sources/market_profiles/market_profile_presets.json"
@@ -130,8 +131,8 @@ struct BundledSessionSourceDocument {
 /// Infer a bundled market profile from a tick-data path.
 ///
 /// The inference uses the first bundled instrument token in the file stem, for
-/// example `EURUSD_665k_ticks.parquet` and
-/// `Synthetic_EURUSD_Data_1M_ticks.parquet` both map to `eurusd_spot` when that
+/// example `EURUSD_665k_ticks.parquet`, `EUR_USD_665k_ticks.parquet`, and
+/// `Synthetic_EURUSD_Data_1M_ticks.parquet` map to `eurusd_spot` when that
 /// bundled profile is available. Two-character roots are included because
 /// listed futures contracts such as ES use two-character instrument tokens.
 pub fn infer_bundled_market_profile_from_tick_data_path(
@@ -161,17 +162,50 @@ fn instrument_tokens_from_path(path: &Path) -> Vec<String> {
         return Vec::new();
     };
 
-    normalized_stem
+    let normalized_tokens = normalized_stem
         .split('_')
         .filter(|token| token.len() >= MIN_MARKET_PROFILE_INSTRUMENT_TOKEN_LENGTH)
-        .map(ToString::to_string)
-        .collect()
+        .collect::<Vec<_>>();
+
+    let mut instrument_tokens = Vec::new();
+
+    for (token_position, token) in normalized_tokens.iter().enumerate() {
+        push_unique_instrument_token(&mut instrument_tokens, (*token).to_string());
+
+        if let Some(next_token) = normalized_tokens.get(token_position + 1)
+            && is_iso_currency_code_token(token)
+            && is_iso_currency_code_token(next_token)
+        {
+            push_unique_instrument_token(&mut instrument_tokens, format!("{token}{next_token}"));
+        }
+    }
+
+    instrument_tokens
+}
+
+fn push_unique_instrument_token(instrument_tokens: &mut Vec<String>, candidate: String) {
+    if instrument_tokens
+        .iter()
+        .any(|instrument_token| instrument_token == &candidate)
+    {
+        return;
+    }
+
+    instrument_tokens.push(candidate);
+}
+
+fn is_iso_currency_code_token(token: &str) -> bool {
+    token.len() == ISO_4217_CURRENCY_CODE_LENGTH
+        && token
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
 }
 
 fn resolve_bundled_market_profile(
     profile: &BundledMarketProfile,
 ) -> Result<Option<ResolvedMarketProfile>, MarketDataPresetInferenceError> {
     let sessions_by_preset_name = bundled_sessions_by_preset_name()?;
+
     let Some(session) = sessions_by_preset_name.get(&profile.configuration.session_preset_name)
     else {
         // The error leaves the cache boundary, so it owns the preset names.
@@ -282,6 +316,74 @@ mod tests {
         assert_eq!(
             inferred_profile.default_calibration_hint_ids,
             vec!["fx_spot_defaults".to_string()]
+        );
+    }
+
+    #[test]
+    fn infers_major_fx_spot_profiles_from_contiguous_pair_tokens() {
+        let expected_profiles = [
+            ("AUDCAD", "audcad_spot"),
+            ("AUDCHF", "audchf_spot"),
+            ("AUDJPY", "audjpy_spot"),
+            ("AUDNZD", "audnzd_spot"),
+            ("AUDUSD", "audusd_spot"),
+            ("CADCHF", "cadchf_spot"),
+            ("CADJPY", "cadjpy_spot"),
+            ("CHFJPY", "chfjpy_spot"),
+            ("EURAUD", "euraud_spot"),
+            ("EURCAD", "eurcad_spot"),
+            ("EURCHF", "eurchf_spot"),
+            ("EURGBP", "eurgbp_spot"),
+            ("EURJPY", "eurjpy_spot"),
+            ("EURNZD", "eurnzd_spot"),
+            ("EURUSD", "eurusd_spot"),
+            ("GBPAUD", "gbpaud_spot"),
+            ("GBPCAD", "gbpcad_spot"),
+            ("GBPCHF", "gbpchf_spot"),
+            ("GBPJPY", "gbpjpy_spot"),
+            ("GBPNZD", "gbpnzd_spot"),
+            ("GBPUSD", "gbpusd_spot"),
+            ("NZDCAD", "nzdcad_spot"),
+            ("NZDCHF", "nzdchf_spot"),
+            ("NZDJPY", "nzdjpy_spot"),
+            ("NZDUSD", "nzdusd_spot"),
+            ("USDCAD", "usdcad_spot"),
+            ("USDCHF", "usdchf_spot"),
+            ("USDJPY", "usdjpy_spot"),
+        ];
+
+        for (instrument_token, expected_profile_name) in expected_profiles {
+            let tick_data_path = format!("{instrument_token}_ticks.parquet");
+
+            let inferred_profile =
+                infer_bundled_market_profile_from_tick_data_path(Path::new(&tick_data_path))
+                    .expect("bundled profile inference should succeed")
+                    .expect("major FX token should select a bundled profile");
+
+            assert_eq!(inferred_profile.profile_name, expected_profile_name);
+            assert_eq!(inferred_profile.session_preset_name, "fx_spot_24_5");
+            assert_eq!(inferred_profile.exchange_code, "FXSPOT");
+            assert_eq!(
+                inferred_profile.default_calibration_hint_ids,
+                vec!["fx_spot_defaults".to_string()]
+            );
+        }
+    }
+
+    #[test]
+    fn infers_major_fx_spot_profile_from_separated_currency_tokens() {
+        let inferred_profile = infer_bundled_market_profile_from_tick_data_path(Path::new(
+            "broker_USD-JPY_1M_ticks.parquet",
+        ))
+        .expect("bundled profile inference should succeed")
+        .expect("separated currency tokens should select a bundled profile");
+
+        assert_eq!(inferred_profile.profile_name, "usdjpy_spot");
+        assert_eq!(inferred_profile.session_preset_name, "fx_spot_24_5");
+        assert_eq!(inferred_profile.exchange_code, "FXSPOT");
+        assert_eq!(
+            inferred_profile.known_news_preset_name.as_deref(),
+            Some("none")
         );
     }
 

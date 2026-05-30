@@ -4,7 +4,7 @@
   "bundle_version": "v1",
   "generator_id": "janiform.curated_preset_generator",
   "generator_version": "1.0.0",
-  "generated_on": "2026-03-12",
+  "generated_on": "2026-05-30",
   "presets": [
     {
       "preset_name": "XNYS",
@@ -115,21 +115,21 @@
     {
       "preset_name": "fx_spot_24_5",
       "display_name": "FX Spot 24/5",
-      "description": "Week-round OTC FX spot session with the weekend close from Friday 19:00 UTC to Sunday 21:00 UTC.",
-      "version_label": "2026.03",
+      "description": "Week-round OTC FX spot session with the weekend close from Friday 17:00 New York time to Sunday 17:00 New York time.",
+      "version_label": "2026.05",
       "source_manifest_ids": [
         "sources.sessions.fx_spot_24_5.v1"
       ],
       "upstream_source_versions": [
         {
           "source_name": "fx_spot_market_convention_review",
-          "version_label": "captured_2026-03-12"
+          "version_label": "captured_2026-05-30"
         }
       ],
       "configuration": {
         "exchange_code": "FXSPOT",
         "exchange_name": "OTC FX Spot 24/5",
-        "timezone_name": "UTC",
+        "timezone_name": "America/New_York",
         "regular_session_windows": [
           {
             "weekday": "Monday",
@@ -177,9 +177,9 @@
         "recurring_closed_windows": [
           {
             "start_weekday": "Friday",
-            "start_time": "19:00",
+            "start_time": "17:00",
             "end_weekday": "Sunday",
-            "end_time": "21:00",
+            "end_time": "17:00",
             "reason": "weekend_close"
           }
         ]

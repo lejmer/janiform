@@ -378,7 +378,7 @@ def _session_configuration_payload(session_preset_name: str = "XNYS") -> dict[st
         if session_preset_name == "fx_spot_24_5"
         else "New York Stock Exchange"
     )
-    timezone_name = "UTC" if session_preset_name == "fx_spot_24_5" else "America/New_York"
+    timezone_name = "America/New_York"
 
     return {
         "exchange_code": exchange_code,
@@ -413,7 +413,9 @@ def _session_resolution_payload(
         "exchange_name": session_configuration["exchange_name"],
         "resolved_timezone_name": session_configuration["timezone_name"],
         "timezone_source": "session",
-        "open_session_duration_hours_per_week": 32.5,
+        "open_session_duration_hours_per_week": (
+            120.0 if session_preset_name == "fx_spot_24_5" else 32.5
+        ),
         "confidence_score": 1.0,
         "confidence_label": "high",
         "regular_session_windows": session_configuration["regular_session_windows"],
@@ -755,9 +757,7 @@ def _successful_full_model_metadata_fixture(
                 if session_preset_name == "fx_spot_24_5"
                 else "New York Stock Exchange"
             ),
-            "resolved_timezone_name": (
-                "UTC" if session_preset_name == "fx_spot_24_5" else "America/New_York"
-            ),
+            "resolved_timezone_name": "America/New_York",
             "confidence_score": 1.0,
             "confidence_label": "high",
             "manual_override_applied": False,

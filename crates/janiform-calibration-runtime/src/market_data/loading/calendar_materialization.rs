@@ -136,19 +136,43 @@ pub(super) fn build_recurring_closed_windows(
 pub(super) fn compute_open_session_duration_hours_per_week(
     session_template: &SessionTemplate,
 ) -> f64 {
-    if session_template.continuous_weekday_template {
-        return 120.0;
-    }
+    let recurring_closed_windows = build_recurring_closed_windows(session_template);
 
-    let open_minutes = session_template
-        .regular_session_windows
-        .iter()
-        .map(|window| {
-            clock_minutes(window.close_time.as_str()) - clock_minutes(window.open_time.as_str())
-        })
-        .sum::<i32>();
+    let open_minutes = retained_open_session_intervals(
+        session_template.regular_session_windows.as_slice(),
+        recurring_closed_windows.as_slice(),
+    )
+    .iter()
+    .map(|(open_start, open_end, _label)| open_end - open_start)
+    .sum::<i32>();
 
     f64::from(open_minutes) / 60.0
+}
+
+fn retained_open_session_intervals(
+    regular_session_windows: &[MarketDataSessionRegularWindowPayload],
+    recurring_closed_windows: &[MarketDataSessionRecurringClosedWindowPayload],
+) -> Vec<(i32, i32, String)> {
+    subtract_closed_intervals_from_open_intervals(
+        regular_session_windows
+            .iter()
+            .map(|window| {
+                (
+                    weekday_start_minute(window.weekday.as_str())
+                        + clock_minutes(window.open_time.as_str()),
+                    weekday_start_minute(window.weekday.as_str())
+                        + clock_minutes(window.close_time.as_str()),
+                    window.label.clone(),
+                )
+            })
+            .collect(),
+        merge_weekly_intervals(
+            recurring_closed_windows
+                .iter()
+                .flat_map(weekly_intervals_for_recurring_closed_window)
+                .collect(),
+        ),
+    )
 }
 
 pub(super) fn build_calendar_registry_json(
@@ -184,69 +208,25 @@ pub(super) fn build_calendar_registry_json(
     })
 }
 
-/// Build a calendar-registry JSON document from an explicit session
-/// configuration payload.
-pub fn build_market_data_session_definition_json(
-    exchange_code: &str,
-    exchange_name: &str,
-    timezone_name: &str,
-    regular_session_windows: &[MarketDataSessionRegularWindowPayload],
-    recurring_closed_windows: &[MarketDataSessionRecurringClosedWindowPayload],
-) -> Result<String, MarketDataLoadingError> {
-    let session_template = SessionTemplate {
-        policy_id: "high_level.explicit_session_configuration.v1".to_string(),
-        provenance_kind: "explicit_configuration".to_string(),
-        exchange_name: exchange_name.to_string(),
-        timezone_name: timezone_name.to_string(),
-        timezone_source: "session_configuration".to_string(),
-        holiday_calendar_code: "USER_DEFINED".to_string(),
-        early_close_rule_set: None,
-        regular_session_windows: regular_session_windows.to_vec(),
-        recurring_closed_windows: recurring_closed_windows.to_vec(),
-        continuous_weekday_template: looks_like_continuous_weekday_template(
-            exchange_code,
-            regular_session_windows,
-        ),
-    };
-
-    build_calendar_registry_json(exchange_code, &session_template)
-}
-
 pub(super) fn build_regular_session_artifacts(
     regular_session_windows: &[MarketDataSessionRegularWindowPayload],
     recurring_closed_windows: &[MarketDataSessionRecurringClosedWindowPayload],
 ) -> Vec<RegularSessionArtifact> {
-    let retained_open_intervals = subtract_closed_intervals_from_open_intervals(
-        regular_session_windows
-            .iter()
-            .map(|window| {
-                (
-                    weekday_start_minute(window.weekday.as_str())
-                        + clock_minutes(window.open_time.as_str()),
-                    weekday_start_minute(window.weekday.as_str())
-                        + clock_minutes(window.close_time.as_str()),
-                    window.label.clone(),
-                )
-            })
-            .collect(),
-        merge_weekly_intervals(
-            recurring_closed_windows
-                .iter()
-                .flat_map(weekly_intervals_for_recurring_closed_window)
-                .collect(),
-        ),
-    );
+    let retained_open_intervals =
+        retained_open_session_intervals(regular_session_windows, recurring_closed_windows);
 
     let mut windows_by_weekday: BTreeMap<String, Vec<SessionWindowArtifact>> = BTreeMap::new();
 
     for (open_start, open_end, label) in retained_open_intervals {
         let mut current_minute = open_start;
+
         while current_minute < open_end {
             let day_start_minute = (current_minute / (24 * 60)) * (24 * 60);
             let day_end_minute = day_start_minute + (24 * 60);
             let segment_end_minute = open_end.min(day_end_minute);
 
             let weekday_name = weekday_name_for_minute(current_minute).to_string();
+
             windows_by_weekday
                 .entry(weekday_name)
                 .or_default()
@@ -285,10 +265,39 @@ pub(super) fn build_regular_session_artifacts(
         .collect()
 }
 
+/// Build a calendar-registry JSON document from an explicit session
+/// configuration payload.
+pub fn build_market_data_session_definition_json(
+    exchange_code: &str,
+    exchange_name: &str,
+    timezone_name: &str,
+    regular_session_windows: &[MarketDataSessionRegularWindowPayload],
+    recurring_closed_windows: &[MarketDataSessionRecurringClosedWindowPayload],
+) -> Result<String, MarketDataLoadingError> {
+    let session_template = SessionTemplate {
+        policy_id: "high_level.explicit_session_configuration.v1".to_string(),
+        provenance_kind: "explicit_configuration".to_string(),
+        exchange_name: exchange_name.to_string(),
+        timezone_name: timezone_name.to_string(),
+        timezone_source: "session_configuration".to_string(),
+        holiday_calendar_code: "USER_DEFINED".to_string(),
+        early_close_rule_set: None,
+        regular_session_windows: regular_session_windows.to_vec(),
+        recurring_closed_windows: recurring_closed_windows.to_vec(),
+        continuous_weekday_template: looks_like_continuous_weekday_template(
+            exchange_code,
+            regular_session_windows,
+        ),
+    };
+
+    build_calendar_registry_json(exchange_code, &session_template)
+}
+
 pub(super) fn weekly_intervals_for_recurring_closed_window(
     closed_window: &MarketDataSessionRecurringClosedWindowPayload,
 ) -> Vec<(i32, i32)> {
     let week_minutes = 7 * 24 * 60;
+
     let start_minute = weekday_start_minute(closed_window.start_weekday.as_str())
         + clock_minutes(closed_window.start_time.as_str());
     let end_minute = weekday_start_minute(closed_window.end_weekday.as_str())
@@ -344,9 +353,11 @@ pub(super) fn subtract_closed_intervals_from_open_intervals(
                     next_segments.push((*segment_start, *segment_end));
                     continue;
                 }
+
                 if *closed_start > *segment_start {
                     next_segments.push((*segment_start, *closed_start));
                 }
+
                 if *closed_end < *segment_end {
                     next_segments.push((*closed_end, *segment_end));
                 }
@@ -472,12 +483,15 @@ pub(super) fn confidence_score_for_inference(
     if aligned_gap_count > 0 {
         confidence_score += 0.25;
     }
+
     if template.continuous_weekday_template {
         confidence_score += 0.10;
     }
+
     if inactivity_gap_count > 0 && unexpected_gap_count == 0 {
         confidence_score += 0.10;
     }
+
     if unexpected_gap_count > 0 {
         confidence_score -= 0.20;
     }
@@ -506,6 +520,7 @@ pub(super) fn automatic_resolution_reasons(
     gap_alignment_diagnostics: (usize, usize, usize),
 ) -> Vec<String> {
     let (inactivity_gap_count, aligned_gap_count, _) = gap_alignment_diagnostics;
+
     let mut reasons = Vec::new();
 
     if template.timezone_source == "exchange_code_builtin_default" {
@@ -537,6 +552,7 @@ pub(super) fn automatic_resolution_warnings(
     gap_alignment_diagnostics: (usize, usize, usize),
 ) -> Vec<String> {
     let (inactivity_gap_count, _, unexpected_gap_count) = gap_alignment_diagnostics;
+
     let mut warnings = Vec::new();
 
     if inactivity_gap_count == 0 && template.timezone_source == "exchange_code_builtin_default" {
@@ -544,6 +560,7 @@ pub(super) fn automatic_resolution_warnings(
             "the observed gap spectrum did not isolate recurring inactivity gaps, so the session was inferred from exchange defaults".to_string(),
         );
     }
+
     if unexpected_gap_count > 0 {
         warnings.push(format!(
             "{unexpected_gap_count} derived inactivity gaps did not clearly overlap inferred closed windows. If downstream diagnostics look inconsistent, provide an explicit session-definition override."
@@ -614,6 +631,7 @@ fn overlapping_open_intervals(
                 current_local_date,
                 session_window,
             )?;
+
             let interval_start_utc_nanos = open_utc_nanos.max(gap_start_utc_nanos);
             let interval_end_utc_nanos = close_utc_nanos.min(gap_end_utc_nanos);
 

@@ -128,7 +128,7 @@ fn full_day_adjacent_sessions_do_not_emit_zero_width_close_open_boundaries() {
 
     let observations = derive_close_open_boundary_observations(
         &definition,
-        chrono_tz::UTC,
+        chrono_tz::America::New_York,
         "FXSPOT",
         open_price_ticks.as_slice(),
         &open_price_ticks
@@ -167,7 +167,7 @@ fn fxspot_weekend_gap_uses_sunday_reopen_even_when_first_tick_arrives_monday() {
                 .timestamp_nanos_opt()
                 .expect("fixture timestamp should fit in nanos"),
             session_close_utc_nanos: chrono_tz::UTC
-                .with_ymd_and_hms(2026, 3, 20, 19, 0, 0)
+                .with_ymd_and_hms(2026, 3, 20, 21, 0, 0)
                 .single()
                 .expect("fixture timestamp should be valid")
                 .with_timezone(&Utc)
@@ -203,7 +203,7 @@ fn fxspot_weekend_gap_uses_sunday_reopen_even_when_first_tick_arrives_monday() {
 
     let observations = derive_close_open_boundary_observations(
         &definition,
-        chrono_tz::UTC,
+        chrono_tz::America::New_York,
         "FXSPOT",
         open_price_ticks.as_slice(),
         &open_price_ticks
@@ -217,7 +217,7 @@ fn fxspot_weekend_gap_uses_sunday_reopen_even_when_first_tick_arrives_monday() {
     assert_eq!(
         observations[0].close_timestamp_utc_nanos,
         chrono_tz::UTC
-            .with_ymd_and_hms(2026, 3, 20, 19, 0, 0)
+            .with_ymd_and_hms(2026, 3, 20, 21, 0, 0)
             .single()
             .expect("fixture timestamp should be valid")
             .with_timezone(&Utc)
@@ -475,7 +475,7 @@ fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {
         schema_version: "calendar.v1".to_string(),
         exchange_code: "FXSPOT".to_string(),
         exchange_name: "OTC FX Spot".to_string(),
-        timezone_name: Some("UTC".to_string()),
+        timezone_name: Some("America/New_York".to_string()),
         rule_metadata: CalendarRuleMetadataArtifact {
             holiday_calendar_code: "FX_24_5".to_string(),
             early_close_rule_set: None,
@@ -486,14 +486,14 @@ fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {
                 windows: vec![SessionWindowArtifact {
                     label: "spot".to_string(),
                     open_time: "00:00".to_string(),
-                    close_time: "19:00".to_string(),
+                    close_time: "17:00".to_string(),
                 }],
             },
             RegularSessionArtifact {
                 weekday: TradingWeekday::Sunday,
                 windows: vec![SessionWindowArtifact {
                     label: "spot".to_string(),
-                    open_time: "21:00".to_string(),
+                    open_time: "17:00".to_string(),
                     close_time: "24:00".to_string(),
                 }],
             },
