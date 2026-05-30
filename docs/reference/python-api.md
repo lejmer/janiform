@@ -89,6 +89,11 @@
 - Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
 - Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
 
+| Method | Signature |
+|--------|-----------|
+| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
+| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
+
 <a id="python-api-symbol-janiform-errors-errorcontextvalue"></a>
 ### `ErrorContextValue`
 
@@ -121,6 +126,10 @@
 - Kind: `contract_model`
 - Signature: `(error_id: 'str', category: 'JaniformErrorCategory', workflow: 'str', entrypoint: 'str', message: 'str', field_path: 'Optional[str]' = None, context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
 - Fields: `error_id`, `category`, `workflow`, `entrypoint`, `message`, `field_path`, `context_items`
+
+| Method | Signature |
+|--------|-----------|
+| `from_context` | `(*, error_id: 'str', category: 'JaniformErrorCategory', workflow: 'str', entrypoint: 'str', message: 'str', field_path: 'Optional[str]' = None, context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'JaniformErrorDetails'` |
 
 <a id="python-api-symbol-janiform-errors-janiformexecutionerror"></a>
 ### `JaniformExecutionError`
@@ -1133,6 +1142,11 @@
 - Kind: `contract_model`
 - Signature: `()`
 
+| Method | Signature |
+|--------|-----------|
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-contracts-validationerrorfactory"></a>
 ### `ValidationErrorFactory`
 
@@ -1443,6 +1457,11 @@
 - Signature: `(buy_excitation_return_clock_scale: 'float', sell_excitation_return_clock_scale: 'float') -> 'None'`
 - Fields: `buy_excitation_return_clock_scale`, `sell_excitation_return_clock_scale`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'ReturnClockExposureParameters'` |
+| `neutral` | `() -> 'ReturnClockExposureParameters'` |
+
 <a id="python-api-symbol-janiform-return-clock-validate-return-clock-exposure-parameters"></a>
 ### `validate_return_clock_exposure_parameters`
 
@@ -1472,12 +1491,24 @@
 - Signature: `(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'`
 - Fields: `reference_interval_hours`, `pressure_persistence_per_reference_interval`, `pressure_level_gain`
 
+| Method | Signature |
+|--------|-----------|
+| `endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchor_model') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+| `zero_gain_endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+
 <a id="python-api-symbol-janiform-mean-reversion-meanreversionboundarystate"></a>
 ### `MeanReversionBoundaryState`
 
 - Kind: `contract_model`
 - Signature: `(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'`
 - Fields: `observed_log_price`, `anchor_value`, `pressure_state`, `deviation`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'` |
 
 <a id="python-api-symbol-janiform-mean-reversion-meanreversionfittedparameters"></a>
 ### `MeanReversionFittedParameters`
@@ -1486,12 +1517,23 @@
 - Signature: `(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'`
 - Fields: `kappa`, `anchor_model`
 
+| Method | Signature |
+|--------|-----------|
+| `flat_anchor_mean_reversion` | `(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-mean-reversion-meanreversionruntimeintervalanchors"></a>
 ### `MeanReversionRuntimeIntervalAnchors`
 
 - Kind: `contract_model`
 - Signature: `(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'`
 - Fields: `interval_alignment_policy`, `start_anchor_value`, `start_pressure_state`, `end_anchor_values`, `end_pressure_states`, `interval_deltas`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'` |
 
 <a id="python-api-module-janiform-mean-reversion-contracts"></a>
 ## `janiform.mean_reversion.contracts`
@@ -1510,12 +1552,24 @@
 - Signature: `(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'`
 - Fields: `reference_interval_hours`, `pressure_persistence_per_reference_interval`, `pressure_level_gain`
 
+| Method | Signature |
+|--------|-----------|
+| `endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchor_model') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+| `zero_gain_endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+
 <a id="python-api-symbol-janiform-mean-reversion-contracts-meanreversionboundarystate"></a>
 ### `MeanReversionBoundaryState`
 
 - Kind: `contract_model`
 - Signature: `(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'`
 - Fields: `observed_log_price`, `anchor_value`, `pressure_state`, `deviation`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'` |
 
 <a id="python-api-symbol-janiform-mean-reversion-contracts-meanreversionfittedparameters"></a>
 ### `MeanReversionFittedParameters`
@@ -1524,12 +1578,23 @@
 - Signature: `(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'`
 - Fields: `kappa`, `anchor_model`
 
+| Method | Signature |
+|--------|-----------|
+| `flat_anchor_mean_reversion` | `(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-mean-reversion-contracts-meanreversionruntimeintervalanchors"></a>
 ### `MeanReversionRuntimeIntervalAnchors`
 
 - Kind: `contract_model`
 - Signature: `(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'`
 - Fields: `interval_alignment_policy`, `start_anchor_value`, `start_pressure_state`, `end_anchor_values`, `end_pressure_states`, `interval_deltas`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'` |
 
 <a id="python-api-module-janiform-seasonality"></a>
 ## `janiform.seasonality`
@@ -1701,6 +1766,10 @@
 - Kind: `contract_model`
 - Signature: `(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'`
 - Fields: `overlay_id`, `start_timestamp_utc`, `end_timestamp_utc`, `log_adjustment`, `precedence`, `enabled`, `source_label`
+
+| Method | Signature |
+|--------|-----------|
+| `from_config_record` | `(config_record: 'Mapping[str, Any] \| Any') -> 'ScheduledEventOverlayDefinition'` |
 
 <a id="python-api-symbol-janiform-seasonality-seasonalitydiagnosticsbatchinput"></a>
 ### `SeasonalityDiagnosticsBatchInput`
@@ -1951,6 +2020,10 @@
 - Signature: `(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'`
 - Fields: `overlay_id`, `start_timestamp_utc`, `end_timestamp_utc`, `log_adjustment`, `precedence`, `enabled`, `source_label`
 
+| Method | Signature |
+|--------|-----------|
+| `from_config_record` | `(config_record: 'Mapping[str, Any] \| Any') -> 'ScheduledEventOverlayDefinition'` |
+
 <a id="python-api-symbol-janiform-seasonality-contracts-sessionfilter"></a>
 ### `SessionFilter`
 
@@ -2041,12 +2114,20 @@
 - Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
 - Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'model_inputs') -> 'CoarseSimulationModelInputs'` |
+
 <a id="python-api-symbol-janiform-simulation-coarsesimulationpath"></a>
 ### `CoarseSimulationPath`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'CoarseSimulationPathOutputSchemaMetadata', provenance: 'CoarseSimulationPathProvenance', diagnostics: 'CoarseSimulationPathDiagnostics', seed: 'int', start_time_utc_nanos: 'int', end_time_utc_nanos: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[CoarseSimulationPathRecord, ...]') -> 'None'`
 - Fields: `schema_version`, `run_request_schema_version`, `output_schema_metadata`, `provenance`, `diagnostics`, `seed`, `start_time_utc_nanos`, `end_time_utc_nanos`, `interval_delta`, `simulated_interval_count`, `initial_excitation_state`, `terminal_excitation_state`, `records`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationPath'` |
 
 <a id="python-api-symbol-janiform-simulation-coarsesimulationrunrequest"></a>
 ### `CoarseSimulationRunRequest`
@@ -2055,12 +2136,22 @@
 - Signature: `(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'`
 - Fields: `schema_version`, `seed`, `start_time_utc_nanos`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationRunRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', hourly_factor_contract: 'HourlyFactorContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-simulation-hawkesexcitationstate"></a>
 ### `HawkesExcitationState`
 
 - Kind: `contract_model`
 - Signature: `(y_plus_plus: 'float', y_plus_minus: 'float', y_minus_plus: 'float', y_minus_minus: 'float') -> 'None'`
 - Fields: `y_plus_plus`, `y_plus_minus`, `y_minus_plus`, `y_minus_minus`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'initial_excitation_state') -> 'HawkesExcitationState'` |
 
 <a id="python-api-symbol-janiform-simulation-hawkeskernelloadings"></a>
 ### `HawkesKernelLoadings`
@@ -2069,12 +2160,21 @@
 - Signature: `(plus_plus: 'float', plus_minus: 'float', minus_plus: 'float', minus_minus: 'float') -> 'None'`
 - Fields: `plus_plus`, `plus_minus`, `minus_plus`, `minus_minus`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'kernel_loadings') -> 'HawkesKernelLoadings'` |
+
 <a id="python-api-symbol-janiform-simulation-hawkeskernelparameters"></a>
 ### `HawkesKernelParameters`
 
 - Kind: `contract_model`
 - Signature: `(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'`
 - Fields: `lambda_bar`, `beta`, `alpha`, `rho`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'kernel_parameters') -> 'HawkesKernelParameters'` |
+| `stationary_excitation_state` | `(self) -> 'HawkesExcitationState'` |
 
 <a id="python-api-symbol-janiform-simulation-janiformsimulationresult"></a>
 ### `JaniformSimulationResult`
@@ -2083,12 +2183,23 @@
 - Signature: `(simulation_kind: 'SimulationKind', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'`
 - Fields: `simulation_kind`, `metadata`, `provenance`, `diagnostics`, `raw_result`
 
+| Method | Signature |
+|--------|-----------|
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+
 <a id="python-api-symbol-janiform-simulation-longvarianceparameters"></a>
 ### `LongVarianceParameters`
 
 - Kind: `contract_model`
 - Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
 - Fields: `mean_reversion_rate`, `vol_of_vol`, `buy_event_loading`, `sell_event_loading`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'LongVarianceParameters'` |
+| `neutral` | `() -> 'LongVarianceParameters'` |
 
 <a id="python-api-symbol-janiform-simulation-longvariancestate"></a>
 ### `LongVarianceState`
@@ -2097,12 +2208,25 @@
 - Signature: `(level: 'float') -> 'None'`
 - Fields: `level`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'LongVarianceState'` |
+| `unit` | `() -> 'LongVarianceState'` |
+
 <a id="python-api-symbol-janiform-simulation-meanreversionanchormodel"></a>
 ### `MeanReversionAnchorModel`
 
 - Kind: `contract_model`
 - Signature: `(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'`
 - Fields: `reference_interval_hours`, `pressure_persistence_per_reference_interval`, `pressure_level_gain`
+
+| Method | Signature |
+|--------|-----------|
+| `endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchor_model') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+| `zero_gain_endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float' = 1.0) -> 'Self'` |
 
 <a id="python-api-symbol-janiform-simulation-meanreversionboundarystate"></a>
 ### `MeanReversionBoundaryState`
@@ -2111,12 +2235,23 @@
 - Signature: `(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'`
 - Fields: `observed_log_price`, `anchor_value`, `pressure_state`, `deviation`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'` |
+
 <a id="python-api-symbol-janiform-simulation-meanreversionfittedparameters"></a>
 ### `MeanReversionFittedParameters`
 
 - Kind: `contract_model`
 - Signature: `(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'`
 - Fields: `kappa`, `anchor_model`
+
+| Method | Signature |
+|--------|-----------|
+| `flat_anchor_mean_reversion` | `(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-meanreversionruntimeintervalanchors"></a>
 ### `MeanReversionRuntimeIntervalAnchors`
@@ -2125,12 +2260,20 @@
 - Signature: `(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'`
 - Fields: `interval_alignment_policy`, `start_anchor_value`, `start_pressure_state`, `end_anchor_values`, `end_pressure_states`, `interval_deltas`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'` |
+
 <a id="python-api-symbol-janiform-simulation-newsprocessconfiguration"></a>
 ### `NewsProcessConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', arrivals: 'NewsArrivalConfiguration', shared_mark_law: 'SharedNewsMarkLawConfiguration', known_component_mark_scales: 'NewsComponentMarkScaleConfiguration', surprise_component_mark_scales: 'NewsComponentMarkScaleConfiguration') -> 'None'`
 - Fields: `schema_version`, `arrivals`, `shared_mark_law`, `known_component_mark_scales`, `surprise_component_mark_scales`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'NewsProcessConfiguration'` |
 
 <a id="python-api-symbol-janiform-simulation-seededtickeventside"></a>
 ### `SeededTickEventSide`
@@ -2159,6 +2302,11 @@
 - Signature: `(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'`
 - Fields: `schema_version`, `exchange_code`, `interval_count`, `interval_duration_nanos`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `s_h`, `nu_h`
 
+| Method | Signature |
+|--------|-----------|
+| `from_contract` | `(hourly_factor_contract: 'HourlyFactorContract') -> 'SeededTickSimulationHourlyFactorSummary'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'hourly_factor_summary') -> 'SeededTickSimulationHourlyFactorSummary'` |
+
 <a id="python-api-symbol-janiform-simulation-seededticksimulationrequest"></a>
 ### `SeededTickSimulationRequest`
 
@@ -2166,12 +2314,24 @@
 - Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
 - Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SeededTickSimulationRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_contract: 'HourlyFactorContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-simulation-seededticksimulationresponse"></a>
 ### `SeededTickSimulationResponse`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', metadata: 'SeededFinePathMetadata', event_tape_metadata: 'SeededTickEventTapeMetadata', diagnostics: 'SeededTickSimulationDiagnostics', fine_path: 'SeededFinePathView', event_tape: 'SeededTickEventTapeView') -> 'None'`
 - Fields: `schema_version`, `metadata`, `event_tape_metadata`, `diagnostics`, `fine_path`, `event_tape`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'seeded_tick_simulation_response') -> 'SeededTickSimulationResponse'` |
+| `from_native_result` | `(*, native_result: 'Any', native_runtime_seconds: 'float', python_response_construction_seconds: 'float', chunk_record_count: 'int') -> 'SeededTickSimulationResponse'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-seededticksimulationvalidationerror"></a>
 ### `SeededTickSimulationValidationError`
@@ -2188,6 +2348,11 @@
 - Kind: `contract_model`
 - Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
 - Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
+
+| Method | Signature |
+|--------|-----------|
+| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
+| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
 
 <a id="python-api-symbol-janiform-simulation-simulationkind"></a>
 ### `SimulationKind`
@@ -2347,12 +2512,20 @@
 - Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
 - Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'model_inputs') -> 'CoarseSimulationModelInputs'` |
+
 <a id="python-api-symbol-janiform-simulation-coarse-coarsesimulationpath"></a>
 ### `CoarseSimulationPath`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'CoarseSimulationPathOutputSchemaMetadata', provenance: 'CoarseSimulationPathProvenance', diagnostics: 'CoarseSimulationPathDiagnostics', seed: 'int', start_time_utc_nanos: 'int', end_time_utc_nanos: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[CoarseSimulationPathRecord, ...]') -> 'None'`
 - Fields: `schema_version`, `run_request_schema_version`, `output_schema_metadata`, `provenance`, `diagnostics`, `seed`, `start_time_utc_nanos`, `end_time_utc_nanos`, `interval_delta`, `simulated_interval_count`, `initial_excitation_state`, `terminal_excitation_state`, `records`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationPath'` |
 
 <a id="python-api-symbol-janiform-simulation-coarse-coarsesimulationpathdiagnostics"></a>
 ### `CoarseSimulationPathDiagnostics`
@@ -2382,6 +2555,10 @@
 - Signature: `(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'`
 - Fields: `schema_version`, `interval_index`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `sufficient_statistics`, `return_components`, `core_total_return`, `observed_interval_return`, `observed_log_price_end`, `anchor_value_end`, `pressure_state_end`, `deviation_from_anchor_end`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', expected_interval_index: 'int') -> 'CoarseSimulationPathRecord'` |
+
 <a id="python-api-symbol-janiform-simulation-coarse-coarsesimulationrunrequest"></a>
 ### `CoarseSimulationRunRequest`
 
@@ -2389,12 +2566,22 @@
 - Signature: `(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'`
 - Fields: `schema_version`, `seed`, `start_time_utc_nanos`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationRunRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', hourly_factor_contract: 'HourlyFactorContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-simulation-coarse-knownnewsarrivalconfiguration"></a>
 ### `KnownNewsArrivalConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(scheduled_event_timestamps_utc_nanos: 'tuple[int, ...]') -> 'None'`
 - Fields: `scheduled_event_timestamps_utc_nanos`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsArrivalConfiguration'` |
 
 <a id="python-api-symbol-janiform-simulation-coarse-news-process-configuration-schema-version"></a>
 ### `NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION`
@@ -2409,12 +2596,20 @@
 - Signature: `(known: 'KnownNewsArrivalConfiguration', surprise: 'SurpriseNewsArrivalConfiguration') -> 'None'`
 - Fields: `known`, `surprise`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'NewsArrivalConfiguration'` |
+
 <a id="python-api-symbol-janiform-simulation-coarse-newscomponentmarkscaleconfiguration"></a>
 ### `NewsComponentMarkScaleConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(activity_coupling_scale: 'float', return_jump_drift: 'float', return_jump_volatility: 'float') -> 'None'`
 - Fields: `activity_coupling_scale`, `return_jump_drift`, `return_jump_volatility`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'NewsComponentMarkScaleConfiguration'` |
 
 <a id="python-api-symbol-janiform-simulation-coarse-newsprocessconfiguration"></a>
 ### `NewsProcessConfiguration`
@@ -2423,6 +2618,10 @@
 - Signature: `(schema_version: 'str', arrivals: 'NewsArrivalConfiguration', shared_mark_law: 'SharedNewsMarkLawConfiguration', known_component_mark_scales: 'NewsComponentMarkScaleConfiguration', surprise_component_mark_scales: 'NewsComponentMarkScaleConfiguration') -> 'None'`
 - Fields: `schema_version`, `arrivals`, `shared_mark_law`, `known_component_mark_scales`, `surprise_component_mark_scales`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'NewsProcessConfiguration'` |
+
 <a id="python-api-symbol-janiform-simulation-coarse-sharednewsmarklawconfiguration"></a>
 ### `SharedNewsMarkLawConfiguration`
 
@@ -2430,12 +2629,20 @@
 - Signature: `(gamma_severity_marks: 'Any') -> 'None'`
 - Fields: `gamma_severity_marks`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SharedNewsMarkLawConfiguration'` |
+
 <a id="python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration"></a>
 ### `SurpriseNewsArrivalConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(open_baseline_intensity: 'float', closed_baseline_intensity: 'float') -> 'None'`
 - Fields: `open_baseline_intensity`, `closed_baseline_intensity`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SurpriseNewsArrivalConfiguration'` |
 
 <a id="python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-path"></a>
 ### `deserialize_coarse_simulation_path`
@@ -2493,6 +2700,12 @@
 - Signature: `(simulation_kind: 'SimulationKind', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'`
 - Fields: `simulation_kind`, `metadata`, `provenance`, `diagnostics`, `raw_result`
 
+| Method | Signature |
+|--------|-----------|
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+
 <a id="python-api-module-janiform-simulation-seeded"></a>
 ## `janiform.simulation.seeded`
 
@@ -2543,12 +2756,20 @@
 - Signature: `(y_plus_plus: 'float', y_plus_minus: 'float', y_minus_plus: 'float', y_minus_minus: 'float') -> 'None'`
 - Fields: `y_plus_plus`, `y_plus_minus`, `y_minus_plus`, `y_minus_minus`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'initial_excitation_state') -> 'HawkesExcitationState'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-hawkeskernelloadings"></a>
 ### `HawkesKernelLoadings`
 
 - Kind: `contract_model`
 - Signature: `(plus_plus: 'float', plus_minus: 'float', minus_plus: 'float', minus_minus: 'float') -> 'None'`
 - Fields: `plus_plus`, `plus_minus`, `minus_plus`, `minus_minus`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'kernel_loadings') -> 'HawkesKernelLoadings'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-hawkeskernelparameters"></a>
 ### `HawkesKernelParameters`
@@ -2557,6 +2778,11 @@
 - Signature: `(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'`
 - Fields: `lambda_bar`, `beta`, `alpha`, `rho`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'kernel_parameters') -> 'HawkesKernelParameters'` |
+| `stationary_excitation_state` | `(self) -> 'HawkesExcitationState'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-longvarianceparameters"></a>
 ### `LongVarianceParameters`
 
@@ -2564,12 +2790,22 @@
 - Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
 - Fields: `mean_reversion_rate`, `vol_of_vol`, `buy_event_loading`, `sell_event_loading`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'LongVarianceParameters'` |
+| `neutral` | `() -> 'LongVarianceParameters'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-longvariancestate"></a>
 ### `LongVarianceState`
 
 - Kind: `contract_model`
 - Signature: `(level: 'float') -> 'None'`
 - Fields: `level`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'LongVarianceState'` |
+| `unit` | `() -> 'LongVarianceState'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-boundary-transport-policy"></a>
 ### `SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY`
@@ -2602,6 +2838,10 @@
 - Signature: `(schema_version: 'str', path_record_schema_version: 'str', event_projection_record_schema_version: 'str', transition_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'`
 - Fields: `schema_version`, `path_record_schema_version`, `event_projection_record_schema_version`, `transition_ordering_policy`, `timestamp_representation_policy`, `side_encoding_policy`, `state_snapshot_capture`, `state_snapshot_capture_point_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SeededFinePathMetadata'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-seededfinepathnewsarrivalcomponent"></a>
 ### `SeededFinePathNewsArrivalComponent`
 
@@ -2618,6 +2858,10 @@
 - Kind: `contract_model`
 - Signature: `(transition_index: 'int', timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsReturnComponents', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', cumulative_core_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'`
 - Fields: `transition_index`, `timestamp_utc_nanos`, `transition_kind`, `side`, `news_arrival_component`, `market_state`, `return_components`, `core_total_return_increment`, `observed_log_price`, `anchor_value`, `pressure_state`, `deviation_from_anchor`, `cumulative_core_log_return`, `state_snapshot`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SeededFinePathRecord'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededfinepathtransitionkind"></a>
 ### `SeededFinePathTransitionKind`
@@ -2647,6 +2891,10 @@
 - Signature: `(event_index: 'int', timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'`
 - Fields: `event_index`, `timestamp_utc_nanos`, `side`, `core_total_return_increment`, `observed_log_price`, `anchor_value`, `pressure_state`, `deviation_from_anchor`, `state_snapshot`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SeededTickEventRecord'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-seededtickeventside"></a>
 ### `SeededTickEventSide`
 
@@ -2663,6 +2911,10 @@
 - Kind: `contract_model`
 - Signature: `(y_plus_plus: 'float', y_plus_minus: 'float', y_minus_plus: 'float', y_minus_minus: 'float', deseasonalized_lambda_plus: 'float', deseasonalized_lambda_minus: 'float') -> 'None'`
 - Fields: `y_plus_plus`, `y_plus_minus`, `y_minus_plus`, `y_minus_minus`, `deseasonalized_lambda_plus`, `deseasonalized_lambda_minus`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SeededTickEventStateSnapshot'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededtickeventstatesnapshotcapture"></a>
 ### `SeededTickEventStateSnapshotCapture`
@@ -2681,6 +2933,10 @@
 - Signature: `(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'`
 - Fields: `schema_version`, `event_record_schema_version`, `state_snapshot_schema_version`, `event_ordering_policy`, `timestamp_representation_policy`, `side_encoding_policy`, `state_snapshot_capture`, `state_snapshot_capture_point_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SeededTickEventTapeMetadata'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-seededtickeventtapeview"></a>
 ### `SeededTickEventTapeView`
 
@@ -2697,12 +2953,21 @@
 - Signature: `(schema_version: 'str', transition_count: 'int', event_count: 'int', native_runtime_seconds: 'float', python_response_construction_seconds: 'float', python_materialization_seconds: 'float', boundary_transport_bytes: 'int', native_estimated_retained_bytes: 'int', materialized_transition_count: 'int', materialized_event_count: 'int', boundary_transport_policy: 'str', boundary_chunk_record_count: 'int') -> 'None'`
 - Fields: `schema_version`, `transition_count`, `event_count`, `native_runtime_seconds`, `python_response_construction_seconds`, `python_materialization_seconds`, `boundary_transport_bytes`, `native_estimated_retained_bytes`, `materialized_transition_count`, `materialized_event_count`, `boundary_transport_policy`, `boundary_chunk_record_count`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SeededTickSimulationDiagnostics'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationhourlyfactorsummary"></a>
 ### `SeededTickSimulationHourlyFactorSummary`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'`
 - Fields: `schema_version`, `exchange_code`, `interval_count`, `interval_duration_nanos`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `s_h`, `nu_h`
+
+| Method | Signature |
+|--------|-----------|
+| `from_contract` | `(hourly_factor_contract: 'HourlyFactorContract') -> 'SeededTickSimulationHourlyFactorSummary'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'hourly_factor_summary') -> 'SeededTickSimulationHourlyFactorSummary'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest"></a>
 ### `SeededTickSimulationRequest`
@@ -2711,12 +2976,24 @@
 - Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
 - Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SeededTickSimulationRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_contract: 'HourlyFactorContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse"></a>
 ### `SeededTickSimulationResponse`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', metadata: 'SeededFinePathMetadata', event_tape_metadata: 'SeededTickEventTapeMetadata', diagnostics: 'SeededTickSimulationDiagnostics', fine_path: 'SeededFinePathView', event_tape: 'SeededTickEventTapeView') -> 'None'`
 - Fields: `schema_version`, `metadata`, `event_tape_metadata`, `diagnostics`, `fine_path`, `event_tape`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'seeded_tick_simulation_response') -> 'SeededTickSimulationResponse'` |
+| `from_native_result` | `(*, native_result: 'Any', native_runtime_seconds: 'float', python_response_construction_seconds: 'float', chunk_record_count: 'int') -> 'SeededTickSimulationResponse'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror"></a>
 ### `SeededTickSimulationValidationError`
@@ -2733,6 +3010,11 @@
 - Kind: `contract_model`
 - Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
 - Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
+
+| Method | Signature |
+|--------|-----------|
+| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
+| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs"></a>
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`
@@ -2788,12 +3070,20 @@
 - Signature: `(y_plus_plus: 'float', y_plus_minus: 'float', y_minus_plus: 'float', y_minus_minus: 'float') -> 'None'`
 - Fields: `y_plus_plus`, `y_plus_minus`, `y_minus_plus`, `y_minus_minus`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'initial_excitation_state') -> 'HawkesExcitationState'` |
+
 <a id="python-api-symbol-janiform-simulation-shared-hawkeskernelloadings"></a>
 ### `HawkesKernelLoadings`
 
 - Kind: `contract_model`
 - Signature: `(plus_plus: 'float', plus_minus: 'float', minus_plus: 'float', minus_minus: 'float') -> 'None'`
 - Fields: `plus_plus`, `plus_minus`, `minus_plus`, `minus_minus`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'kernel_loadings') -> 'HawkesKernelLoadings'` |
 
 <a id="python-api-symbol-janiform-simulation-shared-hawkeskernelparameters"></a>
 ### `HawkesKernelParameters`
@@ -2802,12 +3092,25 @@
 - Signature: `(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'`
 - Fields: `lambda_bar`, `beta`, `alpha`, `rho`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'kernel_parameters') -> 'HawkesKernelParameters'` |
+| `stationary_excitation_state` | `(self) -> 'HawkesExcitationState'` |
+
 <a id="python-api-symbol-janiform-simulation-shared-meanreversionanchormodel"></a>
 ### `MeanReversionAnchorModel`
 
 - Kind: `contract_model`
 - Signature: `(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'`
 - Fields: `reference_interval_hours`, `pressure_persistence_per_reference_interval`, `pressure_level_gain`
+
+| Method | Signature |
+|--------|-----------|
+| `endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchor_model') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+| `zero_gain_endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float' = 1.0) -> 'Self'` |
 
 <a id="python-api-symbol-janiform-simulation-shared-meanreversionboundarystate"></a>
 ### `MeanReversionBoundaryState`
@@ -2816,6 +3119,10 @@
 - Signature: `(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'`
 - Fields: `observed_log_price`, `anchor_value`, `pressure_state`, `deviation`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'` |
+
 <a id="python-api-symbol-janiform-simulation-shared-meanreversionfittedparameters"></a>
 ### `MeanReversionFittedParameters`
 
@@ -2823,12 +3130,23 @@
 - Signature: `(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'`
 - Fields: `kappa`, `anchor_model`
 
+| Method | Signature |
+|--------|-----------|
+| `flat_anchor_mean_reversion` | `(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-simulation-shared-meanreversionruntimeintervalanchors"></a>
 ### `MeanReversionRuntimeIntervalAnchors`
 
 - Kind: `contract_model`
 - Signature: `(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'`
 - Fields: `interval_alignment_policy`, `start_anchor_value`, `start_pressure_state`, `end_anchor_values`, `end_pressure_states`, `interval_deltas`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'` |
 
 <a id="python-api-symbol-janiform-simulation-shared-seededtickeventside"></a>
 ### `SeededTickEventSide`
@@ -2865,6 +3183,11 @@
 - Kind: `contract_model`
 - Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
 - Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
+
+| Method | Signature |
+|--------|-----------|
+| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
+| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
 
 <a id="python-api-module-janiform-pricing"></a>
 ## `janiform.pricing`
@@ -2933,6 +3256,10 @@
 - Signature: `(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'`
 - Fields: `interval_index`, `hawkes_boundary_state`, `observed_boundary_state`, `current_anchor_value`, `interval_delta`, `kappa`, `deviation_decay_factor`, `local_martingale_deviation_adjustment`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AnchoredLocalTiltBoundaryStateSummary'` |
+
 <a id="python-api-symbol-janiform-pricing-anchoredlocaltiltdomainstatus"></a>
 ### `AnchoredLocalTiltDomainStatus`
 
@@ -2951,12 +3278,20 @@
 - Signature: `(boundary_state_summary: 'AnchoredLocalTiltBoundaryStateSummary', target_log_moment_exponent: 'float', observed_log_moment_exponent: 'float', theta: 'float', residual: 'float', absolute_residual: 'float', tolerance: 'float', domain_status: 'AnchoredLocalTiltDomainStatus', admissibility_status: 'AnchoredLocalTiltAdmissibilityStatus', policy: 'str') -> 'None'`
 - Fields: `boundary_state_summary`, `target_log_moment_exponent`, `observed_log_moment_exponent`, `theta`, `residual`, `absolute_residual`, `tolerance`, `domain_status`, `admissibility_status`, `policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchored_local_tilt_solve_diagnostics') -> 'AnchoredLocalTiltSolveDiagnostics'` |
+
 <a id="python-api-symbol-janiform-pricing-anchoredvanillaoptionpricingboundaryinput"></a>
 ### `AnchoredVanillaOptionPricingBoundaryInput`
 
 - Kind: `contract_model`
 - Signature: `(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
 - Fields: `interval_index`, `hawkes_boundary_state`, `long_variance_boundary_state`, `mean_reversion_fitted_parameters`, `interval_delta`, `observed_boundary_state`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AnchoredVanillaOptionPricingBoundaryInput'` |
 
 <a id="python-api-symbol-janiform-pricing-autoactivitycompressedpricingintervalschedulepolicy"></a>
 ### `AutoActivityCompressedPricingIntervalSchedulePolicy`
@@ -2965,12 +3300,20 @@
 - Signature: `(policy: 'str' = 'auto_activity_compressed') -> 'None'`
 - Fields: `policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AutoActivityCompressedPricingIntervalSchedulePolicy'` |
+
 <a id="python-api-symbol-janiform-pricing-autoexactsparsepricingintervalschedulepolicy"></a>
 ### `AutoExactSparsePricingIntervalSchedulePolicy`
 
 - Kind: `contract_model`
 - Signature: `(policy: 'str' = 'auto_exact_sparse') -> 'None'`
 - Fields: `policy`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AutoExactSparsePricingIntervalSchedulePolicy'` |
 
 <a id="python-api-symbol-janiform-pricing-explicitintervalendtimestampsutcpricingintervalschedulepolicy"></a>
 ### `ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy`
@@ -2979,12 +3322,20 @@
 - Signature: `(interval_end_timestamps_utc_nanos: 'tuple[int, ...]', policy: 'str' = 'explicit_interval_end_timestamps_utc') -> 'None'`
 - Fields: `interval_end_timestamps_utc_nanos`, `policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy'` |
+
 <a id="python-api-symbol-janiform-pricing-gammaseveritymarkconfiguration"></a>
 ### `GammaSeverityMarkConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(shape_k: 'float') -> 'None'`
 - Fields: `shape_k`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'GammaSeverityMarkConfiguration'` |
 
 <a id="python-api-symbol-janiform-pricing-meanreversionanchormodel"></a>
 ### `MeanReversionAnchorModel`
@@ -2993,12 +3344,24 @@
 - Signature: `(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'`
 - Fields: `reference_interval_hours`, `pressure_persistence_per_reference_interval`, `pressure_level_gain`
 
+| Method | Signature |
+|--------|-----------|
+| `endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchor_model') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+| `zero_gain_endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+
 <a id="python-api-symbol-janiform-pricing-meanreversionboundarystate"></a>
 ### `MeanReversionBoundaryState`
 
 - Kind: `contract_model`
 - Signature: `(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'`
 - Fields: `observed_log_price`, `anchor_value`, `pressure_state`, `deviation`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'` |
 
 <a id="python-api-symbol-janiform-pricing-meanreversionfittedparameters"></a>
 ### `MeanReversionFittedParameters`
@@ -3007,12 +3370,23 @@
 - Signature: `(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'`
 - Fields: `kappa`, `anchor_model`
 
+| Method | Signature |
+|--------|-----------|
+| `flat_anchor_mean_reversion` | `(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-pricing-nigsharedplusshiftconfiguration"></a>
 ### `NigSharedPlusShiftConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'`
 - Fields: `alpha`, `beta_0`, `delta`, `mu`, `delta_beta`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'NigSharedPlusShiftConfiguration'` |
 
 <a id="python-api-symbol-janiform-pricing-pricingintervalschedule"></a>
 ### `PricingIntervalSchedule`
@@ -3021,12 +3395,22 @@
 - Signature: `(valuation_time_utc_nanos: 'int', metadata: 'PricingIntervalScheduleMetadata', interval_end_timestamps_utc_nanos: 'tuple[int, ...]', interval_deltas_hours: 'tuple[float, ...]') -> 'None'`
 - Fields: `valuation_time_utc_nanos`, `metadata`, `interval_end_timestamps_utc_nanos`, `interval_deltas_hours`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'PricingIntervalSchedule'` |
+| `maturity_interval_hours` | `(self, terminal_interval_index: 'int') -> 'float'` |
+| `terminal_interval_index_for_maturity_interval` | `(self, maturity_interval: 'float') -> 'int'` |
+
 <a id="python-api-symbol-janiform-pricing-pricingintervalschedulemetadata"></a>
 ### `PricingIntervalScheduleMetadata`
 
 - Kind: `contract_model`
 - Signature: `(policy_id: 'str', derivation_policy: 'str', factor_assignment_policy: 'str') -> 'None'`
 - Fields: `policy_id`, `derivation_policy`, `factor_assignment_policy`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'PricingIntervalScheduleMetadata'` |
 
 <a id="python-api-symbol-janiform-pricing-pricingintervalschedulepolicy"></a>
 ### `PricingIntervalSchedulePolicy`
@@ -3053,6 +3437,10 @@
 - Signature: `(payoff_type: 'VanillaOptionPayoffType') -> 'None'`
 - Fields: `payoff_type`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPayoffConfiguration'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpayofftype"></a>
 ### `VanillaOptionPayoffType`
 
@@ -3070,12 +3458,21 @@
 - Signature: `(schema_version: 'str', hook_policy: 'str', option_price: 'float', log_moneyness: 'float', forward_moneyness: 'float', maturity_interval: 'float', transform_status: 'Optional[str]', integration_numeric_quality_is_poor: 'Optional[bool]', integration_convergence_check_passed: 'Optional[bool]', integration_truncation_check_passed: 'Optional[bool]') -> 'None'`
 - Fields: `schema_version`, `hook_policy`, `option_price`, `log_moneyness`, `forward_moneyness`, `maturity_interval`, `transform_status`, `integration_numeric_quality_is_poor`, `integration_convergence_check_passed`, `integration_truncation_check_passed`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingCalibrationHooks'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingdiagnostics"></a>
 ### `VanillaOptionPricingDiagnostics`
 
 - Kind: `contract_model`
 - Signature: `(forward_price: 'float', discount_factor: 'float', maturity_interval: 'float', boundary_state_norm: 'float') -> 'None'`
 - Fields: `forward_price`, `discount_factor`, `maturity_interval`, `boundary_state_norm`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingDiagnostics'` |
+| `log_forward_moneyness` | `(self, *, strike: 'float') -> 'float'` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingexecutioninput"></a>
 ### `VanillaOptionPricingExecutionInput`
@@ -3084,12 +3481,20 @@
 - Signature: `(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'`
 - Fields: `request`, `runtime_interval_schedule`, `hourly_factor_contract`, `optional_output_selection`
 
+| Method | Signature |
+|--------|-----------|
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingfailurediagnostic"></a>
 ### `VanillaOptionPricingFailureDiagnostic`
 
 - Kind: `contract_model`
 - Signature: `(stage: 'VanillaOptionPricingFailureStage', reason: 'str') -> 'None'`
 - Fields: `stage`, `reason`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingFailureDiagnostic'` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingfailurestage"></a>
 ### `VanillaOptionPricingFailureStage`
@@ -3115,12 +3520,21 @@
 - Signature: `(buy_activity_premium: 'float', sell_activity_premium: 'float') -> 'None'`
 - Fields: `buy_activity_premium`, `sell_activity_premium`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingKernelParameters'` |
+| `identity` | `() -> 'VanillaOptionPricingKernelParameters'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingmarketinputs"></a>
 ### `VanillaOptionPricingMarketInputs`
 
 - Kind: `contract_model`
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', risk_free_rate: 'float', dividend_yield: 'float') -> 'None'`
 - Fields: `spot`, `strikes`, `maturity_intervals`, `risk_free_rate`, `dividend_yield`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingMarketInputs'` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingmodelparameters"></a>
 ### `VanillaOptionPricingModelParameters`
@@ -3129,12 +3543,20 @@
 - Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
 - Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `pricing_kernel_parameters`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingModelParameters'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingoptionaloutputselection"></a>
 ### `VanillaOptionPricingOptionalOutputSelection`
 
 - Kind: `contract_model`
 - Signature: `(include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, include_calibration_hooks: 'bool' = False) -> 'None'`
 - Fields: `include_transform_diagnostics`, `include_integration_quality_diagnostics`, `include_calibration_hooks`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingOptionalOutputSelection'` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingrequest"></a>
 ### `VanillaOptionPricingRequest`
@@ -3143,12 +3565,20 @@
 - Signature: `(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'`
 - Fields: `market_inputs`, `payoff`, `boundary_input`, `model_parameters`, `interval_delta`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionPricingRequest'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingresponse"></a>
 ### `VanillaOptionPricingResponse`
 
 - Kind: `contract_model`
 - Signature: `(pricing_status: 'VanillaOptionPricingStatus', pricing_failure_diagnostic: 'Optional[VanillaOptionPricingFailureDiagnostic]', price: 'Optional[float]', diagnostics: 'Optional[VanillaOptionPricingDiagnostics]', implied_volatility: 'Optional[float]', implied_volatility_inversion_status: 'Optional[VanillaOptionImpliedVolatilityInversionStatus]') -> 'None'`
 - Fields: `pricing_status`, `pricing_failure_diagnostic`, `price`, `diagnostics`, `implied_volatility`, `implied_volatility_inversion_status`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionPricingResponse'` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingrundiagnostics"></a>
 ### `VanillaOptionPricingRunDiagnostics`
@@ -3157,6 +3587,10 @@
 - Signature: `(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', spectral: 'Optional[dict[str, Any]]') -> 'None'`
 - Fields: `schema_version`, `transform`, `integration_quality`, `spectral`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingRunDiagnostics'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingrunoutputschemametadata"></a>
 ### `VanillaOptionPricingRunOutputSchemaMetadata`
 
@@ -3164,12 +3598,21 @@
 - Signature: `(schema_version: 'str', run_result_schema_version: 'str', run_diagnostics_schema_version: 'str', calibration_hooks_schema_version: 'str', required_run_result_fields: 'tuple[str, ...]', required_run_diagnostics_fields: 'tuple[str, ...]', required_calibration_hooks_fields: 'tuple[str, ...]') -> 'None'`
 - Fields: `schema_version`, `run_result_schema_version`, `run_diagnostics_schema_version`, `calibration_hooks_schema_version`, `required_run_result_fields`, `required_run_diagnostics_fields`, `required_calibration_hooks_fields`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingRunOutputSchemaMetadata'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingrunresult"></a>
 ### `VanillaOptionPricingRunResult`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'`
 - Fields: `schema_version`, `output_schema_metadata`, `response`, `run_diagnostics`, `calibration_hooks`, `runtime_interval_schedule`, `maturity_terminal_interval_indices`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionPricingRunResult'` |
+| `save` | `(self, path: 'str \| Path') -> 'None'` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionpricingstatus"></a>
 ### `VanillaOptionPricingStatus`
@@ -3204,12 +3647,24 @@
 - Signature: `(strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', option_types: 'tuple[VanillaOptionPayoffType, ...]', model_prices: 'tuple[Optional[float], ...]', implied_volatilities: 'tuple[Optional[float], ...]', implied_volatility_inversion_statuses: 'tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...]', pricing_statuses: 'tuple[VanillaOptionPricingStatus, ...]', pricing_failure_stages: 'tuple[Optional[VanillaOptionPricingFailureStage], ...]', pricing_failure_reasons: 'tuple[Optional[str], ...]', forward_prices: 'tuple[Optional[float], ...]', discount_factors: 'tuple[Optional[float], ...]', boundary_state_norms: 'tuple[Optional[float], ...]') -> 'None'`
 - Fields: `strikes`, `maturity_intervals`, `option_types`, `model_prices`, `implied_volatilities`, `implied_volatility_inversion_statuses`, `pricing_statuses`, `pricing_failure_stages`, `pricing_failure_reasons`, `forward_prices`, `discount_factors`, `boundary_state_norms`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'node_table') -> 'VanillaOptionSurfacePricingNodeTable'` |
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+| `to_records` | `(self) -> 'tuple[SurfaceNodeRecord, ...]'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionsurfacepricingrequest"></a>
 ### `VanillaOptionSurfacePricingRequest`
 
 - Kind: `contract_model`
 - Signature: `(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'`
 - Fields: `market_inputs`, `payoff`, `boundary_input`, `model_parameters`, `interval_delta`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionSurfacePricingRequest'` |
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionsurfacepricingresponse"></a>
 ### `VanillaOptionSurfacePricingResponse`
@@ -3218,12 +3673,28 @@
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', node_table: 'VanillaOptionSurfacePricingNodeTable') -> 'None'`
 - Fields: `spot`, `strikes`, `maturity_intervals`, `payoff_type`, `risk_free_rate`, `dividend_yield`, `price_grid`, `implied_volatility_grid`, `implied_volatility_inversion_status_grid`, `pricing_status_grid`, `pricing_failure_stage_grid`, `pricing_failure_reason_grid`, `forward_price_grid`, `discount_factor_grid`, `boundary_state_norm_grid`, `node_table`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface_pricing_response') -> 'VanillaOptionSurfacePricingResponse'` |
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+| `to_records` | `(self) -> 'tuple[SurfaceNodeRecord, ...]'` |
+
 <a id="python-api-symbol-janiform-pricing-vanillaoptionsurfacepricingrunresult"></a>
 ### `VanillaOptionSurfacePricingRunResult`
 
 - Kind: `contract_model`
 - Signature: `(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[Optional[dict[str, Any]], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'`
 - Fields: `response`, `maturity_summaries`, `runtime_interval_schedule`, `maturity_terminal_interval_indices`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface_pricing_run_result') -> 'VanillaOptionSurfacePricingRunResult'` |
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+| `to_records` | `(self) -> 'tuple[SurfaceNodeRecord, ...]'` |
 
 <a id="python-api-symbol-janiform-pricing-default-pricing-interval-schedule-policy"></a>
 ### `default_pricing_interval_schedule_policy`
@@ -3322,6 +3793,10 @@
 - Signature: `(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'`
 - Fields: `interval_index`, `hawkes_boundary_state`, `observed_boundary_state`, `current_anchor_value`, `interval_delta`, `kappa`, `deviation_decay_factor`, `local_martingale_deviation_adjustment`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AnchoredLocalTiltBoundaryStateSummary'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-anchoredlocaltiltdomainstatus"></a>
 ### `AnchoredLocalTiltDomainStatus`
 
@@ -3340,12 +3815,20 @@
 - Signature: `(boundary_state_summary: 'AnchoredLocalTiltBoundaryStateSummary', target_log_moment_exponent: 'float', observed_log_moment_exponent: 'float', theta: 'float', residual: 'float', absolute_residual: 'float', tolerance: 'float', domain_status: 'AnchoredLocalTiltDomainStatus', admissibility_status: 'AnchoredLocalTiltAdmissibilityStatus', policy: 'str') -> 'None'`
 - Fields: `boundary_state_summary`, `target_log_moment_exponent`, `observed_log_moment_exponent`, `theta`, `residual`, `absolute_residual`, `tolerance`, `domain_status`, `admissibility_status`, `policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchored_local_tilt_solve_diagnostics') -> 'AnchoredLocalTiltSolveDiagnostics'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-anchoredvanillaoptionpricingboundaryinput"></a>
 ### `AnchoredVanillaOptionPricingBoundaryInput`
 
 - Kind: `contract_model`
 - Signature: `(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
 - Fields: `interval_index`, `hawkes_boundary_state`, `long_variance_boundary_state`, `mean_reversion_fitted_parameters`, `interval_delta`, `observed_boundary_state`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AnchoredVanillaOptionPricingBoundaryInput'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-autoactivitycompressedpricingintervalschedulepolicy"></a>
 ### `AutoActivityCompressedPricingIntervalSchedulePolicy`
@@ -3354,12 +3837,20 @@
 - Signature: `(policy: 'str' = 'auto_activity_compressed') -> 'None'`
 - Fields: `policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AutoActivityCompressedPricingIntervalSchedulePolicy'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-autoexactsparsepricingintervalschedulepolicy"></a>
 ### `AutoExactSparsePricingIntervalSchedulePolicy`
 
 - Kind: `contract_model`
 - Signature: `(policy: 'str' = 'auto_exact_sparse') -> 'None'`
 - Fields: `policy`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'AutoExactSparsePricingIntervalSchedulePolicy'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-explicitintervalendtimestampsutcpricingintervalschedulepolicy"></a>
 ### `ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy`
@@ -3368,12 +3859,20 @@
 - Signature: `(interval_end_timestamps_utc_nanos: 'tuple[int, ...]', policy: 'str' = 'explicit_interval_end_timestamps_utc') -> 'None'`
 - Fields: `interval_end_timestamps_utc_nanos`, `policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-gammaseveritymarkconfiguration"></a>
 ### `GammaSeverityMarkConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(shape_k: 'float') -> 'None'`
 - Fields: `shape_k`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'GammaSeverityMarkConfiguration'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-meanreversionanchormodel"></a>
 ### `MeanReversionAnchorModel`
@@ -3382,12 +3881,24 @@
 - Signature: `(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'`
 - Fields: `reference_interval_hours`, `pressure_persistence_per_reference_interval`, `pressure_level_gain`
 
+| Method | Signature |
+|--------|-----------|
+| `endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'anchor_model') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+| `zero_gain_endogenous_core_pressure_level` | `(*, reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-meanreversionboundarystate"></a>
 ### `MeanReversionBoundaryState`
 
 - Kind: `contract_model`
 - Signature: `(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'`
 - Fields: `observed_log_price`, `anchor_value`, `pressure_state`, `deviation`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-meanreversionfittedparameters"></a>
 ### `MeanReversionFittedParameters`
@@ -3396,12 +3907,23 @@
 - Signature: `(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'`
 - Fields: `kappa`, `anchor_model`
 
+| Method | Signature |
+|--------|-----------|
+| `flat_anchor_mean_reversion` | `(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'` |
+| `to_json` | `(self) -> 'str'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-nigsharedplusshiftconfiguration"></a>
 ### `NigSharedPlusShiftConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'`
 - Fields: `alpha`, `beta_0`, `delta`, `mu`, `delta_beta`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'NigSharedPlusShiftConfiguration'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-pricingintervalschedule"></a>
 ### `PricingIntervalSchedule`
@@ -3410,12 +3932,22 @@
 - Signature: `(valuation_time_utc_nanos: 'int', metadata: 'PricingIntervalScheduleMetadata', interval_end_timestamps_utc_nanos: 'tuple[int, ...]', interval_deltas_hours: 'tuple[float, ...]') -> 'None'`
 - Fields: `valuation_time_utc_nanos`, `metadata`, `interval_end_timestamps_utc_nanos`, `interval_deltas_hours`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'PricingIntervalSchedule'` |
+| `maturity_interval_hours` | `(self, terminal_interval_index: 'int') -> 'float'` |
+| `terminal_interval_index_for_maturity_interval` | `(self, maturity_interval: 'float') -> 'int'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-pricingintervalschedulemetadata"></a>
 ### `PricingIntervalScheduleMetadata`
 
 - Kind: `contract_model`
 - Signature: `(policy_id: 'str', derivation_policy: 'str', factor_assignment_policy: 'str') -> 'None'`
 - Fields: `policy_id`, `derivation_policy`, `factor_assignment_policy`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'PricingIntervalScheduleMetadata'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-pricingintervalschedulepolicy"></a>
 ### `PricingIntervalSchedulePolicy`
@@ -3442,6 +3974,10 @@
 - Signature: `(payoff_type: 'VanillaOptionPayoffType') -> 'None'`
 - Fields: `payoff_type`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPayoffConfiguration'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpayofftype"></a>
 ### `VanillaOptionPayoffType`
 
@@ -3459,12 +3995,21 @@
 - Signature: `(schema_version: 'str', hook_policy: 'str', option_price: 'float', log_moneyness: 'float', forward_moneyness: 'float', maturity_interval: 'float', transform_status: 'Optional[str]', integration_numeric_quality_is_poor: 'Optional[bool]', integration_convergence_check_passed: 'Optional[bool]', integration_truncation_check_passed: 'Optional[bool]') -> 'None'`
 - Fields: `schema_version`, `hook_policy`, `option_price`, `log_moneyness`, `forward_moneyness`, `maturity_interval`, `transform_status`, `integration_numeric_quality_is_poor`, `integration_convergence_check_passed`, `integration_truncation_check_passed`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingCalibrationHooks'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingdiagnostics"></a>
 ### `VanillaOptionPricingDiagnostics`
 
 - Kind: `contract_model`
 - Signature: `(forward_price: 'float', discount_factor: 'float', maturity_interval: 'float', boundary_state_norm: 'float') -> 'None'`
 - Fields: `forward_price`, `discount_factor`, `maturity_interval`, `boundary_state_norm`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingDiagnostics'` |
+| `log_forward_moneyness` | `(self, *, strike: 'float') -> 'float'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingexecutioninput"></a>
 ### `VanillaOptionPricingExecutionInput`
@@ -3473,12 +4018,20 @@
 - Signature: `(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'`
 - Fields: `request`, `runtime_interval_schedule`, `hourly_factor_contract`, `optional_output_selection`
 
+| Method | Signature |
+|--------|-----------|
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingfailurediagnostic"></a>
 ### `VanillaOptionPricingFailureDiagnostic`
 
 - Kind: `contract_model`
 - Signature: `(stage: 'VanillaOptionPricingFailureStage', reason: 'str') -> 'None'`
 - Fields: `stage`, `reason`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingFailureDiagnostic'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingfailurestage"></a>
 ### `VanillaOptionPricingFailureStage`
@@ -3504,12 +4057,20 @@
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', risk_free_rate: 'float', dividend_yield: 'float') -> 'None'`
 - Fields: `spot`, `strikes`, `maturity_intervals`, `risk_free_rate`, `dividend_yield`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingMarketInputs'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingmodelparameters"></a>
 ### `VanillaOptionPricingModelParameters`
 
 - Kind: `contract_model`
 - Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'`
 - Fields: `hawkes_kernel_parameters`, `news_process_configuration`, `nig_shared_plus_shift_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `pricing_kernel_parameters`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingModelParameters'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingoptionaloutputselection"></a>
 ### `VanillaOptionPricingOptionalOutputSelection`
@@ -3518,12 +4079,20 @@
 - Signature: `(include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, include_calibration_hooks: 'bool' = False) -> 'None'`
 - Fields: `include_transform_diagnostics`, `include_integration_quality_diagnostics`, `include_calibration_hooks`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingOptionalOutputSelection'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingrequest"></a>
 ### `VanillaOptionPricingRequest`
 
 - Kind: `contract_model`
 - Signature: `(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'`
 - Fields: `market_inputs`, `payoff`, `boundary_input`, `model_parameters`, `interval_delta`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionPricingRequest'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingresponse"></a>
 ### `VanillaOptionPricingResponse`
@@ -3532,12 +4101,20 @@
 - Signature: `(pricing_status: 'VanillaOptionPricingStatus', pricing_failure_diagnostic: 'Optional[VanillaOptionPricingFailureDiagnostic]', price: 'Optional[float]', diagnostics: 'Optional[VanillaOptionPricingDiagnostics]', implied_volatility: 'Optional[float]', implied_volatility_inversion_status: 'Optional[VanillaOptionImpliedVolatilityInversionStatus]') -> 'None'`
 - Fields: `pricing_status`, `pricing_failure_diagnostic`, `price`, `diagnostics`, `implied_volatility`, `implied_volatility_inversion_status`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionPricingResponse'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingrundiagnostics"></a>
 ### `VanillaOptionPricingRunDiagnostics`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', spectral: 'Optional[dict[str, Any]]') -> 'None'`
 - Fields: `schema_version`, `transform`, `integration_quality`, `spectral`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingRunDiagnostics'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingrunoutputschemametadata"></a>
 ### `VanillaOptionPricingRunOutputSchemaMetadata`
@@ -3546,12 +4123,21 @@
 - Signature: `(schema_version: 'str', run_result_schema_version: 'str', run_diagnostics_schema_version: 'str', calibration_hooks_schema_version: 'str', required_run_result_fields: 'tuple[str, ...]', required_run_diagnostics_fields: 'tuple[str, ...]', required_calibration_hooks_fields: 'tuple[str, ...]') -> 'None'`
 - Fields: `schema_version`, `run_result_schema_version`, `run_diagnostics_schema_version`, `calibration_hooks_schema_version`, `required_run_result_fields`, `required_run_diagnostics_fields`, `required_calibration_hooks_fields`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'VanillaOptionPricingRunOutputSchemaMetadata'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingrunresult"></a>
 ### `VanillaOptionPricingRunResult`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'`
 - Fields: `schema_version`, `output_schema_metadata`, `response`, `run_diagnostics`, `calibration_hooks`, `runtime_interval_schedule`, `maturity_terminal_interval_indices`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionPricingRunResult'` |
+| `save` | `(self, path: 'str \| Path') -> 'None'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionpricingstatus"></a>
 ### `VanillaOptionPricingStatus`
@@ -3577,12 +4163,24 @@
 - Signature: `(strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', option_types: 'tuple[VanillaOptionPayoffType, ...]', model_prices: 'tuple[Optional[float], ...]', implied_volatilities: 'tuple[Optional[float], ...]', implied_volatility_inversion_statuses: 'tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...]', pricing_statuses: 'tuple[VanillaOptionPricingStatus, ...]', pricing_failure_stages: 'tuple[Optional[VanillaOptionPricingFailureStage], ...]', pricing_failure_reasons: 'tuple[Optional[str], ...]', forward_prices: 'tuple[Optional[float], ...]', discount_factors: 'tuple[Optional[float], ...]', boundary_state_norms: 'tuple[Optional[float], ...]') -> 'None'`
 - Fields: `strikes`, `maturity_intervals`, `option_types`, `model_prices`, `implied_volatilities`, `implied_volatility_inversion_statuses`, `pricing_statuses`, `pricing_failure_stages`, `pricing_failure_reasons`, `forward_prices`, `discount_factors`, `boundary_state_norms`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'node_table') -> 'VanillaOptionSurfacePricingNodeTable'` |
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+| `to_records` | `(self) -> 'tuple[SurfaceNodeRecord, ...]'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionsurfacepricingrequest"></a>
 ### `VanillaOptionSurfacePricingRequest`
 
 - Kind: `contract_model`
 - Signature: `(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'`
 - Fields: `market_inputs`, `payoff`, `boundary_input`, `model_parameters`, `interval_delta`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'VanillaOptionSurfacePricingRequest'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionsurfacepricingresponse"></a>
 ### `VanillaOptionSurfacePricingResponse`
@@ -3591,12 +4189,28 @@
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', node_table: 'VanillaOptionSurfacePricingNodeTable') -> 'None'`
 - Fields: `spot`, `strikes`, `maturity_intervals`, `payoff_type`, `risk_free_rate`, `dividend_yield`, `price_grid`, `implied_volatility_grid`, `implied_volatility_inversion_status_grid`, `pricing_status_grid`, `pricing_failure_stage_grid`, `pricing_failure_reason_grid`, `forward_price_grid`, `discount_factor_grid`, `boundary_state_norm_grid`, `node_table`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface_pricing_response') -> 'VanillaOptionSurfacePricingResponse'` |
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+| `to_records` | `(self) -> 'tuple[SurfaceNodeRecord, ...]'` |
+
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionsurfacepricingrunresult"></a>
 ### `VanillaOptionSurfacePricingRunResult`
 
 - Kind: `contract_model`
 - Signature: `(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[Optional[dict[str, Any]], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'`
 - Fields: `response`, `maturity_summaries`, `runtime_interval_schedule`, `maturity_terminal_interval_indices`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface_pricing_run_result') -> 'VanillaOptionSurfacePricingRunResult'` |
+| `to_numpy` | `(self) -> 'Any'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_parquet` | `(self, path: 'str \| Path') -> 'None'` |
+| `to_records` | `(self) -> 'tuple[SurfaceNodeRecord, ...]'` |
 
 <a id="python-api-symbol-janiform-pricing-contracts-default-pricing-interval-schedule-policy"></a>
 ### `default_pricing_interval_schedule_policy`
@@ -3646,6 +4260,12 @@
 - Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, price_coordinate_resolution: 'Optional[ResolvedPriceCoordinateSet]' = None, warnings: 'tuple[str, ...]' = (), raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]' = None) -> 'None'`
 - Fields: `valuation_time_utc`, `spot`, `nodes`, `physical_distribution`, `price_coordinate_resolution`, `warnings`, `raw_result`
 
+| Method | Signature |
+|--------|-----------|
+| `from_native_snapshot_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'snapshot_result') -> 'JaniformObservedOptionSnapshotPricingResult'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_surface_df` | `(self, *, value_column: 'str' = 'model_implied_volatility') -> 'Any'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-janiformobservedoptionsurfacenode"></a>
 ### `JaniformObservedOptionSurfaceNode`
 
@@ -3660,12 +4280,22 @@
 - Signature: `(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, price_coordinate_resolution: 'Optional[ResolvedPriceCoordinateSet]' = None, warnings: 'tuple[str, ...]' = (), raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]' = ()) -> 'None'`
 - Fields: `valuation_time_utc`, `nodes`, `physical_distribution`, `price_coordinate_resolution`, `warnings`, `raw_results`
 
+| Method | Signature |
+|--------|-----------|
+| `from_native_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'observed_options_pricing_result') -> 'JaniformObservedOptionSurfacePricingResult'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_surface_df` | `(self, *, value_column: 'str' = 'model_implied_volatility') -> 'Any'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongrid"></a>
 ### `JaniformVanillaOptionGrid`
 
 - Kind: `contract_model`
 - Signature: `(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'`
 - Fields: `payoff_type`, `risk_free_rate`, `dividend_yield`, `strikes`, `expiry_timestamps_utc`, `expiry_dates`, `tenors`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'group') -> 'JaniformVanillaOptionGrid'` |
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongridbatch"></a>
 ### `JaniformVanillaOptionGridBatch`
@@ -3674,12 +4304,20 @@
 - Signature: `(spot: 'float', grids: 'tuple[JaniformVanillaOptionGrid, ...]') -> 'None'`
 - Fields: `spot`, `grids`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'grid_batch') -> 'JaniformVanillaOptionGridBatch'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongridbatchpricingresult"></a>
 ### `JaniformVanillaOptionGridBatchPricingResult`
 
 - Kind: `contract_model`
 - Signature: `(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]', runtime_interval_schedule: 'PricingIntervalSchedule') -> 'None'`
 - Fields: `spot`, `grids`, `runtime_interval_schedule`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'grid_batch_pricing_result') -> 'JaniformVanillaOptionGridBatchPricingResult'` |
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptiongridpricingresult"></a>
 ### `JaniformVanillaOptionGridPricingResult`
@@ -3688,12 +4326,20 @@
 - Signature: `(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', maturity_terminal_interval_indices: 'tuple[int, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'`
 - Fields: `payoff_type`, `risk_free_rate`, `dividend_yield`, `strikes`, `maturity_intervals`, `maturity_terminal_interval_indices`, `price_grid`, `implied_volatility_grid`, `implied_volatility_inversion_status_grid`, `pricing_status_grid`, `pricing_failure_stage_grid`, `pricing_failure_reason_grid`, `forward_price_grid`, `discount_factor_grid`, `boundary_state_norm_grid`, `maturity_summaries`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'JaniformVanillaOptionGridPricingResult'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionmaturityintervalsummary"></a>
 ### `JaniformVanillaOptionMaturityIntervalSummary`
 
 - Kind: `contract_model`
 - Signature: `(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'`
 - Fields: `interval_index`, `current_anchor_value`, `next_anchor_value`, `interval_delta`, `expected_hawkes_boundary_state_before`, `expected_hawkes_boundary_state_after`, `minimum_solved_theta`, `maximum_solved_theta`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'JaniformVanillaOptionMaturityIntervalSummary'` |
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionmaturitysummary"></a>
 ### `JaniformVanillaOptionMaturitySummary`
@@ -3702,12 +4348,20 @@
 - Signature: `(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'`
 - Fields: `maturity_interval`, `terminal_anchor_value`, `deviation_domain_lower_bound`, `deviation_domain_upper_bound`, `collocation_node_count`, `collocation_nodes`, `interval_summaries`, `integration_quality`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'JaniformVanillaOptionMaturitySummary'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionsurface"></a>
 ### `JaniformVanillaOptionSurface`
 
 - Kind: `contract_model`
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'`
 - Fields: `spot`, `strikes`, `expiry_timestamps_utc`, `expiry_dates`, `tenors`, `payoff_type`, `risk_free_rate`, `dividend_yield`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface') -> 'JaniformVanillaOptionSurface'` |
 
 <a id="python-api-symbol-janiform-pricing-fitted-janiformvanillaoptionsurfacepricingresult"></a>
 ### `JaniformVanillaOptionSurfacePricingResult`
@@ -3716,12 +4370,20 @@
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'`
 - Fields: `spot`, `strikes`, `maturity_intervals`, `payoff_type`, `risk_free_rate`, `dividend_yield`, `price_grid`, `implied_volatility_grid`, `implied_volatility_inversion_status_grid`, `pricing_status_grid`, `pricing_failure_stage_grid`, `pricing_failure_reason_grid`, `forward_price_grid`, `discount_factor_grid`, `boundary_state_norm_grid`, `maturity_summaries`, `runtime_interval_schedule`, `maturity_terminal_interval_indices`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface_pricing_result') -> 'JaniformVanillaOptionSurfacePricingResult'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsnode"></a>
 ### `ObservedOptionsPhysicalDistributionDiagnosticsNode`
 
 - Kind: `contract_model`
 - Signature: `(valuation_time_utc: 'datetime', quote_timestamp_utc: 'datetime', expiry_timestamp_utc: 'datetime', strike: 'float', option_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', maturity_interval: 'float', q_forward_price: 'float', p_simulated_forward_price: 'float', model_q_implied_volatility: 'Optional[float]', observed_q_implied_volatility: 'Optional[float]', observed_q_implied_volatility_inversion_status: 'Optional[VanillaOptionImpliedVolatilityInversionStatus]', sample_count: 'int', physical_forward_normalized_price: 'float', physical_forward_normalized_implied_volatility: 'Optional[float]', physical_forward_normalized_implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus', market_forward_physical_price: 'float', market_forward_physical_implied_volatility: 'Optional[float]', market_forward_physical_implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus') -> 'None'`
 - Fields: `valuation_time_utc`, `quote_timestamp_utc`, `expiry_timestamp_utc`, `strike`, `option_type`, `risk_free_rate`, `dividend_yield`, `maturity_interval`, `q_forward_price`, `p_simulated_forward_price`, `model_q_implied_volatility`, `observed_q_implied_volatility`, `observed_q_implied_volatility_inversion_status`, `sample_count`, `physical_forward_normalized_price`, `physical_forward_normalized_implied_volatility`, `physical_forward_normalized_implied_volatility_inversion_status`, `market_forward_physical_price`, `market_forward_physical_implied_volatility`, `market_forward_physical_implied_volatility_inversion_status`
+
+| Method | Signature |
+|--------|-----------|
+| `from_native_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'ObservedOptionsPhysicalDistributionDiagnosticsNode'` |
 
 <a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsoutput"></a>
 ### `ObservedOptionsPhysicalDistributionDiagnosticsOutput`
@@ -3730,6 +4392,11 @@
 - Signature: `(schema_version: 'str', request: 'ObservedOptionsPhysicalDistributionDiagnosticsRequest', report: 'ObservedOptionsPhysicalDistributionDiagnosticsReport', nodes: 'tuple[ObservedOptionsPhysicalDistributionDiagnosticsNode, ...]') -> 'None'`
 - Fields: `schema_version`, `request`, `report`, `nodes`
 
+| Method | Signature |
+|--------|-----------|
+| `from_native_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'physical_distribution') -> 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]'` |
+| `to_pandas` | `(self) -> 'Any'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsreport"></a>
 ### `ObservedOptionsPhysicalDistributionDiagnosticsReport`
 
@@ -3737,12 +4404,20 @@
 - Signature: `(schema_version: 'str', valuation_count: 'int', node_count: 'int', path_count_per_valuation: 'int', path_partition_count: 'int', worker_count: 'int', maximum_horizon_interval_count: 'int') -> 'None'`
 - Fields: `schema_version`, `valuation_count`, `node_count`, `path_count_per_valuation`, `path_partition_count`, `worker_count`, `maximum_horizon_interval_count`
 
+| Method | Signature |
+|--------|-----------|
+| `from_native_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'ObservedOptionsPhysicalDistributionDiagnosticsReport'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-observedoptionsphysicaldistributiondiagnosticsrequest"></a>
 ### `ObservedOptionsPhysicalDistributionDiagnosticsRequest`
 
 - Kind: `contract_model`
 - Signature: `(path_count: 'int' = 1024, seed: 'int' = 0) -> 'None'`
 - Fields: `path_count`, `seed`
+
+| Method | Signature |
+|--------|-----------|
+| `to_payload` | `(self) -> 'dict[str, int]'` |
 
 <a id="python-api-module-janiform-pricing-fitted-grids"></a>
 ## `janiform.pricing.fitted.grids`
@@ -3761,12 +4436,20 @@
 - Signature: `(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'`
 - Fields: `payoff_type`, `risk_free_rate`, `dividend_yield`, `strikes`, `expiry_timestamps_utc`, `expiry_dates`, `tenors`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'group') -> 'JaniformVanillaOptionGrid'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-grids-janiformvanillaoptiongridbatch"></a>
 ### `JaniformVanillaOptionGridBatch`
 
 - Kind: `contract_model`
 - Signature: `(spot: 'float', grids: 'tuple[JaniformVanillaOptionGrid, ...]') -> 'None'`
 - Fields: `spot`, `grids`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'grid_batch') -> 'JaniformVanillaOptionGridBatch'` |
 
 <a id="python-api-symbol-janiform-pricing-fitted-grids-janiformvanillaoptiongridbatchpricingresult"></a>
 ### `JaniformVanillaOptionGridBatchPricingResult`
@@ -3775,12 +4458,20 @@
 - Signature: `(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]', runtime_interval_schedule: 'PricingIntervalSchedule') -> 'None'`
 - Fields: `spot`, `grids`, `runtime_interval_schedule`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'grid_batch_pricing_result') -> 'JaniformVanillaOptionGridBatchPricingResult'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-grids-janiformvanillaoptiongridpricingresult"></a>
 ### `JaniformVanillaOptionGridPricingResult`
 
 - Kind: `contract_model`
 - Signature: `(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', maturity_terminal_interval_indices: 'tuple[int, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'`
 - Fields: `payoff_type`, `risk_free_rate`, `dividend_yield`, `strikes`, `maturity_intervals`, `maturity_terminal_interval_indices`, `price_grid`, `implied_volatility_grid`, `implied_volatility_inversion_status_grid`, `pricing_status_grid`, `pricing_failure_stage_grid`, `pricing_failure_reason_grid`, `forward_price_grid`, `discount_factor_grid`, `boundary_state_norm_grid`, `maturity_summaries`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'JaniformVanillaOptionGridPricingResult'` |
 
 <a id="python-api-module-janiform-pricing-fitted-market-snapshot"></a>
 ## `janiform.pricing.fitted.market_snapshot`
@@ -3803,6 +4494,12 @@
 - Kind: `contract_model`
 - Signature: `(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, price_coordinate_resolution: 'Optional[ResolvedPriceCoordinateSet]' = None, warnings: 'tuple[str, ...]' = (), raw_result: 'Optional[JaniformVanillaOptionGridBatchPricingResult]' = None) -> 'None'`
 - Fields: `valuation_time_utc`, `spot`, `nodes`, `physical_distribution`, `price_coordinate_resolution`, `warnings`, `raw_result`
+
+| Method | Signature |
+|--------|-----------|
+| `from_native_snapshot_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'snapshot_result') -> 'JaniformObservedOptionSnapshotPricingResult'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_surface_df` | `(self, *, value_column: 'str' = 'model_implied_volatility') -> 'Any'` |
 
 <a id="python-api-module-janiform-pricing-fitted-market-snapshot-inputs"></a>
 ## `janiform.pricing.fitted.market_snapshot.inputs`
@@ -3839,6 +4536,12 @@
 - Signature: `(valuation_time_utc: 'datetime', nodes: 'tuple[JaniformObservedOptionSurfaceNode, ...]', physical_distribution: 'Optional[ObservedOptionsPhysicalDistributionDiagnosticsOutput]' = None, price_coordinate_resolution: 'Optional[ResolvedPriceCoordinateSet]' = None, warnings: 'tuple[str, ...]' = (), raw_results: 'tuple[JaniformObservedOptionSnapshotPricingResult, ...]' = ()) -> 'None'`
 - Fields: `valuation_time_utc`, `nodes`, `physical_distribution`, `price_coordinate_resolution`, `warnings`, `raw_results`
 
+| Method | Signature |
+|--------|-----------|
+| `from_native_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'observed_options_pricing_result') -> 'JaniformObservedOptionSurfacePricingResult'` |
+| `to_pandas` | `(self) -> 'Any'` |
+| `to_surface_df` | `(self, *, value_column: 'str' = 'model_implied_volatility') -> 'Any'` |
+
 <a id="python-api-module-janiform-pricing-fitted-summaries"></a>
 ## `janiform.pricing.fitted.summaries`
 
@@ -3854,12 +4557,20 @@
 - Signature: `(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'`
 - Fields: `interval_index`, `current_anchor_value`, `next_anchor_value`, `interval_delta`, `expected_hawkes_boundary_state_before`, `expected_hawkes_boundary_state_after`, `minimum_solved_theta`, `maximum_solved_theta`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'JaniformVanillaOptionMaturityIntervalSummary'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-summaries-janiformvanillaoptionmaturitysummary"></a>
 ### `JaniformVanillaOptionMaturitySummary`
 
 - Kind: `contract_model`
 - Signature: `(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'`
 - Fields: `maturity_interval`, `terminal_anchor_value`, `deviation_domain_lower_bound`, `deviation_domain_upper_bound`, `collocation_node_count`, `collocation_nodes`, `interval_summaries`, `integration_quality`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'JaniformVanillaOptionMaturitySummary'` |
 
 <a id="python-api-module-janiform-pricing-fitted-surface"></a>
 ## `janiform.pricing.fitted.surface`
@@ -3876,12 +4587,20 @@
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'`
 - Fields: `spot`, `strikes`, `expiry_timestamps_utc`, `expiry_dates`, `tenors`, `payoff_type`, `risk_free_rate`, `dividend_yield`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface') -> 'JaniformVanillaOptionSurface'` |
+
 <a id="python-api-symbol-janiform-pricing-fitted-surface-janiformvanillaoptionsurfacepricingresult"></a>
 ### `JaniformVanillaOptionSurfacePricingResult`
 
 - Kind: `contract_model`
 - Signature: `(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'`
 - Fields: `spot`, `strikes`, `maturity_intervals`, `payoff_type`, `risk_free_rate`, `dividend_yield`, `price_grid`, `implied_volatility_grid`, `implied_volatility_inversion_status_grid`, `pricing_status_grid`, `pricing_failure_stage_grid`, `pricing_failure_reason_grid`, `forward_price_grid`, `discount_factor_grid`, `boundary_state_norm_grid`, `maturity_summaries`, `runtime_interval_schedule`, `maturity_terminal_interval_indices`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'surface_pricing_result') -> 'JaniformVanillaOptionSurfacePricingResult'` |
 
 <a id="python-api-module-janiform-sufficient-statistics"></a>
 ## `janiform.sufficient_statistics`
@@ -3949,12 +4668,20 @@
 - Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'`
 - Fields: `hawkes_kernel_parameters`, `gamma_severity_mark_configuration`, `long_variance_parameters`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SufficientStatisticsEquationSpecification'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsintervalstatistics"></a>
 ### `SufficientStatisticsIntervalStatistics`
 
 - Kind: `contract_model`
 - Signature: `(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'`
 - Fields: `a_plus`, `a_minus`, `baseline_a_plus`, `endogenous_a_plus`, `baseline_a_minus`, `endogenous_a_minus`, `n_plus`, `n_minus`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SufficientStatisticsIntervalStatistics'` |
 
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsmodelinputs"></a>
 ### `SufficientStatisticsModelInputs`
@@ -3963,12 +4690,20 @@
 - Signature: `(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
 - Fields: `equation_specification`, `nig_shared_plus_shift_configuration`, `initial_excitation_state`, `long_variance_parameters`, `initial_long_variance_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SufficientStatisticsModelInputs'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticspath"></a>
 ### `SufficientStatisticsPath`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'SufficientStatisticsPathOutputSchemaMetadata', provenance: 'SufficientStatisticsPathProvenance', diagnostics: 'SufficientStatisticsPathDiagnostics', seed: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[SufficientStatisticsPathRecord, ...]') -> 'None'`
 - Fields: `schema_version`, `run_request_schema_version`, `output_schema_metadata`, `provenance`, `diagnostics`, `seed`, `interval_delta`, `simulated_interval_count`, `initial_excitation_state`, `terminal_excitation_state`, `records`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SufficientStatisticsPath'` |
 
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticspathdiagnostics"></a>
 ### `SufficientStatisticsPathDiagnostics`
@@ -3998,6 +4733,10 @@
 - Signature: `(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'`
 - Fields: `interval_index`, `sufficient_statistics`, `return_components`, `core_total_return`, `observed_interval_return`, `observed_log_price_end`, `anchor_value_end`, `pressure_state_end`, `deviation_from_anchor_end`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', expected_interval_index: 'int') -> 'SufficientStatisticsPathRecord'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsreturncomponents"></a>
 ### `SufficientStatisticsReturnComponents`
 
@@ -4005,12 +4744,21 @@
 - Signature: `(buy_side_return: 'float', sell_side_return: 'float', trading_time_return: 'float', open_jump_return: 'float', closed_gap_return: 'float', total_return: 'float') -> 'None'`
 - Fields: `buy_side_return`, `sell_side_return`, `trading_time_return`, `open_jump_return`, `closed_gap_return`, `total_return`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SufficientStatisticsReturnComponents'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsrunrequest"></a>
 ### `SufficientStatisticsRunRequest`
 
 - Kind: `contract_model`
 - Signature: `(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'`
 - Fields: `seed`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SufficientStatisticsRunRequest'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficientstatisticsvalidationerror"></a>
 ### `SufficientStatisticsValidationError`
@@ -4119,12 +4867,20 @@
 - Signature: `(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'`
 - Fields: `hawkes_kernel_parameters`, `gamma_severity_mark_configuration`, `long_variance_parameters`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SufficientStatisticsEquationSpecification'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsintervalstatistics"></a>
 ### `SufficientStatisticsIntervalStatistics`
 
 - Kind: `contract_model`
 - Signature: `(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'`
 - Fields: `a_plus`, `a_minus`, `baseline_a_plus`, `endogenous_a_plus`, `baseline_a_minus`, `endogenous_a_minus`, `n_plus`, `n_minus`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SufficientStatisticsIntervalStatistics'` |
 
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsmodelinputs"></a>
 ### `SufficientStatisticsModelInputs`
@@ -4133,12 +4889,20 @@
 - Signature: `(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'`
 - Fields: `equation_specification`, `nig_shared_plus_shift_configuration`, `initial_excitation_state`, `long_variance_parameters`, `initial_long_variance_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SufficientStatisticsModelInputs'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticspath"></a>
 ### `SufficientStatisticsPath`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'SufficientStatisticsPathOutputSchemaMetadata', provenance: 'SufficientStatisticsPathProvenance', diagnostics: 'SufficientStatisticsPathDiagnostics', seed: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[SufficientStatisticsPathRecord, ...]') -> 'None'`
 - Fields: `schema_version`, `run_request_schema_version`, `output_schema_metadata`, `provenance`, `diagnostics`, `seed`, `interval_delta`, `simulated_interval_count`, `initial_excitation_state`, `terminal_excitation_state`, `records`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SufficientStatisticsPath'` |
 
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticspathdiagnostics"></a>
 ### `SufficientStatisticsPathDiagnostics`
@@ -4168,6 +4932,10 @@
 - Signature: `(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'`
 - Fields: `interval_index`, `sufficient_statistics`, `return_components`, `core_total_return`, `observed_interval_return`, `observed_log_price_end`, `anchor_value_end`, `pressure_state_end`, `deviation_from_anchor_end`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str', expected_interval_index: 'int') -> 'SufficientStatisticsPathRecord'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsreturncomponents"></a>
 ### `SufficientStatisticsReturnComponents`
 
@@ -4175,12 +4943,21 @@
 - Signature: `(buy_side_return: 'float', sell_side_return: 'float', trading_time_return: 'float', open_jump_return: 'float', closed_gap_return: 'float', total_return: 'float') -> 'None'`
 - Fields: `buy_side_return`, `sell_side_return`, `trading_time_return`, `open_jump_return`, `closed_gap_return`, `total_return`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SufficientStatisticsReturnComponents'` |
+
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficientstatisticsrunrequest"></a>
 ### `SufficientStatisticsRunRequest`
 
 - Kind: `contract_model`
 - Signature: `(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'`
 - Fields: `seed`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SufficientStatisticsRunRequest'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-module-janiform-calibration"></a>
 ## `janiform.calibration`
@@ -4209,6 +4986,11 @@
 - Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
 - Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
 
+| Method | Signature |
+|--------|-----------|
+| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
+| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
+
 <a id="python-api-symbol-janiform-calibration-janiformestimator"></a>
 ### `JaniformEstimator`
 
@@ -4224,12 +5006,22 @@
 - Signature: `(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', price_coordinate_resolution: 'Optional[ResolvedPriceCoordinateSet]', warnings: 'tuple[str, ...]', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'Optional[str]', prepared_payload_path: 'Optional[str]', staged_execution_input_path: 'Optional[str]', staged_response: 'StagedCalibrationResponse') -> 'None'`
 - Fields: `run_id`, `workflow_scope`, `success`, `resolved_configuration`, `session_resolution`, `preparation_diagnostics`, `preparation_provenance`, `price_coordinate_resolution`, `warnings`, `staged_request`, `prepared_data_reference`, `prepared_payload_path`, `staged_execution_input_path`, `staged_response`
 
+| Method | Signature |
+|--------|-----------|
+| `save` | `(self, path: 'str \| Path') -> 'None'` |
+| `summary` | `(self) -> 'dict[str, Any]'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-calibration-janiformfitresult"></a>
 ### `JaniformFitResult`
 
 - Kind: `contract_model`
 - Signature: `(model: 'Optional[JaniformModel]', report: 'JaniformFitReport') -> 'None'`
 - Fields: `model`, `report`
+
+| Method | Signature |
+|--------|-----------|
+| `require_model` | `(self) -> 'JaniformModel'` |
 
 <a id="python-api-module-janiform-calibration-fit"></a>
 ## `janiform.calibration.fit`
@@ -4255,12 +5047,22 @@
 - Signature: `(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', price_coordinate_resolution: 'Optional[ResolvedPriceCoordinateSet]', warnings: 'tuple[str, ...]', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'Optional[str]', prepared_payload_path: 'Optional[str]', staged_execution_input_path: 'Optional[str]', staged_response: 'StagedCalibrationResponse') -> 'None'`
 - Fields: `run_id`, `workflow_scope`, `success`, `resolved_configuration`, `session_resolution`, `preparation_diagnostics`, `preparation_provenance`, `price_coordinate_resolution`, `warnings`, `staged_request`, `prepared_data_reference`, `prepared_payload_path`, `staged_execution_input_path`, `staged_response`
 
+| Method | Signature |
+|--------|-----------|
+| `save` | `(self, path: 'str \| Path') -> 'None'` |
+| `summary` | `(self) -> 'dict[str, Any]'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
+
 <a id="python-api-symbol-janiform-calibration-fit-janiformfitresult"></a>
 ### `JaniformFitResult`
 
 - Kind: `contract_model`
 - Signature: `(model: 'Optional[JaniformModel]', report: 'JaniformFitReport') -> 'None'`
 - Fields: `model`, `report`
+
+| Method | Signature |
+|--------|-----------|
+| `require_model` | `(self) -> 'JaniformModel'` |
 
 <a id="python-api-module-janiform-calibration-fit-estimator"></a>
 ## `janiform.calibration.fit.estimator`
@@ -4302,6 +5104,10 @@
 - Signature: `(model: 'Optional[JaniformModel]', report: 'JaniformFitReport') -> 'None'`
 - Fields: `model`, `report`
 
+| Method | Signature |
+|--------|-----------|
+| `require_model` | `(self) -> 'JaniformModel'` |
+
 <a id="python-api-module-janiform-calibration-fit-report"></a>
 ## `janiform.calibration.fit.report`
 
@@ -4315,6 +5121,12 @@
 - Kind: `contract_model`
 - Signature: `(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', price_coordinate_resolution: 'Optional[ResolvedPriceCoordinateSet]', warnings: 'tuple[str, ...]', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'Optional[str]', prepared_payload_path: 'Optional[str]', staged_execution_input_path: 'Optional[str]', staged_response: 'StagedCalibrationResponse') -> 'None'`
 - Fields: `run_id`, `workflow_scope`, `success`, `resolved_configuration`, `session_resolution`, `preparation_diagnostics`, `preparation_provenance`, `price_coordinate_resolution`, `warnings`, `staged_request`, `prepared_data_reference`, `prepared_payload_path`, `staged_execution_input_path`, `staged_response`
+
+| Method | Signature |
+|--------|-----------|
+| `save` | `(self, path: 'str \| Path') -> 'None'` |
+| `summary` | `(self) -> 'dict[str, Any]'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-module-janiform-calibration-fit-state"></a>
 ## `janiform.calibration.fit.state`
@@ -4351,6 +5163,22 @@
 - Kind: `contract_model`
 - Signature: `(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', parameters: 'dict[str, Any]', metadata: 'dict[str, Any]', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution') -> 'None'`
 - Fields: `run_id`, `workflow_scope`, `parameters`, `metadata`, `resolved_configuration`, `session_resolution`
+
+| Method | Signature |
+|--------|-----------|
+| `estimate_current_state` | `(self, *, state_time_utc: 'datetime', request: 'CurrentStateEstimationRequest') -> 'CurrentStateEstimationResult'` |
+| `load` | `(path: 'str \| Path') -> 'JaniformModel'` |
+| `price_future` | `(self, *args: 'Any', **kwargs: 'Any') -> 'Any'` |
+| `price_instruments` | `(self, *args: 'Any', **kwargs: 'Any') -> 'Any'` |
+| `price_option` | `(self, *, valuation_time_utc: 'datetime', spot: 'float', strike: 'float', expiry_timestamp_utc: 'Optional[datetime]' = None, expiry_date: 'Optional[date]' = None, tenor: 'Optional[str]' = None, payoff_type: 'VanillaOptionPayoffType \| str' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0, observed_data: 'Optional[CurrentStateEstimationRequest]' = None, boundary_state: 'Optional[HawkesExcitationState]' = None, include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, include_calibration_hooks: 'bool' = False, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, output_path: 'Optional[str \| Path]' = None, silent: 'bool' = False, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'VanillaOptionPricingRunResult'` |
+| `price_option_grid` | `(self, *, valuation_time_utc: 'datetime', batch: 'JaniformVanillaOptionGridBatch', observed_data: 'Optional[CurrentStateEstimationRequest]' = None, boundary_state: 'Optional[HawkesExcitationState]' = None, include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'JaniformVanillaOptionGridBatchPricingResult'` |
+| `price_option_grid_surface` | `(self, *, valuation_time_utc: 'datetime', surface: 'JaniformVanillaOptionSurface', observed_data: 'Optional[CurrentStateEstimationRequest]' = None, boundary_state: 'Optional[HawkesExcitationState]' = None, include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None) -> 'JaniformVanillaOptionSurfacePricingResult'` |
+| `price_option_snapshot` | `(self, *, tick_data: 'TabularFrameInput', option_surface: 'TabularFrameInput', valuation_time_utc: 'Optional[datetime]' = None, option_type: 'Optional[VanillaOptionPayoffType \| str]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0, cpu_count: 'Optional[int]' = None, physical_distribution_diagnostics: 'bool \| ObservedOptionsPhysicalDistributionDiagnosticsRequest' = False, output_path: 'Optional[str \| Path]' = None, silent: 'bool' = False, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'JaniformObservedOptionSnapshotPricingResult'` |
+| `price_option_surface` | `(self, *, tick_data: 'TabularFrameInput', option_surface: 'TabularFrameInput', valuation_time_utc: 'Optional[datetime]' = None, option_type: 'Optional[VanillaOptionPayoffType \| str]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0, valuation_count: 'Optional[int]' = None, use_all_valuation_times: 'bool' = False, cpu_count: 'Optional[int]' = None, physical_distribution_diagnostics: 'bool \| ObservedOptionsPhysicalDistributionDiagnosticsRequest' = False, output_path: 'Optional[str \| Path]' = None, silent: 'bool' = False, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'JaniformObservedOptionSurfacePricingResult'` |
+| `price_swap` | `(self, *args: 'Any', **kwargs: 'Any') -> 'Any'` |
+| `save` | `(self, path: 'Optional[str \| Path]' = None) -> 'Path'` |
+| `simulate` | `(self, *, horizon_interval_count: 'int', seed: 'int' = 0, start_time_utc: 'Optional[datetime]' = None, interval: 'Optional[str \| timedelta]' = None, coarse: 'bool' = False, output_path: 'Optional[str \| Path]' = None, sink: 'Optional[SimulationArtifactSink]' = None, continuation_data: 'Optional[CurrentStateEstimationRequest]' = None, initial_excitation_state: 'Optional[HawkesExcitationState]' = None, initial_mean_reversion_boundary_state: 'Optional[MeanReversionBoundaryState]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'JaniformSimulationResult'` |
+| `summary` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-module-janiform-calibration-market-data"></a>
 ## `janiform.calibration.market_data`
@@ -4433,6 +5261,10 @@
 - Signature: `(timestamp_column: 'Optional[str]' = None, timestamp_semantics: 'CalibrationCoarseDataTimestampSemantics' = <CalibrationCoarseDataTimestampSemantics.BAR_OPEN_TIME: 'bar_open_time'>, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `timestamp_column`, `timestamp_semantics`, `interval_start_column`, `interval_end_column`, `open_column`, `high_column`, `low_column`, `close_column`, `volume_column`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationCoarseDataColumnMapping'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationcoarsedatatimestampsemantics"></a>
 ### `CalibrationCoarseDataTimestampSemantics`
 
@@ -4460,6 +5292,10 @@
 - Signature: `(discount_rate: 'float' = 0.0, carry_rate: 'float' = 0.0) -> 'None'`
 - Fields: `discount_rate`, `carry_rate`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationFlatCarryInput'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationinputfileformat"></a>
 ### `CalibrationInputFileFormat`
 
@@ -4478,12 +5314,20 @@
 - Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str') -> 'None'`
 - Fields: `path`, `file_format`, `provenance_label`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationInputFileReference'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationknownnewscolumnmapping"></a>
 ### `CalibrationKnownNewsColumnMapping`
 
 - Kind: `contract_model`
 - Signature: `(event_timestamp_column: 'str', event_identifier_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `event_timestamp_column`, `event_identifier_column`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationKnownNewsColumnMapping'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationknownnewsinput"></a>
 ### `CalibrationKnownNewsInput`
@@ -4492,12 +5336,20 @@
 - Signature: `(calendar_source: 'CalibrationInputFileReference', calendar_timezone: 'Optional[str]' = None) -> 'None'`
 - Fields: `calendar_source`, `calendar_timezone`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationKnownNewsInput'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdatacolumnmapping"></a>
 ### `CalibrationMarketDataColumnMapping`
 
 - Kind: `contract_model`
 - Signature: `(tick_data: 'CalibrationTickDataColumnMapping' = <factory>, coarse_data: 'Optional[CalibrationCoarseDataColumnMapping]' = None, option_surface: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, known_news: 'Optional[CalibrationKnownNewsColumnMapping]' = None) -> 'None'`
 - Fields: `tick_data`, `coarse_data`, `option_surface`, `known_news`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataColumnMapping'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdatanormalizationpolicy"></a>
 ### `CalibrationMarketDataNormalizationPolicy`
@@ -4506,12 +5358,20 @@
 - Signature: `(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'Optional[CalibrationDuplicateRecordPolicy]' = None, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'`
 - Fields: `timestamp_timezone`, `sort_records_by_timestamp`, `duplicate_record_policy`, `tick_price_input_policy`, `option_quote_input_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataNormalizationPolicy'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdataoutputpreferences"></a>
 ### `CalibrationMarketDataOutputPreferences`
 
 - Kind: `contract_model`
 - Signature: `(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_input_provenance_report: 'bool' = True) -> 'None'`
 - Fields: `execution_mode`, `disk_checkpoint_directory`, `emit_input_provenance_report`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataOutputPreferences'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdatapreprocessingsettings"></a>
 ### `CalibrationMarketDataPreprocessingSettings`
@@ -4520,6 +5380,10 @@
 - Signature: `(seasonality: 'Optional[CalibrationMarketDataSeasonalityPreprocessingSettings]' = None, return_components: 'Optional[CalibrationMarketDataReturnComponentsPreprocessingSettings]' = None) -> 'None'`
 - Fields: `seasonality`, `return_components`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataPreprocessingSettings'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings"></a>
 ### `CalibrationMarketDataReturnComponentsPreprocessingSettings`
 
@@ -4527,12 +5391,20 @@
 - Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'`
 - Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`, `tick_size`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataReturnComponentsPreprocessingSettings'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings"></a>
 ### `CalibrationMarketDataSeasonalityPreprocessingSettings`
 
 - Kind: `contract_model`
 - Signature: `(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'`
 - Fields: `session_filter`, `sparse_hour_event_threshold`, `known_news_overlay_log_adjustment`, `intraday_minutes_per_bin`, `intraday_smoothing_kernel`, `intraday_smoothing_bandwidth_bins`, `intraday_minimum_bin_events`, `day_of_week_minimum_bucket_events`, `day_of_year_minimum_bucket_events`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataSeasonalityPreprocessingSettings'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationmarketdataworkflowscope"></a>
 ### `CalibrationMarketDataWorkflowScope`
@@ -4552,6 +5424,10 @@
 - Signature: `(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'`
 - Fields: `calibration_grid_interval_hours`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMeanReversionConfiguration'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationoptionquoteinputpolicy"></a>
 ### `CalibrationOptionQuoteInputPolicy`
 
@@ -4570,6 +5446,10 @@
 - Signature: `(quote_timestamp_column: 'Optional[str]' = None, expiry_timestamp_column: 'Optional[str]' = None, strike_column: 'Optional[str]' = None, option_type_column: 'Optional[str]' = None, mid_price_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, implied_volatility_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `quote_timestamp_column`, `expiry_timestamp_column`, `strike_column`, `option_type_column`, `mid_price_column`, `bid_column`, `ask_column`, `implied_volatility_column`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationOptionSurfaceColumnMapping'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationsessionconfigurationinput"></a>
 ### `CalibrationSessionConfigurationInput`
 
@@ -4577,12 +5457,20 @@
 - Signature: `(exchange_code: 'str', session_definition_source: 'Optional[CalibrationInputFileReference]' = None, session_timezone: 'Optional[str]' = None) -> 'None'`
 - Fields: `exchange_code`, `session_definition_source`, `session_timezone`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationSessionConfigurationInput'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationtickdatacolumnmapping"></a>
 ### `CalibrationTickDataColumnMapping`
 
 - Kind: `contract_model`
 - Signature: `(timestamp_column: 'Optional[str]' = None, price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `timestamp_column`, `price_column`, `trade_sign_column`, `bid_column`, `ask_column`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationTickDataColumnMapping'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationtickobjectivedatausagepolicy"></a>
 ### `CalibrationTickObjectiveDataUsagePolicy`
@@ -4617,12 +5505,20 @@
 - Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
 - Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `seasonality_overlay_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationPreparationDiagnostics'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationprovenance"></a>
 ### `MarketDataCalibrationPreparationProvenance`
 
 - Kind: `contract_model`
 - Signature: `(tick_data_summary: 'MarketDataCalibrationSourceSummary', coarse_data_summary: 'Optional[MarketDataCalibrationSourceSummary]', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', calibration_evidence_routing: 'dict[str, Any]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', session_definition_path: 'Optional[str]', derived_trade_events_data_reference: 'str', derived_coarse_data_reference: 'Optional[str]', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'`
 - Fields: `tick_data_summary`, `coarse_data_summary`, `option_surface_summary`, `known_news_summary`, `calibration_evidence_routing`, `normalization_policy`, `workflow_scope`, `selected_stages`, `session_definition_path`, `derived_trade_events_data_reference`, `derived_coarse_data_reference`, `derived_option_surface_data_reference`, `derivation_policies`, `deterministic_defaults_applied`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationPreparationProvenance'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-marketdatacalibrationrequest"></a>
 ### `MarketDataCalibrationRequest`
@@ -4631,12 +5527,20 @@
 - Signature: `(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, coarse_data_source: 'Optional[CalibrationInputFileReference]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0, restart_pool_minimum_poll_rounds=1, restart_pool_rescue_poll_interval=2), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count_override: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing_enabled: 'bool' = False, diagnostics: 'CalibrationDiagnosticsRequest' = <factory>, stylized_fact_huber_cutoff: 'Optional[float]' = None, stylized_fact_admissibility_z_threshold: 'Optional[float]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>) -> 'None'`
 - Fields: `schema_version`, `run_id`, `tick_data_source`, `session_configuration`, `workflow_scope`, `normalization_policy`, `output_preferences`, `column_mapping`, `coarse_data_source`, `optimizer_settings_by_stage`, `preprocessing_settings`, `option_surface_source`, `option_surface_valuation_time_utc`, `carry`, `pricing_interval_schedule_policy`, `dynamics_search_restart_candidate_budget`, `calibration_effort`, `treat_calibration_warnings_as_errors`, `joint_refinement_option_refinement_candidate_count_override`, `joint_refinement_option_refinement_wall_clock_budget_millis`, `joint_refinement_audit_option_pricing_enabled`, `diagnostics`, `stylized_fact_huber_cutoff`, `stylized_fact_admissibility_z_threshold`, `known_news_inputs`, `mean_reversion`, `tick_objective_data_usage_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationRequest'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-marketdatacalibrationsourcesummary"></a>
 ### `MarketDataCalibrationSourceSummary`
 
 - Kind: `contract_model`
 - Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
 - Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `dropped_invalid_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationSourceSummary'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-marketdatasourceprobe"></a>
 ### `MarketDataSourceProbe`
@@ -4659,6 +5563,10 @@
 - Signature: `(model_forward_price: 'float', observed_forward_price: 'Optional[float]', absolute_delta: 'Optional[float]', relative_delta: 'Optional[float]', observed_bid_ask_forward_lower: 'Optional[float]', observed_bid_ask_forward_upper: 'Optional[float]', relative_warning_threshold: 'float', paired_strike_count: 'int', status: 'str', warning: 'Optional[str]' = None) -> 'None'`
 - Fields: `model_forward_price`, `observed_forward_price`, `absolute_delta`, `relative_delta`, `observed_bid_ask_forward_lower`, `observed_bid_ask_forward_upper`, `relative_warning_threshold`, `paired_strike_count`, `status`, `warning`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'OptionForwardParityCheck'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-optionforwardparitywarningpolicy"></a>
 ### `OptionForwardParityWarningPolicy`
 
@@ -4666,12 +5574,20 @@
 - Signature: `(relative_threshold: 'float' = 0.0025) -> 'None'`
 - Fields: `relative_threshold`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'OptionForwardParityWarningPolicy'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-preparedmarketdatacalibration"></a>
 ### `PreparedMarketDataCalibration`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', request: 'MarketDataCalibrationRequest', staged_request: 'StagedCalibrationRequest', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution', fit_warning: 'Optional[str]' = None, reference_price: 'Optional[float]' = None, prepared_data_reference: 'Optional[str]' = None, prepared_payload_path: 'Optional[str]' = None, staged_execution_input_path: 'Optional[str]' = None) -> 'None'`
 - Fields: `schema_version`, `request`, `staged_request`, `diagnostics`, `provenance`, `session_resolution`, `fit_warning`, `reference_price`, `prepared_data_reference`, `prepared_payload_path`, `staged_execution_input_path`
+
+| Method | Signature |
+|--------|-----------|
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-pricecoordinatepolicy"></a>
 ### `PriceCoordinatePolicy`
@@ -4691,6 +5607,10 @@
 - Signature: `(coordinate_role: 'str', coordinate_kind: 'str', tick_data_column_mapping: 'CalibrationTickDataColumnMapping', tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None) -> 'None'`
 - Fields: `coordinate_role`, `coordinate_kind`, `tick_data_column_mapping`, `tick_price_input_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPriceCoordinate'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-resolvedpricecoordinateset"></a>
 ### `ResolvedPriceCoordinateSet`
 
@@ -4698,12 +5618,20 @@
 - Signature: `(policy: 'PriceCoordinatePolicy', dynamics_fit: 'ResolvedPriceCoordinate', option_valuation: 'ResolvedPriceCoordinate', option_underlier_identity: 'Optional[str]' = None, tick_underlier_identity: 'Optional[str]' = None, roll_adjustment_evidence: 'Optional[ResolvedRollAdjustmentEvidence]' = None, parity_forward_check: 'Optional[OptionForwardParityCheck]' = None) -> 'None'`
 - Fields: `policy`, `dynamics_fit`, `option_valuation`, `option_underlier_identity`, `tick_underlier_identity`, `roll_adjustment_evidence`, `parity_forward_check`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPriceCoordinateSet'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-resolvedrolladjustmentevidence"></a>
 ### `ResolvedRollAdjustmentEvidence`
 
 - Kind: `contract_model`
 - Signature: `(adjusted_price_column: 'str', raw_price_column: 'str', adjustment_column: 'str', checked_row_count: 'int', max_absolute_relation_error: 'float') -> 'None'`
 - Fields: `adjusted_price_column`, `raw_price_column`, `adjustment_column`, `checked_row_count`, `max_absolute_relation_error`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedRollAdjustmentEvidence'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-coerce-price-coordinate-policy"></a>
 ### `coerce_price_coordinate_policy`
@@ -4832,6 +5760,10 @@
 - Signature: `(timestamp_column: 'Optional[str]' = None, timestamp_semantics: 'CalibrationCoarseDataTimestampSemantics' = <CalibrationCoarseDataTimestampSemantics.BAR_OPEN_TIME: 'bar_open_time'>, interval_start_column: 'Optional[str]' = None, interval_end_column: 'Optional[str]' = None, open_column: 'Optional[str]' = None, high_column: 'Optional[str]' = None, low_column: 'Optional[str]' = None, close_column: 'Optional[str]' = None, volume_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `timestamp_column`, `timestamp_semantics`, `interval_start_column`, `interval_end_column`, `open_column`, `high_column`, `low_column`, `close_column`, `volume_column`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationCoarseDataColumnMapping'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationcoarsedatatimestampsemantics"></a>
 ### `CalibrationCoarseDataTimestampSemantics`
 
@@ -4869,6 +5801,10 @@
 - Signature: `(discount_rate: 'float' = 0.0, carry_rate: 'float' = 0.0) -> 'None'`
 - Fields: `discount_rate`, `carry_rate`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationFlatCarryInput'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationinputfileformat"></a>
 ### `CalibrationInputFileFormat`
 
@@ -4887,12 +5823,20 @@
 - Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str') -> 'None'`
 - Fields: `path`, `file_format`, `provenance_label`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationInputFileReference'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationknownnewscolumnmapping"></a>
 ### `CalibrationKnownNewsColumnMapping`
 
 - Kind: `contract_model`
 - Signature: `(event_timestamp_column: 'str', event_identifier_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `event_timestamp_column`, `event_identifier_column`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationKnownNewsColumnMapping'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationknownnewsinput"></a>
 ### `CalibrationKnownNewsInput`
@@ -4901,12 +5845,20 @@
 - Signature: `(calendar_source: 'CalibrationInputFileReference', calendar_timezone: 'Optional[str]' = None) -> 'None'`
 - Fields: `calendar_source`, `calendar_timezone`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationKnownNewsInput'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatacolumnmapping"></a>
 ### `CalibrationMarketDataColumnMapping`
 
 - Kind: `contract_model`
 - Signature: `(tick_data: 'CalibrationTickDataColumnMapping' = <factory>, coarse_data: 'Optional[CalibrationCoarseDataColumnMapping]' = None, option_surface: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, known_news: 'Optional[CalibrationKnownNewsColumnMapping]' = None) -> 'None'`
 - Fields: `tick_data`, `coarse_data`, `option_surface`, `known_news`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataColumnMapping'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatanormalizationpolicy"></a>
 ### `CalibrationMarketDataNormalizationPolicy`
@@ -4915,12 +5867,20 @@
 - Signature: `(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'Optional[CalibrationDuplicateRecordPolicy]' = None, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'`
 - Fields: `timestamp_timezone`, `sort_records_by_timestamp`, `duplicate_record_policy`, `tick_price_input_policy`, `option_quote_input_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataNormalizationPolicy'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataoutputpreferences"></a>
 ### `CalibrationMarketDataOutputPreferences`
 
 - Kind: `contract_model`
 - Signature: `(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_input_provenance_report: 'bool' = True) -> 'None'`
 - Fields: `execution_mode`, `disk_checkpoint_directory`, `emit_input_provenance_report`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataOutputPreferences'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatapreprocessingsettings"></a>
 ### `CalibrationMarketDataPreprocessingSettings`
@@ -4929,6 +5889,10 @@
 - Signature: `(seasonality: 'Optional[CalibrationMarketDataSeasonalityPreprocessingSettings]' = None, return_components: 'Optional[CalibrationMarketDataReturnComponentsPreprocessingSettings]' = None) -> 'None'`
 - Fields: `seasonality`, `return_components`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataPreprocessingSettings'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings"></a>
 ### `CalibrationMarketDataReturnComponentsPreprocessingSettings`
 
@@ -4936,12 +5900,20 @@
 - Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'`
 - Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`, `tick_size`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataReturnComponentsPreprocessingSettings'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings"></a>
 ### `CalibrationMarketDataSeasonalityPreprocessingSettings`
 
 - Kind: `contract_model`
 - Signature: `(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'`
 - Fields: `session_filter`, `sparse_hour_event_threshold`, `known_news_overlay_log_adjustment`, `intraday_minutes_per_bin`, `intraday_smoothing_kernel`, `intraday_smoothing_bandwidth_bins`, `intraday_minimum_bin_events`, `day_of_week_minimum_bucket_events`, `day_of_year_minimum_bucket_events`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMarketDataSeasonalityPreprocessingSettings'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataworkflowscope"></a>
 ### `CalibrationMarketDataWorkflowScope`
@@ -4961,6 +5933,10 @@
 - Signature: `(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'`
 - Fields: `calibration_grid_interval_hours`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationMeanReversionConfiguration'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationoptionquoteinputpolicy"></a>
 ### `CalibrationOptionQuoteInputPolicy`
 
@@ -4979,6 +5955,10 @@
 - Signature: `(quote_timestamp_column: 'Optional[str]' = None, expiry_timestamp_column: 'Optional[str]' = None, strike_column: 'Optional[str]' = None, option_type_column: 'Optional[str]' = None, mid_price_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, implied_volatility_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `quote_timestamp_column`, `expiry_timestamp_column`, `strike_column`, `option_type_column`, `mid_price_column`, `bid_column`, `ask_column`, `implied_volatility_column`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationOptionSurfaceColumnMapping'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationsessionconfigurationinput"></a>
 ### `CalibrationSessionConfigurationInput`
 
@@ -4986,12 +5966,20 @@
 - Signature: `(exchange_code: 'str', session_definition_source: 'Optional[CalibrationInputFileReference]' = None, session_timezone: 'Optional[str]' = None) -> 'None'`
 - Fields: `exchange_code`, `session_definition_source`, `session_timezone`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationSessionConfigurationInput'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationtickdatacolumnmapping"></a>
 ### `CalibrationTickDataColumnMapping`
 
 - Kind: `contract_model`
 - Signature: `(timestamp_column: 'Optional[str]' = None, price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'`
 - Fields: `timestamp_column`, `price_column`, `trade_sign_column`, `bid_column`, `ask_column`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationTickDataColumnMapping'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-contracts-calibrationtickobjectivedatausagepolicy"></a>
 ### `CalibrationTickObjectiveDataUsagePolicy`
@@ -5078,6 +6066,10 @@
 - Signature: `(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, coarse_data_source: 'Optional[CalibrationInputFileReference]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0, restart_pool_minimum_poll_rounds=1, restart_pool_rescue_poll_interval=2), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count_override: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing_enabled: 'bool' = False, diagnostics: 'CalibrationDiagnosticsRequest' = <factory>, stylized_fact_huber_cutoff: 'Optional[float]' = None, stylized_fact_admissibility_z_threshold: 'Optional[float]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>) -> 'None'`
 - Fields: `schema_version`, `run_id`, `tick_data_source`, `session_configuration`, `workflow_scope`, `normalization_policy`, `output_preferences`, `column_mapping`, `coarse_data_source`, `optimizer_settings_by_stage`, `preprocessing_settings`, `option_surface_source`, `option_surface_valuation_time_utc`, `carry`, `pricing_interval_schedule_policy`, `dynamics_search_restart_candidate_budget`, `calibration_effort`, `treat_calibration_warnings_as_errors`, `joint_refinement_option_refinement_candidate_count_override`, `joint_refinement_option_refinement_wall_clock_budget_millis`, `joint_refinement_audit_option_pricing_enabled`, `diagnostics`, `stylized_fact_huber_cutoff`, `stylized_fact_admissibility_z_threshold`, `known_news_inputs`, `mean_reversion`, `tick_objective_data_usage_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationRequest'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-request-deserialize-market-data-calibration-request"></a>
 ### `deserialize_market_data_calibration_request`
 
@@ -5141,6 +6133,11 @@
 - Kind: `contract_model`
 - Signature: `(staged_request: 'StagedCalibrationRequest', prepared_handle: 'PreparedCalibrationExecutionHandleProtocol', session_resolution: 'MarketDataSessionResolution', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance', fit_warning: 'Optional[str]', reference_price: 'Optional[float]') -> 'None'`
 - Fields: `staged_request`, `prepared_handle`, `session_resolution`, `diagnostics`, `provenance`, `fit_warning`, `reference_price`
+
+| Method | Signature |
+|--------|-----------|
+| `prepared_payload` | `(self) -> 'dict[str, Any]'` |
+| `prepared_payload_json` | `(self) -> 'str'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-translation-normalizedmarketdatasource"></a>
 ### `NormalizedMarketDataSource`
@@ -5216,12 +6213,20 @@
 - Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
 - Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `seasonality_overlay_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationPreparationDiagnostics'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationprovenance"></a>
 ### `MarketDataCalibrationPreparationProvenance`
 
 - Kind: `contract_model`
 - Signature: `(tick_data_summary: 'MarketDataCalibrationSourceSummary', coarse_data_summary: 'Optional[MarketDataCalibrationSourceSummary]', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', calibration_evidence_routing: 'dict[str, Any]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', session_definition_path: 'Optional[str]', derived_trade_events_data_reference: 'str', derived_coarse_data_reference: 'Optional[str]', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'`
 - Fields: `tick_data_summary`, `coarse_data_summary`, `option_surface_summary`, `known_news_summary`, `calibration_evidence_routing`, `normalization_policy`, `workflow_scope`, `selected_stages`, `session_definition_path`, `derived_trade_events_data_reference`, `derived_coarse_data_reference`, `derived_option_surface_data_reference`, `derivation_policies`, `deterministic_defaults_applied`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationPreparationProvenance'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationsourcesummary"></a>
 ### `MarketDataCalibrationSourceSummary`
@@ -5230,12 +6235,20 @@
 - Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', dropped_invalid_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'`
 - Fields: `path`, `file_format`, `provenance_label`, `source_row_count`, `retained_row_count`, `dropped_duplicate_row_count`, `dropped_invalid_row_count`, `sort_records_by_timestamp`, `applied_timestamp_timezone`, `canonical_value_field`, `value_mapping_policy`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'MarketDataCalibrationSourceSummary'` |
+
 <a id="python-api-symbol-janiform-calibration-market-data-workflow-preparedmarketdatacalibration"></a>
 ### `PreparedMarketDataCalibration`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', request: 'MarketDataCalibrationRequest', staged_request: 'StagedCalibrationRequest', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution', fit_warning: 'Optional[str]' = None, reference_price: 'Optional[float]' = None, prepared_data_reference: 'Optional[str]' = None, prepared_payload_path: 'Optional[str]' = None, staged_execution_input_path: 'Optional[str]' = None) -> 'None'`
 - Fields: `schema_version`, `request`, `staged_request`, `diagnostics`, `provenance`, `session_resolution`, `fit_warning`, `reference_price`, `prepared_data_reference`, `prepared_payload_path`, `staged_execution_input_path`
+
+| Method | Signature |
+|--------|-----------|
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-workflow-prepare-market-data-calibration"></a>
 ### `prepare_market_data_calibration`
@@ -5347,12 +6360,20 @@
 - Signature: `(calendar_timezone_name: 'Optional[str]' = None, additional_events: 'tuple[KnownNewsEvent, ...]' = (), removed_event_ids: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `calendar_timezone_name`, `additional_events`, `removed_event_ids`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsConfigurationOverridePatch'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-knownnewsevent"></a>
 ### `KnownNewsEvent`
 
 - Kind: `contract_model`
 - Signature: `(event_id: 'str', scheduled_at: 'datetime', event_name: 'Optional[str]' = None, tags: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `event_id`, `scheduled_at`, `event_name`, `tags`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsEvent'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-knownnewsexplicitconfiguration"></a>
 ### `KnownNewsExplicitConfiguration`
@@ -5361,6 +6382,10 @@
 - Signature: `(events: 'tuple[KnownNewsEvent, ...]', calendar_timezone_name: 'Optional[str]' = None) -> 'None'`
 - Fields: `events`, `calendar_timezone_name`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsExplicitConfiguration'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-knownnewspresetartifact"></a>
 ### `KnownNewsPresetArtifact`
 
@@ -5368,12 +6393,20 @@
 - Signature: `(schema_version: 'str', category: 'PresetCategory', preset_name: 'str', metadata: 'PresetArtifactMetadata', configuration: 'KnownNewsExplicitConfiguration') -> 'None'`
 - Fields: `schema_version`, `category`, `preset_name`, `metadata`, `configuration`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsPresetArtifact'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-knownnewspresetreference"></a>
 ### `KnownNewsPresetReference`
 
 - Kind: `contract_model`
 - Signature: `(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[KnownNewsExplicitConfiguration]' = None, override_patch: 'Optional[KnownNewsConfigurationOverridePatch]' = None) -> 'None'`
 - Fields: `usage_mode`, `registry_scope`, `preset_name`, `configuration`, `override_patch`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'known_news_reference') -> 'KnownNewsPresetReference'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-market-profile-preset-artifact-schema-version"></a>
 ### `MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION`
@@ -5388,12 +6421,20 @@
 - Signature: `(canonical_name: 'str', aliases: 'tuple[str, ...]') -> 'None'`
 - Fields: `canonical_name`, `aliases`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketProfileColumnAliasHint'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-marketprofileexplicitconfiguration"></a>
 ### `MarketProfileExplicitConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `profile_name`, `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `column_alias_hints`, `default_calibration_hint_ids`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketProfileExplicitConfiguration'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-marketprofileknownnewspolicy"></a>
 ### `MarketProfileKnownNewsPolicy`
@@ -5412,6 +6453,10 @@
 - Signature: `(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'`
 - Fields: `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `column_alias_hints`, `default_calibration_hint_ids`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketProfileOverridePatch'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-marketprofilepresetartifact"></a>
 ### `MarketProfilePresetArtifact`
 
@@ -5419,12 +6464,20 @@
 - Signature: `(schema_version: 'str', category: 'PresetCategory', preset_name: 'str', metadata: 'PresetArtifactMetadata', configuration: 'MarketProfileExplicitConfiguration') -> 'None'`
 - Fields: `schema_version`, `category`, `preset_name`, `metadata`, `configuration`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'MarketProfilePresetArtifact'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-marketprofilereference"></a>
 ### `MarketProfileReference`
 
 - Kind: `contract_model`
 - Signature: `(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'`
 - Fields: `usage_mode`, `registry_scope`, `preset_name`, `configuration`, `override_patch`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'market_profile_reference') -> 'MarketProfileReference'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-preset-content-hash-algorithm"></a>
 ### `PRESET_CONTENT_HASH_ALGORITHM`
@@ -5445,12 +6498,20 @@
 - Signature: `(display_name: 'str', description: 'str', version_label: 'str', provenance: 'PresetArtifactProvenance') -> 'None'`
 - Fields: `display_name`, `description`, `version_label`, `provenance`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'PresetArtifactMetadata'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-presetartifactprovenance"></a>
 ### `PresetArtifactProvenance`
 
 - Kind: `contract_model`
 - Signature: `(bundle_id: 'str', bundle_version: 'str', generator_id: 'str', generator_version: 'str', generated_on: 'str', source_manifest_ids: 'tuple[str, ...]', upstream_source_versions: 'tuple[PresetUpstreamSourceVersion, ...]' = (), content_hash: 'Optional[str]' = None) -> 'None'`
 - Fields: `bundle_id`, `bundle_version`, `generator_id`, `generator_version`, `generated_on`, `source_manifest_ids`, `upstream_source_versions`, `content_hash`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'PresetArtifactProvenance'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-presetcategory"></a>
 ### `PresetCategory`
@@ -5469,6 +6530,10 @@
 - Kind: `contract_model`
 - Signature: `(category: 'PresetCategory', preset_name: 'str', display_name: 'str', description: 'str', version_label: 'str', registry_scope: 'PresetRegistryScope', content_hash: 'str', artifact_path: 'Optional[str]' = None) -> 'None'`
 - Fields: `category`, `preset_name`, `display_name`, `description`, `version_label`, `registry_scope`, `content_hash`, `artifact_path`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'PresetIndexEntry'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-presetreferenceusagemode"></a>
 ### `PresetReferenceUsageMode`
@@ -5506,6 +6571,10 @@
 - Signature: `(source_name: 'str', version_label: 'str') -> 'None'`
 - Fields: `source_name`, `version_label`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'PresetUpstreamSourceVersion'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolved-preset-snapshot-schema-version"></a>
 ### `RESOLVED_PRESET_SNAPSHOT_SCHEMA_VERSION`
 
@@ -5525,12 +6594,20 @@
 - Signature: `(configuration: 'KnownNewsExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, applied_override_fields: 'tuple[str, ...]' = (), recommended_reference: 'Optional[KnownNewsPresetReference]' = None, recommendation_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, recommendation_applied: 'bool' = False) -> 'None'`
 - Fields: `configuration`, `source_kind`, `selected_preset`, `applied_override_fields`, `recommended_reference`, `recommendation_policy`, `recommendation_applied`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedKnownNewsComponent'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolvedmarketprofilecomponent"></a>
 ### `ResolvedMarketProfileComponent`
 
 - Kind: `contract_model`
 - Signature: `(configuration: 'MarketProfileExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, applied_override_fields: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `configuration`, `source_kind`, `selected_preset`, `applied_override_fields`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedMarketProfileComponent'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-resolvedpresetselection"></a>
 ### `ResolvedPresetSelection`
@@ -5539,12 +6616,20 @@
 - Signature: `(category: 'PresetCategory', registry_scope: 'PresetRegistryScope', preset_name: 'str') -> 'None'`
 - Fields: `category`, `registry_scope`, `preset_name`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPresetSelection'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolvedpresetsnapshot"></a>
 ### `ResolvedPresetSnapshot`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', requested_category: 'PresetCategory', requested_scope: 'PresetRegistryScope', preset_name: 'str', session_preset: 'Optional[SessionPresetArtifact]' = None, known_news_preset: 'Optional[KnownNewsPresetArtifact]' = None, market_profile_preset: 'Optional[MarketProfilePresetArtifact]' = None) -> 'None'`
 - Fields: `schema_version`, `requested_category`, `requested_scope`, `preset_name`, `session_preset`, `known_news_preset`, `market_profile_preset`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPresetSnapshot'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-resolvedpresetworkflowconfiguration"></a>
 ### `ResolvedPresetWorkflowConfiguration`
@@ -5553,12 +6638,20 @@
 - Signature: `(schema_version: 'str', session: 'ResolvedSessionComponent', known_news: 'ResolvedKnownNewsComponent', diagnostics: 'tuple[ResolvedWorkflowDiagnostic, ...]' = (), market_profile: 'Optional[ResolvedMarketProfileComponent]' = None) -> 'None'`
 - Fields: `schema_version`, `session`, `known_news`, `diagnostics`, `market_profile`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPresetWorkflowConfiguration'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolvedsessioncomponent"></a>
 ### `ResolvedSessionComponent`
 
 - Kind: `contract_model`
 - Signature: `(configuration: 'SessionExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, inferred_from_data: 'bool' = False, inference_resolution: 'Optional[MarketDataSessionResolution]' = None, applied_override_fields: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `configuration`, `source_kind`, `selected_preset`, `inferred_from_data`, `inference_resolution`, `applied_override_fields`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedSessionComponent'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-resolvedworkflowcomponent"></a>
 ### `ResolvedWorkflowComponent`
@@ -5590,6 +6683,10 @@
 - Signature: `(component: 'ResolvedWorkflowComponent', severity: 'ResolvedWorkflowDiagnosticSeverity', code: 'str', message: 'str') -> 'None'`
 - Fields: `component`, `severity`, `code`, `message`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedWorkflowDiagnostic'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolvedworkflowdiagnosticseverity"></a>
 ### `ResolvedWorkflowDiagnosticSeverity`
 
@@ -5613,12 +6710,20 @@
 - Signature: `(timezone_name: 'Optional[str]' = None, regular_session_windows: 'Optional[tuple[MarketDataSessionRegularWindow, ...]]' = None, recurring_closed_windows: 'Optional[tuple[MarketDataSessionRecurringClosedWindow, ...]]' = None) -> 'None'`
 - Fields: `timezone_name`, `regular_session_windows`, `recurring_closed_windows`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SessionConfigurationOverridePatch'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-sessionexplicitconfiguration"></a>
 ### `SessionExplicitConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(exchange_code: 'str', timezone_name: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]' = (), exchange_name: 'Optional[str]' = None) -> 'None'`
 - Fields: `exchange_code`, `timezone_name`, `regular_session_windows`, `recurring_closed_windows`, `exchange_name`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SessionExplicitConfiguration'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-sessionpresetartifact"></a>
 ### `SessionPresetArtifact`
@@ -5627,12 +6732,20 @@
 - Signature: `(schema_version: 'str', category: 'PresetCategory', preset_name: 'str', metadata: 'PresetArtifactMetadata', configuration: 'SessionExplicitConfiguration') -> 'None'`
 - Fields: `schema_version`, `category`, `preset_name`, `metadata`, `configuration`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'SessionPresetArtifact'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-sessionpresetreference"></a>
 ### `SessionPresetReference`
 
 - Kind: `contract_model`
 - Signature: `(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[SessionExplicitConfiguration]' = None, override_patch: 'Optional[SessionConfigurationOverridePatch]' = None, exchange_code_hint: 'Optional[str]' = None, timezone_name_hint: 'Optional[str]' = None) -> 'None'`
 - Fields: `usage_mode`, `registry_scope`, `preset_name`, `configuration`, `override_patch`, `exchange_code_hint`, `timezone_name_hint`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'session_reference') -> 'SessionPresetReference'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-compute-preset-artifact-content-hash"></a>
 ### `compute_preset_artifact_content_hash`
@@ -5754,12 +6867,20 @@
 - Signature: `(calendar_timezone_name: 'Optional[str]' = None, additional_events: 'tuple[KnownNewsEvent, ...]' = (), removed_event_ids: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `calendar_timezone_name`, `additional_events`, `removed_event_ids`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsConfigurationOverridePatch'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-references-knownnewsevent"></a>
 ### `KnownNewsEvent`
 
 - Kind: `contract_model`
 - Signature: `(event_id: 'str', scheduled_at: 'datetime', event_name: 'Optional[str]' = None, tags: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `event_id`, `scheduled_at`, `event_name`, `tags`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsEvent'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-references-knownnewsexplicitconfiguration"></a>
 ### `KnownNewsExplicitConfiguration`
@@ -5768,12 +6889,20 @@
 - Signature: `(events: 'tuple[KnownNewsEvent, ...]', calendar_timezone_name: 'Optional[str]' = None) -> 'None'`
 - Fields: `events`, `calendar_timezone_name`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'KnownNewsExplicitConfiguration'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-references-knownnewspresetreference"></a>
 ### `KnownNewsPresetReference`
 
 - Kind: `contract_model`
 - Signature: `(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[KnownNewsExplicitConfiguration]' = None, override_patch: 'Optional[KnownNewsConfigurationOverridePatch]' = None) -> 'None'`
 - Fields: `usage_mode`, `registry_scope`, `preset_name`, `configuration`, `override_patch`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'known_news_reference') -> 'KnownNewsPresetReference'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-references-marketprofilecolumnaliashint"></a>
 ### `MarketProfileColumnAliasHint`
@@ -5782,12 +6911,20 @@
 - Signature: `(canonical_name: 'str', aliases: 'tuple[str, ...]') -> 'None'`
 - Fields: `canonical_name`, `aliases`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketProfileColumnAliasHint'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-references-marketprofileexplicitconfiguration"></a>
 ### `MarketProfileExplicitConfiguration`
 
 - Kind: `contract_model`
 - Signature: `(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `profile_name`, `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `column_alias_hints`, `default_calibration_hint_ids`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketProfileExplicitConfiguration'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-references-marketprofileknownnewspolicy"></a>
 ### `MarketProfileKnownNewsPolicy`
@@ -5806,12 +6943,20 @@
 - Signature: `(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'`
 - Fields: `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `column_alias_hints`, `default_calibration_hint_ids`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketProfileOverridePatch'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-references-marketprofilereference"></a>
 ### `MarketProfileReference`
 
 - Kind: `contract_model`
 - Signature: `(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'`
 - Fields: `usage_mode`, `registry_scope`, `preset_name`, `configuration`, `override_patch`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'market_profile_reference') -> 'MarketProfileReference'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-references-presetreferenceusagemode"></a>
 ### `PresetReferenceUsageMode`
@@ -5841,6 +6986,10 @@
 - Signature: `(timezone_name: 'Optional[str]' = None, regular_session_windows: 'Optional[tuple[MarketDataSessionRegularWindow, ...]]' = None, recurring_closed_windows: 'Optional[tuple[MarketDataSessionRecurringClosedWindow, ...]]' = None) -> 'None'`
 - Fields: `timezone_name`, `regular_session_windows`, `recurring_closed_windows`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SessionConfigurationOverridePatch'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-references-sessionexplicitconfiguration"></a>
 ### `SessionExplicitConfiguration`
 
@@ -5848,12 +6997,20 @@
 - Signature: `(exchange_code: 'str', timezone_name: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]' = (), exchange_name: 'Optional[str]' = None) -> 'None'`
 - Fields: `exchange_code`, `timezone_name`, `regular_session_windows`, `recurring_closed_windows`, `exchange_name`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SessionExplicitConfiguration'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-references-sessionpresetreference"></a>
 ### `SessionPresetReference`
 
 - Kind: `contract_model`
 - Signature: `(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[SessionExplicitConfiguration]' = None, override_patch: 'Optional[SessionConfigurationOverridePatch]' = None, exchange_code_hint: 'Optional[str]' = None, timezone_name_hint: 'Optional[str]' = None) -> 'None'`
 - Fields: `usage_mode`, `registry_scope`, `preset_name`, `configuration`, `override_patch`, `exchange_code_hint`, `timezone_name_hint`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'session_reference') -> 'SessionPresetReference'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-references-deserialize-known-news-preset-reference"></a>
 ### `deserialize_known_news_preset_reference`
@@ -5941,12 +7098,20 @@
 - Signature: `(schema_version: 'str', bundle_id: 'str', bundle_version: 'str', generated_on: 'str', entries: 'tuple[PresetIndexEntry, ...]') -> 'None'`
 - Fields: `schema_version`, `bundle_id`, `bundle_version`, `generated_on`, `entries`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'BundledPresetRegistryIndex'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-registry-presetindexentry"></a>
 ### `PresetIndexEntry`
 
 - Kind: `contract_model`
 - Signature: `(category: 'PresetCategory', preset_name: 'str', display_name: 'str', description: 'str', version_label: 'str', registry_scope: 'PresetRegistryScope', content_hash: 'str', artifact_path: 'Optional[str]' = None) -> 'None'`
 - Fields: `category`, `preset_name`, `display_name`, `description`, `version_label`, `registry_scope`, `content_hash`, `artifact_path`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'PresetIndexEntry'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-registry-presetregistry"></a>
 ### `PresetRegistry`
@@ -5978,6 +7143,10 @@
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', requested_category: 'PresetCategory', requested_scope: 'PresetRegistryScope', preset_name: 'str', session_preset: 'Optional[SessionPresetArtifact]' = None, known_news_preset: 'Optional[KnownNewsPresetArtifact]' = None, market_profile_preset: 'Optional[MarketProfilePresetArtifact]' = None) -> 'None'`
 - Fields: `schema_version`, `requested_category`, `requested_scope`, `preset_name`, `session_preset`, `known_news_preset`, `market_profile_preset`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPresetSnapshot'` |
 
 <a id="python-api-module-janiform-calibration-presets-resolution"></a>
 ## `janiform.calibration.presets.resolution`
@@ -6022,12 +7191,20 @@
 - Signature: `(configuration: 'KnownNewsExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, applied_override_fields: 'tuple[str, ...]' = (), recommended_reference: 'Optional[KnownNewsPresetReference]' = None, recommendation_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, recommendation_applied: 'bool' = False) -> 'None'`
 - Fields: `configuration`, `source_kind`, `selected_preset`, `applied_override_fields`, `recommended_reference`, `recommendation_policy`, `recommendation_applied`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedKnownNewsComponent'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolution-resolvedmarketprofilecomponent"></a>
 ### `ResolvedMarketProfileComponent`
 
 - Kind: `contract_model`
 - Signature: `(configuration: 'MarketProfileExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, applied_override_fields: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `configuration`, `source_kind`, `selected_preset`, `applied_override_fields`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedMarketProfileComponent'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-resolution-resolvedpresetselection"></a>
 ### `ResolvedPresetSelection`
@@ -6036,6 +7213,10 @@
 - Signature: `(category: 'PresetCategory', registry_scope: 'PresetRegistryScope', preset_name: 'str') -> 'None'`
 - Fields: `category`, `registry_scope`, `preset_name`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPresetSelection'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolution-resolvedpresetworkflowconfiguration"></a>
 ### `ResolvedPresetWorkflowConfiguration`
 
@@ -6043,12 +7224,20 @@
 - Signature: `(schema_version: 'str', session: 'ResolvedSessionComponent', known_news: 'ResolvedKnownNewsComponent', diagnostics: 'tuple[ResolvedWorkflowDiagnostic, ...]' = (), market_profile: 'Optional[ResolvedMarketProfileComponent]' = None) -> 'None'`
 - Fields: `schema_version`, `session`, `known_news`, `diagnostics`, `market_profile`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedPresetWorkflowConfiguration'` |
+
 <a id="python-api-symbol-janiform-calibration-presets-resolution-resolvedsessioncomponent"></a>
 ### `ResolvedSessionComponent`
 
 - Kind: `contract_model`
 - Signature: `(configuration: 'SessionExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, inferred_from_data: 'bool' = False, inference_resolution: 'Optional[MarketDataSessionResolution]' = None, applied_override_fields: 'tuple[str, ...]' = ()) -> 'None'`
 - Fields: `configuration`, `source_kind`, `selected_preset`, `inferred_from_data`, `inference_resolution`, `applied_override_fields`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedSessionComponent'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-resolution-resolvedworkflowcomponent"></a>
 ### `ResolvedWorkflowComponent`
@@ -6079,6 +7268,10 @@
 - Kind: `contract_model`
 - Signature: `(component: 'ResolvedWorkflowComponent', severity: 'ResolvedWorkflowDiagnosticSeverity', code: 'str', message: 'str') -> 'None'`
 - Fields: `component`, `severity`, `code`, `message`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'ResolvedWorkflowDiagnostic'` |
 
 <a id="python-api-symbol-janiform-calibration-presets-resolution-resolvedworkflowdiagnosticseverity"></a>
 ### `ResolvedWorkflowDiagnosticSeverity`
@@ -6140,6 +7333,10 @@
 - Signature: `(start_weekday: 'str', start_time: 'str', end_weekday: 'str', end_time: 'str', reason: 'str') -> 'None'`
 - Fields: `start_weekday`, `start_time`, `end_weekday`, `end_time`, `reason`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketDataSessionRecurringClosedWindow'` |
+
 <a id="python-api-symbol-janiform-calibration-sessions-marketdatasessionregularwindow"></a>
 ### `MarketDataSessionRegularWindow`
 
@@ -6147,12 +7344,20 @@
 - Signature: `(weekday: 'str', label: 'str', open_time: 'str', close_time: 'str') -> 'None'`
 - Fields: `weekday`, `label`, `open_time`, `close_time`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketDataSessionRegularWindow'` |
+
 <a id="python-api-symbol-janiform-calibration-sessions-marketdatasessionresolution"></a>
 ### `MarketDataSessionResolution`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', resolution_kind: 'str', provenance_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'`
 - Fields: `schema_version`, `resolution_kind`, `provenance_kind`, `selected_policy_id`, `manual_override_applied`, `exchange_code`, `exchange_name`, `resolved_timezone_name`, `timezone_source`, `open_session_duration_hours_per_week`, `confidence_score`, `confidence_label`, `regular_session_windows`, `recurring_closed_windows`, `reasons`, `ambiguity_warnings`, `metadata_discrepancies`, `resolved_session_definition_json`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'MarketDataSessionResolution'` |
 
 <a id="python-api-symbol-janiform-calibration-sessions-session-resolution-error"></a>
 ### `session_resolution_error`
@@ -6204,6 +7409,10 @@
 - Signature: `(start_weekday: 'str', start_time: 'str', end_weekday: 'str', end_time: 'str', reason: 'str') -> 'None'`
 - Fields: `start_weekday`, `start_time`, `end_weekday`, `end_time`, `reason`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketDataSessionRecurringClosedWindow'` |
+
 <a id="python-api-symbol-janiform-calibration-sessions-contracts-marketdatasessionregularwindow"></a>
 ### `MarketDataSessionRegularWindow`
 
@@ -6211,12 +7420,20 @@
 - Signature: `(weekday: 'str', label: 'str', open_time: 'str', close_time: 'str') -> 'None'`
 - Fields: `weekday`, `label`, `open_time`, `close_time`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketDataSessionRegularWindow'` |
+
 <a id="python-api-symbol-janiform-calibration-sessions-contracts-marketdatasessionresolution"></a>
 ### `MarketDataSessionResolution`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', resolution_kind: 'str', provenance_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'`
 - Fields: `schema_version`, `resolution_kind`, `provenance_kind`, `selected_policy_id`, `manual_override_applied`, `exchange_code`, `exchange_name`, `resolved_timezone_name`, `timezone_source`, `open_session_duration_hours_per_week`, `confidence_score`, `confidence_label`, `regular_session_windows`, `recurring_closed_windows`, `reasons`, `ambiguity_warnings`, `metadata_discrepancies`, `resolved_session_definition_json`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'Mapping[str, Any] \| Any', *, field_path: 'str') -> 'MarketDataSessionResolution'` |
 
 <a id="python-api-symbol-janiform-calibration-sessions-contracts-session-resolution-error"></a>
 ### `session_resolution_error`
@@ -6310,6 +7527,10 @@
 - Signature: `(checkpoint_reference: 'str', completed_stage: 'CalibrationStage', completed_stage_position: 'int', execution_mode: 'CalibrationExecutionMode') -> 'None'`
 - Fields: `checkpoint_reference`, `completed_stage`, `completed_stage_position`, `execution_mode`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationCheckpointMetadata'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-calibrationexecutionmode"></a>
 ### `CalibrationExecutionMode`
 
@@ -6326,6 +7547,10 @@
 - Kind: `contract_model`
 - Signature: `(failure_kind: 'str', error_message: 'Optional[str]' = None, stage: 'Optional[CalibrationStage]' = None, checkpoint_reference: 'Optional[str]' = None, artifact_reference: 'Optional[str]' = None, run_id: 'Optional[str]' = None) -> 'None'`
 - Fields: `failure_kind`, `error_message`, `stage`, `checkpoint_reference`, `artifact_reference`, `run_id`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationFailureDetails'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-calibrationhandofftransport"></a>
 ### `CalibrationHandoffTransport`
@@ -6344,6 +7569,10 @@
 - Signature: `(solver_name: 'str', max_iterations: 'int', cpu_count: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'`
 - Fields: `solver_name`, `max_iterations`, `cpu_count`, `absolute_tolerance`, `relative_tolerance`, `constraint_penalty_weight`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationOptimizerSettings'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-calibrationpreparedexecutionpayloadfileformat"></a>
 ### `CalibrationPreparedExecutionPayloadFileFormat`
 
@@ -6360,12 +7589,20 @@
 - Signature: `(path: 'str', file_format: 'CalibrationPreparedExecutionPayloadFileFormat' = <CalibrationPreparedExecutionPayloadFileFormat.JSON: 'json'>) -> 'None'`
 - Fields: `path`, `file_format`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationPreparedExecutionPayloadFileReference'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-calibrationresumesettings"></a>
 ### `CalibrationResumeSettings`
 
 - Kind: `contract_model`
 - Signature: `(source: 'CalibrationResumeSource', resume_from_stage: 'Optional[CalibrationStage]' = None, checkpoint_reference: 'Optional[str]' = None) -> 'None'`
 - Fields: `source`, `resume_from_stage`, `checkpoint_reference`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationResumeSettings'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-calibrationresumesource"></a>
 ### `CalibrationResumeSource`
@@ -6384,12 +7621,20 @@
 - Signature: `(exchange_code: 'str', trade_events_data_reference: 'str', option_surface_data_reference: 'Optional[str]' = None) -> 'None'`
 - Fields: `exchange_code`, `trade_events_data_reference`, `option_surface_data_reference`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationRunDataInputs'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-calibrationrunseedsettings"></a>
 ### `CalibrationRunSeedSettings`
 
 - Kind: `contract_model`
 - Signature: `(global_seed: 'int', stage_seed_overrides: 'tuple[CalibrationStageSeedOverride, ...]' = ()) -> 'None'`
 - Fields: `global_seed`, `stage_seed_overrides`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationRunSeedSettings'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-calibrationstage"></a>
 ### `CalibrationStage`
@@ -6426,12 +7671,20 @@
 - Signature: `(from_stage: 'CalibrationStage', to_stage: 'CalibrationStage', transport: 'CalibrationHandoffTransport', artifact_reference: 'Optional[str]' = None) -> 'None'`
 - Fields: `from_stage`, `to_stage`, `transport`, `artifact_reference`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageHandoff'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-calibrationstagereport"></a>
 ### `CalibrationStageReport`
 
 - Kind: `contract_model`
 - Signature: `(stage_report_kind: 'CalibrationStage', stage: 'CalibrationStage', status: 'CalibrationStageExecutionStatus', run_id: 'str', execution_mode: 'CalibrationExecutionMode', handoff_policy: 'str', failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'`
 - Fields: `stage_report_kind`, `stage`, `status`, `run_id`, `execution_mode`, `handoff_policy`, `failure`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageReport'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-calibrationstageseedoverride"></a>
 ### `CalibrationStageSeedOverride`
@@ -6440,6 +7693,10 @@
 - Signature: `(stage: 'CalibrationStage', seed: 'int') -> 'None'`
 - Fields: `stage`, `seed`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageSeedOverride'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-calibrationstagesolversettings"></a>
 ### `CalibrationStageSolverSettings`
 
@@ -6447,12 +7704,20 @@
 - Signature: `(stage: 'CalibrationStage', optimizer_settings: 'CalibrationOptimizerSettings') -> 'None'`
 - Fields: `stage`, `optimizer_settings`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageSolverSettings'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-calibrationstagedexecutionruntimeresources"></a>
 ### `CalibrationStagedExecutionRuntimeResources`
 
 - Kind: `contract_model`
 - Signature: `(disk_checkpoint_directory: 'Optional[str]' = None) -> 'None'`
 - Fields: `disk_checkpoint_directory`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStagedExecutionRuntimeResources'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-calibrationtradesign"></a>
 ### `CalibrationTradeSign`
@@ -6471,6 +7736,10 @@
 - Signature: `(schema_version: 'str', request: 'StagedCalibrationRequest', prepared_payload_file: 'CalibrationPreparedExecutionPayloadFileReference', runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'`
 - Fields: `schema_version`, `request`, `prepared_payload_file`, `runtime_resources`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'StagedCalibrationExecutionInput'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-stagedcalibrationrequest"></a>
 ### `StagedCalibrationRequest`
 
@@ -6478,12 +7747,21 @@
 - Signature: `(run_id: 'str', data_inputs: 'CalibrationRunDataInputs', execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, selected_stages: 'tuple[CalibrationStage, ...]' = (), seed_settings: 'Optional[CalibrationRunSeedSettings]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), stage_handoffs: 'tuple[CalibrationStageHandoff, ...]' = (), resume_settings: 'Optional[CalibrationResumeSettings]' = None) -> 'None'`
 - Fields: `run_id`, `data_inputs`, `execution_mode`, `selected_stages`, `seed_settings`, `optimizer_settings_by_stage`, `stage_handoffs`, `resume_settings`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path_prefix: 'Optional[str]' = None) -> 'StagedCalibrationRequest'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-stagedcalibrationresponse"></a>
 ### `StagedCalibrationResponse`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', diagnostic_artifact_references: 'tuple[dict[str, Any], ...]' = (), diagnostic_artifact_bundle: 'Optional[dict[str, Any]]' = None, resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'`
 - Fields: `schema_version`, `failure_triage_policy`, `run_id`, `execution_mode`, `status`, `stage_reports`, `emitted_checkpoints`, `diagnostic_artifact_references`, `diagnostic_artifact_bundle`, `resumed_from_checkpoint_reference`, `resumed_from_last_successful_stage`, `started_from_stage`, `failure`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'StagedCalibrationResponse'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-build-staged-failure-context"></a>
 ### `build_staged_failure_context`
@@ -6658,12 +7936,20 @@
 - Signature: `(solver_name: 'str', max_iterations: 'int', cpu_count: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'`
 - Fields: `solver_name`, `max_iterations`, `cpu_count`, `absolute_tolerance`, `relative_tolerance`, `constraint_penalty_weight`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationOptimizerSettings'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-contracts-calibrationresumesettings"></a>
 ### `CalibrationResumeSettings`
 
 - Kind: `contract_model`
 - Signature: `(source: 'CalibrationResumeSource', resume_from_stage: 'Optional[CalibrationStage]' = None, checkpoint_reference: 'Optional[str]' = None) -> 'None'`
 - Fields: `source`, `resume_from_stage`, `checkpoint_reference`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationResumeSettings'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-contracts-calibrationresumesource"></a>
 ### `CalibrationResumeSource`
@@ -6682,12 +7968,20 @@
 - Signature: `(exchange_code: 'str', trade_events_data_reference: 'str', option_surface_data_reference: 'Optional[str]' = None) -> 'None'`
 - Fields: `exchange_code`, `trade_events_data_reference`, `option_surface_data_reference`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationRunDataInputs'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-contracts-calibrationrunseedsettings"></a>
 ### `CalibrationRunSeedSettings`
 
 - Kind: `contract_model`
 - Signature: `(global_seed: 'int', stage_seed_overrides: 'tuple[CalibrationStageSeedOverride, ...]' = ()) -> 'None'`
 - Fields: `global_seed`, `stage_seed_overrides`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationRunSeedSettings'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-contracts-calibrationstage"></a>
 ### `CalibrationStage`
@@ -6724,6 +8018,10 @@
 - Signature: `(from_stage: 'CalibrationStage', to_stage: 'CalibrationStage', transport: 'CalibrationHandoffTransport', artifact_reference: 'Optional[str]' = None) -> 'None'`
 - Fields: `from_stage`, `to_stage`, `transport`, `artifact_reference`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageHandoff'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-contracts-calibrationstageseedoverride"></a>
 ### `CalibrationStageSeedOverride`
 
@@ -6731,12 +8029,20 @@
 - Signature: `(stage: 'CalibrationStage', seed: 'int') -> 'None'`
 - Fields: `stage`, `seed`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageSeedOverride'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-contracts-calibrationstagesolversettings"></a>
 ### `CalibrationStageSolverSettings`
 
 - Kind: `contract_model`
 - Signature: `(stage: 'CalibrationStage', optimizer_settings: 'CalibrationOptimizerSettings') -> 'None'`
 - Fields: `stage`, `optimizer_settings`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageSolverSettings'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-contracts-calibrationtradesign"></a>
 ### `CalibrationTradeSign`
@@ -6789,6 +8095,10 @@
 - Signature: `(path: 'str', file_format: 'CalibrationPreparedExecutionPayloadFileFormat' = <CalibrationPreparedExecutionPayloadFileFormat.JSON: 'json'>) -> 'None'`
 - Fields: `path`, `file_format`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationPreparedExecutionPayloadFileReference'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-inputs-calibrationstagedexecutionruntimeresources"></a>
 ### `CalibrationStagedExecutionRuntimeResources`
 
@@ -6796,12 +8106,20 @@
 - Signature: `(disk_checkpoint_directory: 'Optional[str]' = None) -> 'None'`
 - Fields: `disk_checkpoint_directory`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStagedExecutionRuntimeResources'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-inputs-stagedcalibrationexecutioninput"></a>
 ### `StagedCalibrationExecutionInput`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', request: 'StagedCalibrationRequest', prepared_payload_file: 'CalibrationPreparedExecutionPayloadFileReference', runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'`
 - Fields: `schema_version`, `request`, `prepared_payload_file`, `runtime_resources`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'StagedCalibrationExecutionInput'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-inputs-deserialize-staged-calibration-execution-input"></a>
 ### `deserialize_staged_calibration_execution_input`
@@ -6837,6 +8155,10 @@
 - Kind: `contract_model`
 - Signature: `(run_id: 'str', data_inputs: 'CalibrationRunDataInputs', execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, selected_stages: 'tuple[CalibrationStage, ...]' = (), seed_settings: 'Optional[CalibrationRunSeedSettings]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), stage_handoffs: 'tuple[CalibrationStageHandoff, ...]' = (), resume_settings: 'Optional[CalibrationResumeSettings]' = None) -> 'None'`
 - Fields: `run_id`, `data_inputs`, `execution_mode`, `selected_stages`, `seed_settings`, `optimizer_settings_by_stage`, `stage_handoffs`, `resume_settings`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path_prefix: 'Optional[str]' = None) -> 'StagedCalibrationRequest'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-request-deserialize-staged-calibration-request"></a>
 ### `deserialize_staged_calibration_request`
@@ -6894,12 +8216,20 @@
 - Signature: `(checkpoint_reference: 'str', completed_stage: 'CalibrationStage', completed_stage_position: 'int', execution_mode: 'CalibrationExecutionMode') -> 'None'`
 - Fields: `checkpoint_reference`, `completed_stage`, `completed_stage_position`, `execution_mode`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationCheckpointMetadata'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-results-calibrationfailuredetails"></a>
 ### `CalibrationFailureDetails`
 
 - Kind: `contract_model`
 - Signature: `(failure_kind: 'str', error_message: 'Optional[str]' = None, stage: 'Optional[CalibrationStage]' = None, checkpoint_reference: 'Optional[str]' = None, artifact_reference: 'Optional[str]' = None, run_id: 'Optional[str]' = None) -> 'None'`
 - Fields: `failure_kind`, `error_message`, `stage`, `checkpoint_reference`, `artifact_reference`, `run_id`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationFailureDetails'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-results-calibrationstagereport"></a>
 ### `CalibrationStageReport`
@@ -6908,12 +8238,21 @@
 - Signature: `(stage_report_kind: 'CalibrationStage', stage: 'CalibrationStage', status: 'CalibrationStageExecutionStatus', run_id: 'str', execution_mode: 'CalibrationExecutionMode', handoff_policy: 'str', failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'`
 - Fields: `stage_report_kind`, `stage`, `status`, `run_id`, `execution_mode`, `handoff_policy`, `failure`
 
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'CalibrationStageReport'` |
+
 <a id="python-api-symbol-janiform-calibration-staged-results-stagedcalibrationresponse"></a>
 ### `StagedCalibrationResponse`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', diagnostic_artifact_references: 'tuple[dict[str, Any], ...]' = (), diagnostic_artifact_bundle: 'Optional[dict[str, Any]]' = None, resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'`
 - Fields: `schema_version`, `failure_triage_policy`, `run_id`, `execution_mode`, `status`, `stage_reports`, `emitted_checkpoints`, `diagnostic_artifact_references`, `diagnostic_artifact_bundle`, `resumed_from_checkpoint_reference`, `resumed_from_last_successful_stage`, `started_from_stage`, `failure`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'StagedCalibrationResponse'` |
+| `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-calibration-staged-results-build-staged-failure-context"></a>
 ### `build_staged_failure_context`
