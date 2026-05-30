@@ -212,6 +212,9 @@ def render_python_symbol(module_name: str, export_name: str, symbol: dict[str, A
         case "contract_model":
             append_optional_field(lines, "Signature", symbol.get("signature"))
             append_sequence_field(lines, "Fields", symbol.get("field_names", []))
+
+            if symbol.get("public_methods"):
+                lines.extend(render_public_methods(symbol["public_methods"]))
         case "enum":
             lines.extend(render_enum_members(symbol["members"]))
         case "class" | "exception_class":

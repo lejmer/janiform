@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "8eec57cd395a04e5cd515616b4d3caa5c6015b72635f8063f25be0b59628d359",
+  "approved_snapshot_sha256": "02626cafd3ed78c5591e0255c1dd48f849de0899e08fb8fa7f0b940a57a4781e",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1576,6 +1576,19 @@
         "janiform.calibration.market_data.request",
         "janiform.calibration.market_data.translation",
         "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-05-30",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public API snapshot now records direct public methods on contract-model symbols, so generated reference documentation includes existing callable surfaces such as JaniformModel.simulate instead of only listing dataclass fields.",
+      "snapshot_sha256": "02626cafd3ed78c5591e0255c1dd48f849de0899e08fb8fa7f0b940a57a4781e",
+      "summary": "Record contract-model public methods in the Python API reference.",
+      "updated_surfaces": [
+        "python public API contract snapshot",
+        "docs/reference/python-api.md"
       ]
     }
   ],

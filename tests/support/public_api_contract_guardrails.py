@@ -289,11 +289,17 @@ def _build_symbol_snapshot(module: ModuleType, value: object) -> dict[str, Any]:
             }
 
         if is_dataclass(value) or issubclass(value, ContractModel):
-            return {
+            contract_model_snapshot = {
                 "kind": "contract_model",
                 "signature": _contract_model_signature(value),
                 "field_names": _contract_model_field_names(value),
             }
+
+            public_methods = _public_method_signatures(value)
+            if public_methods:
+                contract_model_snapshot["public_methods"] = public_methods
+
+            return contract_model_snapshot
 
         class_kind = "exception_class" if issubclass(value, Exception) else "class"
         class_snapshot: dict[str, Any] = {
@@ -395,12 +401,26 @@ def _public_method_signatures(class_type: type[object]) -> dict[str, str]:
     for name, value in sorted(class_type.__dict__.items(), key=lambda item: item[0]):
         if name.startswith("_"):
             continue
-        if inspect.isfunction(value):
-            signature = _safe_signature(value)
-            if signature is not None:
-                method_signatures[name] = signature
+
+        method = _public_method_callable(value)
+        if method is None:
+            continue
+
+        signature = _safe_signature(method)
+        if signature is not None:
+            method_signatures[name] = signature
 
     return method_signatures
+
+
+def _public_method_callable(value: object) -> Optional[object]:
+    if inspect.isfunction(value):
+        return value
+
+    if isinstance(value, staticmethod | classmethod):
+        return value.__func__
+
+    return None
 
 
 def _snapshot_constant_value(value: object) -> Any:

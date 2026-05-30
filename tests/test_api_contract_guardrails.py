@@ -1,4 +1,5 @@
 import json
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ from tests.support.public_api_contract_guardrails import (
     PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION,
     PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION,
     PUBLIC_API_SURFACE_DOCUMENT_VERSION,
+    _build_symbol_snapshot,
     _dataclass_contract_model_signature,
     build_public_api_contract_snapshot,
     compute_public_api_contract_snapshot_sha256,
@@ -290,6 +292,38 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
     }
 
     validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
+
+
+def test_contract_model_snapshot_includes_public_methods() -> None:
+    @dataclass
+    class ExampleContract:
+        value: int
+
+        def scale(self, multiplier: int) -> int:
+            return self.value * multiplier
+
+        @staticmethod
+        def default_value() -> int:
+            return 1
+
+        @classmethod
+        def class_value(cls) -> int:
+            _ = cls
+
+            return 1
+
+    snapshot = _build_symbol_snapshot(sys.modules[__name__], ExampleContract)
+
+    assert snapshot == {
+        "kind": "contract_model",
+        "signature": "(value: 'int') -> 'None'",
+        "field_names": ["value"],
+        "public_methods": {
+            "class_value": "(cls) -> 'int'",
+            "default_value": "() -> 'int'",
+            "scale": "(self, multiplier: 'int') -> 'int'",
+        },
+    }
 
 
 def test_dataclass_contract_model_signature_falls_back_for_annotation_lookup_value_error(
