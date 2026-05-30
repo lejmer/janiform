@@ -39,11 +39,6 @@ const RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL: &str = "initial";
 const RESTART_PROBE_SCHEDULE_CATEGORY_POLL: &str = "poll";
 const RESTART_STOP_REASON_POOL_BUDGET: &str = "restart_pool_budget";
 const RESTART_STOP_REASON_NO_SCHEDULABLE_WORK: &str = "restart_pool_no_schedulable_work";
-const RESTART_WORK_ITEM_STATUS_COMPLETED: &str = "completed";
-const RESTART_WORK_ITEM_STATUS_QUEUED: &str = "queued";
-const RESTART_WORK_ITEM_STATUS_REJECTED: &str = "rejected";
-const RESTART_WORK_ITEM_STATUS_RUNNING: &str = "running";
-const RESTART_WORK_ITEM_STATUS_WAITING: &str = "waiting";
 
 #[derive(Debug, Clone)]
 struct RestartProbeState {

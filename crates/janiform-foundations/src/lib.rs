@@ -14,6 +14,7 @@ pub mod numeric;
 pub mod parallelism;
 pub mod parquet;
 pub mod paths;
+pub mod progress;
 pub mod randomness;
 pub mod strings;
 pub mod time;

@@ -1225,6 +1225,7 @@ dependencies = [
  "comfy-table",
  "console",
  "indicatif",
+ "janiform-foundations",
  "textwrap",
  "thiserror",
 ]

@@ -63,12 +63,11 @@ pub(crate) fn run_price_observed_options_command(
 ) -> Result<(), CliError> {
     let physical_distribution_diagnostics =
         observed_physical_distribution_diagnostics_request(&command)?;
-    let model_path = required_model_path(context, command.model.model_path)?;
 
+    let model_path = required_model_path(context, command.model.model_path)?;
     let model_payload = load_json_artifact(&model_path, "model")?;
 
     let model_run_id = model_run_id(&model_payload)?;
-
     let run_id = pricing_run_id(model_run_id);
 
     inject_model_exchange_code_if_missing(&model_payload, &mut command.market_data)?;
@@ -101,6 +100,7 @@ pub(crate) fn run_price_observed_options_command(
 
     let output_path =
         resolve_pricing_output_path(context, command.output_path.output_path, &run_id);
+
     let workflow_request = ObservedOptionsPricingRequest {
         model_payload,
         run_id: Some(run_id),
@@ -158,13 +158,11 @@ fn run_fitted_model_pricing(
     output_path: Option<PathBuf>,
 ) -> Result<(), CliError> {
     let model_path = required_model_path(context, model.model_path)?;
-
     let model_payload = load_json_artifact(&model_path, "model")?;
 
     let valuation_time_utc = required_valuation_time(option.valuation_time_utc.as_deref())?;
 
     let model_run_id = model_run_id(&model_payload)?;
-
     let run_id = pricing_run_id(model_run_id);
 
     let output_path = resolve_pricing_output_path(context, output_path, &run_id);
@@ -193,6 +191,7 @@ fn run_fitted_model_pricing(
     };
 
     let mut progress_adapter = terminal_progress_adapter_for_context(context);
+
     let output = run_fitted_model_single_option_pricing_workflow(
         FittedModelSingleOptionPricingWorkflowRequest {
             pricing_request: workflow_request,
@@ -363,6 +362,6 @@ fn observed_physical_distribution_diagnostics_request(
 fn pricing_run_id(model_run_id: &str) -> String {
     format!(
         "{model_run_id}_price_{}",
-        chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+        Utc::now().format("%Y%m%dT%H%M%SZ")
     )
 }

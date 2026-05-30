@@ -1,17 +1,13 @@
 use std::time::Duration;
 
+use janiform_foundations::progress::WorkItemStatus;
+
 use crate::formatting::format_elapsed_label;
 
 use super::ProgressMeasure;
 use super::ProgressStageStatus;
 
 const PROGRESS_BAR_WIDTH: usize = 14;
-const WORK_ITEM_COMPLETED_STATUS: &str = "completed";
-const WORK_ITEM_PAUSED_STATUS: &str = "paused";
-const WORK_ITEM_QUEUED_STATUS: &str = "queued";
-const WORK_ITEM_REJECTED_STATUS: &str = "rejected";
-const WORK_ITEM_RUNNING_STATUS: &str = "running";
-const WORK_ITEM_WAITING_STATUS: &str = "waiting";
 
 pub(super) fn stage_status_marker(status: ProgressStageStatus) -> &'static str {
     match status {
@@ -35,29 +31,21 @@ pub(super) fn stage_status_text(status: ProgressStageStatus) -> &'static str {
 
 pub(super) fn work_item_status_text(progress_percent: Option<usize>) -> &'static str {
     match progress_percent {
-        Some(progress_percent) if progress_percent >= 100 => WORK_ITEM_COMPLETED_STATUS,
-        _ => WORK_ITEM_RUNNING_STATUS,
+        Some(progress_percent) if progress_percent >= 100 => WorkItemStatus::Completed.as_str(),
+        _ => WorkItemStatus::Running.as_str(),
     }
 }
 
 pub(super) fn work_item_waiting_status_text() -> &'static str {
-    WORK_ITEM_WAITING_STATUS
+    WorkItemStatus::Waiting.as_str()
 }
 
 pub(super) fn work_item_status_is_completed(status: &str) -> bool {
-    status == WORK_ITEM_COMPLETED_STATUS
+    WorkItemStatus::label_is_completed(status)
 }
 
 pub(super) fn work_item_status_sort_rank(status: &str) -> usize {
-    match status {
-        status if status == WORK_ITEM_RUNNING_STATUS => 0,
-        status if status == WORK_ITEM_QUEUED_STATUS => 1,
-        status if status == WORK_ITEM_PAUSED_STATUS => 2,
-        status if status == WORK_ITEM_WAITING_STATUS => 3,
-        status if status == WORK_ITEM_REJECTED_STATUS => 4,
-        status if status == WORK_ITEM_COMPLETED_STATUS => 5,
-        _ => 6,
-    }
+    WorkItemStatus::label_sort_rank(status)
 }
 
 pub(super) fn progress_measure_label(measure: ProgressMeasure) -> String {
