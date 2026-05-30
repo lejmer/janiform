@@ -6,6 +6,7 @@ const WORK_ITEM_ELAPSED_COLUMN_WIDTH: usize = 10;
 const WORK_ITEM_LABEL_COLUMN_WIDTH: usize = 34;
 const WORK_ITEM_PROGRESS_COLUMN_WIDTH: usize = 26;
 const WORK_ITEM_STATUS_COLUMN_WIDTH: usize = 10;
+const WORK_ITEM_TABLE_INDENT: &str = "  ";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct WorkItemTableColumn {
@@ -44,7 +45,7 @@ pub(super) fn format_work_item_table_row(
     columns: &[WorkItemTableColumn],
     values: &[&str],
 ) -> String {
-    let mut row = String::from("   ");
+    let mut row = String::from(WORK_ITEM_TABLE_INDENT);
 
     for (column_index, column) in columns.iter().enumerate() {
         if column_index > 0 {
