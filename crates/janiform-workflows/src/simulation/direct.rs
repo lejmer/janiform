@@ -13,6 +13,7 @@ use super::artifacts::{
     SimulationExportSummary, SimulationOutputColumns, export_coarse_simulation,
     export_seeded_tick_simulation,
 };
+use super::intervals::interval_duration_nanos_from_bounds;
 
 /// Direct simulation job accepted by workflow boundaries.
 pub enum DirectSimulationJob {
@@ -82,6 +83,10 @@ pub struct DirectSimulationCompletion {
     pub seed: u64,
     /// Number of simulated intervals.
     pub simulated_interval_count: usize,
+    /// Fixed duration of one simulated interval, in UTC nanoseconds.
+    pub simulated_interval_duration_nanos: Option<i64>,
+    /// Number of generated seeded ticks when the simulation emits tick-level events.
+    pub generated_tick_count: Option<usize>,
 }
 
 impl DirectSimulationJob {
@@ -155,15 +160,31 @@ impl DirectSimulationCompleted {
             DirectSimulationCompleted::SeededTick { result, .. } => DirectSimulationCompletion {
                 seed: result.seed,
                 simulated_interval_count: result.simulated_interval_count,
+                simulated_interval_duration_nanos: seeded_result_interval_duration_nanos(result),
+                generated_tick_count: Some(result.event_count()),
             },
             DirectSimulationCompleted::CoarseInterval { result, .. } => {
                 DirectSimulationCompletion {
                     seed: result.seed,
                     simulated_interval_count: result.simulated_interval_count,
+                    simulated_interval_duration_nanos: interval_duration_nanos_from_bounds(
+                        result.start_time_utc_nanos,
+                        result.end_time_utc_nanos,
+                        result.simulated_interval_count,
+                    ),
+                    generated_tick_count: None,
                 }
             }
         }
     }
+}
+
+fn seeded_result_interval_duration_nanos(result: &SeededTickSimulationRunResult) -> Option<i64> {
+    interval_duration_nanos_from_bounds(
+        result.start_time_utc.timestamp_nanos_opt()?,
+        result.end_time_utc.timestamp_nanos_opt()?,
+        result.simulated_interval_count,
+    )
 }
 
 fn validation_error(field: &'static str, message: impl Into<String>) -> WorkflowError {

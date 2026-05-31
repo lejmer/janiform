@@ -9,6 +9,7 @@ use janiform::simulation::{
 use crate::error::WorkflowError;
 use crate::progress::VolatileProgressGate;
 
+use super::intervals::interval_duration_nanos_from_bounds;
 use super::labels::{
     coarse_runtime_simulation_scope_label, direct_simulation_scope_label,
     model_artifact_simulation_scope_label, seeded_tick_runtime_simulation_scope_label,
@@ -250,6 +251,10 @@ trait DirectSimulationCompletionFields {
     fn seed(&self) -> u64;
 
     fn simulated_interval_count(&self) -> usize;
+
+    fn simulated_interval_duration_nanos(&self) -> Option<i64>;
+
+    fn generated_tick_count(&self) -> Option<usize>;
 }
 
 impl DirectSimulationCompletionFields for CoarseSimulationPath {
@@ -259,6 +264,18 @@ impl DirectSimulationCompletionFields for CoarseSimulationPath {
 
     fn simulated_interval_count(&self) -> usize {
         self.simulated_interval_count
+    }
+
+    fn simulated_interval_duration_nanos(&self) -> Option<i64> {
+        interval_duration_nanos_from_bounds(
+            self.start_time_utc_nanos,
+            self.end_time_utc_nanos,
+            self.simulated_interval_count,
+        )
+    }
+
+    fn generated_tick_count(&self) -> Option<usize> {
+        None
     }
 }
 
@@ -270,6 +287,18 @@ impl DirectSimulationCompletionFields for SeededTickSimulationRunResult {
     fn simulated_interval_count(&self) -> usize {
         self.simulated_interval_count
     }
+
+    fn simulated_interval_duration_nanos(&self) -> Option<i64> {
+        interval_duration_nanos_from_bounds(
+            self.start_time_utc.timestamp_nanos_opt()?,
+            self.end_time_utc.timestamp_nanos_opt()?,
+            self.simulated_interval_count,
+        )
+    }
+
+    fn generated_tick_count(&self) -> Option<usize> {
+        Some(self.event_count())
+    }
 }
 
 fn direct_completion_for_result(
@@ -278,5 +307,7 @@ fn direct_completion_for_result(
     super::DirectSimulationCompletion {
         seed: result.seed(),
         simulated_interval_count: result.simulated_interval_count(),
+        simulated_interval_duration_nanos: result.simulated_interval_duration_nanos(),
+        generated_tick_count: result.generated_tick_count(),
     }
 }

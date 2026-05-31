@@ -10,6 +10,7 @@ use janiform_terminal_ui::{
     format_elapsed_label, format_path,
 };
 
+use super::intervals::simulation_interval_count_label;
 use super::{DirectSimulationCompleted, DirectSimulationCompletion, SimulationExportSummary};
 
 /// Output from a direct simulation workflow.
@@ -98,8 +99,18 @@ pub(super) fn simulation_completion_summary(
     let mut rows = vec![
         KeyValueRow::new("Kind", simulation_kind),
         KeyValueRow::new("Seed", completion.seed.to_string()),
-        KeyValueRow::new("Intervals", completion.simulated_interval_count.to_string()),
+        KeyValueRow::new(
+            "Generated",
+            simulation_interval_count_label(
+                completion.simulated_interval_count,
+                completion.simulated_interval_duration_nanos,
+            ),
+        ),
     ];
+
+    if let Some(generated_tick_count) = completion.generated_tick_count {
+        rows.push(KeyValueRow::new("Ticks", generated_tick_count.to_string()));
+    }
 
     if let Some(output_path) = output_path {
         rows.push(KeyValueRow::new("Path", format_artifact_path(output_path)));
@@ -120,5 +131,46 @@ pub(super) fn simulation_completion_summary(
         status: CompletionSummaryStatus::Succeeded,
         title: format!("Simulation completed in {}", format_elapsed_label(elapsed)),
         rows,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use janiform_foundations::time::NANOS_PER_HOUR;
+
+    use super::DirectSimulationCompletion;
+    use super::simulation_completion_summary;
+
+    #[test]
+    fn completion_summary_labels_intervals_with_duration_width_and_seeded_ticks() {
+        let summary = simulation_completion_summary(
+            "Seeded tick simulation",
+            DirectSimulationCompletion {
+                seed: 17,
+                simulated_interval_count: 168,
+                simulated_interval_duration_nanos: Some(NANOS_PER_HOUR),
+                generated_tick_count: Some(654_321),
+            },
+            None,
+            None,
+            Duration::from_secs(1),
+        );
+
+        assert_eq!(summary_row_value(&summary, "Generated"), "168 1h intervals");
+        assert_eq!(summary_row_value(&summary, "Ticks"), "654321");
+    }
+
+    fn summary_row_value<'summary>(
+        summary: &'summary janiform_terminal_ui::CompletionSummary,
+        label: &str,
+    ) -> &'summary str {
+        summary
+            .rows
+            .iter()
+            .find(|row| row.label == label)
+            .map(|row| row.value.as_str())
+            .expect("summary row should exist")
     }
 }

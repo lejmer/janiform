@@ -11,6 +11,7 @@ use crate::terminal::{
     complete_terminal_progress, emit_terminal_completion_view, emit_terminal_start_view,
 };
 
+use super::intervals::simulation_interval_progress_label;
 use super::output::{simulation_completion_summary, simulation_start_summary};
 
 pub(super) fn start_simulation_progress(
@@ -143,5 +144,62 @@ fn simulation_progress_phase_label(phase: SimulationProgressPhase) -> &'static s
 }
 
 fn simulation_progress_signal(event: &SimulationProgressEvent) -> String {
-    format!("{}/{} intervals", event.completed_units, event.total_units)
+    let interval_progress = simulation_interval_progress_label(
+        event.completed_units,
+        event.total_units,
+        event.interval_duration_nanos,
+    );
+
+    match event.generated_tick_count {
+        Some(generated_tick_count) => format!(
+            "{interval_progress}, {}",
+            generated_tick_count_label(generated_tick_count)
+        ),
+        None => interval_progress,
+    }
+}
+
+fn generated_tick_count_label(generated_tick_count: u64) -> String {
+    if generated_tick_count == 1 {
+        return "1 tick".to_string();
+    }
+
+    format!("{generated_tick_count} ticks")
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform::simulation::{SimulationProgressEvent, SimulationProgressPhase};
+    use janiform_foundations::time::{NANOS_PER_FIFTEEN_MINUTES, NANOS_PER_HOUR};
+
+    use super::simulation_progress_signal;
+
+    #[test]
+    fn seeded_progress_signal_uses_interval_unit_and_generated_tick_count() {
+        let event = SimulationProgressEvent::new(
+            SimulationProgressPhase::SeededTickIntervals,
+            168,
+            168,
+            NANOS_PER_HOUR,
+            Some(654_321),
+        );
+
+        assert_eq!(
+            simulation_progress_signal(&event),
+            "168/168 1h intervals, 654321 ticks"
+        );
+    }
+
+    #[test]
+    fn coarse_progress_signal_uses_interval_width_before_interval_word() {
+        let event = SimulationProgressEvent::new(
+            SimulationProgressPhase::CoarseIntervals,
+            3,
+            4,
+            NANOS_PER_FIFTEEN_MINUTES,
+            None,
+        );
+
+        assert_eq!(simulation_progress_signal(&event), "3/4 15min intervals");
+    }
 }
