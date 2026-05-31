@@ -246,6 +246,22 @@ pub fn parse_duration_spec_nanos(value: &str) -> Result<i64, DurationSpecParseEr
     i64::try_from(nanos).map_err(|_| DurationSpecParseError::OutOfRange)
 }
 
+/// Format a positive UTC nanosecond duration as the most compact supported duration spec.
+///
+/// The formatter chooses the largest exact supported unit. For example,
+/// one hour renders as `1h`, fifteen minutes renders as `15min`, and a
+/// duration that does not divide a larger unit renders in nanoseconds.
+pub fn format_duration_spec_nanos(duration_nanos: i64) -> Option<String> {
+    if duration_nanos <= 0 {
+        return None;
+    }
+
+    let (unit_nanos, unit_label) = duration_display_unit(duration_nanos);
+    let unit_count = duration_nanos / unit_nanos;
+
+    Some(format!("{unit_count}{unit_label}"))
+}
+
 /// Deserialize an RFC 3339 timestamp string as a UTC `DateTime`.
 pub fn deserialize_utc_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
 where
@@ -369,6 +385,21 @@ fn duration_unit_nanos(unit: &str) -> Result<i64, DurationSpecParseError> {
     Ok(nanos)
 }
 
+fn duration_display_unit(duration_nanos: i64) -> (i64, &'static str) {
+    [
+        (NANOS_PER_DAY, "D"),
+        (NANOS_PER_HOUR, "h"),
+        (NANOS_PER_MINUTE, "min"),
+        (NANOS_PER_SECOND, "s"),
+        (NANOS_PER_MILLISECOND, "ms"),
+        (NANOS_PER_MICROSECOND, "us"),
+        (1, "ns"),
+    ]
+    .into_iter()
+    .find(|(unit_nanos, _unit_label)| duration_nanos % unit_nanos == 0)
+    .unwrap_or((1, "ns"))
+}
+
 /// Convert a UTC calendar timestamp to UTC nanoseconds since the Unix epoch.
 ///
 /// Panics when the timestamp is invalid or cannot be represented in `i64`
@@ -450,14 +481,15 @@ pub fn checked_ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DurationHoursToNanosError, NANOS_PER_HOUR, ceil_to_hour_utc_nanos,
-        ceil_to_interval_utc_nanos, checked_ceil_interval_count_between_utc_nanos,
-        checked_ceil_to_hour_utc_nanos, checked_floor_to_hour_utc_nanos,
-        checked_interval_count_between_utc_nanos, deserialize_optional_utc_datetime,
-        deserialize_utc_datetime, duration_hours_to_nanos, duration_nanos_to_hours,
-        elapsed_between_utc_timestamps, elapsed_utc_nanos_to_hours, floor_to_hour_utc_nanos,
-        floor_to_interval_utc_nanos, format_utc_nanos, parse_duration_spec_nanos,
-        parse_utc_datetime, serialize_utc_datetime, utc_datetime_from_nanos, utc_nanos,
+        DurationHoursToNanosError, NANOS_PER_DAY, NANOS_PER_FIFTEEN_MINUTES, NANOS_PER_HOUR,
+        ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
+        checked_ceil_interval_count_between_utc_nanos, checked_ceil_to_hour_utc_nanos,
+        checked_floor_to_hour_utc_nanos, checked_interval_count_between_utc_nanos,
+        deserialize_optional_utc_datetime, deserialize_utc_datetime, duration_hours_to_nanos,
+        duration_nanos_to_hours, elapsed_between_utc_timestamps, elapsed_utc_nanos_to_hours,
+        floor_to_hour_utc_nanos, floor_to_interval_utc_nanos, format_duration_spec_nanos,
+        format_utc_nanos, parse_duration_spec_nanos, parse_utc_datetime, serialize_utc_datetime,
+        utc_datetime_from_nanos, utc_nanos,
     };
     use chrono::{DateTime, Utc};
     use serde::{Deserialize, Serialize};
@@ -670,6 +702,24 @@ mod tests {
     #[test]
     fn parse_duration_spec_nanos_rejects_fractional_nanoseconds() {
         assert!(parse_duration_spec_nanos("0.1ns").is_err());
+    }
+
+    #[test]
+    fn format_duration_spec_nanos_uses_largest_exact_supported_unit() {
+        assert_eq!(
+            format_duration_spec_nanos(NANOS_PER_HOUR),
+            Some("1h".to_string())
+        );
+        assert_eq!(
+            format_duration_spec_nanos(NANOS_PER_FIFTEEN_MINUTES),
+            Some("15min".to_string())
+        );
+        assert_eq!(
+            format_duration_spec_nanos(NANOS_PER_DAY),
+            Some("1D".to_string())
+        );
+        assert_eq!(format_duration_spec_nanos(7), Some("7ns".to_string()));
+        assert_eq!(format_duration_spec_nanos(0), None);
     }
 
     #[test]

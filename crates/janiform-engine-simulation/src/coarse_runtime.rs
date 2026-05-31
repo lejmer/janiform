@@ -221,6 +221,8 @@ where
             SimulationProgressPhase::CoarseIntervals,
             0,
             run_request.horizon_interval_count,
+            interval_delta_nanos,
+            None,
         ),
     );
 
@@ -499,6 +501,8 @@ where
                 SimulationProgressPhase::CoarseIntervals,
                 interval_index + 1,
                 run_request.horizon_interval_count,
+                interval_delta_nanos,
+                None,
             ),
         );
     }

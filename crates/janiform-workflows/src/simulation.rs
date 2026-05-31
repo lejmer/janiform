@@ -3,6 +3,7 @@
 pub mod artifacts;
 pub mod direct;
 mod execution;
+mod intervals;
 mod labels;
 pub mod model_artifact;
 mod output;

@@ -133,12 +133,19 @@ where
     consumer
         .reserve_transition_capacity(estimated_transition_capacity, estimated_event_capacity)?;
 
+    let interval_duration_nanos = run_config
+        .model_inputs
+        .hourly_factor_contract
+        .interval_duration_nanos;
+
     emit_progress_event(
         &mut observer,
         SimulationProgressEvent::new(
             SimulationProgressPhase::SeededTickIntervals,
             0,
             run_config.horizon_interval_count,
+            interval_duration_nanos,
+            Some(0),
         ),
     );
 
@@ -194,6 +201,8 @@ where
                 SimulationProgressPhase::SeededTickIntervals,
                 interval_index + 1,
                 run_config.horizon_interval_count,
+                interval_duration_nanos,
+                Some(runtime_state.next_event_index),
             ),
         );
     }

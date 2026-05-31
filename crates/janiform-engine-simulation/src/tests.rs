@@ -334,13 +334,53 @@ fn seeded_simulation_progress_observer_reports_exact_interval_completion() {
     .expect("seeded simulation with observer should succeed");
 
     assert_eq!(run_result.simulated_interval_count, 2);
+
+    let observed_interval_progress = observed_progress_events
+        .iter()
+        .map(|event| {
+            (
+                event.phase,
+                event.completed_units,
+                event.total_units,
+                event.interval_duration_nanos,
+            )
+        })
+        .collect::<Vec<_>>();
+
     assert_eq!(
-        observed_progress_events,
+        observed_interval_progress,
         vec![
-            SimulationProgressEvent::new(SimulationProgressPhase::SeededTickIntervals, 0, 2),
-            SimulationProgressEvent::new(SimulationProgressPhase::SeededTickIntervals, 1, 2),
-            SimulationProgressEvent::new(SimulationProgressPhase::SeededTickIntervals, 2, 2),
+            (
+                SimulationProgressPhase::SeededTickIntervals,
+                0,
+                2,
+                NANOS_PER_HOUR,
+            ),
+            (
+                SimulationProgressPhase::SeededTickIntervals,
+                1,
+                2,
+                NANOS_PER_HOUR,
+            ),
+            (
+                SimulationProgressPhase::SeededTickIntervals,
+                2,
+                2,
+                NANOS_PER_HOUR,
+            ),
         ]
+    );
+    assert_eq!(
+        observed_progress_events
+            .first()
+            .and_then(|event| event.generated_tick_count),
+        Some(0)
+    );
+    assert_eq!(
+        observed_progress_events
+            .last()
+            .and_then(|event| event.generated_tick_count),
+        u64::try_from(run_result.event_count()).ok()
     );
 }
 
