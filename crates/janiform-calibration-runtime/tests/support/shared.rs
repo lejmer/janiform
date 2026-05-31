@@ -114,13 +114,14 @@ pub(crate) use janiform_calibration_artifacts::{
     LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
     MeanReversionStageCandidateDiagnostics, MeanReversionStageDiagnostics,
     MeanReversionStageParameterArtifactInput, MeanReversionStageParameterPayload,
-    NewsShocksStageParameterArtifactInput, ReturnComponentsStageFittedParameters,
-    ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
-    SeasonalityStageNormalizationMetadata, SeasonalityStageParameterArtifactInput,
-    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
-    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
+    NewsShocksStageParameterArtifactInput, ReturnBackfitStageParameterArtifactInput,
+    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
+    ReturnComponentsStageParameterPayload, SeasonalityStageNormalizationMetadata,
+    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
+    SurpriseNewsDeterministicIntensityProfile, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
+    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
+    calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -1535,6 +1536,7 @@ pub(crate) fn build_calibration_stage_parameter_artifact(
     stage_report: &CalibrationStagedRunStageReport,
 ) -> Result<CalibrationStageParameterArtifact, CalibrationStageParameterArtifactBuildError> {
     let stage_input = stage_parameter_artifact_input(stage_report)?;
+
     janiform_calibration_artifacts::build_calibration_stage_parameter_artifact(
         run_contract,
         stage_input,
@@ -1553,6 +1555,7 @@ fn stage_parameter_artifact_input(
                         .to_string(),
                 },
             )?;
+
             let metadata = report.metadata.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
                     stage: CalibrationStage::Seasonality,
@@ -1610,6 +1613,7 @@ fn stage_parameter_artifact_input(
                     error_message: "successful hawkes stage is missing its payload".to_string(),
                 },
             )?;
+
             let metadata = report.metadata.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
                     stage: CalibrationStage::Hawkes,
@@ -1672,6 +1676,7 @@ fn stage_parameter_artifact_input(
                         .to_string(),
                 },
             )?;
+
             let metadata = report.metadata.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
                     stage: CalibrationStage::ReturnComponents,
@@ -1742,6 +1747,7 @@ fn stage_parameter_artifact_input(
                         .to_string(),
                 },
             )?;
+
             let metadata = report.metadata.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
                     stage: CalibrationStage::LongVariance,
@@ -1783,6 +1789,7 @@ fn stage_parameter_artifact_input(
                         .to_string(),
                 },
             )?;
+
             let metadata = report.metadata.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
                     stage: CalibrationStage::NewsShocks,
@@ -1808,6 +1815,69 @@ fn stage_parameter_artifact_input(
                     surprise_deterministic_intensity_profile: payload
                         .surprise_deterministic_intensity_profile
                         .clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                }),
+            ))
+        }
+        CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+            let payload = report.fitted_stage_payload.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::ReturnBackfit,
+                    error_message: "successful return-backfit stage is missing its payload"
+                        .to_string(),
+                },
+            )?;
+
+            let metadata = report.metadata.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::ReturnBackfit,
+                    error_message: "successful return-backfit stage is missing metadata"
+                        .to_string(),
+                },
+            )?;
+
+            Ok(CalibrationStageParameterArtifactInput::ReturnBackfit(
+                Box::new(ReturnBackfitStageParameterArtifactInput {
+                    metadata: CalibrationStageParameterBuildMetadata {
+                        stage_output_schema_version: metadata
+                            .stage_output_schema_version
+                            .to_string(),
+                        run_global_seed: metadata.run_global_seed,
+                        stage_seed: metadata.stage_seed,
+                        stage_seed_source: metadata.stage_seed_source,
+                        stage_seed_derivation_policy: metadata
+                            .stage_seed_derivation_policy
+                            .to_string(),
+                        solver_settings: metadata.solver_settings.clone(),
+                    },
+                    selected_candidate_id: payload.selected_candidate_id.clone(),
+                    effective_return_components_selected_candidate_id: payload
+                        .effective_return_components_payload
+                        .selected_candidate_id
+                        .clone(),
+                    effective_fitted_parameters: payload
+                        .effective_return_components_payload
+                        .fitted_parameters
+                        .clone(),
+                    candidate_generation_policy: payload
+                        .effective_return_components_payload
+                        .candidate_generation_policy
+                        .to_string(),
+                    objective_weighting_policy: payload
+                        .effective_return_components_payload
+                        .objective_weighting_policy
+                        .to_string(),
+                    objective_metric_bucket_policy: payload
+                        .effective_return_components_payload
+                        .objective_metric_bucket_policy
+                        .to_string(),
                     diagnostics: payload.diagnostics.clone(),
                     return_components_input_transport: payload.return_components_input_transport,
                     return_components_selected_candidate_id: payload
@@ -1851,6 +1921,7 @@ fn stage_parameter_artifact_input(
                         .to_string(),
                 },
             )?;
+
             let metadata = report.metadata.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
                     stage: CalibrationStage::MeanReversion,
@@ -1902,6 +1973,7 @@ fn joint_refinement_like_stage_parameter_artifact_input(
             ),
         },
     )?;
+
     let metadata = report.metadata.as_ref().ok_or(
         CalibrationStageParameterArtifactBuildError::ValidationFailed {
             stage,
@@ -2119,6 +2191,7 @@ fn build_run_contract_for_caller_surface_with_stages(
 
     let execution_mode =
         resolve_calibration_execution_mode_for_surface(caller_surface, execution_mode_override);
+
     let run_spec = CalibrationRunSpec::try_new(
         run_id,
         build_data_inputs(),

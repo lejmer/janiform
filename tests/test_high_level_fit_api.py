@@ -4385,6 +4385,8 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
             CalibrationStage.HAWKES,
             CalibrationStage.RETURN_COMPONENTS,
             CalibrationStage.LONG_VARIANCE,
+            CalibrationStage.NEWS_SHOCKS,
+            CalibrationStage.RETURN_BACKFIT,
             CalibrationStage.MEAN_REVERSION,
             CalibrationStage.JOINT_REFINEMENT,
             CalibrationStage.FINALIZATION,
