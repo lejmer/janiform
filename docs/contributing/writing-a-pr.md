@@ -74,6 +74,8 @@ Generated files should be reviewed, not ignored. If the PR includes generated ou
 
 Run the matching `--check` command when the generator supports one. For the generator list, see [Generation scripts](generation-scripts.md).
 
+If the PR changes a public API, include the public API snapshot fixture and guardrail manifest update when required. For the approval workflow, see [Maintaining public API contracts](public-api-contracts.md).
+
 ## Drafts and review
 
 Open a draft PR when the shape is useful to share but the work is not ready for final review.

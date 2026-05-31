@@ -4,6 +4,7 @@ These rules apply generally across the Janiform codebase. Use them together with
 
 - [Python conventions](python-conventions.md)
 - [Rust conventions](rust-conventions.md)
+- [Maintaining public API contracts](public-api-contracts.md)
 - [Writing tests](writing-tests.md)
 
 ## Core principles
@@ -35,3 +36,11 @@ These rules apply generally across the Janiform codebase. Use them together with
 
 - Keep documentation phrased as the current project shape, not as a migration note.
 - Link to the owning reference or convention page instead of duplicating long rules across documents.
+
+## Public API contracts
+
+- Treat public APIs as deliberate contracts.
+- Keep public API changes aligned with tests, fixtures, generated references, examples, and docs in the same pull request.
+- Use the public API guardrail workflow when the tracked Python public surface changes.
+
+For the full policy and snapshot update process, see [Maintaining public API contracts](public-api-contracts.md).
