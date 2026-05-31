@@ -87,6 +87,44 @@
                 },
                 "completed_stage": {
                   "type": "string",
+                  "value": "news_shocks"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "completed_stage_position": {
@@ -100,7 +138,7 @@
               "type": "object"
             }
           ],
-          "length": 5,
+          "length": 7,
           "type": "array"
         },
         "execution_mode": {
@@ -271,6 +309,68 @@
                 },
                 "stage": {
                   "type": "string",
+                  "value": "news_shocks"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "stage_report_kind": {
@@ -285,7 +385,7 @@
               "type": "object"
             }
           ],
-          "length": 5,
+          "length": 7,
           "type": "array"
         },
         "started_from_stage": {
@@ -385,6 +485,44 @@
                 },
                 "completed_stage": {
                   "type": "string",
+                  "value": "news_shocks"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "completed_stage_position": {
@@ -398,7 +536,7 @@
               "type": "object"
             }
           ],
-          "length": 5,
+          "length": 7,
           "type": "array"
         },
         "execution_mode": {
@@ -569,6 +707,68 @@
                 },
                 "stage": {
                   "type": "string",
+                  "value": "news_shocks"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
                   "value": "mean_reversion"
                 },
                 "stage_report_kind": {
@@ -583,7 +783,7 @@
               "type": "object"
             }
           ],
-          "length": 5,
+          "length": 7,
           "type": "array"
         },
         "started_from_stage": {

@@ -157,6 +157,8 @@ def build_valid_execution_input_model(
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
                 CalibrationStage.LONG_VARIANCE,
+                CalibrationStage.NEWS_SHOCKS,
+                CalibrationStage.RETURN_BACKFIT,
                 CalibrationStage.MEAN_REVERSION,
             ),
             seed_settings=CalibrationRunSeedSettings(
@@ -173,6 +175,8 @@ def build_valid_execution_input_model(
                 _solver_settings(CalibrationStage.HAWKES),
                 _solver_settings(CalibrationStage.RETURN_COMPONENTS),
                 _solver_settings(CalibrationStage.LONG_VARIANCE),
+                _solver_settings(CalibrationStage.NEWS_SHOCKS),
+                _solver_settings(CalibrationStage.RETURN_BACKFIT),
                 _solver_settings(CalibrationStage.MEAN_REVERSION),
             ),
         ),
