@@ -568,6 +568,42 @@ fn option_refinement_progress_signal_omits_row_scoped_eval_count() {
 }
 
 #[test]
+fn finalization_pre_evaluation_progress_uses_named_phase_and_signal() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("resolve stage inputs"),
+        None,
+        None,
+        None,
+        None,
+    );
+
+    progress.stage = CalibrationStage::Finalization;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::StageInputResolution,
+    );
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("finalization setup progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            phase,
+            work_item_label,
+            latest_signal,
+            ..
+        }) => {
+            assert_eq!(phase, "stage input resolution");
+            assert_eq!(work_item_label, None);
+            assert_eq!(latest_signal.as_deref(), Some("resolve stage inputs"));
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
 fn stage_progress_measure_uses_aggregate_percent_when_available() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,

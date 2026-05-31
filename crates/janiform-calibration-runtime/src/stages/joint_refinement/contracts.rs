@@ -84,6 +84,12 @@ pub struct JointRefinementStageExecutionInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JointRefinementStageProgressPhase {
+    StageInputResolution,
+    ResumeStateResolution,
+    ObservedInputPreparation,
+    ParameterizationPreparation,
+    RuntimeMaterialization,
+    RuntimeContextAssembly,
     BaselineLocalEvaluation,
     BaselineFinalEvaluation,
     BaselineCoarseConsistencyEvaluation,
@@ -100,6 +106,12 @@ pub enum JointRefinementStageProgressPhase {
 
 #[cfg(test)]
 const JOINT_REFINEMENT_PROGRESS_PHASES: &[JointRefinementStageProgressPhase] = &[
+    JointRefinementStageProgressPhase::StageInputResolution,
+    JointRefinementStageProgressPhase::ResumeStateResolution,
+    JointRefinementStageProgressPhase::ObservedInputPreparation,
+    JointRefinementStageProgressPhase::ParameterizationPreparation,
+    JointRefinementStageProgressPhase::RuntimeMaterialization,
+    JointRefinementStageProgressPhase::RuntimeContextAssembly,
     JointRefinementStageProgressPhase::BaselineLocalEvaluation,
     JointRefinementStageProgressPhase::BaselineFinalEvaluation,
     JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
@@ -116,7 +128,34 @@ const JOINT_REFINEMENT_PROGRESS_PHASES: &[JointRefinementStageProgressPhase] = &
 
 // UI-facing stage progress contract. Units describe the expected share of the
 // joint-refinement stage for each phase and must cover every progress phase.
+// Single-pass setup phases use one unit because they expose start/completion
+// boundaries without an internal work budget.
+const JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS: usize = 1;
 const JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1: &[(JointRefinementStageProgressPhase, usize)] = &[
+    (
+        JointRefinementStageProgressPhase::StageInputResolution,
+        JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS,
+    ),
+    (
+        JointRefinementStageProgressPhase::ResumeStateResolution,
+        JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS,
+    ),
+    (
+        JointRefinementStageProgressPhase::ObservedInputPreparation,
+        JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS,
+    ),
+    (
+        JointRefinementStageProgressPhase::ParameterizationPreparation,
+        JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS,
+    ),
+    (
+        JointRefinementStageProgressPhase::RuntimeMaterialization,
+        JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS,
+    ),
+    (
+        JointRefinementStageProgressPhase::RuntimeContextAssembly,
+        JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS,
+    ),
     (
         JointRefinementStageProgressPhase::BaselineLocalEvaluation,
         4,
@@ -340,8 +379,8 @@ mod tests {
         )
         .stage_progress_percent();
 
-        assert_eq!(baseline_coarse_progress, 16);
-        assert_eq!(restart_seed_progress, 16);
+        assert_eq!(baseline_coarse_progress, 20);
+        assert_eq!(restart_seed_progress, 20);
     }
 
     #[test]
@@ -354,7 +393,7 @@ mod tests {
 
         progress_update.aggregate_progress_percent = Some(2);
 
-        assert_eq!(progress_update.stage_progress_percent(), 25);
+        assert_eq!(progress_update.stage_progress_percent(), 29);
     }
 }
 
