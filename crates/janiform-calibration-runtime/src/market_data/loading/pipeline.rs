@@ -29,9 +29,14 @@ use super::normalization::{NormalizeTickValuesInput, normalize_tick_row, normali
 use super::option_surface::{
     load_option_surface_records, materialize_option_surface_records_for_payload,
 };
+use super::progress::{
+    MarketDataLoadingProgressContext, MarketDataLoadingProgressEvent,
+    MarketDataLoadingProgressObserver, MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+};
 use super::rows::{
-    column_index, load_rows, load_source_columns, open_projected_parquet_record_batch_reader,
-    probe_source_row_count_estimate, raw_value_from_arrow_array, validate_columns_exist,
+    column_index, load_rows_with_progress, load_source_columns,
+    open_projected_parquet_record_batch_reader, probe_source_row_count_estimate,
+    raw_value_from_arrow_array, validate_columns_exist,
 };
 use super::session_resolution::{
     resolve_market_data_session_configuration_from_tick_records,
@@ -45,11 +50,31 @@ use super::shared::{
 pub fn load_and_preprocess_market_data_translation_request(
     request: MarketDataLoadingRequest,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
-    let normalized_tick_output = normalize_market_data_source(
+    let mut progress = MarketDataLoadingProgressContext::disabled();
+
+    load_and_preprocess_market_data_translation_request_with_context(request, &mut progress)
+}
+
+/// Load and preprocess market data while reporting source loading progress.
+pub fn load_and_preprocess_market_data_translation_request_with_progress(
+    request: MarketDataLoadingRequest,
+    progress_observer: MarketDataLoadingProgressObserver<'_>,
+) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::observed(progress_observer);
+
+    load_and_preprocess_market_data_translation_request_with_context(request, &mut progress)
+}
+
+fn load_and_preprocess_market_data_translation_request_with_context(
+    request: MarketDataLoadingRequest,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
+) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
+    let normalized_tick_output = normalize_market_data_source_with_context(
         &request.tick_data_source,
         &request.tick_data_column_mapping,
         &request.normalization_policy,
         request.require_hawkes,
+        progress,
     )?;
 
     let session_resolution = resolve_market_data_session_configuration(
@@ -57,7 +82,12 @@ pub fn load_and_preprocess_market_data_translation_request(
         Some(&normalized_tick_output),
     )?;
 
-    prepare_market_data_loading_from_phases(request, &normalized_tick_output, session_resolution)
+    prepare_market_data_loading_from_phases_with_context(
+        request,
+        &normalized_tick_output,
+        session_resolution,
+        progress,
+    )
 }
 
 pub fn probe_market_data_source(
@@ -135,11 +165,49 @@ pub fn normalize_market_data_source(
     normalization_policy: &MarketDataNormalizationPolicy,
     require_hawkes: bool,
 ) -> Result<MarketDataNormalizedTickOutput, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::disabled();
+
+    normalize_market_data_source_with_context(
+        file_reference,
+        column_mapping,
+        normalization_policy,
+        require_hawkes,
+        &mut progress,
+    )
+}
+
+/// Normalize tick data while reporting source loading progress.
+pub fn normalize_market_data_source_with_progress(
+    file_reference: &MarketDataInputFileReference,
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    require_hawkes: bool,
+    progress_observer: MarketDataLoadingProgressObserver<'_>,
+) -> Result<MarketDataNormalizedTickOutput, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::observed(progress_observer);
+
+    normalize_market_data_source_with_context(
+        file_reference,
+        column_mapping,
+        normalization_policy,
+        require_hawkes,
+        &mut progress,
+    )
+}
+
+fn normalize_market_data_source_with_context(
+    file_reference: &MarketDataInputFileReference,
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    require_hawkes: bool,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
+) -> Result<MarketDataNormalizedTickOutput, MarketDataLoadingError> {
     let tick_output = load_tick_records(
         file_reference,
         column_mapping,
         normalization_policy,
         require_hawkes,
+        progress,
     )?;
 
     Ok(MarketDataNormalizedTickOutput {
@@ -155,8 +223,37 @@ pub fn normalize_option_surface_source(
     option_surface_input: &MarketDataOptionSurfaceLoadingInput,
     normalization_policy: &MarketDataNormalizationPolicy,
 ) -> Result<MarketDataNormalizedOptionSurfaceOutput, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::disabled();
+
+    normalize_option_surface_source_with_context(
+        option_surface_input,
+        normalization_policy,
+        &mut progress,
+    )
+}
+
+/// Normalize option-surface data while reporting source loading progress.
+pub fn normalize_option_surface_source_with_progress(
+    option_surface_input: &MarketDataOptionSurfaceLoadingInput,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    progress_observer: MarketDataLoadingProgressObserver<'_>,
+) -> Result<MarketDataNormalizedOptionSurfaceOutput, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::observed(progress_observer);
+
+    normalize_option_surface_source_with_context(
+        option_surface_input,
+        normalization_policy,
+        &mut progress,
+    )
+}
+
+fn normalize_option_surface_source_with_context(
+    option_surface_input: &MarketDataOptionSurfaceLoadingInput,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
+) -> Result<MarketDataNormalizedOptionSurfaceOutput, MarketDataLoadingError> {
     let option_surface_output =
-        load_option_surface_records(option_surface_input, normalization_policy)?;
+        load_option_surface_records(option_surface_input, normalization_policy, progress)?;
 
     Ok(MarketDataNormalizedOptionSurfaceOutput {
         option_surface_records: materialize_option_surface_records_for_payload(
@@ -196,6 +293,39 @@ pub fn prepare_market_data_loading_from_phases(
     normalized_tick_output: &MarketDataNormalizedTickOutput,
     session_resolution: MarketDataSessionResolutionPayload,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::disabled();
+
+    prepare_market_data_loading_from_phases_with_context(
+        request,
+        normalized_tick_output,
+        session_resolution,
+        &mut progress,
+    )
+}
+
+/// Complete market-data loading from pre-normalized tick data while reporting progress.
+pub fn prepare_market_data_loading_from_phases_with_progress(
+    request: MarketDataLoadingRequest,
+    normalized_tick_output: &MarketDataNormalizedTickOutput,
+    session_resolution: MarketDataSessionResolutionPayload,
+    progress_observer: MarketDataLoadingProgressObserver<'_>,
+) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::observed(progress_observer);
+
+    prepare_market_data_loading_from_phases_with_context(
+        request,
+        normalized_tick_output,
+        session_resolution,
+        &mut progress,
+    )
+}
+
+fn prepare_market_data_loading_from_phases_with_context(
+    request: MarketDataLoadingRequest,
+    normalized_tick_output: &MarketDataNormalizedTickOutput,
+    session_resolution: MarketDataSessionResolutionPayload,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
+) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
     let calendar_registry = ExchangeCalendarRegistryLoader::load_from_json(
         session_resolution.resolved_session_definition_json.as_str(),
     )
@@ -205,7 +335,7 @@ pub fn prepare_market_data_loading_from_phases(
     })?;
 
     let known_news_output = if let Some(known_news_input) = &request.known_news_input {
-        Some(load_known_news_records(known_news_input)?)
+        Some(load_known_news_records(known_news_input, progress)?)
     } else {
         None
     };
@@ -215,6 +345,7 @@ pub fn prepare_market_data_loading_from_phases(
             coarse_data_input,
             &calendar_registry,
             &request.session_configuration.exchange_code,
+            progress,
         )?)
     } else {
         None
@@ -224,6 +355,7 @@ pub fn prepare_market_data_loading_from_phases(
         Some(load_option_surface_records(
             option_surface_input,
             &request.normalization_policy,
+            progress,
         )?)
     } else {
         None
@@ -297,14 +429,17 @@ fn load_tick_records(
     column_mapping: &MarketDataTickDataColumnMapping,
     normalization_policy: &MarketDataNormalizationPolicy,
     require_hawkes: bool,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<TickLoadOutput, MarketDataLoadingError> {
     let available_columns = load_source_columns(file_reference, "tick_data_source")?;
+
     let resolved_column_mapping = resolve_tick_data_column_mapping(
         available_columns.as_slice(),
         column_mapping,
         normalization_policy,
         &file_reference.path,
     )?;
+
     let required_columns =
         required_tick_source_columns(&resolved_column_mapping, normalization_policy);
 
@@ -320,11 +455,13 @@ fn load_tick_records(
             file_reference,
             &resolved_column_mapping,
             normalization_policy,
+            progress,
         )?,
         MarketDataInputFileFormat::Parquet => load_parquet_tick_rows(
             file_reference,
             &resolved_column_mapping,
             normalization_policy,
+            progress,
         )?,
         MarketDataInputFileFormat::Json => {
             return Err(MarketDataLoadingError::InvalidValue {
@@ -340,6 +477,7 @@ fn load_tick_records(
         file_reference,
         normalization_policy,
         require_hawkes,
+        progress,
     )
 }
 
@@ -347,11 +485,25 @@ fn load_csv_tick_rows(
     file_reference: &MarketDataInputFileReference,
     column_mapping: &MarketDataTickDataColumnMapping,
     normalization_policy: &MarketDataNormalizationPolicy,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<(Vec<LoadedTickRecord>, usize), MarketDataLoadingError> {
-    let raw_rows = load_rows(file_reference, "tick_data_source")?;
+    let raw_rows = load_rows_with_progress(
+        file_reference,
+        "tick_data_source",
+        progress,
+        MarketDataLoadingSource::TickData,
+    )?;
+
     let source_row_count = raw_rows.len();
 
     let mut normalized_rows = Vec::with_capacity(source_row_count);
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::TickData,
+        MarketDataLoadingProgressPhase::NormalizingRecords,
+        0,
+        Some(source_row_count),
+    ))?;
 
     for (row_index, raw_row) in raw_rows.iter().enumerate() {
         normalized_rows.push(normalize_tick_row(
@@ -361,6 +513,13 @@ fn load_csv_tick_rows(
             normalization_policy,
             &file_reference.path,
         )?);
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::NormalizingRecords,
+            row_index + 1,
+            Some(source_row_count),
+        ))?;
     }
 
     Ok((normalized_rows, source_row_count))
@@ -370,8 +529,10 @@ fn load_parquet_tick_rows(
     file_reference: &MarketDataInputFileReference,
     column_mapping: &MarketDataTickDataColumnMapping,
     normalization_policy: &MarketDataNormalizationPolicy,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<(Vec<LoadedTickRecord>, usize), MarketDataLoadingError> {
     let projected_columns = required_tick_source_columns(column_mapping, normalization_policy);
+
     let source_row_count = probe_source_row_count_estimate(file_reference, "tick_data_source")?
         .ok_or_else(|| MarketDataLoadingError::Parquet {
             field_path: "tick_data_source.path".to_string(),
@@ -387,11 +548,19 @@ fn load_parquet_tick_rows(
     let mut normalized_rows = Vec::with_capacity(source_row_count);
     let mut source_row_number: usize = 0;
 
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::TickData,
+        MarketDataLoadingProgressPhase::ReadingRecords,
+        0,
+        Some(source_row_count),
+    ))?;
+
     for batch_result in reader {
         let batch = batch_result.map_err(|error| MarketDataLoadingError::Parquet {
             field_path: "tick_data_source.path".to_string(),
             message: error.to_string(),
         })?;
+
         let projected_columns =
             ProjectedTickColumns::new(&batch, column_mapping, &file_reference.path)?;
 
@@ -405,6 +574,7 @@ fn load_parquet_tick_rows(
                 "column_mapping.tick_data.timestamp_column",
                 &file_reference.path,
             )?;
+
             let explicit_price_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.explicit_price_index,
@@ -412,6 +582,7 @@ fn load_parquet_tick_rows(
                 "column_mapping.tick_data.price_column",
                 &file_reference.path,
             )?;
+
             let bid_price_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.bid_price_index,
@@ -419,6 +590,7 @@ fn load_parquet_tick_rows(
                 "column_mapping.tick_data.bid_column",
                 &file_reference.path,
             )?;
+
             let ask_price_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.ask_price_index,
@@ -426,6 +598,7 @@ fn load_parquet_tick_rows(
                 "column_mapping.tick_data.ask_column",
                 &file_reference.path,
             )?;
+
             let trade_sign_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.trade_sign_index,
@@ -446,6 +619,13 @@ fn load_parquet_tick_rows(
                 source_path: &file_reference.path,
             })?);
         }
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::ReadingRecords,
+            source_row_number,
+            Some(source_row_count),
+        ))?;
     }
 
     Ok((normalized_rows, source_row_count))
@@ -457,6 +637,7 @@ fn finalize_tick_load_output(
     file_reference: &MarketDataInputFileReference,
     normalization_policy: &MarketDataNormalizationPolicy,
     require_hawkes: bool,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<TickLoadOutput, MarketDataLoadingError> {
     let (mut deduplicated_rows, dropped_duplicate_row_count) = deduplicate_tick_rows(
         normalized_rows,
@@ -468,7 +649,6 @@ fn finalize_tick_load_output(
     }
 
     let fit_warning = detect_interval_data_warning(&deduplicated_rows);
-
     let reference_price = deduplicated_rows.last().and_then(|row| row.price);
 
     let (resolved_rows, directional_label_diagnostics) =
@@ -484,7 +664,7 @@ fn finalize_tick_load_output(
         })
         .collect::<Vec<_>>();
 
-    Ok(TickLoadOutput {
+    let output = TickLoadOutput {
         tick_records,
         directional_label_diagnostics,
         summary: MarketDataSourceSummary {
@@ -506,7 +686,16 @@ fn finalize_tick_load_output(
         },
         reference_price,
         fit_warning,
-    })
+    };
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::TickData,
+        MarketDataLoadingProgressPhase::Completed,
+        source_row_count,
+        Some(source_row_count),
+    ))?;
+
+    Ok(output)
 }
 
 struct ProjectedTickColumns {
@@ -655,6 +844,7 @@ fn deduplicate_tick_rows(
             let source_count = rows.len();
 
             let mut last_index_by_key = BTreeMap::new();
+
             for (index, row) in rows.iter().enumerate() {
                 last_index_by_key.insert(tick_record_dedup_key(row), index);
             }
@@ -711,6 +901,7 @@ fn resolve_trade_signs(
     if !require_hawkes {
         return Ok((rows, None));
     }
+
     if rows.is_empty() {
         return Ok((
             rows,
@@ -735,11 +926,13 @@ fn resolve_trade_signs(
     let mut price_down_inference_count = 0;
 
     let mut resolved_rows = Vec::with_capacity(rows.len());
+
     for mut row in rows {
         let resolved_sign = match row.trade_sign {
             Some(sign) => {
                 provided_label_count += 1;
                 previous_sign = sign;
+
                 Some(sign)
             }
             None => {
@@ -773,7 +966,6 @@ fn resolve_trade_signs(
         };
 
         previous_price = row.price.or(previous_price);
-
         row.trade_sign = resolved_sign;
 
         resolved_rows.push(row);
@@ -818,20 +1010,24 @@ fn detect_interval_data_warning(rows: &[LoadedTickRecord]) -> Option<String> {
         .count();
 
     let mut counts = BTreeMap::new();
+
     for delta in &deltas_in_seconds {
         *counts.entry(*delta).or_insert(0_usize) += 1;
     }
 
     let (dominant_delta_seconds, dominant_count) =
         counts.into_iter().max_by_key(|(_, count)| *count)?;
+
     let dominant_share = dominant_count as f64 / deltas_in_seconds.len() as f64;
 
     if dominant_delta_seconds < 60 {
         return None;
     }
+
     if aligned_to_minute_count as f64 / (deltas_in_seconds.len() as f64) < 0.8 {
         return None;
     }
+
     if dominant_share < 0.6 {
         return None;
     }
@@ -846,9 +1042,11 @@ fn format_interval_warning_delta(delta_seconds: i64) -> String {
     if delta_seconds % 86_400 == 0 {
         return format!("{}D", delta_seconds / 86_400);
     }
+
     if delta_seconds % 3_600 == 0 {
         return format!("{}h", delta_seconds / 3_600);
     }
+
     if delta_seconds % 60 == 0 {
         return format!("{}min", delta_seconds / 60);
     }
@@ -869,6 +1067,7 @@ fn required_tick_source_columns(
     if let Some(column) = &column_mapping.price_column {
         columns.push(column.clone());
     }
+
     if let Some(column) = &column_mapping.trade_sign_column {
         columns.push(column.clone());
     }
@@ -904,6 +1103,7 @@ fn tick_price_policy_string(policy: MarketDataTickPriceInputPolicy) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::path::Path;
     use std::sync::Arc;
 
@@ -913,9 +1113,11 @@ mod tests {
     use arrow_schema::{DataType, Field, Schema, TimeUnit};
 
     use super::{
-        MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataNormalizationPolicy,
+        MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataLoadingProgressEvent,
+        MarketDataLoadingProgressPhase, MarketDataLoadingSource, MarketDataNormalizationPolicy,
         MarketDataNormalizedTickOutput, MarketDataTickDataColumnMapping,
         MarketDataTickPriceInputPolicy, normalize_market_data_source,
+        normalize_market_data_source_with_progress,
     };
     use crate::market_data::loading::test_support::{unique_test_path, write_parquet_record_batch};
 
@@ -950,6 +1152,7 @@ mod tests {
     #[test]
     fn normalize_market_data_source_reads_projected_parquet_tick_columns() {
         let parquet_path = unique_test_path("tick-source.parquet");
+
         let schema = Arc::new(Schema::new(vec![
             Field::new(
                 "event_time",
@@ -991,6 +1194,7 @@ mod tests {
     #[test]
     fn normalize_market_data_source_reads_projected_decimal_parquet_prices() {
         let parquet_path = unique_test_path("decimal-tick-source.parquet");
+
         let schema = Arc::new(Schema::new(vec![
             Field::new(
                 "event_time",
@@ -1024,5 +1228,75 @@ mod tests {
         assert_eq!(normalized.tick_records[0].price, Some(1.09125));
         assert_eq!(normalized.tick_records[1].price, Some(1.0925));
         assert_eq!(normalized.reference_price, Some(1.0925));
+    }
+
+    #[test]
+    fn normalize_market_data_source_with_progress_emits_tick_loading_events() {
+        let csv_path = unique_test_path("tick-source.csv");
+
+        fs::write(
+            csv_path.as_path(),
+            "event_time,trade_price\n2024-04-01T12:00:00Z,10.0\n2024-04-01T12:00:01Z,11.0\n",
+        )
+        .expect("test CSV source should be writable");
+
+        let mut observed_events = Vec::<MarketDataLoadingProgressEvent>::new();
+        let mut observer = |event| {
+            observed_events.push(event);
+            Ok(())
+        };
+
+        normalize_market_data_source_with_progress(
+            &MarketDataInputFileReference {
+                path: csv_path.to_string_lossy().into_owned(),
+                file_format: MarketDataInputFileFormat::Csv,
+                provenance_label: "ticks".to_string(),
+            },
+            &MarketDataTickDataColumnMapping {
+                timestamp_column: Some("event_time".to_string()),
+                price_column: Some("trade_price".to_string()),
+                trade_sign_column: None,
+                bid_column: None,
+                ask_column: None,
+            },
+            &MarketDataNormalizationPolicy {
+                timestamp_timezone: "UTC".to_string(),
+                sort_records_by_timestamp: true,
+                duplicate_record_policy: None,
+                tick_price_input_policy: Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn),
+                option_quote_input_policy: None,
+            },
+            false,
+            &mut observer,
+        )
+        .expect("CSV tick normalization should succeed");
+
+        fs::remove_file(csv_path).expect("test CSV source should be removable");
+
+        assert!(
+            observed_events.contains(&MarketDataLoadingProgressEvent::new(
+                MarketDataLoadingSource::TickData,
+                MarketDataLoadingProgressPhase::ReadingRecords,
+                2,
+                None,
+            ))
+        );
+        assert!(
+            observed_events.contains(&MarketDataLoadingProgressEvent::new(
+                MarketDataLoadingSource::TickData,
+                MarketDataLoadingProgressPhase::NormalizingRecords,
+                2,
+                Some(2),
+            ))
+        );
+        assert_eq!(
+            observed_events.last(),
+            Some(&MarketDataLoadingProgressEvent::new(
+                MarketDataLoadingSource::TickData,
+                MarketDataLoadingProgressPhase::Completed,
+                2,
+                Some(2),
+            ))
+        );
     }
 }

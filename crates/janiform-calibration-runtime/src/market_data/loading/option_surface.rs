@@ -15,9 +15,14 @@ use super::normalization::{
     normalize_option_type, normalize_optional_numeric_value, normalize_required_numeric_value,
     normalize_timestamp_value,
 };
+use super::progress::{
+    MarketDataLoadingProgressContext, MarketDataLoadingProgressEvent,
+    MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+};
 use super::rows::{
-    column_index, load_rows, load_source_columns, open_projected_parquet_record_batch_reader,
-    probe_source_row_count_estimate, raw_value_from_arrow_array, validate_columns_exist,
+    column_index, load_rows_with_progress, load_source_columns,
+    open_projected_parquet_record_batch_reader, probe_source_row_count_estimate,
+    raw_value_from_arrow_array, validate_columns_exist,
 };
 use super::shared::{
     LoadedOptionSurfaceRecord, OptionSurfaceLoadOutput, RawRow, RawValue, file_format_string,
@@ -27,29 +32,35 @@ use super::shared::{
 pub(super) fn load_option_surface_records(
     option_surface_input: &MarketDataOptionSurfaceLoadingInput,
     normalization_policy: &MarketDataNormalizationPolicy,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<OptionSurfaceLoadOutput, MarketDataLoadingError> {
     let available_columns =
         load_source_columns(&option_surface_input.source, "option_surface_source")?;
+
     let resolved_option_quote_input_policy = resolve_option_surface_quote_input_policy(
         available_columns.as_slice(),
         &option_surface_input.column_mapping,
         normalization_policy,
         &option_surface_input.source.path,
     )?;
+
     let effective_normalization_policy = MarketDataNormalizationPolicy {
         option_quote_input_policy: Some(resolved_option_quote_input_policy),
         ..normalization_policy.clone()
     };
+
     let resolved_column_mapping = resolve_option_surface_column_mapping(
         available_columns.as_slice(),
         &option_surface_input.column_mapping,
         &effective_normalization_policy,
         &option_surface_input.source.path,
     )?;
+
     let required_columns = required_option_surface_source_columns(
         &resolved_column_mapping,
         &effective_normalization_policy,
     );
+
     validate_columns_exist(
         &available_columns,
         &required_columns,
@@ -64,6 +75,7 @@ pub(super) fn load_option_surface_records(
                 column_mapping: resolved_column_mapping.clone(),
             },
             &effective_normalization_policy,
+            progress,
         )?,
         MarketDataInputFileFormat::Parquet => load_parquet_option_surface_rows(
             &MarketDataOptionSurfaceLoadingInput {
@@ -71,6 +83,7 @@ pub(super) fn load_option_surface_records(
                 column_mapping: resolved_column_mapping.clone(),
             },
             &effective_normalization_policy,
+            progress,
         )?,
         MarketDataInputFileFormat::Json => {
             return Err(MarketDataLoadingError::InvalidValue {
@@ -79,9 +92,11 @@ pub(super) fn load_option_surface_records(
             });
         }
     };
+
     let mut normalized_rows = loaded_rows.normalized_rows;
 
     let mut seen_keys = HashSet::new();
+
     for normalized in &normalized_rows {
         if !seen_keys.insert(option_surface_record_dedup_key(normalized)) {
             return Err(MarketDataLoadingError::InvalidValue {
@@ -113,7 +128,7 @@ pub(super) fn load_option_surface_records(
     let retained_row_count = normalized_rows.len();
     let option_surface_quote_values = normalized_rows.iter().map(|row| row.quote_value).collect();
 
-    Ok(OptionSurfaceLoadOutput {
+    let output = OptionSurfaceLoadOutput {
         option_surface_quote_values,
         option_surface_records: normalized_rows,
         summary: MarketDataSourceSummary {
@@ -133,7 +148,16 @@ pub(super) fn load_option_surface_records(
                 .option_quote_input_policy
                 .map(option_quote_policy_string),
         },
-    })
+    };
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::OptionSurface,
+        MarketDataLoadingProgressPhase::Completed,
+        loaded_rows.source_row_count,
+        Some(loaded_rows.source_row_count),
+    ))?;
+
+    Ok(output)
 }
 
 struct LoadedOptionSurfaceRows {
@@ -145,12 +169,26 @@ struct LoadedOptionSurfaceRows {
 fn load_csv_option_surface_rows(
     option_surface_input: &MarketDataOptionSurfaceLoadingInput,
     normalization_policy: &MarketDataNormalizationPolicy,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<LoadedOptionSurfaceRows, MarketDataLoadingError> {
-    let raw_rows = load_rows(&option_surface_input.source, "option_surface_source")?;
+    let raw_rows = load_rows_with_progress(
+        &option_surface_input.source,
+        "option_surface_source",
+        progress,
+        MarketDataLoadingSource::OptionSurface,
+    )?;
+
     let source_row_count = raw_rows.len();
 
     let mut normalized_rows = Vec::with_capacity(source_row_count);
     let mut dropped_invalid_row_count = 0usize;
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::OptionSurface,
+        MarketDataLoadingProgressPhase::NormalizingRecords,
+        0,
+        Some(source_row_count),
+    ))?;
 
     for (row_index, raw_row) in raw_rows.iter().enumerate() {
         let normalized_row = normalize_option_surface_row(
@@ -165,6 +203,13 @@ fn load_csv_option_surface_rows(
             Some(row) => normalized_rows.push(row),
             None => dropped_invalid_row_count = dropped_invalid_row_count.saturating_add(1),
         }
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::OptionSurface,
+            MarketDataLoadingProgressPhase::NormalizingRecords,
+            row_index + 1,
+            Some(source_row_count),
+        ))?;
     }
 
     Ok(LoadedOptionSurfaceRows {
@@ -177,6 +222,7 @@ fn load_csv_option_surface_rows(
 fn load_parquet_option_surface_rows(
     option_surface_input: &MarketDataOptionSurfaceLoadingInput,
     normalization_policy: &MarketDataNormalizationPolicy,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<LoadedOptionSurfaceRows, MarketDataLoadingError> {
     let projected_columns = required_option_surface_source_columns(
         &option_surface_input.column_mapping,
@@ -200,6 +246,13 @@ fn load_parquet_option_surface_rows(
     let mut source_row_number: usize = 0;
     let mut dropped_invalid_row_count = 0usize;
 
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::OptionSurface,
+        MarketDataLoadingProgressPhase::ReadingRecords,
+        0,
+        Some(source_row_count),
+    ))?;
+
     for batch_result in reader {
         let batch = batch_result.map_err(|error| MarketDataLoadingError::Parquet {
             field_path: "option_surface_source.path".to_string(),
@@ -222,6 +275,7 @@ fn load_parquet_option_surface_rows(
                 "column_mapping.option_surface.quote_timestamp_column",
                 &option_surface_input.source.path,
             )?;
+
             let expiry_timestamp_raw_value = projected_columns.required_value(
                 &batch,
                 projected_columns.expiry_timestamp_index,
@@ -229,6 +283,7 @@ fn load_parquet_option_surface_rows(
                 "column_mapping.option_surface.expiry_timestamp_column",
                 &option_surface_input.source.path,
             )?;
+
             let strike_raw_value = projected_columns.required_value(
                 &batch,
                 projected_columns.strike_index,
@@ -236,6 +291,7 @@ fn load_parquet_option_surface_rows(
                 "column_mapping.option_surface.strike_column",
                 &option_surface_input.source.path,
             )?;
+
             let option_type_raw_value = projected_columns.required_value(
                 &batch,
                 projected_columns.option_type_index,
@@ -243,6 +299,7 @@ fn load_parquet_option_surface_rows(
                 "column_mapping.option_surface.option_type_column",
                 &option_surface_input.source.path,
             )?;
+
             let mid_price_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.mid_price_index,
@@ -250,6 +307,7 @@ fn load_parquet_option_surface_rows(
                 "column_mapping.option_surface.mid_price_column",
                 &option_surface_input.source.path,
             )?;
+
             let bid_price_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.bid_price_index,
@@ -257,6 +315,7 @@ fn load_parquet_option_surface_rows(
                 "column_mapping.option_surface.bid_column",
                 &option_surface_input.source.path,
             )?;
+
             let ask_price_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.ask_price_index,
@@ -264,6 +323,7 @@ fn load_parquet_option_surface_rows(
                 "column_mapping.option_surface.ask_column",
                 &option_surface_input.source.path,
             )?;
+
             let implied_volatility_raw_value = projected_columns.optional_value(
                 &batch,
                 projected_columns.implied_volatility_index,
@@ -293,6 +353,13 @@ fn load_parquet_option_surface_rows(
                 None => dropped_invalid_row_count = dropped_invalid_row_count.saturating_add(1),
             }
         }
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::OptionSurface,
+            MarketDataLoadingProgressPhase::ReadingRecords,
+            source_row_number,
+            Some(source_row_count),
+        ))?;
     }
 
     Ok(LoadedOptionSurfaceRows {
@@ -403,6 +470,7 @@ pub(super) fn normalize_option_surface_values(
     } = input;
 
     let row_field_path = format!("option_surface_source.rows[{source_row_number}]");
+
     let quote_timestamp_column = column_mapping
         .quote_timestamp_column
         .as_deref()
@@ -410,6 +478,7 @@ pub(super) fn normalize_option_surface_values(
             field_path: "column_mapping.option_surface.quote_timestamp_column".to_string(),
             message: "could not resolve an option quote timestamp column".to_string(),
         })?;
+
     let expiry_timestamp_column = column_mapping
         .expiry_timestamp_column
         .as_deref()
@@ -417,12 +486,14 @@ pub(super) fn normalize_option_surface_values(
             field_path: "column_mapping.option_surface.expiry_timestamp_column".to_string(),
             message: "could not resolve an option expiry timestamp column".to_string(),
         })?;
+
     let strike_column = column_mapping.strike_column.as_deref().ok_or_else(|| {
         MarketDataLoadingError::InvalidValue {
             field_path: "column_mapping.option_surface.strike_column".to_string(),
             message: "could not resolve an option strike column".to_string(),
         }
     })?;
+
     let option_type_column = column_mapping
         .option_type_column
         .as_deref()
@@ -469,6 +540,7 @@ pub(super) fn normalize_option_surface_values(
         )?,
         None => None,
     };
+
     let bid_price = match &column_mapping.bid_column {
         Some(column_name) => normalize_optional_numeric_value(
             bid_price_raw_value,
@@ -479,6 +551,7 @@ pub(super) fn normalize_option_surface_values(
         )?,
         None => None,
     };
+
     let ask_price = match &column_mapping.ask_column {
         Some(column_name) => normalize_optional_numeric_value(
             ask_price_raw_value,
@@ -623,6 +696,7 @@ impl ProjectedOptionSurfaceColumns {
                 field_path: "column_mapping.option_surface.quote_timestamp_column".to_string(),
                 message: "could not resolve an option quote timestamp column".to_string(),
             })?;
+
         let expiry_timestamp_column = column_mapping
             .expiry_timestamp_column
             .as_deref()
@@ -630,12 +704,14 @@ impl ProjectedOptionSurfaceColumns {
                 field_path: "column_mapping.option_surface.expiry_timestamp_column".to_string(),
                 message: "could not resolve an option expiry timestamp column".to_string(),
             })?;
+
         let strike_column = column_mapping.strike_column.as_deref().ok_or_else(|| {
             MarketDataLoadingError::InvalidValue {
                 field_path: "column_mapping.option_surface.strike_column".to_string(),
                 message: "could not resolve an option strike column".to_string(),
             }
         })?;
+
         let option_type_column = column_mapping
             .option_type_column
             .as_deref()
@@ -770,6 +846,7 @@ mod tests {
         load_option_surface_records,
     };
     use crate::MarketDataInputFileReference;
+    use crate::market_data::loading::progress::MarketDataLoadingProgressContext;
     use crate::market_data::loading::test_support::{unique_test_path, write_parquet_record_batch};
 
     #[test]
@@ -813,6 +890,8 @@ mod tests {
             ],
         );
 
+        let mut progress = MarketDataLoadingProgressContext::disabled();
+
         let output = load_option_surface_records(
             &MarketDataOptionSurfaceLoadingInput {
                 source: MarketDataInputFileReference {
@@ -838,6 +917,7 @@ mod tests {
                 tick_price_input_policy: None,
                 option_quote_input_policy: None,
             },
+            &mut progress,
         )
         .expect("projected parquet option-surface normalization should succeed");
 
@@ -859,6 +939,7 @@ mod tests {
     #[test]
     fn load_option_surface_records_filters_unusable_bid_ask_midpoint_rows() {
         let parquet_path = unique_test_path("option-surface-crossed.parquet");
+
         let schema = Arc::new(Schema::new(vec![
             Field::new(
                 "quote_time",
@@ -901,6 +982,8 @@ mod tests {
             ],
         );
 
+        let mut progress = MarketDataLoadingProgressContext::disabled();
+
         let output = load_option_surface_records(
             &MarketDataOptionSurfaceLoadingInput {
                 source: MarketDataInputFileReference {
@@ -926,6 +1009,7 @@ mod tests {
                 tick_price_input_policy: None,
                 option_quote_input_policy: None,
             },
+            &mut progress,
         )
         .expect("option-surface rows with unusable bid/ask quotes should be filtered");
 

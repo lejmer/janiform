@@ -1,5 +1,10 @@
 use janiform_calibration_runtime::CalibrationMarketDataPreparationRequest;
 
+/// Return the number of input sources represented by a prepared fit request.
+pub fn fit_preparation_input_count(request: &CalibrationMarketDataPreparationRequest) -> usize {
+    preparation_request_input_paths(request).len()
+}
+
 pub(super) fn preparation_request_input_paths(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Vec<String> {

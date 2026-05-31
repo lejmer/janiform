@@ -7,6 +7,8 @@ use crate::market_data::preprocessing::{
     MarketDataTranslationPreprocessingSettings,
 };
 
+use super::progress::MarketDataLoadingProgressError;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarketDataLoadingRequest {
@@ -487,6 +489,7 @@ pub enum MarketDataLoadingError {
     MissingColumn { field_path: String, message: String },
     InvalidValue { field_path: String, message: String },
     Preprocessing(MarketDataTranslationPreprocessingError),
+    Progress(MarketDataLoadingProgressError),
 }
 
 impl Display for MarketDataLoadingError {
@@ -513,8 +516,21 @@ impl Display for MarketDataLoadingError {
                 message,
             } => write!(formatter, "{field_path}: {message}"),
             Self::Preprocessing(error) => Display::fmt(error, formatter),
+            Self::Progress(error) => Display::fmt(error, formatter),
         }
     }
 }
 
-impl Error for MarketDataLoadingError {}
+impl Error for MarketDataLoadingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Preprocessing(error) => Some(error),
+            Self::Progress(error) => Some(error),
+            Self::Io { .. }
+            | Self::Csv { .. }
+            | Self::Parquet { .. }
+            | Self::MissingColumn { .. }
+            | Self::InvalidValue { .. } => None,
+        }
+    }
+}

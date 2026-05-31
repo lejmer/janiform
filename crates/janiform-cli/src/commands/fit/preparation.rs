@@ -1,22 +1,30 @@
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::calibration::market_data::{
+    MarketDataLoadingProgressError, MarketDataLoadingProgressEvent,
     OptionForwardParityWarningPolicy, PreparedMarketDataCalibrationPlan,
     infer_market_data_run_id_from_path, prepare_market_data_calibration_plan,
+    prepare_market_data_calibration_plan_with_progress,
 };
 use janiform::calibration::presets::ResolvedMarketProfile;
 use janiform::calibration::staged::{
     CalibrationDiagnosticsRequest, CalibrationExtendedDiagnosticKind,
     CalibrationMarketDataCarryInput, CalibrationMarketDataMeanReversionConfiguration,
-    CalibrationMarketDataOutputPreferences, CalibrationMarketDataPreparationRequest,
-    CalibrationMarketDataWorkflowScope,
+    CalibrationMarketDataOutputPreferences, CalibrationMarketDataPreparationError,
+    CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
 };
-use janiform_terminal_ui::format_path;
+use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, format_path};
 use janiform_workflows::fit::{
-    FitWorkflowPaths, fit_workflow_paths, market_data_file_format_label, tick_price_policy_label,
+    FitWorkflowPaths, fit_preparation_input_count, fit_preparation_start_summary,
+    fit_workflow_paths, market_data_file_format_label, tick_price_policy_label,
     workflow_scope_label,
+};
+use janiform_workflows::market_data_progress::{
+    MarketDataLoadingProgressGate, market_data_loading_progress_measure,
+    market_data_loading_progress_signal,
 };
 
 use super::labels::workflow_scope_argument_label;
@@ -29,7 +37,8 @@ use crate::commands::shared::calibration::tick_objective_data_usage_policy;
 use crate::commands::shared::market_data::prepare_market_data_command_inputs;
 use crate::commands::shared::output::write_pretty_json_file;
 use crate::commands::shared::output_paths::default_run_output_directory;
-use crate::context::CommandContext;
+use crate::commands::shared::terminal::terminal_progress_adapter_for_context;
+use crate::context::{CommandContext, OutputMode};
 use crate::error::CliError;
 
 const FIT_PREPARATION_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.request.v1";
@@ -60,6 +69,7 @@ pub(crate) struct PreparedFitPreview {
     pub(crate) plan: PreparedMarketDataCalibrationPlan,
     pub(crate) paths: FitWorkflowPaths,
     pub(crate) inputs: FitPreviewInputs,
+    pub(crate) start_summary_emitted: bool,
     pub(crate) explicit_values: Vec<(String, String)>,
     pub(crate) inferred_values: Vec<(String, String)>,
     pub(crate) preset_defaults: Vec<(String, String)>,
@@ -226,10 +236,14 @@ pub(crate) fn prepare_fit_preview(
             }),
     };
 
-    let plan = prepare_market_data_calibration_plan(request.clone(), preview_options.cpu_count)
-        .map_err(|source| CliError::FitPreparationFailed {
-            source: Box::new(source),
-        })?;
+    let start_summary_emitted = emit_start_summary_before_loading(context, &request, &paths)?;
+
+    let plan = prepare_market_data_calibration_plan_for_cli(
+        context,
+        request.clone(),
+        preview_options.cpu_count,
+        paths.output_directory.as_path(),
+    )?;
 
     let mut explicit_values = Vec::new();
 
@@ -355,12 +369,141 @@ pub(crate) fn prepare_fit_preview(
         plan,
         paths,
         inputs: preview_inputs,
+        start_summary_emitted,
         explicit_values,
         inferred_values,
         preset_defaults,
         recommended_defaults,
         derived_values,
     })
+}
+
+fn emit_start_summary_before_loading(
+    context: &CommandContext,
+    request: &CalibrationMarketDataPreparationRequest,
+    paths: &FitWorkflowPaths,
+) -> Result<bool, CliError> {
+    if context.output_mode() != OutputMode::Terminal {
+        return Ok(false);
+    }
+
+    let rendered = fit_preparation_start_summary(request, paths).render(&context.stdout_renderer());
+
+    context
+        .stdout_renderer()
+        .write_stdout(&format!("\n{rendered}"))
+        .map_err(|source| CliError::OutputWrite { source })?;
+
+    Ok(true)
+}
+
+fn prepare_market_data_calibration_plan_for_cli(
+    context: &CommandContext,
+    request: CalibrationMarketDataPreparationRequest,
+    cpu_count: Option<usize>,
+    output_directory: &Path,
+) -> Result<PreparedMarketDataCalibrationPlan, CliError> {
+    let mut progress_adapter = terminal_progress_adapter_for_context(context);
+
+    let plan_result = match progress_adapter.as_mut() {
+        Some(progress_adapter) => prepare_market_data_calibration_plan_with_terminal_progress(
+            progress_adapter,
+            request,
+            cpu_count,
+            output_directory,
+        ),
+        None => prepare_market_data_calibration_plan(request, cpu_count),
+    };
+
+    if let Some(progress_adapter) = progress_adapter.as_mut() {
+        match &plan_result {
+            Ok(_) => progress_adapter
+                .finish_and_keep()
+                .map_err(|source| CliError::OutputWrite { source })?,
+            Err(_) => progress_adapter.finish_and_clear(),
+        }
+    }
+
+    let plan = plan_result.map_err(|source| CliError::FitPreparationFailed {
+        source: Box::new(source),
+    })?;
+
+    Ok(plan)
+}
+
+fn prepare_market_data_calibration_plan_with_terminal_progress(
+    progress_adapter: &mut ProgressAdapter,
+    request: CalibrationMarketDataPreparationRequest,
+    cpu_count: Option<usize>,
+    output_directory: &Path,
+) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    let mut progress_gate = MarketDataLoadingProgressGate::default();
+    let loading_started_at = Instant::now();
+    // Intentional copy because the preparation request is consumed by the loader
+    // after the progress run has been initialized.
+    let progress_run_id = request.run_id.clone();
+
+    progress_adapter.observe(ProgressEvent::RunStarted {
+        run_id: progress_run_id,
+        scope: "Preparing fit".to_string(),
+        input_count: fit_preparation_input_count(&request),
+        output_path: Some(format_path(output_directory)),
+        stage_sequence: vec!["Loading market data".to_string()],
+        completed_stage_count: 0,
+    });
+
+    progress_adapter.observe(ProgressEvent::StageStarted {
+        stage: "Loading market data".to_string(),
+        stage_number: 1,
+        stage_count: 1,
+    });
+
+    progress_adapter.draw_latest().map_err(|source| {
+        CalibrationMarketDataPreparationError::from(format!(
+            "failed to render loading progress: {source}"
+        ))
+    })?;
+
+    let mut loading_progress = |event: MarketDataLoadingProgressEvent| {
+        if !progress_gate.should_emit(&event) {
+            return Ok(());
+        }
+
+        progress_adapter.observe(ProgressEvent::StageProgress {
+            phase: "Loading market data".to_string(),
+            measure: market_data_loading_progress_measure(&event)
+                .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))?,
+            work_item_label: None,
+            work_item_progress_percent: None,
+            work_item_status: None,
+            planned_work_item_labels: Vec::new(),
+            work_item_columns: Vec::new(),
+            work_item_metrics: Vec::new(),
+            latest_signal: Some(market_data_loading_progress_signal(&event)),
+        });
+
+        progress_adapter
+            .draw_latest()
+            .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))
+    };
+
+    let plan = prepare_market_data_calibration_plan_with_progress(
+        request,
+        cpu_count,
+        &mut loading_progress,
+    )?;
+
+    progress_adapter.observe(ProgressEvent::StageCompleted {
+        stage: "Loading market data".to_string(),
+        status: "completed".to_string(),
+        runtime_seconds: loading_started_at.elapsed().as_secs_f64(),
+    });
+
+    progress_adapter.observe(ProgressEvent::RunCompleted {
+        status: "prepared".to_string(),
+    });
+
+    Ok(plan)
 }
 
 pub(crate) fn write_staged_execution_input(

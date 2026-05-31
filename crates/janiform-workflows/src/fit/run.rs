@@ -3,12 +3,18 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use janiform_calibration_runtime::CalibrationMarketDataPreparationRequest;
+use janiform_event_log::WorkflowRef;
 use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
 
 use crate::error::WorkflowError;
+use crate::market_data_progress::{
+    MarketDataLoadingProgressGate, market_data_loading_progress_measure,
+    market_data_loading_progress_signal, market_data_loading_run_event,
+    should_emit_market_data_loading_progress,
+};
 
 use super::execution::{fit_workflow_paths, run_staged_fit_execution_workflow};
-use super::labels::fit_preparation_progress_scope_label;
+use super::labels::{fit_preparation_progress_scope_label, fit_workflow_id, fit_workflow_label};
 use super::output::FitWorkflowOutput;
 use super::output::fit_preparation_start_summary;
 use super::preparation::{
@@ -33,19 +39,22 @@ pub fn run_fit_workflow(
         preparation_working_directory(output_base_directory.as_deref())?;
 
     let mut emitted_start_summary = false;
-
     let terminal_output = observer.terminal_output;
-
     let progress_adapter = RefCell::new(observer.progress_adapter.take());
+
+    let mut machine_event_sink = observer.machine_event_sink.take();
+    let mut loading_progress_gate = MarketDataLoadingProgressGate::default();
 
     observe_preparation_started(&mut progress_adapter.borrow_mut(), &preparation_request)?;
 
-    let prepared_workflow = {
+    let observe_loading_progress =
+        progress_adapter.borrow().is_some() || machine_event_sink.is_some();
+
+    let prepared_workflow_result = {
         let mut emit_start_summary = |ready_request: &CalibrationMarketDataPreparationRequest| {
             let Some(terminal_output) = terminal_output else {
                 return Ok(());
             };
-
             if !terminal_output.emit_start_summary {
                 return Ok(());
             }
@@ -74,17 +83,45 @@ pub fn run_fit_workflow(
             render_preparation_progress(&mut progress_adapter.borrow_mut(), progress)
         };
 
+        let mut emit_loading_progress = |run_id: &str, event| {
+            if !should_emit_market_data_loading_progress(&mut loading_progress_gate, &event) {
+                return Ok(());
+            }
+
+            render_market_data_loading_progress(&mut progress_adapter.borrow_mut(), &event)?;
+
+            let Some(machine_event_sink) = machine_event_sink.as_mut() else {
+                return Ok(());
+            };
+
+            let run_event = market_data_loading_run_event(
+                run_id,
+                WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label()),
+                &event,
+            );
+
+            machine_event_sink(&run_event)
+        };
+
         prepare_fit_workflow_with_observer(
             preparation_request,
             preparation_working_directory.as_path(),
             FitPreparationObserver {
                 preparation_request_ready: Some(&mut emit_start_summary),
                 preparation_progress: Some(&mut emit_preparation_progress),
+                market_data_loading_progress: if observe_loading_progress {
+                    Some(&mut emit_loading_progress)
+                } else {
+                    None
+                },
             },
-        )?
+        )
     };
 
     observer.progress_adapter = progress_adapter.into_inner();
+    observer.machine_event_sink = machine_event_sink;
+
+    let prepared_workflow = prepared_workflow_result?;
 
     let paths = fit_paths_for_run(
         prepared_workflow.execution_input.request.run_id.as_str(),
@@ -92,6 +129,7 @@ pub fn run_fit_workflow(
     )?;
 
     let mut execution_input = prepared_workflow.execution_input;
+
     execution_input.request.resume_settings = resume_settings;
 
     if emitted_start_summary && let Some(mut terminal_output) = observer.terminal_output {
@@ -157,6 +195,26 @@ fn render_preparation_progress(
         phase: progress.phase.to_string(),
         measure: ProgressMeasure::Unbounded,
         latest_signal: Some(progress.latest_signal.to_string()),
+    });
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+fn render_market_data_loading_progress(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+    event: &janiform_calibration_runtime::MarketDataLoadingProgressEvent,
+) -> Result<(), WorkflowError> {
+    let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunProgress {
+        phase: "Loading market data".to_string(),
+        measure: market_data_loading_progress_measure(event)
+            .map_err(|source| WorkflowError::OutputProgress { source })?,
+        latest_signal: Some(market_data_loading_progress_signal(event)),
     });
 
     progress_adapter

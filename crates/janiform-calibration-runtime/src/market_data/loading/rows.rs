@@ -22,6 +22,10 @@ use std::collections::{BTreeMap, HashSet};
 use super::contracts::{
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataLoadingError,
 };
+use super::progress::{
+    MarketDataLoadingProgressContext, MarketDataLoadingProgressEvent,
+    MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+};
 use super::shared::{RawRow, RawValue};
 
 const DECIMAL_RADIX_F64: f64 = 10.0;
@@ -103,6 +107,26 @@ pub(super) fn load_rows(
     }
 }
 
+pub(super) fn load_rows_with_progress(
+    file_reference: &MarketDataInputFileReference,
+    field_path: &str,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
+    progress_source: MarketDataLoadingSource,
+) -> Result<Vec<RawRow>, MarketDataLoadingError> {
+    match file_reference.file_format {
+        MarketDataInputFileFormat::Csv => {
+            load_csv_rows_with_progress(file_reference, field_path, progress, progress_source)
+        }
+        MarketDataInputFileFormat::Parquet => {
+            load_parquet_rows_with_progress(file_reference, field_path, progress, progress_source)
+        }
+        MarketDataInputFileFormat::Json => Err(MarketDataLoadingError::InvalidValue {
+            field_path: format!("{field_path}.file_format"),
+            message: "must be one of: csv, parquet".to_string(),
+        }),
+    }
+}
+
 pub(super) fn open_projected_parquet_record_batch_reader(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
@@ -119,6 +143,22 @@ pub(super) fn load_csv_rows(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
 ) -> Result<Vec<RawRow>, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::disabled();
+
+    load_csv_rows_with_progress(
+        file_reference,
+        field_path,
+        &mut progress,
+        MarketDataLoadingSource::TickData,
+    )
+}
+
+fn load_csv_rows_with_progress(
+    file_reference: &MarketDataInputFileReference,
+    field_path: &str,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
+    progress_source: MarketDataLoadingSource,
+) -> Result<Vec<RawRow>, MarketDataLoadingError> {
     let mut reader = open_csv_reader(file_reference.path.as_ref())
         .map_err(|error| csv_document_error(error, field_path))?;
 
@@ -131,6 +171,14 @@ pub(super) fn load_csv_rows(
         .clone();
 
     let mut rows = Vec::new();
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        progress_source,
+        MarketDataLoadingProgressPhase::ReadingRecords,
+        0,
+        None,
+    ))?;
+
     for result in reader.records() {
         let record = result.map_err(|error| MarketDataLoadingError::Csv {
             field_path: format!("{field_path}.path"),
@@ -138,6 +186,13 @@ pub(super) fn load_csv_rows(
         })?;
 
         rows.push(raw_row_from_csv_record(&headers, &record));
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            progress_source,
+            MarketDataLoadingProgressPhase::ReadingRecords,
+            rows.len(),
+            None,
+        ))?;
     }
 
     Ok(rows)
@@ -145,6 +200,7 @@ pub(super) fn load_csv_rows(
 
 pub(super) fn raw_row_from_csv_record(headers: &StringRecord, record: &StringRecord) -> RawRow {
     let mut row = BTreeMap::new();
+
     for (header, value) in headers.iter().zip(record.iter()) {
         row.insert(header.to_string(), RawValue::Text(value.to_string()));
     }
@@ -156,6 +212,24 @@ pub(super) fn load_parquet_rows(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
 ) -> Result<Vec<RawRow>, MarketDataLoadingError> {
+    let mut progress = MarketDataLoadingProgressContext::disabled();
+
+    load_parquet_rows_with_progress(
+        file_reference,
+        field_path,
+        &mut progress,
+        MarketDataLoadingSource::TickData,
+    )
+}
+
+fn load_parquet_rows_with_progress(
+    file_reference: &MarketDataInputFileReference,
+    field_path: &str,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
+    progress_source: MarketDataLoadingSource,
+) -> Result<Vec<RawRow>, MarketDataLoadingError> {
+    let source_row_count = probe_source_row_count_estimate(file_reference, field_path)?;
+
     let reader = open_serialized_parquet_reader(file_reference.path.as_ref())
         .map_err(|error| parquet_document_error(error, field_path))?;
 
@@ -167,6 +241,14 @@ pub(super) fn load_parquet_rows(
         })?;
 
     let mut rows = Vec::new();
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        progress_source,
+        MarketDataLoadingProgressPhase::ReadingRecords,
+        0,
+        source_row_count,
+    ))?;
+
     for row_result in iter {
         let row = row_result.map_err(|error| MarketDataLoadingError::Parquet {
             field_path: format!("{field_path}.path"),
@@ -180,6 +262,13 @@ pub(super) fn load_parquet_rows(
         }
 
         rows.push(raw_row);
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            progress_source,
+            MarketDataLoadingProgressPhase::ReadingRecords,
+            rows.len(),
+            source_row_count,
+        ))?;
     }
 
     Ok(rows)

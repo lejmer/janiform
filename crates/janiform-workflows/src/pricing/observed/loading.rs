@@ -1,11 +1,17 @@
 use janiform::calibration::market_data::{
-    MarketDataNormalizedOptionSurfaceRecord, MarketDataOptionSurfaceLoadingInput,
-    MarketDataTranslationTickRecord, PriceCoordinateResolutionInput, ResolvedPriceCoordinateSet,
-    normalize_market_data_source, normalize_option_surface_source, resolve_price_coordinates,
+    MarketDataLoadingProgressError, MarketDataNormalizedOptionSurfaceRecord,
+    MarketDataOptionSurfaceLoadingInput, MarketDataTranslationTickRecord,
+    PriceCoordinateResolutionInput, ResolvedPriceCoordinateSet, normalize_market_data_source,
+    normalize_market_data_source_with_progress, normalize_option_surface_source,
+    normalize_option_surface_source_with_progress, resolve_price_coordinates,
 };
 use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
 
 use crate::error::WorkflowError;
+use crate::market_data_progress::{
+    MarketDataLoadingProgressGate, market_data_loading_progress_measure,
+    market_data_loading_progress_signal, should_emit_market_data_loading_progress,
+};
 use crate::progress::bounded_progress_measure;
 
 use super::super::validation::pricing_validation_error;
@@ -52,23 +58,50 @@ pub(super) fn load_observed_pricing_inputs(
         &request.normalization_policy,
     )?;
 
-    let tick_output = normalize_market_data_source(
-        &request.tick_data_source,
-        &request.tick_data_column_mapping,
-        &tick_normalization_policy,
-        true,
-    )
+    let mut progress_gate = MarketDataLoadingProgressGate::default();
+
+    let tick_output = if progress_adapter.is_some() {
+        let mut loading_progress = |event| {
+            emit_loading_progress_for_observed_stage(progress_adapter, &mut progress_gate, event)
+        };
+
+        normalize_market_data_source_with_progress(
+            &request.tick_data_source,
+            &request.tick_data_column_mapping,
+            &tick_normalization_policy,
+            true,
+            &mut loading_progress,
+        )
+    } else {
+        normalize_market_data_source(
+            &request.tick_data_source,
+            &request.tick_data_column_mapping,
+            &tick_normalization_policy,
+            true,
+        )
+    }
     .map_err(|source| pricing_validation_error("tick_data_source", source.to_string()))?;
 
-    let option_output = normalize_option_surface_source(
-        &MarketDataOptionSurfaceLoadingInput {
-            // Intentional copies because the calibration-runtime loader owns
-            // its source and mapping contract for normalization.
-            source: request.option_surface_source.clone(),
-            column_mapping: request.option_surface_column_mapping.clone(),
-        },
-        &request.normalization_policy,
-    )
+    let option_surface_input = MarketDataOptionSurfaceLoadingInput {
+        // Intentional copies because the calibration-runtime loader owns
+        // its source and mapping contract for normalization.
+        source: request.option_surface_source.clone(),
+        column_mapping: request.option_surface_column_mapping.clone(),
+    };
+
+    let option_output = if progress_adapter.is_some() {
+        let mut loading_progress = |event| {
+            emit_loading_progress_for_observed_stage(progress_adapter, &mut progress_gate, event)
+        };
+
+        normalize_option_surface_source_with_progress(
+            &option_surface_input,
+            &request.normalization_policy,
+            &mut loading_progress,
+        )
+    } else {
+        normalize_option_surface_source(&option_surface_input, &request.normalization_policy)
+    }
     .map_err(|source| pricing_validation_error("option_surface_source", source.to_string()))?;
 
     emit_observed_stage_progress(
@@ -127,4 +160,24 @@ pub(super) fn load_observed_pricing_inputs(
         option_valuation_spot: price_coordinate_output.option_valuation_spot,
         option_valuation_tick_records: price_coordinate_output.option_valuation_tick_records,
     })
+}
+
+fn emit_loading_progress_for_observed_stage(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+    progress_gate: &mut MarketDataLoadingProgressGate,
+    event: janiform::calibration::market_data::MarketDataLoadingProgressEvent,
+) -> Result<(), MarketDataLoadingProgressError> {
+    if !should_emit_market_data_loading_progress(progress_gate, &event) {
+        return Ok(());
+    }
+
+    emit_observed_stage_progress(
+        progress_adapter,
+        LOAD_OBSERVED_DATA_STAGE,
+        market_data_loading_progress_measure(&event)
+            .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))?,
+        Some(market_data_loading_progress_signal(&event)),
+        ObservedWorkItemUpdate::none(),
+    )
+    .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))
 }

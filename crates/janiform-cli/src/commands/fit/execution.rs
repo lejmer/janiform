@@ -264,6 +264,13 @@ impl ExecutionArtifacts<'_> {
             Self::StagedInput { .. } => None,
         }
     }
+
+    fn start_summary_emitted(&self) -> bool {
+        match self {
+            Self::PreparedFit(prepared) => prepared.start_summary_emitted,
+            Self::StagedInput { .. } => false,
+        }
+    }
 }
 
 fn run_execution_input(
@@ -275,7 +282,7 @@ fn run_execution_input(
     let paths = artifacts.paths(context, &execution_input);
     let input_paths = artifacts.input_paths(&execution_input);
 
-    let terminal_output = terminal_output_for_context(context);
+    let terminal_output = terminal_output_for_execution(context, &artifacts);
 
     let mut progress_adapter = match context.output_mode() {
         OutputMode::Terminal | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
@@ -321,6 +328,19 @@ fn run_execution_input(
     }
 
     Ok(())
+}
+
+fn terminal_output_for_execution(
+    context: &CommandContext,
+    artifacts: &ExecutionArtifacts<'_>,
+) -> Option<janiform_terminal_ui::TerminalSummaryPolicy> {
+    let mut terminal_output = terminal_output_for_context(context)?;
+
+    if artifacts.start_summary_emitted() {
+        terminal_output.emit_start_summary = false;
+    }
+
+    Some(terminal_output)
 }
 
 fn emit_completion_output(
