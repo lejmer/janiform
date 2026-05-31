@@ -14,8 +14,8 @@ use super::super::{
     HawkesStageFittedParameters, JointRefinementStageFittedParameters,
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
     LongVarianceStageDiagnostics, MeanReversionStageDiagnostics, NewsShocksStageDiagnostics,
-    ReturnComponentsStageFittedParameters, SeasonalityStageNormalizationMetadata,
-    SurpriseNewsDeterministicIntensityProfile,
+    ReturnBackfitStageDiagnostics, ReturnComponentsStageFittedParameters,
+    SeasonalityStageNormalizationMetadata, SurpriseNewsDeterministicIntensityProfile,
 };
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::shared::{
@@ -192,6 +192,23 @@ pub struct NewsShocksStageParameterPayload {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ReturnBackfitStageParameterPayload {
+    pub selected_candidate_id: String,
+    pub effective_return_components_selected_candidate_id: String,
+    pub effective_fitted_parameters: ReturnComponentsStageFittedParameters,
+    pub candidate_generation_policy: String,
+    pub objective_weighting_policy: String,
+    pub objective_metric_bucket_policy: String,
+    pub diagnostics: ReturnBackfitStageDiagnostics,
+    pub return_components_input_transport: CalibrationStageHandoffTransport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_components_selected_candidate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_components_artifact_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MeanReversionStageParameterPayload {
     pub fitted_parameters: janiform_model_kernels::mean_reversion::MeanReversionFittedParameters,
     pub diagnostics: MeanReversionStageDiagnostics,
@@ -221,6 +238,7 @@ pub enum CalibrationStageParameterPayload {
     ReturnComponents(Box<ReturnComponentsStageParameterPayload>),
     LongVariance(Box<LongVarianceStageParameterPayload>),
     NewsShocks(Box<NewsShocksStageParameterPayload>),
+    ReturnBackfit(Box<ReturnBackfitStageParameterPayload>),
     MeanReversion(Box<MeanReversionStageParameterPayload>),
     JointRefinement(Box<JointRefinementStageParameterPayload>),
     OptionRefinement(Box<JointRefinementStageParameterPayload>),
@@ -235,6 +253,7 @@ impl CalibrationStageParameterPayload {
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
             Self::LongVariance(_) => CalibrationStage::LongVariance,
             Self::NewsShocks(_) => CalibrationStage::NewsShocks,
+            Self::ReturnBackfit(_) => CalibrationStage::ReturnBackfit,
             Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
             Self::OptionRefinement(_) => CalibrationStage::OptionRefinement,
@@ -272,6 +291,7 @@ impl CalibrationStageParameterArtifact {
         if self.run_id.trim().is_empty() {
             return Err(CalibrationStageParameterArtifactValidationError::EmptyRunId);
         }
+
         if self.execution_mode != CalibrationExecutionMode::Disk {
             return Err(
                 CalibrationStageParameterArtifactValidationError::UnsupportedExecutionMode {
@@ -280,6 +300,7 @@ impl CalibrationStageParameterArtifact {
                 },
             );
         }
+
         if self.artifact_reference.trim().is_empty() {
             return Err(
                 CalibrationStageParameterArtifactValidationError::EmptyArtifactReference {
@@ -287,6 +308,7 @@ impl CalibrationStageParameterArtifact {
                 },
             );
         }
+
         if self.stage_output_schema_version.trim().is_empty() {
             return Err(
                 CalibrationStageParameterArtifactValidationError::EmptyStageOutputSchemaVersion {
@@ -300,21 +322,25 @@ impl CalibrationStageParameterArtifact {
             CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_FAMILY,
             self.schema_metadata.schema_family.as_str(),
         )?;
+
         validate_stage_parameter_metadata_field(
             "schema_metadata.schema_generation",
             CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_GENERATION,
             self.schema_metadata.schema_generation.as_str(),
         )?;
+
         validate_stage_parameter_metadata_field(
             "schema_metadata.forward_extension_policy",
             CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY,
             self.schema_metadata.forward_extension_policy.as_str(),
         )?;
+
         validate_stage_parameter_metadata_field(
             "output_schema_metadata.schema_version",
             CALIBRATION_STAGE_PARAMETER_OUTPUT_SCHEMA_METADATA_VERSION,
             self.output_schema_metadata.schema_version.as_str(),
         )?;
+
         validate_stage_parameter_required_string_list(
             "output_schema_metadata.required_artifact_fields",
             &CALIBRATION_STAGE_PARAMETER_REQUIRED_ARTIFACT_FIELDS,
@@ -322,6 +348,7 @@ impl CalibrationStageParameterArtifact {
                 .required_artifact_fields
                 .as_slice(),
         )?;
+
         validate_stage_parameter_required_string_list(
             "output_schema_metadata.required_seed_metadata_fields",
             &CALIBRATION_STAGE_PARAMETER_REQUIRED_SEED_METADATA_FIELDS,
@@ -329,6 +356,7 @@ impl CalibrationStageParameterArtifact {
                 .required_seed_metadata_fields
                 .as_slice(),
         )?;
+
         validate_stage_parameter_required_string_list(
             "output_schema_metadata.required_optimizer_state_fields",
             &CALIBRATION_STAGE_PARAMETER_REQUIRED_OPTIMIZER_STATE_FIELDS,
@@ -375,6 +403,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.seasonality.dataset_id",
                     },
                 )?;
+
                 validate_non_empty_artifact_value(
                     payload.exchange_code.as_str(),
                     CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
@@ -382,6 +411,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.seasonality.exchange_code",
                     },
                 )?;
+
                 validate_non_empty_artifact_value(
                     payload.trade_events_data_reference.as_str(),
                     CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
@@ -389,6 +419,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.seasonality.trade_events_data_reference",
                     },
                 )?;
+
                 validate_non_empty_artifact_value(
                     payload.estimator_version.as_str(),
                     CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
@@ -396,6 +427,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.seasonality.estimator_version",
                     },
                 )?;
+
                 if payload.intraday_factor_by_bin.is_empty()
                     || payload.day_of_week_factor.is_empty()
                     || payload.hour_of_week_factor.is_empty()
@@ -405,6 +437,7 @@ impl CalibrationStageParameterArtifact {
                         CalibrationStageParameterArtifactValidationError::MissingSeasonalityFactors,
                     );
                 }
+
                 if self.optimizer_state.is_some() {
                     return Err(
                         CalibrationStageParameterArtifactValidationError::UnexpectedOptimizerState {
@@ -421,6 +454,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.hawkes.selected_candidate_id",
                     },
                 )?;
+
                 validate_hawkes_stage_parameter_boundary(payload)?;
                 validate_optimizer_state_presence(self.stage, self.optimizer_state.as_ref())?;
             }
@@ -432,6 +466,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.return_components.selected_candidate_id",
                     },
                 )?;
+
                 validate_non_empty_artifact_value(
                     payload.candidate_generation_policy.as_str(),
                     CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
@@ -439,6 +474,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.return_components.candidate_generation_policy",
                     },
                 )?;
+
                 validate_non_empty_artifact_value(
                     payload.objective_weighting_policy.as_str(),
                     CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
@@ -446,6 +482,7 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.return_components.objective_weighting_policy",
                     },
                 )?;
+
                 validate_non_empty_artifact_value(
                     payload.objective_metric_bucket_policy.as_str(),
                     CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
@@ -495,6 +532,70 @@ impl CalibrationStageParameterArtifact {
                 })?;
 
                 validate_news_shocks_stage_parameter_boundary(payload)?;
+
+                if self.optimizer_state.is_some() {
+                    return Err(
+                        CalibrationStageParameterArtifactValidationError::UnexpectedOptimizerState {
+                            stage: self.stage,
+                        },
+                    );
+                }
+            }
+            CalibrationStageParameterPayload::ReturnBackfit(payload) => {
+                validate_non_empty_artifact_value(
+                    payload.selected_candidate_id.as_str(),
+                    CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
+                        stage: self.stage,
+                        field: "stage_parameters.return_backfit.selected_candidate_id",
+                    },
+                )?;
+
+                validate_non_empty_artifact_value(
+                    payload
+                        .effective_return_components_selected_candidate_id
+                        .as_str(),
+                    CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
+                        stage: self.stage,
+                        field: "stage_parameters.return_backfit.effective_return_components_selected_candidate_id",
+                    },
+                )?;
+
+                validate_non_empty_artifact_value(
+                    payload.candidate_generation_policy.as_str(),
+                    CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
+                        stage: self.stage,
+                        field: "stage_parameters.return_backfit.candidate_generation_policy",
+                    },
+                )?;
+
+                validate_non_empty_artifact_value(
+                    payload.objective_weighting_policy.as_str(),
+                    CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
+                        stage: self.stage,
+                        field: "stage_parameters.return_backfit.objective_weighting_policy",
+                    },
+                )?;
+
+                validate_non_empty_artifact_value(
+                    payload.objective_metric_bucket_policy.as_str(),
+                    CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
+                        stage: self.stage,
+                        field: "stage_parameters.return_backfit.objective_metric_bucket_policy",
+                    },
+                )?;
+
+                payload
+                    .effective_fitted_parameters
+                    .mean_reversion_fitted_parameters
+                    .validate()
+                    .map_err(|source| {
+                        CalibrationStageParameterArtifactValidationError::InvalidMeanReversionParameters {
+                            stage: self.stage,
+                            error_message: source.to_string(),
+                        }
+                    })?;
+
+                validate_return_backfit_stage_parameter_boundary(payload)?;
 
                 if self.optimizer_state.is_some() {
                     return Err(
@@ -577,6 +678,7 @@ impl CalibrationStageParameterArtifact {
                 CALIBRATION_STAGE_PARAMETER_OPTIMIZER_STATE_SCHEMA_VERSION,
                 optimizer_state.schema_version.as_str(),
             )?;
+
             validate_stage_parameter_metadata_field(
                 "optimizer_state.optimizer_adapter_metadata.schema_version",
                 CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION,
@@ -585,6 +687,7 @@ impl CalibrationStageParameterArtifact {
                     .schema_version
                     .as_str(),
             )?;
+
             validate_non_empty_artifact_value(
                 optimizer_state
                     .optimizer_adapter_metadata
@@ -596,6 +699,7 @@ impl CalibrationStageParameterArtifact {
                         .to_string(),
                 },
             )?;
+
             validate_non_empty_artifact_value(
                 optimizer_state
                     .optimizer_adapter_metadata
@@ -607,6 +711,7 @@ impl CalibrationStageParameterArtifact {
                         .to_string(),
                 },
             )?;
+
             validate_non_empty_artifact_value(
                 optimizer_state
                     .optimizer_adapter_metadata
@@ -618,6 +723,7 @@ impl CalibrationStageParameterArtifact {
                         .to_string(),
                 },
             )?;
+
             validate_non_empty_artifact_value(
                 optimizer_state
                     .optimizer_adapter_metadata
@@ -640,6 +746,7 @@ impl CalibrationStageParameterArtifact {
                         error_message: source.to_string(),
                     }
                 })?;
+
             if optimizer_state.valid_candidate_count > optimizer_state.input_candidate_count {
                 return Err(
                     CalibrationStageParameterArtifactValidationError::InvalidOptimizerState {
@@ -649,6 +756,7 @@ impl CalibrationStageParameterArtifact {
                     },
                 );
             }
+
             if !optimizer_state.selected_candidate_raw_objective.is_finite()
                 || !optimizer_state
                     .selected_candidate_penalized_objective
@@ -760,6 +868,21 @@ pub struct NewsShocksStageParameterArtifactInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReturnBackfitStageParameterArtifactInput {
+    pub metadata: CalibrationStageParameterBuildMetadata,
+    pub selected_candidate_id: String,
+    pub effective_return_components_selected_candidate_id: String,
+    pub effective_fitted_parameters: ReturnComponentsStageFittedParameters,
+    pub candidate_generation_policy: String,
+    pub objective_weighting_policy: String,
+    pub objective_metric_bucket_policy: String,
+    pub diagnostics: ReturnBackfitStageDiagnostics,
+    pub return_components_input_transport: CalibrationStageHandoffTransport,
+    pub return_components_selected_candidate_id: Option<String>,
+    pub return_components_artifact_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageParameterArtifactInput {
     pub metadata: CalibrationStageParameterBuildMetadata,
     pub optimizer_state: CalibrationStageParameterOptimizerStateInput,
@@ -788,6 +911,7 @@ pub enum CalibrationStageParameterArtifactInput {
     ReturnComponents(Box<ReturnComponentsStageParameterArtifactInput>),
     LongVariance(Box<LongVarianceStageParameterArtifactInput>),
     NewsShocks(Box<NewsShocksStageParameterArtifactInput>),
+    ReturnBackfit(Box<ReturnBackfitStageParameterArtifactInput>),
     MeanReversion(Box<MeanReversionStageParameterArtifactInput>),
     JointRefinement(Box<JointRefinementStageParameterArtifactInput>),
     OptionRefinement(Box<JointRefinementStageParameterArtifactInput>),
@@ -815,6 +939,7 @@ pub fn build_calibration_stage_parameter_artifact(
         }
         CalibrationStageParameterArtifactInput::LongVariance(_) => CalibrationStage::LongVariance,
         CalibrationStageParameterArtifactInput::NewsShocks(_) => CalibrationStage::NewsShocks,
+        CalibrationStageParameterArtifactInput::ReturnBackfit(_) => CalibrationStage::ReturnBackfit,
         CalibrationStageParameterArtifactInput::MeanReversion(_) => CalibrationStage::MeanReversion,
         CalibrationStageParameterArtifactInput::JointRefinement(_) => {
             CalibrationStage::JointRefinement
@@ -863,6 +988,14 @@ pub fn build_calibration_stage_parameter_artifact(
         }
         CalibrationStageParameterArtifactInput::NewsShocks(input) => {
             build_news_shocks_stage_parameter_artifact(
+                run_contract.run_spec.run_id.as_str(),
+                run_contract.run_spec.execution_mode,
+                *input,
+                artifact_reference,
+            )
+        }
+        CalibrationStageParameterArtifactInput::ReturnBackfit(input) => {
+            build_return_backfit_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
                 *input,
@@ -1120,6 +1253,9 @@ pub enum CalibrationStageParameterArtifactValidationError {
     NewsShocksBoundaryMismatch {
         expected_transport: &'static str,
     },
+    ReturnBackfitBoundaryMismatch {
+        expected_transport: &'static str,
+    },
 }
 
 impl Display for CalibrationStageParameterArtifactValidationError {
@@ -1232,6 +1368,10 @@ impl Display for CalibrationStageParameterArtifactValidationError {
             Self::NewsShocksBoundaryMismatch { expected_transport } => write!(
                 formatter,
                 "news-shocks stage parameter boundary does not match expected `{expected_transport}` transport contract"
+            ),
+            Self::ReturnBackfitBoundaryMismatch { expected_transport } => write!(
+                formatter,
+                "return-backfit stage parameter boundary does not match expected `{expected_transport}` transport contract"
             ),
         }
     }
@@ -1504,6 +1644,53 @@ fn build_news_shocks_stage_parameter_artifact(
                 news_process_configuration: input.news_process_configuration,
                 surprise_deterministic_intensity_profile: input
                     .surprise_deterministic_intensity_profile,
+                diagnostics: input.diagnostics,
+                return_components_input_transport: input.return_components_input_transport,
+                return_components_selected_candidate_id: input
+                    .return_components_selected_candidate_id,
+                return_components_artifact_reference: input.return_components_artifact_reference,
+            },
+        )),
+    })
+}
+
+fn build_return_backfit_stage_parameter_artifact(
+    run_id: &str,
+    execution_mode: CalibrationExecutionMode,
+    input: ReturnBackfitStageParameterArtifactInput,
+    artifact_reference: String,
+) -> Result<CalibrationStageParameterArtifact, CalibrationStageParameterArtifactBuildError> {
+    Ok(CalibrationStageParameterArtifact {
+        schema_version: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION.to_string(),
+        run_id: run_id.to_string(),
+        execution_mode,
+        stage: CalibrationStage::ReturnBackfit,
+        artifact_reference,
+        schema_metadata: CalibrationStageParameterSchemaMetadata {
+            schema_family: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_FAMILY.to_string(),
+            schema_generation: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_GENERATION.to_string(),
+            forward_extension_policy: CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY
+                .to_string(),
+        },
+        output_schema_metadata: build_stage_parameter_output_schema_metadata(),
+        stage_output_schema_version: input.metadata.stage_output_schema_version,
+        seed_metadata: build_stage_parameter_seed_metadata(
+            input.metadata.run_global_seed,
+            input.metadata.stage_seed,
+            input.metadata.stage_seed_source,
+            input.metadata.stage_seed_derivation_policy.as_str(),
+        ),
+        solver_settings: input.metadata.solver_settings,
+        optimizer_state: None,
+        stage_parameters: CalibrationStageParameterPayload::ReturnBackfit(Box::new(
+            ReturnBackfitStageParameterPayload {
+                selected_candidate_id: input.selected_candidate_id,
+                effective_return_components_selected_candidate_id: input
+                    .effective_return_components_selected_candidate_id,
+                effective_fitted_parameters: input.effective_fitted_parameters,
+                candidate_generation_policy: input.candidate_generation_policy,
+                objective_weighting_policy: input.objective_weighting_policy,
+                objective_metric_bucket_policy: input.objective_metric_bucket_policy,
                 diagnostics: input.diagnostics,
                 return_components_input_transport: input.return_components_input_transport,
                 return_components_selected_candidate_id: input
@@ -1822,6 +2009,21 @@ fn validate_news_shocks_stage_parameter_boundary(
         payload.return_components_artifact_reference.as_deref(),
         |expected_transport| {
             CalibrationStageParameterArtifactValidationError::NewsShocksBoundaryMismatch {
+                expected_transport,
+            }
+        },
+    )
+}
+
+fn validate_return_backfit_stage_parameter_boundary(
+    payload: &ReturnBackfitStageParameterPayload,
+) -> Result<(), CalibrationStageParameterArtifactValidationError> {
+    validate_return_components_input_boundary(
+        payload.return_components_input_transport,
+        payload.return_components_selected_candidate_id.as_deref(),
+        payload.return_components_artifact_reference.as_deref(),
+        |expected_transport| {
+            CalibrationStageParameterArtifactValidationError::ReturnBackfitBoundaryMismatch {
                 expected_transport,
             }
         },

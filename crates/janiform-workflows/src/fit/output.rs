@@ -227,6 +227,11 @@ fn stage_report_warning_messages(stage_report: &CalibrationStagedRunStageReport)
         CalibrationStagedRunStageReport::JointRefinement(report)
         | CalibrationStagedRunStageReport::OptionRefinement(report)
         | CalibrationStagedRunStageReport::Finalization(report) => report.warnings.as_slice(),
+        CalibrationStagedRunStageReport::ReturnBackfit(report) => report
+            .fitted_stage_payload
+            .as_ref()
+            .map(|payload| payload.diagnostics.warnings.as_slice())
+            .unwrap_or(&[]),
         CalibrationStagedRunStageReport::Seasonality(_)
         | CalibrationStagedRunStageReport::Hawkes(_)
         | CalibrationStagedRunStageReport::ReturnComponents(_)

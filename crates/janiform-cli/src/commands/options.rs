@@ -37,6 +37,8 @@ pub(crate) enum CalibrationStageOption {
     LongVariance,
     #[value(help = "Resume from the news-shocks stage.")]
     NewsShocks,
+    #[value(help = "Resume from the return-distribution backfit stage.")]
+    ReturnBackfit,
     #[value(help = "Resume from the mean-reversion stage.")]
     MeanReversion,
     #[value(help = "Resume from the joint-refinement stage.")]

@@ -9,9 +9,10 @@ use super::super::{
     ExchangeCalendarRegistry, HawkesStageExecutionInput, HawkesStageFittedPayload,
     HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
     LongVarianceStageExecutionInput, NewsShocksStageExecutionInput,
-    ReturnComponentsStageExecutionInput, ReturnComponentsStageProgressUpdate,
-    run_hawkes_calibration_stage, run_long_variance_calibration_stage,
-    run_mean_reversion_calibration_stage, run_news_shocks_calibration_stage,
+    ReturnBackfitStageExecutionInput, ReturnComponentsStageExecutionInput,
+    ReturnComponentsStageProgressUpdate, run_hawkes_calibration_stage,
+    run_long_variance_calibration_stage, run_mean_reversion_calibration_stage,
+    run_news_shocks_calibration_stage, run_return_backfit_calibration_stage,
     run_return_components_calibration_stage,
     run_return_components_calibration_stage_with_progress_observer,
     run_seasonality_calibration_stage,
@@ -34,6 +35,7 @@ pub(in crate::staged_runner) fn run_stage_for_staged_execution(
         CalibrationStage::ReturnComponents => run_return_components_staged_execution_stage(input),
         CalibrationStage::LongVariance => run_long_variance_staged_execution_stage(input),
         CalibrationStage::NewsShocks => run_news_shocks_staged_execution_stage(input),
+        CalibrationStage::ReturnBackfit => run_return_backfit_staged_execution_stage(input),
         CalibrationStage::MeanReversion => run_mean_reversion_staged_execution_stage(input),
         CalibrationStage::JointRefinement
         | CalibrationStage::OptionRefinement
@@ -258,6 +260,7 @@ fn run_long_variance_staged_execution_stage(
     let stage_input = LongVarianceStageExecutionInput {
         return_components_input: Some(return_components_selected_candidate_source(
             input.run_spec,
+            CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             input.payload_state,
         )?),
@@ -287,6 +290,7 @@ fn run_news_shocks_staged_execution_stage(
     let stage_input = NewsShocksStageExecutionInput {
         return_components_input: Some(return_components_selected_candidate_source(
             input.run_spec,
+            CalibrationStage::ReturnComponents,
             CalibrationStage::NewsShocks,
             input.payload_state,
         )?),
@@ -312,6 +316,7 @@ fn run_mean_reversion_staged_execution_stage(
 
     stage_input.return_components_input = Some(return_components_selected_candidate_source(
         input.run_spec,
+        effective_return_components_upstream_stage(input.run_spec),
         CalibrationStage::MeanReversion,
         input.payload_state,
     )?);
@@ -328,23 +333,43 @@ fn run_mean_reversion_staged_execution_stage(
     )))
 }
 
+fn run_return_backfit_staged_execution_stage(
+    input: RunStageForStagedExecutionInput<'_, '_>,
+) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
+    let stage_input = ReturnBackfitStageExecutionInput {
+        return_components_input: Some(return_components_selected_candidate_source(
+            input.run_spec,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::ReturnBackfit,
+            input.payload_state,
+        )?),
+        return_components_stage_payload: input
+            .payload_state
+            .return_components_stage_payload
+            .clone(),
+        long_variance_stage_payload: input.payload_state.long_variance_stage_payload.clone(),
+        news_shocks_stage_payload: input.payload_state.news_shocks_stage_payload.clone(),
+    };
+
+    Ok(CalibrationStagedRunStageReport::ReturnBackfit(Box::new(
+        run_return_backfit_calibration_stage(input.run_spec, stage_input),
+    )))
+}
+
 fn return_components_selected_candidate_source(
     run_spec: &CalibrationRunSpec,
+    upstream_stage: CalibrationStage,
     consuming_stage: CalibrationStage,
     payload_state: &CalibrationInMemoryStagePayloadState,
 ) -> Result<CalibrationStageSelectedCandidateSource, CalibrationStagedRunFailure> {
-    match expected_stage_handoff_transport(
-        run_spec,
-        CalibrationStage::ReturnComponents,
-        consuming_stage,
-    ) {
+    match expected_stage_handoff_transport(run_spec, upstream_stage, consuming_stage) {
         CalibrationStageHandoffTransport::InMemoryOutput => {
             let Some(return_components_stage_payload) =
                 payload_state.return_components_stage_payload.as_ref()
             else {
                 return Err(
                     CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
-                        required_stage: CalibrationStage::ReturnComponents,
+                        required_stage: upstream_stage,
                         consuming_stage,
                     },
                 );
@@ -360,11 +385,24 @@ fn return_components_selected_candidate_source(
             CalibrationStageSelectedCandidateSource::PersistedArtifactReference {
                 artifact_reference: expected_stage_handoff_artifact_reference(
                     run_spec,
-                    CalibrationStage::ReturnComponents,
+                    upstream_stage,
                     consuming_stage,
                 ),
             },
         ),
+    }
+}
+
+pub(super) fn effective_return_components_upstream_stage(
+    run_spec: &CalibrationRunSpec,
+) -> CalibrationStage {
+    if run_spec
+        .selected_stages
+        .contains(&CalibrationStage::ReturnBackfit)
+    {
+        CalibrationStage::ReturnBackfit
+    } else {
+        CalibrationStage::ReturnComponents
     }
 }
 

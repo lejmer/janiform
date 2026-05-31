@@ -18,6 +18,10 @@ mod surprise_intensity_fit;
 #[cfg(test)]
 mod test_support;
 
+pub(crate) use constants::{
+    RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
+    RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY,
+};
 pub(crate) use continuous_fit::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,

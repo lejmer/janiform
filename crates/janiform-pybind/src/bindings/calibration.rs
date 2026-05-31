@@ -1235,6 +1235,9 @@ fn flatten_stage_report_for_python(
         CalibrationStagedRunStageReport::NewsShocks(stage_report) => {
             ("news_shocks", serde_json::to_value(stage_report)?)
         }
+        CalibrationStagedRunStageReport::ReturnBackfit(stage_report) => {
+            ("return_backfit", serde_json::to_value(stage_report)?)
+        }
         CalibrationStagedRunStageReport::MeanReversion(stage_report) => {
             ("mean_reversion", serde_json::to_value(stage_report)?)
         }

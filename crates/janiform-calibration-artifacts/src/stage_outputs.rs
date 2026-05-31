@@ -107,6 +107,33 @@ pub struct NewsShocksStageDiagnostics {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReturnBackfitStageVarianceBudgetDiagnostic {
+    pub initial_nig_contribution: Option<f64>,
+    pub fixed_long_variance_news_contribution: Option<f64>,
+    pub backfitted_nig_contribution: Option<f64>,
+    pub final_total_modeled_return_scale: Option<f64>,
+    pub observed_target_scale: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReturnBackfitStageObjectiveBlockDiagnostic {
+    pub target_block: String,
+    pub before_objective: Option<f64>,
+    pub after_objective: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReturnBackfitStageDiagnostics {
+    pub estimation_policy: String,
+    pub selected_candidate_id: String,
+    pub no_op_selected: bool,
+    pub candidate_count: usize,
+    pub variance_budget: ReturnBackfitStageVarianceBudgetDiagnostic,
+    pub objective_blocks: Vec<ReturnBackfitStageObjectiveBlockDiagnostic>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeanReversionStageCalibrationGrid {
     pub calibration_grid_kind: String,
     pub calibration_grid_interval_hours: f64,

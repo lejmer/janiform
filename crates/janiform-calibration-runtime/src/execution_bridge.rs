@@ -814,6 +814,14 @@ fn canonical_stage_graph_for_selected_stages(
             depends_on: CalibrationStage::ReturnComponents,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::ReturnBackfit,
+            depends_on: CalibrationStage::LongVariance,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::ReturnBackfit,
+            depends_on: CalibrationStage::NewsShocks,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::Hawkes,
         },
@@ -823,11 +831,11 @@ fn canonical_stage_graph_for_selected_stages(
         },
         CalibrationStageDependency {
             stage: CalibrationStage::MeanReversion,
-            depends_on: CalibrationStage::LongVariance,
+            depends_on: CalibrationStage::ReturnBackfit,
         },
         CalibrationStageDependency {
-            stage: CalibrationStage::MeanReversion,
-            depends_on: CalibrationStage::NewsShocks,
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::ReturnBackfit,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,

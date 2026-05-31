@@ -192,6 +192,11 @@ pub use stages::news_shocks::{
     NewsShocksStageExecutionMetadata, NewsShocksStageExecutionReport, NewsShocksStageFittedPayload,
     run_news_shocks_calibration_stage,
 };
+pub use stages::return_backfit::{
+    ReturnBackfitStageExecutionFailure, ReturnBackfitStageExecutionInput,
+    ReturnBackfitStageExecutionMetadata, ReturnBackfitStageExecutionReport,
+    ReturnBackfitStageFittedPayload, run_return_backfit_calibration_stage,
+};
 pub use stages::return_components::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
     ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,

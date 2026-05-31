@@ -1,6 +1,6 @@
-pub(super) const RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY: &str = "observed_open_session_returns_and_shock_evidence_to_explicit_fitted_return_component_sublayers.v1";
+pub(crate) const RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY: &str = "observed_open_session_returns_and_shock_evidence_to_explicit_fitted_return_component_sublayers.v1";
 pub(super) const RETURN_COMPONENTS_STAGE_SIGNAL_PREPROCESSING_POLICY: &str = "timestamp_sorted_finite_signal_filtering_with_material_shock_and_continuous_return_partitioning.v1";
-pub(super) const RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY: &str = "continuous_distribution_surprise_arrival_jump_gap_activity_and_price_sanity_bucketed_weighted_terms.v1";
+pub(crate) const RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY: &str = "continuous_distribution_surprise_arrival_jump_gap_activity_and_price_sanity_bucketed_weighted_terms.v1";
 pub(super) const RETURN_COMPONENTS_STAGE_DETERMINISTIC_SEED_POLICY: &str =
     "stage_seed_reused_for_candidate_generation_enumeration.v1";
 pub(super) const RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_CONTINUOUS_DISTRIBUTION_FIT: &str =

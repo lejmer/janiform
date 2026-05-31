@@ -3,11 +3,17 @@ use super::{
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CalibrationInMemoryStagePayloadState, CalibrationStageParameterArtifact,
     CalibrationStageParameterPayload, CalibrationStagedRunStageReport,
     JointRefinementStageSeasonalityFactorsInput,
 };
+use crate::stages::return_components::{
+    RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
+    RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY,
+};
+use janiform_calibration_artifacts::CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY;
 
 pub(super) fn joint_refinement_seasonality_factors_from_payload(
     payload: &crate::stages::seasonality::SeasonalityStageNormalizedPayload,
@@ -65,15 +71,11 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     selected_candidate_id: payload.selected_candidate_id.clone(),
                     fitted_parameters: payload.fitted_parameters.clone(),
                     candidate_diagnostics: Vec::new(),
-                    candidate_generation_policy: Box::leak(
-                        payload.candidate_generation_policy.clone().into_boxed_str(),
-                    ),
-                    objective_weighting_policy: Box::leak(
-                        payload.objective_weighting_policy.clone().into_boxed_str(),
-                    ),
-                    objective_metric_bucket_policy: Box::leak(
-                        payload.objective_metric_bucket_policy.clone().into_boxed_str(),
-                    ),
+                    candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
+                    objective_weighting_policy:
+                        CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
+                    objective_metric_bucket_policy:
+                        RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY,
                     candidate_family_counts: crate::stages::return_components::ReturnComponentsStageCandidateFamilyCounts {
                         nig_candidate_count: 1,
                         known_news_arrival_family_count: 1,
@@ -124,6 +126,54 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                         .clone(),
                 });
             apply_news_shocks_to_return_components_state(payload_state);
+        }
+        CalibrationStageParameterPayload::ReturnBackfit(payload) => {
+            let effective_return_components_payload =
+                crate::stages::return_components::ReturnComponentsStageFittedPayload {
+                    schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
+                    selected_candidate_id: payload
+                        .effective_return_components_selected_candidate_id
+                        .clone(),
+                    fitted_parameters: payload.effective_fitted_parameters.clone(),
+                    candidate_diagnostics: Vec::new(),
+                    candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
+                    objective_weighting_policy:
+                        CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
+                    objective_metric_bucket_policy:
+                        RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY,
+                    candidate_family_counts:
+                        crate::stages::return_components::ReturnComponentsStageCandidateFamilyCounts {
+                            nig_candidate_count: 1,
+                            known_news_arrival_family_count: 1,
+                            surprise_news_arrival_family_count: 1,
+                            return_jump_mark_scale_family_count: 1,
+                            activity_coupling_family_count: 1,
+                        },
+                    activity_input_transport:
+                        janiform_calibration_artifacts::CalibrationStageHandoffTransport::InMemoryOutput,
+                    activity_selected_hawkes_candidate_id: None,
+                    activity_artifact_reference: None,
+                };
+
+            payload_state.return_backfit_stage_payload = Some(
+                crate::stages::return_backfit::ReturnBackfitStageFittedPayload {
+                    schema_version: CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
+                    selected_candidate_id: payload.selected_candidate_id.clone(),
+                    effective_return_components_payload: effective_return_components_payload
+                        .clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
+            );
+
+            payload_state.return_components_stage_payload =
+                Some(effective_return_components_payload);
         }
         CalibrationStageParameterPayload::MeanReversion(payload) => {
             payload_state.mean_reversion_stage_payload = Some(
@@ -191,6 +241,13 @@ pub(super) fn update_in_memory_payload_state(
             payload_state.news_shocks_stage_payload = report.fitted_stage_payload.clone();
             apply_news_shocks_to_return_components_state(payload_state);
         }
+        CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+            payload_state.return_backfit_stage_payload = report.fitted_stage_payload.clone();
+            payload_state.return_components_stage_payload = report
+                .fitted_stage_payload
+                .as_ref()
+                .map(|payload| payload.effective_return_components_payload.clone());
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             payload_state.mean_reversion_stage_payload = report.fitted_stage_payload.clone();
         }
@@ -214,6 +271,7 @@ fn apply_long_variance_to_return_components_state(
     let Some(long_variance_payload) = payload_state.long_variance_stage_payload.as_ref() else {
         return;
     };
+
     let Some(return_components_payload) = payload_state.return_components_stage_payload.as_mut()
     else {
         return;
