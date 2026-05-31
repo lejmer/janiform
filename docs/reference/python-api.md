@@ -7469,7 +7469,7 @@
 | [`CalibrationResumeSource`](#python-api-symbol-janiform-calibration-staged-calibrationresumesource) | enum | 2 members |
 | [`CalibrationRunDataInputs`](#python-api-symbol-janiform-calibration-staged-calibrationrundatainputs) | contract_model | 3 fields |
 | [`CalibrationRunSeedSettings`](#python-api-symbol-janiform-calibration-staged-calibrationrunseedsettings) | contract_model | 2 fields |
-| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-calibrationstage) | enum | 9 members |
+| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-calibrationstage) | enum | 10 members |
 | [`CalibrationStageExecutionStatus`](#python-api-symbol-janiform-calibration-staged-calibrationstageexecutionstatus) | enum | 3 members |
 | [`CalibrationStageHandoff`](#python-api-symbol-janiform-calibration-staged-calibrationstagehandoff) | contract_model | 4 fields |
 | [`CalibrationStageReport`](#python-api-symbol-janiform-calibration-staged-calibrationstagereport) | contract_model | 7 fields |
@@ -7648,6 +7648,7 @@
 | `RETURN_COMPONENTS` | `return_components` |
 | `LONG_VARIANCE` | `long_variance` |
 | `NEWS_SHOCKS` | `news_shocks` |
+| `RETURN_BACKFIT` | `return_backfit` |
 | `MEAN_REVERSION` | `mean_reversion` |
 | `JOINT_REFINEMENT` | `joint_refinement` |
 | `OPTION_REFINEMENT` | `option_refinement` |
@@ -7877,7 +7878,7 @@
 | [`CalibrationResumeSource`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationresumesource) | enum | 2 members |
 | [`CalibrationRunDataInputs`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationrundatainputs) | contract_model | 3 fields |
 | [`CalibrationRunSeedSettings`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationrunseedsettings) | contract_model | 2 fields |
-| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstage) | enum | 9 members |
+| [`CalibrationStage`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstage) | enum | 10 members |
 | [`CalibrationStageExecutionStatus`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstageexecutionstatus) | enum | 3 members |
 | [`CalibrationStageHandoff`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstagehandoff) | contract_model | 4 fields |
 | [`CalibrationStageSeedOverride`](#python-api-symbol-janiform-calibration-staged-contracts-calibrationstageseedoverride) | contract_model | 2 fields |
@@ -7995,6 +7996,7 @@
 | `RETURN_COMPONENTS` | `return_components` |
 | `LONG_VARIANCE` | `long_variance` |
 | `NEWS_SHOCKS` | `news_shocks` |
+| `RETURN_BACKFIT` | `return_backfit` |
 | `MEAN_REVERSION` | `mean_reversion` |
 | `JOINT_REFINEMENT` | `joint_refinement` |
 | `OPTION_REFINEMENT` | `option_refinement` |

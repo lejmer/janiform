@@ -585,6 +585,8 @@ fn collect_stage_output_references(
         CalibrationStage::Hawkes,
         CalibrationStage::ReturnComponents,
         CalibrationStage::LongVariance,
+        CalibrationStage::NewsShocks,
+        CalibrationStage::ReturnBackfit,
         CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
         CalibrationStage::Finalization,

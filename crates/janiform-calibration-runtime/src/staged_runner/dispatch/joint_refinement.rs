@@ -17,6 +17,7 @@ use super::handoffs::{
     cloned_in_memory_stage_payload, expected_stage_handoff_artifact_reference,
     expected_stage_handoff_transport,
 };
+use super::stage::effective_return_components_upstream_stage;
 
 pub(super) struct JointRefinementLikeStageRunInput<'a, 'observer> {
     pub(super) stage: CalibrationStage,
@@ -82,6 +83,7 @@ pub(super) fn run_joint_refinement_like_stage(
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
         | CalibrationStage::NewsShocks
+        | CalibrationStage::ReturnBackfit
         | CalibrationStage::MeanReversion => {
             Err(CalibrationStagedRunFailure::MissingStageInput { stage: input.stage })
         }
@@ -166,7 +168,7 @@ pub(super) fn joint_refinement_like_stage_input(
         )?,
         return_components_input: joint_refinement_payload_source(
             run_spec,
-            CalibrationStage::ReturnComponents,
+            effective_return_components_upstream_stage(run_spec),
             consuming_stage,
             &payload_state.return_components_stage_payload,
         )?,
@@ -298,6 +300,7 @@ fn option_refinement_dispatch_settings(
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
         | CalibrationStage::NewsShocks
+        | CalibrationStage::ReturnBackfit
         | CalibrationStage::MeanReversion => Err(CalibrationStagedRunFailure::MissingStageInput {
             stage: consuming_stage,
         }),

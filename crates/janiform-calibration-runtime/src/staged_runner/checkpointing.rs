@@ -242,6 +242,61 @@ pub(super) fn build_stage_parameter_artifact_input(
                 ),
             ))
         }
+        CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+            let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
+                "successful return-backfit stage is missing its payload".to_string()
+            })?;
+
+            let metadata = report
+                .metadata
+                .as_ref()
+                .ok_or_else(|| "successful return-backfit stage is missing metadata".to_string())?;
+
+            Ok(CalibrationStageParameterArtifactInput::ReturnBackfit(
+                Box::new(
+                    janiform_calibration_artifacts::ReturnBackfitStageParameterArtifactInput {
+                        metadata: build_stage_parameter_metadata(
+                            metadata.stage_output_schema_version,
+                            metadata.run_global_seed,
+                            metadata.stage_seed,
+                            metadata.stage_seed_source,
+                            metadata.stage_seed_derivation_policy,
+                            metadata.solver_settings.clone(),
+                        ),
+                        selected_candidate_id: payload.selected_candidate_id.clone(),
+                        effective_return_components_selected_candidate_id: payload
+                            .effective_return_components_payload
+                            .selected_candidate_id
+                            .clone(),
+                        effective_fitted_parameters: payload
+                            .effective_return_components_payload
+                            .fitted_parameters
+                            .clone(),
+                        candidate_generation_policy: payload
+                            .effective_return_components_payload
+                            .candidate_generation_policy
+                            .to_string(),
+                        objective_weighting_policy: payload
+                            .effective_return_components_payload
+                            .objective_weighting_policy
+                            .to_string(),
+                        objective_metric_bucket_policy: payload
+                            .effective_return_components_payload
+                            .objective_metric_bucket_policy
+                            .to_string(),
+                        diagnostics: payload.diagnostics.clone(),
+                        return_components_input_transport: payload
+                            .return_components_input_transport,
+                        return_components_selected_candidate_id: payload
+                            .return_components_selected_candidate_id
+                            .clone(),
+                        return_components_artifact_reference: payload
+                            .return_components_artifact_reference
+                            .clone(),
+                    },
+                ),
+            ))
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
                 "successful mean-reversion stage is missing its payload".to_string()

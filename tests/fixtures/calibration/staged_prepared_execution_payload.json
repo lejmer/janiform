@@ -12,6 +12,9 @@
       "seasonality",
       "hawkes",
       "return_components",
+      "long_variance",
+      "news_shocks",
+      "return_backfit",
       "mean_reversion"
     ],
     "seed_settings": {
@@ -48,6 +51,39 @@
       },
       {
         "stage": "return_components",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      },
+      {
+        "stage": "long_variance",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      },
+      {
+        "stage": "news_shocks",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      },
+      {
+        "stage": "return_backfit",
         "optimizer_settings": {
           "solver_name": "lbfgs",
           "max_iterations": 250,

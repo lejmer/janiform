@@ -1026,6 +1026,9 @@ fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport)
         CalibrationStagedRunStageReport::NewsShocks(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }
+        CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }

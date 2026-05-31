@@ -48,6 +48,9 @@ fn stage_report_payload(
         CalibrationStagedRunStageReport::NewsShocks(report) => {
             stage_report_payload_from_report("news_shocks", report)
         }
+        CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+            stage_report_payload_from_report("return_backfit", report)
+        }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             stage_report_payload_from_report("mean_reversion", report)
         }

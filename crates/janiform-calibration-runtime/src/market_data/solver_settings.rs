@@ -1,5 +1,6 @@
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, CalibrationStage, CalibrationStageSolverSettings,
+    calibration_stage_token,
 };
 use janiform_foundations::numeric::{GOLDEN_RATIO, strictly_positive_machine_value};
 use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
@@ -45,7 +46,7 @@ pub(crate) fn resolve_solver_settings_by_stage(
         if !selected_stages.contains(&configured_stage_settings.stage) {
             return Err(format!(
                 "optimizer_settings_by_stage contains stage '{}' outside the selected workflow scope",
-                calibration_stage_name(configured_stage_settings.stage)
+                calibration_stage_token(configured_stage_settings.stage)
             ));
         }
     }
@@ -106,20 +107,6 @@ fn derive_stage_solver_settings(
         stage,
         optimizer_settings,
     })
-}
-
-fn calibration_stage_name(stage: CalibrationStage) -> &'static str {
-    match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-        CalibrationStage::LongVariance => "long_variance",
-        CalibrationStage::NewsShocks => "news_shocks",
-        CalibrationStage::MeanReversion => "mean_reversion",
-        CalibrationStage::JointRefinement => "joint_refinement",
-        CalibrationStage::OptionRefinement => "option_refinement",
-        CalibrationStage::Finalization => "finalization",
-    }
 }
 
 fn stage_solver_geometry(
@@ -258,6 +245,24 @@ fn stage_solver_geometry(
                 objective_term_count: 5,
                 support_count,
                 candidate_geometry_count: support_count,
+                scale_reference: 1.0,
+            }
+        }
+        CalibrationStage::ReturnBackfit => {
+            let candidate_generation_input = loading_output
+                .preprocessing_output
+                .return_components_candidate_generation_input
+                .as_ref();
+
+            let support_count = joint_refinement_return_support_count(candidate_generation_input);
+            let objective_term_count = candidate_generation_input
+                .map_or(1, active_return_components_objective_weight_count);
+
+            StageSolverGeometry {
+                parameter_dimension: 1,
+                objective_term_count,
+                support_count,
+                candidate_geometry_count: 1,
                 scale_reference: 1.0,
             }
         }

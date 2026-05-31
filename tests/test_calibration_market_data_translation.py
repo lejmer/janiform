@@ -53,6 +53,7 @@ FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
     CalibrationStage.RETURN_COMPONENTS,
     CalibrationStage.LONG_VARIANCE,
     CalibrationStage.NEWS_SHOCKS,
+    CalibrationStage.RETURN_BACKFIT,
     CalibrationStage.MEAN_REVERSION,
     CalibrationStage.JOINT_REFINEMENT,
     CalibrationStage.FINALIZATION,

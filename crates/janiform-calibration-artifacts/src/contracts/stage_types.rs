@@ -8,6 +8,7 @@ pub enum CalibrationStage {
     ReturnComponents,
     LongVariance,
     NewsShocks,
+    ReturnBackfit,
     MeanReversion,
     JointRefinement,
     OptionRefinement,

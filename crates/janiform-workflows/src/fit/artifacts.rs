@@ -1,4 +1,5 @@
 mod payloads;
+mod return_backfit;
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -29,6 +30,10 @@ use crate::error::WorkflowError;
 
 use super::scope::{WorkflowScopeId, workflow_scope_id};
 use payloads::{seasonality_parameter_payload, stage_report_payloads};
+use return_backfit::{
+    return_backfit_parameters, return_backfit_parameters_from_artifact,
+    return_components_parameters_from_backfit_artifact,
+};
 
 const FIT_REPORT_SCHEMA_VERSION: &str = "janiform.fit_report.v1";
 const MODEL_PERSISTENCE_SCHEMA_VERSION: &str = "calibration.high_level.model.v1";
@@ -490,6 +495,14 @@ fn apply_stage_reports_to_model_parameters(
                     stage_parameters.news_shocks = Some(news_shocks_parameters(payload)?);
                 }
             }
+            CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    stage_parameters.return_components = Some(return_components_parameters(
+                        &payload.effective_return_components_payload,
+                    )?);
+                    stage_parameters.return_backfit = Some(return_backfit_parameters(payload)?);
+                }
+            }
             CalibrationStagedRunStageReport::MeanReversion(report) => {
                 if let Some(payload) = &report.fitted_stage_payload {
                     stage_parameters.mean_reversion = Some(mean_reversion_parameters(payload)?);
@@ -538,6 +551,12 @@ fn apply_stage_parameter_artifact_to_model_parameters(
         CalibrationStageParameterPayload::NewsShocks(payload) => {
             stage_parameters.news_shocks = Some(news_shocks_parameters_from_artifact(payload)?);
         }
+        CalibrationStageParameterPayload::ReturnBackfit(payload) => {
+            stage_parameters.return_components =
+                Some(return_components_parameters_from_backfit_artifact(payload)?);
+            stage_parameters.return_backfit =
+                Some(return_backfit_parameters_from_artifact(payload)?);
+        }
         CalibrationStageParameterPayload::MeanReversion(payload) => {
             stage_parameters.mean_reversion =
                 Some(mean_reversion_parameters_from_artifact(payload)?);
@@ -566,6 +585,7 @@ struct ModelStageParameters {
     return_components: Option<Value>,
     long_variance: Option<Value>,
     news_shocks: Option<Value>,
+    return_backfit: Option<Value>,
     mean_reversion: Option<Value>,
     joint_refinement: Option<Value>,
     option_refinement: Option<Value>,
@@ -612,6 +632,10 @@ impl ModelStageParameters {
 
         if let Some(news_shocks) = self.news_shocks {
             parameters.insert("news_shocks".to_string(), news_shocks);
+        }
+
+        if let Some(return_backfit) = self.return_backfit {
+            parameters.insert("return_backfit".to_string(), return_backfit);
         }
 
         if let Some(mean_reversion) = self.mean_reversion {
@@ -793,7 +817,7 @@ fn joint_refinement_parameters_from_artifact(
     }))
 }
 
-fn serialize_payload<T>(payload: &T) -> Result<Value, WorkflowError>
+pub(super) fn serialize_payload<T>(payload: &T) -> Result<Value, WorkflowError>
 where
     T: Serialize,
 {
@@ -819,6 +843,9 @@ fn stage_statuses(report: &CalibrationStagedRunReport) -> Vec<Value> {
             }
             CalibrationStagedRunStageReport::NewsShocks(report) => {
                 json!({"stage": "news_shocks", "status": report.status})
+            }
+            CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+                json!({"stage": "return_backfit", "status": report.status})
             }
             CalibrationStagedRunStageReport::MeanReversion(report) => {
                 json!({"stage": "mean_reversion", "status": report.status})
@@ -881,6 +908,14 @@ fn selected_candidate_ids(report: &CalibrationStagedRunReport) -> Value {
                     selected.insert(
                         "news_shocks".to_string(),
                         Value::String(payload.diagnostics.selected_candidate_id.to_owned()),
+                    );
+                }
+            }
+            CalibrationStagedRunStageReport::ReturnBackfit(report) => {
+                if let Some(payload) = &report.fitted_stage_payload {
+                    selected.insert(
+                        "return_backfit".to_string(),
+                        Value::String(payload.selected_candidate_id.to_owned()),
                     );
                 }
             }

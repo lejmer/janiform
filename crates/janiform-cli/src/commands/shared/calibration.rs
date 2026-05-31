@@ -23,6 +23,7 @@ pub(crate) fn calibration_stage(stage: CalibrationStageOption) -> CalibrationSta
         CalibrationStageOption::ReturnComponents => CalibrationStage::ReturnComponents,
         CalibrationStageOption::LongVariance => CalibrationStage::LongVariance,
         CalibrationStageOption::NewsShocks => CalibrationStage::NewsShocks,
+        CalibrationStageOption::ReturnBackfit => CalibrationStage::ReturnBackfit,
         CalibrationStageOption::MeanReversion => CalibrationStage::MeanReversion,
         CalibrationStageOption::JointRefinement => CalibrationStage::JointRefinement,
         CalibrationStageOption::OptionRefinement => CalibrationStage::OptionRefinement,

@@ -12,7 +12,8 @@ use super::{
     LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
     MeanReversionStageExecutionReport, NewsShocksStageExecutionMetadata,
-    NewsShocksStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
+    NewsShocksStageExecutionReport, ReturnBackfitStageExecutionMetadata,
+    ReturnBackfitStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
     ReturnComponentsStageProgressPhase, SeasonalityStageExecutionInput,
     SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
@@ -55,6 +56,7 @@ pub enum CalibrationStagedRunStageReport {
     ReturnComponents(Box<ReturnComponentsStageExecutionReport>),
     LongVariance(Box<LongVarianceStageExecutionReport>),
     NewsShocks(Box<NewsShocksStageExecutionReport>),
+    ReturnBackfit(Box<ReturnBackfitStageExecutionReport>),
     MeanReversion(Box<MeanReversionStageExecutionReport>),
     JointRefinement(Box<JointRefinementStageExecutionReport>),
     OptionRefinement(Box<JointRefinementStageExecutionReport>),
@@ -210,6 +212,32 @@ impl CalibrationStageExecutionMetadataForCheckpoint for NewsShocksStageExecution
     }
 }
 
+impl CalibrationStageExecutionMetadataForCheckpoint for ReturnBackfitStageExecutionMetadata {
+    fn stage_output_schema_version(&self) -> &'static str {
+        self.stage_output_schema_version
+    }
+
+    fn run_global_seed(&self) -> u64 {
+        self.run_global_seed
+    }
+
+    fn stage_seed(&self) -> u64 {
+        self.stage_seed
+    }
+
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
+        self.stage_seed_source
+    }
+
+    fn stage_seed_derivation_policy(&self) -> &'static str {
+        self.stage_seed_derivation_policy
+    }
+
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
+        &self.solver_settings
+    }
+}
+
 impl CalibrationStageExecutionMetadataForCheckpoint for JointRefinementStageExecutionMetadata {
     fn stage_output_schema_version(&self) -> &'static str {
         self.stage_output_schema_version
@@ -284,6 +312,7 @@ impl CalibrationStagedRunStageReport {
             Self::ReturnComponents(report) => report.stage,
             Self::LongVariance(report) => report.stage,
             Self::NewsShocks(report) => report.stage,
+            Self::ReturnBackfit(report) => report.stage,
             Self::MeanReversion(report) => report.stage,
             Self::JointRefinement(report) => report.stage,
             Self::OptionRefinement(report) => report.stage,
@@ -298,6 +327,7 @@ impl CalibrationStagedRunStageReport {
             Self::ReturnComponents(report) => report.status,
             Self::LongVariance(report) => report.status,
             Self::NewsShocks(report) => report.status,
+            Self::ReturnBackfit(report) => report.status,
             Self::MeanReversion(report) => report.status,
             Self::JointRefinement(report) => report.status,
             Self::OptionRefinement(report) => report.status,
@@ -318,6 +348,9 @@ impl CalibrationStagedRunStageReport {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::NewsShocks(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::ReturnBackfit(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::MeanReversion(report) => {

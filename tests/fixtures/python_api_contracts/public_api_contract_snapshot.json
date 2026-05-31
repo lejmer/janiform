@@ -3360,6 +3360,10 @@
               "value": "news_shocks"
             },
             {
+              "name": "RETURN_BACKFIT",
+              "value": "return_backfit"
+            },
+            {
               "name": "MEAN_REVERSION",
               "value": "mean_reversion"
             },
@@ -3750,6 +3754,10 @@
             {
               "name": "NEWS_SHOCKS",
               "value": "news_shocks"
+            },
+            {
+              "name": "RETURN_BACKFIT",
+              "value": "return_backfit"
             },
             {
               "name": "MEAN_REVERSION",

@@ -400,6 +400,18 @@ fn assert_stage_artifact_reload_matches(
                 );
             }
             (
+                CalibrationStageParameterPayload::NewsShocks(reloaded_payload),
+                CalibrationStageParameterPayload::NewsShocks(expected_payload),
+            ) => {
+                assert_eq!(reloaded_payload, expected_payload);
+            }
+            (
+                CalibrationStageParameterPayload::ReturnBackfit(reloaded_payload),
+                CalibrationStageParameterPayload::ReturnBackfit(expected_payload),
+            ) => {
+                assert_eq!(reloaded_payload, expected_payload);
+            }
+            (
                 CalibrationStageParameterPayload::MeanReversion(reloaded_payload),
                 CalibrationStageParameterPayload::MeanReversion(expected_payload),
             ) => {

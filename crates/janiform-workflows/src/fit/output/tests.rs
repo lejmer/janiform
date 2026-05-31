@@ -95,6 +95,7 @@ fn checkpoint_metadata(
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
+            CalibrationStage::ReturnBackfit,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
@@ -116,10 +117,11 @@ fn completed_stage_position(stage: CalibrationStage) -> usize {
         CalibrationStage::ReturnComponents => 2,
         CalibrationStage::LongVariance => 3,
         CalibrationStage::NewsShocks => 4,
-        CalibrationStage::MeanReversion => 5,
-        CalibrationStage::JointRefinement => 6,
-        CalibrationStage::OptionRefinement => 7,
-        CalibrationStage::Finalization => 8,
+        CalibrationStage::ReturnBackfit => 5,
+        CalibrationStage::MeanReversion => 6,
+        CalibrationStage::JointRefinement => 7,
+        CalibrationStage::OptionRefinement => 8,
+        CalibrationStage::Finalization => 9,
     }
 }
 

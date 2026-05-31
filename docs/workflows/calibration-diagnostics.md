@@ -66,16 +66,18 @@ Start with `objective_breakdown.family_losses`. If one area looks bad, use `obje
 
 Full calibration reports separate the final pipeline into the stages users see in the terminal:
 
-| Stage                     | When it appears        | What it does                                                                                                                             |
-|---------------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| `Fit seasonality`         | Full runs              | Fits deterministic baseline activity seasonality.                                                                                        |
-| `Fit event activity`      | Full runs              | Fits Hawkes activity dynamics.                                                                                                           |
-| `Fit return distribution` | Full runs              | Fits baseline return-shape and return-clock contracts.                                                                                   |
-| `Fit long variance`       | Full runs              | Initializes persistent variance parameters and reports horizon diagnostics.                                                              |
-| `Fit mean reversion`      | Full runs              | Fits anchor/pressure mean-reversion behavior.                                                                                            |
-| `Refine dynamics`         | Full runs              | Searches restart candidates for the physical dynamics fitted to underlying data.                                                         |
-| `Fit option surface`      | Full runs with options | Fits the option pricing block from the selected dynamics frontier.                                                                       |
-| `Finalize model`          | Full runs              | Resolves upstream fit artifacts, prepares runtime inputs, builds final diagnostics, and writes the canonical final fitted model payload. |
+| Stage                         | When it appears        | What it does                                                                                                                             |
+|-------------------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `Fit seasonality`             | Full runs              | Fits deterministic baseline activity seasonality.                                                                                        |
+| `Fit event activity`          | Full runs              | Fits Hawkes activity dynamics.                                                                                                           |
+| `Fit return distribution`     | Full runs              | Fits baseline return-shape and return-clock contracts.                                                                                   |
+| `Fit long variance`           | Full runs              | Initializes persistent variance parameters and reports horizon diagnostics.                                                              |
+| `Fit news shocks`             | Full runs              | Fits news and gap shock parameters used as fixed inputs to the return-distribution backfit.                                              |
+| `Backfit return distribution` | Full runs              | Re-estimates the physical return layer against the fixed long-variance and news/gap fit so scale is not counted twice.                   |
+| `Fit mean reversion`          | Full runs              | Fits anchor/pressure mean-reversion behavior.                                                                                            |
+| `Refine dynamics`             | Full runs              | Searches restart candidates for the physical dynamics fitted to underlying data.                                                         |
+| `Fit option surface`          | Full runs with options | Fits the option pricing block from the selected dynamics frontier.                                                                       |
+| `Finalize model`              | Full runs              | Resolves upstream fit artifacts, prepares runtime inputs, builds final diagnostics, and writes the canonical final fitted model payload. |
 
 Runs without an option snapshot skip `Fit option surface`. The final fitted model parameters are saved under `parameters.finalization.fitted_parameters` in `model.jf`. When an option snapshot is present, that finalization payload contains the option-calibrated pricing block while the physical Hawkes and return components remain the dynamics fit used by simulation.
 
@@ -211,6 +213,8 @@ Long variance is the persistent stochastic volatility state used by return clock
 The neutral long-variance level is `1.0`. Long-variance parameters control persistence, volatility of volatility, and buy/sell event feedback into future variance. Return-clock exposure parameters control how strongly Hawkes excitation contributes to buy-side and sell-side return clocks.
 
 The `Fit long variance` stage estimates an initial persistent variance state from observed squared-return persistence, side activity relation to squared returns, and normalized squared-return dispersion. The dispersion initializer is projected into the standard unit-stationary CIR variance boundary before restart optimization so the handoff point is inside the same parameter domain that restart search uses. Its report contains observed horizon diagnostics at `5min`, `1h`, `1d`, and `1w`: realized variance, variance-of-variance, return skewness, return excess kurtosis, activity/variance correlation, signed-activity relation to next-interval variance, temporal block standard errors where a coarser configured horizon is available, and delete-one jackknife standard errors for skewness and excess kurtosis. Joint refinement scores the horizon diagnostics with available sampling uncertainty under the `long_variance` objective family so restart optimization can move the long-variance parameters when those persistent variance targets support it.
+
+The `Backfit return distribution` stage is a variance-budget backfit. It keeps the fitted activity, long-variance, seasonality, and news/gap components fixed, then makes the return-distribution handoff represent the residual physical return layer that downstream mean-reversion, joint-refinement, simulation, and pricing workflows should consume. The report includes the selected backfit candidate, whether a no-op candidate was selected, and the variance-budget diagnostic fields used to compare the initial NIG contribution, fixed slow/news contribution, backfitted NIG contribution, modeled scale, and observed target scale when those measurements are available.
 
 ### Business time for returns
 

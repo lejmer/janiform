@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "02626cafd3ed78c5591e0255c1dd48f849de0899e08fb8fa7f0b940a57a4781e",
+  "approved_snapshot_sha256": "a1833076a70106d90359ab9d6ca82595da16f8f7843fb7bbafea74d9ec220dfd",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1589,6 +1589,21 @@
       "updated_surfaces": [
         "python public API contract snapshot",
         "docs/reference/python-api.md"
+      ]
+    },
+    {
+      "approved_on": "2026-05-31",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/workflows/calibration-diagnostics.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Full calibration now exposes the visible return-distribution backfit stage so staged execution, resume controls, and public Python stage enums can refer to the variance-budget pass directly.",
+      "snapshot_sha256": "a1833076a70106d90359ab9d6ca82595da16f8f7843fb7bbafea74d9ec220dfd",
+      "summary": "Expose the return-distribution backfit stage in public calibration contracts.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged"
       ]
     }
   ],

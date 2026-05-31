@@ -385,6 +385,7 @@ mod tests {
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
+            CalibrationStage::ReturnBackfit,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::Finalization,
@@ -395,6 +396,7 @@ mod tests {
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
+            CalibrationStage::ReturnBackfit,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::OptionRefinement,
@@ -423,6 +425,7 @@ mod tests {
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
+            CalibrationStage::ReturnBackfit,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ];
