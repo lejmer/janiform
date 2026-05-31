@@ -195,6 +195,61 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
         !baseline_coarse_consistency_labels.is_empty(),
         "expected staged runner to expose baseline coarse-consistency progress labels, observed events were: {observed_events:#?}"
     );
+
+    let mut finalization_pre_evaluation_phase_starts = Vec::new();
+    for event in &observed_events {
+        let CalibrationStagedRunObserverEvent::StageProgress(progress) = event else {
+            continue;
+        };
+
+        if progress.stage != CalibrationStage::Finalization {
+            continue;
+        }
+
+        match progress.progress_phase {
+            CalibrationStageProgressPhase::JointRefinement(
+                JointRefinementStageProgressPhase::BaselineLocalEvaluation,
+            ) => break,
+            CalibrationStageProgressPhase::JointRefinement(phase)
+                if progress.completed_units == 0 =>
+            {
+                finalization_pre_evaluation_phase_starts
+                    .push((phase, progress.current_item_label.clone()));
+            }
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        finalization_pre_evaluation_phase_starts,
+        vec![
+            (
+                JointRefinementStageProgressPhase::StageInputResolution,
+                Some("resolve stage inputs".to_string())
+            ),
+            (
+                JointRefinementStageProgressPhase::ResumeStateResolution,
+                Some("resolve resume state".to_string())
+            ),
+            (
+                JointRefinementStageProgressPhase::ObservedInputPreparation,
+                Some("prepare observed inputs".to_string())
+            ),
+            (
+                JointRefinementStageProgressPhase::ParameterizationPreparation,
+                Some("prepare parameterization".to_string())
+            ),
+            (
+                JointRefinementStageProgressPhase::RuntimeMaterialization,
+                Some("materialize runtime state".to_string())
+            ),
+            (
+                JointRefinementStageProgressPhase::RuntimeContextAssembly,
+                Some("assemble runtime context".to_string())
+            ),
+        ],
+        "expected finalization to expose setup progress before baseline deterministic evaluation"
+    );
 }
 
 #[test]

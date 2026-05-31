@@ -66,16 +66,16 @@ Start with `objective_breakdown.family_losses`. If one area looks bad, use `obje
 
 Full calibration reports separate the final pipeline into the stages users see in the terminal:
 
-| Stage                | When it appears       | What it does                                                                 |
-|----------------------|-----------------------|-------------------------------------------------------------------------------|
-| `Fit seasonality`    | Full runs             | Fits deterministic baseline activity seasonality.                             |
-| `Fit event activity` | Full runs             | Fits Hawkes activity dynamics.                                                |
-| `Fit return distribution` | Full runs        | Fits baseline return-shape and return-clock contracts.                        |
-| `Fit long variance` | Full runs             | Initializes persistent variance parameters and reports horizon diagnostics.    |
-| `Fit mean reversion` | Full runs            | Fits anchor/pressure mean-reversion behavior.                                 |
-| `Refine dynamics`    | Full runs             | Searches restart candidates for the physical dynamics fitted to underlying data. |
-| `Fit option surface` | Full runs with options | Fits the option pricing block from the selected dynamics frontier.             |
-| `Finalize model`     | Full runs             | Builds final diagnostics and writes the canonical final fitted model payload.   |
+| Stage                     | When it appears        | What it does                                                                                                                             |
+|---------------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `Fit seasonality`         | Full runs              | Fits deterministic baseline activity seasonality.                                                                                        |
+| `Fit event activity`      | Full runs              | Fits Hawkes activity dynamics.                                                                                                           |
+| `Fit return distribution` | Full runs              | Fits baseline return-shape and return-clock contracts.                                                                                   |
+| `Fit long variance`       | Full runs              | Initializes persistent variance parameters and reports horizon diagnostics.                                                              |
+| `Fit mean reversion`      | Full runs              | Fits anchor/pressure mean-reversion behavior.                                                                                            |
+| `Refine dynamics`         | Full runs              | Searches restart candidates for the physical dynamics fitted to underlying data.                                                         |
+| `Fit option surface`      | Full runs with options | Fits the option pricing block from the selected dynamics frontier.                                                                       |
+| `Finalize model`          | Full runs              | Resolves upstream fit artifacts, prepares runtime inputs, builds final diagnostics, and writes the canonical final fitted model payload. |
 
 Runs without an option snapshot skip `Fit option surface`. The final fitted model parameters are saved under `parameters.finalization.fitted_parameters` in `model.jf`. When an option snapshot is present, that finalization payload contains the option-calibrated pricing block while the physical Hawkes and return components remain the dynamics fit used by simulation.
 
@@ -83,21 +83,21 @@ Runs without an option snapshot skip `Fit option surface`. The final fitted mode
 
 Janiform reports some terms that are useful but easy to misread.
 
-| Term                  | Meaning                                                                                                      |
-|-----------------------|--------------------------------------------------------------------------------------------------------------|
-| Candidate             | One complete fitted model that Janiform considered during calibration.                                       |
-| Baseline              | The starting fit used as a comparison point before final improvement attempts.                               |
-| Global loss           | The single pseudo-likelihood loss used to rank complete joint-refinement candidates. Lower is better.        |
+| Term                  | Meaning                                                                                                           |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------|
+| Candidate             | One complete fitted model that Janiform considered during calibration.                                            |
+| Baseline              | The starting fit used as a comparison point before final improvement attempts.                                    |
+| Global loss           | The single pseudo-likelihood loss used to rank complete joint-refinement candidates. Lower is better.             |
 | Option surface loss   | The root mean square option quote residual after each quote is scaled by its quote spread floor. Lower is better. |
-| Family loss           | The mean loss for one named group of related checks, such as activity shape or return scale.                 |
-| Term diagnostic       | One observed-versus-modeled comparison inside a family.                                                      |
-| Standardized residual | The observed-versus-modeled difference divided by its uncertainty scale.                                     |
-| Huber loss            | The per-term loss used for stylized facts. It is quadratic near zero and linear for large residuals.         |
-| Excess loss           | The extra loss for standardized residuals or constraints beyond the admissibility threshold.                 |
-| Admissibility blocker | A term or hard constraint that crossed the final acceptance threshold.                                       |
-| Activity              | How often market events arrive. In tick data, high activity means ticks arrive frequently.                   |
-| Return scale          | The typical size of price changes. It is related to volatility, but reported here as fitted return behavior. |
-| Return shape          | The distributional shape of returns, including tails and how returns are spread out.                         |
+| Family loss           | The mean loss for one named group of related checks, such as activity shape or return scale.                      |
+| Term diagnostic       | One observed-versus-modeled comparison inside a family.                                                           |
+| Standardized residual | The observed-versus-modeled difference divided by its uncertainty scale.                                          |
+| Huber loss            | The per-term loss used for stylized facts. It is quadratic near zero and linear for large residuals.              |
+| Excess loss           | The extra loss for standardized residuals or constraints beyond the admissibility threshold.                      |
+| Admissibility blocker | A term or hard constraint that crossed the final acceptance threshold.                                            |
+| Activity              | How often market events arrive. In tick data, high activity means ticks arrive frequently.                        |
+| Return scale          | The typical size of price changes. It is related to volatility, but reported here as fitted return behavior.      |
+| Return shape          | The distributional shape of returns, including tails and how returns are spread out.                              |
 
 The global loss is not a probability, percentile, p-value, or percentage score. It is a calibration loss.
 

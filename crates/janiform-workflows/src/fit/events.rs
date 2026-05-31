@@ -945,6 +945,24 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
             JointRefinementStageProgressPhase::RestartOptimization,
         ) => "restart_optimization",
         CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::StageInputResolution,
+        ) => "stage_input_resolution",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::ResumeStateResolution,
+        ) => "resume_state_resolution",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::ObservedInputPreparation,
+        ) => "observed_input_preparation",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::ParameterizationPreparation,
+        ) => "parameterization_preparation",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::RuntimeMaterialization,
+        ) => "runtime_materialization",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::RuntimeContextAssembly,
+        ) => "runtime_context_assembly",
+        CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::OptionSearchTierRefinement,
         ) => "option_search_tier_refinement",
         CalibrationStageProgressPhase::JointRefinement(
@@ -1004,6 +1022,24 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::ReportAssembly,
         ) => "report assembly",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::StageInputResolution,
+        ) => "stage input resolution",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::ResumeStateResolution,
+        ) => "resume state resolution",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::ObservedInputPreparation,
+        ) => "observed input preparation",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::ParameterizationPreparation,
+        ) => "parameterization preparation",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::RuntimeMaterialization,
+        ) => "runtime materialization",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::RuntimeContextAssembly,
+        ) => "runtime context assembly",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::BaselineLocalEvaluation,
         ) => "baseline local evaluation",

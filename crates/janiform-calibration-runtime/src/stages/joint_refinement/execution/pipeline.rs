@@ -76,6 +76,12 @@ const FINAL_ASSEMBLY_CANDIDATE_FRONTIER_LABEL: &str = "candidate_frontier";
 const FINAL_ASSEMBLY_SIMULATION_SUMMARIES_LABEL: &str = "simulation_summaries";
 const FINAL_ASSEMBLY_COARSE_TICK_CONSISTENCY_LABEL: &str = "coarse_tick_consistency";
 const FINAL_ASSEMBLY_OPTION_CALIBRATION_DIAGNOSTICS_LABEL: &str = "option_calibration_diagnostics";
+const PREPARATION_STAGE_INPUT_RESOLUTION_LABEL: &str = "resolve stage inputs";
+const PREPARATION_RESUME_STATE_RESOLUTION_LABEL: &str = "resolve resume state";
+const PREPARATION_OBSERVED_INPUTS_LABEL: &str = "prepare observed inputs";
+const PREPARATION_PARAMETERIZATION_LABEL: &str = "prepare parameterization";
+const PREPARATION_RUNTIME_MATERIALIZATION_LABEL: &str = "materialize runtime state";
+const PREPARATION_RUNTIME_CONTEXT_LABEL: &str = "assemble runtime context";
 const FINAL_ASSEMBLY_BASE_UNIT_LABELS: [&str; 3] = [
     FINAL_ASSEMBLY_CANDIDATE_FRONTIER_LABEL,
     FINAL_ASSEMBLY_SIMULATION_SUMMARIES_LABEL,
@@ -108,6 +114,11 @@ struct ResolvedStagePayloads<'a> {
     observed_signal_preparation: ReturnComponentsStageJointRefinementObservedSignalPreparation,
     baseline_modeled_open_event_rate_per_hour: f64,
     final_simulation_seeds: Vec<u64>,
+}
+
+struct InitialPipelineState<'a> {
+    resolved_stage_payloads: ResolvedStagePayloads<'a>,
+    resume_store: JointRefinementResumeStore,
 }
 
 struct PreparedBootstrapContext {
@@ -392,32 +403,26 @@ fn run_joint_refinement_pipeline_stage_internal(
         );
     }
 
-    let resolved_stage_payloads =
-        match resolve_stage_payloads(run_spec, calendar_registry, &stage_input, pipeline_stage) {
-            Ok(payloads) => payloads,
-            Err(failure) => {
-                return build_stage_failure_report(
-                    run_spec,
-                    pipeline_stage.calibration_stage(),
-                    failure,
-                );
-            }
-        };
-
-    let mut resume_store = if load_current_stage_resume_state {
-        JointRefinementResumeStore::load(
-            disk_checkpoint_directory,
-            run_spec.run_id.as_str(),
-            pipeline_stage.calibration_stage(),
-            resolved_stage_payloads.resolved_stage_seed.stage_seed,
-        )
-    } else {
-        JointRefinementResumeStore::fresh(
-            disk_checkpoint_directory,
-            run_spec.run_id.as_str(),
-            pipeline_stage.calibration_stage(),
-            resolved_stage_payloads.resolved_stage_seed.stage_seed,
-        )
+    let InitialPipelineState {
+        resolved_stage_payloads,
+        mut resume_store,
+    } = match resolve_initial_pipeline_state(
+        run_spec,
+        calendar_registry,
+        &stage_input,
+        progress_sender.as_ref(),
+        disk_checkpoint_directory,
+        load_current_stage_resume_state,
+        pipeline_stage,
+    ) {
+        Ok(initial_state) => initial_state,
+        Err(failure) => {
+            return build_stage_failure_report(
+                run_spec,
+                pipeline_stage.calibration_stage(),
+                failure,
+            );
+        }
     };
 
     let mut prepared_bootstrap = match prepare_bootstrap_context(
@@ -425,6 +430,7 @@ fn run_joint_refinement_pipeline_stage_internal(
         calendar_registry,
         &stage_input,
         &resolved_stage_payloads,
+        progress_sender.as_ref(),
     ) {
         Ok(prepared_bootstrap) => prepared_bootstrap,
         Err(failure) => {
@@ -580,6 +586,51 @@ fn build_stage_failure_report(
     )
 }
 
+fn resolve_initial_pipeline_state<'a>(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: &'a JointRefinementStageExecutionInput,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    disk_checkpoint_directory: Option<&Path>,
+    load_current_stage_resume_state: bool,
+    pipeline_stage: JointRefinementPipelineStage,
+) -> Result<InitialPipelineState<'a>, JointRefinementStageExecutionFailure> {
+    let resolved_stage_payloads = run_single_pass_joint_refinement_progress_phase(
+        progress_sender,
+        JointRefinementStageProgressPhase::StageInputResolution,
+        PREPARATION_STAGE_INPUT_RESOLUTION_LABEL,
+        || resolve_stage_payloads(run_spec, calendar_registry, stage_input, pipeline_stage),
+    )?;
+
+    let resume_store = run_single_pass_joint_refinement_progress_phase(
+        progress_sender,
+        JointRefinementStageProgressPhase::ResumeStateResolution,
+        PREPARATION_RESUME_STATE_RESOLUTION_LABEL,
+        || {
+            Ok(if load_current_stage_resume_state {
+                JointRefinementResumeStore::load(
+                    disk_checkpoint_directory,
+                    run_spec.run_id.as_str(),
+                    pipeline_stage.calibration_stage(),
+                    resolved_stage_payloads.resolved_stage_seed.stage_seed,
+                )
+            } else {
+                JointRefinementResumeStore::fresh(
+                    disk_checkpoint_directory,
+                    run_spec.run_id.as_str(),
+                    pipeline_stage.calibration_stage(),
+                    resolved_stage_payloads.resolved_stage_seed.stage_seed,
+                )
+            })
+        },
+    )?;
+
+    Ok(InitialPipelineState {
+        resolved_stage_payloads,
+        resume_store,
+    })
+}
+
 fn resolve_stage_payloads<'a>(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
@@ -702,15 +753,23 @@ fn prepare_bootstrap_context(
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Result<PreparedBootstrapContext, JointRefinementStageExecutionFailure> {
     let PreparedObservedInputs {
         observed_data,
         baseline_15m_calibration_sample,
-    } = prepare_observed_inputs(
-        calendar_registry,
-        run_spec,
-        stage_input,
-        resolved_stage_payloads,
+    } = run_single_pass_joint_refinement_progress_phase(
+        progress_sender,
+        JointRefinementStageProgressPhase::ObservedInputPreparation,
+        PREPARATION_OBSERVED_INPUTS_LABEL,
+        || {
+            prepare_observed_inputs(
+                calendar_registry,
+                run_spec,
+                stage_input,
+                resolved_stage_payloads,
+            )
+        },
     )?;
 
     let PreparedParameterization {
@@ -720,13 +779,20 @@ fn prepare_bootstrap_context(
         upper_bounds,
         option_pricing_refinement_enabled,
         option_pricing_context,
-    } = prepare_parameterization(
-        run_spec,
-        calendar_registry,
-        stage_input,
-        resolved_stage_payloads,
-        &baseline_15m_calibration_sample,
-        &observed_data,
+    } = run_single_pass_joint_refinement_progress_phase(
+        progress_sender,
+        JointRefinementStageProgressPhase::ParameterizationPreparation,
+        PREPARATION_PARAMETERIZATION_LABEL,
+        || {
+            prepare_parameterization(
+                run_spec,
+                calendar_registry,
+                stage_input,
+                resolved_stage_payloads,
+                &baseline_15m_calibration_sample,
+                &observed_data,
+            )
+        },
     )?;
 
     let baseline_return_components_fitted_parameters =
@@ -735,31 +801,47 @@ fn prepare_bootstrap_context(
             resolved_stage_payloads.mean_reversion_payload,
         );
 
-    let runtime_materialization = materialize_runtime_state(
-        run_spec,
-        calendar_registry,
-        stage_input,
-        &observed_data,
-        &baseline_return_components_fitted_parameters,
+    let runtime_materialization = run_single_pass_joint_refinement_progress_phase(
+        progress_sender,
+        JointRefinementStageProgressPhase::RuntimeMaterialization,
+        PREPARATION_RUNTIME_MATERIALIZATION_LABEL,
+        || {
+            materialize_runtime_state(
+                run_spec,
+                calendar_registry,
+                stage_input,
+                &observed_data,
+                &baseline_return_components_fitted_parameters,
+            )
+        },
     )?;
 
-    let bootstrap_context = build_bootstrap_context(BootstrapContextBuildInput {
-        run_spec,
-        calendar_registry,
-        resolved_stage_payloads,
-        observed_data,
-        active_parameter_layout,
-        lower_bounds,
-        upper_bounds,
-        option_pricing_refinement_enabled,
-        option_pricing_context,
-        runtime_materialization,
-        baseline_return_components_fitted_parameters,
-    })?;
+    let bootstrap_context = run_single_pass_joint_refinement_progress_phase(
+        progress_sender,
+        JointRefinementStageProgressPhase::RuntimeContextAssembly,
+        PREPARATION_RUNTIME_CONTEXT_LABEL,
+        || {
+            let bootstrap_context = build_bootstrap_context(BootstrapContextBuildInput {
+                run_spec,
+                calendar_registry,
+                resolved_stage_payloads,
+                observed_data,
+                active_parameter_layout,
+                lower_bounds,
+                upper_bounds,
+                option_pricing_refinement_enabled,
+                option_pricing_context,
+                runtime_materialization,
+                baseline_return_components_fitted_parameters,
+            })?;
 
-    validate_baseline_parameter_round_trip(
-        baseline_parameter_vector.as_slice(),
-        &bootstrap_context,
+            validate_baseline_parameter_round_trip(
+                baseline_parameter_vector.as_slice(),
+                &bootstrap_context,
+            )?;
+
+            Ok(bootstrap_context)
+        },
     )?;
 
     Ok(PreparedBootstrapContext {
@@ -2428,6 +2510,46 @@ fn emit_final_assembly_progress(
         total_units,
         current_item_label,
     );
+}
+
+fn emit_single_pass_joint_refinement_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: JointRefinementStageProgressPhase,
+    completed_units: usize,
+    current_item_label: &str,
+) {
+    emit_joint_refinement_progress(
+        progress_sender,
+        progress_phase,
+        completed_units,
+        1,
+        current_item_label,
+    );
+}
+
+fn run_single_pass_joint_refinement_progress_phase<T>(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: JointRefinementStageProgressPhase,
+    current_item_label: &str,
+    work: impl FnOnce() -> Result<T, JointRefinementStageExecutionFailure>,
+) -> Result<T, JointRefinementStageExecutionFailure> {
+    emit_single_pass_joint_refinement_progress(
+        progress_sender,
+        progress_phase,
+        0,
+        current_item_label,
+    );
+
+    let output = work()?;
+
+    emit_single_pass_joint_refinement_progress(
+        progress_sender,
+        progress_phase,
+        1,
+        current_item_label,
+    );
+
+    Ok(output)
 }
 
 fn emit_restart_candidate_screening_progress(
