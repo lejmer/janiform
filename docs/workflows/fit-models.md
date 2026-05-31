@@ -13,12 +13,12 @@ A fit run has two jobs:
 
 Tick data is always required. Coarse historical data and option surface data are optional and change the calibration target:
 
-| Input set                    | Best for                                                                                         |
-|------------------------------|--------------------------------------------------------------------------------------------------|
-| Tick data only               | You need a model for simulation, model validation, or model-implied pricing.                     |
-| Tick data + coarse data      | You want tick-level activity fit and slower return, variance, mean-reversion, gap, or tail fit. |
-| Tick data + option data      | You need a model to price options.                                                              |
-| Tick + coarse + option data  | You want slower physical evidence and option-surface evidence in one calibration.                |
+| Input set                   | Best for                                                                                        |
+|-----------------------------|-------------------------------------------------------------------------------------------------|
+| Tick data only              | You need a model for simulation, model validation, or model-implied pricing.                    |
+| Tick data + coarse data     | You want tick-level activity fit and slower return, variance, mean-reversion, gap, or tail fit. |
+| Tick data + option data     | You need a model to price options.                                                              |
+| Tick + coarse + option data | You want slower physical evidence and option-surface evidence in one calibration.               |
 
 Coarse and option data do not replace tick data. Coarse data supplies slower physical evidence when available, and option data adds a forward-looking constraint on top of the underlying history.
 
@@ -26,13 +26,13 @@ Coarse and option data do not replace tick data. Coarse data supplies slower phy
 
 To fit a model we need the market observations and the context required to interpret it.
 
-| Input                  | Required | Notes                                                                                                                                           |
-|------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------|
-| Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used. |
-| Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                    |
-| Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                      |
-| Coarse data           | No       | Optional lower-frequency OHLCV bars or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval open-time observations by default. |
-| Option surface         | No       | Needed for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                       |
+| Input                  | Required | Notes                                                                                                                                                                           |
+|------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used.                                 |
+| Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                                                    |
+| Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                                                      |
+| Coarse data            | No       | Optional lower-frequency OHLCV bars or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval open-time observations by default. |
+| Option surface         | No       | Needed for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                                                       |
 
 For repeatable work, make the context explicit. Market profile inference is convenient for quick runs, but production code should not rely on it.
 
