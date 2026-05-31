@@ -361,6 +361,8 @@ By default, Janiform writes a run directory under .janiform/runs/ with the fitte
     Resume from the long-variance stage.
   - `news-shocks`:
     Resume from the news-shocks stage.
+  - `return-backfit`:
+    Resume from the return-distribution backfit stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
@@ -777,6 +779,8 @@ This advanced command is useful when a separate process prepares calibration inp
     Resume from the long-variance stage.
   - `news-shocks`:
     Resume from the news-shocks stage.
+  - `return-backfit`:
+    Resume from the return-distribution backfit stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
@@ -994,6 +998,8 @@ This command runs a prepared calibration input file. Disk runs write the fitted 
     Resume from the long-variance stage.
   - `news-shocks`:
     Resume from the news-shocks stage.
+  - `return-backfit`:
+    Resume from the return-distribution backfit stage.
   - `mean-reversion`:
     Resume from the mean-reversion stage.
   - `joint-refinement`:
