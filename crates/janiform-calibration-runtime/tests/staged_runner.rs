@@ -273,10 +273,10 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
 
     assert!(report.status.is_successful(), "{report:#?}");
     assert!(report.failure.is_none());
-    assert_eq!(report.emitted_checkpoints.len(), 7);
+    assert_eq!(report.emitted_checkpoints.len(), 9);
     assert_eq!(
         checkpoint_store.checkpoint_count_for_run(run_contract.run_spec.run_id.as_str()),
-        7
+        9
     );
 
     let first_checkpoint = report
@@ -366,7 +366,7 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
     );
 
     assert!(report.status.is_successful(), "{report:#?}");
-    assert_eq!(report.stage_reports.len(), 7);
+    assert_eq!(report.stage_reports.len(), 9);
 
     for stage_report in &report.stage_reports {
         match stage_report {
@@ -457,6 +457,28 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                     derive_calibration_stage_seed_from_global_seed(
                         17,
                         CalibrationStage::NewsShocks
+                    )
+                );
+                assert_eq!(
+                    metadata.stage_seed_source,
+                    CalibrationStageSeedSource::DerivedFromGlobalSeed
+                );
+                assert_eq!(
+                    metadata.stage_seed_derivation_policy,
+                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+            }
+            CalibrationStagedRunStageReport::ReturnBackfit(return_backfit_report) => {
+                let metadata = return_backfit_report
+                    .metadata
+                    .as_ref()
+                    .expect("return-backfit stage metadata should be present");
+                assert_eq!(metadata.run_global_seed, 17);
+                assert_eq!(
+                    metadata.stage_seed,
+                    derive_calibration_stage_seed_from_global_seed(
+                        17,
+                        CalibrationStage::ReturnBackfit
                     )
                 );
                 assert_eq!(
@@ -1090,7 +1112,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         cli_default_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(cli_default_report.stage_reports.len(), 7);
+    assert_eq!(cli_default_report.stage_reports.len(), 9);
 
     let python_override_checkpoint_directory =
         temporary_checkpoint_directory("python-disk-override-run");
@@ -1114,7 +1136,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         python_override_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(python_override_report.stage_reports.len(), 7);
+    assert_eq!(python_override_report.stage_reports.len(), 9);
 
     let _ = fs::remove_dir_all(cli_default_checkpoint_directory);
     let _ = fs::remove_dir_all(python_override_checkpoint_directory);
@@ -1383,8 +1405,8 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 5);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 5);
+    assert_eq!(resume_report.stage_reports.len(), 7);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 7);
 }
 
 #[test]
@@ -1424,8 +1446,8 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 5);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 5);
+    assert_eq!(resume_report.stage_reports.len(), 7);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 7);
 }
 
 #[test]
@@ -1693,6 +1715,7 @@ fn normalized_report_for_reproducibility(
             | CalibrationStagedRunStageReport::ReturnComponents(_)
             | CalibrationStagedRunStageReport::LongVariance(_)
             | CalibrationStagedRunStageReport::NewsShocks(_)
+            | CalibrationStagedRunStageReport::ReturnBackfit(_)
             | CalibrationStagedRunStageReport::MeanReversion(_) => {}
         }
     }

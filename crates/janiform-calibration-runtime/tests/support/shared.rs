@@ -1204,6 +1204,14 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
+            stage: CalibrationStage::NewsShocks,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::ReturnBackfit,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
             stage: CalibrationStage::MeanReversion,
             optimizer_settings: build_solver_settings(),
         },
@@ -2038,6 +2046,8 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
+            CalibrationStage::ReturnBackfit,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::Finalization,
@@ -2078,6 +2088,8 @@ pub(crate) fn build_through_mean_reversion_run_contract_with_mode_and_resume(
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
+            CalibrationStage::ReturnBackfit,
             CalibrationStage::MeanReversion,
         ],
         build_solver_settings_for_through_mean_reversion_pipeline(),
@@ -2134,6 +2146,8 @@ pub(crate) fn build_run_contract_for_caller_surface(
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
+            CalibrationStage::NewsShocks,
+            CalibrationStage::ReturnBackfit,
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
             CalibrationStage::Finalization,
@@ -2255,6 +2269,8 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
         CalibrationStage::Hawkes,
         CalibrationStage::ReturnComponents,
         CalibrationStage::LongVariance,
+        CalibrationStage::NewsShocks,
+        CalibrationStage::ReturnBackfit,
         CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
         CalibrationStage::Finalization,
@@ -2278,6 +2294,14 @@ fn build_solver_settings_for_through_mean_reversion_pipeline() -> Vec<Calibratio
         },
         CalibrationStageSolverSettings {
             stage: CalibrationStage::LongVariance,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::NewsShocks,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::ReturnBackfit,
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
@@ -2307,8 +2331,20 @@ pub(crate) fn stage_graph_for_selected_stages(
                 depends_on: CalibrationStage::ReturnComponents,
             },
             CalibrationStageDependency {
-                stage: CalibrationStage::MeanReversion,
+                stage: CalibrationStage::NewsShocks,
+                depends_on: CalibrationStage::ReturnComponents,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::ReturnBackfit,
                 depends_on: CalibrationStage::LongVariance,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::ReturnBackfit,
+                depends_on: CalibrationStage::NewsShocks,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::MeanReversion,
+                depends_on: CalibrationStage::ReturnBackfit,
             },
             CalibrationStageDependency {
                 stage: CalibrationStage::JointRefinement,
@@ -2321,6 +2357,14 @@ pub(crate) fn stage_graph_for_selected_stages(
             CalibrationStageDependency {
                 stage: CalibrationStage::JointRefinement,
                 depends_on: CalibrationStage::LongVariance,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::JointRefinement,
+                depends_on: CalibrationStage::NewsShocks,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::JointRefinement,
+                depends_on: CalibrationStage::ReturnBackfit,
             },
             CalibrationStageDependency {
                 stage: CalibrationStage::JointRefinement,

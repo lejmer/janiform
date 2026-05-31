@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 
 use janiform_calibration_artifacts::{
-    CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationLossAdmissibility,
+    CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationLossAdmissibility,
     CalibrationObjectivePolicy, CalibrationRunContract, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
     CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
@@ -12,9 +14,12 @@ use janiform_calibration_artifacts::{
     JointRefinementStageRuntimeProfile, LongVarianceStageDiagnostics,
     LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
     MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
-    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    SeasonalityStageParameterArtifactInput, SurpriseNewsDeterministicIntensityProfile,
-    TickGridObservationModel, build_calibration_stage_parameter_artifact, calibration_stage_token,
+    NewsShocksStageDiagnostics, NewsShocksStageParameterArtifactInput,
+    ReturnBackfitStageDiagnostics, ReturnBackfitStageParameterArtifactInput,
+    ReturnBackfitStageVarianceBudgetDiagnostic, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageParameterArtifactInput, SeasonalityStageParameterArtifactInput,
+    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
+    build_calibration_stage_parameter_artifact, calibration_stage_token,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::KnownNewsArrivalConfiguration;
@@ -73,6 +78,24 @@ pub(crate) fn build_stage_parameter_artifact_fixture_set(
                 regression_long_variance_stage_parameter_input(
                     run_contract,
                     return_components_fitted_parameters.long_variance_parameters,
+                ),
+            )),
+        ),
+        build_regression_stage_parameter_artifact(
+            run_contract,
+            CalibrationStageParameterArtifactInput::NewsShocks(Box::new(
+                regression_news_shocks_stage_parameter_input(
+                    run_contract,
+                    &return_components_fitted_parameters,
+                ),
+            )),
+        ),
+        build_regression_stage_parameter_artifact(
+            run_contract,
+            CalibrationStageParameterArtifactInput::ReturnBackfit(Box::new(
+                regression_return_backfit_stage_parameter_input(
+                    run_contract,
+                    return_components_fitted_parameters.clone(),
                 ),
             )),
         ),
@@ -215,6 +238,117 @@ fn regression_long_variance_stage_parameter_input(
             stationary_normalization_policy: "artifact_regression_fixture.v1".to_string(),
             selected_candidate_id: "artifact_regression_return_components".to_string(),
             horizon_diagnostics: Vec::new(),
+        },
+        return_components_input_transport:
+            CalibrationStageHandoffTransport::PersistedArtifactReference,
+        return_components_selected_candidate_id: None,
+        return_components_artifact_reference: Some(format!(
+            "artifact://return_components/{}",
+            run_contract.run_spec.run_id
+        )),
+    }
+}
+
+fn regression_news_shocks_stage_parameter_input(
+    run_contract: &CalibrationRunContract,
+    fitted_parameters: &ReturnComponentsStageFittedParameters,
+) -> NewsShocksStageParameterArtifactInput {
+    NewsShocksStageParameterArtifactInput {
+        metadata: regression_stage_build_metadata(
+            run_contract,
+            CalibrationStage::NewsShocks,
+            CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
+        ),
+        news_process_configuration: fitted_parameters.news_process_configuration.clone(),
+        surprise_deterministic_intensity_profile: fitted_parameters
+            .surprise_deterministic_intensity_profile
+            .clone(),
+        diagnostics: NewsShocksStageDiagnostics {
+            estimation_policy: "artifact_regression_fixture.v1".to_string(),
+            selected_candidate_id: "artifact_regression_return_components".to_string(),
+            surprise_open_intensity: fitted_parameters
+                .news_process_configuration
+                .arrivals
+                .surprise
+                .open_baseline_intensity,
+            surprise_closed_intensity: fitted_parameters
+                .news_process_configuration
+                .arrivals
+                .surprise
+                .closed_baseline_intensity,
+            severity_shape: fitted_parameters
+                .news_process_configuration
+                .shared_mark_law
+                .gamma_severity_marks
+                .shape_k,
+            expected_severity: 1.0,
+            expected_sqrt_severity: 1.0,
+            known_activity_coupling_scale: fitted_parameters
+                .news_process_configuration
+                .known_component_mark_scales
+                .activity_coupling_scale,
+            surprise_activity_coupling_scale: fitted_parameters
+                .news_process_configuration
+                .surprise_component_mark_scales
+                .activity_coupling_scale,
+            known_return_jump_drift: fitted_parameters
+                .news_process_configuration
+                .known_component_mark_scales
+                .return_jump_drift,
+            known_return_jump_volatility: fitted_parameters
+                .news_process_configuration
+                .known_component_mark_scales
+                .return_jump_volatility,
+            surprise_return_jump_drift: fitted_parameters
+                .news_process_configuration
+                .surprise_component_mark_scales
+                .return_jump_drift,
+            surprise_return_jump_volatility: fitted_parameters
+                .news_process_configuration
+                .surprise_component_mark_scales
+                .return_jump_volatility,
+        },
+        return_components_input_transport:
+            CalibrationStageHandoffTransport::PersistedArtifactReference,
+        return_components_selected_candidate_id: None,
+        return_components_artifact_reference: Some(format!(
+            "artifact://return_components/{}",
+            run_contract.run_spec.run_id
+        )),
+    }
+}
+
+fn regression_return_backfit_stage_parameter_input(
+    run_contract: &CalibrationRunContract,
+    fitted_parameters: ReturnComponentsStageFittedParameters,
+) -> ReturnBackfitStageParameterArtifactInput {
+    ReturnBackfitStageParameterArtifactInput {
+        metadata: regression_stage_build_metadata(
+            run_contract,
+            CalibrationStage::ReturnBackfit,
+            CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
+        ),
+        selected_candidate_id: "artifact_regression_no_op".to_string(),
+        effective_return_components_selected_candidate_id: "artifact_regression_return_components"
+            .to_string(),
+        effective_fitted_parameters: fitted_parameters,
+        candidate_generation_policy: "artifact_regression_fixture.v1".to_string(),
+        objective_weighting_policy: "artifact_regression_fixture.v1".to_string(),
+        objective_metric_bucket_policy: "artifact_regression_fixture.v1".to_string(),
+        diagnostics: ReturnBackfitStageDiagnostics {
+            estimation_policy: "artifact_regression_fixture.v1".to_string(),
+            selected_candidate_id: "artifact_regression_no_op".to_string(),
+            no_op_selected: true,
+            candidate_count: 1,
+            variance_budget: ReturnBackfitStageVarianceBudgetDiagnostic {
+                initial_nig_contribution: None,
+                fixed_long_variance_news_contribution: None,
+                backfitted_nig_contribution: None,
+                final_total_modeled_return_scale: None,
+                observed_target_scale: None,
+            },
+            objective_blocks: Vec::new(),
+            warnings: Vec::new(),
         },
         return_components_input_transport:
             CalibrationStageHandoffTransport::PersistedArtifactReference,

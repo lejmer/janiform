@@ -47,6 +47,8 @@
         "hawkes",
         "return_components",
         "long_variance",
+        "news_shocks",
+        "return_backfit",
         "mean_reversion",
         "joint_refinement",
         "finalization"
