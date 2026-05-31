@@ -22,9 +22,12 @@ Write code that is valid on the minimum supported Python version for the project
 
 - Treat public Python APIs as deliberate typed contracts.
 - Avoid changing public APIs unintentionally.
+- Use the public API guardrail workflow when changing the tracked Python public API surface.
 - Boundary value means validation, policy or default injection, type conversion, error mapping, or telemetry.
 - If no boundary value is needed, call the shared function directly or use a non-duplicative re-export.
 - If more than one optional override is needed, prefer a typed configuration or contract object.
+
+For the full policy, tracked surface, snapshot fixture, and approval manifest workflow, see [Maintaining public API contracts](public-api-contracts.md).
 
 ## General code quality
 

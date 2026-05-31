@@ -26,10 +26,13 @@ For crate layout, crate ownership, and workspace structure, see [Crates](crates.
 - Document public APIs with `///` doc comments.
 - Include minimal examples in public docs when they help users understand the contract.
 - If a breaking public API change is requested, update in-repo call sites and documentation in the same change.
+- Keep Python-facing public contract changes aligned with the public API guardrail workflow.
 - Boundary value means validation, policy or default injection, type conversion, error mapping, or telemetry.
 - If no boundary value is needed, call the shared function directly or use a non-duplicative re-export.
 - If a passthrough wrapper is already public and removing it would be breaking, do not remove it silently.
 - If more than one optional override is needed, prefer a typed configuration or contract object instead of constructor proliferation.
+
+For the full public API policy and Python snapshot guardrail workflow, see [Maintaining public API contracts](public-api-contracts.md).
 
 ## General code quality
 

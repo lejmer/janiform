@@ -46,6 +46,7 @@ Run the relevant suites before opening a pull request.
 - Keep the public Python and CLI surfaces intentional.
 - Move machine-readable inputs and outputs into fixtures or test data rather than `docs/`.
 - Update the relevant page in `docs/` when you change setup steps, public workflows, repository layout, or contributor expectations.
+- Follow [public API contract maintenance](docs/contributing/public-api-contracts.md) when a change touches the supported public surface.
 - When adding a Rust workspace crate, follow the new-crate checklist in [docs/contributing/crates.md](docs/contributing/crates.md).
 - Run the owned generation scripts when you change preset sources, checked-in crate `README.md` files, public API snapshots, or benchmark smoke artifacts.
 
