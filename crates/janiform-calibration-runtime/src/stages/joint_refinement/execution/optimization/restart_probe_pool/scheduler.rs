@@ -26,12 +26,12 @@ use super::{
 
 enum RestartProbePoolJob {
     Search(RestartProbeJob),
-    Finalization(RestartProbeFinalizationJob),
+    Finalization(Box<RestartProbeFinalizationJob>),
 }
 
 enum RestartProbePoolResult {
     Search(RestartProbeResult),
-    Finalization(RestartProbeFinalizationResult),
+    Finalization(Box<RestartProbeFinalizationResult>),
 }
 
 struct RestartProbeWorkerPoolState<'a> {
@@ -158,6 +158,7 @@ fn next_restart_probe_pool_job(
     }
 
     next_restart_probe_finalization_job(pool_state, total_progress_units, progress_sender)
+        .map(Box::new)
         .map(RestartProbePoolJob::Finalization)
 }
 
@@ -269,11 +270,11 @@ fn run_restart_probe_pool_job(
             run_restart_probe_job(probe_job, context, solver_settings),
         ),
         RestartProbePoolJob::Finalization(finalization_job) => {
-            RestartProbePoolResult::Finalization(run_restart_probe_finalization_job(
-                finalization_job,
+            RestartProbePoolResult::Finalization(Box::new(run_restart_probe_finalization_job(
+                *finalization_job,
                 context,
                 solver_settings,
-            ))
+            )))
         }
     }
 }
@@ -302,7 +303,7 @@ fn record_restart_probe_pool_result(
         RestartProbePoolResult::Finalization(finalization_result) => {
             record_restart_probe_finalization_result(
                 pool_state,
-                finalization_result,
+                *finalization_result,
                 total_progress_units,
                 progress_sender,
             );
