@@ -218,9 +218,13 @@ pub(super) fn emit_restart_finalization_started(
     state: &RestartProbeState,
     total_restart_count: usize,
     completed_search_evaluation_count: usize,
+    completed_finalization_count: usize,
     total_progress_units: usize,
 ) {
-    let aggregate_progress_percent = completed_search_evaluation_count
+    let completed_progress_units =
+        completed_search_evaluation_count.saturating_add(completed_finalization_count);
+
+    let aggregate_progress_percent = completed_progress_units
         .saturating_mul(100)
         .checked_div(total_progress_units.max(1))
         .unwrap_or(0)
@@ -233,7 +237,9 @@ pub(super) fn emit_restart_finalization_started(
             current_item_label: Some(state.restart_id.clone()),
             current_restart_id: Some(state.restart_id.clone()),
             current_work_item_status: Some(WorkItemStatus::Running.as_str().to_string()),
-            active_restart_count: Some(total_restart_count),
+            active_restart_count: Some(
+                total_restart_count.saturating_sub(completed_finalization_count),
+            ),
             current_evaluation_count: Some(state.evaluation_count),
             total_evaluation_budget: Some(state.max_evaluation_count),
             evaluation_progress_percent: Some(
