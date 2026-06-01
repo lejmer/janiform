@@ -2,7 +2,10 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 
-use janiform_calibration_runtime::CalibrationMarketDataPreparationRequest;
+use janiform_calibration_runtime::{
+    CalibrationMarketDataPreparationRequest, MarketDataPreparationProgressEvent,
+    MarketDataPreparationProgressPhase,
+};
 use janiform_event_log::WorkflowRef;
 use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
 
@@ -10,6 +13,7 @@ use crate::error::WorkflowError;
 use crate::market_data_progress::{
     MarketDataLoadingProgressGate, market_data_loading_progress_measure,
     market_data_loading_progress_signal, market_data_loading_run_event,
+    market_data_preparation_progress_signal, market_data_preparation_run_event,
     should_emit_market_data_loading_progress,
 };
 
@@ -47,7 +51,7 @@ pub fn run_fit_workflow(
 
     observe_preparation_started(&mut progress_adapter.borrow_mut(), &preparation_request)?;
 
-    let observe_loading_progress =
+    let observe_market_data_progress =
         progress_adapter.borrow().is_some() || machine_event_sink.is_some();
 
     let prepared_workflow_result = {
@@ -83,24 +87,47 @@ pub fn run_fit_workflow(
             render_preparation_progress(&mut progress_adapter.borrow_mut(), progress)
         };
 
-        let mut emit_loading_progress = |run_id: &str, event| {
-            if !should_emit_market_data_loading_progress(&mut loading_progress_gate, &event) {
-                return Ok(());
+        let mut emit_market_data_progress = |run_id: &str, event| match event {
+            MarketDataPreparationProgressEvent::Loading(loading_event) => {
+                if !should_emit_market_data_loading_progress(
+                    &mut loading_progress_gate,
+                    &loading_event,
+                ) {
+                    return Ok(());
+                }
+
+                render_market_data_loading_progress(
+                    &mut progress_adapter.borrow_mut(),
+                    &loading_event,
+                )?;
+
+                let Some(machine_event_sink) = machine_event_sink.as_mut() else {
+                    return Ok(());
+                };
+
+                let run_event = market_data_loading_run_event(
+                    run_id,
+                    WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label()),
+                    &loading_event,
+                );
+
+                machine_event_sink(&run_event)
             }
+            MarketDataPreparationProgressEvent::Preparing(phase) => {
+                render_market_data_preparation_progress(&mut progress_adapter.borrow_mut(), phase)?;
 
-            render_market_data_loading_progress(&mut progress_adapter.borrow_mut(), &event)?;
+                let Some(machine_event_sink) = machine_event_sink.as_mut() else {
+                    return Ok(());
+                };
 
-            let Some(machine_event_sink) = machine_event_sink.as_mut() else {
-                return Ok(());
-            };
+                let run_event = market_data_preparation_run_event(
+                    run_id,
+                    WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label()),
+                    phase,
+                );
 
-            let run_event = market_data_loading_run_event(
-                run_id,
-                WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label()),
-                &event,
-            );
-
-            machine_event_sink(&run_event)
+                machine_event_sink(&run_event)
+            }
         };
 
         prepare_fit_workflow_with_observer(
@@ -109,8 +136,8 @@ pub fn run_fit_workflow(
             FitPreparationObserver {
                 preparation_request_ready: Some(&mut emit_start_summary),
                 preparation_progress: Some(&mut emit_preparation_progress),
-                market_data_loading_progress: if observe_loading_progress {
-                    Some(&mut emit_loading_progress)
+                market_data_preparation_progress: if observe_market_data_progress {
+                    Some(&mut emit_market_data_progress)
                 } else {
                     None
                 },
@@ -215,6 +242,25 @@ fn render_market_data_loading_progress(
         measure: market_data_loading_progress_measure(event)
             .map_err(|source| WorkflowError::OutputProgress { source })?,
         latest_signal: Some(market_data_loading_progress_signal(event)),
+    });
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+fn render_market_data_preparation_progress(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+    phase: MarketDataPreparationProgressPhase,
+) -> Result<(), WorkflowError> {
+    let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunProgress {
+        phase: "Preparing market data".to_string(),
+        measure: ProgressMeasure::Unbounded,
+        latest_signal: Some(market_data_preparation_progress_signal(phase)),
     });
 
     progress_adapter

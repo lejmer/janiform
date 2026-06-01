@@ -4,10 +4,10 @@ use std::time::Instant;
 
 use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::calibration::market_data::{
-    MarketDataLoadingProgressError, MarketDataLoadingProgressEvent,
+    MarketDataPreparationProgressError, MarketDataPreparationProgressEvent,
     OptionForwardParityWarningPolicy, PreparedMarketDataCalibrationPlan,
     infer_market_data_run_id_from_path, prepare_market_data_calibration_plan,
-    prepare_market_data_calibration_plan_with_progress,
+    prepare_market_data_calibration_plan_with_observer,
 };
 use janiform::calibration::presets::ResolvedMarketProfile;
 use janiform::calibration::staged::{
@@ -16,7 +16,7 @@ use janiform::calibration::staged::{
     CalibrationMarketDataOutputPreferences, CalibrationMarketDataPreparationError,
     CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
 };
-use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, format_path};
+use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure, format_path};
 use janiform_workflows::fit::{
     FitWorkflowPaths, fit_preparation_input_count, fit_preparation_start_summary,
     fit_workflow_paths, market_data_file_format_label, tick_price_policy_label,
@@ -24,7 +24,7 @@ use janiform_workflows::fit::{
 };
 use janiform_workflows::market_data_progress::{
     MarketDataLoadingProgressGate, market_data_loading_progress_measure,
-    market_data_loading_progress_signal,
+    market_data_loading_progress_signal, market_data_preparation_progress_signal,
 };
 
 use super::labels::workflow_scope_argument_label;
@@ -464,33 +464,49 @@ fn prepare_market_data_calibration_plan_with_terminal_progress(
         ))
     })?;
 
-    let mut loading_progress = |event: MarketDataLoadingProgressEvent| {
-        if !progress_gate.should_emit(&event) {
-            return Ok(());
-        }
+    let mut preparation_progress = |event| {
+        let (phase, measure, latest_signal) = match event {
+            MarketDataPreparationProgressEvent::Loading(loading_event) => {
+                if !progress_gate.should_emit(&loading_event) {
+                    return Ok(());
+                }
+
+                (
+                    "Loading market data".to_string(),
+                    market_data_loading_progress_measure(&loading_event).map_err(|source| {
+                        MarketDataPreparationProgressError::observer(source.to_string())
+                    })?,
+                    market_data_loading_progress_signal(&loading_event),
+                )
+            }
+            MarketDataPreparationProgressEvent::Preparing(preparation_phase) => (
+                "Preparing market data".to_string(),
+                ProgressMeasure::Unbounded,
+                market_data_preparation_progress_signal(preparation_phase),
+            ),
+        };
 
         progress_adapter.observe(ProgressEvent::StageProgress {
-            phase: "Loading market data".to_string(),
-            measure: market_data_loading_progress_measure(&event)
-                .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))?,
+            phase,
+            measure,
             work_item_label: None,
             work_item_progress_percent: None,
             work_item_status: None,
             planned_work_item_labels: Vec::new(),
             work_item_columns: Vec::new(),
             work_item_metrics: Vec::new(),
-            latest_signal: Some(market_data_loading_progress_signal(&event)),
+            latest_signal: Some(latest_signal),
         });
 
         progress_adapter
             .draw_latest()
-            .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))
+            .map_err(|source| MarketDataPreparationProgressError::observer(source.to_string()))
     };
 
-    let plan = prepare_market_data_calibration_plan_with_progress(
+    let plan = prepare_market_data_calibration_plan_with_observer(
         request,
         cpu_count,
-        &mut loading_progress,
+        &mut preparation_progress,
     )?;
 
     progress_adapter.observe(ProgressEvent::StageCompleted {

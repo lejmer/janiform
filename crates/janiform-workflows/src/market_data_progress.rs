@@ -1,8 +1,10 @@
-//! Shared market-data loading progress adapters for workflow frontends.
+//! Shared market-data progress adapters for workflow frontends.
 
 use std::time::Instant;
 
-use janiform::calibration::market_data::MarketDataLoadingProgressEvent;
+use janiform::calibration::market_data::{
+    MarketDataLoadingProgressEvent, MarketDataPreparationProgressPhase,
+};
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunEvent, RunEventPayload,
     RunPhaseRef, RunProgressEvent, WorkflowRef,
@@ -46,6 +48,13 @@ pub fn market_data_loading_progress_signal(event: &MarketDataLoadingProgressEven
     event.latest_signal()
 }
 
+/// Return the latest signal for a market-data preparation phase.
+pub fn market_data_preparation_progress_signal(
+    phase: MarketDataPreparationProgressPhase,
+) -> String {
+    phase.latest_signal().to_string()
+}
+
 pub(crate) fn should_emit_market_data_loading_progress(
     progress_gate: &mut MarketDataLoadingProgressGate,
     event: &MarketDataLoadingProgressEvent,
@@ -81,6 +90,27 @@ pub(crate) fn market_data_loading_run_event(
     )
 }
 
+pub(crate) fn market_data_preparation_run_event(
+    run_id: &str,
+    workflow: WorkflowRef,
+    phase: MarketDataPreparationProgressPhase,
+) -> RunEvent {
+    RunEvent::new(
+        run_id,
+        workflow,
+        EventDeliveryPriority::DroppableVolatile,
+        RunEventPayload::Progress(RunProgressEvent {
+            stage: None,
+            phase: Some(RunPhaseRef::labeled(
+                "market_data_preparation",
+                "Preparing market data",
+            )),
+            subphase: Some(RunPhaseRef::labeled(phase.phase_id(), phase.phase_label())),
+            measures: Vec::new(),
+        }),
+    )
+}
+
 fn market_data_loading_event_measure(
     event: &MarketDataLoadingProgressEvent,
 ) -> EventProgressMeasure {
@@ -110,9 +140,13 @@ fn market_data_loading_event_measure(
 mod tests {
     use janiform::calibration::market_data::{
         MarketDataLoadingProgressEvent, MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+        MarketDataPreparationProgressPhase,
     };
 
-    use super::{market_data_loading_progress_measure, market_data_loading_progress_signal};
+    use super::{
+        market_data_loading_progress_measure, market_data_loading_progress_signal,
+        market_data_preparation_progress_signal,
+    };
 
     #[test]
     fn market_data_loading_progress_uses_bounded_measure_when_total_is_known() {
@@ -143,6 +177,16 @@ mod tests {
         assert_eq!(
             market_data_loading_progress_signal(&event),
             "tick data: reading records 4 records"
+        );
+    }
+
+    #[test]
+    fn market_data_preparation_progress_uses_phase_signal() {
+        assert_eq!(
+            market_data_preparation_progress_signal(
+                MarketDataPreparationProgressPhase::BuildingExecutionInput
+            ),
+            "materializing staged execution input"
         );
     }
 }

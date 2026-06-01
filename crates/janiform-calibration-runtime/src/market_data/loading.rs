@@ -49,7 +49,6 @@ pub use pipeline::{
 pub use price_coordinates::{
     PriceCoordinateResolutionInput, PriceCoordinateResolutionOutput, resolve_price_coordinates,
 };
-pub(crate) use progress::MarketDataLoadingProgressContext;
 pub use progress::{
     MarketDataLoadingProgressError, MarketDataLoadingProgressEvent,
     MarketDataLoadingProgressObserver, MarketDataLoadingProgressPhase, MarketDataLoadingSource,

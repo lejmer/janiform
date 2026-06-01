@@ -1,6 +1,7 @@
 pub(crate) mod fit_inference;
 pub(crate) mod loading;
 pub(crate) mod preparation;
+pub(crate) mod preparation_progress;
 pub(crate) mod preprocessing;
 pub(crate) mod preset_resolution;
 pub(crate) mod presets;
@@ -50,7 +51,12 @@ pub use preparation::{
     CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
     CalibrationTickObjectiveDataUsagePolicy, PreparedMarketDataCalibrationPlan,
     prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_from_phases,
+    prepare_market_data_calibration_plan_with_observer,
     prepare_market_data_calibration_plan_with_progress,
+};
+pub use preparation_progress::{
+    MarketDataPreparationProgressError, MarketDataPreparationProgressEvent,
+    MarketDataPreparationProgressObserver, MarketDataPreparationProgressPhase,
 };
 pub use preprocessing::{
     MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
