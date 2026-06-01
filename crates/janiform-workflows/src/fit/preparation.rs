@@ -12,14 +12,15 @@ use janiform_calibration_runtime::{
     MarketDataFitInputInferenceRequest, MarketDataFitMarketProfileDefaults,
     MarketDataFitNormalizationOverrides, MarketDataInputFileFormat, MarketDataInputFileReference,
     MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
-    MarketDataOptionSurfaceColumnMapping, MarketDataSessionConfiguration,
+    MarketDataOptionSurfaceColumnMapping, MarketDataPreparationProgressError,
+    MarketDataPreparationProgressEvent, MarketDataSessionConfiguration,
     MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingSettings,
     OptionForwardParityWarningPolicy, PriceCoordinatePolicy,
     build_market_data_session_definition_json, infer_bundled_market_profile_from_tick_data_path,
     infer_market_data_fit_inputs, normalize_market_data_source,
-    prepare_market_data_calibration_plan, resolve_market_data_session_configuration,
-    resolve_preset_workflow_configuration,
+    prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_with_observer,
+    resolve_market_data_session_configuration, resolve_preset_workflow_configuration,
 };
 use janiform_engine_pricing::PricingIntervalSchedulePolicy;
 use serde::Deserialize;
@@ -189,6 +190,7 @@ pub struct PreparedFitWorkflow {
 pub(crate) struct FitPreparationObserver<'a> {
     pub(crate) preparation_request_ready: Option<FitPreparationRequestReadySink<'a>>,
     pub(crate) preparation_progress: Option<FitPreparationProgressSink<'a>>,
+    pub(crate) market_data_preparation_progress: Option<FitPreparationMarketDataProgressSink<'a>>,
 }
 
 type FitPreparationRequestReadySink<'a> =
@@ -196,6 +198,9 @@ type FitPreparationRequestReadySink<'a> =
 
 type FitPreparationProgressSink<'a> =
     &'a mut dyn FnMut(FitPreparationProgress) -> Result<(), WorkflowError>;
+
+type FitPreparationMarketDataProgressSink<'a> =
+    &'a mut dyn FnMut(&str, MarketDataPreparationProgressEvent) -> Result<(), WorkflowError>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FitPreparationProgress {
@@ -344,10 +349,27 @@ pub(crate) fn prepare_fit_workflow_with_observer(
         "normalizing source records and materializing runtime inputs",
     )?;
 
-    let prepared_plan = prepare_market_data_calibration_plan(
-        preparation_request.clone(),
-        request.configuration.cpu_count,
-    )
+    let prepared_plan = if observer.market_data_preparation_progress.is_some() {
+        let mut market_data_progress = |event| {
+            emit_market_data_preparation_progress(
+                &mut observer,
+                preparation_request.run_id.as_str(),
+                event,
+            )
+            .map_err(|source| MarketDataPreparationProgressError::observer(source.to_string()))
+        };
+
+        prepare_market_data_calibration_plan_with_observer(
+            preparation_request.clone(),
+            request.configuration.cpu_count,
+            &mut market_data_progress,
+        )
+    } else {
+        prepare_market_data_calibration_plan(
+            preparation_request.clone(),
+            request.configuration.cpu_count,
+        )
+    }
     .map_err(|source| WorkflowError::FitExecutionFailed {
         message: format!("failed to prepare market data: {source}"),
     })?;
@@ -372,6 +394,19 @@ pub(crate) fn prepare_fit_workflow_with_observer(
             .session_resolution
             .resolved_session_definition_json,
     })
+}
+
+fn emit_market_data_preparation_progress(
+    observer: &mut FitPreparationObserver<'_>,
+    run_id: &str,
+    event: MarketDataPreparationProgressEvent,
+) -> Result<(), WorkflowError> {
+    let Some(market_data_preparation_progress) = observer.market_data_preparation_progress.as_mut()
+    else {
+        return Ok(());
+    };
+
+    market_data_preparation_progress(run_id, event)
 }
 
 fn effective_workflow_scope(

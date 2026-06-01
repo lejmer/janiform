@@ -6,11 +6,16 @@ use super::contracts::{
     MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataSourceSummary,
 };
 use super::normalization::normalize_known_news_row;
-use super::rows::{load_rows, load_source_columns, validate_columns_exist};
+use super::progress::{
+    MarketDataLoadingProgressContext, MarketDataLoadingProgressEvent,
+    MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+};
+use super::rows::{load_rows_with_progress, load_source_columns, validate_columns_exist};
 use super::shared::{KnownNewsLoadOutput, file_format_string, required_known_news_source_columns};
 
 pub(super) fn load_known_news_records(
     known_news_input: &MarketDataKnownNewsLoadingInput,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<KnownNewsLoadOutput, MarketDataLoadingError> {
     let required_columns = required_known_news_source_columns(&known_news_input.column_mapping);
     let available_columns = load_source_columns(
@@ -25,15 +30,24 @@ pub(super) fn load_known_news_records(
         &known_news_input.calendar_source.path,
     )?;
 
-    let raw_rows = load_rows(
+    let raw_rows = load_rows_with_progress(
         &known_news_input.calendar_source,
         "known_news_inputs.calendar_source",
+        progress,
+        MarketDataLoadingSource::KnownNews,
     )?;
 
     let source_row_count = raw_rows.len();
 
     let mut normalized_rows = Vec::with_capacity(source_row_count);
     let mut seen_keys: HashSet<(i64, Option<String>)> = HashSet::new();
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::KnownNews,
+        MarketDataLoadingProgressPhase::NormalizingRecords,
+        0,
+        Some(source_row_count),
+    ))?;
 
     for (row_index, raw_row) in raw_rows.iter().enumerate() {
         let normalized = normalize_known_news_row(
@@ -56,11 +70,18 @@ pub(super) fn load_known_news_records(
         }
 
         normalized_rows.push(normalized);
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::KnownNews,
+            MarketDataLoadingProgressPhase::NormalizingRecords,
+            row_index + 1,
+            Some(source_row_count),
+        ))?;
     }
 
     normalized_rows.sort_by_key(|row| (row.event_timestamp_utc_nanos, row.source_row_number));
 
-    Ok(KnownNewsLoadOutput {
+    let output = KnownNewsLoadOutput {
         known_news_records: normalized_rows
             .iter()
             .map(|row| MarketDataTranslationKnownNewsRecord {
@@ -82,5 +103,14 @@ pub(super) fn load_known_news_records(
             canonical_value_field: None,
             value_mapping_policy: None,
         },
-    })
+    };
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::KnownNews,
+        MarketDataLoadingProgressPhase::Completed,
+        source_row_count,
+        Some(source_row_count),
+    ))?;
+
+    Ok(output)
 }

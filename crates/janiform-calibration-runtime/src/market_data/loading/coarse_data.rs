@@ -11,8 +11,13 @@ use super::contracts::{
     MarketDataLoadingError, MarketDataNormalizedCoarseDataRecord, MarketDataSourceSummary,
 };
 use super::normalization::{normalize_optional_numeric_value, normalize_timestamp_value};
+use super::progress::{
+    MarketDataLoadingProgressContext, MarketDataLoadingProgressEvent,
+    MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+};
 use super::rows::{
-    load_rows, load_source_columns, probe_source_row_count_estimate, validate_columns_exist,
+    load_rows_with_progress, load_source_columns, probe_source_row_count_estimate,
+    validate_columns_exist,
 };
 use super::shared::{RawRow, dedup_vec, file_format_string};
 
@@ -39,6 +44,7 @@ pub(super) fn load_coarse_data_records(
     input: &MarketDataCoarseDataLoadingInput,
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<CoarseDataLoadOutput, MarketDataLoadingError> {
     let available_columns = load_source_columns(&input.source, "coarse_data_input.source")?;
 
@@ -57,7 +63,12 @@ pub(super) fn load_coarse_data_records(
         &input.source.path,
     )?;
 
-    let raw_rows = load_rows(&input.source, "coarse_data_input.source")?;
+    let raw_rows = load_rows_with_progress(
+        &input.source,
+        "coarse_data_input.source",
+        progress,
+        MarketDataLoadingSource::CoarseData,
+    )?;
 
     let source_row_count = source_row_count(&input.source, raw_rows.len())?;
 
@@ -65,6 +76,7 @@ pub(super) fn load_coarse_data_records(
         raw_rows.as_slice(),
         &resolved_column_mapping,
         &input.source.path,
+        progress,
     )?;
 
     loaded_rows.sort_by_key(|row| (row.timestamp_utc_nanos, row.source_row_number));
@@ -123,7 +135,16 @@ pub(super) fn load_coarse_data_records(
         retained_mean_reversion_observation_count: records.len(),
     };
 
-    Ok(CoarseDataLoadOutput { records, summary })
+    let output = CoarseDataLoadOutput { records, summary };
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::CoarseData,
+        MarketDataLoadingProgressPhase::Completed,
+        source_row_count,
+        Some(source_row_count),
+    ))?;
+
+    Ok(output)
 }
 
 fn source_row_count(
@@ -148,8 +169,16 @@ fn normalize_coarse_rows(
     raw_rows: &[RawRow],
     column_mapping: &MarketDataCoarseDataColumnMapping,
     source_path: &str,
+    progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<Vec<LoadedCoarseRow>, MarketDataLoadingError> {
     let mut rows = Vec::with_capacity(raw_rows.len());
+
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::CoarseData,
+        MarketDataLoadingProgressPhase::NormalizingRecords,
+        0,
+        Some(raw_rows.len()),
+    ))?;
 
     for (row_position, raw_row) in raw_rows.iter().enumerate() {
         let source_row_number = row_position + 1;
@@ -160,6 +189,13 @@ fn normalize_coarse_rows(
             column_mapping,
             source_path,
         )?);
+
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::CoarseData,
+            MarketDataLoadingProgressPhase::NormalizingRecords,
+            source_row_number,
+            Some(raw_rows.len()),
+        ))?;
     }
 
     Ok(rows)

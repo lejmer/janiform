@@ -14,6 +14,7 @@ pub mod validation;
 
 mod artifact_io;
 mod machine_events;
+pub mod market_data_progress;
 mod model;
 mod price_coordinates;
 mod progress;

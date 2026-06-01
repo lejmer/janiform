@@ -66,7 +66,7 @@ pub(super) fn fit_start_summary(
 }
 
 /// Build the terminal start summary once preparation inputs are resolved.
-pub(super) fn fit_preparation_start_summary(
+pub fn fit_preparation_start_summary(
     preparation_request: &CalibrationMarketDataPreparationRequest,
     paths: &FitWorkflowPaths,
 ) -> StartSummary {

@@ -1,6 +1,7 @@
 pub(crate) mod fit_inference;
 pub(crate) mod loading;
 pub(crate) mod preparation;
+pub(crate) mod preparation_progress;
 pub(crate) mod preprocessing;
 pub(crate) mod preset_resolution;
 pub(crate) mod presets;
@@ -20,7 +21,9 @@ pub use loading::{
     MarketDataCoarseDataTimestampSemantics, MarketDataDuplicateRecordPolicy,
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
     MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataLoadingOutput,
-    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataNormalizedCoarseDataRecord,
+    MarketDataLoadingProgressError, MarketDataLoadingProgressEvent,
+    MarketDataLoadingProgressObserver, MarketDataLoadingProgressPhase, MarketDataLoadingRequest,
+    MarketDataLoadingSource, MarketDataNormalizationPolicy, MarketDataNormalizedCoarseDataRecord,
     MarketDataNormalizedOptionSurfaceOutput, MarketDataNormalizedOptionSurfaceRecord,
     MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
@@ -32,9 +35,11 @@ pub use loading::{
     ResolvedPriceCoordinate, ResolvedPriceCoordinateSet, ResolvedRollAdjustmentEvidence,
     build_market_data_session_definition_json, infer_market_data_option_quote_input_policy,
     infer_market_data_tick_price_input_policy, load_and_preprocess_market_data_translation_request,
-    normalize_market_data_source, normalize_option_surface_source,
-    prepare_market_data_loading_from_phases, probe_market_data_source,
-    resolve_market_data_option_surface_column_mapping_for_source,
+    load_and_preprocess_market_data_translation_request_with_progress,
+    normalize_market_data_source, normalize_market_data_source_with_progress,
+    normalize_option_surface_source, normalize_option_surface_source_with_progress,
+    prepare_market_data_loading_from_phases, prepare_market_data_loading_from_phases_with_progress,
+    probe_market_data_source, resolve_market_data_option_surface_column_mapping_for_source,
     resolve_market_data_session_configuration,
     resolve_market_data_tick_data_column_mapping_for_source, resolve_price_coordinates,
 };
@@ -46,6 +51,12 @@ pub use preparation::{
     CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
     CalibrationTickObjectiveDataUsagePolicy, PreparedMarketDataCalibrationPlan,
     prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_from_phases,
+    prepare_market_data_calibration_plan_with_observer,
+    prepare_market_data_calibration_plan_with_progress,
+};
+pub use preparation_progress::{
+    MarketDataPreparationProgressError, MarketDataPreparationProgressEvent,
+    MarketDataPreparationProgressObserver, MarketDataPreparationProgressPhase,
 };
 pub use preprocessing::{
     MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,

@@ -19,6 +19,12 @@ use serde_json::Value;
 
 mod evidence;
 
+use super::loading::{MarketDataLoadingProgressError, MarketDataLoadingProgressObserver};
+use super::preparation_progress::{
+    MarketDataPreparationProgressContext, MarketDataPreparationProgressError,
+    MarketDataPreparationProgressEvent, MarketDataPreparationProgressObserver,
+    MarketDataPreparationProgressPhase,
+};
 use super::solver_settings::{
     DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID, has_missing_stage_solver_settings,
     resolve_solver_settings_by_stage,
@@ -40,7 +46,8 @@ use crate::{
     MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
     MarketDataTranslationPreprocessingSettings, OptionForwardParityWarningPolicy,
     PriceCoordinatePolicy, PriceCoordinateResolutionInput, ResolvedPriceCoordinateSet,
-    normalize_market_data_source, prepare_market_data_loading_from_phases,
+    normalize_market_data_source_with_progress, prepare_market_data_loading_from_phases,
+    prepare_market_data_loading_from_phases_with_progress,
     resolve_market_data_session_configuration, resolve_price_coordinates,
 };
 use evidence::{
@@ -294,6 +301,14 @@ impl From<String> for CalibrationMarketDataPreparationError {
     }
 }
 
+impl From<MarketDataPreparationProgressError> for CalibrationMarketDataPreparationError {
+    fn from(error: MarketDataPreparationProgressError) -> Self {
+        Self::Message {
+            message: error.to_string(),
+        }
+    }
+}
+
 fn validate_joint_refinement_option_refinement_candidate_count_override(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Result<(), CalibrationMarketDataPreparationError> {
@@ -408,6 +423,49 @@ pub fn prepare_market_data_calibration_plan(
     request: CalibrationMarketDataPreparationRequest,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    let mut progress = MarketDataPreparationProgressContext::disabled();
+
+    prepare_market_data_calibration_plan_with_context(request, cpu_count, &mut progress)
+}
+
+/// Prepare a market-data calibration plan while reporting source loading progress.
+pub fn prepare_market_data_calibration_plan_with_progress(
+    request: CalibrationMarketDataPreparationRequest,
+    cpu_count: Option<usize>,
+    progress_observer: MarketDataLoadingProgressObserver<'_>,
+) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    let mut preparation_progress_observer = |event| {
+        let MarketDataPreparationProgressEvent::Loading(loading_event) = event else {
+            return Ok(());
+        };
+
+        progress_observer(loading_event)
+            .map_err(|source| MarketDataPreparationProgressError::observer(source.to_string()))
+    };
+
+    prepare_market_data_calibration_plan_with_observer(
+        request,
+        cpu_count,
+        &mut preparation_progress_observer,
+    )
+}
+
+/// Prepare a market-data calibration plan while reporting all preparation progress.
+pub fn prepare_market_data_calibration_plan_with_observer(
+    request: CalibrationMarketDataPreparationRequest,
+    cpu_count: Option<usize>,
+    progress_observer: MarketDataPreparationProgressObserver<'_>,
+) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    let mut progress = MarketDataPreparationProgressContext::observed(progress_observer);
+
+    prepare_market_data_calibration_plan_with_context(request, cpu_count, &mut progress)
+}
+
+fn prepare_market_data_calibration_plan_with_context(
+    request: CalibrationMarketDataPreparationRequest,
+    cpu_count: Option<usize>,
+    progress: &mut MarketDataPreparationProgressContext<'_>,
+) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     validate_dynamics_search_restart_candidate_budget(&request)?;
     validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
@@ -424,18 +482,21 @@ pub fn prepare_market_data_calibration_plan(
         option_surface_data_reference,
     ) = build_loading_request(&request, &selected_stages)?;
 
-    let loaded_market_data = load_market_data_from_phases(loading_request)?;
+    let loaded_market_data = load_market_data_from_phases(loading_request, progress)?;
 
-    prepared_market_data_plan_from_loading_output(PreparedMarketDataPlanBuildInput {
-        request,
-        cpu_count,
-        selected_stages,
-        trade_events_data_reference,
-        coarse_data_reference,
-        option_surface_data_reference,
-        normalized_tick_output: loaded_market_data.normalized_tick_output,
-        loading_output: loaded_market_data.loading_output,
-    })
+    prepared_market_data_plan_from_loading_output(
+        PreparedMarketDataPlanBuildInput {
+            request,
+            cpu_count,
+            selected_stages,
+            trade_events_data_reference,
+            coarse_data_reference,
+            option_surface_data_reference,
+            normalized_tick_output: loaded_market_data.normalized_tick_output,
+            loading_output: loaded_market_data.loading_output,
+        },
+        progress,
+    )
 }
 
 pub fn prepare_market_data_calibration_plan_from_phases(
@@ -471,16 +532,21 @@ pub fn prepare_market_data_calibration_plan_from_phases(
         ))
     })?;
 
-    prepared_market_data_plan_from_loading_output(PreparedMarketDataPlanBuildInput {
-        request,
-        cpu_count,
-        selected_stages,
-        trade_events_data_reference,
-        coarse_data_reference,
-        option_surface_data_reference,
-        normalized_tick_output: normalized_tick_output.clone(),
-        loading_output,
-    })
+    let mut progress = MarketDataPreparationProgressContext::disabled();
+
+    prepared_market_data_plan_from_loading_output(
+        PreparedMarketDataPlanBuildInput {
+            request,
+            cpu_count,
+            selected_stages,
+            trade_events_data_reference,
+            coarse_data_reference,
+            option_surface_data_reference,
+            normalized_tick_output: normalized_tick_output.clone(),
+            loading_output,
+        },
+        &mut progress,
+    )
 }
 
 fn selected_stages_for_scope(
@@ -1557,18 +1623,28 @@ fn median_positive_interval_hours(positive_interval_hours: &mut [f64]) -> Option
 
 fn load_market_data_from_phases(
     loading_request: MarketDataLoadingRequest,
+    progress: &mut MarketDataPreparationProgressContext<'_>,
 ) -> Result<LoadedMarketDataPhases, CalibrationMarketDataPreparationError> {
-    let normalized_tick_output = normalize_market_data_source(
-        &loading_request.tick_data_source,
-        &loading_request.tick_data_column_mapping,
-        &loading_request.normalization_policy,
-        loading_request.require_hawkes,
-    )
-    .map_err(|source| {
-        CalibrationMarketDataPreparationError::from(format!(
-            "failed to normalize market-data source: {source}"
-        ))
-    })?;
+    let normalized_tick_output = {
+        let mut progress_observer = |event| {
+            progress
+                .emit_loading(event)
+                .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))
+        };
+
+        normalize_market_data_source_with_progress(
+            &loading_request.tick_data_source,
+            &loading_request.tick_data_column_mapping,
+            &loading_request.normalization_policy,
+            loading_request.require_hawkes,
+            &mut progress_observer,
+        )
+        .map_err(|source| {
+            CalibrationMarketDataPreparationError::from(format!(
+                "failed to normalize market-data source: {source}"
+            ))
+        })?
+    };
 
     let session_resolution = resolve_market_data_session_configuration(
         loading_request.session_configuration.clone(),
@@ -1580,16 +1656,25 @@ fn load_market_data_from_phases(
         ))
     })?;
 
-    let loading_output = prepare_market_data_loading_from_phases(
-        loading_request,
-        &normalized_tick_output,
-        session_resolution,
-    )
-    .map_err(|source| {
-        CalibrationMarketDataPreparationError::from(format!(
-            "failed to prepare market-data calibration inputs: {source}"
-        ))
-    })?;
+    let loading_output = {
+        let mut progress_observer = |event| {
+            progress
+                .emit_loading(event)
+                .map_err(|source| MarketDataLoadingProgressError::observer(source.to_string()))
+        };
+
+        prepare_market_data_loading_from_phases_with_progress(
+            loading_request,
+            &normalized_tick_output,
+            session_resolution,
+            &mut progress_observer,
+        )
+        .map_err(|source| {
+            CalibrationMarketDataPreparationError::from(format!(
+                "failed to prepare market-data calibration inputs: {source}"
+            ))
+        })?
+    };
 
     Ok(LoadedMarketDataPhases {
         normalized_tick_output,
@@ -1599,6 +1684,7 @@ fn load_market_data_from_phases(
 
 fn prepared_market_data_plan_from_loading_output(
     input: PreparedMarketDataPlanBuildInput,
+    progress: &mut MarketDataPreparationProgressContext<'_>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     let PreparedMarketDataPlanBuildInput {
         request,
@@ -1611,6 +1697,8 @@ fn prepared_market_data_plan_from_loading_output(
         loading_output,
     } = input;
 
+    progress.emit_phase(MarketDataPreparationProgressPhase::PreparingCalibrationInputs)?;
+
     let objective_policy = calibration_objective_policy_from_request(&request)?;
 
     let prepared_option_pricing_input = joint_refinement_option_pricing_input_from_request(
@@ -1618,6 +1706,8 @@ fn prepared_market_data_plan_from_loading_output(
         &loading_output,
         &normalized_tick_output,
     )?;
+
+    progress.emit_phase(MarketDataPreparationProgressPhase::BuildingRunSpec)?;
 
     let run_request = CalibrationRunSpec::builder(
         request.run_id.clone(),
@@ -1648,6 +1738,8 @@ fn prepared_market_data_plan_from_loading_output(
             "failed to build calibration run spec: {source}"
         ))
     })?;
+
+    progress.emit_phase(MarketDataPreparationProgressPhase::BuildingExecutionInput)?;
 
     let execution_input = CalibrationStagedExecutionInput {
         schema_version: CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION.to_string(),
@@ -1688,6 +1780,8 @@ fn prepared_market_data_plan_from_loading_output(
         joint_refinement_option_pricing_input: prepared_option_pricing_input.option_pricing_input,
         runtime_resources: runtime_resources_from_output_preferences(&request.output_preferences),
     };
+
+    progress.emit_phase(MarketDataPreparationProgressPhase::BuildingDiagnostics)?;
 
     let return_components_input = loading_output
         .preprocessing_output
@@ -1764,6 +1858,8 @@ fn prepared_market_data_plan_from_loading_output(
             .preprocessing_output
             .material_close_open_gap_count,
     };
+
+    progress.emit_phase(MarketDataPreparationProgressPhase::BuildingProvenance)?;
 
     let mut derivation_policies = vec![
         loading_output.session_resolution.selected_policy_id.clone(),
@@ -1863,6 +1959,8 @@ fn prepared_market_data_plan_from_loading_output(
         derivation_policies,
         deterministic_defaults_applied: deterministic_defaults_applied(&request),
     };
+
+    progress.emit_phase(MarketDataPreparationProgressPhase::Completed)?;
 
     Ok(PreparedMarketDataCalibrationPlan {
         execution_input,
