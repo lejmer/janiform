@@ -1,6 +1,33 @@
 use super::direct::DirectSimulationJob;
 use super::request::ModelArtifactSimulationKind;
 
+/// Runtime simulation flavor selected by thin direct runtime wrappers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum RuntimeSimulationKind {
+    /// Coarse interval runtime simulation.
+    CoarseInterval,
+    /// Seeded tick-event runtime simulation.
+    SeededTick,
+}
+
+impl RuntimeSimulationKind {
+    /// Human-readable runtime scope label.
+    pub(super) const fn scope_label(self) -> &'static str {
+        match self {
+            Self::CoarseInterval => "Simulating coarse intervals",
+            Self::SeededTick => "Simulating seeded ticks",
+        }
+    }
+
+    /// User-readable expected output label.
+    pub(super) const fn expected_output_label(self) -> &'static str {
+        match self {
+            Self::CoarseInterval => "coarse interval simulation",
+            Self::SeededTick => "seeded tick-event simulation",
+        }
+    }
+}
+
 /// Persisted workflow label for simulation artifacts and command output.
 pub const fn simulation_workflow_label() -> &'static str {
     "simulate"
@@ -22,14 +49,4 @@ pub const fn model_artifact_simulation_scope_label(
         ModelArtifactSimulationKind::SeededTick => "Model artifact seeded tick simulation",
         ModelArtifactSimulationKind::CoarseInterval => "Model artifact coarse interval simulation",
     }
-}
-
-/// Human-readable scope label for direct coarse runtime simulation.
-pub(super) const fn coarse_runtime_simulation_scope_label() -> &'static str {
-    "Simulating coarse intervals"
-}
-
-/// Human-readable scope label for direct seeded tick runtime simulation.
-pub(super) const fn seeded_tick_runtime_simulation_scope_label() -> &'static str {
-    "Simulating seeded ticks"
 }

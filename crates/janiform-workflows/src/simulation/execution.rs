@@ -1,98 +1,170 @@
+use std::path::Path;
 use std::time::Instant;
 
 use janiform::simulation::{
-    CoarseSimulationPath, CoarseSimulationRunError, SeededTickSimulationRunError,
+    CoarseSimulationPath, CoarseSimulationRunRequest, SeededTickSimulationRunConfig,
     SeededTickSimulationRunResult, SimulationProgressEvent, SimulationProgressPhase,
-    run_coarse_simulation, run_coarse_simulation_with_observer, run_seeded_tick_event_simulation,
-    run_seeded_tick_event_simulation_with_observer,
 };
-use janiform_foundations::cancellation::CancellationToken;
+use janiform_foundations::cancellation::{CancellationError, CancellationToken};
 
 use crate::error::WorkflowError;
 use crate::progress::VolatileProgressGate;
 
-use super::intervals::interval_duration_nanos_from_bounds;
+use super::direct::{DirectSimulationCompleted, DirectSimulationJob};
+use super::job::run_simulation_job;
 use super::labels::{
-    coarse_runtime_simulation_scope_label, direct_simulation_scope_label,
-    model_artifact_simulation_scope_label, seeded_tick_runtime_simulation_scope_label,
+    RuntimeSimulationKind, direct_simulation_scope_label, model_artifact_simulation_scope_label,
 };
 use super::model_artifact::run_simulation_from_model_artifact;
-use super::output::{DirectSimulationWorkflowOutput, ModelArtifactSimulationWorkflowOutput};
+use super::output::SimulationWorkflowOutput;
 use super::progress::{
     cancel_simulation_progress, complete_simulation_progress, emit_completion_summary,
     emit_start_summary, observe_gated_simulation_terminal_event, start_simulation_progress,
 };
 use super::request::{
-    CoarseSimulationWorkflowRequest, DirectSimulationWorkflowRequest,
-    ModelArtifactSimulationWorkflowRequest, SeededTickEventSimulationWorkflowRequest,
+    ModelArtifactSimulationWorkflowRequest, SimulationWorkflowMetadata, SimulationWorkflowRequest,
 };
 use super::workflow::SimulationWorkflowObserver;
 
-/// Run a simulation-from-model-artifact workflow.
-pub fn run_simulation_from_model_artifact_workflow(
-    request: ModelArtifactSimulationWorkflowRequest,
+struct SimulationWorkflowPresentation<'a> {
+    run_id: &'a str,
+    scope: &'a str,
+    request_path: Option<&'a Path>,
+    output_path: Option<&'a Path>,
+}
+
+struct SimulationWorkflowRunState {
+    cancellation_token: CancellationToken,
+    progress_error: Option<WorkflowError>,
+    progress_gate: VolatileProgressGate<SimulationProgressPhase>,
+}
+
+impl SimulationWorkflowRunState {
+    fn start(
+        observer: &mut SimulationWorkflowObserver<'_>,
+        presentation: SimulationWorkflowPresentation<'_>,
+    ) -> Result<Self, WorkflowError> {
+        let cancellation_token = observer.cancellation_token.shared_handle();
+        cancellation_token.check_cancelled()?;
+
+        emit_start_summary(
+            &observer.terminal_output,
+            presentation.run_id,
+            presentation.scope,
+            presentation.request_path,
+            presentation.output_path,
+        )?;
+
+        start_simulation_progress(
+            observer.progress_adapter.as_deref_mut(),
+            presentation.run_id,
+            presentation.scope,
+            1,
+            presentation.output_path,
+        )?;
+
+        Ok(Self {
+            cancellation_token,
+            progress_error: None,
+            progress_gate: VolatileProgressGate::default(),
+        })
+    }
+
+    fn observe_terminal_event(
+        &mut self,
+        observer: &mut SimulationWorkflowObserver<'_>,
+        event: SimulationProgressEvent,
+    ) {
+        observe_gated_simulation_terminal_event(
+            &mut observer.progress_adapter,
+            &mut self.progress_gate,
+            &mut self.progress_error,
+            event,
+        );
+    }
+
+    fn cancel_progress(
+        self,
+        observer: &mut SimulationWorkflowObserver<'_>,
+    ) -> Result<(), WorkflowError> {
+        cancel_simulation_progress(observer.progress_adapter.take(), self.progress_error)
+    }
+
+    fn cancel_with_error<T>(
+        self,
+        observer: &mut SimulationWorkflowObserver<'_>,
+        source: CancellationError,
+    ) -> Result<T, WorkflowError> {
+        self.cancel_progress(observer)?;
+
+        Err(WorkflowError::Cancelled { source })
+    }
+
+    fn complete_progress(
+        self,
+        observer: &mut SimulationWorkflowObserver<'_>,
+    ) -> Result<(), WorkflowError> {
+        complete_simulation_progress(observer.progress_adapter.take(), self.progress_error)
+    }
+
+    fn check_cancelled(&self) -> Result<(), CancellationError> {
+        self.cancellation_token.check_cancelled()
+    }
+
+    fn cancellation_token(&self) -> CancellationToken {
+        self.cancellation_token.shared_handle()
+    }
+}
+
+fn run_observed_simulation_workflow<TRequest>(
+    request: TRequest,
     mut observer: SimulationWorkflowObserver<'_>,
-) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
-    let cancellation_token = observer.cancellation_token.shared_handle();
-    cancellation_token.check_cancelled()?;
+    scope_label: &str,
+    request_metadata: impl FnOnce(&TRequest) -> &SimulationWorkflowMetadata,
+    run_request: impl FnOnce(
+        TRequest,
+        CancellationToken,
+        &mut dyn FnMut(SimulationProgressEvent),
+    ) -> Result<SimulationWorkflowOutput, WorkflowError>,
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
+    let (output_path, mut run_state) = {
+        let metadata = request_metadata(&request);
 
-    let scope_label = model_artifact_simulation_scope_label(request.simulation_kind);
+        // Intentional copy because workflow execution consumes the request,
+        // while completion rendering still needs the display output path.
+        let output_path = metadata.output_path.clone();
 
-    // Intentional copy because the workflow request is consumed by execution,
-    // while completion rendering still needs the display output path.
-    let output_path = request.output_path.clone();
+        let run_state = SimulationWorkflowRunState::start(
+            &mut observer,
+            simulation_presentation_from_metadata(metadata, scope_label),
+        )?;
 
-    emit_start_summary(
-        &observer.terminal_output,
-        model_artifact_run_id(&request),
-        scope_label,
-        request.request_path.as_deref(),
-        output_path.as_deref(),
-    )?;
+        (output_path, run_state)
+    };
 
-    start_simulation_progress(
-        observer.progress_adapter.as_deref_mut(),
-        model_artifact_run_id(&request),
-        scope_label,
-        1,
-        output_path.as_deref(),
-    )?;
-
-    let mut progress_error = None::<WorkflowError>;
-    let mut progress_gate = VolatileProgressGate::default();
+    let cancellation_token = run_state.cancellation_token();
 
     let output_result = {
         let mut progress_observer = |event: SimulationProgressEvent| {
-            observe_gated_simulation_terminal_event(
-                &mut observer.progress_adapter,
-                &mut progress_gate,
-                &mut progress_error,
-                event,
-            );
+            run_state.observe_terminal_event(&mut observer, event);
         };
 
-        run_simulation_from_model_artifact(
-            request,
-            cancellation_token.shared_handle(),
-            &mut progress_observer,
-        )
+        run_request(request, cancellation_token, &mut progress_observer)
     };
 
     let output = match output_result {
         Ok(output) => output,
         Err(WorkflowError::Cancelled { source }) => {
-            cancel_simulation_progress(observer.progress_adapter, progress_error)?;
-            return Err(WorkflowError::Cancelled { source });
+            return run_state.cancel_with_error(&mut observer, source);
         }
         Err(error) => return Err(error),
     };
 
-    if let Err(source) = cancellation_token.check_cancelled() {
-        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
-        return Err(WorkflowError::Cancelled { source });
+    if let Err(source) = run_state.check_cancelled() {
+        return run_state.cancel_with_error(&mut observer, source);
     }
 
-    complete_simulation_progress(observer.progress_adapter, progress_error)?;
+    run_state.complete_progress(&mut observer)?;
 
     emit_completion_summary(
         &observer.terminal_output,
@@ -106,305 +178,129 @@ pub fn run_simulation_from_model_artifact_workflow(
     Ok(output)
 }
 
+/// Run a simulation-from-model-artifact workflow.
+pub fn run_simulation_from_model_artifact_workflow(
+    request: ModelArtifactSimulationWorkflowRequest,
+    observer: SimulationWorkflowObserver<'_>,
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
+    let scope_label = model_artifact_simulation_scope_label(request.simulation_kind);
+
+    run_observed_simulation_workflow(
+        request,
+        observer,
+        scope_label,
+        |request| &request.metadata,
+        run_simulation_from_model_artifact,
+    )
+}
+
 /// Run a direct simulation workflow.
-pub fn run_direct_simulation_workflow(
-    request: DirectSimulationWorkflowRequest,
-    mut observer: SimulationWorkflowObserver<'_>,
-) -> Result<DirectSimulationWorkflowOutput, WorkflowError> {
-    let cancellation_token = observer.cancellation_token.shared_handle();
+pub fn run_simulation_workflow(
+    request: SimulationWorkflowRequest,
+    observer: SimulationWorkflowObserver<'_>,
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
+    let scope_label = direct_simulation_scope_label(&request.job);
 
-    cancellation_token.check_cancelled()?;
+    run_simulation_workflow_with_scope(request, observer, scope_label)
+}
 
-    let DirectSimulationWorkflowRequest {
-        job,
-        run_id,
-        request_path,
-        output_path,
-    } = request;
-
-    let scope_label = direct_simulation_scope_label(&job);
-
-    emit_start_summary(
-        &observer.terminal_output,
-        run_id.as_str(),
+fn run_simulation_workflow_with_scope(
+    request: SimulationWorkflowRequest,
+    observer: SimulationWorkflowObserver<'_>,
+    scope_label: &str,
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
+    run_observed_simulation_workflow(
+        request,
+        observer,
         scope_label,
-        request_path.as_deref(),
-        output_path.as_deref(),
-    )?;
-
-    start_simulation_progress(
-        observer.progress_adapter.as_deref_mut(),
-        run_id.as_str(),
-        scope_label,
-        1,
-        output_path.as_deref(),
-    )?;
-
-    let mut progress_error = None::<WorkflowError>;
-    let mut progress_gate = VolatileProgressGate::default();
-
-    let started_at = Instant::now();
-
-    let completed_result = {
-        let mut progress_observer = |event: SimulationProgressEvent| {
-            observe_gated_simulation_terminal_event(
-                &mut observer.progress_adapter,
-                &mut progress_gate,
-                &mut progress_error,
-                event,
-            );
-        };
-
-        job.run(cancellation_token.shared_handle(), &mut progress_observer)
-    };
-
-    let completed = match completed_result {
-        Ok(completed) => completed,
-        Err(WorkflowError::Cancelled { source }) => {
-            cancel_simulation_progress(observer.progress_adapter, progress_error)?;
-            return Err(WorkflowError::Cancelled { source });
-        }
-        Err(error) => return Err(error),
-    };
-
-    let execution_duration = started_at.elapsed();
-
-    if let Err(source) = cancellation_token.check_cancelled() {
-        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
-        return Err(WorkflowError::Cancelled { source });
-    }
-
-    let export_summary = completed.export(output_path.as_deref())?;
-    if let Err(source) = cancellation_token.check_cancelled() {
-        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
-        return Err(WorkflowError::Cancelled { source });
-    }
-
-    complete_simulation_progress(observer.progress_adapter, progress_error)?;
-
-    emit_completion_summary(
-        &observer.terminal_output,
-        scope_label,
-        output_path.as_deref(),
-        export_summary.as_ref(),
-        execution_duration,
-        completed.completion(),
-    )?;
-
-    Ok(DirectSimulationWorkflowOutput {
-        completed,
-        export_summary,
-        execution_duration,
-    })
+        |request| &request.metadata,
+        |request, cancellation_token, progress_observer| {
+            run_simulation_job(
+                request,
+                cancellation_token,
+                progress_observer,
+                Instant::now(),
+            )
+        },
+    )
 }
 
 /// Run a coarse simulation workflow.
 pub fn run_coarse_simulation_workflow(
-    request: CoarseSimulationWorkflowRequest,
+    request: CoarseSimulationRunRequest,
     observer: SimulationWorkflowObserver<'_>,
 ) -> Result<CoarseSimulationPath, WorkflowError> {
-    run_direct_runtime_simulation_workflow(
-        request.run_request,
+    let output = run_runtime_simulation_workflow(
+        DirectSimulationJob::CoarseInterval {
+            request: Box::new(request),
+        },
         observer,
-        coarse_runtime_simulation_scope_label(),
-        run_coarse_simulation,
-        run_coarse_simulation_with_observer,
-    )
+        RuntimeSimulationKind::CoarseInterval,
+    )?;
+
+    match output.completed {
+        DirectSimulationCompleted::CoarseInterval { result } => Ok(*result),
+        DirectSimulationCompleted::SeededTick { .. } => Err(unexpected_runtime_output_error(
+            RuntimeSimulationKind::CoarseInterval,
+        )),
+    }
 }
 
 /// Run a seeded tick-event simulation workflow.
 pub fn run_seeded_tick_event_simulation_workflow(
-    request: SeededTickEventSimulationWorkflowRequest,
+    run_config: SeededTickSimulationRunConfig,
     observer: SimulationWorkflowObserver<'_>,
 ) -> Result<SeededTickSimulationRunResult, WorkflowError> {
-    run_direct_runtime_simulation_workflow(
-        request.run_config,
+    let output = run_runtime_simulation_workflow(
+        DirectSimulationJob::SeededTick {
+            run_config: Box::new(run_config),
+        },
         observer,
-        seeded_tick_runtime_simulation_scope_label(),
-        run_seeded_tick_event_simulation,
-        run_seeded_tick_event_simulation_with_observer,
+        RuntimeSimulationKind::SeededTick,
+    )?;
+
+    match output.completed {
+        DirectSimulationCompleted::SeededTick { result } => Ok(*result),
+        DirectSimulationCompleted::CoarseInterval { .. } => Err(unexpected_runtime_output_error(
+            RuntimeSimulationKind::SeededTick,
+        )),
+    }
+}
+
+fn run_runtime_simulation_workflow(
+    job: DirectSimulationJob,
+    observer: SimulationWorkflowObserver<'_>,
+    runtime_kind: RuntimeSimulationKind,
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
+    run_simulation_workflow_with_scope(
+        SimulationWorkflowRequest {
+            metadata: SimulationWorkflowMetadata::default(),
+            job,
+            export_plan: None,
+        },
+        observer,
+        runtime_kind.scope_label(),
     )
 }
 
-fn run_direct_runtime_simulation_workflow<TInput, TRunResult, TRunError, TRun, TRunObserved>(
-    input: TInput,
-    mut observer: SimulationWorkflowObserver<'_>,
-    scope: &str,
-    run: TRun,
-    run_observed: TRunObserved,
-) -> Result<TRunResult, WorkflowError>
-where
-    TRun: FnOnce(TInput, CancellationToken) -> Result<TRunResult, TRunError>,
-    TRunObserved: FnOnce(
-        TInput,
-        CancellationToken,
-        &mut dyn FnMut(SimulationProgressEvent),
-    ) -> Result<TRunResult, TRunError>,
-    TRunError: RuntimeSimulationRunError,
-    TRunResult: DirectSimulationCompletionFields,
-{
-    let cancellation_token = observer.cancellation_token.shared_handle();
-
-    cancellation_token.check_cancelled()?;
-
-    emit_start_summary(&observer.terminal_output, "simulation", scope, None, None)?;
-
-    start_simulation_progress(
-        observer.progress_adapter.as_deref_mut(),
-        "simulation",
+fn simulation_presentation_from_metadata<'a>(
+    metadata: &'a SimulationWorkflowMetadata,
+    scope: &'a str,
+) -> SimulationWorkflowPresentation<'a> {
+    SimulationWorkflowPresentation {
+        run_id: metadata.run_id(),
         scope,
-        1,
-        None,
-    )?;
-
-    let mut progress_error = None::<WorkflowError>;
-    let mut progress_gate = VolatileProgressGate::<SimulationProgressPhase>::default();
-
-    let started_at = Instant::now();
-
-    let run_result = if observer.progress_adapter.is_some() {
-        let mut progress_observer = |event: SimulationProgressEvent| {
-            observe_gated_simulation_terminal_event(
-                &mut observer.progress_adapter,
-                &mut progress_gate,
-                &mut progress_error,
-                event,
-            );
-        };
-
-        run_observed(
-            input,
-            cancellation_token.shared_handle(),
-            &mut progress_observer,
-        )
-    } else {
-        run(input, cancellation_token.shared_handle())
-    }
-    .map_err(RuntimeSimulationRunError::into_workflow_error);
-
-    let run_result = match run_result {
-        Ok(run_result) => run_result,
-        Err(WorkflowError::Cancelled { source }) => {
-            cancel_simulation_progress(observer.progress_adapter, progress_error)?;
-            return Err(WorkflowError::Cancelled { source });
-        }
-        Err(error) => return Err(error),
-    };
-
-    let execution_duration = started_at.elapsed();
-
-    if let Err(source) = cancellation_token.check_cancelled() {
-        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
-        return Err(WorkflowError::Cancelled { source });
-    }
-
-    complete_simulation_progress(observer.progress_adapter, progress_error)?;
-
-    emit_completion_summary(
-        &observer.terminal_output,
-        scope,
-        None,
-        None,
-        execution_duration,
-        direct_completion_for_result(&run_result),
-    )?;
-
-    Ok(run_result)
-}
-
-trait RuntimeSimulationRunError: ToString {
-    fn into_workflow_error(self) -> WorkflowError;
-}
-
-impl RuntimeSimulationRunError for SeededTickSimulationRunError {
-    fn into_workflow_error(self) -> WorkflowError {
-        match self {
-            Self::Cancelled { source } => WorkflowError::Cancelled { source },
-            source => WorkflowError::SimulationValidationFailed {
-                field: "request",
-                message: source.to_string(),
-            },
-        }
+        request_path: metadata.request_path.as_deref(),
+        output_path: metadata.output_path.as_deref(),
     }
 }
 
-impl RuntimeSimulationRunError for CoarseSimulationRunError {
-    fn into_workflow_error(self) -> WorkflowError {
-        match self {
-            Self::Cancelled { source } => WorkflowError::Cancelled { source },
-            source => WorkflowError::SimulationValidationFailed {
-                field: "request",
-                message: source.to_string(),
-            },
-        }
-    }
-}
-
-fn model_artifact_run_id(request: &ModelArtifactSimulationWorkflowRequest) -> &str {
-    request.run_id.as_deref().unwrap_or("simulation")
-}
-
-trait DirectSimulationCompletionFields {
-    fn seed(&self) -> u64;
-
-    fn simulated_interval_count(&self) -> usize;
-
-    fn simulated_interval_duration_nanos(&self) -> Option<i64>;
-
-    fn generated_tick_count(&self) -> Option<usize>;
-}
-
-impl DirectSimulationCompletionFields for CoarseSimulationPath {
-    fn seed(&self) -> u64 {
-        self.seed
-    }
-
-    fn simulated_interval_count(&self) -> usize {
-        self.simulated_interval_count
-    }
-
-    fn simulated_interval_duration_nanos(&self) -> Option<i64> {
-        interval_duration_nanos_from_bounds(
-            self.start_time_utc_nanos,
-            self.end_time_utc_nanos,
-            self.simulated_interval_count,
-        )
-    }
-
-    fn generated_tick_count(&self) -> Option<usize> {
-        None
-    }
-}
-
-impl DirectSimulationCompletionFields for SeededTickSimulationRunResult {
-    fn seed(&self) -> u64 {
-        self.seed
-    }
-
-    fn simulated_interval_count(&self) -> usize {
-        self.simulated_interval_count
-    }
-
-    fn simulated_interval_duration_nanos(&self) -> Option<i64> {
-        interval_duration_nanos_from_bounds(
-            self.start_time_utc.timestamp_nanos_opt()?,
-            self.end_time_utc.timestamp_nanos_opt()?,
-            self.simulated_interval_count,
-        )
-    }
-
-    fn generated_tick_count(&self) -> Option<usize> {
-        Some(self.event_count())
-    }
-}
-
-fn direct_completion_for_result(
-    result: &impl DirectSimulationCompletionFields,
-) -> super::DirectSimulationCompletion {
-    super::DirectSimulationCompletion {
-        seed: result.seed(),
-        simulated_interval_count: result.simulated_interval_count(),
-        simulated_interval_duration_nanos: result.simulated_interval_duration_nanos(),
-        generated_tick_count: result.generated_tick_count(),
+fn unexpected_runtime_output_error(expected: RuntimeSimulationKind) -> WorkflowError {
+    WorkflowError::SimulationValidationFailed {
+        field: "request",
+        message: format!(
+            "workflow expected {} output",
+            expected.expected_output_label()
+        ),
     }
 }

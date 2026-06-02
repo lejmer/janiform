@@ -18,12 +18,16 @@ use crate::model::{
     fitted_model_context,
 };
 use crate::simulation::direct::{
-    CoarseIntervalExportSettings, DirectSimulationJob, SeededTickExportSettings,
+    CoarseIntervalExportSettings, DirectSimulationExportPlan, DirectSimulationJob,
+    SeededTickExportSettings,
 };
 
 use super::artifacts::write_model_artifact_simulation_sidecars;
-use super::output::ModelArtifactSimulationWorkflowOutput;
-use super::request::{ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest};
+use super::job::run_simulation_job;
+use super::output::SimulationWorkflowOutput;
+use super::request::{
+    ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest, SimulationWorkflowRequest,
+};
 
 const CLOSED_INTERVAL_SEASONALITY_FACTOR: f64 = 0.0;
 
@@ -32,11 +36,48 @@ pub fn run_simulation_from_model_artifact(
     request: ModelArtifactSimulationWorkflowRequest,
     cancellation_token: CancellationToken,
     observer: &mut dyn FnMut(SimulationProgressEvent),
-) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
     validate_request(&request)?;
+
     cancellation_token.check_cancelled()?;
 
     let started_at = Instant::now();
+    let prepared = prepare_model_artifact_simulation(request, cancellation_token.shared_handle())?;
+
+    let output = run_simulation_job(
+        prepared.workflow_request,
+        cancellation_token,
+        observer,
+        started_at,
+    )?;
+
+    if let Some(output_path) = prepared.sidecar_plan.output_path.as_deref() {
+        write_model_artifact_simulation_sidecars(
+            prepared.sidecar_plan.workflow_run_id.as_str(),
+            prepared.sidecar_plan.model_run_id.as_str(),
+            output_path,
+            &output.response_payload()?,
+        )?;
+    }
+
+    Ok(output)
+}
+
+struct PreparedModelArtifactSimulation {
+    workflow_request: SimulationWorkflowRequest,
+    sidecar_plan: ModelArtifactSimulationSidecarPlan,
+}
+
+struct ModelArtifactSimulationSidecarPlan {
+    workflow_run_id: String,
+    model_run_id: String,
+    output_path: Option<std::path::PathBuf>,
+}
+
+fn prepare_model_artifact_simulation(
+    request: ModelArtifactSimulationWorkflowRequest,
+    cancellation_token: CancellationToken,
+) -> Result<PreparedModelArtifactSimulation, WorkflowError> {
     let context = runtime_context(&request)?;
 
     cancellation_token.check_cancelled()?;
@@ -49,31 +90,26 @@ pub fn run_simulation_from_model_artifact(
 
     cancellation_token.check_cancelled()?;
 
-    let job = build_direct_job(&request, &context, hourly_factor_contract, initial_state)?;
-    let completed = job.run(cancellation_token.shared_handle(), observer)?;
+    let prepared_job = build_direct_job(&request, &context, hourly_factor_contract, initial_state)?;
 
-    cancellation_token.check_cancelled()?;
+    // Intentional copies because normalized workflow execution owns metadata,
+    // while model-artifact sidecar writing still needs these identifiers.
+    let output_path = request.metadata.output_path.clone();
+    let workflow_run_id = request.metadata.run_id().to_string();
+    let model_run_id = context.model.run_id.clone();
 
-    let export_summary = completed.export(request.output_path.as_deref())?;
-
-    cancellation_token.check_cancelled()?;
-
-    let output = ModelArtifactSimulationWorkflowOutput {
-        completed,
-        export_summary,
-        execution_duration: started_at.elapsed(),
-    };
-
-    if let Some(output_path) = request.output_path.as_deref() {
-        write_model_artifact_simulation_sidecars(
-            request.run_id.as_deref().unwrap_or("simulation"),
-            context.model.run_id.as_str(),
+    Ok(PreparedModelArtifactSimulation {
+        workflow_request: SimulationWorkflowRequest {
+            metadata: request.metadata.into_defaulted_run_id(),
+            job: prepared_job.job,
+            export_plan: Some(prepared_job.export_plan),
+        },
+        sidecar_plan: ModelArtifactSimulationSidecarPlan {
+            workflow_run_id,
+            model_run_id,
             output_path,
-            &output.response_payload()?,
-        )?;
-    }
-
-    Ok(output)
+        },
+    })
 }
 
 fn validate_request(request: &ModelArtifactSimulationWorkflowRequest) -> Result<(), WorkflowError> {
@@ -241,12 +277,17 @@ fn estimate_current_state(
     .map_err(|source| validation_error("continuation_data", source.to_string()))
 }
 
+struct PreparedDirectSimulationJob {
+    job: DirectSimulationJob,
+    export_plan: DirectSimulationExportPlan,
+}
+
 fn build_direct_job(
     request: &ModelArtifactSimulationWorkflowRequest,
     context: &FittedModelContext,
     hourly_factor_contract: HourlyFactorContractOutput,
     initial_state: ResolvedInitialState,
-) -> Result<DirectSimulationJob, WorkflowError> {
+) -> Result<PreparedDirectSimulationJob, WorkflowError> {
     let (runtime_interval_anchors, derived_boundary_state) =
         materialize_mean_reversion_runtime_inputs(
             request,
@@ -286,15 +327,17 @@ fn build_direct_job(
             )
             .map_err(|source| validation_error("seeded_tick_request", source.to_string()))?;
 
-            Ok(DirectSimulationJob::SeededTick {
-                run_config: Box::new(run_config),
-                export: SeededTickExportSettings {
+            Ok(PreparedDirectSimulationJob {
+                job: DirectSimulationJob::SeededTick {
+                    run_config: Box::new(run_config),
+                },
+                export_plan: DirectSimulationExportPlan::SeededTick(SeededTickExportSettings {
                     // Intentional copy because export settings own the public
                     // output column contract independent of the borrowed request.
                     columns: request.output_columns.clone(),
                     reference_price: request.reference_price,
                     batch_size: request.export_batch_size,
-                },
+                }),
             })
         }
         ModelArtifactSimulationKind::CoarseInterval => {
@@ -331,17 +374,21 @@ fn build_direct_job(
             )
             .map_err(|source| validation_error("coarse_interval_request", source.to_string()))?;
 
-            Ok(DirectSimulationJob::CoarseInterval {
-                request: Box::new(coarse_request),
-                export: CoarseIntervalExportSettings {
-                    // Intentional copies because export settings own their column
-                    // and calendar contracts after request construction completes.
-                    columns: request.output_columns.clone(),
-                    calendar_registry: context.calendar_registry.clone(),
-                    exchange_code: context.model.session_resolution.exchange_code.clone(),
-                    reference_price: request.reference_price,
-                    batch_size: request.export_batch_size,
+            Ok(PreparedDirectSimulationJob {
+                job: DirectSimulationJob::CoarseInterval {
+                    request: Box::new(coarse_request),
                 },
+                export_plan: DirectSimulationExportPlan::CoarseInterval(
+                    CoarseIntervalExportSettings {
+                        // Intentional copies because export settings own their column
+                        // and calendar contracts after request construction completes.
+                        columns: request.output_columns.clone(),
+                        calendar_registry: context.calendar_registry.clone(),
+                        exchange_code: context.model.session_resolution.exchange_code.clone(),
+                        reference_price: request.reference_price,
+                        batch_size: request.export_batch_size,
+                    },
+                ),
             })
         }
     }

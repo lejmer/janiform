@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use janiform::simulation::{CoarseSimulationPath, SeededTickSimulationRunResult};
 use janiform_workflows::simulation::{
     CoarseIntervalExportSettings, DirectSimulationCompleted, DirectSimulationCompletion,
-    DirectSimulationJob, DirectSimulationWorkflowRequest, SeededTickExportSettings,
-    SimulationExportSummary, SimulationOutputColumns, SimulationWorkflowObserver,
-    direct_simulation_scope_label, run_direct_simulation_workflow, simulation_workflow_label,
+    DirectSimulationExportPlan, DirectSimulationJob, SeededTickExportSettings,
+    SimulationExportSummary, SimulationOutputColumns, SimulationWorkflowMetadata,
+    SimulationWorkflowObserver, SimulationWorkflowRequest, direct_simulation_scope_label,
+    run_simulation_workflow, simulation_workflow_label,
 };
 use serde_json::{Value, json};
 
@@ -23,13 +24,14 @@ pub(crate) fn run_simulate_seeded_ticks_command(
     command: SeededTicksCommand,
 ) -> Result<(), CliError> {
     let request_path = required_input_path(context, "--request-json", command.request_json)?;
+
     let calendar_registry_path = required_input_path(
         context,
         "--calendar-registry-json",
         command.calendar_registry_json,
     )?;
-    let output_path = resolve_optional_output_path(context, command.output_path.output_path);
 
+    let output_path = resolve_optional_output_path(context, command.output_path.output_path);
     let run_config = load_seeded_tick_simulation_request(&request_path, &calendar_registry_path)?;
 
     let columns = SimulationOutputColumns {
@@ -49,12 +51,12 @@ pub(crate) fn run_simulate_seeded_ticks_command(
         "seeded_tick",
         DirectSimulationJob::SeededTick {
             run_config: Box::new(run_config),
-            export: SeededTickExportSettings {
-                columns,
-                reference_price,
-                batch_size,
-            },
         },
+        DirectSimulationExportPlan::SeededTick(SeededTickExportSettings {
+            columns,
+            reference_price,
+            batch_size,
+        }),
     )
 }
 
@@ -95,14 +97,14 @@ pub(crate) fn run_simulate_coarse_interval_command(
         "coarse_interval",
         DirectSimulationJob::CoarseInterval {
             request: Box::new(request),
-            export: CoarseIntervalExportSettings {
-                columns,
-                calendar_registry,
-                exchange_code,
-                reference_price,
-                batch_size,
-            },
         },
+        DirectSimulationExportPlan::CoarseInterval(CoarseIntervalExportSettings {
+            columns,
+            calendar_registry,
+            exchange_code,
+            reference_price,
+            batch_size,
+        }),
     )
 }
 
@@ -113,18 +115,24 @@ fn execute_direct_simulation(
     run_id_prefix: &str,
     report_kind: &str,
     job: DirectSimulationJob,
+    export_plan: DirectSimulationExportPlan,
 ) -> Result<(), CliError> {
     let run_id = direct_simulation_run_id(run_id_prefix);
     let scope_label = direct_simulation_scope_label(&job);
 
     let mut progress_adapter = terminal_progress_adapter_for_context(context);
 
-    let output = run_direct_simulation_workflow(
-        DirectSimulationWorkflowRequest {
+    // Intentional copies because workflow metadata owns run display fields,
+    // while CLI report writing still uses the same run id and output path.
+    let output = run_simulation_workflow(
+        SimulationWorkflowRequest {
+            metadata: SimulationWorkflowMetadata {
+                run_id: Some(run_id.clone()),
+                request_path: Some(request_path.to_path_buf()),
+                output_path: output_path.clone(),
+            },
             job,
-            run_id: run_id.clone(),
-            request_path: Some(request_path.to_path_buf()),
-            output_path: output_path.clone(),
+            export_plan: Some(export_plan),
         },
         SimulationWorkflowObserver {
             cancellation_token: context.cancellation_token(),

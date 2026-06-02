@@ -34,8 +34,8 @@ use super::output::{
     workflow_error_to_simulation_error,
 };
 use super::request::{
-    CoarseSimulationWorkflowRequestPayload, ModelArtifactSimulationWorkflowPayload,
-    SeededTickSimulationWorkflowRequestPayload,
+    CoarseSimulationRunRequestPayload, ModelArtifactSimulationWorkflowPayload,
+    SeededTickSimulationRunConfigPayload,
 };
 use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
@@ -247,8 +247,7 @@ fn run_coarse_simulation(
     event_callback: Option<&Bound<'_, PyAny>>,
     progress_mode: &str,
 ) -> PyResult<Py<PyAny>> {
-    let run_request =
-        CoarseSimulationWorkflowRequestPayload::from_py(request)?.into_run_request()?;
+    let run_request = CoarseSimulationRunRequestPayload::from_py(request)?.into_run_request()?;
     let progress_mode = parse_simulation_progress_mode(progress_mode)?;
 
     let coarse_path = if event_callback.is_some() {
@@ -304,8 +303,7 @@ fn run_seeded_tick_event_simulation(
     event_callback: Option<&Bound<'_, PyAny>>,
     progress_mode: &str,
 ) -> PyResult<PySeededTickSimulationNativeResult> {
-    let run_config =
-        SeededTickSimulationWorkflowRequestPayload::from_py(request)?.into_run_config()?;
+    let run_config = SeededTickSimulationRunConfigPayload::from_py(request)?.into_run_config()?;
     let progress_mode = parse_simulation_progress_mode(progress_mode)?;
 
     let run_result = if event_callback.is_some() {

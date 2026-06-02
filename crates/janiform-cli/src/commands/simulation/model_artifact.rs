@@ -3,7 +3,7 @@ use janiform::simulation::SeededTickEventStateSnapshotCapture;
 use janiform_foundations::time::parse_utc_datetime;
 use janiform_workflows::simulation::{
     ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest,
-    SimulationWorkflowObserver, model_artifact_simulation_scope_label,
+    SimulationWorkflowMetadata, SimulationWorkflowObserver, model_artifact_simulation_scope_label,
     run_simulation_from_model_artifact_workflow, simulation_output_preferences_from_model_payload,
 };
 
@@ -50,11 +50,8 @@ pub(crate) fn run_simulate_from_model_artifact_command(
     };
 
     let run_id = direct_simulation_run_id("model");
-
     let model_path = required_input_path(context, "--model-path", command.model.model_path)?;
-
     let model_payload = load_json_artifact(&model_path, "model")?;
-
     let output_preferences = simulation_output_preferences_from_model_payload(&model_payload)?;
 
     let output_path = resolve_model_output_path(
@@ -66,16 +63,20 @@ pub(crate) fn run_simulate_from_model_artifact_command(
 
     let scope_label = model_artifact_simulation_scope_label(simulation_kind);
 
+    // Intentional copies because workflow metadata owns run display fields,
+    // while CLI report writing still uses the same run id and output path.
     let workflow_request = ModelArtifactSimulationWorkflowRequest {
+        metadata: SimulationWorkflowMetadata {
+            run_id: Some(run_id.clone()),
+            request_path: Some(model_path),
+            output_path: Some(output_path.clone()),
+        },
         model_payload,
-        run_id: Some(run_id.clone()),
-        request_path: Some(model_path),
         simulation_kind,
         seed,
         start_time_utc,
         horizon_interval_count,
         interval_duration_nanos,
-        output_path: Some(output_path.clone()),
         output_columns: output_preferences.output_columns,
         reference_price: output_preferences.reference_price,
         export_batch_size: command.export_batch.output_batch_size,
