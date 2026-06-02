@@ -1,4 +1,5 @@
 use janiform::pricing::PricingProgressEvent;
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::parallelism::resolved_cpu_count;
 use janiform_terminal_ui::ProgressAdapter;
 use janiform_work_scheduler::{
@@ -30,8 +31,11 @@ use super::types::{
 pub(super) fn price_prepared_surface_snapshots_parallel(
     request: &ObservedOptionsPricingRequest,
     prepared_snapshots: Vec<PreparedObservedSnapshot>,
+    cancellation_token: CancellationToken,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<Vec<ObservedOptionsSnapshotResult>, WorkflowError> {
+    cancellation_token.check_cancelled()?;
+
     let task_count = prepared_snapshots.len();
     if task_count == 0 {
         return Ok(Vec::new());
@@ -53,6 +57,8 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
         let prepared_snapshot = prepared_snapshots.into_iter().next().ok_or_else(|| {
             pricing_validation_error("valuation_time_utc", "snapshot was not prepared")
         })?;
+
+        cancellation_token.check_cancelled()?;
 
         let result = price_prepared_snapshot_with_terminal_progress(
             request,
@@ -77,6 +83,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
         let results = price_prepared_surface_snapshots_serial(
             request,
             prepared_snapshots,
+            cancellation_token.shared_handle(),
             task_progress_plans,
             progress_adapter,
             worker_count,
@@ -108,6 +115,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
 
     run_streaming_work_pool(StreamingWorkPoolInput::new(
         &mut collector,
+        cancellation_token,
         jobs,
         worker_count,
         |(task_position, prepared_snapshot),
@@ -115,10 +123,12 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
             SurfacePricingMessage,
             Result<ObservedOptionsSnapshotResult, WorkflowError>,
         >| {
+            let worker_cancellation_token = context.cancellation_token();
+
+            worker_cancellation_token.check_cancelled()?;
+
             let worker_index = context.worker_index();
-
             let node_count = prepared_snapshot_node_count(&prepared_snapshot);
-
             let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
 
             let progress_plan = task_progress_plans
@@ -138,6 +148,8 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
                 node_count,
                 progress_plan,
             }) {
+                worker_cancellation_token.check_cancelled()?;
+
                 return Err(pricing_validation_error(
                     "pricing_progress",
                     "observed surface pricing progress channel closed",
@@ -145,13 +157,17 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
             }
 
             let mut progress_observer = |event: PricingProgressEvent| {
+                if worker_cancellation_token.is_cancelled() {
+                    return;
+                }
+
                 let _ = context.send_progress(SurfacePricingMessage::Progress {
                     worker_index,
                     event: Box::new(event),
                 });
             };
 
-            price_prepared_snapshot(
+            let result = price_prepared_snapshot(
                 request,
                 prepared_snapshot,
                 Some(&mut progress_observer),
@@ -159,7 +175,11 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
                 // Keeping each inner grid pricer single-threaded avoids
                 // nested thread pools competing for the same cores.
                 Some(1),
-            )
+            )?;
+
+            worker_cancellation_token.check_cancelled()?;
+
+            Ok(result)
         },
         |collector: &mut SurfacePricingResultCollector<'_, '_>,
          progress: StreamingWorkProgress<SurfacePricingMessage>| {
@@ -185,6 +205,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
 fn price_prepared_surface_snapshots_serial(
     request: &ObservedOptionsPricingRequest,
     prepared_snapshots: Vec<PreparedObservedSnapshot>,
+    cancellation_token: CancellationToken,
     task_progress_plans: Vec<SurfaceTaskProgressPlan>,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     worker_count: usize,
@@ -196,8 +217,9 @@ fn price_prepared_surface_snapshots_serial(
     emit_surface_pricing_plan(progress_adapter, task_count, worker_count.max(1))?;
 
     for (task_position, prepared_snapshot) in prepared_snapshots.into_iter().enumerate() {
-        let node_count = prepared_snapshot_node_count(&prepared_snapshot);
+        cancellation_token.check_cancelled()?;
 
+        let node_count = prepared_snapshot_node_count(&prepared_snapshot);
         let valuation_time_utc_nanos = prepared_snapshot.valuation_time_utc_nanos;
 
         let progress_plan = task_progress_plans
@@ -238,6 +260,10 @@ fn price_prepared_surface_snapshots_serial(
                 return;
             }
 
+            if cancellation_token.is_cancelled() {
+                return;
+            }
+
             worker_state.apply_pricing_event(&event);
 
             if let Err(source) = emit_surface_worker_progress(
@@ -264,6 +290,8 @@ fn price_prepared_surface_snapshots_serial(
             // priced by that lane without nested pricing parallelism.
             Some(1),
         )?;
+
+        cancellation_token.check_cancelled()?;
 
         if let Some(progress_error) = progress_error {
             return Err(progress_error);

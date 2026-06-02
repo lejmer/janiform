@@ -17,6 +17,7 @@ chrono = { workspace = true }
 janiform = { path = "../janiform" }
 janiform-cli = { path = "../janiform-cli" }
 janiform-event-log = { path = "../janiform-event-log" }
+janiform-foundations = { path = "../janiform-foundations" }
 janiform-terminal-ui = { path = "../janiform-terminal-ui" }
 janiform-workflows = { path = "../janiform-workflows" }
 pyo3 = { workspace = true }

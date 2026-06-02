@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cancellation;
 pub mod complex_math;
 pub mod csv;
 pub mod hashing;

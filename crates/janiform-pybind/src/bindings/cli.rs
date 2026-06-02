@@ -5,6 +5,7 @@ use pyo3::prelude::{Bound, PyResult, Python};
 use pyo3::types::{PyAnyMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
 
+use crate::native_interrupt::{NativeInterruptMode, run_interruptible_native};
 use crate::panic_boundary::panic_to_pyresult;
 
 #[pyfunction]
@@ -18,7 +19,9 @@ fn run_cli(py: Python<'_>) -> PyResult<u8> {
         .collect::<Vec<OsString>>();
 
     let exit_code = panic_to_pyresult("running Rust CLI", PyRuntimeError::new_err, || {
-        Ok(py.detach(move || janiform_cli::run_exit_code(arguments) as u8))
+        run_interruptible_native(py, NativeInterruptMode::Cli, move |cancellation_token| {
+            Ok(janiform_cli::run_exit_code(arguments, cancellation_token) as u8)
+        })
     })?;
 
     if exit_code == janiform_cli::CliExitCode::Success as u8 {

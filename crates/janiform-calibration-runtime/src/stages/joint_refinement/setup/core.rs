@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use janiform_engine_pricing::VanillaOptionPricingKernelParameters;
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::numeric::clamp_point_in_place as clamp_in_place;
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
@@ -1578,9 +1579,11 @@ fn build_sensitivity_repair_restart_candidates(
         joint_context.stage_thread_pool.as_deref(),
         StaticWorkPoolInput::new(
             &mut repair_candidate_batches,
+            joint_context.cancellation_token.shared_handle(),
             anchor_jobs,
             joint_refinement_parallel_worker_count(joint_context),
-            |(anchor_position, candidate): (usize, &ScreenedRestartCandidate)| {
+            |(anchor_position, candidate): (usize, &ScreenedRestartCandidate),
+             _cancellation_token| {
                 SensitivityRepairRestartCandidateBatch {
                     anchor_position,
                     candidates: sensitivity_repair_seed_candidates(
@@ -1974,10 +1977,15 @@ where
             .map(|thread_pool| thread_pool.as_ref())
     });
 
+    let cancellation_token = joint_context
+        .map(|joint_context| joint_context.cancellation_token.shared_handle())
+        .unwrap_or_else(CancellationToken::uncancelled);
+
     screen_restart_candidates_with_thread_pool(
         restart_candidates,
         seed_score,
         thread_pool,
+        cancellation_token,
         progress_sender,
         completed_screening_units,
         total_screening_units,
@@ -1988,6 +1996,7 @@ fn screen_restart_candidates_with_thread_pool<F>(
     restart_candidates: &[(String, Vec<f64>)],
     seed_score: &F,
     thread_pool: Option<&rayon::ThreadPool>,
+    cancellation_token: CancellationToken,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     completed_screening_units: &Mutex<usize>,
     total_screening_units: usize,
@@ -2031,9 +2040,19 @@ where
             Some(thread_pool),
             StaticWorkPoolInput::new(
                 &mut screened_candidates,
+                cancellation_token.shared_handle(),
                 candidate_jobs,
                 thread_pool.current_num_threads(),
-                screen_candidate,
+                |candidate: (usize, &(String, Vec<f64>)), cancellation_token: CancellationToken| {
+                    if cancellation_token.is_cancelled() {
+                        return ScreenedRestartCandidateOutput {
+                            candidate_position: candidate.0,
+                            candidate: None,
+                        };
+                    }
+
+                    screen_candidate(candidate)
+                },
                 |screened_candidates: &mut Vec<Option<ScreenedRestartCandidate>>,
                  output: ScreenedRestartCandidateOutput,
                  _status| {
@@ -2052,7 +2071,13 @@ where
     restart_candidates
         .iter()
         .enumerate()
-        .filter_map(|candidate| screen_candidate(candidate).candidate)
+        .filter_map(|candidate| {
+            if cancellation_token.is_cancelled() {
+                return None;
+            }
+
+            screen_candidate(candidate).candidate
+        })
         .collect()
 }
 
@@ -2092,6 +2117,7 @@ pub(in crate::stages::joint_refinement) fn restart_candidate_screening_max_paral
         restart_candidates.as_slice(),
         &score_candidate,
         Some(&thread_pool),
+        CancellationToken::uncancelled(),
         None,
         &completed_screening_units,
         candidate_count,
@@ -2156,6 +2182,7 @@ where
         && target_restart_count > 1
     {
         let halton_jobs = (1..=target_restart_count).collect::<Vec<_>>();
+
         let mut screened_candidates = std::iter::repeat_with(|| None)
             .take(target_restart_count)
             .collect::<Vec<Option<ScreenedRestartCandidate>>>();
@@ -2164,9 +2191,10 @@ where
             joint_context.stage_thread_pool.as_deref(),
             StaticWorkPoolInput::new(
                 &mut screened_candidates,
+                joint_context.cancellation_token.shared_handle(),
                 halton_jobs,
                 joint_refinement_parallel_worker_count(joint_context),
-                screen_halton_position,
+                |halton_position, _cancellation_token| screen_halton_position(halton_position),
                 |screened_candidates: &mut Vec<Option<ScreenedRestartCandidate>>,
                  output: ScreenedRestartCandidateOutput,
                  _status| {
@@ -3219,7 +3247,11 @@ fn build_seed_summary_for_candidate_seed(
 
     let seed_summary_result = context
         .summary_simulation_scheduler
-        .run_seed_summary_simulation(fitted_parameters, simulation_seed);
+        .run_seed_summary_simulation(
+            fitted_parameters,
+            simulation_seed,
+            context.cancellation_token.shared_handle(),
+        );
 
     context
         .profiling_state

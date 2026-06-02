@@ -7,8 +7,10 @@ use chrono::{DateTime, Utc};
 use janiform_engine_simulation::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunResult,
+    run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
@@ -38,6 +40,12 @@ use support::hawkes_failure_diagnostics::{
 use support::hawkes_invariant_catalog::{
     HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
 };
+
+fn run_seeded_tick_event_simulation(
+    run_config: SeededTickSimulationRunConfig,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
+    run_seeded_tick_event_simulation_core(run_config, CancellationToken::uncancelled())
+}
 use support::validation_fixture::fixtures_root_path;
 
 const CLUSTER_SIGNATURE_REFERENCE_BANDS_SCHEMA_VERSION: &str =

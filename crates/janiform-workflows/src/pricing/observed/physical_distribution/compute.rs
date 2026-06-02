@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use janiform::simulation::CoarseSimulationRunRequest;
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::parallelism::resolved_cpu_count;
 use janiform_terminal_ui::ProgressAdapter;
 use janiform_work_scheduler::{
@@ -42,11 +43,14 @@ pub(in crate::pricing::observed) fn compute_physical_distribution_diagnostics_if
     request: &ObservedOptionsPricingRequest,
     prepared_snapshots: &[PreparedObservedSnapshot],
     snapshot_results: &[ObservedOptionsSnapshotResult],
+    cancellation_token: CancellationToken,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<Option<ObservedOptionsPhysicalDistributionDiagnosticsOutput>, WorkflowError> {
     let Some(diagnostics_request) = request.physical_distribution_diagnostics else {
         return Ok(None);
     };
+
+    cancellation_token.check_cancelled()?;
 
     diagnostics_request.validate()?;
 
@@ -62,6 +66,7 @@ pub(in crate::pricing::observed) fn compute_physical_distribution_diagnostics_if
         prepared.as_slice(),
         diagnostics_request,
         request.cpu_count,
+        cancellation_token.shared_handle(),
         progress_adapter,
     )?;
 
@@ -105,8 +110,11 @@ fn run_physical_distribution_jobs(
     prepared: &[Arc<PreparedPhysicalDistributionSnapshot>],
     diagnostics_request: ObservedOptionsPhysicalDistributionDiagnosticsRequest,
     cpu_count: Option<usize>,
+    cancellation_token: CancellationToken,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<PhysicalDistributionRunSummary, WorkflowError> {
+    cancellation_token.check_cancelled()?;
+
     let worker_count = resolved_cpu_count(cpu_count).max(1);
 
     let jobs = build_physical_distribution_jobs(prepared, diagnostics_request, worker_count);
@@ -143,21 +151,22 @@ fn run_physical_distribution_jobs(
 
     run_streaming_work_pool(StreamingWorkPoolInput::new(
         &mut collector,
+        cancellation_token,
         jobs,
         active_worker_count,
         |job,
          context: StreamingWorkContext<
             PhysicalDistributionProgress,
-            PhysicalDistributionPartitionOutput,
-        >| { execute_physical_distribution_job(job, context) },
+            Result<PhysicalDistributionPartitionOutput, WorkflowError>,
+        >| execute_physical_distribution_job(job, context),
         |collector: &mut PhysicalDistributionCollector<'_, '_>,
          progress: StreamingWorkProgress<PhysicalDistributionProgress>| {
             collector.record_progress(progress.progress)
         },
         |collector: &mut PhysicalDistributionCollector<'_, '_>,
-         output: StreamingWorkOutput<PhysicalDistributionPartitionOutput>| {
-            collector.record_completed(output.job_position, output.output)
-        },
+         output: StreamingWorkOutput<
+            Result<PhysicalDistributionPartitionOutput, WorkflowError>,
+        >| { collector.record_completed(output.job_position, output.output?) },
     ))?;
 
     Ok(PhysicalDistributionRunSummary {

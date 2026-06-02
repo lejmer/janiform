@@ -7,9 +7,12 @@ use janiform_engine_simulation::{
     SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
     SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
-    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
+    SeededTickSimulationRunResult,
+    run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
+    run_seeded_tick_event_simulation_with_randomness_factory as run_seeded_tick_event_simulation_with_randomness_factory_core,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
@@ -38,6 +41,26 @@ use support::hawkes_invariant_catalog::{
 };
 
 const START_TIME_UTC_NANOS: i64 = 1_704_067_200_000_000_000;
+
+fn run_seeded_tick_event_simulation(
+    run_config: SeededTickSimulationRunConfig,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
+    run_seeded_tick_event_simulation_core(run_config, CancellationToken::uncancelled())
+}
+
+fn run_seeded_tick_event_simulation_with_randomness_factory<F>(
+    run_config: SeededTickSimulationRunConfig,
+    randomness_factory: &F,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
+    run_seeded_tick_event_simulation_with_randomness_factory_core(
+        run_config,
+        CancellationToken::uncancelled(),
+        randomness_factory,
+    )
+}
 const FIFTEEN_MINUTE_NANOS: i64 = 900_000_000_000;
 const ONE_DAY_NANOS: i64 = 86_400_000_000_000;
 const FLOAT_TOLERANCE: f64 = 1e-12;

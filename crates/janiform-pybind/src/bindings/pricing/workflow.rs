@@ -22,6 +22,7 @@ use pyo3::types::{PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
 
 use crate::PricingExecutionError;
+use crate::native_interrupt::{NativeInterruptMode, run_interruptible_native};
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 
 use super::events::run_pricing_workflow_with_events;
@@ -50,14 +51,18 @@ fn run_fitted_model_single_option_pricing_workflow(
             ))
         })?;
 
-    let output = py
-        .detach(move || {
+    let output = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |cancellation_token| {
             run_fitted_model_single_option_pricing_with_terminal_progress(
                 payload.request,
+                cancellation_token,
                 payload.progress_mode,
             )
-        })
-        .map_err(workflow_error_to_pricing_error)?;
+            .map_err(workflow_error_to_pricing_error)
+        },
+    )?;
 
     pricing_result_to_py_object(
         py,
@@ -78,14 +83,18 @@ fn run_observed_options_pricing_workflow(
             ))
         })?;
 
-    let output = py
-        .detach(move || {
+    let output = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |cancellation_token| {
             run_observed_options_pricing_with_terminal_progress(
                 payload.request,
+                cancellation_token,
                 payload.progress_mode,
             )
-        })
-        .map_err(workflow_error_to_pricing_error)?;
+            .map_err(workflow_error_to_pricing_error)
+        },
+    )?;
 
     pricing_result_to_py_object(py, &output, "observed-options pricing result")
 }
@@ -154,9 +163,14 @@ fn run_vanilla_option_pricing(
 ) -> PyResult<Py<PyAny>> {
     let execution_input = vanilla_option_pricing_execution_input_from_py(execution_input)?;
 
-    let run_result = py
-        .detach(|| run_vanilla_option_pricing_core(execution_input))
-        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+    let run_result = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |_cancellation_token| {
+            run_vanilla_option_pricing_core(execution_input)
+                .map_err(|source| PricingExecutionError::new_err(source.to_string()))
+        },
+    )?;
 
     pricing_result_to_py_object(py, &run_result, "vanilla option pricing run result")
 }
@@ -168,9 +182,14 @@ fn run_vanilla_option_grid_batch_pricing(
 ) -> PyResult<Py<PyAny>> {
     let execution_input = grid_batch_execution_input_from_py(execution_input)?;
 
-    let run_result = py
-        .detach(|| run_vanilla_option_grid_batch_pricing_core(execution_input))
-        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+    let run_result = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |_cancellation_token| {
+            run_vanilla_option_grid_batch_pricing_core(execution_input)
+                .map_err(|source| PricingExecutionError::new_err(source.to_string()))
+        },
+    )?;
 
     pricing_result_to_py_object(
         py,
@@ -189,11 +208,18 @@ fn run_vanilla_option_grid_batch_pricing_with_terminal_progress(
     let execution_input = grid_batch_execution_input_from_py(execution_input)?;
     let progress_mode = parse_pricing_progress_mode(progress_mode)?;
 
-    let run_result = py
-        .detach(move || {
-            run_grid_batch_pricing_with_terminal_progress(execution_input, progress_mode)
-        })
-        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+    let run_result = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |cancellation_token| {
+            run_grid_batch_pricing_with_terminal_progress(
+                execution_input,
+                cancellation_token,
+                progress_mode,
+            )
+            .map_err(|source| PricingExecutionError::new_err(source.to_string()))
+        },
+    )?;
 
     pricing_result_to_py_object(
         py,
@@ -224,8 +250,12 @@ fn run_vanilla_option_grid_batch_pricing_with_events(
         event_callback,
         "vanilla option grid batch pricing execution input",
         "vanilla option grid batch pricing run result",
-        |execution_input, progress_sender| {
+        |execution_input, progress_sender, cancellation_token| {
             let mut observer = |event: PricingProgressEvent| {
+                if cancellation_token.is_cancelled() {
+                    return;
+                }
+
                 let _ = progress_sender.send(event);
             };
 
@@ -233,9 +263,6 @@ fn run_vanilla_option_grid_batch_pricing_with_events(
                 execution_input,
                 Some(&mut observer),
             )
-        },
-        || janiform::pricing::VanillaOptionGridBatchPricingRunError::NodePricingFailure {
-            message: "pricing progress worker terminated unexpectedly".to_string(),
         },
     )
 }
@@ -247,9 +274,14 @@ fn run_vanilla_option_surface_pricing(
 ) -> PyResult<Py<PyAny>> {
     let execution_input = surface_execution_input_from_py(execution_input)?;
 
-    let run_result = py
-        .detach(|| run_vanilla_option_surface_pricing_core(execution_input))
-        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+    let run_result = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |_cancellation_token| {
+            run_vanilla_option_surface_pricing_core(execution_input)
+                .map_err(|source| PricingExecutionError::new_err(source.to_string()))
+        },
+    )?;
 
     pricing_result_to_py_object(py, &run_result, "vanilla option surface pricing run result")
 }
@@ -264,9 +296,18 @@ fn run_vanilla_option_surface_pricing_with_terminal_progress(
     let execution_input = surface_execution_input_from_py(execution_input)?;
     let progress_mode = parse_pricing_progress_mode(progress_mode)?;
 
-    let run_result = py
-        .detach(move || run_surface_pricing_with_terminal_progress(execution_input, progress_mode))
-        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+    let run_result = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |cancellation_token| {
+            run_surface_pricing_with_terminal_progress(
+                execution_input,
+                cancellation_token,
+                progress_mode,
+            )
+            .map_err(|source| PricingExecutionError::new_err(source.to_string()))
+        },
+    )?;
 
     pricing_result_to_py_object(py, &run_result, "vanilla option surface pricing run result")
 }
@@ -293,8 +334,12 @@ fn run_vanilla_option_surface_pricing_with_events(
         event_callback,
         "vanilla option surface pricing execution input",
         "vanilla option surface pricing run result",
-        |execution_input, progress_sender| {
+        |execution_input, progress_sender, cancellation_token| {
             let mut observer = |event: PricingProgressEvent| {
+                if cancellation_token.is_cancelled() {
+                    return;
+                }
+
                 let _ = progress_sender.send(event);
             };
 
@@ -302,9 +347,6 @@ fn run_vanilla_option_surface_pricing_with_events(
                 execution_input,
                 Some(&mut observer),
             )
-        },
-        || janiform::pricing::VanillaOptionSurfacePricingRunError::NodePricingFailure {
-            message: "pricing progress worker terminated unexpectedly".to_string(),
         },
     )
 }
@@ -314,39 +356,49 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         run_fitted_model_single_option_pricing_workflow,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_observed_options_pricing_workflow,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         resolve_high_level_pricing_maturity_inputs,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         derive_activity_compressed_pricing_interval_schedule,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(run_vanilla_option_pricing, module)?)?;
+
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_grid_batch_pricing,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_grid_batch_pricing_with_terminal_progress,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_grid_batch_pricing_with_events,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_surface_pricing,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_surface_pricing_with_terminal_progress,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_surface_pricing_with_events,
         module

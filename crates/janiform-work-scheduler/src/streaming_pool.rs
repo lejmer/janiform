@@ -1,10 +1,15 @@
 use std::collections::VecDeque;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
+
+use janiform_foundations::cancellation::CancellationToken;
 
 /// Inputs for a finite batch of independent work that can emit progress.
 pub struct StreamingWorkPoolInput<'scope, State, Job, Execute, RecordProgress, RecordOutput> {
     state: &'scope mut State,
+    cancellation_token: CancellationToken,
     jobs: Vec<Job>,
     worker_capacity: usize,
     execute_job: Execute,
@@ -18,6 +23,7 @@ impl<'scope, State, Job, Execute, RecordProgress, RecordOutput>
     /// Build a streaming work-pool input contract.
     pub fn new(
         state: &'scope mut State,
+        cancellation_token: CancellationToken,
         jobs: Vec<Job>,
         worker_capacity: usize,
         execute_job: Execute,
@@ -26,6 +32,7 @@ impl<'scope, State, Job, Execute, RecordProgress, RecordOutput>
     ) -> Self {
         Self {
             state,
+            cancellation_token,
             jobs,
             worker_capacity,
             execute_job,
@@ -39,6 +46,7 @@ impl<'scope, State, Job, Execute, RecordProgress, RecordOutput>
 pub struct StreamingWorkContext<Progress, Output> {
     worker_index: usize,
     job_position: usize,
+    cancellation_token: CancellationToken,
     sender: Sender<StreamingWorkPoolMessage<Progress, Output>>,
 }
 
@@ -53,8 +61,17 @@ impl<Progress, Output> StreamingWorkContext<Progress, Output> {
         self.job_position
     }
 
+    /// Cooperative cancellation token for the running job.
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.cancellation_token.shared_handle()
+    }
+
     /// Send a progress update to the caller.
     pub fn send_progress(&self, progress: Progress) -> bool {
+        if self.cancellation_token.is_cancelled() {
+            return false;
+        }
+
         self.sender
             .send(StreamingWorkPoolMessage::Progress(StreamingWorkProgress {
                 worker_index: self.worker_index,
@@ -125,6 +142,7 @@ where
 {
     let StreamingWorkPoolInput {
         state,
+        cancellation_token,
         jobs,
         worker_capacity,
         execute_job,
@@ -132,29 +150,38 @@ where
         mut record_output,
     } = input;
 
-    let scheduled_work_count = jobs.len();
-    if scheduled_work_count == 0 {
+    let submitted_work_count = jobs.len();
+    if submitted_work_count == 0 {
         return Ok(StreamingWorkPoolSummary {
-            scheduled_work_count,
+            scheduled_work_count: 0,
             completed_work_count: 0,
         });
     }
 
-    let worker_count = worker_capacity.max(1).min(scheduled_work_count);
-
+    let worker_count = worker_capacity.max(1).min(submitted_work_count);
     let pending_jobs = Arc::new(Mutex::new(jobs.into_iter().enumerate().collect()));
+    let scheduled_work_count = Arc::new(AtomicUsize::new(0));
 
     let (sender, receiver) = channel::<StreamingWorkPoolMessage<Progress, Output>>();
 
     let completed_work_count = std::thread::scope(|scope| {
         for worker_index in 0..worker_count {
             let pending_jobs = Arc::clone(&pending_jobs);
-            let sender = sender.clone();
+            let scheduled_work_count = Arc::clone(&scheduled_work_count);
+            let cancellation_token = cancellation_token.shared_handle();
 
+            let sender = sender.clone();
             let execute_job = &execute_job;
 
             scope.spawn(move || {
-                run_streaming_worker(worker_index, pending_jobs, sender, execute_job);
+                run_streaming_worker(
+                    worker_index,
+                    pending_jobs,
+                    scheduled_work_count,
+                    cancellation_token,
+                    sender,
+                    execute_job,
+                );
             });
         }
 
@@ -164,7 +191,7 @@ where
     })?;
 
     Ok(StreamingWorkPoolSummary {
-        scheduled_work_count,
+        scheduled_work_count: scheduled_work_count.load(Ordering::SeqCst),
         completed_work_count,
     })
 }
@@ -172,6 +199,8 @@ where
 fn run_streaming_worker<'scope, Job, Progress, Output, Execute>(
     worker_index: usize,
     pending_jobs: Arc<Mutex<VecDeque<(usize, Job)>>>,
+    scheduled_work_count: Arc<AtomicUsize>,
+    cancellation_token: CancellationToken,
     sender: Sender<StreamingWorkPoolMessage<Progress, Output>>,
     execute_job: &Execute,
 ) where
@@ -181,13 +210,20 @@ fn run_streaming_worker<'scope, Job, Progress, Output, Execute>(
     Execute: Fn(Job, StreamingWorkContext<Progress, Output>) -> Output,
 {
     loop {
+        if cancellation_token.is_cancelled() {
+            return;
+        }
+
         let Some((job_position, job)) = pop_next_streaming_job(&pending_jobs) else {
             return;
         };
 
+        scheduled_work_count.fetch_add(1, Ordering::SeqCst);
+
         let context = StreamingWorkContext {
             worker_index,
             job_position,
+            cancellation_token: cancellation_token.shared_handle(),
             sender: sender.clone(),
         };
 
@@ -246,6 +282,8 @@ mod tests {
         StreamingWorkContext, StreamingWorkOutput, StreamingWorkPoolInput, StreamingWorkProgress,
         run_streaming_work_pool,
     };
+    use janiform_foundations::cancellation::CancellationSource;
+    use janiform_foundations::cancellation::CancellationToken;
 
     #[derive(Debug, Default)]
     struct TestState {
@@ -259,10 +297,12 @@ mod tests {
 
         let summary = run_streaming_work_pool(StreamingWorkPoolInput::new(
             &mut state,
+            CancellationToken::uncancelled(),
             vec![1, 2, 3],
             2,
             |value, context: StreamingWorkContext<i32, i32>| {
                 assert!(context.worker_index() < 2);
+                assert!(!context.cancellation_token().is_cancelled());
                 assert!(context.send_progress(value));
 
                 value * 10
@@ -298,6 +338,7 @@ mod tests {
             .iter()
             .map(|(_, job_position, value)| (*job_position, *value))
             .collect::<Vec<_>>();
+
         let output_by_job = state
             .outputs
             .iter()
@@ -328,6 +369,7 @@ mod tests {
 
         let summary = run_streaming_work_pool(StreamingWorkPoolInput::new(
             &mut state,
+            CancellationToken::uncancelled(),
             Vec::<i32>::new(),
             2,
             |value, _context: StreamingWorkContext<i32, i32>| value,
@@ -352,6 +394,7 @@ mod tests {
 
         let result = run_streaming_work_pool(StreamingWorkPoolInput::new(
             &mut state,
+            CancellationToken::uncancelled(),
             vec![1],
             1,
             |value, context: StreamingWorkContext<i32, i32>| {
@@ -368,5 +411,33 @@ mod tests {
         ));
 
         assert_eq!(result, Err("progress failed".to_string()));
+    }
+
+    #[test]
+    fn streaming_work_pool_does_not_schedule_when_cancelled() {
+        let mut state = TestState::default();
+
+        let cancellation_source = CancellationSource::new();
+        cancellation_source.cancel();
+
+        let summary = run_streaming_work_pool(StreamingWorkPoolInput::new(
+            &mut state,
+            cancellation_source.token(),
+            vec![1, 2, 3],
+            2,
+            |value, _context: StreamingWorkContext<i32, i32>| value,
+            |_state: &mut TestState, _progress: StreamingWorkProgress<i32>| -> Result<(), String> {
+                Ok(())
+            },
+            |_state: &mut TestState, _output: StreamingWorkOutput<i32>| -> Result<(), String> {
+                Ok(())
+            },
+        ))
+        .expect("cancelled streaming work pool should drain cleanly");
+
+        assert_eq!(summary.scheduled_work_count, 0);
+        assert_eq!(summary.completed_work_count, 0);
+        assert_eq!(state.progress, Vec::<(usize, usize, i32)>::new());
+        assert_eq!(state.outputs, Vec::<(usize, usize, i32)>::new());
     }
 }

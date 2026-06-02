@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::ArgAction;
 use clap::Args;
 use clap::ValueEnum;
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_terminal_ui::TerminalRenderer;
 use serde::Deserialize;
 use serde::Serialize;
@@ -165,13 +166,17 @@ pub struct CommandContext {
     output_mode: OutputMode,
     color: ColorPolicy,
     verbosity: u8,
+    cancellation_token: CancellationToken,
     paths: PathResolver,
     events: EventSettings,
     config_path: Option<PathBuf>,
 }
 
 impl CommandContext {
-    pub(crate) fn from_global_options(options: &GlobalCliOptions) -> Result<Self, CliError> {
+    pub(crate) fn from_global_options(
+        options: &GlobalCliOptions,
+        cancellation_token: CancellationToken,
+    ) -> Result<Self, CliError> {
         let paths = PathResolver::from_process()?;
 
         let config_path = options
@@ -215,6 +220,7 @@ impl CommandContext {
             output_mode,
             color,
             verbosity,
+            cancellation_token,
             paths,
             events,
             config_path,
@@ -239,6 +245,11 @@ impl CommandContext {
     /// CLI diagnostic verbosity level.
     pub fn verbosity(&self) -> u8 {
         self.verbosity
+    }
+
+    /// Cooperative cancellation token shared by the active CLI command.
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.cancellation_token.shared_handle()
     }
 
     /// Resolved configuration path, if a TOML CLI configuration document was loaded.

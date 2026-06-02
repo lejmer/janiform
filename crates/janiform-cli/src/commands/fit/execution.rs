@@ -306,6 +306,7 @@ fn run_execution_input(
             session_definition_json: artifacts.session_definition_json(),
         },
         FitWorkflowObserver {
+            cancellation_token: context.cancellation_token(),
             progress_adapter: progress_adapter.as_mut(),
             terminal_output,
             machine_event_sink: machine_event_sink_for_context(context, &mut machine_event_sink),

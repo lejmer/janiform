@@ -1,19 +1,18 @@
+use std::sync::mpsc;
+
 use janiform_event_log::RunEvent;
 use janiform_workflows::{error::WorkflowError, write_machine_event_to_stderr};
-use pyo3::prelude::{Py, PyResult};
-use pyo3::types::PyAny;
+use pyo3::prelude::PyResult;
 
 use crate::CalibrationExecutionError;
-use crate::bindings::events::{
-    CallbackErrorState, emit_serializable_callback_event, raise_callback_error,
-};
+use crate::bindings::events::{CallbackErrorState, callback_failed, raise_callback_error};
 
 pub(super) fn fit_machine_event_sink(
     emit_machine_events: bool,
-    event_callback: Option<Py<PyAny>>,
+    event_sender: Option<mpsc::Sender<RunEvent>>,
     callback_error_state: CallbackErrorState,
 ) -> Option<impl FnMut(&RunEvent) -> Result<(), WorkflowError>> {
-    if !emit_machine_events && event_callback.is_none() {
+    if !emit_machine_events && event_sender.is_none() {
         return None;
     }
 
@@ -22,13 +21,12 @@ pub(super) fn fit_machine_event_sink(
             write_machine_event_to_stderr(event)?;
         }
 
-        if let Some(event_callback) = &event_callback {
-            emit_serializable_callback_event(
-                event_callback,
-                &callback_error_state,
-                event,
-                "fit progress event",
-            );
+        if let Some(event_sender) = &event_sender {
+            if callback_failed(&callback_error_state) {
+                return Ok(());
+            }
+
+            let _ = event_sender.send(event.clone());
         }
 
         Ok(())

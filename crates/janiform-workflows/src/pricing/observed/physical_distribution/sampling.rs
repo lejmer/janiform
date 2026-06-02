@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use janiform::simulation::{CoarseSimulationRunRequest, run_coarse_simulation};
+use janiform::simulation::{
+    CoarseSimulationRunError, CoarseSimulationRunRequest, run_coarse_simulation,
+};
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::randomness::{
     SimulationRandomnessSubstreamDomain, derive_simulation_substream_seed,
 };
@@ -66,16 +69,21 @@ pub(super) fn execute_physical_distribution_job(
     job: PhysicalDistributionJob,
     context: StreamingWorkContext<
         PhysicalDistributionProgress,
-        PhysicalDistributionPartitionOutput,
+        Result<PhysicalDistributionPartitionOutput, WorkflowError>,
     >,
-) -> PhysicalDistributionPartitionOutput {
+) -> Result<PhysicalDistributionPartitionOutput, WorkflowError> {
+    let cancellation_token = context.cancellation_token();
+
     let mut group_terminal_returns = vec![
         Vec::with_capacity(job.path_end - job.path_start);
         job.prepared_snapshot.terminal_record_indices.len()
     ];
 
     for path_position in job.path_start..job.path_end {
-        let path_result = simulate_terminal_returns(&job, path_position);
+        cancellation_token.check_cancelled()?;
+
+        let path_result =
+            simulate_terminal_returns(&job, path_position, cancellation_token.shared_handle());
         match path_result {
             Ok(terminal_returns) => {
                 for (group_position, terminal_return) in terminal_returns.into_iter().enumerate() {
@@ -85,24 +93,28 @@ pub(super) fn execute_physical_distribution_job(
                 }
             }
             Err(error) => {
-                return PhysicalDistributionPartitionOutput {
+                return Ok(PhysicalDistributionPartitionOutput {
                     snapshot_position: job.snapshot_position,
                     group_terminal_returns,
                     error: Some(error.to_string()),
-                };
+                });
             }
         }
     }
 
-    let _ = context.send_progress(PhysicalDistributionProgress {
-        completed_path_count: job.path_end - job.path_start,
-    });
+    cancellation_token.check_cancelled()?;
 
-    PhysicalDistributionPartitionOutput {
+    if !context.send_progress(PhysicalDistributionProgress {
+        completed_path_count: job.path_end - job.path_start,
+    }) {
+        cancellation_token.check_cancelled()?;
+    }
+
+    Ok(PhysicalDistributionPartitionOutput {
         snapshot_position: job.snapshot_position,
         group_terminal_returns,
         error: None,
-    }
+    })
 }
 
 pub(super) fn terminal_record_index_for_expiry(
@@ -136,6 +148,7 @@ pub(super) fn terminal_record_index_for_expiry(
 fn simulate_terminal_returns(
     job: &PhysicalDistributionJob,
     path_position: usize,
+    cancellation_token: CancellationToken,
 ) -> Result<Vec<f64>, WorkflowError> {
     let path_count = u64::try_from(job.diagnostics_request.path_count).map_err(|_| {
         pricing_validation_error(
@@ -179,11 +192,8 @@ fn simulate_terminal_returns(
     let mut simulation_request = job.prepared_snapshot.simulation_request_template.clone();
     simulation_request.seed = path_seed;
 
-    let path = run_coarse_simulation(simulation_request).map_err(|source| {
-        WorkflowError::PricingExecutionFailed {
-            message: format!("physical distribution coarse simulation failed: {source}"),
-        }
-    })?;
+    let path = run_coarse_simulation(simulation_request, cancellation_token)
+        .map_err(physical_distribution_simulation_error)?;
 
     job.prepared_snapshot
         .terminal_record_indices
@@ -203,6 +213,15 @@ fn simulate_terminal_returns(
             )
         })
         .collect()
+}
+
+fn physical_distribution_simulation_error(source: CoarseSimulationRunError) -> WorkflowError {
+    match source {
+        CoarseSimulationRunError::Cancelled { source } => WorkflowError::Cancelled { source },
+        source => WorkflowError::PricingExecutionFailed {
+            message: format!("physical distribution coarse simulation failed: {source}"),
+        },
+    }
 }
 
 #[cfg(test)]

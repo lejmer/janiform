@@ -31,6 +31,31 @@ pub(super) fn build_staged_run_failure_report(
     }
 }
 
+pub(super) fn build_staged_run_cancellation_report(
+    run_contract: &CalibrationRunContract,
+    stage_reports: Vec<CalibrationStagedRunStageReport>,
+    emitted_checkpoints: Vec<CalibrationStageCheckpointMetadata>,
+    resumed_from_checkpoint_reference: Option<String>,
+    resumed_from_last_successful_stage: Option<CalibrationStage>,
+    started_from_stage: Option<CalibrationStage>,
+) -> CalibrationStagedRunReport {
+    CalibrationStagedRunReport {
+        schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
+        failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
+        run_id: run_contract.run_spec.run_id.clone(),
+        execution_mode: run_contract.run_spec.execution_mode,
+        status: CalibrationStageExecutionStatus::Cancelled,
+        stage_reports,
+        emitted_checkpoints,
+        diagnostic_artifact_references: Vec::new(),
+        diagnostic_artifact_bundle: None,
+        resumed_from_checkpoint_reference,
+        resumed_from_last_successful_stage,
+        started_from_stage,
+        failure: None,
+    }
+}
+
 pub(super) fn diagnostic_runtime_profile_entry_for_stage_report(
     stage_report: &CalibrationStagedRunStageReport,
     elapsed_seconds: f64,

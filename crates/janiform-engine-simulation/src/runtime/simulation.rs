@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
@@ -60,6 +61,7 @@ use super::validation::map_transition_error_to_seeded_simulation_run_error;
 
 pub(crate) fn stream_seeded_tick_event_simulation_with_randomness_factory_internal<F, C>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
     consumer: &mut C,
     mut observer: Option<&mut dyn FnMut(SimulationProgressEvent)>,
@@ -68,6 +70,8 @@ where
     F: SimulationRandomnessFactory,
     C: SeededTickSimulationTransitionConsumer,
 {
+    cancellation_token.check_cancelled()?;
+
     run_config.validate()?;
 
     let state_snapshot_capture = run_config.options.state_snapshot_capture;
@@ -177,6 +181,8 @@ where
         .enumerate()
         .take(run_config.horizon_interval_count)
     {
+        cancellation_token.check_cancelled()?;
+
         let interval_inputs = build_interval_simulation_inputs(
             &run_config,
             interval_index,
@@ -206,6 +212,8 @@ where
             ),
         );
     }
+
+    cancellation_token.check_cancelled()?;
 
     Ok(build_stream_completion(
         run_config,

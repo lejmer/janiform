@@ -248,6 +248,11 @@ pub enum RunLifecycleEvent {
         failed_phase: Option<RunPhaseRef>,
         reason: String,
     },
+    RunCancelled {
+        total_runtime_seconds: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cancelled_before_stage: Option<RunStageRef>,
+    },
 }
 
 impl RunLifecycleEvent {
@@ -258,6 +263,7 @@ impl RunLifecycleEvent {
             Self::StageCompleted { .. } => "stage_completed",
             Self::RunCompleted { .. } => "run_completed",
             Self::RunFailed { .. } => "run_failed",
+            Self::RunCancelled { .. } => "run_cancelled",
         }
     }
 }

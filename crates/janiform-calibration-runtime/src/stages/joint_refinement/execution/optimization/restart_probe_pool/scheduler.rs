@@ -91,6 +91,7 @@ fn run_restart_probe_worker_pool_with_scheduler(
         input.context.stage_thread_pool.as_deref(),
         DynamicWorkPoolInput::new(
             &mut pool_state,
+            input.context.cancellation_token.shared_handle(),
             worker_capacity,
             |pool_state: &mut RestartProbeWorkerPoolState<'_>, _status| {
                 next_restart_probe_pool_job(
@@ -103,7 +104,9 @@ fn run_restart_probe_worker_pool_with_scheduler(
                     input.progress_sender,
                 )
             },
-            |pool_job| run_restart_probe_pool_job(pool_job, input.context, input.solver_settings),
+            |pool_job, _cancellation_token| {
+                run_restart_probe_pool_job(pool_job, input.context, input.solver_settings)
+            },
             |pool_state: &mut RestartProbeWorkerPoolState<'_>, result, _status| {
                 record_restart_probe_pool_result(
                     pool_state,

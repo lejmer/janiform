@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use janiform_foundations::cancellation::CancellationToken;
+
 use super::super::{
     CalibrationInMemoryStagePayloadState, CalibrationRunSpec, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStagePayloadSource,
@@ -29,6 +31,13 @@ use super::joint_refinement::{
 pub(in crate::staged_runner) fn run_stage_for_staged_execution(
     input: RunStageForStagedExecutionInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
+    if input.cancellation_token.is_cancelled() {
+        return Err(CalibrationStagedRunFailure::StageExecutionFailed {
+            stage: input.stage,
+            error_message: Some("operation cancelled".to_string()),
+        });
+    }
+
     match input.stage {
         CalibrationStage::Seasonality => run_seasonality_staged_execution_stage(input),
         CalibrationStage::Hawkes => run_hawkes_staged_execution_stage(input),
@@ -437,6 +446,7 @@ fn run_joint_refinement_like_staged_execution_stage(
             progress_observer: None,
             disk_checkpoint_directory: input.disk_checkpoint_directory,
             load_current_stage_resume_state: input.load_current_stage_resume_state,
+            cancellation_token: input.cancellation_token.shared_handle(),
         });
     }
 
@@ -461,6 +471,7 @@ fn run_joint_refinement_like_staged_execution_stage(
         progress_observer: Some(&mut progress_forwarder),
         disk_checkpoint_directory: input.disk_checkpoint_directory,
         load_current_stage_resume_state: input.load_current_stage_resume_state,
+        cancellation_token: input.cancellation_token.shared_handle(),
     })
 }
 
@@ -474,6 +485,7 @@ pub(in crate::staged_runner) struct RunStageForStagedExecutionInput<'a, 'observe
     pub(in crate::staged_runner) staged_run_inputs: &'a mut CalibrationStagedRunInputs,
     pub(in crate::staged_runner) payload_state: &'a CalibrationInMemoryStagePayloadState,
     pub(in crate::staged_runner) load_current_stage_resume_state: bool,
+    pub(in crate::staged_runner) cancellation_token: CancellationToken,
     pub(in crate::staged_runner) observer:
         &'a mut Option<&'observer mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
 }

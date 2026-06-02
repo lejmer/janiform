@@ -143,6 +143,7 @@ pub(crate) fn run_price_observed_options_command(
     let output = run_observed_options_pricing_with_observer(
         workflow_request,
         PricingWorkflowObserver {
+            cancellation_token: context.cancellation_token(),
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_output_for_context(context),
         },
@@ -198,6 +199,7 @@ fn run_fitted_model_pricing(
             model_path: Some(model_path.clone()),
         },
         PricingWorkflowObserver {
+            cancellation_token: context.cancellation_token(),
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_output_for_context(context),
         },

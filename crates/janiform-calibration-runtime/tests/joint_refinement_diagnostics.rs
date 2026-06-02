@@ -1,9 +1,33 @@
 mod support;
-use janiform_calibration_artifacts::CalibrationExecutionMode;
-use janiform_calibration_runtime::run_staged_calibration_with_checkpointing;
+use std::path::Path;
+
+use janiform_calibration_artifacts::{CalibrationExecutionMode, CalibrationRunContract};
+use janiform_calibration_runtime::{
+    CalibrationMemoryCheckpointStore, CalibrationStagedRunInputs, CalibrationStagedRunReport,
+    run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
+};
+use janiform_foundations::cancellation::CancellationToken;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use support::shared::{
     build_run_contract_with_mode_and_resume, calibration_stage_test_registry, staged_run_inputs,
 };
+
+fn run_staged_calibration_with_checkpointing(
+    run_contract: &CalibrationRunContract,
+    calendar_registry: &ExchangeCalendarRegistry,
+    staged_run_inputs: CalibrationStagedRunInputs,
+    memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> CalibrationStagedRunReport {
+    run_staged_calibration_with_checkpointing_core(
+        run_contract,
+        calendar_registry,
+        staged_run_inputs,
+        CancellationToken::uncancelled(),
+        memory_checkpoint_store,
+        disk_checkpoint_directory,
+    )
+}
 
 #[test]
 fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pairs() {

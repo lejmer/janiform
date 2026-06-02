@@ -22,9 +22,12 @@ use janiform_calibration_artifacts::{
     persist_calibration_stage_parameter_artifact_to_run_directory,
     persist_stage_checkpoint_to_disk, resolve_calibration_stage_execution_order,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::CalibrationStage;
+use super::CalibrationStageCheckpointMetadata;
 use super::checkpointing::{build_stage_checkpoint_metadata, build_stage_parameter_artifact_input};
 use super::contracts::{
     CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
@@ -39,8 +42,8 @@ use super::payload_state::{
     restore_in_memory_payload_state_from_stage_parameter_artifact, update_in_memory_payload_state,
 };
 use super::reporting::{
-    build_staged_run_failure_report, diagnostic_runtime_profile_entry_for_stage_report,
-    retained_stage_report,
+    build_staged_run_cancellation_report, build_staged_run_failure_report,
+    diagnostic_runtime_profile_entry_for_stage_report, retained_stage_report,
 };
 use crate::checkpointing::{
     CalibrationInMemoryStagePayloadState, CalibrationMemoryCheckpointStore,
@@ -65,6 +68,7 @@ pub fn run_staged_calibration_with_checkpointing(
     run_contract: &CalibrationRunContract,
     calendar_registry: &ExchangeCalendarRegistry,
     staged_run_inputs: CalibrationStagedRunInputs,
+    cancellation_token: CancellationToken,
     memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
     disk_checkpoint_directory: Option<&Path>,
 ) -> CalibrationStagedRunReport {
@@ -72,6 +76,7 @@ pub fn run_staged_calibration_with_checkpointing(
         run_contract,
         calendar_registry,
         staged_run_inputs,
+        cancellation_token,
         memory_checkpoint_store,
         disk_checkpoint_directory,
         None,
@@ -82,6 +87,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     run_contract: &CalibrationRunContract,
     calendar_registry: &ExchangeCalendarRegistry,
     mut staged_run_inputs: CalibrationStagedRunInputs,
+    cancellation_token: CancellationToken,
     mut memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
     disk_checkpoint_directory: Option<&Path>,
     mut observer: Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
@@ -442,6 +448,20 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         },
     );
 
+    if cancellation_token.is_cancelled() {
+        return build_and_emit_staged_run_cancellation_report(StagedRunCancellationReportInput {
+            run_contract,
+            run_start_time,
+            observer: &mut observer,
+            stage_reports,
+            emitted_checkpoints,
+            resumed_from_checkpoint_reference,
+            resumed_from_last_successful_stage,
+            started_from_stage,
+            cancelled_before_stage: started_from_stage,
+        });
+    }
+
     if start_position >= execution_stage_order.len() {
         let completed_status = if stage_reports.iter().any(|stage_report| {
             stage_report.status() == CalibrationStageExecutionStatus::SuccessWithWarnings
@@ -486,6 +506,22 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         .enumerate()
         .skip(start_position)
     {
+        if cancellation_token.is_cancelled() {
+            return build_and_emit_staged_run_cancellation_report(
+                StagedRunCancellationReportInput {
+                    run_contract,
+                    run_start_time,
+                    observer: &mut observer,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    cancelled_before_stage: Some(stage),
+                },
+            );
+        }
+
         emit_observer_event(
             &mut observer,
             CalibrationStagedRunObserverEvent::StageStarted {
@@ -508,10 +544,27 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             staged_run_inputs: &mut staged_run_inputs,
             payload_state: &payload_state,
             load_current_stage_resume_state,
+            cancellation_token: cancellation_token.shared_handle(),
             observer: &mut observer,
         }) {
             Ok(stage_report) => stage_report,
             Err(failure) => {
+                if cancellation_token.is_cancelled() {
+                    return build_and_emit_staged_run_cancellation_report(
+                        StagedRunCancellationReportInput {
+                            run_contract,
+                            run_start_time,
+                            observer: &mut observer,
+                            stage_reports,
+                            emitted_checkpoints,
+                            resumed_from_checkpoint_reference,
+                            resumed_from_last_successful_stage,
+                            started_from_stage,
+                            cancelled_before_stage: Some(stage),
+                        },
+                    );
+                }
+
                 let failure_report = build_staged_run_failure_report(
                     run_contract,
                     stage_reports,
@@ -560,13 +613,30 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             },
         );
 
-        stage_reports.push(retained_stage_report.clone());
-
         if stage_status == CalibrationStageExecutionStatus::Failure {
+            if cancellation_token.is_cancelled() {
+                return build_and_emit_staged_run_cancellation_report(
+                    StagedRunCancellationReportInput {
+                        run_contract,
+                        run_start_time,
+                        observer: &mut observer,
+                        stage_reports,
+                        emitted_checkpoints,
+                        resumed_from_checkpoint_reference,
+                        resumed_from_last_successful_stage,
+                        started_from_stage,
+                        cancelled_before_stage: Some(stage),
+                    },
+                );
+            }
+
+            stage_reports.push(retained_stage_report.clone());
+
             let failure = CalibrationStagedRunFailure::StageExecutionFailed {
                 stage,
                 error_message: stage_execution_error_message(&stage_report),
             };
+
             let failure_report = build_staged_run_failure_report(
                 run_contract,
                 stage_reports,
@@ -591,6 +661,8 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
 
             return failure_report;
         }
+
+        stage_reports.push(retained_stage_report.clone());
 
         update_in_memory_payload_state(&mut payload_state, &stage_report);
 
@@ -754,6 +826,36 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         }
 
         emitted_checkpoints.push(checkpoint_metadata);
+
+        if cancellation_token.is_cancelled() {
+            return build_and_emit_staged_run_cancellation_report(
+                StagedRunCancellationReportInput {
+                    run_contract,
+                    run_start_time,
+                    observer: &mut observer,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    cancelled_before_stage: execution_stage_order.get(stage_position + 1).copied(),
+                },
+            );
+        }
+    }
+
+    if cancellation_token.is_cancelled() {
+        return build_and_emit_staged_run_cancellation_report(StagedRunCancellationReportInput {
+            run_contract,
+            run_start_time,
+            observer: &mut observer,
+            stage_reports,
+            emitted_checkpoints,
+            resumed_from_checkpoint_reference,
+            resumed_from_last_successful_stage,
+            started_from_stage,
+            cancelled_before_stage: None,
+        });
     }
 
     let diagnostic_artifact_bundle =
@@ -947,6 +1049,44 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     report
 }
 
+struct StagedRunCancellationReportInput<'a, 'observer> {
+    run_contract: &'a CalibrationRunContract,
+    run_start_time: Instant,
+    observer: &'a mut Option<&'observer mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
+    stage_reports: Vec<CalibrationStagedRunStageReport>,
+    emitted_checkpoints: Vec<CalibrationStageCheckpointMetadata>,
+    resumed_from_checkpoint_reference: Option<String>,
+    resumed_from_last_successful_stage: Option<CalibrationStage>,
+    started_from_stage: Option<CalibrationStage>,
+    cancelled_before_stage: Option<CalibrationStage>,
+}
+
+fn build_and_emit_staged_run_cancellation_report(
+    input: StagedRunCancellationReportInput<'_, '_>,
+) -> CalibrationStagedRunReport {
+    let report = build_staged_run_cancellation_report(
+        input.run_contract,
+        input.stage_reports,
+        input.emitted_checkpoints,
+        input.resumed_from_checkpoint_reference,
+        input.resumed_from_last_successful_stage,
+        input.started_from_stage,
+    );
+
+    emit_observer_event(
+        input.observer,
+        CalibrationStagedRunObserverEvent::RunCancelled {
+            run_id: report.run_id.clone(),
+            execution_mode: report.execution_mode,
+            total_runtime_seconds: input.run_start_time.elapsed().as_secs_f64(),
+            completed_stage_count: report.stage_reports.len(),
+            cancelled_before_stage: input.cancelled_before_stage,
+        },
+    );
+
+    report
+}
+
 fn persist_stage_report_snapshot_to_run_directory(
     run_directory: &Path,
     stage_report: &CalibrationStagedRunStageReport,
@@ -960,6 +1100,7 @@ fn persist_stage_report_snapshot_to_run_directory(
 
     let artifact_path =
         stage_report_snapshot_path_in_run_directory(run_directory, stage_report.stage());
+
     let temporary_path = artifact_path.with_extension("json.tmp");
 
     let serialized_payload =

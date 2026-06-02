@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use janiform::calibration::market_data::{
     MarketDataNormalizedOptionSurfaceRecord, MarketDataTranslationTickRecord,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_terminal_ui::{ProgressAdapter, ProgressMeasure};
 
 use crate::error::WorkflowError;
@@ -12,7 +13,8 @@ use crate::progress::bounded_progress_measure;
 use crate::terminal::{TerminalProgressMode, stderr_progress_adapter, terminal_summary_policy};
 
 use super::super::progress::{
-    complete_pricing_progress, emit_pricing_completion_summary, emit_pricing_start_summary,
+    cancel_pricing_progress, complete_pricing_progress, emit_pricing_completion_summary,
+    emit_pricing_start_summary,
 };
 use super::super::validation::pricing_validation_error;
 use super::super::workflow::PricingWorkflowObserver;
@@ -43,13 +45,21 @@ use super::types::{
 
 pub fn run_observed_options_pricing(
     request: ObservedOptionsPricingRequest,
+    cancellation_token: CancellationToken,
 ) -> Result<ObservedOptionsPricingOutput, WorkflowError> {
-    run_observed_options_pricing_with_observer(request, PricingWorkflowObserver::default())
+    run_observed_options_pricing_with_observer(
+        request,
+        PricingWorkflowObserver {
+            cancellation_token,
+            ..PricingWorkflowObserver::default()
+        },
+    )
 }
 
 /// Run observed-options pricing with shared terminal progress.
 pub fn run_observed_options_pricing_with_terminal_progress(
     request: ObservedOptionsPricingRequest,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
 ) -> Result<ObservedOptionsPricingOutput, WorkflowError> {
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
@@ -57,6 +67,7 @@ pub fn run_observed_options_pricing_with_terminal_progress(
     run_observed_options_pricing_with_observer(
         request,
         PricingWorkflowObserver {
+            cancellation_token,
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_summary_policy(progress_mode),
         },
@@ -68,7 +79,10 @@ pub fn run_observed_options_pricing_with_observer(
     request: ObservedOptionsPricingRequest,
     mut observer: PricingWorkflowObserver<'_>,
 ) -> Result<ObservedOptionsPricingOutput, WorkflowError> {
+    let cancellation_token = observer.cancellation_token.shared_handle();
+
     validate_request(&request)?;
+    cancellation_token.check_cancelled()?;
 
     let started_at = Instant::now();
 
@@ -96,8 +110,18 @@ pub fn run_observed_options_pricing_with_observer(
         include_physical_distribution_diagnostics,
     )?;
 
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+        return Err(WorkflowError::Cancelled { source });
+    }
+
     let loaded_inputs =
         load_observed_pricing_inputs(&request, stage_count, &mut observer.progress_adapter)?;
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     let LoadedObservedOptionsPricingInputs {
         valuation_time_utc_nanos,
@@ -109,9 +133,10 @@ pub fn run_observed_options_pricing_with_observer(
         option_valuation_spot,
         option_valuation_tick_records,
     } = loaded_inputs;
+
     let option_valuation_tick_records = option_valuation_tick_records.as_deref();
 
-    let pricing_execution = match request.scope {
+    let pricing_execution_result = match request.scope {
         ObservedOptionsPricingScope::Snapshot => price_snapshot_groups(
             ObservedOptionsPricingGroupInput {
                 request: &request,
@@ -122,8 +147,9 @@ pub fn run_observed_options_pricing_with_observer(
                 option_valuation_spot,
                 option_valuation_tick_records,
             },
+            cancellation_token.shared_handle(),
             &mut observer.progress_adapter,
-        )?,
+        ),
         ObservedOptionsPricingScope::Surface => price_surface_groups(
             ObservedOptionsPricingGroupInput {
                 request: &request,
@@ -134,8 +160,18 @@ pub fn run_observed_options_pricing_with_observer(
                 option_valuation_spot,
                 option_valuation_tick_records,
             },
+            cancellation_token.shared_handle(),
             &mut observer.progress_adapter,
-        )?,
+        ),
+    };
+
+    let pricing_execution = match pricing_execution_result {
+        Ok(pricing_execution) => pricing_execution,
+        Err(WorkflowError::Cancelled { source }) => {
+            cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+            return Err(WorkflowError::Cancelled { source });
+        }
+        Err(error) => return Err(error),
     };
 
     let physical_distribution = if include_physical_distribution_diagnostics {
@@ -150,8 +186,18 @@ pub fn run_observed_options_pricing_with_observer(
             &request,
             pricing_execution.prepared_snapshots.as_slice(),
             pricing_execution.snapshot_results.as_slice(),
+            cancellation_token.shared_handle(),
             &mut observer.progress_adapter,
-        )?;
+        );
+
+        let physical_distribution = match physical_distribution {
+            Ok(physical_distribution) => physical_distribution,
+            Err(WorkflowError::Cancelled { source }) => {
+                cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+                return Err(WorkflowError::Cancelled { source });
+            }
+            Err(error) => return Err(error),
+        };
 
         complete_observed_pricing_stage(
             &mut observer.progress_adapter,
@@ -163,6 +209,11 @@ pub fn run_observed_options_pricing_with_observer(
     } else {
         None
     };
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     let execution_duration = started_at.elapsed();
 
@@ -184,6 +235,11 @@ pub fn run_observed_options_pricing_with_observer(
         stage_count,
         WRITE_ARTIFACTS_STAGE,
     )?;
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     emit_observed_stage_progress(
         &mut observer.progress_adapter,
@@ -208,6 +264,11 @@ pub fn run_observed_options_pricing_with_observer(
         physical_distribution: physical_distribution.as_ref(),
         execution_duration,
     })?;
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     emit_observed_stage_progress(
         &mut observer.progress_adapter,
@@ -312,8 +373,11 @@ struct ObservedOptionsPricingGroupInput<'a> {
 
 fn price_surface_groups(
     input: ObservedOptionsPricingGroupInput<'_>,
+    cancellation_token: CancellationToken,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
+    cancellation_token.check_cancelled()?;
+
     let request = input.request;
     let valuation_time_utc_nanos = input.valuation_time_utc_nanos;
 
@@ -325,7 +389,7 @@ fn price_surface_groups(
         .len();
 
     if expiry_count > 1 {
-        return price_snapshot_groups(input, progress_adapter);
+        return price_snapshot_groups(input, cancellation_token, progress_adapter);
     }
 
     let selected_expiry_timestamp_utc_nanos = input
@@ -374,6 +438,8 @@ fn price_surface_groups(
         progress_adapter,
     )?;
 
+    cancellation_token.check_cancelled()?;
+
     complete_observed_pricing_stage(
         progress_adapter,
         PREPARE_VALUATION_STATES_STAGE,
@@ -388,8 +454,12 @@ fn price_surface_groups(
         Vec::new()
     };
 
-    let snapshot_results =
-        price_prepared_surface_snapshots_parallel(request, prepared_snapshots, progress_adapter)?;
+    let snapshot_results = price_prepared_surface_snapshots_parallel(
+        request,
+        prepared_snapshots,
+        cancellation_token,
+        progress_adapter,
+    )?;
 
     Ok(ObservedOptionsPricingExecutionResult {
         prepared_snapshots: retained_prepared_snapshots,
@@ -399,9 +469,13 @@ fn price_surface_groups(
 
 fn price_snapshot_groups(
     input: ObservedOptionsPricingGroupInput<'_>,
+    cancellation_token: CancellationToken,
     progress_adapter: &mut Option<&mut ProgressAdapter>,
 ) -> Result<ObservedOptionsPricingExecutionResult, WorkflowError> {
+    cancellation_token.check_cancelled()?;
+
     let request = input.request;
+
     let stage_count =
         observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
 
@@ -421,6 +495,8 @@ fn price_snapshot_groups(
         input.option_valuation_tick_records,
         progress_adapter,
     )?;
+
+    cancellation_token.check_cancelled()?;
 
     complete_observed_pricing_stage(
         progress_adapter,
@@ -446,6 +522,8 @@ fn price_snapshot_groups(
     let prepared_snapshot = prepared_snapshots.pop().ok_or_else(|| {
         pricing_validation_error("valuation_time_utc", "snapshot was not prepared")
     })?;
+
+    cancellation_token.check_cancelled()?;
 
     let result = price_prepared_snapshot_with_terminal_progress(
         request,

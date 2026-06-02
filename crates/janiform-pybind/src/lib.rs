@@ -1,5 +1,6 @@
 mod bindings;
 mod module_definition;
+mod native_interrupt;
 mod panic_boundary;
 mod python_value;
 mod types;

@@ -1,10 +1,12 @@
 use std::time::Instant;
 
 use janiform::simulation::{
-    CoarseSimulationPath, SeededTickSimulationRunResult, SimulationProgressEvent,
-    SimulationProgressPhase, run_coarse_simulation, run_coarse_simulation_with_observer,
-    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_observer,
+    CoarseSimulationPath, CoarseSimulationRunError, SeededTickSimulationRunError,
+    SeededTickSimulationRunResult, SimulationProgressEvent, SimulationProgressPhase,
+    run_coarse_simulation, run_coarse_simulation_with_observer, run_seeded_tick_event_simulation,
+    run_seeded_tick_event_simulation_with_observer,
 };
+use janiform_foundations::cancellation::CancellationToken;
 
 use crate::error::WorkflowError;
 use crate::progress::VolatileProgressGate;
@@ -17,8 +19,8 @@ use super::labels::{
 use super::model_artifact::run_simulation_from_model_artifact;
 use super::output::{DirectSimulationWorkflowOutput, ModelArtifactSimulationWorkflowOutput};
 use super::progress::{
-    complete_simulation_progress, emit_completion_summary, emit_start_summary,
-    observe_gated_simulation_terminal_event, start_simulation_progress,
+    cancel_simulation_progress, complete_simulation_progress, emit_completion_summary,
+    emit_start_summary, observe_gated_simulation_terminal_event, start_simulation_progress,
 };
 use super::request::{
     CoarseSimulationWorkflowRequest, DirectSimulationWorkflowRequest,
@@ -31,6 +33,9 @@ pub fn run_simulation_from_model_artifact_workflow(
     request: ModelArtifactSimulationWorkflowRequest,
     mut observer: SimulationWorkflowObserver<'_>,
 ) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
+    let cancellation_token = observer.cancellation_token.shared_handle();
+    cancellation_token.check_cancelled()?;
+
     let scope_label = model_artifact_simulation_scope_label(request.simulation_kind);
 
     // Intentional copy because the workflow request is consumed by execution,
@@ -56,7 +61,7 @@ pub fn run_simulation_from_model_artifact_workflow(
     let mut progress_error = None::<WorkflowError>;
     let mut progress_gate = VolatileProgressGate::default();
 
-    let output = {
+    let output_result = {
         let mut progress_observer = |event: SimulationProgressEvent| {
             observe_gated_simulation_terminal_event(
                 &mut observer.progress_adapter,
@@ -66,8 +71,26 @@ pub fn run_simulation_from_model_artifact_workflow(
             );
         };
 
-        run_simulation_from_model_artifact(request, &mut progress_observer)?
+        run_simulation_from_model_artifact(
+            request,
+            cancellation_token.shared_handle(),
+            &mut progress_observer,
+        )
     };
+
+    let output = match output_result {
+        Ok(output) => output,
+        Err(WorkflowError::Cancelled { source }) => {
+            cancel_simulation_progress(observer.progress_adapter, progress_error)?;
+            return Err(WorkflowError::Cancelled { source });
+        }
+        Err(error) => return Err(error),
+    };
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     complete_simulation_progress(observer.progress_adapter, progress_error)?;
 
@@ -88,6 +111,10 @@ pub fn run_direct_simulation_workflow(
     request: DirectSimulationWorkflowRequest,
     mut observer: SimulationWorkflowObserver<'_>,
 ) -> Result<DirectSimulationWorkflowOutput, WorkflowError> {
+    let cancellation_token = observer.cancellation_token.shared_handle();
+
+    cancellation_token.check_cancelled()?;
+
     let DirectSimulationWorkflowRequest {
         job,
         run_id,
@@ -117,7 +144,8 @@ pub fn run_direct_simulation_workflow(
     let mut progress_gate = VolatileProgressGate::default();
 
     let started_at = Instant::now();
-    let completed = {
+
+    let completed_result = {
         let mut progress_observer = |event: SimulationProgressEvent| {
             observe_gated_simulation_terminal_event(
                 &mut observer.progress_adapter,
@@ -127,11 +155,30 @@ pub fn run_direct_simulation_workflow(
             );
         };
 
-        job.run(&mut progress_observer)?
+        job.run(cancellation_token.shared_handle(), &mut progress_observer)
     };
+
+    let completed = match completed_result {
+        Ok(completed) => completed,
+        Err(WorkflowError::Cancelled { source }) => {
+            cancel_simulation_progress(observer.progress_adapter, progress_error)?;
+            return Err(WorkflowError::Cancelled { source });
+        }
+        Err(error) => return Err(error),
+    };
+
     let execution_duration = started_at.elapsed();
 
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
+        return Err(WorkflowError::Cancelled { source });
+    }
+
     let export_summary = completed.export(output_path.as_deref())?;
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     complete_simulation_progress(observer.progress_adapter, progress_error)?;
 
@@ -187,12 +234,19 @@ fn run_direct_runtime_simulation_workflow<TInput, TRunResult, TRunError, TRun, T
     run_observed: TRunObserved,
 ) -> Result<TRunResult, WorkflowError>
 where
-    TRun: FnOnce(TInput) -> Result<TRunResult, TRunError>,
-    TRunObserved:
-        FnOnce(TInput, &mut dyn FnMut(SimulationProgressEvent)) -> Result<TRunResult, TRunError>,
-    TRunError: ToString,
+    TRun: FnOnce(TInput, CancellationToken) -> Result<TRunResult, TRunError>,
+    TRunObserved: FnOnce(
+        TInput,
+        CancellationToken,
+        &mut dyn FnMut(SimulationProgressEvent),
+    ) -> Result<TRunResult, TRunError>,
+    TRunError: RuntimeSimulationRunError,
     TRunResult: DirectSimulationCompletionFields,
 {
+    let cancellation_token = observer.cancellation_token.shared_handle();
+
+    cancellation_token.check_cancelled()?;
+
     emit_start_summary(&observer.terminal_output, "simulation", scope, None, None)?;
 
     start_simulation_progress(
@@ -218,16 +272,31 @@ where
             );
         };
 
-        run_observed(input, &mut progress_observer)
+        run_observed(
+            input,
+            cancellation_token.shared_handle(),
+            &mut progress_observer,
+        )
     } else {
-        run(input)
+        run(input, cancellation_token.shared_handle())
     }
-    .map_err(|source| WorkflowError::SimulationValidationFailed {
-        field: "request",
-        message: source.to_string(),
-    })?;
+    .map_err(RuntimeSimulationRunError::into_workflow_error);
+
+    let run_result = match run_result {
+        Ok(run_result) => run_result,
+        Err(WorkflowError::Cancelled { source }) => {
+            cancel_simulation_progress(observer.progress_adapter, progress_error)?;
+            return Err(WorkflowError::Cancelled { source });
+        }
+        Err(error) => return Err(error),
+    };
 
     let execution_duration = started_at.elapsed();
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_simulation_progress(observer.progress_adapter, progress_error)?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     complete_simulation_progress(observer.progress_adapter, progress_error)?;
 
@@ -241,6 +310,34 @@ where
     )?;
 
     Ok(run_result)
+}
+
+trait RuntimeSimulationRunError: ToString {
+    fn into_workflow_error(self) -> WorkflowError;
+}
+
+impl RuntimeSimulationRunError for SeededTickSimulationRunError {
+    fn into_workflow_error(self) -> WorkflowError {
+        match self {
+            Self::Cancelled { source } => WorkflowError::Cancelled { source },
+            source => WorkflowError::SimulationValidationFailed {
+                field: "request",
+                message: source.to_string(),
+            },
+        }
+    }
+}
+
+impl RuntimeSimulationRunError for CoarseSimulationRunError {
+    fn into_workflow_error(self) -> WorkflowError {
+        match self {
+            Self::Cancelled { source } => WorkflowError::Cancelled { source },
+            source => WorkflowError::SimulationValidationFailed {
+                field: "request",
+                message: source.to_string(),
+            },
+        }
+    }
 }
 
 fn model_artifact_run_id(request: &ModelArtifactSimulationWorkflowRequest) -> &str {

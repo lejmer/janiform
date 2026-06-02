@@ -7,6 +7,7 @@ use janiform::pricing::{
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
     materialize_schedule_interval_factors, run_vanilla_option_pricing,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_terminal_ui::{ProgressEvent, ProgressMeasure, TerminalSummaryPolicy};
 
 use crate::error::WorkflowError;
@@ -22,8 +23,8 @@ use super::model_parameters::build_vanilla_option_pricing_model_parameters;
 use super::output::FittedModelSingleOptionPricingOutput;
 use super::output::{pricing_completion_summary, pricing_start_summary};
 use super::progress::{
-    complete_pricing_progress, emit_pricing_completion_summary, emit_pricing_start_summary,
-    start_pricing_progress,
+    cancel_pricing_progress, complete_pricing_progress, emit_pricing_completion_summary,
+    emit_pricing_start_summary, start_pricing_progress,
 };
 use super::request::FittedModelSingleOptionPricingRequest;
 use super::request::FittedModelSingleOptionPricingWorkflowRequest;
@@ -36,8 +37,10 @@ const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
 /// Run a single vanilla option pricing workflow from a persisted model payload.
 pub fn run_fitted_model_single_option_pricing(
     request: FittedModelSingleOptionPricingRequest,
+    cancellation_token: CancellationToken,
 ) -> Result<FittedModelSingleOptionPricingOutput, WorkflowError> {
     validate_single_option_request(&request)?;
+    cancellation_token.check_cancelled()?;
 
     let started_at = Instant::now();
 
@@ -48,6 +51,8 @@ pub fn run_fitted_model_single_option_pricing(
         1,
     )?;
 
+    cancellation_token.check_cancelled()?;
+
     let run_id = match &request.run_id {
         // Intentional copy because the workflow owns the final run id while the
         // borrowed request remains available for validation and request building.
@@ -57,8 +62,12 @@ pub fn run_fitted_model_single_option_pricing(
 
     let initial_maturity_resolution = resolve_single_maturity(&request)?;
 
+    cancellation_token.check_cancelled()?;
+
     let prepared_pricing_input =
         prepare_pricing_input(&request, &context, initial_maturity_resolution)?;
+
+    cancellation_token.check_cancelled()?;
 
     let execution_input = build_execution_input(
         &request,
@@ -66,11 +75,15 @@ pub fn run_fitted_model_single_option_pricing(
         prepared_pricing_input.maturity_resolution,
     )?;
 
+    cancellation_token.check_cancelled()?;
+
     let run_result = run_vanilla_option_pricing(execution_input).map_err(|source| {
         WorkflowError::PricingExecutionFailed {
             message: source.to_string(),
         }
     })?;
+
+    cancellation_token.check_cancelled()?;
 
     let artifact_paths = if let Some(output_path) = request.output_path.as_deref() {
         let artifact_paths = pricing_artifact_paths(output_path);
@@ -93,6 +106,9 @@ pub fn run_fitted_model_single_option_pricing_workflow(
     request: FittedModelSingleOptionPricingWorkflowRequest,
     mut observer: PricingWorkflowObserver<'_>,
 ) -> Result<FittedModelSingleOptionPricingOutput, WorkflowError> {
+    let cancellation_token = observer.cancellation_token.shared_handle();
+    cancellation_token.check_cancelled()?;
+
     let FittedModelSingleOptionPricingWorkflowRequest {
         pricing_request,
         model_path,
@@ -125,10 +141,24 @@ pub fn run_fitted_model_single_option_pricing_workflow(
             .map_err(|source| WorkflowError::OutputProgress { source })?;
     }
 
-    let output = run_fitted_model_single_option_pricing(pricing_request)?;
+    let output =
+        run_fitted_model_single_option_pricing(pricing_request, cancellation_token.shared_handle());
+
+    let output = match output {
+        Ok(output) => output,
+        Err(WorkflowError::Cancelled { source }) => {
+            cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+            return Err(WorkflowError::Cancelled { source });
+        }
+        Err(error) => return Err(error),
+    };
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     complete_pricing_progress(observer.progress_adapter.as_deref_mut())?;
-
     emit_completion_summary(&observer.terminal_output, &output)?;
 
     Ok(output)

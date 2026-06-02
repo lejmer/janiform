@@ -304,6 +304,7 @@ fn run_staged_with_observer(
         run_staged_calibration_from_execution_input_with_observer(
             execution_input.clone(),
             calendar_registry,
+            observer.cancellation_token.shared_handle(),
             None,
             &mut staged_observer,
         )

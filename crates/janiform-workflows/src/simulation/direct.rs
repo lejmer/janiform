@@ -1,11 +1,13 @@
 use std::path::Path;
 
 use janiform::simulation::{
-    CoarseSimulationPath, CoarseSimulationRunRequest, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunResult, SimulationProgressEvent, run_coarse_simulation_with_observer,
+    CoarseSimulationPath, CoarseSimulationRunError, CoarseSimulationRunRequest,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunResult,
+    SimulationProgressEvent, run_coarse_simulation_with_observer,
     run_seeded_tick_event_simulation_with_observer,
 };
 use janiform::time::calendar::ExchangeCalendarRegistry;
+use janiform_foundations::cancellation::CancellationToken;
 
 use crate::error::WorkflowError;
 
@@ -93,12 +95,17 @@ impl DirectSimulationJob {
     /// Run the direct simulation job with progress observation.
     pub fn run(
         self,
+        cancellation_token: CancellationToken,
         observer: &mut dyn FnMut(SimulationProgressEvent),
     ) -> Result<DirectSimulationCompleted, WorkflowError> {
         match self {
             DirectSimulationJob::SeededTick { run_config, export } => {
-                let result = run_seeded_tick_event_simulation_with_observer(*run_config, observer)
-                    .map_err(|source| validation_error("request_json", source.to_string()))?;
+                let result = run_seeded_tick_event_simulation_with_observer(
+                    *run_config,
+                    cancellation_token,
+                    observer,
+                )
+                .map_err(seed_tick_error_to_workflow_error)?;
 
                 Ok(DirectSimulationCompleted::SeededTick {
                     result: Box::new(result),
@@ -106,8 +113,9 @@ impl DirectSimulationJob {
                 })
             }
             DirectSimulationJob::CoarseInterval { request, export } => {
-                let result = run_coarse_simulation_with_observer(*request, observer)
-                    .map_err(|source| validation_error("request_json", source.to_string()))?;
+                let result =
+                    run_coarse_simulation_with_observer(*request, cancellation_token, observer)
+                        .map_err(coarse_error_to_workflow_error)?;
 
                 Ok(DirectSimulationCompleted::CoarseInterval {
                     result: Box::new(result),
@@ -115,6 +123,20 @@ impl DirectSimulationJob {
                 })
             }
         }
+    }
+}
+
+fn seed_tick_error_to_workflow_error(source: SeededTickSimulationRunError) -> WorkflowError {
+    match source {
+        SeededTickSimulationRunError::Cancelled { source } => WorkflowError::Cancelled { source },
+        source => validation_error("request_json", source.to_string()),
+    }
+}
+
+fn coarse_error_to_workflow_error(source: CoarseSimulationRunError) -> WorkflowError {
+    match source {
+        CoarseSimulationRunError::Cancelled { source } => WorkflowError::Cancelled { source },
+        source => validation_error("request_json", source.to_string()),
     }
 }
 

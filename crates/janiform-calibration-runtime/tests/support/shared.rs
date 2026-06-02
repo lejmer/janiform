@@ -301,6 +301,7 @@ pub(crate) use janiform_engine_pricing::{
     VanillaOptionPricingMarketInputs,
     intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
 };
+pub(crate) use janiform_foundations::cancellation::CancellationToken;
 pub(crate) use janiform_foundations::complex_math::ComplexScalar;
 pub(crate) use janiform_foundations::time::{NANOS_PER_HOUR, utc_nanos};
 pub(crate) use janiform_market_time::calendar::{
@@ -2891,6 +2892,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     diagnostics: Default::default(),
                     option_pricing_input: None,
                 },
+                CancellationToken::uncancelled(),
             )
         });
 

@@ -9,6 +9,7 @@ use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsTransformSliceSamplingError,
     sample_interval_statistics_from_expected_statistics_with_randomness_factory,
 };
+use janiform_foundations::cancellation::{CancellationError, CancellationToken};
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
@@ -46,19 +47,26 @@ const KNOWN_NEWS_INTENSITY_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 /// Run deterministic coarse-interval simulation using the default splitmix64 randomness policy.
 pub fn run_coarse_simulation(
     run_request: CoarseSimulationRunRequest,
+    cancellation_token: CancellationToken,
 ) -> Result<CoarseSimulationPath, CoarseSimulationRunError> {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
-    run_coarse_simulation_with_randomness_factory(run_request, &randomness_factory)
+    run_coarse_simulation_with_randomness_factory(
+        run_request,
+        cancellation_token,
+        &randomness_factory,
+    )
 }
 
 pub fn run_coarse_simulation_with_observer(
     run_request: CoarseSimulationRunRequest,
+    cancellation_token: CancellationToken,
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<CoarseSimulationPath, CoarseSimulationRunError> {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
 
     run_coarse_simulation_with_randomness_factory_and_observer(
         run_request,
+        cancellation_token,
         &randomness_factory,
         observer,
     )
@@ -67,16 +75,23 @@ pub fn run_coarse_simulation_with_observer(
 /// Run deterministic coarse-interval simulation with an injected randomness factory.
 pub fn run_coarse_simulation_with_randomness_factory<F>(
     run_request: CoarseSimulationRunRequest,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
 ) -> Result<CoarseSimulationPath, CoarseSimulationRunError>
 where
     F: SimulationRandomnessFactory,
 {
-    run_coarse_simulation_with_randomness_factory_internal(run_request, randomness_factory, None)
+    run_coarse_simulation_with_randomness_factory_internal(
+        run_request,
+        cancellation_token,
+        randomness_factory,
+        None,
+    )
 }
 
 pub fn run_coarse_simulation_with_randomness_factory_and_observer<F>(
     run_request: CoarseSimulationRunRequest,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<CoarseSimulationPath, CoarseSimulationRunError>
@@ -85,6 +100,7 @@ where
 {
     run_coarse_simulation_with_randomness_factory_internal(
         run_request,
+        cancellation_token,
         randomness_factory,
         Some(observer),
     )
@@ -92,12 +108,15 @@ where
 
 fn run_coarse_simulation_with_randomness_factory_internal<F>(
     run_request: CoarseSimulationRunRequest,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
     mut observer: Option<&mut dyn FnMut(SimulationProgressEvent)>,
 ) -> Result<CoarseSimulationPath, CoarseSimulationRunError>
 where
     F: SimulationRandomnessFactory,
 {
+    cancellation_token.check_cancelled()?;
+
     run_request
         .validate()
         .map_err(|source| CoarseSimulationRunError::InvalidRunRequest {
@@ -227,6 +246,8 @@ where
     );
 
     for interval_index in 0..run_request.horizon_interval_count {
+        cancellation_token.check_cancelled()?;
+
         let interval_start_utc_nanos = interval_start_utc_nanos[interval_index];
         let interval_end_utc_nanos = interval_end_utc_nanos[interval_index];
 
@@ -507,6 +528,8 @@ where
         );
     }
 
+    cancellation_token.check_cancelled()?;
+
     CoarseSimulationPath::try_new(
         run_request.seed,
         run_request.start_time_utc_nanos,
@@ -525,6 +548,9 @@ where
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoarseSimulationRunError {
+    Cancelled {
+        source: CancellationError,
+    },
     InvalidRunRequest {
         source: Box<CoarseSimulationRunRequestError>,
     },
@@ -614,6 +640,7 @@ pub enum CoarseSimulationRunError {
 impl Display for CoarseSimulationRunError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Cancelled { source } => write!(formatter, "{source}"),
             Self::InvalidRunRequest { source } => {
                 write!(formatter, "run_request is invalid: {source}")
             }
@@ -758,6 +785,7 @@ impl Display for CoarseSimulationRunError {
 impl Error for CoarseSimulationRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::Cancelled { source } => Some(source),
             Self::InvalidRunRequest { source } => Some(source.as_ref()),
             Self::CalendarRegistryLoadFailure { source } => Some(source.as_ref()),
             Self::InvalidNigDriverConfiguration { source } => Some(source.as_ref()),
@@ -781,6 +809,12 @@ impl Error for CoarseSimulationRunError {
             | Self::EndogenousFirstMomentProjectionFailure { .. }
             | Self::KnownNewsFactorAlignmentFailure { .. } => None,
         }
+    }
+}
+
+impl From<CancellationError> for CoarseSimulationRunError {
+    fn from(source: CancellationError) -> Self {
+        Self::Cancelled { source }
     }
 }
 
@@ -965,12 +999,14 @@ fn validate_known_news_factor_alignment(
 
 #[cfg(test)]
 mod tests {
-    use super::run_coarse_simulation;
+    use super::{CoarseSimulationRunError, run_coarse_simulation as run_coarse_simulation_core};
+    use crate::CoarseSimulationPath;
     use crate::coarse::{CoarseSimulationModelInputs, CoarseSimulationRunRequest};
     use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use janiform_affine_oracle::sufficient_statistics::{
         SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
     };
+    use janiform_foundations::cancellation::CancellationToken;
     use janiform_market_time::calendar::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
         RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
@@ -989,6 +1025,12 @@ mod tests {
         SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
     };
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+
+    fn run_coarse_simulation(
+        run_request: CoarseSimulationRunRequest,
+    ) -> Result<CoarseSimulationPath, CoarseSimulationRunError> {
+        run_coarse_simulation_core(run_request, CancellationToken::uncancelled())
+    }
 
     #[test]
     fn coarse_simulation_does_not_decay_mean_reversion_during_closed_interval() {

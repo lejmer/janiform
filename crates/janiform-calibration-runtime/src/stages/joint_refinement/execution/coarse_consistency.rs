@@ -208,9 +208,10 @@ fn build_joint_coarse_tick_consistency_metrics_parallel(
         context.stage_thread_pool.as_deref(),
         StaticWorkPoolInput::new(
             &mut pool_state,
+            context.cancellation_token.shared_handle(),
             tasks,
             joint_refinement_parallel_worker_count(context),
-            |task: JointRefinementCoarseConsistencyTask| {
+            |task: JointRefinementCoarseConsistencyTask, _cancellation_token| {
                 JointRefinementCoarseConsistencyTaskOutput {
                     seed_position: task.seed_position,
                     simulation_seed: task.simulation_seed,
@@ -606,6 +607,7 @@ pub(crate) fn build_joint_coarse_interval_observations(
             interval_factors,
         )
         .map_err(|source| format!("invalid coarse simulation run request: {source}"))?,
+        context.cancellation_token.shared_handle(),
     )
     .map_err(|source| format!("coarse simulation failed: {source}"))?;
 

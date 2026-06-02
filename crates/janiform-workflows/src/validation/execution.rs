@@ -7,6 +7,7 @@ use janiform::calibration::market_data::normalize_market_data_source;
 use janiform::validation::stylized_facts::{
     StylizedFactHorizonComparisonReportBundle, StylizedFactHorizonComparisonRequest,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::parallelism::resolved_cpu_count;
 
 use super::artifacts::{
@@ -157,18 +158,20 @@ fn build_resolved_stylized_facts_validation_plan(
 /// Run the stylized-facts validation workflow.
 pub fn run_stylized_facts_validation_workflow(
     request: StylizedFactsValidationWorkflowRequest,
+    cancellation_token: CancellationToken,
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
 ) -> Result<StylizedFactsValidationWorkflowOutput, WorkflowError> {
     let request = resolve_workflow_request_inputs(&request)?;
-
     let plan = build_resolved_stylized_facts_validation_plan(&request)?;
+
+    cancellation_token.check_cancelled()?;
 
     let report_bundle = match plan.execution_mode {
         StylizedFactsValidationExecutionMode::PrecomputedComparison => {
             run_precomputed_comparison(&request, &plan)?
         }
         StylizedFactsValidationExecutionMode::RawData => {
-            run_raw_data_validation(&request, &plan, observer)?
+            run_raw_data_validation(&request, &plan, cancellation_token, observer)?
         }
     };
 
@@ -192,6 +195,7 @@ fn run_precomputed_comparison(
             })?;
 
     let metric_catalog = load_metric_catalog(request.metric_catalog.as_deref())?;
+
     let comparison_request: StylizedFactHorizonComparisonRequest =
         super::artifacts::load_typed_json_artifact(comparison_request_path)?;
 
@@ -212,8 +216,11 @@ fn run_precomputed_comparison(
 fn run_raw_data_validation(
     request: &StylizedFactsValidationWorkflowRequest,
     plan: &StylizedFactsValidationPlan,
+    cancellation_token: CancellationToken,
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
 ) -> Result<StylizedFactHorizonComparisonReportBundle, WorkflowError> {
+    cancellation_token.check_cancelled()?;
+
     let model_path = request
         .model_path
         .as_ref()
@@ -240,6 +247,8 @@ fn run_raw_data_validation(
 
     let (empirical_returns, analysis_window) =
         load_empirical_returns(request, empirical_data_path, observer)?;
+
+    cancellation_token.check_cancelled()?;
 
     observe(
         observer,
@@ -274,11 +283,13 @@ fn run_raw_data_validation(
         analysis_window,
         runtime_interval_duration_nanos,
         simulated_interval_count,
+        cancellation_token.shared_handle(),
         observer,
     )?;
 
-    let metric_catalog = load_metric_catalog(request.metric_catalog.as_deref())?;
+    cancellation_token.check_cancelled()?;
 
+    let metric_catalog = load_metric_catalog(request.metric_catalog.as_deref())?;
     let threshold_policy = threshold_policy_for_options(request, &metric_catalog)?;
 
     let comparison_request = build_comparison_request(ComparisonRequestBuildInput {

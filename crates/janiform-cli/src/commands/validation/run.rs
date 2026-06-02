@@ -91,7 +91,11 @@ fn run_validation(
             }
         };
 
-        run_stylized_facts_validation_workflow(request, &mut observer)?
+        run_stylized_facts_validation_workflow(
+            request,
+            context.cancellation_token(),
+            &mut observer,
+        )?
     };
 
     if let Some(error) = progress_error {

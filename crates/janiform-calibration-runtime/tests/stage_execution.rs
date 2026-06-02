@@ -9,7 +9,7 @@ use support::shared::{
     CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageExecutionStatus, CalibrationStagePayloadSource, CalibrationStageSeedOverride,
-    CalibrationStageSolverSettings, CalibrationTickObjectiveDataUsagePolicy,
+    CalibrationStageSolverSettings, CalibrationTickObjectiveDataUsagePolicy, CancellationToken,
     HawkesKernelValidationStatus, HawkesStageExecutionFailure, HawkesStageExecutionInput,
     HawkesStructuredAlphaParameterization, JointRefinementStageExecutionFailure,
     JointRefinementStageExecutionInput, JointRefinementStageFittedPayload,
@@ -338,6 +338,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             diagnostics: Default::default(),
             option_pricing_input: None,
         },
+        CancellationToken::uncancelled(),
     );
 
     let disk_report = run_joint_refinement_calibration_stage(
@@ -376,6 +377,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             diagnostics: Default::default(),
             option_pricing_input: None,
         },
+        CancellationToken::uncancelled(),
     );
 
     assert!(memory_report.status.is_successful(), "{memory_report:#?}");
@@ -444,6 +446,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     diagnostics: Default::default(),
                     option_pricing_input: None,
                 },
+                CancellationToken::uncancelled(),
             );
 
             let memory_multi_thread_report = run_joint_refinement_calibration_stage(
@@ -480,6 +483,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     diagnostics: Default::default(),
                     option_pricing_input: None,
                 },
+                CancellationToken::uncancelled(),
             );
 
             let memory_single_thread_payload = memory_single_thread_report
@@ -561,7 +565,14 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
 
     let report = with_joint_refinement_worker_executable_override(
         std::env::temp_dir().join("missing-janiform-joint-refinement-worker"),
-        || run_joint_refinement_calibration_stage(&run_spec, &calendar_registry, stage_input),
+        || {
+            run_joint_refinement_calibration_stage(
+                &run_spec,
+                &calendar_registry,
+                stage_input,
+                CancellationToken::uncancelled(),
+            )
+        },
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
@@ -632,6 +643,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
             diagnostics: Default::default(),
             option_pricing_input: Some(option_pricing_input),
         },
+        CancellationToken::uncancelled(),
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
@@ -699,6 +711,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
             diagnostics: Default::default(),
             option_pricing_input: None,
         },
+        CancellationToken::uncancelled(),
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);

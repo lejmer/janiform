@@ -6,13 +6,13 @@ use janiform_calibration_artifacts::{
     CalibrationArtifactReloadError, CalibrationArtifactReloadRequest,
     CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter, CalibrationCallerSurface,
     CalibrationDatasetSnapshotArtifact, CalibrationExecutionMode,
-    CalibrationExperimentIndexDocument, CalibrationStage, CalibrationStageParameterArtifact,
-    CalibrationStageParameterPayload, CalibrationValidationMetricArtifact,
-    CalibrationValidationMetricArtifactRole, CalibrationValidationMetricSourceKind,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    calibration_artifact_manifest_path, calibration_dataset_snapshot_artifact_path,
-    calibration_stage_parameter_artifact_path, calibration_validation_metric_artifact_path,
-    load_calibration_artifact_manifest_from_disk,
+    CalibrationExperimentIndexDocument, CalibrationRunContract, CalibrationStage,
+    CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
+    CalibrationValidationMetricArtifact, CalibrationValidationMetricArtifactRole,
+    CalibrationValidationMetricSourceKind, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
+    calibration_dataset_snapshot_artifact_path, calibration_stage_parameter_artifact_path,
+    calibration_validation_metric_artifact_path, load_calibration_artifact_manifest_from_disk,
     load_calibration_dataset_snapshot_artifact_from_disk,
     load_calibration_experiment_index_from_disk,
     load_calibration_stage_parameter_artifact_from_disk,
@@ -24,9 +24,12 @@ use janiform_calibration_artifacts::{
     reload_calibration_artifact_run_from_disk,
 };
 use janiform_calibration_runtime::{
-    CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
-    run_staged_calibration_with_checkpointing,
+    CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus, CalibrationStagedRunInputs,
+    CalibrationStagedRunReport,
+    run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
 };
+use janiform_foundations::cancellation::CancellationToken;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -41,6 +44,23 @@ use support::shared::{
     resolve_calibration_execution_mode_for_surface, staged_run_inputs,
     temporary_checkpoint_directory,
 };
+
+fn run_staged_calibration_with_checkpointing(
+    run_contract: &CalibrationRunContract,
+    calendar_registry: &ExchangeCalendarRegistry,
+    staged_run_inputs: CalibrationStagedRunInputs,
+    memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> CalibrationStagedRunReport {
+    run_staged_calibration_with_checkpointing_core(
+        run_contract,
+        calendar_registry,
+        staged_run_inputs,
+        CancellationToken::uncancelled(),
+        memory_checkpoint_store,
+        disk_checkpoint_directory,
+    )
+}
 
 const CALIBRATION_ARTIFACT_REGRESSION_FIXTURE_SCHEMA_VERSION: &str =
     "calibration.artifact_regression.fixture.v1";

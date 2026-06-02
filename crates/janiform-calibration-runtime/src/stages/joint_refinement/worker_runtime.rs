@@ -3,8 +3,11 @@ use std::fs;
 use std::io::{BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex, mpsc};
 
+use janiform_foundations::cancellation::{
+    CancellationError, CancellationToken, NATIVE_INTERRUPT_POLL_INTERVAL,
+};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
 use super::execution::JointRefinementSeedSummary;
@@ -119,7 +122,12 @@ impl JointRefinementSummarySimulationScheduler {
         &self,
         fitted_parameters: &JointRefinementStageFittedParameters,
         requested_seed: u64,
+        cancellation_token: CancellationToken,
     ) -> Result<JointRefinementSeedSummary, JointRefinementSeedSummaryAcquisitionError> {
+        cancellation_token
+            .check_cancelled()
+            .map_err(cancelled_error)?;
+
         if matches!(
             &self.backend,
             JointRefinementSummarySimulationBackend::InProcess
@@ -128,6 +136,7 @@ impl JointRefinementSummarySimulationScheduler {
                 &self.session_state,
                 fitted_parameters,
                 requested_seed,
+                cancellation_token,
             )
             .map(|(summary, _)| summary)
             .map_err(|error_message| {
@@ -143,7 +152,7 @@ impl JointRefinementSummarySimulationScheduler {
             requested_output: JointRefinementWorkerRequestedOutput::ExactSummaryOnly,
         };
 
-        let response = self.run_candidate_request(&request)?;
+        let response = self.run_candidate_request(&request, cancellation_token)?;
         match response {
             RunCandidateResponse::ExactSummaryOnly { seed_summary } => Ok(seed_summary.summary),
             RunCandidateResponse::ExactSummaryWithDiagnostics { seed_summary, .. } => {
@@ -161,7 +170,12 @@ impl JointRefinementSummarySimulationScheduler {
     pub(crate) fn run_candidate_request(
         &self,
         request: &RunCandidateRequest,
+        cancellation_token: CancellationToken,
     ) -> Result<RunCandidateResponse, JointRefinementSeedSummaryAcquisitionError> {
+        cancellation_token
+            .check_cancelled()
+            .map_err(cancelled_error)?;
+
         let dynamic_memory_estimate =
             super::summary_simulation::estimate_summary_simulation_memory(
                 &self.session_state,
@@ -172,20 +186,12 @@ impl JointRefinementSummarySimulationScheduler {
                 JointRefinementSeedSummaryAcquisitionError::SimulationFailure { error_message }
             })?;
 
-        let mut worker =
-            self.acquire_worker(dynamic_memory_estimate.estimated_total_retained_bytes as u64)?;
-        let run_result = worker.run_candidate(request);
+        let worker = self.acquire_worker(
+            dynamic_memory_estimate.estimated_total_retained_bytes as u64,
+            cancellation_token.shared_handle(),
+        )?;
 
-        let reusable = matches!(
-            &run_result,
-            Ok(RunCandidateResponse::ExactSummaryOnly { .. })
-                | Ok(RunCandidateResponse::ExactSummaryWithDiagnostics { .. })
-                | Ok(RunCandidateResponse::SimulationFailure { .. })
-        );
-
-        self.release_worker(worker, reusable);
-
-        run_result
+        self.run_candidate_request_on_worker(worker, request, cancellation_token)
     }
 
     pub(crate) fn estimate_seed_summary_workload(
@@ -209,6 +215,7 @@ impl JointRefinementSummarySimulationScheduler {
     fn acquire_worker(
         &self,
         estimated_dynamic_retained_bytes: u64,
+        cancellation_token: CancellationToken,
     ) -> Result<PersistentSummarySimulationWorker, JointRefinementSeedSummaryAcquisitionError> {
         let mut state_guard = self.state.lock().map_err(|_| {
             JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure {
@@ -217,6 +224,10 @@ impl JointRefinementSummarySimulationScheduler {
         })?;
 
         loop {
+            cancellation_token
+                .check_cancelled()
+                .map_err(cancelled_error)?;
+
             if state_guard.active_job_count < self.cpu_count
                 && let Some(worker) = state_guard.idle_workers.pop()
             {
@@ -230,6 +241,7 @@ impl JointRefinementSummarySimulationScheduler {
                         error_message,
                     }
                 })?;
+
             let worker_spawn_required_bytes = state_guard
                 .worker_baseline_resident_bytes
                 .saturating_add(state_guard.worker_initialized_session_resident_bytes)
@@ -275,13 +287,70 @@ impl JointRefinementSummarySimulationScheduler {
                 }
             }
 
-            state_guard = self.condvar.wait(state_guard).map_err(|_| {
-                JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure {
-                    error_message: "summary simulation scheduler wait mutex is poisoned"
-                        .to_string(),
-                }
-            })?;
+            let (wait_state_guard, _) = self
+                .condvar
+                .wait_timeout(state_guard, NATIVE_INTERRUPT_POLL_INTERVAL)
+                .map_err(
+                    |_| JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure {
+                        error_message: "summary simulation scheduler wait mutex is poisoned"
+                            .to_string(),
+                    },
+                )?;
+            state_guard = wait_state_guard;
         }
+    }
+
+    fn run_candidate_request_on_worker(
+        &self,
+        worker: PersistentSummarySimulationWorker,
+        request: &RunCandidateRequest,
+        cancellation_token: CancellationToken,
+    ) -> Result<RunCandidateResponse, JointRefinementSeedSummaryAcquisitionError> {
+        let worker_process_id = worker.process_id();
+
+        let (result_sender, result_receiver) = mpsc::channel();
+
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                let mut worker = worker;
+
+                let run_result = worker.run_candidate(request);
+                let reusable = worker_can_be_reused(&run_result);
+
+                let _ = result_sender.send((worker, reusable, run_result));
+            });
+
+            let mut cancellation_requested = false;
+
+            loop {
+                match result_receiver.recv_timeout(NATIVE_INTERRUPT_POLL_INTERVAL) {
+                    Ok((worker, reusable, run_result)) => {
+                        self.release_worker(worker, reusable && !cancellation_requested);
+
+                        if cancellation_requested {
+                            return Err(cancelled_error(CancellationError));
+                        }
+
+                        return run_result;
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        if cancellation_requested || cancellation_token.is_cancelled() {
+                            cancellation_requested = true;
+                            terminate_worker_process(worker_process_id);
+                        }
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        return Err(
+                            JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure {
+                                error_message:
+                                    "summary simulation worker request thread disconnected"
+                                        .to_string(),
+                            },
+                        );
+                    }
+                }
+            }
+        })
     }
 
     fn release_worker(&self, worker: PersistentSummarySimulationWorker, reusable: bool) {
@@ -296,6 +365,33 @@ impl JointRefinementSummarySimulationScheduler {
 
             self.condvar.notify_all();
         }
+    }
+}
+
+fn worker_can_be_reused(
+    run_result: &Result<RunCandidateResponse, JointRefinementSeedSummaryAcquisitionError>,
+) -> bool {
+    matches!(
+        run_result,
+        Ok(RunCandidateResponse::ExactSummaryOnly { .. })
+            | Ok(RunCandidateResponse::ExactSummaryWithDiagnostics { .. })
+            | Ok(RunCandidateResponse::SimulationFailure { .. })
+    )
+}
+
+fn cancelled_error(source: CancellationError) -> JointRefinementSeedSummaryAcquisitionError {
+    JointRefinementSeedSummaryAcquisitionError::SimulationFailure {
+        error_message: source.to_string(),
+    }
+}
+
+fn terminate_worker_process(process_id: u32) {
+    let mut system = System::new();
+
+    system.refresh_processes(ProcessesToUpdate::All, true);
+
+    if let Some(process) = system.process(Pid::from_u32(process_id)) {
+        let _ = process.kill();
     }
 }
 
@@ -319,9 +415,11 @@ impl PersistentSummarySimulationWorker {
         let Some(stdin) = child.stdin.take() else {
             return Err("summary simulation worker stdin is unavailable".to_string());
         };
+
         let Some(stdout) = child.stdout.take() else {
             return Err("summary simulation worker stdout is unavailable".to_string());
         };
+
         let Some(stderr) = child.stderr.take() else {
             return Err("summary simulation worker stderr is unavailable".to_string());
         };
@@ -332,6 +430,10 @@ impl PersistentSummarySimulationWorker {
             stdout: BufReader::new(stdout),
             stderr: BufReader::new(stderr),
         })
+    }
+
+    fn process_id(&self) -> u32 {
+        self.child.id()
     }
 
     fn initialize_session(
@@ -490,6 +592,7 @@ impl PersistentSummarySimulationWorker {
 impl Drop for PersistentSummarySimulationWorker {
     fn drop(&mut self) {
         self.close_session();
+
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -500,6 +603,7 @@ fn spawn_initialized_worker(
     session_context: &JointRefinementSummarySimulationSessionContext,
 ) -> Result<(PersistentSummarySimulationWorker, u64, u64), String> {
     let mut worker = PersistentSummarySimulationWorker::spawn(worker_executable)?;
+
     let (baseline, initialized) = worker.initialize_session(session_context)?;
 
     Ok((worker, baseline, initialized))
@@ -507,6 +611,7 @@ fn spawn_initialized_worker(
 
 fn resolve_summary_simulation_backend() -> Result<JointRefinementSummarySimulationBackend, String> {
     let backend_preference = resolve_summary_simulation_backend_preference()?;
+
     let worker_executable = match backend_preference {
         JointRefinementSummarySimulationBackendPreference::ProcessWorker => {
             resolve_optional_worker_executable_path()?
@@ -638,6 +743,7 @@ fn push_candidate_search_root(roots: &mut Vec<PathBuf>, candidate_root: PathBuf)
 
 fn workspace_root_from_manifest_directory() -> Option<PathBuf> {
     let manifest_directory = Path::new(env!("CARGO_MANIFEST_DIR"));
+
     manifest_directory
         .parent()
         .and_then(Path::parent)
@@ -675,15 +781,19 @@ fn resolve_backend_from_preference(
 
 fn current_available_memory_bytes() -> Result<u64, String> {
     let mut system = System::new();
+
     system.refresh_memory();
+
     Ok(system.available_memory())
 }
 
 pub fn current_process_resident_bytes() -> Result<u64, String> {
     let mut system = System::new();
+
     system.refresh_processes(ProcessesToUpdate::All, true);
 
     let process_id = Pid::from_u32(std::process::id());
+
     let process = system
         .process(process_id)
         .ok_or_else(|| "unable to resolve current process in sysinfo snapshot".to_string())?;
@@ -726,7 +836,9 @@ mod tests {
             let mut permissions = fs::metadata(path)
                 .expect("test worker script metadata should resolve")
                 .permissions();
+
             permissions.set_mode(0o755);
+
             fs::set_permissions(path, permissions)
                 .expect("test worker script permissions should update");
         }
@@ -744,11 +856,13 @@ mod tests {
     #[test]
     fn malformed_worker_initialize_session_output_is_reported() {
         let script_path = temporary_worker_script_path("malformed");
+
         let script_body = if cfg!(windows) {
             "@echo off\r\npowershell -Command \"$stdout = [Console]::OpenStandardOutput(); $bytes = [byte[]](123); $stdout.Write($bytes, 0, $bytes.Length)\"\r\n"
         } else {
             "#!/bin/sh\nprintf '{'\n"
         };
+
         write_worker_script(&script_path, script_body);
 
         let error = spawn_initialized_worker(
@@ -756,12 +870,14 @@ mod tests {
             &joint_refinement_summary_session_context_fixture(),
         )
         .expect_err("malformed worker output should fail");
+
         assert_initialize_session_protocol_failure_is_reported(&error);
     }
 
     #[test]
     fn worker_initialize_session_schema_mismatch_is_reported() {
         let script_path = temporary_worker_script_path("schema-mismatch");
+
         let script_body = if cfg!(windows) {
             "@echo off\r\npowershell -Command \"$stdout = [Console]::OpenStandardOutput(); $payload = [byte[]](8,0,0,0,0,0,0,0,1,0,0,0); $stdout.Write($payload, 0, $payload.Length)\"\r\n"
         } else {
@@ -775,6 +891,7 @@ mod tests {
             &joint_refinement_summary_session_context_fixture(),
         )
         .expect_err("schema-mismatched worker output should fail");
+
         assert_initialize_session_protocol_failure_is_reported(&error);
     }
 
@@ -788,7 +905,9 @@ mod tests {
 
         let workspace_root = workspace_root_from_manifest_directory()
             .expect("workspace root should resolve from the crate manifest directory");
+
         let expected_profile_directory = workspace_root.join("target").join("debug");
+
         let search_roots =
             candidate_search_roots_from_current_executable(simulated_python_executable);
 

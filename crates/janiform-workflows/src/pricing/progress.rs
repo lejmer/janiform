@@ -68,11 +68,24 @@ pub(super) fn emit_pricing_completion_summary(
 pub(super) fn complete_pricing_progress(
     progress_adapter: Option<&mut ProgressAdapter>,
 ) -> Result<(), WorkflowError> {
+    finish_pricing_progress(progress_adapter, "completed")
+}
+
+pub(super) fn cancel_pricing_progress(
+    progress_adapter: Option<&mut ProgressAdapter>,
+) -> Result<(), WorkflowError> {
+    finish_pricing_progress(progress_adapter, "cancelled")
+}
+
+fn finish_pricing_progress(
+    progress_adapter: Option<&mut ProgressAdapter>,
+    status: &str,
+) -> Result<(), WorkflowError> {
     let Some(progress_adapter) = progress_adapter else {
         return Ok(());
     };
 
-    complete_terminal_progress(progress_adapter, "completed")
+    complete_terminal_progress(progress_adapter, status)
 }
 
 fn pricing_progress_signal(event: &PricingProgressEvent) -> String {

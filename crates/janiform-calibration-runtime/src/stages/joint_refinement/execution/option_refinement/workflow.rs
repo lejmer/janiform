@@ -696,9 +696,10 @@ fn refine_search_tier_candidates(
         context.stage_thread_pool.as_deref(),
         StaticWorkPoolInput::new(
             &mut unresolved_results,
+            context.cancellation_token.shared_handle(),
             pending_jobs,
             candidate_parallelism,
-            refine_parallel_search_tier_candidate,
+            |input, _cancellation_token| refine_parallel_search_tier_candidate(input),
             |results: &mut Vec<(usize, Result<SearchTierCandidate, String>)>, result, _status| {
                 results.push(result)
             },
@@ -1083,9 +1084,10 @@ fn evaluate_selection_tier_candidates(
         context.stage_thread_pool.as_deref(),
         StaticWorkPoolInput::new(
             &mut unresolved_results,
+            context.cancellation_token.shared_handle(),
             pending_jobs,
             candidate_parallelism,
-            evaluate_parallel_selection_tier_candidate,
+            |input, _cancellation_token| evaluate_parallel_selection_tier_candidate(input),
             |results: &mut Vec<(usize, Option<OptionRefinedCandidate>)>, result, _status| {
                 results.push(result)
             },

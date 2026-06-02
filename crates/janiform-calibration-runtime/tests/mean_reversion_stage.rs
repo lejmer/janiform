@@ -1,20 +1,42 @@
 mod support;
 
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationStage, CalibrationStageSelectedCandidateSource,
+    CalibrationExecutionMode, CalibrationRunContract, CalibrationStage,
+    CalibrationStageSelectedCandidateSource,
 };
 use janiform_calibration_runtime::{
-    CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
-    CalibrationStagedRunStageReport, MeanReversionStageExecutionInput,
+    CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus, CalibrationStagedRunInputs,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport, MeanReversionStageExecutionInput,
     MeanReversionStageObservation, MeanReversionStageSeasonalityInput,
-    run_mean_reversion_calibration_stage, run_staged_calibration_with_checkpointing,
+    run_mean_reversion_calibration_stage,
+    run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
 };
+use janiform_foundations::cancellation::CancellationToken;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
+use std::path::Path;
 use support::shared::{
     build_hawkes_stage_success_payload, build_return_components_stage_success_payload,
     build_run_contract_with_mode_and_resume, build_seasonality_stage_success_payload,
     build_through_mean_reversion_run_contract_with_mode_and_resume,
     calibration_stage_test_registry, staged_run_inputs,
 };
+
+fn run_staged_calibration_with_checkpointing(
+    run_contract: &CalibrationRunContract,
+    calendar_registry: &ExchangeCalendarRegistry,
+    staged_run_inputs: CalibrationStagedRunInputs,
+    memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> CalibrationStagedRunReport {
+    run_staged_calibration_with_checkpointing_core(
+        run_contract,
+        calendar_registry,
+        staged_run_inputs,
+        CancellationToken::uncancelled(),
+        memory_checkpoint_store,
+        disk_checkpoint_directory,
+    )
+}
 
 fn synthetic_constant_anchor_observations() -> Vec<MeanReversionStageObservation> {
     [
