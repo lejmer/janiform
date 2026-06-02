@@ -13,7 +13,7 @@
 - Must work on both Windows and Linux (never hardcode Linux paths)
 
 ## Important Regression Test Policy
-
+1
 - Do not use regression tests as a substitute for stronger API or contract design. When a bug exposes an invalid state, first make that state hard or impossible to express through typed contracts, shared constructors, validators, or narrower public methods. Add or keep a regression test only when the invalid behavior remains genuinely easy to reintroduce after the API shape has been fixed, and document why that test is still necessary.
 - Do not write tests or assertions whose only purpose is to prove that old code, old text, old fields, or removed behavior are absent. Prefer exact positive contract assertions or stronger API shapes that make the unwanted state impossible to express.
 
@@ -99,7 +99,7 @@ In the `crates/` folder where the Rust code is located:
 - Avoid unnecessary clones:
   - Do not `.clone()` "to make the borrow checker happy". Restructure code first.
   - If cloning is needed, comment why (e.g., "intentional copy to decouple lifetime / avoid holding lock").
-- Any `.clone()` added in core must be either (a) on a small Copy-ish type, or (b) accompanied by a comment explaining why cloning is the best tradeoff.
+- Any `.clone()` added in core code must be either (a) on a small Copy-ish type, or (b) accompanied by a comment explaining why cloning is the best tradeoff.
 - Prefer iterators to indexing: avoid panics from out-of-bounds indexing.
 - Use `Option<T>`/`Result<T, E>` for absence/failure, not sentinel values.
 - No `unwrap()` / `expect()` in production paths.
