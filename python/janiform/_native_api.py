@@ -1,7 +1,9 @@
 from collections.abc import Mapping
 from importlib import import_module
 from types import ModuleType
-from typing import Optional
+from typing import Final, Optional
+
+_INTERRUPTED_EXIT_CODE: Final[int] = 130
 
 
 def native_module() -> ModuleType:
@@ -14,7 +16,7 @@ def run_cli() -> int:
         native = native_module()
         return int(native.run_cli())
     except KeyboardInterrupt:
-        return 2
+        return _INTERRUPTED_EXIT_CODE
 
 
 def native_exception_matches(
