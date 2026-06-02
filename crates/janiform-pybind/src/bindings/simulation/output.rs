@@ -1,7 +1,5 @@
 use janiform_workflows::error::WorkflowError;
-use janiform_workflows::simulation::{
-    DirectSimulationCompleted, ModelArtifactSimulationWorkflowOutput,
-};
+use janiform_workflows::simulation::{DirectSimulationCompleted, SimulationWorkflowOutput};
 use pyo3::prelude::{Py, PyErr, PyResult, Python};
 use pyo3::types::{PyAny, PyDictMethods};
 
@@ -12,7 +10,7 @@ use crate::types::PySeededTickSimulationNativeResult;
 
 pub(super) fn simulation_from_model_artifact_output_to_py_object(
     py: Python<'_>,
-    output: ModelArtifactSimulationWorkflowOutput,
+    output: SimulationWorkflowOutput,
 ) -> PyResult<Py<PyAny>> {
     let result = pyo3::types::PyDict::new(py);
 
@@ -33,7 +31,6 @@ pub(super) fn simulation_from_model_artifact_output_to_py_object(
     match output.completed {
         DirectSimulationCompleted::SeededTick {
             result: native_result,
-            ..
         } => {
             result.set_item("simulation_kind", "seeded_tick")?;
             result.set_item(
@@ -48,7 +45,6 @@ pub(super) fn simulation_from_model_artifact_output_to_py_object(
         }
         DirectSimulationCompleted::CoarseInterval {
             result: coarse_path,
-            ..
         } => {
             let raw_result_payload = serde_json::to_value(&coarse_path).map_err(|source| {
                 SimulationExecutionError::new_err(format!(

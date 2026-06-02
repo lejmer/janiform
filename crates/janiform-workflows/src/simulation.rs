@@ -4,6 +4,7 @@ pub mod artifacts;
 pub mod direct;
 mod execution;
 mod intervals;
+mod job;
 mod labels;
 pub mod model_artifact;
 mod output;
@@ -19,24 +20,23 @@ pub use artifacts::{
 };
 pub use direct::{
     CoarseIntervalExportSettings, DirectSimulationCompleted, DirectSimulationCompletion,
-    DirectSimulationJob, SeededTickExportSettings,
+    DirectSimulationExportPlan, DirectSimulationJob, SeededTickExportSettings,
 };
 pub use execution::{
-    run_coarse_simulation_workflow, run_direct_simulation_workflow,
-    run_seeded_tick_event_simulation_workflow, run_simulation_from_model_artifact_workflow,
+    run_coarse_simulation_workflow, run_seeded_tick_event_simulation_workflow,
+    run_simulation_from_model_artifact_workflow, run_simulation_workflow,
 };
 pub use labels::{
     direct_simulation_scope_label, model_artifact_simulation_scope_label, simulation_workflow_label,
 };
 pub use model_artifact::run_simulation_from_model_artifact;
-pub use output::{DirectSimulationWorkflowOutput, ModelArtifactSimulationWorkflowOutput};
+pub use output::SimulationWorkflowOutput;
 pub use output_preferences::{
     SimulationOutputPreferences, simulation_output_preferences_from_model_payload,
 };
 pub use request::{
-    CoarseSimulationWorkflowRequest, DirectSimulationWorkflowRequest,
     ModelArtifactSimulationContinuationData, ModelArtifactSimulationKind,
-    ModelArtifactSimulationWorkflowRequest, SeededTickEventSimulationWorkflowRequest,
+    ModelArtifactSimulationWorkflowRequest, SimulationWorkflowMetadata, SimulationWorkflowRequest,
 };
 pub use run::{
     run_coarse_simulation_with_terminal_progress,

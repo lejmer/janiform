@@ -23,17 +23,21 @@ pub enum DirectSimulationJob {
     SeededTick {
         /// Validated seeded run configuration.
         run_config: Box<SeededTickSimulationRunConfig>,
-        /// Export configuration.
-        export: SeededTickExportSettings,
     },
 
     /// Coarse interval simulation.
     CoarseInterval {
         /// Validated coarse run request.
         request: Box<CoarseSimulationRunRequest>,
-        /// Export configuration.
-        export: CoarseIntervalExportSettings,
     },
+}
+
+/// Export plan for direct simulation outputs.
+pub enum DirectSimulationExportPlan {
+    /// Seeded tick-event export settings.
+    SeededTick(SeededTickExportSettings),
+    /// Coarse interval export settings.
+    CoarseInterval(CoarseIntervalExportSettings),
 }
 
 /// Export settings for seeded tick simulations.
@@ -66,16 +70,12 @@ pub enum DirectSimulationCompleted {
     SeededTick {
         /// Engine result.
         result: Box<SeededTickSimulationRunResult>,
-        /// Export configuration.
-        export: SeededTickExportSettings,
     },
 
     /// Coarse interval result.
     CoarseInterval {
         /// Engine result.
         result: Box<CoarseSimulationPath>,
-        /// Export configuration.
-        export: CoarseIntervalExportSettings,
     },
 }
 
@@ -99,7 +99,7 @@ impl DirectSimulationJob {
         observer: &mut dyn FnMut(SimulationProgressEvent),
     ) -> Result<DirectSimulationCompleted, WorkflowError> {
         match self {
-            DirectSimulationJob::SeededTick { run_config, export } => {
+            DirectSimulationJob::SeededTick { run_config } => {
                 let result = run_seeded_tick_event_simulation_with_observer(
                     *run_config,
                     cancellation_token,
@@ -109,17 +109,15 @@ impl DirectSimulationJob {
 
                 Ok(DirectSimulationCompleted::SeededTick {
                     result: Box::new(result),
-                    export,
                 })
             }
-            DirectSimulationJob::CoarseInterval { request, export } => {
+            DirectSimulationJob::CoarseInterval { request } => {
                 let result =
                     run_coarse_simulation_with_observer(*request, cancellation_token, observer)
                         .map_err(coarse_error_to_workflow_error)?;
 
                 Ok(DirectSimulationCompleted::CoarseInterval {
                     result: Box::new(result),
-                    export,
                 })
             }
         }
@@ -145,58 +143,70 @@ impl DirectSimulationCompleted {
     pub fn export(
         &self,
         output_path: Option<&Path>,
+        export_plan: Option<&DirectSimulationExportPlan>,
     ) -> Result<Option<SimulationExportSummary>, WorkflowError> {
         let Some(output_path) = output_path else {
             return Ok(None);
         };
 
-        match self {
-            DirectSimulationCompleted::SeededTick { result, export } => {
-                export_seeded_tick_simulation(
-                    result,
-                    output_path,
-                    export.reference_price,
-                    &export.columns,
-                    export.batch_size,
-                )
-                .map(Some)
-            }
-            DirectSimulationCompleted::CoarseInterval { result, export } => {
-                export_coarse_simulation(
-                    result,
-                    output_path,
-                    export.reference_price,
-                    &export.columns,
-                    &export.calendar_registry,
-                    export.exchange_code.as_str(),
-                    export.batch_size,
-                )
-                .map(Some)
-            }
+        let Some(export_plan) = export_plan else {
+            return Err(validation_error(
+                "export_plan",
+                "output path requires simulation export settings",
+            ));
+        };
+
+        match (self, export_plan) {
+            (
+                DirectSimulationCompleted::SeededTick { result },
+                DirectSimulationExportPlan::SeededTick(export),
+            ) => export_seeded_tick_simulation(
+                result,
+                output_path,
+                export.reference_price,
+                &export.columns,
+                export.batch_size,
+            )
+            .map(Some),
+            (
+                DirectSimulationCompleted::CoarseInterval { result },
+                DirectSimulationExportPlan::CoarseInterval(export),
+            ) => export_coarse_simulation(
+                result,
+                output_path,
+                export.reference_price,
+                &export.columns,
+                &export.calendar_registry,
+                export.exchange_code.as_str(),
+                export.batch_size,
+            )
+            .map(Some),
+            _ => Err(validation_error(
+                "export_plan",
+                "simulation export settings do not match the completed simulation kind",
+            )),
         }
     }
 
     /// Return common completion fields.
     pub fn completion(&self) -> DirectSimulationCompletion {
         match self {
-            DirectSimulationCompleted::SeededTick { result, .. } => DirectSimulationCompletion {
+            DirectSimulationCompleted::SeededTick { result } => DirectSimulationCompletion {
                 seed: result.seed,
                 simulated_interval_count: result.simulated_interval_count,
                 simulated_interval_duration_nanos: seeded_result_interval_duration_nanos(result),
                 generated_tick_count: Some(result.event_count()),
             },
-            DirectSimulationCompleted::CoarseInterval { result, .. } => {
-                DirectSimulationCompletion {
-                    seed: result.seed,
-                    simulated_interval_count: result.simulated_interval_count,
-                    simulated_interval_duration_nanos: interval_duration_nanos_from_bounds(
-                        result.start_time_utc_nanos,
-                        result.end_time_utc_nanos,
-                        result.simulated_interval_count,
-                    ),
-                    generated_tick_count: None,
-                }
-            }
+            DirectSimulationCompleted::CoarseInterval { result } => DirectSimulationCompletion {
+                seed: result.seed,
+                simulated_interval_count: result.simulated_interval_count,
+                simulated_interval_duration_nanos: interval_duration_nanos_from_bounds(
+                    result.start_time_utc_nanos,
+                    result.end_time_utc_nanos,
+                    result.simulated_interval_count,
+                ),
+                generated_tick_count: None,
+            },
         }
     }
 }

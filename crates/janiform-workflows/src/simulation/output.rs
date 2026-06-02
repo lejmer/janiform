@@ -13,8 +13,8 @@ use janiform_terminal_ui::{
 use super::intervals::simulation_interval_count_label;
 use super::{DirectSimulationCompleted, DirectSimulationCompletion, SimulationExportSummary};
 
-/// Output from a direct simulation workflow.
-pub struct DirectSimulationWorkflowOutput {
+/// Output from a simulation workflow.
+pub struct SimulationWorkflowOutput {
     /// Completed native simulation result.
     pub completed: DirectSimulationCompleted,
     /// Optional export summary.
@@ -23,17 +23,7 @@ pub struct DirectSimulationWorkflowOutput {
     pub execution_duration: Duration,
 }
 
-/// Completed simulation-from-model-artifact workflow.
-pub struct ModelArtifactSimulationWorkflowOutput {
-    /// Completed native simulation result.
-    pub completed: DirectSimulationCompleted,
-    /// Optional export summary.
-    pub export_summary: Option<SimulationExportSummary>,
-    /// Native workflow execution duration.
-    pub execution_duration: Duration,
-}
-
-impl ModelArtifactSimulationWorkflowOutput {
+impl SimulationWorkflowOutput {
     /// Serialize the public workflow metadata fields.
     pub fn response_payload(&self) -> Result<Value, WorkflowError> {
         let completion = self.completed.completion();

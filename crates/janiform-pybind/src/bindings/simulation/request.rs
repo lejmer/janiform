@@ -54,7 +54,7 @@ impl ModelArtifactSimulationWorkflowPayload {
     }
 }
 
-pub(super) struct CoarseSimulationWorkflowRequestPayload<'py> {
+pub(super) struct CoarseSimulationRunRequestPayload<'py> {
     seed: u64,
     start_time_utc_nanos: i64,
     horizon_interval_count: usize,
@@ -63,7 +63,7 @@ pub(super) struct CoarseSimulationWorkflowRequestPayload<'py> {
     hourly_factor_contract: PyRef<'py, PyHourlyFactorContractResult>,
 }
 
-impl<'py> CoarseSimulationWorkflowRequestPayload<'py> {
+impl<'py> CoarseSimulationRunRequestPayload<'py> {
     pub(super) fn from_py(raw_request: &Bound<'py, PyAny>) -> PyResult<Self> {
         let request = raw_request.cast::<PyMapping>().map_err(|_| {
             SimulationExecutionError::new_err("coarse simulation request must be a mapping")
@@ -99,6 +99,8 @@ impl<'py> CoarseSimulationWorkflowRequestPayload<'py> {
     }
 
     pub(super) fn into_run_request(self) -> PyResult<CoarseSimulationRunRequest> {
+        // Intentional copies because the core interval-factor contract owns
+        // vectors while the hourly factor contract remains borrowed from Python.
         let interval_factors = SufficientStatisticsIntervalFactors::try_new(
             self.hourly_factor_contract.output.s_h.clone(),
             self.hourly_factor_contract
@@ -125,7 +127,7 @@ impl<'py> CoarseSimulationWorkflowRequestPayload<'py> {
     }
 }
 
-pub(super) struct SeededTickSimulationWorkflowRequestPayload<'py> {
+pub(super) struct SeededTickSimulationRunConfigPayload<'py> {
     seed: u64,
     start_time_utc: String,
     horizon_interval_count: usize,
@@ -134,7 +136,7 @@ pub(super) struct SeededTickSimulationWorkflowRequestPayload<'py> {
     run_options: SeededTickSimulationRunOptions,
 }
 
-impl<'py> SeededTickSimulationWorkflowRequestPayload<'py> {
+impl<'py> SeededTickSimulationRunConfigPayload<'py> {
     pub(super) fn from_py(raw_request: &Bound<'py, PyAny>) -> PyResult<Self> {
         let request = raw_request.cast::<PyMapping>().map_err(|_| {
             SimulationExecutionError::new_err("seeded tick simulation request must be a mapping")
@@ -188,6 +190,8 @@ impl<'py> SeededTickSimulationWorkflowRequestPayload<'py> {
     }
 
     pub(super) fn into_run_config(self) -> PyResult<SeededTickSimulationRunConfig> {
+        // Intentional copy because the run config owns calendar state
+        // independently of the borrowed hourly factor contract.
         let calendar_registry = self
             .hourly_factor_contract
             .calendar_registry
@@ -218,6 +222,8 @@ impl<'py> SeededTickSimulationWorkflowRequestPayload<'py> {
                 initial_mean_reversion_boundary_state: self
                     .model_inputs
                     .initial_mean_reversion_boundary_state,
+                // Intentional copy because the run config owns the factor
+                // contract while the PyRef remains borrowed from Python.
                 hourly_factor_contract: self.hourly_factor_contract.output.clone(),
                 return_clock_exposure_parameters: self
                     .model_inputs

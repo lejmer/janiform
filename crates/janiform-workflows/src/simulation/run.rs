@@ -11,11 +11,8 @@ use super::execution::{
     run_coarse_simulation_workflow, run_seeded_tick_event_simulation_workflow,
     run_simulation_from_model_artifact_workflow,
 };
-use super::output::ModelArtifactSimulationWorkflowOutput;
-use super::request::{
-    CoarseSimulationWorkflowRequest, ModelArtifactSimulationWorkflowRequest,
-    SeededTickEventSimulationWorkflowRequest,
-};
+use super::output::SimulationWorkflowOutput;
+use super::request::ModelArtifactSimulationWorkflowRequest;
 use super::workflow::SimulationWorkflowObserver;
 
 /// Run simulation from a model artifact with shared terminal progress.
@@ -23,7 +20,7 @@ pub fn run_simulation_from_model_artifact_with_terminal_progress(
     request: ModelArtifactSimulationWorkflowRequest,
     cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
-) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
 
     run_simulation_from_model_artifact_workflow(
@@ -45,9 +42,7 @@ pub fn run_coarse_simulation_with_terminal_progress(
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
 
     run_coarse_simulation_workflow(
-        CoarseSimulationWorkflowRequest {
-            run_request: request,
-        },
+        request,
         SimulationWorkflowObserver {
             cancellation_token,
             progress_adapter: progress_adapter.as_mut(),
@@ -65,7 +60,7 @@ pub fn run_seeded_tick_event_simulation_with_terminal_progress(
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
 
     run_seeded_tick_event_simulation_workflow(
-        SeededTickEventSimulationWorkflowRequest { run_config },
+        run_config,
         SimulationWorkflowObserver {
             cancellation_token,
             progress_adapter: progress_adapter.as_mut(),

@@ -27,7 +27,7 @@ use crate::error::WorkflowError;
 use crate::progress::ProgressUnitTracker;
 use crate::simulation::{
     DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, DirectSimulationCompleted, ModelArtifactSimulationKind,
-    ModelArtifactSimulationWorkflowRequest, SimulationOutputColumns,
+    ModelArtifactSimulationWorkflowRequest, SimulationOutputColumns, SimulationWorkflowMetadata,
     run_simulation_from_model_artifact,
 };
 
@@ -329,15 +329,17 @@ fn simulate_validation_path(
 ) -> Result<SimulatedValidationPathOutput, WorkflowError> {
     let simulation_output = run_simulation_from_model_artifact(
         ModelArtifactSimulationWorkflowRequest {
+            metadata: SimulationWorkflowMetadata {
+                run_id: Some(format!("stylized_facts_validation_path_{path_position}")),
+                request_path: None,
+                output_path: None,
+            },
             model_payload,
-            run_id: Some(format!("stylized_facts_validation_path_{path_position}")),
-            request_path: None,
             simulation_kind: ModelArtifactSimulationKind::SeededTick,
             seed,
             start_time_utc: DateTime::<Utc>::from_timestamp_nanos(analysis_window.start_utc_nanos),
             horizon_interval_count: simulated_interval_count,
             interval_duration_nanos: runtime_interval_duration_nanos,
-            output_path: None,
             output_columns: SimulationOutputColumns {
                 timestamp_column: "timestamp".to_string(),
                 price_column: "price".to_string(),

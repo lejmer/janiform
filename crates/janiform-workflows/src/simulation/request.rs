@@ -3,16 +3,55 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use janiform::model::factors::hourly::NANOS_PER_HOUR;
 use janiform::model::hawkes::HawkesExcitationState;
-use janiform::simulation::{
-    CoarseSimulationRunRequest, MeanReversionBoundaryState, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationRunConfig,
-};
+use janiform::simulation::{MeanReversionBoundaryState, SeededTickEventStateSnapshotCapture};
 use janiform_foundations::time::deserialize_utc_datetime;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::artifacts::{DEFAULT_SIMULATION_EXPORT_BATCH_SIZE, SimulationOutputColumns};
-use super::direct::DirectSimulationJob;
+use super::direct::{DirectSimulationExportPlan, DirectSimulationJob};
+
+const DEFAULT_SIMULATION_RUN_ID: &str = "simulation";
+
+/// Shared workflow metadata for simulation execution.
+#[derive(Debug, Default, Deserialize)]
+pub struct SimulationWorkflowMetadata {
+    /// Optional stable workflow run id shown in terminal summaries.
+    #[serde(default)]
+    pub run_id: Option<String>,
+    /// Optional request artifact path when the boundary loaded the request from disk.
+    #[serde(default)]
+    pub request_path: Option<PathBuf>,
+    /// Optional primary output path.
+    #[serde(default)]
+    pub output_path: Option<PathBuf>,
+}
+
+impl SimulationWorkflowMetadata {
+    /// Return the configured run id, or the default simulation run id.
+    pub fn run_id(&self) -> &str {
+        self.run_id.as_deref().unwrap_or(DEFAULT_SIMULATION_RUN_ID)
+    }
+
+    /// Fill in the default simulation run id when no explicit id was provided.
+    pub fn into_defaulted_run_id(mut self) -> Self {
+        if self.run_id.is_none() {
+            self.run_id = Some(DEFAULT_SIMULATION_RUN_ID.to_string());
+        }
+
+        self
+    }
+}
+
+/// Workflow request for simulation execution.
+pub struct SimulationWorkflowRequest {
+    /// Shared workflow metadata.
+    pub metadata: SimulationWorkflowMetadata,
+    /// Direct simulation job.
+    pub job: DirectSimulationJob,
+    /// Optional export plan for writing direct simulation outputs.
+    pub export_plan: Option<DirectSimulationExportPlan>,
+}
 
 const DEFAULT_SIMULATION_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
 const DEFAULT_SEEDED_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1024;
@@ -21,14 +60,11 @@ const DEFAULT_SEEDED_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1024;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelArtifactSimulationWorkflowRequest {
+    /// Shared workflow metadata.
+    #[serde(flatten)]
+    pub metadata: SimulationWorkflowMetadata,
     /// Persisted `JaniformModel` payload.
     pub model_payload: Value,
-    /// Optional stable workflow run id shown in terminal summaries.
-    #[serde(default)]
-    pub run_id: Option<String>,
-    /// Optional request artifact path when the boundary loaded the request from disk.
-    #[serde(default)]
-    pub request_path: Option<PathBuf>,
     /// Simulation kind selected by the public API.
     pub simulation_kind: ModelArtifactSimulationKind,
     /// Deterministic run seed.
@@ -41,8 +77,6 @@ pub struct ModelArtifactSimulationWorkflowRequest {
     /// Runtime interval width in UTC nanoseconds.
     #[serde(default = "default_simulation_interval_duration_nanos")]
     pub interval_duration_nanos: i64,
-    /// Optional artifact path for direct workflow export.
-    pub output_path: Option<PathBuf>,
     /// Output column contract.
     pub output_columns: SimulationOutputColumns,
     /// Optional output reference price.
@@ -92,30 +126,6 @@ pub struct ModelArtifactSimulationContinuationData {
     pub observation_trade_sides: Vec<String>,
     /// Optional current spot price used for observed log-price derivation.
     pub observed_price: Option<f64>,
-}
-
-/// Workflow request for direct simulation execution.
-pub struct DirectSimulationWorkflowRequest {
-    /// Direct simulation job.
-    pub job: DirectSimulationJob,
-    /// Stable workflow run id shown in terminal summaries.
-    pub run_id: String,
-    /// Optional request artifact path when the boundary loaded the request from disk.
-    pub request_path: Option<PathBuf>,
-    /// Optional primary output path.
-    pub output_path: Option<PathBuf>,
-}
-
-/// Workflow request for direct coarse simulation.
-pub struct CoarseSimulationWorkflowRequest {
-    /// Coarse simulation runtime request.
-    pub run_request: CoarseSimulationRunRequest,
-}
-
-/// Workflow request for seeded tick-event simulation.
-pub struct SeededTickEventSimulationWorkflowRequest {
-    /// Seeded tick-event simulation runtime configuration.
-    pub run_config: SeededTickSimulationRunConfig,
 }
 
 fn default_simulation_interval_duration_nanos() -> i64 {
