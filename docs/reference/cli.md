@@ -299,6 +299,7 @@ By default, Janiform writes a run directory under .janiform/runs/ with the fitte
 * `--exchange-code <CODE>` — Market exchange code.
 * `--session-timezone <TZ>` — Market session timezone.
 * `--session-definition-path <PATH>` — Session definition JSON path.
+* `--tick-size <PRICE_INCREMENT>` — Observed tick price increment for the fitted instrument.
 * `--run-id <ID>` — Stable run identifier.
 * `--output-dir <DIR>` — Directory for command outputs.
 
@@ -529,6 +530,7 @@ This command resolves the supplied market-data inputs and calibration scope, the
 * `--exchange-code <CODE>` — Market exchange code.
 * `--session-timezone <TZ>` — Market session timezone.
 * `--session-definition-path <PATH>` — Session definition JSON path.
+* `--tick-size <PRICE_INCREMENT>` — Observed tick price increment for the fitted instrument.
 * `--run-id <ID>` — Stable run identifier.
 * `--output-dir <DIR>` — Directory for command outputs.
 
@@ -703,6 +705,7 @@ This command prepares the same calibration plan used by the default fit command,
 * `--exchange-code <CODE>` — Market exchange code.
 * `--session-timezone <TZ>` — Market session timezone.
 * `--session-definition-path <PATH>` — Session definition JSON path.
+* `--tick-size <PRICE_INCREMENT>` — Observed tick price increment for the fitted instrument.
 * `--run-id <ID>` — Stable run identifier.
 * `--output-dir <DIR>` — Directory for command outputs.
 
@@ -947,6 +950,7 @@ This command validates fit inputs and writes the prepared input file consumed by
 * `--exchange-code <CODE>` — Market exchange code.
 * `--session-timezone <TZ>` — Market session timezone.
 * `--session-definition-path <PATH>` — Session definition JSON path.
+* `--tick-size <PRICE_INCREMENT>` — Observed tick price increment for the fitted instrument.
 * `--run-id <ID>` — Stable run identifier.
 * `--output-dir <DIR>` — Directory for command outputs.
 

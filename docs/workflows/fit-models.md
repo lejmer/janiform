@@ -29,6 +29,7 @@ To fit a model we need the market observations and the context required to inter
 | Input                  | Required | Notes                                                                                                                                                                           |
 |------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used.                                 |
+| Tick size              | No       | Supply it when the instrument has a known price increment. When omitted, Janiform derives the tick-grid observation setting from the retained tick data when possible.          |
 | Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                                                    |
 | Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                                                      |
 | Coarse data            | No       | Optional lower-frequency OHLCV bars or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval open-time observations by default. |
@@ -44,7 +45,10 @@ from pathlib import Path
 from janiform.calibration import JaniformEstimator
 from janiform.model import JaniformModel
 
-estimator = JaniformEstimator(market_profile="eurusd_spot")
+estimator = JaniformEstimator(
+    market_profile="eurusd_spot",
+    tick_size=0.00001,
+)
 model: JaniformModel = estimator.fit(
     tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet",
 )
@@ -110,6 +114,7 @@ model: JaniformModel = estimator.fit(
 ```bash
 janiform fit \
   --tick-data-path data/Synthetic_EURUSD_Data_1M_ticks.parquet \
+  --tick-size 0.00001 \
   --run-id eurusd-fit
 ```
 

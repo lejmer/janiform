@@ -493,6 +493,70 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
     assert request.preprocessing_settings == preprocessing_settings
 
 
+def test_prepare_fit_workflow_passes_high_level_tick_size_to_preparation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+        tick_size=0.00001,
+    )
+    prepared_workflow = estimator._prepare_fit_workflow(
+        run_id="high-level-tick-size-request",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+        tick_data_provenance_label="tick_data",
+        option_surface_path=None,
+        option_surface_format=CalibrationInputFileFormat.PARQUET,
+        option_surface_provenance_label="option_surface",
+    )
+
+    request = prepared_workflow.prepared.request
+    if prepared_workflow.temporary_directory is not None:
+        prepared_workflow.temporary_directory.cleanup()
+
+    assert request.preprocessing_settings == CalibrationMarketDataPreprocessingSettings(
+        return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+            tick_size=0.00001,
+        ),
+    )
+
+
+def test_estimator_rejects_duplicate_tick_size_sources() -> None:
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        JaniformEstimator(
+            preprocessing_settings=CalibrationMarketDataPreprocessingSettings(
+                return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+                    tick_size=0.00002,
+                ),
+            ),
+            tick_size=0.00001,
+        )
+
+    assert captured_error.value.failure.field_path == "tick_size"
+
+
+def test_estimator_rejects_invalid_high_level_tick_size() -> None:
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        JaniformEstimator(tick_size=0.0)
+
+    assert captured_error.value.failure.field_path == "tick_size"
+
+
 def test_prepare_fit_workflow_passes_option_surface_inputs_to_session_inference(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -48,6 +48,7 @@ pub(crate) fn run_fit_command(
             workflow_scope: command.workflow_scope,
             execution_mode: command.execution_mode.map(calibration_execution_mode),
             cpu_count: command.cpu_count,
+            tick_size: command.tick_size.tick_size,
             overrides: FitPreparationOverrides {
                 mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
                 dynamics_search_restart_candidate_budget: command

@@ -156,6 +156,7 @@ estimator = JaniformEstimator(
     market_profile="eurusd_spot",
     tick_data_column_mapping=tick_columns,
     normalization_policy=normalization,
+    tick_size=0.00001,
 )
 model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "ticks.csv")
 ```
@@ -323,6 +324,7 @@ janiform fit \
   --tick-price-column price \
   --tick-trade-sign-column trade_sign \
   --tick-price-input-policy explicit_price_column \
+  --tick-size 0.00001 \
   --timestamp-timezone UTC \
   --market eurusd_spot \
   --run-id explicit-columns-fit

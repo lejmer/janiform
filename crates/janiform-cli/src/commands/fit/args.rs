@@ -30,6 +30,9 @@ pub(crate) struct FitCommand {
     pub(crate) inputs: TickDataOptions,
 
     #[command(flatten)]
+    pub(crate) tick_size: FitTickSizeOptions,
+
+    #[command(flatten)]
     pub(crate) run: RunIdentityOptions,
 
     #[arg(
@@ -182,6 +185,9 @@ pub(crate) struct FitInspectCommand {
     pub(crate) inputs: TickDataOptions,
 
     #[command(flatten)]
+    pub(crate) tick_size: FitTickSizeOptions,
+
+    #[command(flatten)]
     pub(crate) run: RunIdentityOptions,
 
     #[arg(
@@ -209,6 +215,9 @@ The plan command validates user inputs, resolves output paths, chooses the calib
 pub(crate) struct FitPlanCommand {
     #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
+
+    #[command(flatten)]
+    pub(crate) tick_size: FitTickSizeOptions,
 
     #[command(flatten)]
     pub(crate) run: RunIdentityOptions,
@@ -333,6 +342,9 @@ pub(crate) struct FitStagedPlanCommand {
     pub(crate) inputs: TickDataOptions,
 
     #[command(flatten)]
+    pub(crate) tick_size: FitTickSizeOptions,
+
+    #[command(flatten)]
     pub(crate) run: RunIdentityOptions,
 
     #[arg(
@@ -355,6 +367,16 @@ pub(crate) struct FitStagedPlanCommand {
         help = "Select which calibration workflow to encode."
     )]
     pub(crate) workflow_scope: Option<WorkflowScope>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Args)]
+pub(crate) struct FitTickSizeOptions {
+    #[arg(
+        long,
+        value_name = "PRICE_INCREMENT",
+        help = "Observed tick price increment for the fitted instrument."
+    )]
+    pub(crate) tick_size: Option<f64>,
 }
 
 #[derive(Debug, Args)]

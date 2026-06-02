@@ -40,6 +40,7 @@ from ..market_data.contracts import (
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
@@ -78,6 +79,47 @@ _DEFAULT_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     emit_input_provenance_report=True,
 )
 _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration()
+
+
+def _preprocessing_settings_with_tick_size(
+    *,
+    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings],
+    tick_size: Optional[float],
+) -> Optional[CalibrationMarketDataPreprocessingSettings]:
+    if tick_size is None:
+        return preprocessing_settings
+
+    if (
+        preprocessing_settings is not None
+        and preprocessing_settings.return_components is not None
+        and preprocessing_settings.return_components.tick_size is not None
+    ):
+        raise calibration_error(
+            "tick_size",
+            "must not be provided with preprocessing_settings.return_components.tick_size",
+        )
+
+    return_components = (
+        CalibrationMarketDataReturnComponentsPreprocessingSettings(tick_size=tick_size)
+        if preprocessing_settings is None
+        or preprocessing_settings.return_components is None
+        else CalibrationMarketDataReturnComponentsPreprocessingSettings(
+            intraday_jump_threshold_multiplier=(
+                preprocessing_settings.return_components.intraday_jump_threshold_multiplier
+            ),
+            close_open_gap_tolerance_multiplier=(
+                preprocessing_settings.return_components.close_open_gap_tolerance_multiplier
+            ),
+            tick_size=tick_size,
+        )
+    )
+
+    return CalibrationMarketDataPreprocessingSettings(
+        seasonality=(
+            None if preprocessing_settings is None else preprocessing_settings.seasonality
+        ),
+        return_components=return_components,
+    )
 
 
 class JaniformEstimator:
@@ -125,6 +167,7 @@ class JaniformEstimator:
         output_preferences: Optional[CalibrationMarketDataOutputPreferences] = None,
         optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (),
         preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
+        tick_size: Optional[float] = None,
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy = (
@@ -168,6 +211,11 @@ class JaniformEstimator:
                 "preprocessing_settings",
                 "must be a CalibrationMarketDataPreprocessingSettings when provided",
             )
+
+        resolved_preprocessing_settings = _preprocessing_settings_with_tick_size(
+            preprocessing_settings=preprocessing_settings,
+            tick_size=tick_size,
+        )
 
         if mean_reversion is not None and not isinstance(mean_reversion, CalibrationMeanReversionConfiguration):
             raise calibration_error(
@@ -280,7 +328,7 @@ class JaniformEstimator:
         )
         self._output_preferences = _DEFAULT_OUTPUT_PREFERENCES if output_preferences is None else output_preferences
         self._optimizer_settings_by_stage = optimizer_settings_by_stage
-        self._preprocessing_settings = preprocessing_settings
+        self._preprocessing_settings = resolved_preprocessing_settings
         self._mean_reversion = mean_reversion
         self._pricing_interval_schedule_policy = (
             default_pricing_interval_schedule_policy()
