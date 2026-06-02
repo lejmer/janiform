@@ -12,6 +12,7 @@ use crate::event::{
 pub enum RunStatus {
     Running,
     Completed,
+    Cancelled,
     Failed,
 }
 
@@ -22,6 +23,7 @@ pub enum RunStageStatus {
     Pending,
     Running,
     Completed,
+    Cancelled,
     Failed,
 }
 
@@ -293,6 +295,19 @@ impl RunStateSnapshot {
 
                     stage_state.status = RunStageStatus::Failed;
                     stage_state.latest_phase = failed_phase.clone();
+                }
+            }
+            RunLifecycleEvent::RunCancelled {
+                cancelled_before_stage,
+                ..
+            } => {
+                self.status = RunStatus::Cancelled;
+                self.active_stage = cancelled_before_stage.clone();
+                self.latest_progress.clear();
+
+                if let Some(stage) = cancelled_before_stage {
+                    let stage_state = self.stage_state_mut(stage);
+                    stage_state.status = RunStageStatus::Cancelled;
                 }
             }
         }

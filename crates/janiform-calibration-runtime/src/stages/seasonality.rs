@@ -83,6 +83,7 @@ impl SeasonalityStageExecutionInput {
 pub enum CalibrationStageExecutionStatus {
     Success,
     SuccessWithWarnings,
+    Cancelled,
     Failure,
 }
 

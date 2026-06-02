@@ -10,6 +10,7 @@ use janiform::pricing::{
     run_vanilla_option_surface_pricing as run_vanilla_option_surface_pricing_core,
     run_vanilla_option_surface_pricing_with_observer as run_vanilla_option_surface_pricing_core_with_observer,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_terminal_ui::{CompletionSummary, StartSummary};
 
 use crate::error::WorkflowError;
@@ -27,8 +28,8 @@ use super::output::{
     surface_pricing_completion_summary, surface_pricing_start_summary,
 };
 use super::progress::{
-    complete_pricing_progress, emit_pricing_completion_summary, emit_pricing_start_summary,
-    observe_pricing_terminal_event, start_pricing_progress,
+    cancel_pricing_progress, complete_pricing_progress, emit_pricing_completion_summary,
+    emit_pricing_start_summary, observe_pricing_terminal_event, start_pricing_progress,
 };
 use super::request::{
     FittedModelSingleOptionPricingRequest, FittedModelSingleOptionPricingWorkflowRequest,
@@ -38,6 +39,7 @@ use super::workflow::PricingWorkflowObserver;
 /// Run fitted-model single-option pricing with shared terminal progress.
 pub fn run_fitted_model_single_option_pricing_with_terminal_progress(
     request: FittedModelSingleOptionPricingRequest,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
 ) -> Result<FittedModelSingleOptionPricingOutput, WorkflowError> {
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
@@ -45,6 +47,7 @@ pub fn run_fitted_model_single_option_pricing_with_terminal_progress(
     run_fitted_model_single_option_pricing_workflow(
         FittedModelSingleOptionPricingWorkflowRequest::from_pricing_request(request),
         PricingWorkflowObserver {
+            cancellation_token,
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_summary_policy(progress_mode),
         },
@@ -54,10 +57,12 @@ pub fn run_fitted_model_single_option_pricing_with_terminal_progress(
 /// Run vanilla option grid-batch pricing with shared terminal progress.
 pub fn run_vanilla_option_grid_batch_pricing_with_terminal_progress(
     execution_input: VanillaOptionGridBatchPricingExecutionInput,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, WorkflowError> {
     run_pricing_with_terminal_progress(
         execution_input,
+        cancellation_token,
         progress_mode,
         vanilla_option_grid_batch_pricing_progress_scope_label(),
         grid_batch_pricing_start_summary,
@@ -70,10 +75,12 @@ pub fn run_vanilla_option_grid_batch_pricing_with_terminal_progress(
 /// Run vanilla option surface pricing with shared terminal progress.
 pub fn run_vanilla_option_surface_pricing_with_terminal_progress(
     execution_input: VanillaOptionSurfacePricingExecutionInput,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
 ) -> Result<VanillaOptionSurfacePricingRunResult, WorkflowError> {
     run_pricing_with_terminal_progress(
         execution_input,
+        cancellation_token,
         progress_mode,
         vanilla_option_surface_pricing_progress_scope_label(),
         surface_pricing_start_summary,
@@ -93,6 +100,7 @@ fn run_pricing_with_terminal_progress<
     TRunObserved,
 >(
     execution_input: TExecutionInput,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
     scope: &str,
     start_summary: TStartSummary,
@@ -110,6 +118,8 @@ where
     ) -> Result<TRunResult, TRunError>,
     TRunError: ToString,
 {
+    cancellation_token.check_cancelled()?;
+
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
 
     let terminal_output = terminal_summary_policy(progress_mode);
@@ -150,6 +160,11 @@ where
     })?;
 
     let execution_duration = started_at.elapsed();
+
+    if let Err(source) = cancellation_token.check_cancelled() {
+        cancel_pricing_progress(progress_adapter.as_mut())?;
+        return Err(WorkflowError::Cancelled { source });
+    }
 
     if let Some(progress_error) = progress_error {
         return Err(progress_error);

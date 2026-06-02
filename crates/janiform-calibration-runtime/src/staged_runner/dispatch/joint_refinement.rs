@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use janiform_foundations::cancellation::CancellationToken;
+
 use super::super::{
     CalibrationInMemoryStagePayloadState, CalibrationRunSpec, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStagePayloadSource, CalibrationStagedRunFailure,
@@ -30,6 +32,7 @@ pub(super) struct JointRefinementLikeStageRunInput<'a, 'observer> {
         Option<&'observer mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     pub(super) disk_checkpoint_directory: Option<&'a Path>,
     pub(super) load_current_stage_resume_state: bool,
+    pub(super) cancellation_token: CancellationToken,
 }
 
 pub(super) fn run_joint_refinement_like_stage(
@@ -45,6 +48,7 @@ pub(super) fn run_joint_refinement_like_stage(
                     input.progress_observer,
                     input.disk_checkpoint_directory,
                     input.load_current_stage_resume_state,
+                    input.cancellation_token,
                 ),
             )))
         }
@@ -58,6 +62,7 @@ pub(super) fn run_joint_refinement_like_stage(
                     input.progress_observer,
                     input.disk_checkpoint_directory,
                     input.load_current_stage_resume_state,
+                    input.cancellation_token,
                 ),
             )))
         }
@@ -73,6 +78,7 @@ pub(super) fn run_joint_refinement_like_stage(
                             .upstream_option_refinement_handoff,
                         disk_checkpoint_directory: input.disk_checkpoint_directory,
                         load_current_stage_resume_state: input.load_current_stage_resume_state,
+                        cancellation_token: input.cancellation_token,
                     },
                     input.progress_observer,
                 ),

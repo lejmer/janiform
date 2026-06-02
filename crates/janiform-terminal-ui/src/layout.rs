@@ -281,6 +281,8 @@ pub enum StageChecklistStatus {
     Active,
     /// Stage completed successfully.
     Completed,
+    /// Stage was cancelled before completion.
+    Cancelled,
     /// Stage failed.
     Failed,
 }
@@ -442,6 +444,7 @@ fn stage_status_text(status: StageChecklistStatus) -> &'static str {
         StageChecklistStatus::Pending => PENDING_MARKER,
         StageChecklistStatus::Active => ACTIVE_MARKER,
         StageChecklistStatus::Completed => COMPLETED_MARKER,
+        StageChecklistStatus::Cancelled => FAILURE_MARKER,
         StageChecklistStatus::Failed => FAILURE_MARKER,
     }
 }
@@ -451,6 +454,7 @@ fn stage_status_style(status: StageChecklistStatus) -> SemanticStyle {
         StageChecklistStatus::Pending => SemanticStyle::Metadata,
         StageChecklistStatus::Active => SemanticStyle::ActiveStage,
         StageChecklistStatus::Completed => SemanticStyle::CompletedMarker,
+        StageChecklistStatus::Cancelled => SemanticStyle::FailureMarker,
         StageChecklistStatus::Failed => SemanticStyle::FailureMarker,
     }
 }

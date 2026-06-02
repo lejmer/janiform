@@ -1,10 +1,12 @@
 use super::{
     DynamicWorkPoolInput, DynamicWorkPoolStatus, DynamicWorkPoolSummary, run_dynamic_work_pool,
 };
+use janiform_foundations::cancellation::CancellationToken;
 
 /// Inputs for a finite batch of independent work.
 pub struct StaticWorkPoolInput<'scope, State, Job, Execute, Record> {
     state: &'scope mut State,
+    cancellation_token: CancellationToken,
     jobs: Vec<Job>,
     worker_capacity: usize,
     execute_job: Execute,
@@ -15,6 +17,7 @@ impl<'scope, State, Job, Execute, Record> StaticWorkPoolInput<'scope, State, Job
     /// Build a finite work-pool input contract.
     pub fn new(
         state: &'scope mut State,
+        cancellation_token: CancellationToken,
         jobs: Vec<Job>,
         worker_capacity: usize,
         execute_job: Execute,
@@ -22,6 +25,7 @@ impl<'scope, State, Job, Execute, Record> StaticWorkPoolInput<'scope, State, Job
     ) -> Self {
         Self {
             state,
+            cancellation_token,
             jobs,
             worker_capacity,
             execute_job,
@@ -51,11 +55,12 @@ where
     State: Send,
     Job: Send + 'scope,
     Output: Send + 'scope,
-    Execute: Fn(Job) -> Output + Send + Sync + 'scope,
+    Execute: Fn(Job, CancellationToken) -> Output + Send + Sync + 'scope,
     Record: FnMut(&mut State, Output, DynamicWorkPoolStatus) + Send,
 {
     let StaticWorkPoolInput {
         state,
+        cancellation_token,
         jobs,
         worker_capacity,
         execute_job,
@@ -71,6 +76,7 @@ where
         thread_pool,
         DynamicWorkPoolInput::new(
             &mut pool_state,
+            cancellation_token,
             worker_capacity,
             |pool_state: &mut StaticWorkPoolState<'_, State, Job>, _status| {
                 pool_state.pending_jobs.next()
@@ -87,6 +93,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::StaticWorkPoolInput;
+    use janiform_foundations::cancellation::CancellationToken;
 
     #[test]
     fn static_work_pool_records_outputs_as_jobs_complete() {
@@ -96,9 +103,10 @@ mod tests {
             None,
             StaticWorkPoolInput::new(
                 &mut outputs,
+                CancellationToken::uncancelled(),
                 vec![1, 2, 3],
                 2,
-                |value| value * 10,
+                |value, _cancellation_token| value * 10,
                 |outputs: &mut Vec<i32>, output, _status| outputs.push(output),
             ),
         );

@@ -2,6 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use janiform_foundations::cancellation::CancellationError;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -16,6 +17,7 @@ pub enum CliExitCode {
     ReportFailedChecks = 1,
     CommandLineUsage = 2,
     UnimplementedCommand = 78,
+    Interrupted = 130,
 }
 
 impl CliExitCode {
@@ -44,6 +46,20 @@ pub enum CliError {
     )]
     #[diagnostic(code(janiform_cli::unimplemented_command))]
     UnimplementedCommand { command_path: &'static str },
+
+    #[error("operation interrupted")]
+    #[diagnostic(code(janiform_cli::interrupted))]
+    Interrupted {
+        #[source]
+        source: CancellationError,
+    },
+
+    #[error("failed to install terminal interrupt handler: {source}")]
+    #[diagnostic(code(janiform_cli::interrupt_handler_install))]
+    InterruptHandlerInstall {
+        #[source]
+        source: ctrlc::Error,
+    },
 
     #[error("failed to read CLI configuration `{}`", path.display())]
     #[diagnostic(code(janiform_cli::config_read))]
@@ -282,9 +298,11 @@ impl CliError {
         match self {
             Self::ArgumentParse { .. } => CliExitCode::CommandLineUsage,
             Self::UnimplementedCommand { .. } => CliExitCode::UnimplementedCommand,
+            Self::Interrupted { .. } => CliExitCode::Interrupted,
             Self::ConfigRead { .. }
             | Self::ConfigParse { .. }
             | Self::ConfigConflict { .. }
+            | Self::InterruptHandlerInstall { .. }
             | Self::CurrentDirectory { .. }
             | Self::MissingInputFile { .. }
             | Self::MissingRequiredArgument { .. }
@@ -318,6 +336,8 @@ impl CliError {
         match self {
             Self::ArgumentParse { .. } => "argument_parse",
             Self::UnimplementedCommand { .. } => "unimplemented_command",
+            Self::Interrupted { .. } => "interrupted",
+            Self::InterruptHandlerInstall { .. } => "interrupt_handler_install",
             Self::ConfigRead { .. } => "config_read",
             Self::ConfigParse { .. } => "config_parse",
             Self::ConfigConflict { .. } => "config_conflict",
@@ -364,6 +384,9 @@ impl CliError {
 impl From<janiform_workflows::error::WorkflowError> for CliError {
     fn from(value: janiform_workflows::error::WorkflowError) -> Self {
         match value {
+            janiform_workflows::error::WorkflowError::Cancelled { source } => {
+                Self::Interrupted { source }
+            }
             janiform_workflows::error::WorkflowError::StagedExecutionPlanFailed { source } => {
                 Self::StagedExecutionPlanFailed {
                     source: Box::new(source),

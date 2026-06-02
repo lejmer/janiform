@@ -2,6 +2,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use janiform::simulation::SimulationProgressEvent;
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::parallelism::resolved_cpu_count;
 use janiform_foundations::randomness::{
     SimulationRandomnessSubstreamDomain, derive_simulation_substream_seed,
@@ -57,12 +58,13 @@ pub(in crate::validation) fn simulate_validation_paths(
     analysis_window: AnalysisWindow,
     runtime_interval_duration_nanos: i64,
     simulated_interval_count: usize,
+    cancellation_token: CancellationToken,
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
 ) -> Result<SimulatedValidationPaths, WorkflowError> {
+    cancellation_token.check_cancelled()?;
+
     let model_payload: Value = super::super::artifacts::load_typed_json_artifact(model_path)?;
-
     let generated_seeds = derived_seeds(request.seed, request.simulation_path_count);
-
     let worker_count = resolved_cpu_count(request.cpu_count).min(request.simulation_path_count);
 
     let total_interval_units =
@@ -83,6 +85,7 @@ pub(in crate::validation) fn simulate_validation_paths(
             runtime_interval_duration_nanos,
             simulated_interval_count,
             &generated_seeds,
+            cancellation_token.shared_handle(),
             observer,
             worker_count,
             total_interval_units,
@@ -95,6 +98,7 @@ pub(in crate::validation) fn simulate_validation_paths(
             runtime_interval_duration_nanos,
             simulated_interval_count,
             &generated_seeds,
+            cancellation_token,
             observer,
             worker_count,
             total_interval_units,
@@ -129,6 +133,7 @@ fn simulate_validation_paths_serial(
     runtime_interval_duration_nanos: i64,
     simulated_interval_count: usize,
     generated_seeds: &[u64],
+    cancellation_token: CancellationToken,
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
     worker_count: usize,
     total_interval_units: usize,
@@ -137,6 +142,8 @@ fn simulate_validation_paths_serial(
     let mut completed_interval_units = 0usize;
 
     for (path_position, seed) in generated_seeds.iter().copied().enumerate() {
+        cancellation_token.check_cancelled()?;
+
         emit_simulation_started(
             observer,
             SimulationStartedProgressInput {
@@ -184,6 +191,7 @@ fn simulate_validation_paths_serial(
                 simulated_interval_count,
                 path_position,
                 seed,
+                cancellation_token.shared_handle(),
                 &mut progress_observer,
             )?
         };
@@ -217,6 +225,7 @@ fn simulate_validation_paths_parallel(
     runtime_interval_duration_nanos: i64,
     simulated_interval_count: usize,
     generated_seeds: &[u64],
+    cancellation_token: CancellationToken,
     observer: &mut StylizedFactsValidationWorkflowObserver<'_>,
     worker_count: usize,
     total_interval_units: usize,
@@ -226,6 +235,7 @@ fn simulate_validation_paths_parallel(
         .copied()
         .enumerate()
         .collect::<Vec<_>>();
+
     let mut collector = SimulationPathResultCollector::new(
         generated_seeds.len(),
         simulated_interval_count,
@@ -236,6 +246,7 @@ fn simulate_validation_paths_parallel(
 
     run_streaming_work_pool(StreamingWorkPoolInput::new(
         &mut collector,
+        cancellation_token,
         jobs,
         worker_count,
         |(path_position, seed),
@@ -243,10 +254,15 @@ fn simulate_validation_paths_parallel(
             SimulationPathProgressMessage,
             Result<SimulatedValidationPathOutput, WorkflowError>,
         >| {
+            let worker_cancellation_token = context.cancellation_token();
+            worker_cancellation_token.check_cancelled()?;
+
             if !context.send_progress(SimulationPathProgressMessage::Started {
                 path_position,
                 seed,
             }) {
+                worker_cancellation_token.check_cancelled()?;
+
                 return Err(stylized_facts_validation_error(
                     "simulation progress channel closed before path start",
                 ));
@@ -259,6 +275,10 @@ fn simulate_validation_paths_parallel(
             let request = request.clone();
 
             let mut progress_observer = |event: SimulationProgressEvent| {
+                if worker_cancellation_token.is_cancelled() {
+                    return;
+                }
+
                 let _ = context.send_progress(SimulationPathProgressMessage::Progress {
                     path_position,
                     seed,
@@ -266,7 +286,7 @@ fn simulate_validation_paths_parallel(
                 });
             };
 
-            simulate_validation_path(
+            let output = simulate_validation_path(
                 &request,
                 model_payload,
                 analysis_window,
@@ -274,8 +294,13 @@ fn simulate_validation_paths_parallel(
                 simulated_interval_count,
                 path_position,
                 seed,
+                worker_cancellation_token.shared_handle(),
                 &mut progress_observer,
-            )
+            )?;
+
+            worker_cancellation_token.check_cancelled()?;
+
+            Ok(output)
         },
         |collector: &mut SimulationPathResultCollector<'_, '_>,
          progress: StreamingWorkProgress<SimulationPathProgressMessage>| {
@@ -299,6 +324,7 @@ fn simulate_validation_path(
     simulated_interval_count: usize,
     path_position: usize,
     seed: u64,
+    cancellation_token: CancellationToken,
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<SimulatedValidationPathOutput, WorkflowError> {
     let simulation_output = run_simulation_from_model_artifact(
@@ -327,6 +353,7 @@ fn simulate_validation_path(
             max_records_per_chunk: SEEDED_TICK_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK,
             state_snapshot_capture: Default::default(),
         },
+        cancellation_token,
         observer,
     )?;
 

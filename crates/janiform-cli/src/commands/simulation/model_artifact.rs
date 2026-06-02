@@ -93,6 +93,7 @@ pub(crate) fn run_simulate_from_model_artifact_command(
     let output = run_simulation_from_model_artifact_workflow(
         workflow_request,
         SimulationWorkflowObserver {
+            cancellation_token: context.cancellation_token(),
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_output_for_context(context),
         },

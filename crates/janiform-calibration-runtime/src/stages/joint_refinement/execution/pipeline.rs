@@ -14,6 +14,7 @@ use janiform_calibration_artifacts::{
     calibration_stage_token, resolve_calibration_stage_seed_metadata,
     stage_solver_settings_for_stage,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_foundations::time::NANOS_PER_HOUR;
 
@@ -251,6 +252,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
     load_current_stage_resume_state: bool,
+    cancellation_token: CancellationToken,
 ) -> JointRefinementStageExecutionReport {
     run_joint_refinement_pipeline_stage_internal(JointRefinementPipelineStageRunInput {
         run_spec,
@@ -261,6 +263,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         progress_sender,
         disk_checkpoint_directory,
         load_current_stage_resume_state,
+        cancellation_token,
         pipeline_stage: JointRefinementPipelineStage::JointRefinement,
     })
 }
@@ -273,6 +276,7 @@ pub(super) fn run_option_refinement_calibration_stage_internal(
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
     load_current_stage_resume_state: bool,
+    cancellation_token: CancellationToken,
 ) -> JointRefinementStageExecutionReport {
     run_joint_refinement_pipeline_stage_internal(JointRefinementPipelineStageRunInput {
         run_spec,
@@ -283,6 +287,7 @@ pub(super) fn run_option_refinement_calibration_stage_internal(
         progress_sender,
         disk_checkpoint_directory,
         load_current_stage_resume_state,
+        cancellation_token,
         pipeline_stage: JointRefinementPipelineStage::OptionRefinement,
     })
 }
@@ -298,6 +303,7 @@ pub(crate) struct FinalizationPipelineStageRunInput<'a> {
     pub(crate) progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     pub(crate) disk_checkpoint_directory: Option<&'a Path>,
     pub(crate) load_current_stage_resume_state: bool,
+    pub(crate) cancellation_token: CancellationToken,
 }
 
 pub(super) fn run_finalization_calibration_stage_internal(
@@ -312,6 +318,7 @@ pub(super) fn run_finalization_calibration_stage_internal(
         progress_sender: input.progress_sender,
         disk_checkpoint_directory: input.disk_checkpoint_directory,
         load_current_stage_resume_state: input.load_current_stage_resume_state,
+        cancellation_token: input.cancellation_token,
         pipeline_stage: JointRefinementPipelineStage::Finalization,
     })
 }
@@ -326,6 +333,7 @@ struct JointRefinementPipelineStageRunInput<'a> {
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&'a Path>,
     load_current_stage_resume_state: bool,
+    cancellation_token: CancellationToken,
     pipeline_stage: JointRefinementPipelineStage,
 }
 
@@ -341,7 +349,18 @@ fn run_joint_refinement_pipeline_stage_internal(
     let progress_sender = input.progress_sender;
     let disk_checkpoint_directory = input.disk_checkpoint_directory;
     let load_current_stage_resume_state = input.load_current_stage_resume_state;
+    let cancellation_token = input.cancellation_token;
     let pipeline_stage = input.pipeline_stage;
+
+    if cancellation_token.is_cancelled() {
+        return build_stage_failure_report(
+            run_spec,
+            pipeline_stage.calibration_stage(),
+            JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
+                error_message: "operation cancelled".to_string(),
+            },
+        );
+    }
 
     if stage_input.restart_candidate_budget_override == Some(0) {
         return build_stage_failure_report(
@@ -431,6 +450,7 @@ fn run_joint_refinement_pipeline_stage_internal(
         &stage_input,
         &resolved_stage_payloads,
         progress_sender.as_ref(),
+        cancellation_token.shared_handle(),
     ) {
         Ok(prepared_bootstrap) => prepared_bootstrap,
         Err(failure) => {
@@ -754,6 +774,7 @@ fn prepare_bootstrap_context(
     stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    cancellation_token: CancellationToken,
 ) -> Result<PreparedBootstrapContext, JointRefinementStageExecutionFailure> {
     let PreparedObservedInputs {
         observed_data,
@@ -833,6 +854,7 @@ fn prepare_bootstrap_context(
                 option_pricing_context,
                 runtime_materialization,
                 baseline_return_components_fitted_parameters,
+                cancellation_token: cancellation_token.shared_handle(),
             })?;
 
             validate_baseline_parameter_round_trip(
@@ -998,9 +1020,11 @@ fn build_bootstrap_context(
         option_pricing_context,
         runtime_materialization,
         baseline_return_components_fitted_parameters,
+        cancellation_token,
     } = input;
 
     Ok(JointRefinementContext {
+        cancellation_token,
         stage_thread_pool: build_stage_thread_pool(
             resolved_stage_payloads.stage_solver_settings.cpu_count,
         ),
@@ -1073,6 +1097,7 @@ struct BootstrapContextBuildInput<'a> {
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
     runtime_materialization: RuntimeMaterialization,
     baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+    cancellation_token: CancellationToken,
 }
 
 struct RuntimeMaterialization {

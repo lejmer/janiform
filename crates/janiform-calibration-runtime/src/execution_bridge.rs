@@ -12,6 +12,7 @@ use janiform_calibration_artifacts::{
     TickGridObservationModel,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
 };
@@ -739,6 +740,7 @@ impl CalibrationStagedExecutionInput {
 pub fn run_staged_calibration_from_execution_input(
     execution_input: CalibrationStagedExecutionInput,
     calendar_registry: &ExchangeCalendarRegistry,
+    cancellation_token: CancellationToken,
     memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
 ) -> Result<CalibrationStagedRunReport, CalibrationStagedExecutionBridgeError> {
     let execution_plan = execution_input.build_execution_plan()?;
@@ -747,6 +749,7 @@ pub fn run_staged_calibration_from_execution_input(
         &execution_plan.run_contract,
         calendar_registry,
         execution_plan.staged_run_inputs,
+        cancellation_token,
         memory_checkpoint_store,
         execution_plan.disk_checkpoint_directory.as_deref(),
     ))
@@ -755,6 +758,7 @@ pub fn run_staged_calibration_from_execution_input(
 pub fn run_staged_calibration_from_execution_input_with_observer(
     execution_input: CalibrationStagedExecutionInput,
     calendar_registry: &ExchangeCalendarRegistry,
+    cancellation_token: CancellationToken,
     memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
     observer: &mut dyn FnMut(CalibrationStagedRunObserverEvent),
 ) -> Result<CalibrationStagedRunReport, CalibrationStagedExecutionBridgeError> {
@@ -764,6 +768,7 @@ pub fn run_staged_calibration_from_execution_input_with_observer(
         &execution_plan.run_contract,
         calendar_registry,
         execution_plan.staged_run_inputs,
+        cancellation_token,
         memory_checkpoint_store,
         execution_plan.disk_checkpoint_directory.as_deref(),
         Some(observer),

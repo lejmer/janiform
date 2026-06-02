@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
+use janiform_foundations::cancellation::CancellationToken;
+
 /// Snapshot of bounded work-pool progress.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DynamicWorkPoolStatus {
@@ -34,6 +36,7 @@ pub struct DynamicWorkPoolSummary {
 /// Inputs for a dynamic worker pool.
 pub struct DynamicWorkPoolInput<'scope, State, Job, Output, Next, Execute, Record, Stop> {
     state: &'scope mut State,
+    cancellation_token: CancellationToken,
     worker_capacity: usize,
     next_job: Next,
     execute_job: Arc<Execute>,
@@ -49,6 +52,7 @@ impl<'scope, State, Job, Output, Next, Execute, Record, Stop>
     /// Build a dynamic work-pool input contract.
     pub fn new(
         state: &'scope mut State,
+        cancellation_token: CancellationToken,
         worker_capacity: usize,
         next_job: Next,
         execute_job: Execute,
@@ -57,6 +61,7 @@ impl<'scope, State, Job, Output, Next, Execute, Record, Stop>
     ) -> Self {
         Self {
             state,
+            cancellation_token,
             worker_capacity,
             next_job,
             execute_job: Arc::new(execute_job),
@@ -78,7 +83,7 @@ where
     Job: Send + 'scope,
     Output: Send + 'scope,
     Next: FnMut(&mut State, DynamicWorkPoolStatus) -> Option<Job> + Send,
-    Execute: Fn(Job) -> Output + Send + Sync + 'scope,
+    Execute: Fn(Job, CancellationToken) -> Output + Send + Sync + 'scope,
     Record: FnMut(&mut State, Output, DynamicWorkPoolStatus) + Send,
     Stop: for<'state> Fn(&'state State, DynamicWorkPoolStatus) -> bool + Send,
 {
@@ -96,7 +101,7 @@ where
     Job: Send + 'scope,
     Output: Send + 'scope,
     Next: FnMut(&mut State, DynamicWorkPoolStatus) -> Option<Job>,
-    Execute: Fn(Job) -> Output + Send + Sync + 'scope,
+    Execute: Fn(Job, CancellationToken) -> Output + Send + Sync + 'scope,
     Record: FnMut(&mut State, Output, DynamicWorkPoolStatus),
     Stop: for<'state> Fn(&'state State, DynamicWorkPoolStatus) -> bool,
 {
@@ -148,11 +153,12 @@ fn fill_worker_slots<'scope, State, Job, Output, Next, Execute, Record, Stop>(
     Job: Send + 'scope,
     Output: Send + 'scope,
     Next: FnMut(&mut State, DynamicWorkPoolStatus) -> Option<Job>,
-    Execute: Fn(Job) -> Output + Send + Sync + 'scope,
+    Execute: Fn(Job, CancellationToken) -> Output + Send + Sync + 'scope,
     Record: FnMut(&mut State, Output, DynamicWorkPoolStatus),
     Stop: for<'state> Fn(&'state State, DynamicWorkPoolStatus) -> bool,
 {
     while status.in_flight_work_count < worker_capacity
+        && !input.cancellation_token.is_cancelled()
         && !(input.should_stop_scheduling)(input.state, *status)
     {
         let Some(job) = (input.next_job)(input.state, *status) else {
@@ -163,12 +169,13 @@ fn fill_worker_slots<'scope, State, Job, Output, Next, Execute, Record, Stop>(
         status.in_flight_work_count = status.in_flight_work_count.saturating_add(1);
 
         let execute_job = Arc::clone(&input.execute_job);
+        let cancellation_token = input.cancellation_token.shared_handle();
 
         // Each worker owns a sender handle so completed work can stream back independently.
         let result_sender = result_sender.clone();
 
         scope.spawn(move |_| {
-            let output = execute_job(job);
+            let output = execute_job(job, cancellation_token);
             let _ = result_sender.send(output);
         });
     }
@@ -177,6 +184,8 @@ fn fill_worker_slots<'scope, State, Job, Output, Next, Execute, Record, Stop>(
 #[cfg(test)]
 mod tests {
     use super::{DynamicWorkPoolInput, DynamicWorkPoolStatus};
+    use janiform_foundations::cancellation::CancellationSource;
+    use janiform_foundations::cancellation::CancellationToken;
 
     #[derive(Debug)]
     struct TestState {
@@ -196,8 +205,12 @@ mod tests {
         status.scheduled_work_count >= 3
     }
 
-    #[test]
-    fn dynamic_work_pool_refills_slots_as_results_complete() {
+    fn run_test_work_pool<Stop>(
+        should_stop_scheduling: Stop,
+    ) -> (super::DynamicWorkPoolSummary, Vec<usize>)
+    where
+        Stop: for<'state> Fn(&'state TestState, DynamicWorkPoolStatus) -> bool + Send,
+    {
         let mut state = TestState {
             next_work: 0,
             total_work: 5,
@@ -208,6 +221,7 @@ mod tests {
             None,
             DynamicWorkPoolInput::new(
                 &mut state,
+                CancellationToken::uncancelled(),
                 2,
                 |state: &mut TestState, _status| {
                     if state.next_work >= state.total_work {
@@ -219,52 +233,110 @@ mod tests {
 
                     Some(work)
                 },
-                |work| work,
+                |work, _cancellation_token| work,
                 |state: &mut TestState, output, _status| state.completed_work.push(output),
+                should_stop_scheduling,
+            ),
+        );
+
+        state.completed_work.sort_unstable();
+
+        (summary, state.completed_work)
+    }
+
+    #[test]
+    fn dynamic_work_pool_refills_slots_as_results_complete() {
+        let (summary, completed_work) = run_test_work_pool(never_stop_test_work_pool);
+
+        assert_eq!(summary.scheduled_work_count, 5);
+        assert_eq!(summary.completed_work_count, 5);
+        assert_eq!(completed_work, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn dynamic_work_pool_stops_scheduling_and_drains_in_flight_work() {
+        let (summary, completed_work) =
+            run_test_work_pool(stop_test_work_pool_after_three_scheduled);
+
+        assert_eq!(summary.scheduled_work_count, 3);
+        assert_eq!(summary.completed_work_count, 3);
+        assert_eq!(completed_work, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn dynamic_work_pool_does_not_schedule_when_cancelled() {
+        let mut state = TestState {
+            next_work: 0,
+            total_work: 5,
+            completed_work: Vec::new(),
+        };
+
+        let cancellation_source = CancellationSource::new();
+        cancellation_source.cancel();
+
+        let summary = super::run_dynamic_work_pool(
+            None,
+            DynamicWorkPoolInput::new(
+                &mut state,
+                cancellation_source.token(),
+                2,
+                |state: &mut TestState, _status| {
+                    let work = state.next_work;
+                    state.next_work = state.next_work.saturating_add(1);
+
+                    Some(work)
+                },
+                |work, _cancellation_token| work,
+                |state: &mut TestState, output, _status| state.completed_work.push(output),
+                never_stop_test_work_pool,
+            ),
+        );
+
+        assert_eq!(summary.scheduled_work_count, 0);
+        assert_eq!(summary.completed_work_count, 0);
+        assert_eq!(state.completed_work, Vec::<usize>::new());
+    }
+
+    #[test]
+    fn dynamic_work_pool_cancellation_drains_in_flight_work() {
+        let mut state = TestState {
+            next_work: 0,
+            total_work: 5,
+            completed_work: Vec::new(),
+        };
+
+        let cancellation_source = CancellationSource::new();
+        let record_cancellation_source = cancellation_source.shared_handle();
+
+        let summary = super::run_dynamic_work_pool(
+            None,
+            DynamicWorkPoolInput::new(
+                &mut state,
+                cancellation_source.token(),
+                2,
+                |state: &mut TestState, _status| {
+                    if state.next_work >= state.total_work {
+                        return None;
+                    }
+
+                    let work = state.next_work;
+                    state.next_work = state.next_work.saturating_add(1);
+
+                    Some(work)
+                },
+                |work, _cancellation_token| work,
+                move |state: &mut TestState, output, _status| {
+                    state.completed_work.push(output);
+                    record_cancellation_source.cancel();
+                },
                 never_stop_test_work_pool,
             ),
         );
 
         state.completed_work.sort_unstable();
 
-        assert_eq!(summary.scheduled_work_count, 5);
-        assert_eq!(summary.completed_work_count, 5);
-        assert_eq!(state.completed_work, vec![0, 1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn dynamic_work_pool_stops_scheduling_and_drains_in_flight_work() {
-        let mut state = TestState {
-            next_work: 0,
-            total_work: 5,
-            completed_work: Vec::new(),
-        };
-
-        let summary = super::run_dynamic_work_pool(
-            None,
-            DynamicWorkPoolInput::new(
-                &mut state,
-                2,
-                |state: &mut TestState, _status| {
-                    if state.next_work >= state.total_work {
-                        return None;
-                    }
-
-                    let work = state.next_work;
-                    state.next_work = state.next_work.saturating_add(1);
-
-                    Some(work)
-                },
-                |work| work,
-                |state: &mut TestState, output, _status| state.completed_work.push(output),
-                stop_test_work_pool_after_three_scheduled,
-            ),
-        );
-
-        state.completed_work.sort_unstable();
-
-        assert_eq!(summary.scheduled_work_count, 3);
-        assert_eq!(summary.completed_work_count, 3);
-        assert_eq!(state.completed_work, vec![0, 1, 2]);
+        assert_eq!(summary.scheduled_work_count, 2);
+        assert_eq!(summary.completed_work_count, 2);
+        assert_eq!(state.completed_work, vec![0, 1]);
     }
 }

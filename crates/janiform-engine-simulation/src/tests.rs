@@ -21,15 +21,48 @@ use crate::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
     SeededTickSimulationModelInputs, SeededTickSimulationNewsEventMarketState,
     SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
-    SimulationProgressEvent, SimulationProgressPhase, run_seeded_tick_event_simulation,
-    run_seeded_tick_event_simulation_with_observer,
-    run_seeded_tick_event_simulation_with_randomness_factory, sample_nig_trading_time_increment,
-    sample_nig_trading_time_increment_with_edge_mode,
+    SeededTickSimulationRunResult, SimulationProgressEvent, SimulationProgressPhase,
+    run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
+    run_seeded_tick_event_simulation_with_observer as run_seeded_tick_event_simulation_with_observer_core,
+    run_seeded_tick_event_simulation_with_randomness_factory as run_seeded_tick_event_simulation_with_randomness_factory_core,
+    sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessStream, derive_simulation_substream_seed,
 };
+
+fn run_seeded_tick_event_simulation(
+    run_config: SeededTickSimulationRunConfig,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
+    run_seeded_tick_event_simulation_core(run_config, CancellationToken::uncancelled())
+}
+
+fn run_seeded_tick_event_simulation_with_observer(
+    run_config: SeededTickSimulationRunConfig,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
+    run_seeded_tick_event_simulation_with_observer_core(
+        run_config,
+        CancellationToken::uncancelled(),
+        observer,
+    )
+}
+
+fn run_seeded_tick_event_simulation_with_randomness_factory<F>(
+    run_config: SeededTickSimulationRunConfig,
+    randomness_factory: &F,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
+    run_seeded_tick_event_simulation_with_randomness_factory_core(
+        run_config,
+        CancellationToken::uncancelled(),
+        randomness_factory,
+    )
+}
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState,

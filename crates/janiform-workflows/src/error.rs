@@ -1,11 +1,20 @@
 use std::io;
 use std::path::PathBuf;
 
+use janiform_foundations::cancellation::CancellationError;
 use thiserror::Error;
 
 /// Error returned by shared workflow orchestration.
 #[derive(Debug, Error)]
 pub enum WorkflowError {
+    /// The workflow observed cooperative cancellation.
+    #[error("workflow cancelled")]
+    Cancelled {
+        /// Source cancellation error.
+        #[source]
+        source: CancellationError,
+    },
+
     /// Staged execution input could not produce an execution plan.
     #[error("failed to build staged execution plan")]
     StagedExecutionPlanFailed {
@@ -194,4 +203,10 @@ pub enum WorkflowError {
         #[source]
         source: janiform_terminal_ui::ProgressContractError,
     },
+}
+
+impl From<CancellationError> for WorkflowError {
+    fn from(source: CancellationError) -> Self {
+        Self::Cancelled { source }
+    }
 }

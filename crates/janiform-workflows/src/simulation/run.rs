@@ -2,6 +2,7 @@ use janiform::simulation::{
     CoarseSimulationPath, CoarseSimulationRunRequest, SeededTickSimulationRunConfig,
     SeededTickSimulationRunResult,
 };
+use janiform_foundations::cancellation::CancellationToken;
 
 use crate::error::WorkflowError;
 use crate::terminal::{TerminalProgressMode, stderr_progress_adapter, terminal_summary_policy};
@@ -20,6 +21,7 @@ use super::workflow::SimulationWorkflowObserver;
 /// Run simulation from a model artifact with shared terminal progress.
 pub fn run_simulation_from_model_artifact_with_terminal_progress(
     request: ModelArtifactSimulationWorkflowRequest,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
 ) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
@@ -27,6 +29,7 @@ pub fn run_simulation_from_model_artifact_with_terminal_progress(
     run_simulation_from_model_artifact_workflow(
         request,
         SimulationWorkflowObserver {
+            cancellation_token,
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_summary_policy(progress_mode),
         },
@@ -36,6 +39,7 @@ pub fn run_simulation_from_model_artifact_with_terminal_progress(
 /// Run coarse simulation with shared terminal progress.
 pub fn run_coarse_simulation_with_terminal_progress(
     request: CoarseSimulationRunRequest,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
 ) -> Result<CoarseSimulationPath, WorkflowError> {
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
@@ -45,6 +49,7 @@ pub fn run_coarse_simulation_with_terminal_progress(
             run_request: request,
         },
         SimulationWorkflowObserver {
+            cancellation_token,
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_summary_policy(progress_mode),
         },
@@ -54,6 +59,7 @@ pub fn run_coarse_simulation_with_terminal_progress(
 /// Run seeded tick-event simulation with shared terminal progress.
 pub fn run_seeded_tick_event_simulation_with_terminal_progress(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     progress_mode: TerminalProgressMode,
 ) -> Result<SeededTickSimulationRunResult, WorkflowError> {
     let mut progress_adapter = stderr_progress_adapter(progress_mode);
@@ -61,6 +67,7 @@ pub fn run_seeded_tick_event_simulation_with_terminal_progress(
     run_seeded_tick_event_simulation_workflow(
         SeededTickEventSimulationWorkflowRequest { run_config },
         SimulationWorkflowObserver {
+            cancellation_token,
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_summary_policy(progress_mode),
         },

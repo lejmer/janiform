@@ -173,6 +173,20 @@ pub fn run_events_from_staged_event(
                 ),
             ]
         }
+        CalibrationStagedRunObserverEvent::RunCancelled {
+            run_id,
+            total_runtime_seconds,
+            cancelled_before_stage,
+            ..
+        } => vec![RunEvent::new(
+            run_id.clone(),
+            workflow,
+            EventDeliveryPriority::Required,
+            RunEventPayload::Lifecycle(RunLifecycleEvent::RunCancelled {
+                total_runtime_seconds: *total_runtime_seconds,
+                cancelled_before_stage: cancelled_before_stage.map(stage_ref),
+            }),
+        )],
     };
 
     Ok(run_events)
@@ -247,6 +261,11 @@ pub fn progress_event_from_staged_event(
         CalibrationStagedRunObserverEvent::RunFailed { failure, .. } => {
             Some(ProgressEvent::RunFailed {
                 reason: terminal_failure_reason(failure),
+            })
+        }
+        CalibrationStagedRunObserverEvent::RunCancelled { .. } => {
+            Some(ProgressEvent::RunCompleted {
+                status: "cancelled".to_string(),
             })
         }
     };

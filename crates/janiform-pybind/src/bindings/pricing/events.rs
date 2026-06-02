@@ -3,6 +3,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use janiform::pricing::PricingProgressEvent;
+use janiform_foundations::cancellation::CancellationToken;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::PyAny;
 use serde::Serialize;
@@ -12,33 +13,30 @@ use crate::PricingExecutionError;
 use crate::bindings::events::{
     callback_error_state, callback_failed, emit_serializable_callback_event, raise_callback_error,
 };
+use crate::native_interrupt::{NativeInterruptMode, run_interruptible_native_with_poll};
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 
 const PRICING_PROGRESS_CALLBACK_MIN_INTERVAL: Duration = Duration::from_millis(100);
 
-pub(super) fn run_pricing_workflow_with_events<
-    TExecutionInput,
-    TRunResult,
-    TRunError,
-    TRunFn,
-    TPanicError,
->(
+pub(super) fn run_pricing_workflow_with_events<TExecutionInput, TRunResult, TRunError, TRunFn>(
     py: Python<'_>,
     execution_input: &Bound<'_, PyAny>,
     event_callback: &Bound<'_, PyAny>,
     execution_input_description: &str,
     run_result_description: &str,
     run_with_progress_sender: TRunFn,
-    worker_panic_error: TPanicError,
 ) -> PyResult<Py<PyAny>>
 where
     TExecutionInput: DeserializeOwned + Send + 'static,
     TRunResult: Serialize + Send + 'static,
     TRunError: Display + Send + 'static,
-    TRunFn: FnOnce(TExecutionInput, mpsc::Sender<PricingProgressEvent>) -> Result<TRunResult, TRunError>
+    TRunFn: FnOnce(
+            TExecutionInput,
+            mpsc::Sender<PricingProgressEvent>,
+            CancellationToken,
+        ) -> Result<TRunResult, TRunError>
         + Send
         + 'static,
-    TPanicError: FnOnce() -> TRunError + Send + 'static,
 {
     let execution_input: TExecutionInput =
         serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
@@ -48,52 +46,54 @@ where
         })?;
 
     let event_callback = event_callback.clone().unbind();
-
     let callback_error_state = callback_error_state();
-    let callback_error_state_for_observer = callback_error_state.clone();
 
-    let run_result = py
-        .detach(move || {
-            let (progress_sender, progress_receiver) = mpsc::channel::<PricingProgressEvent>();
+    let (progress_sender, progress_receiver) = mpsc::channel::<PricingProgressEvent>();
 
-            std::thread::scope(|scope| {
-                let worker =
-                    scope.spawn(move || run_with_progress_sender(execution_input, progress_sender));
+    let mut last_emitted_event = None::<PricingProgressEvent>;
+    let mut last_emitted_at = None::<Instant>;
 
-                let mut last_emitted_event = None::<PricingProgressEvent>;
-                let mut last_emitted_at = None::<Instant>;
-
-                for event in progress_receiver {
-                    if callback_failed(&callback_error_state_for_observer) {
-                        continue;
-                    }
-
-                    if !should_emit_pricing_progress_event(
-                        &event,
-                        last_emitted_event.as_ref(),
-                        last_emitted_at,
-                    ) {
-                        continue;
-                    }
-
-                    last_emitted_event = Some(event.clone());
-                    last_emitted_at = Some(Instant::now());
-
-                    emit_serializable_callback_event(
-                        &event_callback,
-                        &callback_error_state_for_observer,
-                        &event,
-                        "pricing progress event",
-                    );
+    let run_result = run_interruptible_native_with_poll(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |cancellation_token| {
+            Ok(run_with_progress_sender(
+                execution_input,
+                progress_sender,
+                cancellation_token,
+            ))
+        },
+        |_: Python<'_>| {
+            for event in progress_receiver.try_iter() {
+                if callback_failed(&callback_error_state) {
+                    continue;
                 }
 
-                match worker.join() {
-                    Ok(result) => result,
-                    Err(_) => Err(worker_panic_error()),
+                if !should_emit_pricing_progress_event(
+                    &event,
+                    last_emitted_event.as_ref(),
+                    last_emitted_at,
+                ) {
+                    continue;
                 }
-            })
-        })
-        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+                last_emitted_event = Some(event.clone());
+                last_emitted_at = Some(Instant::now());
+
+                emit_serializable_callback_event(
+                    &event_callback,
+                    &callback_error_state,
+                    &event,
+                    "pricing progress event",
+                );
+            }
+
+            Ok(())
+        },
+    )?;
+
+    let run_result =
+        run_result.map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     raise_callback_error(
         &callback_error_state,

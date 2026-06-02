@@ -39,6 +39,7 @@ use super::request::{
 };
 use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
+use crate::native_interrupt::{NativeInterruptMode, run_interruptible_native};
 use crate::panic_boundary::panic_to_pyresult;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::PySeededTickSimulationNativeResult;
@@ -60,12 +61,12 @@ fn run_simulation_from_model_artifact(
             "running simulation from model artifact",
             request,
             event_callback,
-            |request| {
-                run_simulation_from_model_artifact_core(request, &mut |_| {})
+            |request, cancellation_token| {
+                run_simulation_from_model_artifact_core(request, cancellation_token, &mut |_| {})
                     .map_err(workflow_error_to_simulation_error)
             },
-            |request, observer| {
-                run_simulation_from_model_artifact_core(request, observer)
+            |request, cancellation_token, observer| {
+                run_simulation_from_model_artifact_core(request, cancellation_token, observer)
                     .map_err(workflow_error_to_simulation_error)
             },
         )?
@@ -74,13 +75,18 @@ fn run_simulation_from_model_artifact(
             "running simulation from model artifact",
             SimulationExecutionError::new_err,
             || {
-                py.detach(move || {
-                    run_simulation_from_model_artifact_with_terminal_progress(
-                        request,
-                        progress_mode,
-                    )
-                    .map_err(workflow_error_to_simulation_error)
-                })
+                run_interruptible_native(
+                    py,
+                    NativeInterruptMode::ImportedApi,
+                    move |cancellation_token| {
+                        run_simulation_from_model_artifact_with_terminal_progress(
+                            request,
+                            cancellation_token,
+                            progress_mode,
+                        )
+                        .map_err(workflow_error_to_simulation_error)
+                    },
+                )
             },
         )?
     };
@@ -251,12 +257,12 @@ fn run_coarse_simulation(
             "running coarse simulation",
             run_request,
             event_callback,
-            |run_request| {
-                run_coarse_simulation_core(run_request)
+            |run_request, cancellation_token| {
+                run_coarse_simulation_core(run_request, cancellation_token)
                     .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
             },
-            |run_request, observer| {
-                run_coarse_simulation_core_with_observer(run_request, observer)
+            |run_request, cancellation_token, observer| {
+                run_coarse_simulation_core_with_observer(run_request, cancellation_token, observer)
                     .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
             },
         )?
@@ -265,10 +271,18 @@ fn run_coarse_simulation(
             "running coarse simulation",
             SimulationExecutionError::new_err,
             || {
-                py.detach(move || {
-                    run_coarse_simulation_with_terminal_progress(run_request, progress_mode)
+                run_interruptible_native(
+                    py,
+                    NativeInterruptMode::ImportedApi,
+                    move |cancellation_token| {
+                        run_coarse_simulation_with_terminal_progress(
+                            run_request,
+                            cancellation_token,
+                            progress_mode,
+                        )
                         .map_err(workflow_error_to_simulation_error)
-                })
+                    },
+                )
             },
         )?
     };
@@ -300,13 +314,17 @@ fn run_seeded_tick_event_simulation(
             "running seeded tick-event simulation",
             run_config,
             event_callback,
-            |run_config| {
-                run_seeded_tick_event_simulation_core(run_config)
+            |run_config, cancellation_token| {
+                run_seeded_tick_event_simulation_core(run_config, cancellation_token)
                     .map_err(map_seeded_tick_simulation_run_error)
             },
-            |run_config, observer| {
-                run_seeded_tick_event_simulation_core_with_observer(run_config, observer)
-                    .map_err(map_seeded_tick_simulation_run_error)
+            |run_config, cancellation_token, observer| {
+                run_seeded_tick_event_simulation_core_with_observer(
+                    run_config,
+                    cancellation_token,
+                    observer,
+                )
+                .map_err(map_seeded_tick_simulation_run_error)
             },
         )?
     } else {
@@ -314,13 +332,18 @@ fn run_seeded_tick_event_simulation(
             "running seeded tick-event simulation",
             SimulationExecutionError::new_err,
             || {
-                py.detach(move || {
-                    run_seeded_tick_event_simulation_with_terminal_progress(
-                        run_config,
-                        progress_mode,
-                    )
-                    .map_err(workflow_error_to_simulation_error)
-                })
+                run_interruptible_native(
+                    py,
+                    NativeInterruptMode::ImportedApi,
+                    move |cancellation_token| {
+                        run_seeded_tick_event_simulation_with_terminal_progress(
+                            run_config,
+                            cancellation_token,
+                            progress_mode,
+                        )
+                        .map_err(workflow_error_to_simulation_error)
+                    },
+                )
             },
         )?
     };
@@ -335,14 +358,17 @@ fn parse_simulation_progress_mode(value: &str) -> PyResult<TerminalProgressMode>
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(run_coarse_simulation, module)?)?;
+
     module.add_function(wrap_pyfunction!(
         materialize_endogenous_mean_reversion_runtime_interval_anchors,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_simulation_from_model_artifact,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(run_seeded_tick_event_simulation, module)?)?;
 
     Ok(())

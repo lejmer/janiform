@@ -7,8 +7,10 @@ use chrono::{DateTime, Utc};
 use janiform_engine_simulation::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SeededTickEventSide, SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
-    run_seeded_tick_event_simulation,
+    SeededTickSimulationRunError, SeededTickSimulationRunResult,
+    run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::{
@@ -30,6 +32,12 @@ use serde::Deserialize;
 use support::validation_fixture::{
     fixtures_root_path, load_calendar_regression_fixture_from_manifest,
 };
+
+fn run_seeded_tick_event_simulation(
+    run_config: SeededTickSimulationRunConfig,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
+    run_seeded_tick_event_simulation_core(run_config, CancellationToken::uncancelled())
+}
 
 const SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SCHEMA_VERSION: &str =
     "simulation.seeded_tick.parity_fixture.v1";

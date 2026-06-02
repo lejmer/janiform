@@ -21,6 +21,7 @@ use janiform_engine_simulation::{
     SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickSimulationTransitionConsumer,
     estimate_seeded_result_capacities, stream_seeded_tick_event_simulation,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use janiform_market_time::hourly_factors::{
@@ -533,6 +534,7 @@ pub fn simulate_joint_refinement_seed_summary_in_process(
     session_state: &JointRefinementSummarySimulationSessionState,
     fitted_parameters: &JointRefinementStageFittedParameters,
     simulation_seed: u64,
+    cancellation_token: CancellationToken,
 ) -> Result<
     (
         JointRefinementSeedSummary,
@@ -563,7 +565,7 @@ pub fn simulate_joint_refinement_seed_summary_in_process(
         .reserve_transition_capacity(estimated_transition_capacity, estimated_event_capacity)
         .map_err(|source| source.to_string())?;
 
-    stream_seeded_tick_event_simulation(run_config, &mut collector)
+    stream_seeded_tick_event_simulation(run_config, cancellation_token, &mut collector)
         .map_err(|source| source.to_string())?;
 
     Ok((
@@ -590,10 +592,15 @@ pub fn run_joint_refinement_candidate_in_session(
         };
     }
 
+    // Process-worker cancellation is owned by the parent scheduler, which
+    // terminates this child process when a request is cancelled.
+    let cancellation_token = CancellationToken::uncancelled();
+
     let (summary, memory_estimate) = match simulate_joint_refinement_seed_summary_in_process(
         session_state,
         &request.fitted_parameters,
         request.requested_seed,
+        cancellation_token,
     ) {
         Ok(run_result) => run_result,
         Err(error_message) => {
@@ -830,6 +837,7 @@ pub(crate) mod tests {
     use std::time::SystemTime;
 
     use chrono::{DateTime, Duration};
+    use janiform_foundations::cancellation::CancellationToken;
 
     use super::{
         CloseSessionRequest, InitializeSessionRequest, InitializeSessionResponse,
@@ -924,6 +932,7 @@ pub(crate) mod tests {
             &session_state,
             &fixture.fitted_parameters,
             fixture.simulation_seed,
+            CancellationToken::uncancelled(),
         )
         .expect("summary-only simulation should succeed");
 
@@ -962,6 +971,7 @@ pub(crate) mod tests {
                 &session_state,
                 &fixture.fitted_parameters,
                 fixture.simulation_seed,
+                CancellationToken::uncancelled(),
             )
             .expect("summary-only simulation should succeed");
 
@@ -972,8 +982,10 @@ pub(crate) mod tests {
             requested_seed: fixture.simulation_seed,
             requested_output: JointRefinementWorkerRequestedOutput::ExactSummaryWithDiagnostics,
         };
+
         let serialized_request = serialize_joint_refinement_worker_payload(&run_candidate_request)
             .expect("summary simulation run-candidate request should serialize");
+
         let round_tripped_request: RunCandidateRequest =
             deserialize_joint_refinement_worker_payload(serialized_request.as_slice())
                 .expect("summary simulation run-candidate request should deserialize");
@@ -985,6 +997,7 @@ pub(crate) mod tests {
                 &session_state,
                 &round_tripped_request.fitted_parameters,
                 fixture.simulation_seed,
+                CancellationToken::uncancelled(),
             )
             .expect("round-tripped summary-only simulation should succeed");
 
@@ -1302,6 +1315,7 @@ pub(crate) mod tests {
                 fixture.simulation_seed,
             )
             .expect("summary simulation run config should build"),
+            CancellationToken::uncancelled(),
         )
         .expect("full-path seeded simulation should succeed");
 

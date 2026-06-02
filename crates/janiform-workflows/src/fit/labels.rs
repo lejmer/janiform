@@ -88,6 +88,7 @@ pub const fn stage_execution_status_label(status: CalibrationStageExecutionStatu
     match status {
         CalibrationStageExecutionStatus::Success => "completed",
         CalibrationStageExecutionStatus::SuccessWithWarnings => "completed with warnings",
+        CalibrationStageExecutionStatus::Cancelled => "cancelled",
         CalibrationStageExecutionStatus::Failure => "failed",
     }
 }

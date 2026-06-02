@@ -8,6 +8,7 @@ use janiform::simulation::{
     SeededTickSimulationRunOptions, SimulationProgressEvent,
 };
 use janiform::time::calendar::MarketState;
+use janiform_foundations::cancellation::CancellationToken;
 
 use crate::error::WorkflowError;
 use crate::model::{
@@ -29,20 +30,33 @@ const CLOSED_INTERVAL_SEASONALITY_FACTOR: f64 = 0.0;
 /// Run a simulation workflow from a persisted model artifact payload.
 pub fn run_simulation_from_model_artifact(
     request: ModelArtifactSimulationWorkflowRequest,
+    cancellation_token: CancellationToken,
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<ModelArtifactSimulationWorkflowOutput, WorkflowError> {
     validate_request(&request)?;
+    cancellation_token.check_cancelled()?;
 
     let started_at = Instant::now();
-
     let context = runtime_context(&request)?;
+
+    cancellation_token.check_cancelled()?;
+
     let hourly_factor_contract = build_hourly_factor_contract(&request, &context)?;
+
+    cancellation_token.check_cancelled()?;
+
     let initial_state = resolve_initial_state(&request, &context)?;
 
+    cancellation_token.check_cancelled()?;
+
     let job = build_direct_job(&request, &context, hourly_factor_contract, initial_state)?;
-    let completed = job.run(observer)?;
+    let completed = job.run(cancellation_token.shared_handle(), observer)?;
+
+    cancellation_token.check_cancelled()?;
 
     let export_summary = completed.export(request.output_path.as_deref())?;
+
+    cancellation_token.check_cancelled()?;
 
     let output = ModelArtifactSimulationWorkflowOutput {
         completed,

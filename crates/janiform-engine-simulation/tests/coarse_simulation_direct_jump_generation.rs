@@ -4,8 +4,10 @@ use janiform_affine_oracle::sufficient_statistics::{
 };
 use janiform_engine_simulation::{
     COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION, CoarseSimulationModelInputs,
-    CoarseSimulationRunError, CoarseSimulationRunRequest, run_coarse_simulation,
+    CoarseSimulationPath, CoarseSimulationRunError, CoarseSimulationRunRequest,
+    run_coarse_simulation as run_coarse_simulation_core,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_market_time::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
     RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
@@ -24,6 +26,12 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use serde_json::json;
+
+fn run_coarse_simulation(
+    run_request: CoarseSimulationRunRequest,
+) -> Result<CoarseSimulationPath, CoarseSimulationRunError> {
+    run_coarse_simulation_core(run_request, CancellationToken::uncancelled())
+}
 
 #[test]
 fn coarse_simulation_direct_jump_generation_is_seed_deterministic() {

@@ -127,6 +127,7 @@ fn execute_direct_simulation(
             output_path: output_path.clone(),
         },
         SimulationWorkflowObserver {
+            cancellation_token: context.cancellation_token(),
             progress_adapter: progress_adapter.as_mut(),
             terminal_output: terminal_output_for_context(context),
         },

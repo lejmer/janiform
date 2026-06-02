@@ -6,23 +6,28 @@ use janiform_calibration_artifacts::{
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
     CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CalibrationArtifactKind,
     CalibrationCallerSurface, CalibrationDatasetInputName, CalibrationExecutionMode,
-    CalibrationResumeSettings, CalibrationStage, CalibrationStageSeedSource,
-    calibration_artifact_manifest_path, calibration_dataset_snapshot_artifact_path,
-    calibration_last_success_checkpoint_path, calibration_last_success_checkpoint_reference,
-    calibration_stage_checkpoint_path, calibration_stage_checkpoint_reference,
-    calibration_stage_parameter_artifact_path, calibration_stage_token,
-    derive_calibration_stage_seed_from_global_seed, load_calibration_artifact_manifest_from_disk,
+    CalibrationResumeSettings, CalibrationRunContract, CalibrationStage,
+    CalibrationStageSeedSource, calibration_artifact_manifest_path,
+    calibration_dataset_snapshot_artifact_path, calibration_last_success_checkpoint_path,
+    calibration_last_success_checkpoint_reference, calibration_stage_checkpoint_path,
+    calibration_stage_checkpoint_reference, calibration_stage_parameter_artifact_path,
+    calibration_stage_token, derive_calibration_stage_seed_from_global_seed,
+    load_calibration_artifact_manifest_from_disk,
     load_calibration_dataset_snapshot_artifact_from_disk,
     load_calibration_stage_parameter_artifact_from_disk,
 };
 use janiform_calibration_runtime::{
     CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
-    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport, HawkesStageExecutionFailure,
-    JointRefinementStageProgressPhase, run_staged_calibration_with_checkpointing,
-    run_staged_calibration_with_checkpointing_and_observer,
+    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    HawkesStageExecutionFailure, JointRefinementStageProgressPhase,
+    run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
+    run_staged_calibration_with_checkpointing_and_observer as run_staged_calibration_with_checkpointing_and_observer_core,
 };
+use janiform_foundations::cancellation::{CancellationSource, CancellationToken};
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use serde_json::Value;
+use std::path::Path;
 use support::shared::{
     BTreeSet, build_pre_joint_run_contract_with_mode_and_resume,
     build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
@@ -33,6 +38,80 @@ use support::shared::{
     resolve_calibration_execution_mode_for_surface, staged_run_inputs,
     temporary_checkpoint_directory,
 };
+
+fn run_staged_calibration_with_checkpointing(
+    run_contract: &CalibrationRunContract,
+    calendar_registry: &ExchangeCalendarRegistry,
+    staged_run_inputs: CalibrationStagedRunInputs,
+    memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> CalibrationStagedRunReport {
+    run_staged_calibration_with_checkpointing_core(
+        run_contract,
+        calendar_registry,
+        staged_run_inputs,
+        CancellationToken::uncancelled(),
+        memory_checkpoint_store,
+        disk_checkpoint_directory,
+    )
+}
+
+fn run_staged_calibration_with_checkpointing_and_observer(
+    run_contract: &CalibrationRunContract,
+    calendar_registry: &ExchangeCalendarRegistry,
+    staged_run_inputs: CalibrationStagedRunInputs,
+    memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    disk_checkpoint_directory: Option<&Path>,
+    observer: Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
+) -> CalibrationStagedRunReport {
+    run_staged_calibration_with_checkpointing_and_observer_core(
+        run_contract,
+        calendar_registry,
+        staged_run_inputs,
+        CancellationToken::uncancelled(),
+        memory_checkpoint_store,
+        disk_checkpoint_directory,
+        observer,
+    )
+}
+
+#[test]
+fn staged_runner_pre_cancelled_token_returns_cancelled_report() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-stage-pre-cancelled",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+    let calendar_registry = calibration_stage_test_registry();
+    let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+    let cancellation_source = CancellationSource::new();
+    cancellation_source.cancel();
+
+    let mut observed_events = Vec::<CalibrationStagedRunObserverEvent>::new();
+    let report = run_staged_calibration_with_checkpointing_and_observer_core(
+        &run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        cancellation_source.token(),
+        Some(&mut checkpoint_store),
+        None,
+        Some(&mut |event| observed_events.push(event)),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Cancelled);
+    assert!(report.failure.is_none());
+    assert!(report.stage_reports.is_empty());
+    assert!(report.emitted_checkpoints.is_empty());
+    assert!(observed_events.iter().any(|event| {
+        matches!(
+            event,
+            CalibrationStagedRunObserverEvent::RunCancelled {
+                completed_stage_count: 0,
+                ..
+            }
+        )
+    }));
+}
 
 #[test]
 fn staged_runner_skips_option_pricing_progress_during_baseline_search() {

@@ -534,6 +534,14 @@ pub enum CalibrationStagedRunObserverEvent {
         failed_stage: Option<CalibrationStage>,
         failure: CalibrationStagedRunFailure,
     },
+    RunCancelled {
+        run_id: String,
+        execution_mode: CalibrationExecutionMode,
+        total_runtime_seconds: f64,
+        completed_stage_count: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cancelled_before_stage: Option<CalibrationStage>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

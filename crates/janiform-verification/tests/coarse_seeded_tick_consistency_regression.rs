@@ -4,16 +4,19 @@ use serde_json::Value;
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationPath, CoarseSimulationPathRecord,
-    CoarseSimulationRunRequest, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, run_coarse_simulation,
-    run_seeded_tick_event_simulation,
+    CoarseSimulationRunError, CoarseSimulationRunRequest, MeanReversionBoundaryState,
+    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunError,
+    SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
+    run_coarse_simulation as run_coarse_simulation_core,
+    run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
 use janiform_engine_sufficient_statistics::{
     SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
     SufficientStatisticsReturnComponents,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_market_time::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistry,
     ExchangeCalendarRegistryArtifact, RegularSessionArtifact, SessionWindowArtifact,
@@ -36,6 +39,18 @@ use janiform_model_kernels::news::{
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 };
+
+fn run_coarse_simulation(
+    run_request: CoarseSimulationRunRequest,
+) -> Result<CoarseSimulationPath, CoarseSimulationRunError> {
+    run_coarse_simulation_core(run_request, CancellationToken::uncancelled())
+}
+
+fn run_seeded_tick_event_simulation(
+    run_config: SeededTickSimulationRunConfig,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
+    run_seeded_tick_event_simulation_core(run_config, CancellationToken::uncancelled())
+}
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_test_support::simulation_regression::{
     NANOS_PER_HOUR, count_timestamps_in_half_open_interval, interval_delta_hours_to_nanos,

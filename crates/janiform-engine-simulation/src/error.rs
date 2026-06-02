@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
+use janiform_foundations::cancellation::CancellationError;
 
 use crate::long_variance::LongVarianceTransitionSamplingError;
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnComponentsError;
@@ -26,6 +27,9 @@ use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationE
 /// Structured simulator run failure with explicit validation diagnostics.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SeededTickSimulationRunError {
+    Cancelled {
+        source: CancellationError,
+    },
     InvalidHorizonIntervalCount {
         value: usize,
     },
@@ -195,6 +199,7 @@ pub enum SeededTickSimulationRunError {
 impl Display for SeededTickSimulationRunError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Cancelled { source } => write!(formatter, "{source}"),
             Self::InvalidHorizonIntervalCount { value } => write!(
                 formatter,
                 "horizon_interval_count must be greater than 0, found {value}"
@@ -463,6 +468,7 @@ impl Display for SeededTickSimulationRunError {
 impl Error for SeededTickSimulationRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::Cancelled { source } => Some(source),
             Self::InvalidMeanReversionFittedParameters { source } => Some(source.as_ref()),
             Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source.as_ref()),
             Self::InvalidMeanReversionBoundaryState { source } => Some(source.as_ref()),
@@ -485,5 +491,11 @@ impl Error for SeededTickSimulationRunError {
             Self::InternalInvariantViolation { .. } => None,
             _ => None,
         }
+    }
+}
+
+impl From<CancellationError> for SeededTickSimulationRunError {
+    fn from(source: CancellationError) -> Self {
+        Self::Cancelled { source }
     }
 }

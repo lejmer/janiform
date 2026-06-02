@@ -15,6 +15,7 @@ use janiform_engine_pricing::{
     VanillaOptionGridBatchPricingRequest, VanillaOptionPayoffType,
     VanillaOptionPricingIntervalFactors,
 };
+use janiform_foundations::cancellation::CancellationToken;
 use serde::{Deserialize, Serialize};
 
 use crate::stages::joint_metrics::{
@@ -511,6 +512,7 @@ pub(crate) struct JointRefinementObservedData {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementContext {
+    pub(crate) cancellation_token: CancellationToken,
     pub(crate) stage_thread_pool: Option<Arc<rayon::ThreadPool>>,
     pub(crate) summary_simulation_scheduler: Arc<JointRefinementSummarySimulationScheduler>,
     pub(crate) simulation_infrastructure_failure: Arc<Mutex<Option<String>>>,

@@ -90,6 +90,21 @@ pub(super) fn complete_simulation_progress(
     progress_adapter: Option<&mut ProgressAdapter>,
     progress_error: Option<WorkflowError>,
 ) -> Result<(), WorkflowError> {
+    finish_simulation_progress(progress_adapter, progress_error, "completed")
+}
+
+pub(super) fn cancel_simulation_progress(
+    progress_adapter: Option<&mut ProgressAdapter>,
+    progress_error: Option<WorkflowError>,
+) -> Result<(), WorkflowError> {
+    finish_simulation_progress(progress_adapter, progress_error, "cancelled")
+}
+
+fn finish_simulation_progress(
+    progress_adapter: Option<&mut ProgressAdapter>,
+    progress_error: Option<WorkflowError>,
+    status: &str,
+) -> Result<(), WorkflowError> {
     if let Some(progress_error) = progress_error {
         return Err(progress_error);
     }
@@ -98,7 +113,7 @@ pub(super) fn complete_simulation_progress(
         return Ok(());
     };
 
-    complete_terminal_progress(progress_adapter, "completed")
+    complete_terminal_progress(progress_adapter, status)
 }
 
 pub(super) fn emit_start_summary(

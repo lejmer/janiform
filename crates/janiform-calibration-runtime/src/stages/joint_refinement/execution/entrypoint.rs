@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::sync::mpsc;
 
+use janiform_foundations::cancellation::CancellationToken;
+
 use super::JointRefinementStageRuntimeHandoff;
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageExecutionInput,
@@ -13,6 +15,7 @@ pub fn run_joint_refinement_calibration_stage(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: JointRefinementStageExecutionInput,
+    cancellation_token: CancellationToken,
 ) -> JointRefinementStageExecutionReport {
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
         run_spec,
@@ -21,6 +24,7 @@ pub fn run_joint_refinement_calibration_stage(
         None,
         None,
         true,
+        cancellation_token,
     )
 }
 
@@ -31,6 +35,7 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
     load_current_stage_resume_state: bool,
+    cancellation_token: CancellationToken,
 ) -> JointRefinementStageExecutionReport {
     run_pipeline_stage_with_progress_observer_and_persistence(
         run_spec,
@@ -39,6 +44,7 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_
         progress_observer,
         disk_checkpoint_directory,
         load_current_stage_resume_state,
+        cancellation_token,
         super::pipeline::run_joint_refinement_calibration_stage_internal,
     )
 }
@@ -51,6 +57,7 @@ pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
     load_current_stage_resume_state: bool,
+    cancellation_token: CancellationToken,
 ) -> JointRefinementStageExecutionReport {
     run_pipeline_stage_with_progress_observer_and_persistence(
         run_spec,
@@ -59,12 +66,14 @@ pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and
         progress_observer,
         disk_checkpoint_directory,
         load_current_stage_resume_state,
+        cancellation_token,
         move |run_spec,
               calendar_registry,
               stage_input,
               progress_sender,
               disk_checkpoint_directory,
-              load_current_stage_resume_state| {
+              load_current_stage_resume_state,
+              cancellation_token| {
             super::pipeline::run_option_refinement_calibration_stage_internal(
                 run_spec,
                 calendar_registry,
@@ -73,6 +82,7 @@ pub(crate) fn run_option_refinement_calibration_stage_with_progress_observer_and
                 progress_sender,
                 disk_checkpoint_directory,
                 load_current_stage_resume_state,
+                cancellation_token,
             )
         },
     )
@@ -86,6 +96,7 @@ pub(crate) struct FinalizationCalibrationStageEntrypointInput<'a> {
     pub(crate) upstream_option_refinement_handoff: Option<&'a JointRefinementStageRuntimeHandoff>,
     pub(crate) disk_checkpoint_directory: Option<&'a Path>,
     pub(crate) load_current_stage_resume_state: bool,
+    pub(crate) cancellation_token: CancellationToken,
 }
 
 pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_persistence(
@@ -99,12 +110,14 @@ pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_pers
         progress_observer,
         input.disk_checkpoint_directory,
         input.load_current_stage_resume_state,
+        input.cancellation_token,
         move |run_spec,
               calendar_registry,
               stage_input,
               progress_sender,
               disk_checkpoint_directory,
-              load_current_stage_resume_state| {
+              load_current_stage_resume_state,
+              cancellation_token| {
             super::pipeline::run_finalization_calibration_stage_internal(
                 super::pipeline::FinalizationPipelineStageRunInput {
                     run_spec,
@@ -115,6 +128,7 @@ pub(crate) fn run_finalization_calibration_stage_with_progress_observer_and_pers
                     progress_sender,
                     disk_checkpoint_directory,
                     load_current_stage_resume_state,
+                    cancellation_token,
                 },
             )
         },
@@ -128,6 +142,7 @@ fn run_pipeline_stage_with_progress_observer_and_persistence<RunStage>(
     progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
     disk_checkpoint_directory: Option<&Path>,
     load_current_stage_resume_state: bool,
+    cancellation_token: CancellationToken,
     run_stage: RunStage,
 ) -> JointRefinementStageExecutionReport
 where
@@ -138,6 +153,7 @@ where
             Option<mpsc::Sender<JointRefinementStageProgressUpdate>>,
             Option<&Path>,
             bool,
+            CancellationToken,
         ) -> JointRefinementStageExecutionReport
         + Send,
 {
@@ -149,6 +165,7 @@ where
             None,
             disk_checkpoint_directory,
             load_current_stage_resume_state,
+            cancellation_token,
         );
     };
 
@@ -164,6 +181,7 @@ where
                 Some(progress_sender),
                 disk_checkpoint_directory,
                 load_current_stage_resume_state,
+                cancellation_token,
             )
         });
 

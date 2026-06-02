@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::mpsc;
 
 use chrono::{DateTime, Utc};
 use janiform::calibration::artifacts::{
@@ -63,6 +64,9 @@ use serde_json::Value;
 use super::calendar::parse_timestamp_utc;
 use super::events::{callback_error_state, emit_callback_event_payload, raise_callback_error};
 use crate::CalibrationExecutionError;
+use crate::native_interrupt::{
+    NativeInterruptMode, run_interruptible_native, run_interruptible_native_with_poll,
+};
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{
     PyCalendarRegistry, PyCalibrationMemoryCheckpointStore, PyNormalizedMarketDataHandle,
@@ -694,15 +698,33 @@ fn run_prepared_staged_calibration(
     calendar_registry: &PyCalendarRegistry,
     memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
 ) -> PyResult<Py<PyAny>> {
-    let report = py
-        .detach(|| {
+    run_staged_calibration_without_python_events(
+        py,
+        prepared_handle.execution_input.clone(),
+        calendar_registry,
+        memory_checkpoint_store,
+    )
+}
+
+fn run_staged_calibration_without_python_events(
+    py: Python<'_>,
+    execution_input: CalibrationStagedExecutionInput,
+    calendar_registry: &PyCalendarRegistry,
+    memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
+) -> PyResult<Py<PyAny>> {
+    let report = run_interruptible_native(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |cancellation_token| {
             run_staged_calibration_from_execution_input(
-                prepared_handle.execution_input.clone(),
+                execution_input,
                 &calendar_registry.registry,
+                cancellation_token,
                 memory_checkpoint_store.map(|store| &mut store.store),
             )
-        })
-        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+            .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+        },
+    )?;
 
     python_staged_calibration_report_to_py_object(py, &report)
 }
@@ -718,24 +740,43 @@ fn run_staged_calibration_with_python_events(
     let callback_error_state = callback_error_state();
     let callback_error_state_for_observer = callback_error_state.clone();
 
-    let report = py
-        .detach(move || {
+    let (event_sender, event_receiver) = mpsc::channel::<CalibrationStagedRunObserverEvent>();
+
+    let report = run_interruptible_native_with_poll(
+        py,
+        NativeInterruptMode::ImportedApi,
+        move |cancellation_token| {
             let mut observer = |event: CalibrationStagedRunObserverEvent| {
-                emit_callback_event_payload(
-                    &event_callback,
-                    &callback_error_state_for_observer,
-                    |py| python_staged_calibration_event_to_py_object(py, &event),
-                );
+                if callback_error_state_for_observer
+                    .lock()
+                    .map(|guard| guard.is_some())
+                    .unwrap_or(true)
+                {
+                    return;
+                }
+
+                let _ = event_sender.send(event);
             };
 
             run_staged_calibration_from_execution_input_with_observer(
                 execution_input,
                 &calendar_registry.registry,
+                cancellation_token,
                 memory_checkpoint_store.map(|store| &mut store.store),
                 &mut observer,
             )
-        })
-        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+            .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+        },
+        |_: Python<'_>| {
+            for event in event_receiver.try_iter() {
+                emit_callback_event_payload(&event_callback, &callback_error_state, |py| {
+                    python_staged_calibration_event_to_py_object(py, &event)
+                });
+            }
+
+            Ok(())
+        },
+    )?;
 
     raise_callback_error(
         &callback_error_state,
@@ -785,17 +826,12 @@ fn run_prepared_staged_calibration_with_resume(
     let mut execution_input = prepared_handle.execution_input.clone();
     execution_input.request.resume_settings = Some(resume_settings);
 
-    let report = py
-        .detach(move || {
-            run_staged_calibration_from_execution_input(
-                execution_input,
-                &calendar_registry.registry,
-                memory_checkpoint_store.map(|store| &mut store.store),
-            )
-        })
-        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
-
-    python_staged_calibration_report_to_py_object(py, &report)
+    run_staged_calibration_without_python_events(
+        py,
+        execution_input,
+        calendar_registry,
+        memory_checkpoint_store,
+    )
 }
 
 #[pyfunction]
@@ -842,17 +878,12 @@ fn run_staged_calibration(
             ))
         })?;
 
-    let report = py
-        .detach(move || {
-            run_staged_calibration_from_execution_input(
-                execution_input,
-                &calendar_registry.registry,
-                memory_checkpoint_store.map(|store| &mut store.store),
-            )
-        })
-        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
-
-    python_staged_calibration_report_to_py_object(py, &report)
+    run_staged_calibration_without_python_events(
+        py,
+        execution_input,
+        calendar_registry,
+        memory_checkpoint_store,
+    )
 }
 
 #[pyfunction]

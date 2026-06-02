@@ -318,6 +318,7 @@ fn run_status_label(status: RunStatus) -> &'static str {
     match status {
         RunStatus::Running => "running",
         RunStatus::Completed => "completed",
+        RunStatus::Cancelled => "cancelled",
         RunStatus::Failed => "failed",
     }
 }
@@ -327,6 +328,7 @@ fn run_stage_status_label(status: RunStageStatus) -> &'static str {
         RunStageStatus::Pending => "pending",
         RunStageStatus::Running => "running",
         RunStageStatus::Completed => "completed",
+        RunStageStatus::Cancelled => "cancelled",
         RunStageStatus::Failed => "failed",
     }
 }
@@ -343,6 +345,7 @@ fn stage_status(status: RunStageStatus) -> StageChecklistStatus {
         RunStageStatus::Pending => StageChecklistStatus::Pending,
         RunStageStatus::Running => StageChecklistStatus::Active,
         RunStageStatus::Completed => StageChecklistStatus::Completed,
+        RunStageStatus::Cancelled => StageChecklistStatus::Cancelled,
         RunStageStatus::Failed => StageChecklistStatus::Failed,
     }
 }

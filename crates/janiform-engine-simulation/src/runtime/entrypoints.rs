@@ -1,3 +1,4 @@
+use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SplitMix64SimulationRandomnessFactory,
 };
@@ -16,18 +17,27 @@ use super::simulation::stream_seeded_tick_event_simulation_with_randomness_facto
 /// Run deterministic seeded tick-event simulation using the default splitmix64 randomness policy.
 pub fn run_seeded_tick_event_simulation(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
 ) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
-    run_seeded_tick_event_simulation_with_randomness_factory(run_config, &randomness_factory)
+
+    run_seeded_tick_event_simulation_with_randomness_factory(
+        run_config,
+        cancellation_token,
+        &randomness_factory,
+    )
 }
 
 pub fn run_seeded_tick_event_simulation_with_observer(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
+
     run_seeded_tick_event_simulation_with_randomness_factory_and_observer(
         run_config,
+        cancellation_token,
         &randomness_factory,
         observer,
     )
@@ -39,6 +49,7 @@ pub fn run_seeded_tick_event_simulation_with_observer(
 /// streams for deterministic testing and reference-sequence generation.
 pub fn run_seeded_tick_event_simulation_with_randomness_factory<F>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
 ) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
 where
@@ -46,6 +57,7 @@ where
 {
     run_seeded_tick_event_simulation_with_randomness_factory_internal(
         run_config,
+        cancellation_token,
         randomness_factory,
         None,
     )
@@ -53,6 +65,7 @@ where
 
 pub fn run_seeded_tick_event_simulation_with_randomness_factory_and_observer<F>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
@@ -61,6 +74,7 @@ where
 {
     run_seeded_tick_event_simulation_with_randomness_factory_internal(
         run_config,
+        cancellation_token,
         randomness_factory,
         Some(observer),
     )
@@ -69,6 +83,7 @@ where
 /// Run deterministic seeded tick-event simulation and stream each transition to a consumer.
 pub fn stream_seeded_tick_event_simulation<C>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     consumer: &mut C,
 ) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
 where
@@ -78,6 +93,7 @@ where
 
     stream_seeded_tick_event_simulation_with_randomness_factory(
         run_config,
+        cancellation_token,
         &randomness_factory,
         consumer,
     )
@@ -85,6 +101,7 @@ where
 
 pub fn stream_seeded_tick_event_simulation_with_observer<C>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     consumer: &mut C,
     observer: &mut dyn FnMut(SimulationProgressEvent),
 ) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
@@ -95,6 +112,7 @@ where
 
     stream_seeded_tick_event_simulation_with_randomness_factory_and_observer(
         run_config,
+        cancellation_token,
         &randomness_factory,
         consumer,
         observer,
@@ -105,6 +123,7 @@ where
 /// streamed transition consumer.
 pub fn stream_seeded_tick_event_simulation_with_randomness_factory<F, C>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
     consumer: &mut C,
 ) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
@@ -114,6 +133,7 @@ where
 {
     stream_seeded_tick_event_simulation_with_randomness_factory_internal(
         run_config,
+        cancellation_token,
         randomness_factory,
         consumer,
         None,
@@ -122,6 +142,7 @@ where
 
 pub fn stream_seeded_tick_event_simulation_with_randomness_factory_and_observer<F, C>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
     consumer: &mut C,
     observer: &mut dyn FnMut(SimulationProgressEvent),
@@ -132,6 +153,7 @@ where
 {
     stream_seeded_tick_event_simulation_with_randomness_factory_internal(
         run_config,
+        cancellation_token,
         randomness_factory,
         consumer,
         Some(observer),
@@ -140,6 +162,7 @@ where
 
 fn run_seeded_tick_event_simulation_with_randomness_factory_internal<F>(
     run_config: SeededTickSimulationRunConfig,
+    cancellation_token: CancellationToken,
     randomness_factory: &F,
     observer: Option<&mut dyn FnMut(SimulationProgressEvent)>,
 ) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
@@ -150,6 +173,7 @@ where
 
     let stream_completion = stream_seeded_tick_event_simulation_with_randomness_factory_internal(
         run_config,
+        cancellation_token,
         randomness_factory,
         &mut result_builder,
         observer,
