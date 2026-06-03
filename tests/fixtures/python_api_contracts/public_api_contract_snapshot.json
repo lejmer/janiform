@@ -1949,6 +1949,7 @@
             "known_news_reference",
             "known_news_policy",
             "timestamp_timezone_name",
+            "tick_size",
             "column_alias_hints",
             "default_calibration_hint_ids"
           ],
@@ -1956,7 +1957,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'MarketProfileExplicitConfiguration'"
           },
-          "signature": "(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'"
+          "signature": "(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'"
         },
         "MarketProfileKnownNewsPolicy": {
           "kind": "enum",
@@ -1977,6 +1978,7 @@
             "known_news_reference",
             "known_news_policy",
             "timestamp_timezone_name",
+            "tick_size",
             "column_alias_hints",
             "default_calibration_hint_ids"
           ],
@@ -1984,7 +1986,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'MarketProfileOverridePatch'"
           },
-          "signature": "(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'"
+          "signature": "(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'"
         },
         "MarketProfilePresetArtifact": {
           "field_names": [
@@ -2507,6 +2509,7 @@
             "known_news_reference",
             "known_news_policy",
             "timestamp_timezone_name",
+            "tick_size",
             "column_alias_hints",
             "default_calibration_hint_ids"
           ],
@@ -2514,7 +2517,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'MarketProfileExplicitConfiguration'"
           },
-          "signature": "(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'"
+          "signature": "(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'"
         },
         "MarketProfileKnownNewsPolicy": {
           "kind": "enum",
@@ -2535,6 +2538,7 @@
             "known_news_reference",
             "known_news_policy",
             "timestamp_timezone_name",
+            "tick_size",
             "column_alias_hints",
             "default_calibration_hint_ids"
           ],
@@ -2542,7 +2546,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'MarketProfileOverridePatch'"
           },
-          "signature": "(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'"
+          "signature": "(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'"
         },
         "MarketProfileReference": {
           "field_names": [
