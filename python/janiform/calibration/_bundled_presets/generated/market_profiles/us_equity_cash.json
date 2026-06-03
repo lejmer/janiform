@@ -32,6 +32,7 @@
       "timezone_name_hint": null,
       "usage_mode": "named"
     },
+    "tick_size": null,
     "timestamp_timezone_name": "America/New_York"
   },
   "metadata": {
@@ -40,7 +41,7 @@
     "provenance": {
       "bundle_id": "janiform_bundled_presets",
       "bundle_version": "v1",
-      "content_hash": "sha256:ff81fb5f32a2568958ac6fabd9c0c729e3a83a142abb6a93a9f8dc673cae9160",
+      "content_hash": "sha256:973f052f726586d05559f4232a4012c937cd5b3c7e36ca70970e47cd5f84750f",
       "generated_on": "2026-05-30",
       "generator_id": "janiform.curated_preset_generator",
       "generator_version": "1.0.0",
