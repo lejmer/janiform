@@ -12,4 +12,3 @@ path = "src/main.rs"
 
 [dependencies]
 janiform-calibration-runtime = { path = "../janiform-calibration-runtime" }
-serde = { workspace = true }

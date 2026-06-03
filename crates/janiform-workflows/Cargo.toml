@@ -27,7 +27,6 @@ janiform-market-time = { path = "../janiform-market-time" }
 janiform-terminal-ui = { path = "../janiform-terminal-ui" }
 janiform-work-scheduler = { path = "../janiform-work-scheduler" }
 parquet = { workspace = true }
-rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = "2.0.17"

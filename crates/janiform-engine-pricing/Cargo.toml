@@ -18,9 +18,7 @@ janiform-affine-oracle = { path = "../janiform-affine-oracle" }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-market-time = { path = "../janiform-market-time" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
-nalgebra = { workspace = true }
 rayon = { workspace = true }
-rustdct = "0.7.1"
 serde = { workspace = true }
 statrs = { workspace = true }
 
