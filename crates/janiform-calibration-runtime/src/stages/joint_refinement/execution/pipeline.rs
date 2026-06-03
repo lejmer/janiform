@@ -268,26 +268,31 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     })
 }
 
+pub(crate) struct OptionRefinementPipelineStageRunInput<'a> {
+    pub(crate) run_spec: &'a CalibrationRunSpec,
+    pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
+    pub(crate) stage_input: JointRefinementStageExecutionInput,
+    pub(crate) upstream_joint_refinement_handoff:
+        Option<&'a super::state::JointRefinementStageRuntimeHandoff>,
+    pub(crate) progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
+    pub(crate) disk_checkpoint_directory: Option<&'a Path>,
+    pub(crate) load_current_stage_resume_state: bool,
+    pub(crate) cancellation_token: CancellationToken,
+}
+
 pub(super) fn run_option_refinement_calibration_stage_internal(
-    run_spec: &CalibrationRunSpec,
-    calendar_registry: &ExchangeCalendarRegistry,
-    stage_input: JointRefinementStageExecutionInput,
-    upstream_joint_refinement_handoff: Option<&super::state::JointRefinementStageRuntimeHandoff>,
-    progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
-    disk_checkpoint_directory: Option<&Path>,
-    load_current_stage_resume_state: bool,
-    cancellation_token: CancellationToken,
+    input: OptionRefinementPipelineStageRunInput<'_>,
 ) -> JointRefinementStageExecutionReport {
     run_joint_refinement_pipeline_stage_internal(JointRefinementPipelineStageRunInput {
-        run_spec,
-        calendar_registry,
-        stage_input,
-        upstream_joint_refinement_handoff,
+        run_spec: input.run_spec,
+        calendar_registry: input.calendar_registry,
+        stage_input: input.stage_input,
+        upstream_joint_refinement_handoff: input.upstream_joint_refinement_handoff,
         upstream_option_refinement_handoff: None,
-        progress_sender,
-        disk_checkpoint_directory,
-        load_current_stage_resume_state,
-        cancellation_token,
+        progress_sender: input.progress_sender,
+        disk_checkpoint_directory: input.disk_checkpoint_directory,
+        load_current_stage_resume_state: input.load_current_stage_resume_state,
+        cancellation_token: input.cancellation_token,
         pipeline_stage: JointRefinementPipelineStage::OptionRefinement,
     })
 }
