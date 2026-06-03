@@ -61,12 +61,14 @@ pub fn run_vanilla_option_grid_batch_pricing_with_terminal_progress(
     progress_mode: TerminalProgressMode,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, WorkflowError> {
     run_pricing_with_terminal_progress(
-        execution_input,
-        cancellation_token,
-        progress_mode,
-        vanilla_option_grid_batch_pricing_progress_scope_label(),
-        grid_batch_pricing_start_summary,
-        grid_batch_pricing_completion_summary,
+        PricingTerminalProgressRunInput {
+            execution_input,
+            cancellation_token,
+            progress_mode,
+            scope: vanilla_option_grid_batch_pricing_progress_scope_label(),
+            start_summary: grid_batch_pricing_start_summary,
+            completion_summary: grid_batch_pricing_completion_summary,
+        },
         run_vanilla_option_grid_batch_pricing_core,
         run_vanilla_option_grid_batch_pricing_core_with_observer,
     )
@@ -79,15 +81,26 @@ pub fn run_vanilla_option_surface_pricing_with_terminal_progress(
     progress_mode: TerminalProgressMode,
 ) -> Result<VanillaOptionSurfacePricingRunResult, WorkflowError> {
     run_pricing_with_terminal_progress(
-        execution_input,
-        cancellation_token,
-        progress_mode,
-        vanilla_option_surface_pricing_progress_scope_label(),
-        surface_pricing_start_summary,
-        surface_pricing_completion_summary,
+        PricingTerminalProgressRunInput {
+            execution_input,
+            cancellation_token,
+            progress_mode,
+            scope: vanilla_option_surface_pricing_progress_scope_label(),
+            start_summary: surface_pricing_start_summary,
+            completion_summary: surface_pricing_completion_summary,
+        },
         run_vanilla_option_surface_pricing_core,
         run_vanilla_option_surface_pricing_core_with_observer,
     )
+}
+
+struct PricingTerminalProgressRunInput<'a, TExecutionInput, TStartSummary, TCompletionSummary> {
+    execution_input: TExecutionInput,
+    cancellation_token: CancellationToken,
+    progress_mode: TerminalProgressMode,
+    scope: &'a str,
+    start_summary: TStartSummary,
+    completion_summary: TCompletionSummary,
 }
 
 fn run_pricing_with_terminal_progress<
@@ -99,12 +112,7 @@ fn run_pricing_with_terminal_progress<
     TRunCore,
     TRunObserved,
 >(
-    execution_input: TExecutionInput,
-    cancellation_token: CancellationToken,
-    progress_mode: TerminalProgressMode,
-    scope: &str,
-    start_summary: TStartSummary,
-    completion_summary: TCompletionSummary,
+    input: PricingTerminalProgressRunInput<'_, TExecutionInput, TStartSummary, TCompletionSummary>,
     run_core: TRunCore,
     run_observed: TRunObserved,
 ) -> Result<TRunResult, WorkflowError>
@@ -118,6 +126,15 @@ where
     ) -> Result<TRunResult, TRunError>,
     TRunError: ToString,
 {
+    let PricingTerminalProgressRunInput {
+        execution_input,
+        cancellation_token,
+        progress_mode,
+        scope,
+        start_summary,
+        completion_summary,
+    } = input;
+
     cancellation_token.check_cancelled()?;
 
     let mut progress_adapter = stderr_progress_adapter(progress_mode);

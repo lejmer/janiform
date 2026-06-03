@@ -7,9 +7,10 @@ use super::super::{
     CalibrationStageHandoffTransport, CalibrationStagePayloadSource, CalibrationStagedRunFailure,
     CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
-    ExchangeCalendarRegistry, JointRefinementStageExecutionInput,
-    JointRefinementStageOptionPricingInput, JointRefinementStageProgressUpdate,
-    JointRefinementStageRuntimeHandoff, JointRefinementStageSeasonalityFactorsInput,
+    ExchangeCalendarRegistry, JointRefinementCalibrationStageEntrypointInput,
+    JointRefinementStageExecutionInput, JointRefinementStageOptionPricingInput,
+    JointRefinementStageProgressUpdate, JointRefinementStageRuntimeHandoff,
+    JointRefinementStageSeasonalityFactorsInput, OptionRefinementCalibrationStageEntrypointInput,
     ReturnComponentsStageCandidateGenerationInput,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
@@ -42,27 +43,31 @@ pub(super) fn run_joint_refinement_like_stage(
         CalibrationStage::JointRefinement => {
             Ok(CalibrationStagedRunStageReport::JointRefinement(Box::new(
                 run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
-                    input.run_spec,
-                    input.calendar_registry,
-                    input.stage_input,
+                    JointRefinementCalibrationStageEntrypointInput {
+                        run_spec: input.run_spec,
+                        calendar_registry: input.calendar_registry,
+                        stage_input: input.stage_input,
+                        disk_checkpoint_directory: input.disk_checkpoint_directory,
+                        load_current_stage_resume_state: input.load_current_stage_resume_state,
+                        cancellation_token: input.cancellation_token,
+                    },
                     input.progress_observer,
-                    input.disk_checkpoint_directory,
-                    input.load_current_stage_resume_state,
-                    input.cancellation_token,
                 ),
             )))
         }
         CalibrationStage::OptionRefinement => {
             Ok(CalibrationStagedRunStageReport::OptionRefinement(Box::new(
                 run_option_refinement_calibration_stage_with_progress_observer_and_persistence(
-                    input.run_spec,
-                    input.calendar_registry,
-                    input.stage_input,
-                    input.upstream_joint_refinement_handoff,
+                    OptionRefinementCalibrationStageEntrypointInput {
+                        run_spec: input.run_spec,
+                        calendar_registry: input.calendar_registry,
+                        stage_input: input.stage_input,
+                        upstream_joint_refinement_handoff: input.upstream_joint_refinement_handoff,
+                        disk_checkpoint_directory: input.disk_checkpoint_directory,
+                        load_current_stage_resume_state: input.load_current_stage_resume_state,
+                        cancellation_token: input.cancellation_token,
+                    },
                     input.progress_observer,
-                    input.disk_checkpoint_directory,
-                    input.load_current_stage_resume_state,
-                    input.cancellation_token,
                 ),
             )))
         }
