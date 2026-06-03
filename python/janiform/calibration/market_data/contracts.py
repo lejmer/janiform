@@ -82,6 +82,7 @@ class CalibrationFlatCarryInput(ContractModel):
     def __post_init__(self) -> None:
         if not isfinite(self.discount_rate):
             raise calibration_error("discount_rate", "must be finite")
+
         if not isfinite(self.carry_rate):
             raise calibration_error("carry_rate", "must be finite")
 
@@ -181,13 +182,16 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
     def __post_init__(self) -> None:
         if self.sparse_hour_event_threshold < 1:
             raise calibration_error("sparse_hour_event_threshold", "must be at least 1")
+
         if self.intraday_minutes_per_bin < 1:
             raise calibration_error("intraday_minutes_per_bin", "must be at least 1")
+
         if not isfinite(self.known_news_overlay_log_adjustment):
             raise calibration_error(
                 "known_news_overlay_log_adjustment",
                 "must be finite",
             )
+
         if (
             not isfinite(self.intraday_smoothing_bandwidth_bins)
             or self.intraday_smoothing_bandwidth_bins <= 0.0
@@ -196,13 +200,16 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
                 "intraday_smoothing_bandwidth_bins",
                 "must be finite and strictly positive",
             )
+
         if self.intraday_minimum_bin_events < 1:
             raise calibration_error("intraday_minimum_bin_events", "must be at least 1")
+
         if self.day_of_week_minimum_bucket_events < 1:
             raise calibration_error(
                 "day_of_week_minimum_bucket_events",
                 "must be at least 1",
             )
+
         if self.day_of_year_minimum_bucket_events < 1:
             raise calibration_error(
                 "day_of_year_minimum_bucket_events",
@@ -289,7 +296,6 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
 class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
     intraday_jump_threshold_multiplier: float = 4.0
     close_open_gap_tolerance_multiplier: float = 3.0
-    tick_size: Optional[float] = None
 
     def __post_init__(self) -> None:
         if (
@@ -300,6 +306,7 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
                 "intraday_jump_threshold_multiplier",
                 "must be finite and strictly positive",
             )
+
         if (
             not isfinite(self.close_open_gap_tolerance_multiplier)
             or self.close_open_gap_tolerance_multiplier <= 0.0
@@ -307,13 +314,6 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
             raise calibration_error(
                 "close_open_gap_tolerance_multiplier",
                 "must be finite and strictly positive",
-            )
-        if self.tick_size is not None and (
-            not isfinite(self.tick_size) or self.tick_size <= 0.0
-        ):
-            raise calibration_error(
-                "tick_size",
-                "must be finite and strictly positive when provided",
             )
 
     @staticmethod
@@ -324,6 +324,16 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
     ) -> CalibrationMarketDataReturnComponentsPreprocessingSettings:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
+
+        require_only_supported_fields(
+            raw_payload,
+            supported_fields=(
+                "intraday_jump_threshold_multiplier",
+                "close_open_gap_tolerance_multiplier",
+            ),
+            field_path=field_path,
+            error_factory=calibration_error,
+        )
 
         return CalibrationMarketDataReturnComponentsPreprocessingSettings(
             intraday_jump_threshold_multiplier=require_positive_finite_number(
@@ -337,16 +347,6 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
                 "close_open_gap_tolerance_multiplier",
                 f"{field_path}.close_open_gap_tolerance_multiplier",
                 calibration_error,
-            ),
-            tick_size=(
-                require_positive_finite_number(
-                    raw_payload,
-                    "tick_size",
-                    f"{field_path}.tick_size",
-                    calibration_error,
-                )
-                if "tick_size" in raw_payload and raw_payload["tick_size"] is not None
-                else None
             ),
         )
 
@@ -404,6 +404,7 @@ class CalibrationInputFileReference(ContractModel):
     def __post_init__(self) -> None:
         if not self.path.strip():
             raise calibration_error("path", "must be a non-empty string")
+
         if not self.provenance_label.strip():
             raise calibration_error("provenance_label", "must be a non-empty string")
 
@@ -445,6 +446,7 @@ class CalibrationSessionConfigurationInput(ContractModel):
     def __post_init__(self) -> None:
         if not self.exchange_code.strip():
             raise calibration_error("exchange_code", "must be a non-empty string")
+
         if self.session_timezone is not None and not self.session_timezone.strip():
             raise calibration_error("session_timezone", "must be non-empty when provided")
 
@@ -747,6 +749,7 @@ class CalibrationKnownNewsColumnMapping(ContractModel):
                 "event_timestamp_column",
                 "must be a non-empty string",
             )
+
         if self.event_identifier_column is not None and not self.event_identifier_column.strip():
             raise calibration_error(
                 "event_identifier_column",
@@ -936,11 +939,13 @@ class CalibrationMarketDataOutputPreferences(ContractModel):
                 "disk_checkpoint_directory",
                 "must be non-empty when provided",
             )
+
         if self.execution_mode == CalibrationExecutionMode.MEMORY and self.disk_checkpoint_directory is not None:
             raise calibration_error(
                 "disk_checkpoint_directory",
                 "is only supported when execution_mode=disk",
             )
+
         if self.execution_mode == CalibrationExecutionMode.DISK and self.disk_checkpoint_directory is None:
             raise calibration_error(
                 "disk_checkpoint_directory",

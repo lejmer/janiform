@@ -592,14 +592,13 @@
         "CalibrationMarketDataReturnComponentsPreprocessingSettings": {
           "field_names": [
             "intraday_jump_threshold_multiplier",
-            "close_open_gap_tolerance_multiplier",
-            "tick_size"
+            "close_open_gap_tolerance_multiplier"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMarketDataReturnComponentsPreprocessingSettings'"
           },
-          "signature": "(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'"
+          "signature": "(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'"
         },
         "CalibrationMarketDataSeasonalityPreprocessingSettings": {
           "field_names": [
@@ -1247,14 +1246,13 @@
         "CalibrationMarketDataReturnComponentsPreprocessingSettings": {
           "field_names": [
             "intraday_jump_threshold_multiplier",
-            "close_open_gap_tolerance_multiplier",
-            "tick_size"
+            "close_open_gap_tolerance_multiplier"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMarketDataReturnComponentsPreprocessingSettings'"
           },
-          "signature": "(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'"
+          "signature": "(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'"
         },
         "CalibrationMarketDataSeasonalityPreprocessingSettings": {
           "field_names": [

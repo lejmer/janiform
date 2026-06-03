@@ -5206,7 +5206,7 @@
 | [`CalibrationMarketDataNormalizationPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatanormalizationpolicy) | contract_model | 5 fields |
 | [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
-| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 3 fields |
+| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataworkflowscope) | enum | 3 members |
 | [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-calibrationmeanreversionconfiguration) | contract_model | 1 fields |
@@ -5388,8 +5388,8 @@
 ### `CalibrationMarketDataReturnComponentsPreprocessingSettings`
 
 - Kind: `contract_model`
-- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'`
-- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`, `tick_size`
+- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'`
+- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`
 
 | Method | Signature |
 |--------|-----------|
@@ -5726,7 +5726,7 @@
 | [`CalibrationMarketDataNormalizationPolicy`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatanormalizationpolicy) | contract_model | 5 fields |
 | [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
-| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 3 fields |
+| [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataworkflowscope) | enum | 3 members |
 | [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmeanreversionconfiguration) | contract_model | 1 fields |
@@ -5897,8 +5897,8 @@
 ### `CalibrationMarketDataReturnComponentsPreprocessingSettings`
 
 - Kind: `contract_model`
-- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0, tick_size: 'Optional[float]' = None) -> 'None'`
-- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`, `tick_size`
+- Signature: `(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'`
+- Fields: `intraday_jump_threshold_multiplier`, `close_open_gap_tolerance_multiplier`
 
 | Method | Signature |
 |--------|-----------|

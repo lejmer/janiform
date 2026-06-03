@@ -66,6 +66,7 @@ class FitPreparationConfiguration:
     output_preferences: CalibrationMarketDataOutputPreferences
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
+    tick_size: Optional[float]
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy

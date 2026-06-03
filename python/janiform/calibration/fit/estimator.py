@@ -40,7 +40,6 @@ from ..market_data.contracts import (
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataPreprocessingSettings,
-    CalibrationMarketDataReturnComponentsPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
@@ -71,6 +70,7 @@ from ..presets.resolution import ResolvedPresetWorkflowConfiguration
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged import CalibrationResumeSettings, CalibrationStageSolverSettings
 from ..staged.request import StagedCalibrationRequest
+from ...contracts.base import require_positive_finite_scalar
 from ...model import JaniformModel
 from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
 
@@ -81,44 +81,14 @@ _DEFAULT_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
 _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration()
 
 
-def _preprocessing_settings_with_tick_size(
-    *,
-    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings],
-    tick_size: Optional[float],
-) -> Optional[CalibrationMarketDataPreprocessingSettings]:
+def _validate_optional_tick_size(tick_size: Optional[float]) -> Optional[float]:
     if tick_size is None:
-        return preprocessing_settings
+        return None
 
-    if (
-        preprocessing_settings is not None
-        and preprocessing_settings.return_components is not None
-        and preprocessing_settings.return_components.tick_size is not None
-    ):
-        raise calibration_error(
-            "tick_size",
-            "must not be provided with preprocessing_settings.return_components.tick_size",
-        )
-
-    return_components = (
-        CalibrationMarketDataReturnComponentsPreprocessingSettings(tick_size=tick_size)
-        if preprocessing_settings is None
-        or preprocessing_settings.return_components is None
-        else CalibrationMarketDataReturnComponentsPreprocessingSettings(
-            intraday_jump_threshold_multiplier=(
-                preprocessing_settings.return_components.intraday_jump_threshold_multiplier
-            ),
-            close_open_gap_tolerance_multiplier=(
-                preprocessing_settings.return_components.close_open_gap_tolerance_multiplier
-            ),
-            tick_size=tick_size,
-        )
-    )
-
-    return CalibrationMarketDataPreprocessingSettings(
-        seasonality=(
-            None if preprocessing_settings is None else preprocessing_settings.seasonality
-        ),
-        return_components=return_components,
+    return require_positive_finite_scalar(
+        tick_size,
+        "tick_size",
+        calibration_error,
     )
 
 
@@ -133,6 +103,7 @@ class JaniformEstimator:
     _output_preferences: CalibrationMarketDataOutputPreferences
     _optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     _preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
+    _tick_size: Optional[float]
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     _tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy
@@ -212,10 +183,7 @@ class JaniformEstimator:
                 "must be a CalibrationMarketDataPreprocessingSettings when provided",
             )
 
-        resolved_preprocessing_settings = _preprocessing_settings_with_tick_size(
-            preprocessing_settings=preprocessing_settings,
-            tick_size=tick_size,
-        )
+        validated_tick_size = _validate_optional_tick_size(tick_size)
 
         if mean_reversion is not None and not isinstance(mean_reversion, CalibrationMeanReversionConfiguration):
             raise calibration_error(
@@ -328,7 +296,8 @@ class JaniformEstimator:
         )
         self._output_preferences = _DEFAULT_OUTPUT_PREFERENCES if output_preferences is None else output_preferences
         self._optimizer_settings_by_stage = optimizer_settings_by_stage
-        self._preprocessing_settings = resolved_preprocessing_settings
+        self._preprocessing_settings = preprocessing_settings
+        self._tick_size = validated_tick_size
         self._mean_reversion = mean_reversion
         self._pricing_interval_schedule_policy = (
             default_pricing_interval_schedule_policy()
@@ -480,6 +449,7 @@ class JaniformEstimator:
             output_preferences=self._output_preferences,
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,
             preprocessing_settings=self._preprocessing_settings,
+            tick_size=self._tick_size,
             mean_reversion=self._mean_reversion,
             pricing_interval_schedule_policy=(
                 self._pricing_interval_schedule_policy
@@ -669,7 +639,11 @@ def _prepared_fit_workflow_from_native(
     temporary_directory: TemporaryDirectory[str],
 ) -> PreparedFitWorkflow:
     raw_preparation_payload = _required_mapping(raw_prepared, "preparation_payload")
-    request = validate_market_data_calibration_request(raw_preparation_payload["request"])
+    request = validate_market_data_calibration_request(
+        _public_request_payload_without_internal_tick_size(
+            _required_mapping(raw_preparation_payload, "request")
+        )
+    )
     staged_request = StagedCalibrationRequest.from_mapping(
         _required_mapping(raw_prepared, "staged_request"),
         field_path_prefix="staged_request",
@@ -710,6 +684,28 @@ def _prepared_fit_workflow_from_native(
         reference_price=prepared.reference_price,
         temporary_directory=temporary_directory,
     )
+
+
+def _public_request_payload_without_internal_tick_size(
+    raw_request_payload: dict[str, Any],
+) -> dict[str, Any]:
+    request_payload = dict(raw_request_payload)
+    raw_preprocessing_settings = request_payload.get("preprocessing_settings")
+    if not isinstance(raw_preprocessing_settings, dict):
+        return request_payload
+
+    preprocessing_settings = dict(raw_preprocessing_settings)
+    raw_return_components = preprocessing_settings.get("return_components")
+    if not isinstance(raw_return_components, dict):
+        request_payload["preprocessing_settings"] = preprocessing_settings
+        return request_payload
+
+    return_components = dict(raw_return_components)
+    return_components.pop("tick_size", None)
+    preprocessing_settings["return_components"] = return_components
+    request_payload["preprocessing_settings"] = preprocessing_settings
+
+    return request_payload
 
 
 def _required_mapping(payload: dict[str, Any], field_name: str) -> dict[str, Any]:
