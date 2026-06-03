@@ -6,14 +6,24 @@ Run scripts from the repository root with the project environment active. For se
 
 ## Regular generators
 
-| Script                                            | Generates                                                                            | Use it when                                                                                                           |
-|---------------------------------------------------|--------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `scripts/generate_bundled_presets.py`             | Built-in preset JSON under `python/janiform/calibration/_bundled_presets/generated/` | Preset source files under `presets/sources/` change, or preset artifact contracts change.                             |
-| `scripts/generate_crate_readmes.py`               | `README.md` files under `crates/*/`                                                  | A crate is added, removed, renamed, republished, or its `Cargo.toml` metadata changes.                                |
-| `scripts/generate_docs_references.py`             | Generated reference pages under `docs/reference/`                                    | The CLI command surface or public Python API reference surface changes.                                               |
-| `scripts/generate_internal_crate_graph_policy.py` | `tests/fixtures/rust_architecture/internal_crate_graph_policy.json`                  | Workspace crates, internal crate dependencies, crate classifications, or umbrella facade modules change.              |
-| `scripts/generate_third_party_notices.py`         | `THIRD_PARTY_NOTICES.txt`                                                            | Rust dependencies behind the packaged native extension change, or dependency license metadata changes.                |
-| `scripts/update_public_api_contract_snapshot.py`  | `tests/fixtures/python_api_contracts/public_api_contract_snapshot.json`              | The public Python API surface changes intentionally. See [Maintaining public API contracts](public-api-contracts.md). |
+- `scripts/generate_bundled_presets.py`
+  - **Generates:** Built-in preset JSON under `python/janiform/calibration/_bundled_presets/generated/`.
+  - **Use it when:** Preset source files under `presets/sources/` change, or preset artifact contracts change.
+- `scripts/generate_crate_readmes.py`
+  - **Generates:** `README.md` files under `crates/*/`.
+  - **Use it when:** A crate is added, removed, renamed, republished, or its `Cargo.toml` metadata changes.
+- `scripts/generate_docs_references.py`
+  - **Generates:** Generated reference pages under `docs/reference/`.
+  - **Use it when:** The CLI command surface or public Python API reference surface changes.
+- `scripts/generate_internal_crate_graph_policy.py`
+  - **Generates:** `tests/fixtures/rust_architecture/internal_crate_graph_policy.json`.
+  - **Use it when:** Workspace crates, internal crate dependencies, crate classifications, or umbrella facade modules change.
+- `scripts/generate_third_party_notices.py`
+  - **Generates:** `THIRD_PARTY_NOTICES.txt`.
+  - **Use it when:** Rust dependencies behind the packaged native extension change, or dependency license metadata changes.
+- `scripts/update_public_api_contract_snapshot.py`
+  - **Generates:** `tests/fixtures/python_api_contracts/public_api_contract_snapshot.json`.
+  - **Use it when:** The public Python API surface changes intentionally. See [Maintaining public API contracts](public-api-contracts.md).
 
 > **NOTE:** For Rust crate graph work, treat any added, removed, or reordered workspace crate dependency in a `crates/*/Cargo.toml` file as an internal crate dependency change. Run `python scripts/generate_internal_crate_graph_policy.py` in the same change so the checked-in policy fixture records the approved graph.
 
@@ -21,10 +31,12 @@ Run scripts from the repository root with the project environment active. For se
 
 These scripts can do more work than the regular metadata generators. Run them deliberately and avoid running multiple expensive commands at the same time.
 
-| Script                                                      | Generates                                                                                   | Use it when                                                                                                                         |
-|-------------------------------------------------------------|---------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| `scripts/generate_synthetic_option_snapshot.py`             | Synthetic option snapshot artifacts under `.artifacts/examples/option_surfaces/` by default | The synthetic EUR/USD option-surface example needs a fresh snapshot, or its generation policy changes.                              |
-| `scripts/generate_real_data_seeded_runtime_smoke_report.py` | `tests/fixtures/benchmarks/real_data_seeded_runtime_smoke_report.json`                      | The smoke benchmark fixture changes, or the checked-in smoke report needs to reflect an intentional runtime/report contract change. |
+- `scripts/generate_synthetic_option_snapshot.py`
+  - **Generates:** Synthetic option snapshot artifacts under `.artifacts/examples/option_surfaces/` by default.
+  - **Use it when:** The synthetic EUR/USD option-surface example needs a fresh snapshot, or its generation policy changes.
+- `scripts/generate_real_data_seeded_runtime_smoke_report.py`
+  - **Generates:** `tests/fixtures/benchmarks/real_data_seeded_runtime_smoke_report.json`.
+  - **Use it when:** The smoke benchmark fixture changes, or the checked-in smoke report needs to reflect an intentional runtime/report contract change.
 
 ## Check mode
 
