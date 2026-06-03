@@ -90,7 +90,7 @@ Different exchanges have different calendars and trading rhythms. Some markets c
 
 ## Market profiles
 
-A market profile is a preset that describes a market setup. It can point to a session, known news defaults, timestamp conventions, and input-column hints.
+A market profile is a preset that describes a market setup. It can point to a session, known news defaults, timestamp conventions, an optional tick-size fallback, and input-column hints.
 
 Market profiles reduce setup work. For example, a bundled EUR/USD spot profile can carry the right FX session and known-news suggestions. You can still override details when the data or workflow requires it.
 

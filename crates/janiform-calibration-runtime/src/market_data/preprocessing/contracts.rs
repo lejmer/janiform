@@ -76,6 +76,38 @@ impl Default for MarketDataTranslationReturnComponentsPreprocessingSettings {
     }
 }
 
+/// Return preprocessing settings with `tick_size` applied to return components when absent.
+///
+/// The caller owns tick-size precedence and validation. This helper only merges
+/// a selected fallback into an owned preprocessing payload without replacing an
+/// already supplied return-components tick size.
+pub fn preprocessing_settings_with_return_components_tick_size(
+    preprocessing_settings: Option<&MarketDataTranslationPreprocessingSettings>,
+    tick_size: Option<f64>,
+) -> Option<MarketDataTranslationPreprocessingSettings> {
+    let Some(tick_size) = tick_size else {
+        return preprocessing_settings.cloned();
+    };
+
+    let mut effective_settings =
+        preprocessing_settings
+            .cloned()
+            .unwrap_or(MarketDataTranslationPreprocessingSettings {
+                seasonality: None,
+                return_components: None,
+            });
+
+    let return_components = effective_settings
+        .return_components
+        .get_or_insert_with(MarketDataTranslationReturnComponentsPreprocessingSettings::default);
+
+    if return_components.tick_size.is_none() {
+        return_components.tick_size = Some(tick_size);
+    }
+
+    Some(effective_settings)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarketDataTranslationTickRecord {

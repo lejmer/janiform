@@ -32,6 +32,7 @@
       "timezone_name_hint": null,
       "usage_mode": "named"
     },
+    "tick_size": 1e-05,
     "timestamp_timezone_name": "UTC"
   },
   "metadata": {
@@ -40,7 +41,7 @@
     "provenance": {
       "bundle_id": "janiform_bundled_presets",
       "bundle_version": "v1",
-      "content_hash": "sha256:397ab2bf10e6be56b09d682c13b0c69f470bf6ca78017beca436de27c51ddb25",
+      "content_hash": "sha256:56d012c234b8640dc509d37f73453fb77f4b47cbaf49c226ab987f2b3ddc39c4",
       "generated_on": "2026-05-30",
       "generator_id": "janiform.curated_preset_generator",
       "generator_version": "1.0.0",

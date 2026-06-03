@@ -85,7 +85,7 @@ def main() -> None:
 
 
 def _preset_index_entry_sort_key(entry: PresetIndexEntry) -> tuple[int, str]:
-    return (_preset_category_sort_rank(entry.category), entry.preset_name)
+    return _preset_category_sort_rank(entry.category), entry.preset_name
 
 
 def _preset_category_sort_rank(category: PresetCategory) -> int:
@@ -195,6 +195,7 @@ def _build_market_profile_artifacts(
                 _require_non_empty_string(configuration_source, "known_news_policy")
             ),
             timestamp_timezone_name=configuration_source.get("timestamp_timezone_name"),
+            tick_size=configuration_source.get("tick_size"),
             column_alias_hints=tuple(
                 MarketProfileColumnAliasHint.from_mapping(raw_hint, field_path="column_alias_hints")
                 for raw_hint in configuration_source.get("column_alias_hints", ())
@@ -327,7 +328,7 @@ def _require_mapping(mapping: dict[str, Any], field_name: str) -> dict[str, Any]
     if not isinstance(raw_value, dict):
         raise TypeError(f"{field_name} must be an object")
 
-    return cast(dict[str, Any], raw_value)
+    return raw_value
 
 
 def _require_sequence(mapping: dict[str, Any], field_name: str) -> list[Any] | tuple[Any, ...]:
@@ -335,7 +336,7 @@ def _require_sequence(mapping: dict[str, Any], field_name: str) -> list[Any] | t
     if isinstance(raw_value, str) or not isinstance(raw_value, list | tuple):
         raise TypeError(f"{field_name} must be a sequence")
 
-    return cast(list[Any] | tuple[Any, ...], raw_value)
+    return raw_value
 
 
 def _require_non_empty_string(mapping: dict[str, Any], field_name: str) -> str:

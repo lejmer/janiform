@@ -12,8 +12,6 @@ name = "janiform"
 path = "src/lib.rs"
 
 [dependencies]
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
 janiform-validation = { path = "../janiform-validation" }
 janiform-affine-oracle = { path = "../janiform-affine-oracle" }
 janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
@@ -29,6 +27,3 @@ janiform-model-kernels = { path = "../janiform-model-kernels" }
 janiform-verification = { path = "../janiform-verification" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-[dev-dependencies]
-janiform-test-support = { path = "../janiform-test-support" }

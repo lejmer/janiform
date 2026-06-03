@@ -231,6 +231,7 @@ def test_market_profile_explicit_configuration_roundtrip_serialization_is_determ
             ),
             known_news_policy=MarketProfileKnownNewsPolicy.SUGGEST_ONLY,
             timestamp_timezone_name="UTC",
+            tick_size=0.00001,
             column_alias_hints=(
                 MarketProfileColumnAliasHint(
                     canonical_name="timestamp",
@@ -242,9 +243,11 @@ def test_market_profile_explicit_configuration_roundtrip_serialization_is_determ
     )
 
     serialized_reference = serialize_market_profile_reference(reference)
+    serialized_payload = json.loads(serialized_reference)
 
     assert deserialize_market_profile_reference(serialized_reference) == reference
-    assert json.loads(serialized_reference)["configuration"]["profile_name"] == "eurusd_spot_custom"
+    assert serialized_payload["configuration"]["profile_name"] == "eurusd_spot_custom"
+    assert serialized_payload["configuration"]["tick_size"] == 0.00001
 
 
 def test_market_profile_override_patch_rejects_policy_without_known_news_reference() -> None:
@@ -255,6 +258,27 @@ def test_market_profile_override_patch_rejects_policy_without_known_news_referen
 
     assert captured_error.value.failure.field_path == "known_news_policy"
     assert "ambiguous" in captured_error.value.failure.message
+
+
+def test_market_profile_tick_size_rejects_invalid_values() -> None:
+    session_reference = SessionPresetReference(
+        usage_mode=PresetReferenceUsageMode.NAMED,
+        registry_scope=PresetRegistryScope.BUILT_IN,
+        preset_name="fx_spot_24_5",
+    )
+
+    with pytest.raises(CalibrationValidationError) as captured_configuration_error:
+        MarketProfileExplicitConfiguration(
+            profile_name="invalid_tick_profile",
+            session_reference=session_reference,
+            tick_size=0.0,
+        )
+
+    with pytest.raises(CalibrationValidationError) as captured_patch_error:
+        MarketProfileOverridePatch(tick_size=0.0)
+
+    assert captured_configuration_error.value.failure.field_path == "tick_size"
+    assert captured_patch_error.value.failure.field_path == "tick_size"
 
 
 def test_market_profile_explicit_configuration_rejects_auto_apply_of_none_known_news() -> None:

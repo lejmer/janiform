@@ -6,7 +6,8 @@ use sha2::Sha256;
 use super::contracts::{PresetCategory, PresetResolutionResult};
 use super::payload::{
     array_field_mut, object_field, object_field_mut, object_value, object_value_mut,
-    optional_array_field_mut, optional_object_field_mut, payload_error, string_field, string_value,
+    optional_array_field_mut, optional_object_field_mut, optional_positive_f64_field,
+    payload_error, string_field, string_value,
 };
 
 const PRESET_CONTENT_HASH_ALGORITHM: &str = "sha256";
@@ -272,8 +273,16 @@ fn normalize_market_profile_configuration(
     insert_null_if_missing(configuration, "known_news_reference");
     insert_string_if_missing(configuration, "known_news_policy", "suggest_only");
     insert_null_if_missing(configuration, "timestamp_timezone_name");
+    insert_null_if_missing(configuration, "tick_size");
     insert_empty_array_if_missing(configuration, "column_alias_hints");
     insert_empty_array_if_missing(configuration, "default_calibration_hint_ids");
+
+    let _tick_size = optional_positive_f64_field(
+        configuration,
+        "tick_size",
+        &format!("{field_path}.tick_size"),
+        "tick_size",
+    )?;
 
     normalize_session_reference(
         object_field_mut(

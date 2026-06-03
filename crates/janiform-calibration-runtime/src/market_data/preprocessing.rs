@@ -18,5 +18,6 @@ pub use contracts::{
     MarketDataTranslationPreprocessingSettings,
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
+    preprocessing_settings_with_return_components_tick_size,
 };
 pub use pipeline::preprocess_market_data_translation_request;

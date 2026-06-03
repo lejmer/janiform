@@ -5,10 +5,10 @@ use std::time::Instant;
 use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::calibration::market_data::{
     MarketDataPreparationProgressError, MarketDataPreparationProgressEvent,
-    MarketDataTranslationPreprocessingSettings,
-    MarketDataTranslationReturnComponentsPreprocessingSettings, OptionForwardParityWarningPolicy,
+    MarketDataTranslationPreprocessingSettings, OptionForwardParityWarningPolicy,
     PreparedMarketDataCalibrationPlan, infer_market_data_run_id_from_path,
     prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_with_observer,
+    preprocessing_settings_with_return_components_tick_size,
 };
 use janiform::calibration::presets::ResolvedMarketProfile;
 use janiform::calibration::staged::{
@@ -163,6 +163,11 @@ pub(crate) fn prepare_fit_preview(
         market_profile: prepared_inputs.market_profile,
     };
 
+    let market_profile_tick_size = preview_inputs
+        .market_profile
+        .as_ref()
+        .and_then(|profile| profile.tick_size);
+
     let execution_mode = if preview_options.no_persist {
         CalibrationExecutionMode::Memory
     } else {
@@ -191,7 +196,10 @@ pub(crate) fn prepare_fit_preview(
             emit_input_provenance_report: true,
         },
         optimizer_settings_by_stage: Vec::new(),
-        preprocessing_settings: preprocessing_settings_from_tick_size(preview_options.tick_size)?,
+        preprocessing_settings: preprocessing_settings_from_tick_size(
+            preview_options.tick_size,
+            market_profile_tick_size,
+        )?,
         option_surface_source: prepared_inputs.option_surface_source,
         option_surface_valuation_time_utc: inputs.option_surface_valuation_time_utc.clone(),
         carry: Some(CalibrationMarketDataCarryInput {
@@ -345,6 +353,12 @@ pub(crate) fn prepare_fit_preview(
             "session preset".to_string(),
             market_profile.session_preset_name.clone(),
         ));
+
+        if preview_options.tick_size.is_none()
+            && let Some(tick_size) = market_profile.tick_size
+        {
+            preset_defaults.push(("tick size".to_string(), tick_size.to_string()));
+        }
     }
 
     let mut recommended_defaults = vec![(
@@ -392,26 +406,30 @@ pub(crate) fn prepare_fit_preview(
 }
 
 fn preprocessing_settings_from_tick_size(
-    tick_size: Option<f64>,
+    explicit_tick_size: Option<f64>,
+    market_profile_tick_size: Option<f64>,
 ) -> Result<Option<MarketDataTranslationPreprocessingSettings>, CliError> {
-    let Some(tick_size) = tick_size else {
+    let Some(tick_size) = explicit_tick_size.or(market_profile_tick_size) else {
         return Ok(None);
     };
 
-    validate_positive_number(tick_size, "--tick-size").map_err(|source| {
+    let argument_name = if explicit_tick_size.is_some() {
+        "--tick-size"
+    } else {
+        "market_profile.tick_size"
+    };
+
+    validate_positive_number(tick_size, argument_name).map_err(|source| {
         CliError::InvalidCommandArgument {
-            argument_name: "--tick-size",
+            argument_name,
             message: source.to_string(),
         }
     })?;
 
-    Ok(Some(MarketDataTranslationPreprocessingSettings {
-        seasonality: None,
-        return_components: Some(MarketDataTranslationReturnComponentsPreprocessingSettings {
-            tick_size: Some(tick_size),
-            ..Default::default()
-        }),
-    }))
+    Ok(preprocessing_settings_with_return_components_tick_size(
+        None,
+        Some(tick_size),
+    ))
 }
 
 fn emit_start_summary_before_loading(

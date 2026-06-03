@@ -26,14 +26,14 @@ Coarse and option data do not replace tick data. Coarse data supplies slower phy
 
 To fit a model we need the market observations and the context required to interpret it.
 
-| Input                  | Required | Notes                                                                                                                                                                           |
-|------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used.                                 |
-| Tick size              | No       | Supply it when the instrument has a known price increment. When omitted, Janiform derives the tick-grid observation setting from the retained tick data when possible.          |
-| Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                                                    |
-| Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                                                      |
-| Coarse data            | No       | Optional lower-frequency OHLCV bars or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval open-time observations by default. |
-| Option surface         | No       | Needed for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                                                       |
+| Input                  | Required | Notes                                                                                                                                                                            |
+|------------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Tick data              | Yes      | Must include timestamps and enough price information for the selected tick price policy. A direct price column or bid/ask midpoint can be used.                                  |
+| Tick size              | No       | Supply it when the instrument has a known price increment. Explicit values win, market-profile tick sizes are fallbacks, and retained tick data is used for inference otherwise. |
+| Market/session context | Yes      | Supplied by a market profile, explicit exchange/session options, or inferred bundled presets when the input is recognizable.                                                     |
+| Known-news calendar    | No       | Include it when scheduled news should be part of the activity calibration.                                                                                                       |
+| Coarse data            | No       | Optional lower-frequency OHLCV bars or close-only history for slower physical targets. Timestamp-only bars are interpreted as fixed-interval open-time observations by default.  |
+| Option surface         | No       | Needed for option-aware calibration. The surface must identify quote time, expiry, strike, option type, and quote values.                                                        |
 
 For repeatable work, make the context explicit. Market profile inference is convenient for quick runs, but production code should not rely on it.
 

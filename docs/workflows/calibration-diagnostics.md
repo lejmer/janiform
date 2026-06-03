@@ -228,7 +228,7 @@ A tick grid is the set of prices the market can actually display. For example, a
 
 Janiform's underlying simulated price can move by less than one displayed tick. The tick-grid setting controls how that price is converted back to a value that could appear in market data.
 
-If you provide a tick size during fitting, Janiform uses it. Otherwise, Janiform may infer one from the smallest positive same-session price change in the training data. Small moves that do not yet reach a full tick are carried forward, so repeated small moves can eventually become a visible price change.
+If you provide a tick size during fitting, Janiform uses it. Otherwise, a selected market profile can provide a fallback tick size. When neither is available, Janiform may infer one from the smallest positive same-session price change in the training data. Small moves that do not yet reach a full tick are carried forward, so repeated small moves can eventually become a visible price change.
 
 ### Search restarts
 

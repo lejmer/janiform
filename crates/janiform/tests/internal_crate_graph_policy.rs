@@ -56,6 +56,7 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
 
     let workspace_package_names = workspace_package_names(&metadata);
     let policy_package_names: BTreeSet<String> = policy.crates.keys().cloned().collect();
+
     assert_eq!(
         policy_package_names, workspace_package_names,
         "policy fixture must define exactly the workspace crates from cargo metadata",
@@ -88,8 +89,8 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     assert_eq!(
         policy.crates["janiform-pybind"].allowed_internal_dependencies,
         vec![
+            "janiform-foundations".to_string(),
             "janiform-event-log".to_string(),
-            "janiform-terminal-ui".to_string(),
             "janiform-workflows".to_string(),
             "janiform-cli".to_string(),
             "janiform".to_string()
@@ -111,6 +112,7 @@ fn cargo_metadata_workspace_dependencies_must_follow_internal_crate_graph_policy
         .iter()
         .map(|package| (package.name.clone(), package))
         .collect();
+
     let workspace_package_names = workspace_package_names(&metadata);
     let policy_package_names: BTreeSet<String> = policy.crates.keys().cloned().collect();
 
@@ -127,6 +129,7 @@ fn cargo_metadata_workspace_dependencies_must_follow_internal_crate_graph_policy
             .iter()
             .cloned()
             .collect();
+
         let actual_internal_dependencies: BTreeSet<String> = package
             .dependencies
             .iter()
@@ -147,6 +150,7 @@ fn cargo_metadata_workspace_dependencies_must_follow_internal_crate_graph_policy
 fn extracted_low_level_crates_keep_only_their_policy_approved_workspace_dependencies() {
     let policy = load_policy();
     let metadata = load_cargo_metadata();
+
     let workspace_packages_by_name: BTreeMap<String, &CargoPackage> = metadata
         .packages
         .iter()
@@ -159,12 +163,14 @@ fn extracted_low_level_crates_keep_only_their_policy_approved_workspace_dependen
         "janiform-affine-oracle",
     ] {
         let package = workspace_packages_by_name[package_name];
+
         let actual_internal_dependencies: BTreeSet<String> = package
             .dependencies
             .iter()
             .map(|dependency| dependency.name.clone())
             .filter(|dependency| policy.crates.contains_key(dependency))
             .collect();
+
         let expected_internal_dependencies: BTreeSet<String> = policy.crates[package_name]
             .allowed_internal_dependencies
             .iter()

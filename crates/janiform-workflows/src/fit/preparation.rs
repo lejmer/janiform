@@ -20,6 +20,7 @@ use janiform_calibration_runtime::{
     build_market_data_session_definition_json, infer_bundled_market_profile_from_tick_data_path,
     infer_market_data_fit_inputs, normalize_market_data_source,
     prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_with_observer,
+    preprocessing_settings_with_return_components_tick_size,
     resolve_market_data_session_configuration, resolve_preset_workflow_configuration,
 };
 use janiform_engine_pricing::PricingIntervalSchedulePolicy;
@@ -224,6 +225,7 @@ struct PreparationRequestBuildInput<'a> {
     tick_data_column_mapping: MarketDataTickDataColumnMapping,
     normalization_policy: MarketDataNormalizationPolicy,
     resolved_configuration: &'a Value,
+    market_profile_tick_size: Option<f64>,
     materialization_directory: &'a Path,
 }
 
@@ -264,6 +266,10 @@ pub(crate) fn prepare_fit_workflow_with_observer(
         &request.configuration.registry,
         market_profile_reference.reference.as_ref(),
     )?;
+
+    let market_profile_tick_size = market_profile_defaults
+        .as_ref()
+        .and_then(|defaults| defaults.tick_size);
 
     emit_preparation_progress(
         &mut observer,
@@ -336,6 +342,7 @@ pub(crate) fn prepare_fit_workflow_with_observer(
         tick_data_column_mapping: input_inference.tick_data_column_mapping.clone(),
         normalization_policy: input_inference.normalization_policy.clone(),
         resolved_configuration: &resolved_configuration,
+        market_profile_tick_size,
         materialization_directory: materialization_directory.as_path(),
     })?;
 
@@ -491,6 +498,7 @@ fn resolve_effective_market_profile_reference(
                 })),
                 "known_news_policy": profile.known_news_policy.unwrap_or_else(|| "suggest_only".to_string()),
                 "timestamp_timezone_name": profile.timestamp_timezone_name,
+                "tick_size": profile.tick_size,
                 "column_alias_hints": profile.column_alias_hints,
                 "default_calibration_hint_ids": profile.default_calibration_hint_ids,
             },
@@ -536,6 +544,7 @@ fn market_profile_defaults(
 
     Ok(Some(MarketDataFitMarketProfileDefaults {
         timestamp_timezone_name: defaults.timestamp_timezone_name,
+        tick_size: defaults.tick_size,
         column_alias_hints: defaults.column_alias_hints,
         default_calibration_hint_ids: defaults.default_calibration_hint_ids,
     }))
@@ -545,6 +554,8 @@ fn market_profile_defaults(
 struct MarketProfileDefaultsPayload {
     #[serde(default)]
     timestamp_timezone_name: Option<String>,
+    #[serde(default)]
+    tick_size: Option<f64>,
     #[serde(default)]
     column_alias_hints: Vec<janiform_calibration_runtime::MarketDataColumnAliasHint>,
     #[serde(default)]
@@ -700,7 +711,10 @@ fn build_preparation_request(
             .configuration
             .optimizer_settings_by_stage
             .clone(),
-        preprocessing_settings: input.request.configuration.preprocessing_settings.clone(),
+        preprocessing_settings: preprocessing_settings_with_return_components_tick_size(
+            input.request.configuration.preprocessing_settings.as_ref(),
+            input.market_profile_tick_size,
+        ),
         option_surface_source: input.option_surface_source,
         option_surface_valuation_time_utc: input.request.option_surface_valuation_time_utc.clone(),
         carry: input.request.carry.clone(),

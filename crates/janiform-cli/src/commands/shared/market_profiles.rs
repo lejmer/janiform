@@ -28,6 +28,8 @@ struct MarketProfileConfigurationPayload {
     #[serde(default)]
     timestamp_timezone_name: Option<String>,
     #[serde(default)]
+    tick_size: Option<f64>,
+    #[serde(default)]
     column_alias_hints: Vec<MarketDataColumnAliasHint>,
     #[serde(default)]
     default_calibration_hint_ids: Vec<String>,
@@ -102,6 +104,7 @@ pub(crate) fn resolve_explicit_market_profile(
         session_preset_name,
         exchange_code,
         timestamp_timezone_name: configuration.timestamp_timezone_name,
+        tick_size: configuration.tick_size,
         known_news_preset_name,
         known_news_policy: configuration.known_news_policy,
         column_alias_hints: configuration.column_alias_hints,

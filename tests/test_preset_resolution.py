@@ -8,6 +8,7 @@ from janiform.calibration.presets import (
     KnownNewsPresetReference,
     MarketProfileExplicitConfiguration,
     MarketProfileKnownNewsPolicy,
+    MarketProfileOverridePatch,
     MarketProfileReference,
     PresetReferenceUsageMode,
     PresetRegistry,
@@ -34,6 +35,7 @@ def test_market_profile_inference_uses_embedded_instrument_token() -> None:
     assert inferred_profile["profile_name"] == "eurusd_spot"
     assert inferred_profile["session_preset_name"] == "fx_spot_24_5"
     assert inferred_profile["exchange_code"] == "FXSPOT"
+    assert inferred_profile["tick_size"] == 0.00001
 
 
 def test_market_profile_inference_accepts_separated_major_fx_pair_tokens() -> None:
@@ -46,6 +48,7 @@ def test_market_profile_inference_accepts_separated_major_fx_pair_tokens() -> No
     assert inferred_profile["session_preset_name"] == "fx_spot_24_5"
     assert inferred_profile["exchange_code"] == "FXSPOT"
     assert inferred_profile["known_news_preset_name"] == "none"
+    assert inferred_profile["tick_size"] == 0.001
 
 
 def test_market_profile_inference_accepts_two_character_futures_root() -> None:
@@ -57,6 +60,7 @@ def test_market_profile_inference_accepts_two_character_futures_root() -> None:
     assert inferred_profile["profile_name"] == "es_futures_globex"
     assert inferred_profile["session_preset_name"] == "XCME"
     assert inferred_profile["exchange_code"] == "XCME"
+    assert inferred_profile["tick_size"] == 0.25
 
 
 def test_resolution_uses_inferred_session_and_keeps_known_news_none_for_profile_suggestions() -> None:
@@ -74,6 +78,7 @@ def test_resolution_uses_inferred_session_and_keeps_known_news_none_for_profile_
     assert resolved_configuration.market_profile.selected_preset is not None
     assert resolved_configuration.market_profile.selected_preset.preset_name == "us_equity_cash"
     assert resolved_configuration.market_profile.source_kind == ResolvedWorkflowComponentSource.BUILT_IN
+    assert resolved_configuration.market_profile.configuration.tick_size is None
 
     assert resolved_configuration.session.source_kind == ResolvedWorkflowComponentSource.INFERRED
     assert resolved_configuration.session.inferred_from_data is True
@@ -132,6 +137,23 @@ def test_resolution_applies_named_override_patches_per_component() -> None:
     assert resolved_configuration.known_news.configuration.events[0].event_id == "desk_macro_2026_03_18"
 
 
+def test_resolution_applies_named_market_profile_tick_size_override_patch() -> None:
+    resolved_configuration = resolve_preset_workflow_configuration(
+        registry=PresetRegistry(),
+        market_profile_reference=MarketProfileReference(
+            usage_mode=PresetReferenceUsageMode.NAMED,
+            registry_scope=PresetRegistryScope.BUILT_IN,
+            preset_name="us_equity_cash",
+            override_patch=MarketProfileOverridePatch(tick_size=0.01),
+        ),
+    )
+
+    assert resolved_configuration.market_profile is not None
+    assert resolved_configuration.market_profile.source_kind == ResolvedWorkflowComponentSource.OVERRIDDEN
+    assert resolved_configuration.market_profile.applied_override_fields == ("tick_size",)
+    assert resolved_configuration.market_profile.configuration.tick_size == 0.01
+
+
 def test_resolution_supports_full_explicit_replacements_for_market_profile_and_components() -> None:
     resolved_configuration = resolve_preset_workflow_configuration(
         registry=PresetRegistry(),
@@ -151,6 +173,7 @@ def test_resolution_supports_full_explicit_replacements_for_market_profile_and_c
                 ),
                 known_news_policy=MarketProfileKnownNewsPolicy.APPLY_BY_DEFAULT,
                 timestamp_timezone_name="America/New_York",
+                tick_size=0.01,
                 default_calibration_hint_ids=("desk_equity_defaults",),
             ),
         ),
@@ -189,6 +212,7 @@ def test_resolution_supports_full_explicit_replacements_for_market_profile_and_c
     assert resolved_configuration.market_profile is not None
     assert resolved_configuration.market_profile.source_kind == ResolvedWorkflowComponentSource.FULLY_CUSTOM
     assert resolved_configuration.market_profile.selected_preset is None
+    assert resolved_configuration.market_profile.configuration.tick_size == 0.01
 
     assert resolved_configuration.session.source_kind == ResolvedWorkflowComponentSource.FULLY_CUSTOM
     assert resolved_configuration.session.selected_preset is None

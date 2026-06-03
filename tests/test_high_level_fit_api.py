@@ -340,6 +340,7 @@ def test_prepare_fit_workflow_infers_market_profile_from_synthetic_tick_path(
 
     assert market_profile is not None
     assert market_profile.configuration.profile_name == "eurusd_spot"
+    assert market_profile.configuration.tick_size == 0.00001
     assert session.selected_preset is not None
     assert session.selected_preset.preset_name == "fx_spot_24_5"
 

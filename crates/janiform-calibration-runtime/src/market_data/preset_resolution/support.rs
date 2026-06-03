@@ -139,6 +139,7 @@ pub(super) fn apply_market_profile_override_patch(
         "known_news_reference",
         "known_news_policy",
         "timestamp_timezone_name",
+        "tick_size",
         "column_alias_hints",
         "default_calibration_hint_ids",
     ] {
@@ -317,6 +318,7 @@ pub(super) fn market_profile_override_fields(override_patch: &Map<String, Value>
             "known_news_reference",
             "known_news_policy",
             "timestamp_timezone_name",
+            "tick_size",
             "column_alias_hints",
             "default_calibration_hint_ids",
         ],

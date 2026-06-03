@@ -38,6 +38,7 @@ fn root_help_shows_primary_command_tree() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+
     for expected_command in [
         "fit",
         "inspect",
@@ -83,6 +84,7 @@ fn fit_help_shows_no_persist_opt_out() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+
     assert!(
         stdout.contains("--no-persist"),
         "missing --no-persist in fit help:\n{stdout}"
@@ -91,6 +93,7 @@ fn fit_help_shows_no_persist_opt_out() {
         stdout.contains("--tick-size"),
         "missing --tick-size in fit help:\n{stdout}"
     );
+
     for expected_resume_stage in ["option-refinement", "finalization"] {
         assert!(
             stdout.contains(expected_resume_stage),
@@ -130,6 +133,7 @@ fn observed_options_reports_normal_cli_validation_errors() {
 fn dev_deterministic_regression_json_runs_native_harness() {
     let calendar_fixture =
         source_fixture_path("tests/fixtures/calendar/calendar_service_regression_matrix.json");
+
     let hourly_fixture =
         source_fixture_path("tests/fixtures/hourly_factors/hourly_factor_regression_matrix.json");
 
@@ -204,6 +208,7 @@ fn dev_open_closed_gap_leakage_regression_uses_default_fixtures() {
 #[test]
 fn dev_open_closed_gap_leakage_regression_requires_explicit_fixtures_outside_source_tree() {
     let workspace = temporary_run_directory("dev-regression-outside-source");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
 
     let output = janiform_command()
@@ -240,9 +245,12 @@ fn dev_open_closed_gap_leakage_regression_requires_explicit_fixtures_outside_sou
 #[test]
 fn dev_open_closed_gap_leakage_regression_accepts_explicit_fixtures_outside_source_tree() {
     let workspace = temporary_run_directory("dev-regression-explicit-fixtures");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let calendar_fixture =
         source_fixture_path("tests/fixtures/calendar/calendar_service_regression_matrix.json");
+
     let gap_behavior_fixture =
         source_fixture_path("tests/fixtures/gap_behavior/open_closed_gap_behavior_scenarios.json");
 
@@ -283,10 +291,14 @@ fn dev_open_closed_gap_leakage_regression_accepts_explicit_fixtures_outside_sour
 #[test]
 fn seasonality_preprocess_timestamps_csv_runs_native_workflow() {
     let workspace = temporary_run_directory("seasonality-preprocess");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let calendar_path = workspace.join("calendar.json");
     let events_path = workspace.join("events.csv");
+
     write_calendar_fixture(&calendar_path);
+
     std::fs::write(
         &events_path,
         concat!(
@@ -347,10 +359,14 @@ fn seasonality_preprocess_timestamps_csv_runs_native_workflow() {
 #[test]
 fn seasonality_diagnostics_jsonl_runs_full_native_pipeline() {
     let workspace = temporary_run_directory("seasonality-diagnostics");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let calendar_path = workspace.join("calendar.json");
     let events_path = workspace.join("events.jsonl");
+
     write_calendar_fixture(&calendar_path);
+
     std::fs::write(
         &events_path,
         concat!(
@@ -404,10 +420,14 @@ fn seasonality_diagnostics_jsonl_runs_full_native_pipeline() {
 #[test]
 fn hourly_factor_materialize_seasonality_json_runs_native_workflow() {
     let workspace = temporary_run_directory("hourly-seasonality");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let calendar_path = workspace.join("calendar.json");
     let input_path = workspace.join("seasonality_input.json");
+
     write_calendar_fixture(&calendar_path);
+
     write_json_file(
         &input_path,
         &serde_json::json!({
@@ -468,10 +488,14 @@ fn hourly_factor_materialize_seasonality_json_runs_native_workflow() {
 #[test]
 fn hourly_factor_materialize_news_intensity_json_runs_native_workflow() {
     let workspace = temporary_run_directory("hourly-news");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let calendar_path = workspace.join("calendar.json");
     let input_path = workspace.join("news_input.json");
+
     write_calendar_fixture(&calendar_path);
+
     write_json_file(
         &input_path,
         &serde_json::json!({
@@ -535,11 +559,15 @@ fn hourly_factor_materialize_news_intensity_json_runs_native_workflow() {
 #[test]
 fn hourly_factor_build_contract_json_supports_explicit_sources() {
     let workspace = temporary_run_directory("hourly-contract");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let calendar_path = workspace.join("calendar.json");
     let seasonality_path = workspace.join("seasonality.json");
     let news_path = workspace.join("news.json");
+
     write_calendar_fixture(&calendar_path);
+
     write_json_file(
         &seasonality_path,
         &serde_json::json!({
@@ -547,6 +575,7 @@ fn hourly_factor_build_contract_json_supports_explicit_sources() {
             "materialization_method": "explicit.seasonality.test.v1"
         }),
     );
+
     write_json_file(
         &news_path,
         &serde_json::json!({
@@ -609,9 +638,12 @@ fn hourly_factor_build_contract_json_supports_explicit_sources() {
 #[test]
 fn validate_stylized_facts_json_runs_native_report() {
     let workspace = temporary_run_directory("stylized-facts-json");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let metric_catalog_path = workspace.join("metric_catalog.json");
     let comparison_request_path = workspace.join("comparison_request.json");
+
     write_stylized_fact_inputs(&metric_catalog_path, &comparison_request_path, 0.20);
 
     let output = janiform_command()
@@ -641,6 +673,7 @@ fn validate_stylized_facts_json_runs_native_report() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(
         payload["schema_version"],
         "validation.stylized_fact.interval_comparison.report_bundle.v1"
@@ -668,9 +701,12 @@ fn validate_stylized_facts_json_runs_native_report() {
 #[test]
 fn validate_stylized_facts_terminal_reports_incomplete_coverage() {
     let workspace = temporary_run_directory("stylized-facts-coverage");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let metric_catalog_path = workspace.join("metric_catalog.json");
     let comparison_request_path = workspace.join("comparison_request.json");
+
     write_stylized_fact_inputs(&metric_catalog_path, &comparison_request_path, 0.20);
 
     let output = janiform_command()
@@ -694,6 +730,7 @@ fn validate_stylized_facts_terminal_reports_incomplete_coverage() {
     assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     for expected in ["Coverage notes", "Not enough data", "Passed checks"] {
         assert!(
             stdout.contains(expected),
@@ -707,9 +744,12 @@ fn validate_stylized_facts_terminal_reports_incomplete_coverage() {
 #[test]
 fn validate_stylized_facts_terminal_reports_failures_and_artifacts() {
     let workspace = temporary_run_directory("stylized-facts-terminal");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let metric_catalog_path = workspace.join("metric_catalog.json");
     let comparison_request_path = workspace.join("comparison_request.json");
+
     write_stylized_fact_inputs(&metric_catalog_path, &comparison_request_path, 0.05);
 
     let output = janiform_command()
@@ -743,6 +783,7 @@ fn validate_stylized_facts_terminal_reports_failures_and_artifacts() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     for expected in [
         "Stylized-fact interval comparison",
         "Metric checks",
@@ -780,10 +821,14 @@ fn validate_stylized_facts_terminal_reports_failures_and_artifacts() {
 #[test]
 fn validate_stylized_facts_plan_json_resolves_computation_contract() {
     let workspace = temporary_run_directory("stylized-facts-plan");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let model_path = workspace.join("model.jf");
     let empirical_path = workspace.join("ticks.csv");
+
     std::fs::write(&model_path, "{}").expect("model fixture should be written");
+
     write_tick_csv(&empirical_path);
 
     let output = janiform_command()
@@ -844,9 +889,12 @@ fn validate_stylized_facts_plan_json_resolves_computation_contract() {
 #[test]
 fn validate_stylized_facts_plan_uses_model_tick_source_when_empirical_path_is_omitted() {
     let workspace = temporary_run_directory("stylized-facts-plan-model-source");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let model_path = workspace.join("model.jf");
     let empirical_path = workspace.join("ticks.csv");
+
     write_tick_csv(&empirical_path);
     write_model_with_tick_source(&model_path, &empirical_path);
 
@@ -936,6 +984,7 @@ fn presets_list_terminal_output_aligns_table_columns() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     assert!(stdout.contains(
         "Category        Scope     Name                 Version\nmarket-profile  built-in  audcad_spot          2026.05"
     ));
@@ -964,6 +1013,10 @@ fn presets_show_json_returns_artifact_payload() {
         payload["configuration"]["session_reference"]["preset_name"],
         "fx_spot_24_5"
     );
+    assert_eq!(
+        payload["configuration"]["tick_size"],
+        serde_json::json!(0.00001)
+    );
 }
 
 #[test]
@@ -976,8 +1029,13 @@ fn presets_show_market_profile_terminal_renders_named_references() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     assert!(stdout.contains("Session       : crypto_24_7 (built-in)"));
     assert!(stdout.contains("Known news    : none (built-in)"));
+    assert!(
+        stdout.contains("Tick size") && stdout.contains("0.01"),
+        "market profile output should include tick size:\n{stdout}"
+    );
 }
 
 #[test]
@@ -996,6 +1054,7 @@ fn presets_show_known_news_expanded_renders_event_table() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     assert!(stdout.contains(
         "Events\n\nScheduled At               Event ID            Name                             Tags"
     ));
@@ -1014,6 +1073,7 @@ fn presets_show_session_expanded_renders_window_tables() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     assert!(stdout.contains(
         "Regular Session Windows\n\nWeekday    Open   Close  Label\nMonday     00:00  24:00  spot"
     ));
@@ -1046,12 +1106,15 @@ fn presets_show_auto_scope_prefers_user_registered_presets() {
     let user_preset_path = temporary_run_directory("user-session-preset").with_extension("json");
     let bundled_session_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../python/janiform/calibration/_bundled_presets/generated/sessions/XNYS.json");
+
     let mut user_session: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(bundled_session_path).expect("bundled session should be readable"),
     )
     .expect("bundled session should be JSON");
+
     user_session["metadata"]["display_name"] = serde_json::Value::String("Desk XNYS".to_string());
     user_session["metadata"]["provenance"]["content_hash"] = serde_json::Value::Null;
+
     write_json_file(&user_preset_path, &user_session);
 
     let output = janiform_command()
@@ -1074,6 +1137,7 @@ fn presets_show_auto_scope_prefers_user_registered_presets() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["metadata"]["display_name"], "Desk XNYS");
 
     std::fs::remove_file(user_preset_path).expect("temporary user preset should be removable");
@@ -1083,21 +1147,26 @@ fn presets_show_auto_scope_prefers_user_registered_presets() {
 fn presets_show_loads_user_presets_from_registry_manifest() {
     let registry_directory = temporary_run_directory("preset-registry");
     let preset_directory = registry_directory.join("presets");
+
     std::fs::create_dir_all(&preset_directory).expect("temporary preset directory should exist");
 
     let user_preset_path = preset_directory.join("XNYS.json");
     let bundled_session_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../python/janiform/calibration/_bundled_presets/generated/sessions/XNYS.json");
+
     let mut user_session: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(bundled_session_path).expect("bundled session should be readable"),
     )
     .expect("bundled session should be JSON");
+
     user_session["metadata"]["display_name"] =
         serde_json::Value::String("Manifest XNYS".to_string());
     user_session["metadata"]["provenance"]["content_hash"] = serde_json::Value::Null;
+
     write_json_file(&user_preset_path, &user_session);
 
     let registry_path = registry_directory.join("registry.json");
+
     write_json_file(
         &registry_path,
         &serde_json::json!({
@@ -1126,6 +1195,7 @@ fn presets_show_loads_user_presets_from_registry_manifest() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["metadata"]["display_name"], "Manifest XNYS");
 
     std::fs::remove_dir_all(registry_directory)
@@ -1204,6 +1274,7 @@ fn price_fitted_model_validates_model_path_at_rust_boundary() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["code"], "missing_input_file");
 }
 
@@ -1217,6 +1288,7 @@ fn simulate_help_exposes_interval_option() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+
     assert!(
         stdout.contains("--interval"),
         "simulate help should include interval control:\n{stdout}"
@@ -1264,6 +1336,7 @@ fn simulate_validates_interval_before_loading_model() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["code"], "invalid_command_argument");
     assert!(
         payload["message"]
@@ -1300,13 +1373,16 @@ fn simulate_defaults_seed_start_time_and_output_path() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["code"], "missing_input_file");
 }
 
 #[test]
 fn fit_json_runs_seasonality_and_writes_artifacts() {
     let workspace = temporary_run_directory("fit-run");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("EURUSD_ticks.csv");
 
     write_fx_tick_csv(&tick_data_path);
@@ -1328,6 +1404,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["command_id"], "fit");
     assert_eq!(payload["status"], "success");
     assert!(
@@ -1343,11 +1420,13 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
             .as_str()
             .expect("model path should be a JSON string"),
     );
+
     let report_path = std::path::PathBuf::from(
         payload["report_path"]
             .as_str()
             .expect("report path should be a JSON string"),
     );
+
     let event_log_path = std::path::PathBuf::from(
         payload["event_log_path"]
             .as_str()
@@ -1368,6 +1447,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
     let run_directory = event_log_path
         .parent()
         .expect("event log should have a parent directory");
+
     assert!(
         run_directory
             .join("artifacts")
@@ -1381,6 +1461,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
             .join("seasonality.checkpoint.json")
             .is_file()
     );
+
     let persisted_report_before_export =
         std::fs::read_to_string(&report_path).expect("persisted report should be readable");
 
@@ -1425,6 +1506,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
 
     let reported_fit: serde_json::Value =
         serde_json::from_slice(&report_output.stdout).expect("report fit should return JSON");
+
     assert_eq!(reported_fit["schema_version"], "janiform.fit_report.v1");
     assert_eq!(reported_fit["run_id"], payload["run_id"]);
     assert!(reported_fit["parameter_fits"]["seasonality"]["parameters"].is_object());
@@ -1449,6 +1531,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
 
     let terminal_report =
         String::from_utf8(terminal_report_output.stdout).expect("terminal output should be UTF-8");
+
     for expected in [
         "Fit report",
         "Fit summary",
@@ -1464,6 +1547,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
             "missing `{expected}` in report output:\n{terminal_report}"
         );
     }
+
     assert_eq!(
         terminal_report.matches("  model:").count(),
         1,
@@ -1489,8 +1573,10 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
         Some(CliExitCode::Success as i32)
     );
     assert!(html_report_path.is_file());
+
     let html_report =
         std::fs::read_to_string(&html_report_path).expect("HTML report should be readable");
+
     for expected in [
         "Fit report",
         "Overview",
@@ -1507,6 +1593,7 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
             "missing `{expected}` in HTML report:\n{html_report}"
         );
     }
+
     assert_eq!(
         std::fs::read_to_string(&report_path).expect("persisted report should still be readable"),
         persisted_report_before_export,
@@ -1519,8 +1606,11 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
 #[test]
 fn fit_plan_json_prepares_seasonality_without_running_calibration() {
     let workspace = temporary_run_directory("fit-plan");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("EURUSD_ticks.csv");
+
     write_fx_tick_csv(&tick_data_path);
 
     let output = janiform_command()
@@ -1550,6 +1640,7 @@ fn fit_plan_json_prepares_seasonality_without_running_calibration() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["command_id"], "fit.plan");
     assert_eq!(payload["run_id"], "plan-test");
     assert_eq!(payload["workflow_scope"], "seasonality_only");
@@ -1568,9 +1659,12 @@ fn fit_plan_json_prepares_seasonality_without_running_calibration() {
 #[test]
 fn fit_terminal_summary_lists_coarse_data_input() {
     let workspace = temporary_run_directory("fit-coarse-input-summary");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
     let coarse_data_path = workspace.join("coarse.csv");
+
     write_tick_csv(&tick_data_path);
     write_coarse_data_csv(&coarse_data_path);
 
@@ -1603,6 +1697,7 @@ fn fit_terminal_summary_lists_coarse_data_input() {
     assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     assert!(
         stdout.contains("coarse data:"),
         "fit summary should include coarse data input:\n{stdout}"
@@ -1622,9 +1717,12 @@ fn fit_terminal_summary_lists_coarse_data_input() {
 #[test]
 fn fit_plan_json_includes_coarse_data_input_file() {
     let workspace = temporary_run_directory("fit-plan-coarse-input");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
     let coarse_data_path = workspace.join("coarse.csv");
+
     write_tick_csv(&tick_data_path);
     write_coarse_data_csv(&coarse_data_path);
 
@@ -1658,6 +1756,7 @@ fn fit_plan_json_includes_coarse_data_input_file() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(
         payload["input_files"]["coarse_data"]["path"],
         coarse_data_path
@@ -1671,8 +1770,11 @@ fn fit_plan_json_includes_coarse_data_input_file() {
 #[test]
 fn fit_plan_accepts_explicit_market_profile_preset() {
     let workspace = temporary_run_directory("fit-plan-market-profile");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
+
     write_tick_csv(&tick_data_path);
 
     let output = janiform_command()
@@ -1712,8 +1814,11 @@ fn fit_plan_accepts_explicit_market_profile_preset() {
 #[test]
 fn fit_inspect_terminal_separates_user_inputs_and_inference() {
     let workspace = temporary_run_directory("fit-inspect");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
+
     write_tick_csv(&tick_data_path);
 
     let output = janiform_command()
@@ -1739,6 +1844,7 @@ fn fit_inspect_terminal_separates_user_inputs_and_inference() {
     assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
 
     let stdout = String::from_utf8(output.stdout).expect("terminal output should be UTF-8");
+
     for expected in [
         "Janiform fit inspect",
         "Explicit user inputs",
@@ -1760,9 +1866,12 @@ fn fit_inspect_terminal_separates_user_inputs_and_inference() {
 #[test]
 fn fit_staged_plan_writes_prepared_execution_input() {
     let workspace = temporary_run_directory("fit-staged-plan");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
     let staged_output_path = workspace.join("staged-input.json");
+
     write_tick_csv(&tick_data_path);
 
     let output = janiform_command()
@@ -1795,6 +1904,7 @@ fn fit_staged_plan_writes_prepared_execution_input() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["command_id"], "fit.staged.plan");
     assert_eq!(payload["staged_artifacts_written"], true);
     assert_eq!(
@@ -1807,6 +1917,7 @@ fn fit_staged_plan_writes_prepared_execution_input() {
             .expect("staged execution input should be readable"),
     )
     .expect("staged execution input should be JSON");
+
     assert_eq!(staged_payload["request"]["run_id"], "staged-plan-test");
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
@@ -1815,8 +1926,11 @@ fn fit_staged_plan_writes_prepared_execution_input() {
 #[test]
 fn fit_staged_plan_accepts_explicit_tick_size() {
     let workspace = temporary_run_directory("fit-staged-plan-tick-size");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
+
     write_tick_csv(&tick_data_path);
 
     let output = janiform_command()
@@ -1846,6 +1960,7 @@ fn fit_staged_plan_accepts_explicit_tick_size() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(
         payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
         serde_json::json!(0.00001)
@@ -1869,10 +1984,100 @@ fn fit_staged_plan_accepts_explicit_tick_size() {
 }
 
 #[test]
+fn fit_staged_plan_uses_market_profile_tick_size_fallback() {
+    let workspace = temporary_run_directory("fit-staged-plan-profile-tick-size");
+
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
+    let tick_data_path = workspace.join("EURUSD_ticks.csv");
+
+    write_fx_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "staged",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--market-profile",
+            "eurusd_spot",
+            "--workflow-scope",
+            "full-without-option-surface",
+            "--run-id",
+            "staged-plan-profile-tick-size-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
+        serde_json::json!(0.00001)
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn fit_staged_plan_explicit_tick_size_overrides_market_profile_tick_size() {
+    let workspace = temporary_run_directory("fit-staged-plan-explicit-profile-tick-size");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("EURUSD_ticks.csv");
+    write_fx_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "staged",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--market-profile",
+            "eurusd_spot",
+            "--workflow-scope",
+            "full-without-option-surface",
+            "--tick-size",
+            "0.00002",
+            "--run-id",
+            "staged-plan-explicit-profile-tick-size-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
+    assert_eq!(
+        payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
+        serde_json::json!(0.00002)
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
 fn fit_staged_plan_rejects_invalid_tick_size() {
     let workspace = temporary_run_directory("fit-staged-plan-invalid-tick-size");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
+
     write_tick_csv(&tick_data_path);
 
     let output = janiform_command()
@@ -1917,9 +2122,12 @@ fn fit_staged_plan_rejects_invalid_tick_size() {
 fn fit_staged_run_executes_prepared_execution_input() {
     let workspace = temporary_run_directory("fit-staged-run");
     let output_directory = workspace.join("out");
+
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
     let tick_data_path = workspace.join("ticks.csv");
     let staged_output_path = workspace.join("staged-input.json");
+
     write_tick_csv(&tick_data_path);
 
     let plan_output = janiform_command()
@@ -1951,6 +2159,7 @@ fn fit_staged_run_executes_prepared_execution_input() {
         .expect("janiform command should execute");
 
     assert_eq!(plan_output.status.code(), Some(CliExitCode::Success as i32));
+
     let staged_payload: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&staged_output_path)
             .expect("staged execution input should be readable"),
@@ -1982,6 +2191,7 @@ fn fit_staged_run_executes_prepared_execution_input() {
     let stdout = String::from_utf8(run_output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["run_id"], "staged-run-test");
     assert_eq!(payload["status"], "success");
     assert!(
@@ -2012,6 +2222,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
     let run_directory = temporary_run_directory("inspect-run");
     let event_paths = janiform_event_log::default_run_event_paths(&run_directory);
     let workflow = janiform_event_log::WorkflowRef::labeled("fit", "Fit");
+
     let mut writer = janiform_event_log::RunEventLogWriter::create(
         &event_paths.event_log_path,
         Some(&event_paths.latest_state_snapshot_path),
@@ -2019,6 +2230,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
         workflow.clone(),
     )
     .expect("event writer should be created");
+
     writer
         .append_event(&janiform_event_log::RunEvent::at(
             "2026-04-26T10:00:01Z",
@@ -2034,6 +2246,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
             }),
         ))
         .expect("artifact event should write");
+
     writer
         .append_event(&janiform_event_log::RunEvent::at(
             "2026-04-26T10:00:02Z",
@@ -2047,6 +2260,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
             ),
         ))
         .expect("event should write");
+
     writer.flush().expect("event log should flush");
 
     let output = janiform_command()
@@ -2066,6 +2280,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["run_id"], "run-001");
     assert_eq!(payload["status"], "completed");
     assert_eq!(payload["event_count"], 2);
@@ -2090,6 +2305,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
 
     let terminal_stdout =
         String::from_utf8(terminal_output.stdout).expect("terminal output should be UTF-8");
+
     assert!(terminal_stdout.contains("Run"));
     assert!(terminal_stdout.contains("Artifacts"));
     assert!(terminal_stdout.contains("Paths:"));
@@ -2104,9 +2320,12 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
 #[test]
 fn inspect_run_replay_ignores_trailing_partial_event_row() {
     let run_directory = temporary_run_directory("inspect-run-partial-event");
+
     std::fs::create_dir_all(&run_directory).expect("temporary run directory should be created");
+
     let event_paths = janiform_event_log::default_run_event_paths(&run_directory);
     let workflow = janiform_event_log::WorkflowRef::labeled("fit", "Fit");
+
     let event = janiform_event_log::RunEvent::at(
         "2026-04-26T10:00:00Z",
         "run-001",
@@ -2125,10 +2344,13 @@ fn inspect_run_replay_ignores_trailing_partial_event_row() {
 
     let mut event_log =
         std::fs::File::create(&event_paths.event_log_path).expect("event log should be created");
+
     janiform_event_log::append_event_to_log(&mut event_log, &event_paths.event_log_path, &event)
         .expect("complete event should write");
+
     write!(event_log, "{{\"schema_version\":\"janiform.run_event.v1\"")
         .expect("partial event should write");
+
     event_log.flush().expect("event log should flush");
 
     let output = janiform_command()
@@ -2148,6 +2370,7 @@ fn inspect_run_replay_ignores_trailing_partial_event_row() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["run_id"], "run-001");
     assert_eq!(payload["event_count"], 1);
     assert_eq!(payload["inspection"]["state_source"], "event_log_replay");
@@ -2176,6 +2399,7 @@ fn json_mode_writes_one_final_json_error_to_stdout() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["status"], "error");
     assert_eq!(payload["code"], "artifact_read");
     assert_eq!(payload["exit_code"], CliExitCode::CommandLineUsage as u8);
@@ -2285,6 +2509,7 @@ fn toml_configuration_supplies_cli_boundary_defaults() {
     let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
     let payload: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+
     assert_eq!(payload["code"], "missing_input_file");
 
     std::fs::remove_file(config_path).expect("temporary CLI config should be removable");

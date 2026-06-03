@@ -17,6 +17,8 @@ from ...contracts.base import (
     require_field,
     require_non_empty_string,
     require_non_empty_string_value,
+    require_positive_finite_number,
+    require_positive_finite_scalar,
     require_sequence,
     require_string,
     serialize_deterministic_json,
@@ -762,14 +764,19 @@ class MarketProfileExplicitConfiguration(ContractModel):
     known_news_reference: Optional[KnownNewsPresetReference] = None
     known_news_policy: MarketProfileKnownNewsPolicy = MarketProfileKnownNewsPolicy.SUGGEST_ONLY
     timestamp_timezone_name: Optional[str] = None
+    tick_size: Optional[float] = None
     column_alias_hints: tuple[MarketProfileColumnAliasHint, ...] = ()
     default_calibration_hint_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.profile_name.strip():
             raise calibration_error("profile_name", "must be a non-empty string")
+
         if self.timestamp_timezone_name is not None and not self.timestamp_timezone_name.strip():
             raise calibration_error("timestamp_timezone_name", "must be non-empty when provided")
+
+        if self.tick_size is not None:
+            require_positive_finite_scalar(self.tick_size, "tick_size", calibration_error)
 
         _validate_non_empty_strings(
             values=self.default_calibration_hint_ids,
@@ -863,6 +870,16 @@ class MarketProfileExplicitConfiguration(ContractModel):
                 default_value=MarketProfileKnownNewsPolicy.SUGGEST_ONLY,
             ),
             timestamp_timezone_name=raw_timestamp_timezone_name,
+            tick_size=(
+                require_positive_finite_number(
+                    raw_payload,
+                    "tick_size",
+                    f"{field_path}.tick_size",
+                    calibration_error,
+                )
+                if "tick_size" in raw_payload and raw_payload["tick_size"] is not None
+                else None
+            ),
             column_alias_hints=tuple(
                 MarketProfileColumnAliasHint.from_mapping(
                     raw_hint,
@@ -886,6 +903,7 @@ class MarketProfileOverridePatch(ContractModel):
     known_news_reference: Optional[KnownNewsPresetReference] = None
     known_news_policy: Optional[MarketProfileKnownNewsPolicy] = None
     timestamp_timezone_name: Optional[str] = None
+    tick_size: Optional[float] = None
     column_alias_hints: Optional[tuple[MarketProfileColumnAliasHint, ...]] = None
     default_calibration_hint_ids: Optional[tuple[str, ...]] = None
 
@@ -895,6 +913,7 @@ class MarketProfileOverridePatch(ContractModel):
             and self.known_news_reference is None
             and self.known_news_policy is None
             and self.timestamp_timezone_name is None
+            and self.tick_size is None
             and self.column_alias_hints is None
             and self.default_calibration_hint_ids is None
         ):
@@ -905,6 +924,10 @@ class MarketProfileOverridePatch(ContractModel):
 
         if self.timestamp_timezone_name is not None and not self.timestamp_timezone_name.strip():
             raise calibration_error("timestamp_timezone_name", "must be non-empty when provided")
+
+        if self.tick_size is not None:
+            require_positive_finite_scalar(self.tick_size, "tick_size", calibration_error)
+
         if self.known_news_policy is not None and self.known_news_reference is None:
             raise calibration_error(
                 "known_news_policy",
@@ -991,6 +1014,16 @@ class MarketProfileOverridePatch(ContractModel):
                 else None
             ),
             timestamp_timezone_name=raw_timestamp_timezone_name,
+            tick_size=(
+                require_positive_finite_number(
+                    raw_payload,
+                    "tick_size",
+                    f"{field_path}.tick_size",
+                    calibration_error,
+                )
+                if "tick_size" in raw_payload and raw_payload["tick_size"] is not None
+                else None
+            ),
             column_alias_hints=(
                 tuple(
                     MarketProfileColumnAliasHint.from_mapping(

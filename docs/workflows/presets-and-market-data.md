@@ -8,13 +8,13 @@ This page focuses on choosing presets, registering your own presets, and making 
 
 Janiform has three preset categories:
 
-| Category         | What it contains                                                                             | Typical role                                                          |
-|------------------|----------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
-| `market_profile` | A high-level profile that points to a session, known-news policy, timezone, and input hints. | Start here when a market profile context should set the fit defaults. |
-| `session`        | Exchange/session windows, timezone, and recurring closed windows.                            | Override or define the trading calendar independently of a profile.   |
-| `known_news`     | Scheduled event calendar used by activity calibration.                                       | Choose the scheduled-event calendar independently of a profile.       |
+| Category         | What it contains                                                                                                          | Typical role                                                          |
+|------------------|---------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
+| `market_profile` | A high-level profile that points to a session, known-news policy, timezone, optional tick-size fallback, and input hints. | Start here when a market profile context should set the fit defaults. |
+| `session`        | Exchange/session windows, timezone, and recurring closed windows.                                                         | Override or define the trading calendar independently of a profile.   |
+| `known_news`     | Scheduled event calendar used by activity calibration.                                                                    | Choose the scheduled-event calendar independently of a profile.       |
 
-Market profiles are the most convenient entrypoint. They can select a session and recommend or apply a known-news calendar. Session and known-news presets remain available as lower-level overrides when you need precise control.
+Market profiles are the most convenient entrypoint. They can select a session, recommend or apply a known-news calendar, and carry an optional tick-size fallback. Session and known-news presets remain available as lower-level overrides when you need precise control.
 
 Bundled presets include major-currency FX spot profiles such as `eurusd_spot`, `usdjpy_spot`, and `gbpusd_spot`, plus common non-FX profiles such as `btcusd_spot`, `us_equity_cash`, and `es_futures_globex`. The exact set available in the installed package can be inspected with `PresetRegistry` in Python or with `janiform presets list`.
 
@@ -88,6 +88,8 @@ from janiform.model import JaniformModel
 estimator = JaniformEstimator(market_profile="eurusd_spot")
 model: JaniformModel = estimator.fit(tick_data_path=Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet")
 ```
+
+Tick size follows explicit-first precedence. `JaniformEstimator(tick_size=...)` wins when provided. Otherwise, Janiform uses the selected market profile's tick size if the profile carries one. If neither is available, Janiform estimates tick size from the retained tick data when possible.
 
 Override session or known-news selection when the market profile is close but not exact:
 
@@ -265,6 +267,8 @@ janiform presets show session fx_spot_24_5
 janiform presets show known-news eu_us_macro_fx_core
 ```
 
+Market-profile inspection shows the profile tick size when the profile carries one and `not set` for profiles that leave tick size to explicit input or data inference.
+
 Create a resolved preset snapshot when you need the market profile and its nested dependencies in one payload:
 
 ```bash
@@ -290,7 +294,7 @@ The fit command accepts the same market-profile, session, and known-news concept
 ```bash
 janiform fit \
   --tick-data-path data/Synthetic_EURUSD_Data_1M_ticks.parquet \
-  --market eurusd_spot \
+  --market-profile eurusd_spot \
   --run-id eurusd-fit
 ```
 
@@ -299,7 +303,7 @@ Override the lower-level components directly:
 ```bash
 janiform fit \
   --tick-data-path data/ticks.parquet \
-  --market eurusd_spot \
+  --market-profile eurusd_spot \
   --session-preset fx_spot_24_5 \
   --known-news none \
   --run-id explicit-context-fit
@@ -326,9 +330,11 @@ janiform fit \
   --tick-price-input-policy explicit_price_column \
   --tick-size 0.00001 \
   --timestamp-timezone UTC \
-  --market eurusd_spot \
+  --market-profile eurusd_spot \
   --run-id explicit-columns-fit
 ```
+
+The CLI follows the same tick-size precedence as Python. `--tick-size` wins when provided. Otherwise, the selected or inferred market profile can supply a fallback tick size. If no explicit or profile value exists, Janiform estimates tick size from the retained tick data when possible.
 
 For bid/ask tick data:
 
@@ -341,7 +347,7 @@ janiform fit \
   --tick-trade-sign-column trade_sign \
   --tick-price-input-policy bid_ask_midpoint \
   --timestamp-timezone UTC \
-  --market eurusd_spot \
+  --market-profile eurusd_spot \
   --run-id bid-ask-fit
 ```
 
@@ -359,7 +365,7 @@ janiform fit \
   --option-bid-column bid \
   --option-ask-column ask \
   --option-quote-input-policy bid_ask_midpoint \
-  --market eurusd_spot \
+  --market-profile eurusd_spot \
   --run-id option-aware-fit
 ```
 

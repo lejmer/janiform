@@ -75,6 +75,9 @@ pub struct MarketDataFitMarketProfileDefaults {
     /// Timestamp timezone default supplied by the profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp_timezone_name: Option<String>,
+    /// Optional profile tick-size fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tick_size: Option<f64>,
     /// Profile-specific source-column aliases.
     #[serde(default)]
     pub column_alias_hints: Vec<MarketDataColumnAliasHint>,

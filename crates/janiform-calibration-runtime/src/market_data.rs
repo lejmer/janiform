@@ -65,6 +65,7 @@ pub use preprocessing::{
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
     preprocess_market_data_translation_request,
+    preprocessing_settings_with_return_components_tick_size,
 };
 pub use preset_resolution::{
     PresetWorkflowResolutionError, built_in_preset_registry_index,
