@@ -100,6 +100,21 @@ pub(super) fn optional_string_field<'a>(
         .map_err(payload_error_from_json)
 }
 
+pub(super) fn optional_positive_f64_field(
+    payload: &Map<String, Value>,
+    field_name: &str,
+    field_path: &str,
+    validation_field_name: &'static str,
+) -> PresetResolutionResult<Option<f64>> {
+    json::payload::optional_positive_f64_field(
+        payload,
+        field_name,
+        field_path,
+        validation_field_name,
+    )
+    .map_err(payload_error_from_json)
+}
+
 pub(super) fn object_value<'a>(
     value: &'a Value,
     field_path: &str,

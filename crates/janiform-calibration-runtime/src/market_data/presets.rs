@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
+use janiform_foundations::numeric::validate_positive_number;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -50,6 +51,8 @@ pub struct ResolvedMarketProfile {
     pub exchange_code: String,
     /// Timestamp timezone default supplied by the profile.
     pub timestamp_timezone_name: Option<String>,
+    /// Optional profile tick-size fallback.
+    pub tick_size: Option<f64>,
     /// Bundled known-news preset recommended by the profile.
     pub known_news_preset_name: Option<String>,
     /// Policy for applying the known-news preset recommendation.
@@ -101,6 +104,8 @@ struct BundledMarketProfileConfiguration {
     known_news_preset_name: Option<String>,
     known_news_policy: Option<String>,
     timestamp_timezone_name: Option<String>,
+    #[serde(default)]
+    tick_size: Option<f64>,
     #[serde(default)]
     column_alias_hints: Vec<MarketDataColumnAliasHint>,
     #[serde(default)]
@@ -215,6 +220,11 @@ fn resolve_bundled_market_profile(
         });
     };
 
+    let tick_size = validated_bundled_market_profile_tick_size(
+        profile.preset_name.as_str(),
+        profile.configuration.tick_size,
+    )?;
+
     // Profile and session data live in process-wide bundled caches, so the
     // public inference result owns copies instead of borrowing from the cache.
     Ok(Some(ResolvedMarketProfile {
@@ -222,11 +232,31 @@ fn resolve_bundled_market_profile(
         session_preset_name: profile.configuration.session_preset_name.clone(),
         exchange_code: session.configuration.exchange_code.clone(),
         timestamp_timezone_name: profile.configuration.timestamp_timezone_name.clone(),
+        tick_size,
         known_news_preset_name: profile.configuration.known_news_preset_name.clone(),
         known_news_policy: profile.configuration.known_news_policy.clone(),
         column_alias_hints: profile.configuration.column_alias_hints.clone(),
         default_calibration_hint_ids: profile.configuration.default_calibration_hint_ids.clone(),
     }))
+}
+
+fn validated_bundled_market_profile_tick_size(
+    preset_name: &str,
+    tick_size: Option<f64>,
+) -> Result<Option<f64>, MarketDataPresetInferenceError> {
+    let Some(tick_size) = tick_size else {
+        return Ok(None);
+    };
+
+    if let Err(source) = validate_positive_number(tick_size, "tick_size") {
+        return Err(MarketDataPresetInferenceError::InvalidBundledPresetSource {
+            message: format!(
+                "bundled market profile `{preset_name}` has invalid tick_size: {source}"
+            ),
+        });
+    }
+
+    Ok(Some(tick_size))
 }
 
 fn bundled_market_profiles() -> PresetInferenceResult<&'static BundledMarketProfileMap> {
@@ -309,6 +339,7 @@ mod tests {
             inferred_profile.timestamp_timezone_name.as_deref(),
             Some("UTC")
         );
+        assert_eq!(inferred_profile.tick_size, Some(0.00001));
         assert_eq!(
             inferred_profile.known_news_preset_name.as_deref(),
             Some("eu_us_macro_fx_core")
@@ -367,6 +398,18 @@ mod tests {
                 inferred_profile.default_calibration_hint_ids,
                 vec!["fx_spot_defaults".to_string()]
             );
+
+            let expected_tick_size = if expected_profile_name
+                .split('_')
+                .next()
+                .is_some_and(|instrument_token| instrument_token.ends_with("jpy"))
+            {
+                0.001
+            } else {
+                0.00001
+            };
+
+            assert_eq!(inferred_profile.tick_size, Some(expected_tick_size));
         }
     }
 
@@ -385,6 +428,7 @@ mod tests {
             inferred_profile.known_news_preset_name.as_deref(),
             Some("none")
         );
+        assert_eq!(inferred_profile.tick_size, Some(0.001));
     }
 
     #[test]
@@ -402,6 +446,7 @@ mod tests {
             inferred_profile.timestamp_timezone_name.as_deref(),
             Some("UTC")
         );
+        assert_eq!(inferred_profile.tick_size, Some(0.25));
         assert_eq!(
             inferred_profile.known_news_preset_name.as_deref(),
             Some("none")

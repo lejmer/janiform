@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use janiform_foundations::json;
 use janiform_terminal_ui::CompactTable;
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StartSummary;
@@ -110,6 +111,13 @@ pub(crate) fn render_presets_show(
         "Known news",
     )?;
 
+    if category == "market_profile" {
+        rows.push(KeyValueRow::new(
+            "Tick size",
+            optional_positive_number_label(configuration, "tick_size")?,
+        ));
+    }
+
     if let Some(exchange_code) = optional_object_string(configuration, "exchange_code") {
         rows.push(KeyValueRow::new("Exchange", exchange_code));
     }
@@ -139,6 +147,28 @@ pub(crate) fn render_presets_show(
     }
 
     Ok(sections.join("\n\n"))
+}
+
+fn optional_positive_number_label(
+    configuration: &serde_json::Map<String, Value>,
+    field_name: &'static str,
+) -> Result<String, CliError> {
+    let field_path = format!("presets.show.{field_name}");
+
+    let number = json::payload::optional_positive_f64_field(
+        configuration,
+        field_name,
+        field_path.as_str(),
+        field_name,
+    )
+    .map_err(|source| {
+        let message = source.to_string();
+        malformed_payload("presets.show", &message)
+    })?;
+
+    Ok(number
+        .map(|number| number.to_string())
+        .unwrap_or_else(|| "not set".to_string()))
 }
 
 pub(crate) fn render_presets_export(

@@ -6,6 +6,8 @@ use std::fmt;
 use serde_json::Map;
 use serde_json::Value;
 
+use crate::numeric::validate_positive_number;
+
 /// Error raised when a JSON payload does not match an expected value shape.
 #[derive(Debug, Eq, PartialEq)]
 pub struct JsonPayloadError {
@@ -182,6 +184,46 @@ pub fn optional_string_field<'a>(
     string_value(value, field_path).map(Some)
 }
 
+/// Return an optional JSON object field as an `f64` when present and non-null.
+pub fn optional_f64_field(
+    payload: &Map<String, Value>,
+    field_name: &str,
+    field_path: &str,
+) -> Result<Option<f64>, JsonPayloadError> {
+    let Some(value) = payload.get(field_name) else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+
+    value
+        .as_f64()
+        .ok_or_else(|| JsonPayloadError::new(field_path, "must be a number when provided"))
+        .map(Some)
+}
+
+/// Return an optional JSON object field as a positive finite `f64`.
+pub fn optional_positive_f64_field(
+    payload: &Map<String, Value>,
+    field_name: &str,
+    field_path: &str,
+    validation_field_name: &'static str,
+) -> Result<Option<f64>, JsonPayloadError> {
+    let Some(number) = optional_f64_field(payload, field_name, field_path)? else {
+        return Ok(None);
+    };
+
+    validate_positive_number(number, validation_field_name).map_err(|_| {
+        JsonPayloadError::new(
+            field_path,
+            "must be finite and strictly positive when provided",
+        )
+    })?;
+
+    Ok(Some(number))
+}
+
 /// Return a JSON value as an object.
 pub fn object_value<'a>(
     value: &'a Value,
@@ -264,6 +306,7 @@ mod tests {
 
     use super::JsonPayloadError;
     use super::object_field;
+    use super::optional_positive_f64_field;
     use super::string_field;
 
     #[test]
@@ -289,6 +332,98 @@ mod tests {
             Err(JsonPayloadError::new(
                 "artifact.version",
                 "must be a string"
+            ))
+        );
+    }
+
+    #[test]
+    fn optional_positive_f64_field_accepts_absent_null_and_positive_values() {
+        let missing_payload = json!({});
+        let missing_payload = missing_payload
+            .as_object()
+            .expect("fixture should be an object");
+
+        let null_payload = json!({
+            "tick_size": null,
+        });
+        let null_payload = null_payload
+            .as_object()
+            .expect("fixture should be an object");
+
+        let positive_payload = json!({
+            "tick_size": 0.01,
+        });
+        let positive_payload = positive_payload
+            .as_object()
+            .expect("fixture should be an object");
+
+        assert_eq!(
+            optional_positive_f64_field(
+                missing_payload,
+                "tick_size",
+                "configuration.tick_size",
+                "tick_size",
+            ),
+            Ok(None)
+        );
+        assert_eq!(
+            optional_positive_f64_field(
+                null_payload,
+                "tick_size",
+                "configuration.tick_size",
+                "tick_size",
+            ),
+            Ok(None)
+        );
+        assert_eq!(
+            optional_positive_f64_field(
+                positive_payload,
+                "tick_size",
+                "configuration.tick_size",
+                "tick_size",
+            ),
+            Ok(Some(0.01))
+        );
+    }
+
+    #[test]
+    fn optional_positive_f64_field_reports_shape_mismatch() {
+        let payload = json!({
+            "tick_size": "0.01",
+        });
+        let payload = payload.as_object().expect("fixture should be an object");
+
+        assert_eq!(
+            optional_positive_f64_field(
+                payload,
+                "tick_size",
+                "configuration.tick_size",
+                "tick_size",
+            ),
+            Err(JsonPayloadError::new(
+                "configuration.tick_size",
+                "must be a number when provided",
+            ))
+        );
+    }
+
+    #[test]
+    fn optional_positive_f64_field_reports_non_positive_values() {
+        let payload = json!({
+            "tick_size": 0.0,
+        });
+        let payload = payload.as_object().expect("fixture should be an object");
+
+        assert_eq!(
+            optional_positive_f64_field(
+                payload,
+                "tick_size",
+                "configuration.tick_size",
+                "tick_size",
+            ),
+            Err(JsonPayloadError::new(
+                "configuration.tick_size",
+                "must be finite and strictly positive when provided",
             ))
         );
     }
