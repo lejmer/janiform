@@ -21,6 +21,7 @@ import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
+import janiform.calibration.fit._runtime.workflow as fit_runtime_workflow_module
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
@@ -491,6 +492,36 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
         prepared_workflow.temporary_directory.cleanup()
 
     assert request.preprocessing_settings == preprocessing_settings
+
+
+def test_prepare_fit_workflow_passes_high_level_tick_size_to_native_payload() -> None:
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+        tick_size=0.00001,
+    )
+    configuration = estimator._build_execution_configuration(
+        silent=None,
+        pricing_interval_schedule_policy=None,
+    )
+    payload = fit_runtime_workflow_module._fit_preparation_configuration_payload(
+        configuration
+    )
+
+    assert configuration.preparation.preprocessing_settings is None
+    assert payload["preprocessing_settings"] == {
+        "return_components": {
+            "close_open_gap_tolerance_multiplier": 3.0,
+            "intraday_jump_threshold_multiplier": 4.0,
+            "tick_size": 0.00001,
+        },
+    }
+
+
+def test_estimator_rejects_invalid_high_level_tick_size() -> None:
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        JaniformEstimator(tick_size=0.0)
+
+    assert captured_error.value.failure.field_path == "tick_size"
 
 
 def test_prepare_fit_workflow_passes_option_surface_inputs_to_session_inference(

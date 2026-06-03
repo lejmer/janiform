@@ -59,13 +59,7 @@ pub(super) fn build_return_components_candidate_generation_input(
         return Err(MarketDataTranslationPreprocessingError::MissingOpenSessionPriceObservations);
     }
 
-    let return_components_settings = preprocessing_settings.cloned().unwrap_or(
-        MarketDataTranslationReturnComponentsPreprocessingSettings {
-            intraday_jump_threshold_multiplier: 4.0,
-            close_open_gap_tolerance_multiplier: 3.0,
-            tick_size: None,
-        },
-    );
+    let return_components_settings = preprocessing_settings.cloned().unwrap_or_default();
 
     let open_price_tick_timestamps: Vec<i64> = open_price_ticks
         .iter()

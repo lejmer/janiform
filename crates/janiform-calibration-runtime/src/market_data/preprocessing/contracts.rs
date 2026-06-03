@@ -9,6 +9,9 @@ use crate::execution_bridge::{
     CalibrationSeasonalityStageExecutionInput, CalibrationTimestampEventSessionFilter,
 };
 
+const DEFAULT_RETURN_COMPONENTS_INTRADAY_JUMP_THRESHOLD_MULTIPLIER: f64 = 4.0;
+const DEFAULT_RETURN_COMPONENTS_CLOSE_OPEN_GAP_TOLERANCE_MULTIPLIER: f64 = 3.0;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarketDataTranslationPreprocessingRequest {
@@ -59,6 +62,18 @@ pub struct MarketDataTranslationReturnComponentsPreprocessingSettings {
     pub close_open_gap_tolerance_multiplier: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tick_size: Option<f64>,
+}
+
+impl Default for MarketDataTranslationReturnComponentsPreprocessingSettings {
+    fn default() -> Self {
+        Self {
+            intraday_jump_threshold_multiplier:
+                DEFAULT_RETURN_COMPONENTS_INTRADAY_JUMP_THRESHOLD_MULTIPLIER,
+            close_open_gap_tolerance_multiplier:
+                DEFAULT_RETURN_COMPONENTS_CLOSE_OPEN_GAP_TOLERANCE_MULTIPLIER,
+            tick_size: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

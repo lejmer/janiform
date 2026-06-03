@@ -87,6 +87,10 @@ fn fit_help_shows_no_persist_opt_out() {
         stdout.contains("--no-persist"),
         "missing --no-persist in fit help:\n{stdout}"
     );
+    assert!(
+        stdout.contains("--tick-size"),
+        "missing --tick-size in fit help:\n{stdout}"
+    );
     for expected_resume_stage in ["option-refinement", "finalization"] {
         assert!(
             stdout.contains(expected_resume_stage),
@@ -1804,6 +1808,107 @@ fn fit_staged_plan_writes_prepared_execution_input() {
     )
     .expect("staged execution input should be JSON");
     assert_eq!(staged_payload["request"]["run_id"], "staged-plan-test");
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn fit_staged_plan_accepts_explicit_tick_size() {
+    let workspace = temporary_run_directory("fit-staged-plan-tick-size");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    write_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "staged",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--workflow-scope",
+            "full-without-option-surface",
+            "--tick-size",
+            "0.00001",
+            "--run-id",
+            "staged-plan-tick-size-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(
+        payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
+        serde_json::json!(0.00001)
+    );
+    assert_eq!(
+        payload["staged_execution_input"]["request"]["selected_stages"],
+        serde_json::json!([
+            "seasonality",
+            "hawkes",
+            "return_components",
+            "long_variance",
+            "news_shocks",
+            "return_backfit",
+            "mean_reversion",
+            "joint_refinement",
+            "finalization"
+        ])
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn fit_staged_plan_rejects_invalid_tick_size() {
+    let workspace = temporary_run_directory("fit-staged-plan-invalid-tick-size");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    write_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "staged",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--workflow-scope",
+            "full-without-option-surface",
+            "--tick-size",
+            "0",
+            "--run-id",
+            "staged-plan-invalid-tick-size-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(CliExitCode::CommandLineUsage as i32)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    let diagnostic_output = format!("{stdout}\n{stderr}");
+    assert!(
+        diagnostic_output.contains("--tick-size must be finite and strictly positive"),
+        "invalid tick size should be reported as a command argument error:\n{diagnostic_output}"
+    );
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
 }

@@ -21,11 +21,15 @@ from ...errors import (
     calibration_execution_error,
     calibration_integration_error,
 )
-from ...market_data.contracts import CalibrationFlatCarryInput, CalibrationInputFileFormat
+from ...market_data.contracts import (
+    CalibrationFlatCarryInput,
+    CalibrationInputFileFormat,
+    CalibrationMarketDataReturnComponentsPreprocessingSettings,
+)
 from ...staged import CalibrationResumeSettings
 from ...staged.results import StagedCalibrationResponse, validate_staged_calibration_response
 from .._inference import normalization_overrides_from_policy
-from .._preparation.contracts import FitExecutionConfiguration
+from .._preparation.contracts import FitExecutionConfiguration, FitPreparationConfiguration
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,11 +247,7 @@ def _fit_preparation_configuration_payload(
             settings.to_payload()
             for settings in preparation.optimizer_settings_by_stage
         ],
-        "preprocessing_settings": (
-            None
-            if preparation.preprocessing_settings is None
-            else preparation.preprocessing_settings.to_payload()
-        ),
+        "preprocessing_settings": _fit_preprocessing_settings_payload(preparation),
         "mean_reversion": (
             None
             if preparation.mean_reversion is None
@@ -304,6 +304,54 @@ def _fit_preparation_configuration_payload(
         "registry": preparation.registry.native_resolution_payload(),
         "cpu_count": preparation.cpu_count,
     }
+
+
+def _fit_preprocessing_settings_payload(
+    preparation: FitPreparationConfiguration,
+) -> Optional[dict[str, Any]]:
+    if preparation.preprocessing_settings is None:
+        if preparation.tick_size is None:
+            return None
+
+        return {
+            "return_components": _return_components_payload_with_tick_size(
+                preparation.tick_size,
+                return_components_payload=None,
+            ),
+        }
+
+    preprocessing_settings_payload = preparation.preprocessing_settings.to_payload()
+    if preparation.tick_size is None:
+        return preprocessing_settings_payload
+
+    return_components_payload = preprocessing_settings_payload.get("return_components")
+    preprocessing_settings_payload["return_components"] = (
+        _return_components_payload_with_tick_size(
+            preparation.tick_size,
+            return_components_payload=return_components_payload,
+        )
+    )
+
+    return preprocessing_settings_payload
+
+
+def _return_components_payload_with_tick_size(
+    tick_size: float,
+    *,
+    return_components_payload: Any,
+) -> dict[str, Any]:
+    if return_components_payload is None:
+        payload = CalibrationMarketDataReturnComponentsPreprocessingSettings().to_payload()
+    elif isinstance(return_components_payload, dict):
+        payload = dict(return_components_payload)
+    else:
+        raise calibration_error(
+            "preprocessing_settings.return_components",
+            "must be an object when provided",
+        )
+
+    payload["tick_size"] = tick_size
+    return payload
 
 
 def _enum_value(value: Any) -> Any:

@@ -5,9 +5,10 @@ use std::time::Instant;
 use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::calibration::market_data::{
     MarketDataPreparationProgressError, MarketDataPreparationProgressEvent,
-    OptionForwardParityWarningPolicy, PreparedMarketDataCalibrationPlan,
-    infer_market_data_run_id_from_path, prepare_market_data_calibration_plan,
-    prepare_market_data_calibration_plan_with_observer,
+    MarketDataTranslationPreprocessingSettings,
+    MarketDataTranslationReturnComponentsPreprocessingSettings, OptionForwardParityWarningPolicy,
+    PreparedMarketDataCalibrationPlan, infer_market_data_run_id_from_path,
+    prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_with_observer,
 };
 use janiform::calibration::presets::ResolvedMarketProfile;
 use janiform::calibration::staged::{
@@ -16,6 +17,7 @@ use janiform::calibration::staged::{
     CalibrationMarketDataOutputPreferences, CalibrationMarketDataPreparationError,
     CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
 };
+use janiform_foundations::numeric::validate_positive_number;
 use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure, format_path};
 use janiform_workflows::fit::{
     FitWorkflowPaths, fit_preparation_input_count, fit_preparation_start_summary,
@@ -59,6 +61,7 @@ pub(crate) struct FitPreviewOptions {
     pub(crate) workflow_scope: Option<WorkflowScope>,
     pub(crate) execution_mode: Option<CalibrationExecutionMode>,
     pub(crate) cpu_count: Option<usize>,
+    pub(crate) tick_size: Option<f64>,
     pub(crate) overrides: FitPreparationOverrides,
     pub(crate) no_persist: bool,
 }
@@ -188,7 +191,7 @@ pub(crate) fn prepare_fit_preview(
             emit_input_provenance_report: true,
         },
         optimizer_settings_by_stage: Vec::new(),
-        preprocessing_settings: None,
+        preprocessing_settings: preprocessing_settings_from_tick_size(preview_options.tick_size)?,
         option_surface_source: prepared_inputs.option_surface_source,
         option_surface_valuation_time_utc: inputs.option_surface_valuation_time_utc.clone(),
         carry: Some(CalibrationMarketDataCarryInput {
@@ -248,6 +251,7 @@ pub(crate) fn prepare_fit_preview(
     let mut explicit_values = Vec::new();
 
     push_if_present(&mut explicit_values, "run id", run.run_id.as_deref());
+
     push_if_present(
         &mut explicit_values,
         "workflow scope",
@@ -256,21 +260,28 @@ pub(crate) fn prepare_fit_preview(
             .map(workflow_scope_argument_label)
             .as_deref(),
     );
+
     push_if_present(
         &mut explicit_values,
         "exchange code",
         inputs.exchange_code.as_deref(),
     );
+
     push_if_present(
         &mut explicit_values,
         "tick timestamp column",
         inputs.tick_timestamp_column.as_deref(),
     );
+
     push_if_present(
         &mut explicit_values,
         "tick price column",
         inputs.tick_price_column.as_deref(),
     );
+
+    if let Some(tick_size) = preview_options.tick_size {
+        explicit_values.push(("tick size".to_string(), tick_size.to_string()));
+    }
 
     if inputs.coarse_data_path.is_some() {
         explicit_values.push((
@@ -310,12 +321,14 @@ pub(crate) fn prepare_fit_preview(
             workflow_scope_label(request.workflow_scope).to_string(),
         ),
     ];
+
     if inputs.exchange_code.is_none() {
         inferred_values.push((
             "exchange code".to_string(),
             request.session_configuration.exchange_code.clone(),
         ));
     }
+
     if let Some(market_profile) = &preview_inputs.market_profile {
         inferred_values.push((
             "market profile".to_string(),
@@ -378,6 +391,29 @@ pub(crate) fn prepare_fit_preview(
     })
 }
 
+fn preprocessing_settings_from_tick_size(
+    tick_size: Option<f64>,
+) -> Result<Option<MarketDataTranslationPreprocessingSettings>, CliError> {
+    let Some(tick_size) = tick_size else {
+        return Ok(None);
+    };
+
+    validate_positive_number(tick_size, "--tick-size").map_err(|source| {
+        CliError::InvalidCommandArgument {
+            argument_name: "--tick-size",
+            message: source.to_string(),
+        }
+    })?;
+
+    Ok(Some(MarketDataTranslationPreprocessingSettings {
+        seasonality: None,
+        return_components: Some(MarketDataTranslationReturnComponentsPreprocessingSettings {
+            tick_size: Some(tick_size),
+            ..Default::default()
+        }),
+    }))
+}
+
 fn emit_start_summary_before_loading(
     context: &CommandContext,
     request: &CalibrationMarketDataPreparationRequest,
@@ -438,7 +474,9 @@ fn prepare_market_data_calibration_plan_with_terminal_progress(
     output_directory: &Path,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
     let mut progress_gate = MarketDataLoadingProgressGate::default();
+
     let loading_started_at = Instant::now();
+
     // Intentional copy because the preparation request is consumed by the loader
     // after the progress run has been initialized.
     let progress_run_id = request.run_id.clone();
