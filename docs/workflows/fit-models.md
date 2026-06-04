@@ -244,7 +244,8 @@ The same idea applies in Python through `JaniformEstimator(...)` arguments such 
 Janiform chooses the mean-reversion calibration grid from the data by default. Here, "grid" means the time spacing used by the mean-reversion calibration stage. Use the explicit interval only when you deliberately want to audit or reproduce a specific time spacing:
 
 ```python
-from janiform.calibration import CalibrationMeanReversionConfiguration, JaniformEstimator
+from janiform.calibration import JaniformEstimator
+from janiform.calibration.market_data import CalibrationMeanReversionConfiguration
 
 estimator = JaniformEstimator(
     market_profile="eurusd_spot",
