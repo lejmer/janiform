@@ -7,8 +7,8 @@ use janiform_calibration_artifacts::{
 use janiform_calibration_runtime::{
     CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus, CalibrationStagedRunInputs,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport, MeanReversionStageExecutionInput,
-    MeanReversionStageObservation, MeanReversionStageSeasonalityInput,
-    run_mean_reversion_calibration_stage,
+    MeanReversionStageGridCandidate, MeanReversionStageObservation,
+    MeanReversionStageSeasonalityInput, run_mean_reversion_calibration_stage,
     run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
 };
 use janiform_foundations::cancellation::CancellationToken;
@@ -20,6 +20,8 @@ use support::shared::{
     build_through_mean_reversion_run_contract_with_mode_and_resume,
     calibration_stage_test_registry, staged_run_inputs,
 };
+
+const TEST_PREDICTIVE_EVIDENCE_ALPHA: f64 = 0.05;
 
 fn run_staged_calibration_with_checkpointing(
     run_contract: &CalibrationRunContract,
@@ -82,6 +84,57 @@ fn synthetic_partial_weekly_anchor_observations() -> Vec<MeanReversionStageObser
         .collect()
 }
 
+fn synthetic_regular_grid_observations(
+    levels: Vec<f64>,
+    interval_hours: i64,
+) -> Vec<MeanReversionStageObservation> {
+    let base_timestamp_utc_nanos = 1_770_042_600_000_000_000_i64;
+    let interval_nanos = interval_hours * 3_600_000_000_000_i64;
+
+    levels
+        .into_iter()
+        .enumerate()
+        .map(
+            |(observation_index, observed_log_price)| MeanReversionStageObservation {
+                observation_timestamp_utc_nanos: base_timestamp_utc_nanos
+                    + observation_index as i64 * interval_nanos,
+                observed_log_price,
+            },
+        )
+        .collect()
+}
+
+fn synthetic_predictive_mean_reverting_observations() -> Vec<MeanReversionStageObservation> {
+    let levels = (0..96)
+        .map(|observation_index| {
+            if observation_index % 2 == 0 {
+                0.001
+            } else {
+                -0.001
+            }
+        })
+        .collect();
+
+    synthetic_regular_grid_observations(levels, 24)
+}
+
+fn synthetic_random_walk_observations() -> Vec<MeanReversionStageObservation> {
+    let mut levels = Vec::new();
+    let mut level = 0.0_f64;
+
+    for observation_index in 0..96 {
+        levels.push(level);
+
+        if observation_index % 2 == 0 {
+            level += 0.0006;
+        } else {
+            level -= 0.0004;
+        }
+    }
+
+    synthetic_regular_grid_observations(levels, 24)
+}
+
 fn direct_stage_input(
     observations: Vec<MeanReversionStageObservation>,
 ) -> MeanReversionStageExecutionInput {
@@ -96,11 +149,33 @@ fn direct_stage_input(
         ),
         hawkes_stage_payload: Some(build_hawkes_stage_success_payload()),
         return_components_stage_payload: Some(build_return_components_stage_success_payload()),
-        calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
-        calibration_grid_interval_hours: 24.0,
-        source_observation_count: observations.len(),
-        coverage_ratio: 1.0,
-        observations,
+        predictive_evidence_alpha: TEST_PREDICTIVE_EVIDENCE_ALPHA,
+        grid_candidates: vec![MeanReversionStageGridCandidate {
+            calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
+            calibration_grid_interval_hours: 24.0,
+            source_observation_count: observations.len(),
+            coverage_ratio: 1.0,
+            observations,
+        }],
+    }
+}
+
+fn direct_multi_grid_stage_input(
+    grid_candidates: Vec<MeanReversionStageGridCandidate>,
+) -> MeanReversionStageExecutionInput {
+    MeanReversionStageExecutionInput {
+        return_components_input: Some(CalibrationStageSelectedCandidateSource::InMemoryOutput {
+            selected_candidate_id: "return_candidate_balanced".to_string(),
+        }),
+        seasonality_stage_input: Some(
+            MeanReversionStageSeasonalityInput::from_seasonality_stage_payload(
+                &build_seasonality_stage_success_payload(),
+            ),
+        ),
+        hawkes_stage_payload: Some(build_hawkes_stage_success_payload()),
+        return_components_stage_payload: Some(build_return_components_stage_success_payload()),
+        predictive_evidence_alpha: TEST_PREDICTIVE_EVIDENCE_ALPHA,
+        grid_candidates,
     }
 }
 
@@ -199,6 +274,176 @@ fn mean_reversion_stage_reports_endogenous_anchor_fit_from_synthetic_levels() {
 }
 
 #[test]
+fn mean_reversion_stage_selects_positive_kappa_when_predictive_evidence_passes() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-positive-predictive-evidence",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        direct_stage_input(synthetic_predictive_mean_reverting_observations()),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("predictive mean-reversion sample should emit a fitted payload");
+
+    assert!(payload.fitted_parameters.kappa > 0.0);
+    assert_eq!(
+        payload.diagnostics.model_selection_policy,
+        "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1"
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate
+                .predictive_evidence
+                .as_ref()
+                .is_some_and(|evidence| {
+                    evidence.gate_status == "predictive_evidence_passed.v1"
+                        && evidence
+                            .relative_loss_reduction
+                            .is_some_and(|value| value > 0.0)
+                }))
+    );
+}
+
+#[test]
+fn mean_reversion_stage_records_predictive_evidence_alpha_override() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-predictive-evidence-alpha-override",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let mut execution_input =
+        direct_stage_input(synthetic_predictive_mean_reverting_observations());
+    execution_input.predictive_evidence_alpha = 0.25;
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        execution_input,
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("predictive mean-reversion sample should emit a fitted payload");
+
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .filter_map(|candidate| candidate.predictive_evidence.as_ref())
+            .all(|evidence| evidence.significance_level == 0.25)
+    );
+}
+
+#[test]
+fn mean_reversion_stage_selects_random_walk_when_predictive_evidence_fails() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-random-walk-predictive-evidence",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        direct_stage_input(synthetic_random_walk_observations()),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("random-walk sample should emit a fitted payload");
+
+    assert_eq!(payload.fitted_parameters.kappa, 0.0);
+    assert_eq!(
+        payload.diagnostics.selected_candidate_family,
+        "random_walk_null"
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .filter_map(|candidate| candidate.predictive_evidence.as_ref())
+            .all(|evidence| evidence.gate_status != "predictive_evidence_passed.v1")
+    );
+}
+
+#[test]
+fn mean_reversion_stage_selects_predictive_grid_across_automatic_candidates() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-multi-grid-predictive-evidence",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let daily_observations = synthetic_predictive_mean_reverting_observations();
+    let weekly_observations = synthetic_regular_grid_observations(
+        (0..16)
+            .map(|observation_index| 0.001 * (observation_index as f64))
+            .collect(),
+        168,
+    );
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        direct_multi_grid_stage_input(vec![
+            MeanReversionStageGridCandidate {
+                calibration_grid_kind: "synthetic_weekly_boundary_grid.v1".to_string(),
+                calibration_grid_interval_hours: 168.0,
+                source_observation_count: weekly_observations.len(),
+                coverage_ratio: 1.0,
+                observations: weekly_observations,
+            },
+            MeanReversionStageGridCandidate {
+                calibration_grid_kind: "synthetic_daily_session_grid.v1".to_string(),
+                calibration_grid_interval_hours: 24.0,
+                source_observation_count: daily_observations.len(),
+                coverage_ratio: 1.0,
+                observations: daily_observations,
+            },
+        ]),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("multi-grid sample should emit a fitted payload");
+
+    assert!(payload.fitted_parameters.kappa > 0.0);
+    assert_eq!(
+        payload.diagnostics.calibration_grid.calibration_grid_kind,
+        "synthetic_daily_session_grid.v1"
+    );
+    assert_eq!(payload.diagnostics.evaluated_grids.len(), 2);
+}
+
+#[test]
 fn mean_reversion_stage_falls_back_to_zero_kappa_endogenous_fit_when_runtime_projection_is_required()
  {
     let run_contract = build_run_contract_with_mode_and_resume(
@@ -242,8 +487,8 @@ fn mean_reversion_stage_accepts_sparse_coverage_when_identifiable_structure_is_p
     let calendar_registry = calibration_stage_test_registry();
     let mut execution_input = direct_stage_input(synthetic_weekly_anchor_observations());
 
-    execution_input.source_observation_count = 3;
-    execution_input.coverage_ratio = 3.0 / 7.0;
+    execution_input.grid_candidates[0].source_observation_count = 3;
+    execution_input.grid_candidates[0].coverage_ratio = 3.0 / 7.0;
 
     let report = run_mean_reversion_calibration_stage(
         &run_contract.run_spec,
@@ -273,8 +518,8 @@ fn mean_reversion_stage_uses_identifiable_candidate_subset_when_full_regression_
     let calendar_registry = calibration_stage_test_registry();
     let mut execution_input = direct_stage_input(synthetic_weekly_anchor_observations());
 
-    execution_input.source_observation_count = 2;
-    execution_input.coverage_ratio = 2.0 / 7.0;
+    execution_input.grid_candidates[0].source_observation_count = 2;
+    execution_input.grid_candidates[0].coverage_ratio = 2.0 / 7.0;
 
     let report = run_mean_reversion_calibration_stage(
         &run_contract.run_spec,
@@ -355,6 +600,7 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
             .any(|candidate| candidate.candidate_family
                 == "endogenous_core_pressure_level_mean_reversion")
     );
+
     let no_mean_reversion_candidate = payload
         .diagnostics
         .evaluated_candidates
@@ -363,13 +609,14 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
             candidate.candidate_family == "endogenous_core_pressure_level_no_mean_reversion"
         })
         .expect("pressure-only candidate should be evaluated");
+
     assert_eq!(
         no_mean_reversion_candidate.regression_pair_count,
         synthetic_constant_anchor_observations().len() - 1
     );
     assert_eq!(
         payload.diagnostics.model_selection_policy,
-        "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1"
+        "rolling_origin_predictive_sign_test_with_gaussian_quasi_likelihood_bic_thin_sample_fallback.v1"
     );
     assert!(
         payload
@@ -414,6 +661,9 @@ fn mean_reversion_stage_rejects_full_endogenous_family_when_bic_sample_support_i
         payload.diagnostics.selected_candidate_family,
         "endogenous_core_pressure_level_mean_reversion"
     );
+    assert!(payload.diagnostics.stage_decision_reason.contains(
+        "predictive_evidence_support_too_thin_gaussian_quasi_likelihood_bic_fallback.v1"
+    ));
 }
 
 #[test]
@@ -434,9 +684,9 @@ fn staged_runner_completes_when_mean_reversion_stage_estimates_endogenous_anchor
         .as_mut()
         .expect("mean-reversion stage input fixture should exist");
 
-    mean_reversion_input.source_observation_count = 4;
-    mean_reversion_input.coverage_ratio = 1.0;
-    mean_reversion_input.observations = synthetic_constant_anchor_observations();
+    mean_reversion_input.grid_candidates[0].source_observation_count = 4;
+    mean_reversion_input.grid_candidates[0].coverage_ratio = 1.0;
+    mean_reversion_input.grid_candidates[0].observations = synthetic_constant_anchor_observations();
 
     let report = run_staged_calibration_with_checkpointing(
         &run_contract,
@@ -488,9 +738,9 @@ fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
         .as_mut()
         .expect("mean-reversion stage input fixture should exist");
 
-    mean_reversion_input.source_observation_count = 4;
-    mean_reversion_input.coverage_ratio = 1.0;
-    mean_reversion_input.observations = synthetic_constant_anchor_observations();
+    mean_reversion_input.grid_candidates[0].source_observation_count = 4;
+    mean_reversion_input.grid_candidates[0].coverage_ratio = 1.0;
+    mean_reversion_input.grid_candidates[0].observations = synthetic_constant_anchor_observations();
 
     let report = run_staged_calibration_with_checkpointing(
         &run_contract,

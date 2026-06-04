@@ -265,15 +265,30 @@ def test_market_data_calibration_request_rejects_unsupported_tick_data_file_form
 
 
 def test_market_data_calibration_request_roundtrip_preserves_mean_reversion_configuration() -> None:
-    request = _valid_market_data_request_model()
+    request_payload = _valid_market_data_request_payload()
+    request_payload["mean_reversion"]["predictive_evidence_alpha"] = 0.025
+
+    request = validate_market_data_calibration_request(request_payload)
 
     assert request.mean_reversion is not None
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(24.0)
+    assert request.mean_reversion.predictive_evidence_alpha == pytest.approx(0.025)
 
     serialized_request = serialize_market_data_calibration_request(request)
     deserialized_request = deserialize_market_data_calibration_request(serialized_request)
 
     assert deserialized_request == request
+
+
+def test_market_data_calibration_request_rejects_out_of_range_predictive_evidence_alpha() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["mean_reversion"]["predictive_evidence_alpha"] = 1.1
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "predictive_evidence_alpha"
+    assert captured_error.value.failure.message == "must be in (0, 1] when provided"
 
 
 def test_market_data_calibration_request_roundtrip_preserves_optimizer_settings_by_stage() -> None:

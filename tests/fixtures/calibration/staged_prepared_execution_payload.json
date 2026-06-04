@@ -290,26 +290,31 @@
     }
   },
   "mean_reversion_stage_input": {
-    "calibration_grid_kind": "synthetic_daily_close_grid.v1",
-    "calibration_grid_interval_hours": 24.0,
-    "source_observation_count": 4,
-    "coverage_ratio": 1.0,
-    "observations": [
+    "predictive_evidence_alpha": 0.05,
+    "grid_candidates": [
       {
-        "observation_timestamp_utc_nanos": 1770042600000000000,
-        "observed_log_price": 4.6
-      },
-      {
-        "observation_timestamp_utc_nanos": 1770129000000000000,
-        "observed_log_price": 4.58
-      },
-      {
-        "observation_timestamp_utc_nanos": 1770215400000000000,
-        "observed_log_price": 4.57
-      },
-      {
-        "observation_timestamp_utc_nanos": 1770301800000000000,
-        "observed_log_price": 4.59
+        "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+        "calibration_grid_interval_hours": 24.0,
+        "source_observation_count": 4,
+        "coverage_ratio": 1.0,
+        "observations": [
+          {
+            "observation_timestamp_utc_nanos": 1770042600000000000,
+            "observed_log_price": 4.6
+          },
+          {
+            "observation_timestamp_utc_nanos": 1770129000000000000,
+            "observed_log_price": 4.58
+          },
+          {
+            "observation_timestamp_utc_nanos": 1770215400000000000,
+            "observed_log_price": 4.57
+          },
+          {
+            "observation_timestamp_utc_nanos": 1770301800000000000,
+            "observed_log_price": 4.59
+          }
+        ]
       }
     ]
   }

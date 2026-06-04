@@ -7,6 +7,8 @@ pub(crate) use std::process::Command;
 pub(crate) use std::sync::LazyLock;
 pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 
+const TEST_PREDICTIVE_EVIDENCE_ALPHA: f64 = 0.05;
+
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::{
     CALIBRATION_ARTIFACT_ATOMIC_COMMIT_POLICY, CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_FAMILY,
@@ -231,12 +233,13 @@ pub(crate) use janiform_calibration_runtime::{
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
     MeanReversionStageExecutionFailure, MeanReversionStageExecutionInput,
     MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
-    MeanReversionStageFittedPayload, MeanReversionStageObservation,
-    MeanReversionStageSeasonalityInput, OptionSurfaceCalibrationObservation,
-    OptionSurfaceCalibrationObservationError, ReturnComponentsActivityCouplingCandidateFamily,
-    ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedCloseOpenGapCandidate,
-    ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsArrivalCandidateFamily,
-    ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
+    MeanReversionStageFittedPayload, MeanReversionStageGridCandidate,
+    MeanReversionStageObservation, MeanReversionStageSeasonalityInput,
+    OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError,
+    ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
+    ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
+    ReturnComponentsKnownNewsArrivalCandidateFamily, ReturnComponentsKnownNewsCalendarInput,
+    ReturnComponentsObservedCloseOpenBoundaryObservation,
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
     ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     ReturnComponentsStageActivityCalibrationContextSnapshot,
@@ -2495,28 +2498,31 @@ pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExec
         seasonality_stage_input: None,
         hawkes_stage_payload: None,
         return_components_stage_payload: None,
-        calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
-        calibration_grid_interval_hours: 24.0,
-        source_observation_count: 4,
-        coverage_ratio: 1.0,
-        observations: vec![
-            MeanReversionStageObservation {
-                observation_timestamp_utc_nanos: 1_770_042_600_000_000_000,
-                observed_log_price: 4.60,
-            },
-            MeanReversionStageObservation {
-                observation_timestamp_utc_nanos: 1_770_129_000_000_000_000,
-                observed_log_price: 4.58,
-            },
-            MeanReversionStageObservation {
-                observation_timestamp_utc_nanos: 1_770_215_400_000_000_000,
-                observed_log_price: 4.57,
-            },
-            MeanReversionStageObservation {
-                observation_timestamp_utc_nanos: 1_770_301_800_000_000_000,
-                observed_log_price: 4.59,
-            },
-        ],
+        predictive_evidence_alpha: TEST_PREDICTIVE_EVIDENCE_ALPHA,
+        grid_candidates: vec![MeanReversionStageGridCandidate {
+            calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
+            calibration_grid_interval_hours: 24.0,
+            source_observation_count: 4,
+            coverage_ratio: 1.0,
+            observations: vec![
+                MeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_770_042_600_000_000_000,
+                    observed_log_price: 4.60,
+                },
+                MeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_770_129_000_000_000_000,
+                    observed_log_price: 4.58,
+                },
+                MeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_770_215_400_000_000_000,
+                    observed_log_price: 4.57,
+                },
+                MeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_770_301_800_000_000_000,
+                    observed_log_price: 4.59,
+                },
+            ],
+        }],
     }
 }
 
