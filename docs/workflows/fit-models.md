@@ -239,6 +239,32 @@ janiform fit \
 
 The same idea applies in Python through `JaniformEstimator(...)` arguments such as `market_profile`, `session`, `known_news`, `exchange_code`, and `session_timezone`.
 
+### Mean-reversion expert controls
+
+Janiform chooses the mean-reversion calibration grid from the data by default. Here, "grid" means the time spacing used by the mean-reversion calibration stage. Use the explicit interval only when you deliberately want to audit or reproduce a specific time spacing:
+
+```python
+from janiform.calibration import CalibrationMeanReversionConfiguration, JaniformEstimator
+
+estimator = JaniformEstimator(
+    market_profile="eurusd_spot",
+    mean_reversion=CalibrationMeanReversionConfiguration(
+        calibration_grid_interval_hours=24.0,
+    ),
+)
+```
+
+The CLI equivalents are available on `fit`, `fit plan`, and `fit staged plan`:
+
+```bash
+janiform fit staged plan \
+  --tick-data-path data/eurusd_ticks.parquet \
+  --mean-reversion-grid-interval-hours 24 \
+  --run-id eurusd-fit
+```
+
+Advanced users can override the predictive evidence level with `predictive_evidence_alpha` in Python or `--mean-reversion-predictive-evidence-alpha` in the CLI. This changes the documented statistical gate for selecting a model with `kappa > 0`, so keep the default unless the run policy requires a different level.
+
 ### Prepared staged runs
 
 Staged execution is useful when another process needs to prepare the calibration input before the expensive run starts:

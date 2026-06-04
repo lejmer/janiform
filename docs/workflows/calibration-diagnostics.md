@@ -216,6 +216,60 @@ The `Fit long variance` stage estimates an initial persistent variance state fro
 
 The `Backfit return distribution` stage is a variance-budget backfit. It keeps the fitted activity, long-variance, seasonality, and news/gap components fixed, then makes the return-distribution handoff represent the residual physical return layer that downstream mean-reversion, joint-refinement, simulation, and pricing workflows should consume. The report includes the selected backfit candidate, whether a no-op candidate was selected, and the variance-budget diagnostic fields used to compare the initial NIG contribution, fixed slow/news contribution, backfitted NIG contribution, modeled scale, and observed target scale when those measurements are available.
 
+### Mean reversion
+
+The `Fit mean reversion` stage decides whether the retained observations support a mean-reverting price component. In this context, mean reversion means that the fitted log price has a tendency to move back toward a learned anchor level after moving away from it.
+
+The fitted mean-reversion speed is called `kappa`:
+
+| Value       | Practical meaning                                                                                                                                    |
+|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `kappa > 0` | Janiform selected a model with a nonzero pull back toward the learned anchor.                                                                        |
+| `kappa = 0` | Janiform selected the random-walk interpretation because the retained observations did not provide supported predictive evidence for a nonzero pull. |
+
+The stage is asset-agnostic. It does not assume that FX, equities, futures, or crypto should behave differently. It compares each fitted `kappa > 0` candidate with `random_walk_null`, which predicts the next retained log price as the current retained log price.
+
+The diagnostics use the word "grid" for the time spacing used by mean-reversion calibration. This is not the tick grid. The tick grid is the set of prices the instrument can display, such as increments of `0.25` or `0.00001`. The mean-reversion calibration grid is a time spacing, such as one hour, one session, or one day, used to line up retained price observations for this stage.
+
+Users normally do not set a mean-reversion source. Janiform chooses from the retained data:
+
+| Data available in the fit  | Mean-reversion evidence source                                                                                     |
+|----------------------------|--------------------------------------------------------------------------------------------------------------------|
+| Tick data only             | Retained open-session tick prices.                                                                                 |
+| Tick data plus coarse data | Retained coarse price observations. Tick data still supplies market activity, session timing, and boundary timing. |
+
+There is no separate secondary mean-reversion source setting. If slower price history is available, provide it as coarse data. If no coarse data is present, the stage uses retained open-session tick prices.
+
+Janiform evaluates all viable automatic time grids unless the request provides an explicit `mean_reversion.calibration_grid_interval_hours`. Automatic grids are derived from the retained data. They can include the typical time between retained boundaries, the typical observed session length, a spacing derived from the full retained history length, and the coarse-bar cadence when coarse data is available. The selected grid summary is in `diagnostics.calibration_grid`, and all evaluated grids are listed in `diagnostics.evaluated_grids`.
+
+For each evaluated time grid, `evaluated_candidates` contains the `random_walk_null` baseline and any supported fitted alternatives with `kappa > 0`. A `kappa > 0` candidate includes a `predictive_evidence` block when Janiform could run the rolling comparison. The most useful fields are:
+
+| Field                                                              | Meaning                                                                                      |
+|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `validation_transition_count`                                      | Number of held-out one-step transitions used in the rolling comparison.                      |
+| `validation_block_length`                                          | Data-derived contiguous block length from random-walk innovation sign dependence.            |
+| `validation_block_count`                                           | Number of validation blocks after aggregation.                                               |
+| `positive_block_count`, `negative_block_count`, `tied_block_count` | Block-level counts where the candidate beat, lost to, or tied the random walk.               |
+| `random_walk_validation_loss`                                      | Held-out squared log-price prediction loss for `random_walk_null`.                           |
+| `candidate_validation_loss`                                        | Held-out squared log-price prediction loss for the `kappa > 0` candidate.                    |
+| `relative_loss_reduction`                                          | Fractional loss improvement versus `random_walk_null` when the random-walk loss is positive. |
+| `raw_sign_test_p_value`                                            | One-sided exact sign-test p-value before multiple-test correction.                           |
+| `holm_adjusted_p_value`                                            | Holm-adjusted p-value across all tested `kappa > 0` grid/candidate comparisons.              |
+| `gate_status`                                                      | Whether the candidate passed, failed, or had too little validation support.                  |
+| `significance_level`                                               | The predictive evidence alpha used by the request. The default is `0.05`.                    |
+
+A model with `kappa > 0` is selected only when it passes the predictive evidence gate and has a positive total validation loss improvement. Passing candidates are ranked by adjusted p-value, then relative validation loss reduction, then BIC. In this stage, BIC is a secondary model-complexity score: it breaks ties between supported predictive candidates and provides the fallback ranking when `kappa > 0` candidates exist but the retained validation support is too small for the predictive gate to run.
+
+To diagnose a zero or positive `kappa`, read the mean-reversion diagnostics in this order:
+
+1. Start with `diagnostics.stage_decision_reason`. It distinguishes positive predictive evidence, no positive predictive evidence, thin-sample BIC fallback, and runtime-projection fallback.
+2. Check `diagnostics.calibration_grid` to see the selected grid, then inspect `diagnostics.evaluated_grids` to see whether another automatic grid was considered.
+3. On each evaluated time grid, compare `random_walk_null` with the `kappa > 0` candidates.
+4. For `kappa > 0` candidates, read `predictive_evidence.gate_status`, `relative_loss_reduction`, and `holm_adjusted_p_value`.
+5. Use BIC only after the predictive evidence fields. BIC explains tie-breaking and thin-sample fallback, not the primary evidence rule for selecting `kappa > 0`.
+
+When `kappa = 0`, the practical reading is: Janiform did not find supported predictive evidence that a mean-reverting model improved one-step held-out log-price prediction over `random_walk_null` in the retained calibration observations. That can be the right answer for any asset when the retained window does not show reliable mean reversion.
+
 ### Business time for returns
 
 Business time is Janiform's way of measuring how much open-market opportunity has passed between returns. A return after a long quiet open-session interval is not treated the same as a return after a very short interval, because more market time has passed even if few ticks arrived.
