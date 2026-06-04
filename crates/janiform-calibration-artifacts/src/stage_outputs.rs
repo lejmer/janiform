@@ -159,6 +159,7 @@ pub struct MeanReversionStageDiagnostics {
     pub regression_pair_count: usize,
     pub least_squares_rank: usize,
     pub evaluated_candidates: Vec<MeanReversionStageCandidateDiagnostics>,
+    pub evaluated_grids: Vec<MeanReversionStageGridDiagnostics>,
     pub stage_decision_reason: String,
 }
 
@@ -182,7 +183,33 @@ pub struct MeanReversionStageCandidateDiagnostics {
     pub boundary_anchor_values: Vec<f64>,
     pub deviations: Vec<f64>,
     pub residuals: Vec<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predictive_evidence: Option<MeanReversionStagePredictiveEvidenceDiagnostics>,
     pub stage_decision_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeanReversionStageGridDiagnostics {
+    pub calibration_grid: MeanReversionStageCalibrationGrid,
+    pub evaluated_candidates: Vec<MeanReversionStageCandidateDiagnostics>,
+    pub stage_decision_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeanReversionStagePredictiveEvidenceDiagnostics {
+    pub gate_status: String,
+    pub significance_level: f64,
+    pub validation_transition_count: usize,
+    pub validation_block_length: usize,
+    pub validation_block_count: usize,
+    pub positive_block_count: usize,
+    pub negative_block_count: usize,
+    pub tied_block_count: usize,
+    pub random_walk_validation_loss: Option<f64>,
+    pub candidate_validation_loss: Option<f64>,
+    pub relative_loss_reduction: Option<f64>,
+    pub raw_sign_test_p_value: Option<f64>,
+    pub holm_adjusted_p_value: Option<f64>,
 }
 
 pub type JointRefinementStageObjectiveBreakdown = CalibrationLossEvaluation;

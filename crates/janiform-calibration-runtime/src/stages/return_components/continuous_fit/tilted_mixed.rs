@@ -1,6 +1,7 @@
 use std::f64::consts::PI;
 
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
+use janiform_foundations::numeric::log_sum_exp_pair;
 use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use janiform_model_kernels::risk_neutral::NigEsscherTiltDomain;
 
@@ -659,7 +660,7 @@ fn log_density_absolute_error_upper_bound_log(
     let log_tail_error =
         prefactor_log + tail_error_upper_bound.max(f64::MIN_POSITIVE).ln() - log_pi;
 
-    log_sum_exp(log_quadrature_error, log_tail_error)
+    log_sum_exp_pair(log_quadrature_error, log_tail_error)
 }
 
 fn log_density_error_upper_bound_from_logs(
@@ -677,18 +678,6 @@ fn log_density_error_upper_bound_from_logs(
 
     let relative_error = log_relative_error.exp();
     relative_error.ln_1p().max(-(1.0 - relative_error).ln())
-}
-
-fn log_sum_exp(left: f64, right: f64) -> f64 {
-    if !left.is_finite() {
-        return right;
-    }
-    if !right.is_finite() {
-        return left;
-    }
-
-    let maximum = left.max(right);
-    maximum + ((left - maximum).exp() + (right - maximum).exp()).ln()
 }
 
 #[cfg(test)]

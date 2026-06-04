@@ -7,6 +7,7 @@ import pytest
 
 import janiform.calibration.fit._execution as fit_execution_module
 from janiform._workflow_outputs import generate_workflow_run_id
+from janiform.calibration import JaniformFitReport
 from janiform.calibration.fit import JaniformEstimator
 from janiform.calibration.fit._preparation.contracts import FitExecutionConfiguration
 from janiform.calibration.fit._runtime.workflow import NativeFitWorkflowOutput
@@ -32,7 +33,7 @@ def build_full_workflow_model(
     monkeypatch: pytest.MonkeyPatch,
     *,
     run_id: str,
-) -> JaniformModel:
+) -> JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]:
     tick_data_path = _write_tick_data(
         tmp_path / f"{run_id}.csv",
         rows=(
@@ -173,15 +174,28 @@ class _PreparedExecutionHandle:
 
     def serialize_execution_input_json(self) -> str:
         payload: dict[str, Any] = {"request": {"run_id": self._run_id}}
+
         mean_reversion = self._configuration.preparation.mean_reversion
         if mean_reversion is not None:
-            payload["mean_reversion_stage_input"] = {
-                "calibration_grid_kind": "synthetic_daily_close_grid.v1",
-                "calibration_grid_interval_hours": mean_reversion.calibration_grid_interval_hours,
-                "source_observation_count": 0,
-                "coverage_ratio": 0.0,
-                "observations": [],
+            mean_reversion_stage_input: dict[str, Any] = {
+                "grid_candidates": [
+                    {
+                        "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+                        "calibration_grid_interval_hours": (
+                            mean_reversion.calibration_grid_interval_hours
+                        ),
+                        "source_observation_count": 0,
+                        "coverage_ratio": 0.0,
+                        "observations": [],
+                    }
+                ],
             }
+            if mean_reversion.predictive_evidence_alpha is not None:
+                mean_reversion_stage_input["predictive_evidence_alpha"] = (
+                    mean_reversion.predictive_evidence_alpha
+                )
+
+            payload["mean_reversion_stage_input"] = mean_reversion_stage_input
 
         return json.dumps(payload)
 

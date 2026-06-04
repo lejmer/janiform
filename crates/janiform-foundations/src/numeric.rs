@@ -4,6 +4,7 @@ mod bounds;
 mod constants;
 mod domain;
 mod l_moments;
+mod logarithms;
 mod ordering;
 mod samples;
 
@@ -21,6 +22,7 @@ pub use l_moments::{
     bowley_skewness_from_sorted, compute_probability_weighted_moment, l_moment_lambda2_from_sorted,
     l_moment_tau3_from_sorted,
 };
+pub use logarithms::{log_sum_exp, log_sum_exp_pair};
 pub use ordering::{
     compute_finite_median_or_zero, compute_finite_quantile_or_zero, compute_median_f64_or_zero,
     compute_median_i64_or_zero, compute_sorted_median, compute_sorted_quantile,

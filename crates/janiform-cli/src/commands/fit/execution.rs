@@ -51,6 +51,8 @@ pub(crate) fn run_fit_command(
             tick_size: command.tick_size.tick_size,
             overrides: FitPreparationOverrides {
                 mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
+                mean_reversion_predictive_evidence_alpha: command
+                    .mean_reversion_predictive_evidence_alpha,
                 dynamics_search_restart_candidate_budget: command
                     .dynamics_search_restart_candidate_budget,
                 option_refinement_candidate_count: command.option_refinement_candidate_count,

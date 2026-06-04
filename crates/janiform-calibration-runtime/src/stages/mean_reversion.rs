@@ -13,6 +13,7 @@ use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     CalibrationStageSelectedCandidateSource, MeanReversionStageCalibrationGrid,
     MeanReversionStageCandidateDiagnostics, MeanReversionStageDiagnostics,
+    MeanReversionStageGridDiagnostics, MeanReversionStagePredictiveEvidenceDiagnostics,
 };
 use janiform_foundations::numeric::{GOLDEN_RATIO, clamp_to_unit_interval, coverage_ratio};
 use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
@@ -37,6 +38,9 @@ use crate::stages::seasonality::{
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
+mod evidence;
+mod evidence_statistics;
+
 const FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT: usize = 2;
 const PRESSURE_GAIN_REGRESSION_COLUMN_COUNT: usize = 1;
 const FLAT_ANCHOR_MEAN_REVERSION_IDENTIFIABLE_PARAMETER_COUNT: usize = 2;
@@ -55,12 +59,21 @@ const FLAT_ANCHOR_MEAN_REVERSION_REASON: &str =
 const RANDOM_WALK_NULL_REASON: &str = "random_walk_null_baseline.v1";
 const ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON: &str =
     "endogenous_anchor_runtime_projection_required.v1";
-const QUASI_LIKELIHOOD_MODEL_SELECTION_SAMPLE_SUPPORT_REQUIRED_REASON: &str =
-    "gaussian_quasi_likelihood_bic_model_selection_sample_support_required.v1";
-const ENDOGENOUS_MODEL_SELECTION_POLICY: &str =
-    "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1";
 const CALIBRATION_GRID_ALIGNMENT_POLICY: &str =
     "calibration_grid_observation_boundary_alignment.v1";
+const NO_MEAN_REVERSION_GRID_CANDIDATE_REASON: &str = "mean_reversion_grid_candidate_required.v1";
+
+pub(crate) fn default_mean_reversion_predictive_evidence_alpha() -> f64 {
+    0.05
+}
+
+pub(crate) fn mean_reversion_predictive_evidence_alpha_is_valid(
+    predictive_evidence_alpha: f64,
+) -> bool {
+    predictive_evidence_alpha.is_finite()
+        && predictive_evidence_alpha > 0.0
+        && predictive_evidence_alpha <= 1.0
+}
 
 pub(crate) fn mean_reversion_full_model_required_source_observation_count() -> usize {
     // The richest endogenous candidate fits a two-column regression, so the stage needs three
@@ -68,7 +81,7 @@ pub(crate) fn mean_reversion_full_model_required_source_observation_count() -> u
     FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT.saturating_add(1)
 }
 
-fn mean_reversion_pressure_gain_required_source_observation_count() -> usize {
+pub(crate) fn mean_reversion_pressure_gain_required_source_observation_count() -> usize {
     PRESSURE_GAIN_REGRESSION_COLUMN_COUNT.saturating_add(1)
 }
 
@@ -109,16 +122,22 @@ impl MeanReversionStageSeasonalityInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MeanReversionStageExecutionInput {
-    pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
-    pub seasonality_stage_input: Option<MeanReversionStageSeasonalityInput>,
-    pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
-    pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
+pub struct MeanReversionStageGridCandidate {
     pub calibration_grid_kind: String,
     pub calibration_grid_interval_hours: f64,
     pub source_observation_count: usize,
     pub coverage_ratio: f64,
     pub observations: Vec<MeanReversionStageObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeanReversionStageExecutionInput {
+    pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
+    pub seasonality_stage_input: Option<MeanReversionStageSeasonalityInput>,
+    pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
+    pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
+    pub predictive_evidence_alpha: f64,
+    pub grid_candidates: Vec<MeanReversionStageGridCandidate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -265,9 +284,9 @@ pub fn run_mean_reversion_calibration_stage(
             stage_seed_derivation_policy:
                 janiform_calibration_artifacts::CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
             solver_settings,
-            source_observation_count: execution_input.source_observation_count,
-            retained_observation_count: execution_input.observations.len(),
-            coverage_ratio: execution_input.coverage_ratio,
+            source_observation_count: diagnostics.calibration_grid.source_observation_count,
+            retained_observation_count: diagnostics.calibration_grid.retained_observation_count,
+            coverage_ratio: diagnostics.calibration_grid.coverage_ratio,
         }),
         failure: None,
     }
@@ -298,33 +317,160 @@ fn estimate_mean_reversion_fitted_parameters(
     (MeanReversionFittedParameters, MeanReversionStageDiagnostics),
     MeanReversionStageExecutionFailure,
 > {
-    let calibration_grid = MeanReversionStageCalibrationGrid {
-        calibration_grid_kind: execution_input.calibration_grid_kind.clone(),
-        calibration_grid_interval_hours: execution_input.calibration_grid_interval_hours,
-        source_observation_count: execution_input.source_observation_count,
-        retained_observation_count: execution_input.observations.len(),
-        coverage_ratio: execution_input.coverage_ratio,
+    if execution_input.grid_candidates.is_empty() {
+        return Err(MeanReversionStageExecutionFailure::InvalidRunSpec {
+            error_message: "mean-reversion stage requires at least one calibration grid candidate"
+                .to_string(),
+        });
+    }
+
+    if !mean_reversion_predictive_evidence_alpha_is_valid(execution_input.predictive_evidence_alpha)
+    {
+        return Err(MeanReversionStageExecutionFailure::InvalidRunSpec {
+            error_message: format!(
+                "mean-reversion predictive_evidence_alpha must be finite and in (0, 1], found {}",
+                execution_input.predictive_evidence_alpha
+            ),
+        });
+    }
+
+    let mut grid_evaluations = Vec::with_capacity(execution_input.grid_candidates.len());
+
+    for grid_candidate in &execution_input.grid_candidates {
+        grid_evaluations.push(evaluate_mean_reversion_grid_candidate(
+            calendar_registry,
+            execution_input,
+            solver_settings,
+            grid_candidate,
+        )?);
+    }
+
+    let Some(selection) = evidence::select_mean_reversion_candidate(
+        grid_evaluations.as_mut_slice(),
+        solver_settings,
+        execution_input.predictive_evidence_alpha,
+    )?
+    else {
+        return zero_kappa_endogenous_fit_with_grid_evaluations(
+            grid_evaluations,
+            NO_MEAN_REVERSION_GRID_CANDIDATE_REASON,
+        );
     };
 
-    let candidate_family_support = mean_reversion_candidate_family_support(execution_input);
+    let Some(selected_grid) = grid_evaluations.get(selection.grid_index) else {
+        return Err(MeanReversionStageExecutionFailure::InvalidRunSpec {
+            error_message: "mean-reversion selection referenced a missing evaluated grid"
+                .to_string(),
+        });
+    };
+
+    let Some(selected_candidate) = selected_grid
+        .evaluated_candidates
+        .get(selection.candidate_index)
+    else {
+        return Err(MeanReversionStageExecutionFailure::InvalidRunSpec {
+            error_message: "mean-reversion selection referenced a missing candidate".to_string(),
+        });
+    };
+
+    let fitted_parameters = MeanReversionFittedParameters::try_new(
+        selected_candidate.kappa,
+        selected_candidate.anchor_model.clone(),
+    )
+    .map_err(
+        |source| MeanReversionStageExecutionFailure::InvalidRunSpec {
+            error_message: format!("selected mean-reversion candidate is invalid: {source}"),
+        },
+    )?;
+
+    let selected_core_expected_increments = selected_grid
+        .calibration_context
+        .as_ref()
+        .map(|context| context.core_expected_increments.as_slice())
+        .unwrap_or(&[]);
+
+    Ok((
+        fitted_parameters,
+        MeanReversionStageDiagnostics {
+            selected_candidate_family: selected_candidate.candidate_family.to_string(),
+            calibration_grid: selected_grid.calibration_grid.clone(),
+            anchor_parameter_estimates: selected_candidate.anchor_model.clone(),
+            anchor_origin_level: selected_candidate.anchor_origin_level,
+            phi_reference: selected_candidate.phi_reference,
+            kappa: selected_candidate.kappa,
+            residual_sum_of_squares: selected_candidate.residual_sum_of_squares,
+            quasi_log_likelihood: finite_metric_or_none(selected_candidate.quasi_log_likelihood),
+            information_criterion_bic: finite_metric_or_none(
+                selected_candidate.information_criterion_bic,
+            ),
+            model_selection_policy: selection.model_selection_policy.to_string(),
+            deviation_sample_count: selected_candidate.deviations.len(),
+            regression_pair_count: selected_candidate.residuals.len(),
+            least_squares_rank: selected_candidate.least_squares_rank,
+            evaluated_candidates: selected_grid
+                .evaluated_candidates
+                .iter()
+                .map(|candidate| candidate.to_diagnostics(selected_core_expected_increments))
+                .collect(),
+            evaluated_grids: grid_evaluations
+                .iter()
+                .map(MeanReversionGridCandidateEvaluation::to_diagnostics)
+                .collect(),
+            stage_decision_reason: selected_mean_reversion_stage_decision_reason(
+                selected_candidate,
+                &selection,
+            ),
+        },
+    ))
+}
+
+fn selected_mean_reversion_stage_decision_reason(
+    selected_candidate: &MeanReversionStageCandidateEvaluation,
+    selection: &evidence::MeanReversionCandidateSelection,
+) -> String {
+    if selected_candidate.stage_decision_reason == ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON {
+        return selected_candidate.stage_decision_reason.clone();
+    }
+
+    format!(
+        "{}|{}",
+        selected_candidate.stage_decision_reason, selection.stage_decision_reason
+    )
+}
+
+fn evaluate_mean_reversion_grid_candidate(
+    calendar_registry: &ExchangeCalendarRegistry,
+    execution_input: &MeanReversionStageExecutionInput,
+    solver_settings: &CalibrationOptimizerSettings,
+    grid_candidate: &MeanReversionStageGridCandidate,
+) -> Result<MeanReversionGridCandidateEvaluation, MeanReversionStageExecutionFailure> {
+    let calibration_grid = MeanReversionStageCalibrationGrid {
+        calibration_grid_kind: grid_candidate.calibration_grid_kind.clone(),
+        calibration_grid_interval_hours: grid_candidate.calibration_grid_interval_hours,
+        source_observation_count: grid_candidate.source_observation_count,
+        retained_observation_count: grid_candidate.observations.len(),
+        coverage_ratio: grid_candidate.coverage_ratio,
+    };
+
+    let candidate_family_support = mean_reversion_candidate_family_support(grid_candidate);
     if !candidate_family_support.random_walk_null {
-        return Ok(zero_kappa_endogenous_fit(
+        return Ok(runtime_projection_required_grid_evaluation(
             calibration_grid,
-            ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON,
         ));
     }
 
-    let observation_levels: Vec<f64> = execution_input
+    let observation_levels: Vec<f64> = grid_candidate
         .observations
         .iter()
         .map(|observation| observation.observed_log_price)
         .collect();
 
-    estimate_endogenous_mean_reversion_fitted_parameters(
+    estimate_endogenous_mean_reversion_grid_candidate(
         calendar_registry,
         execution_input,
         solver_settings,
         calibration_grid,
+        grid_candidate,
         observation_levels.as_slice(),
         candidate_family_support,
     )
@@ -345,46 +491,47 @@ impl MeanReversionCandidateFamilySupport {
 }
 
 fn mean_reversion_candidate_family_support(
-    execution_input: &MeanReversionStageExecutionInput,
+    grid_candidate: &MeanReversionStageGridCandidate,
 ) -> MeanReversionCandidateFamilySupport {
     MeanReversionCandidateFamilySupport {
         full_pressure_to_level: mean_reversion_sample_supports_required_source_observations(
-            execution_input,
+            grid_candidate,
             mean_reversion_full_model_required_source_observation_count(),
         ),
         pressure_to_level_without_mean_reversion:
             mean_reversion_sample_supports_required_source_observations(
-                execution_input,
+                grid_candidate,
                 mean_reversion_pressure_gain_required_source_observation_count(),
             ),
         flat_anchor_mean_reversion: mean_reversion_sample_supports_required_source_observations(
-            execution_input,
+            grid_candidate,
             mean_reversion_flat_anchor_required_source_observation_count(),
         ),
         random_walk_null: mean_reversion_sample_supports_required_source_observations(
-            execution_input,
+            grid_candidate,
             mean_reversion_pressure_gain_required_source_observation_count(),
         ),
     }
 }
 
 fn mean_reversion_sample_supports_required_source_observations(
-    execution_input: &MeanReversionStageExecutionInput,
+    grid_candidate: &MeanReversionStageGridCandidate,
     required_source_observation_count: usize,
 ) -> bool {
-    if !execution_input.coverage_ratio.is_finite() {
+    if !grid_candidate.coverage_ratio.is_finite() {
         return false;
     }
 
-    let retained_observation_count = execution_input.observations.len();
+    let retained_observation_count = grid_candidate.observations.len();
+
     let required_minimum_coverage_ratio = coverage_ratio(
         required_source_observation_count,
         retained_observation_count,
     );
 
     retained_observation_count >= required_source_observation_count
-        && execution_input.source_observation_count >= required_source_observation_count
-        && execution_input.coverage_ratio >= required_minimum_coverage_ratio
+        && grid_candidate.source_observation_count >= required_source_observation_count
+        && grid_candidate.coverage_ratio >= required_minimum_coverage_ratio
 }
 
 #[derive(Debug, Clone)]
@@ -416,17 +563,18 @@ struct MeanReversionStageCandidateEvaluation {
     boundary_anchor_values: Vec<f64>,
     deviations: Vec<f64>,
     residuals: Vec<f64>,
+    predictive_evidence: Option<MeanReversionStagePredictiveEvidenceDiagnostics>,
     stage_decision_reason: String,
 }
 
 impl MeanReversionStageCandidateEvaluation {
-    fn into_diagnostics(
-        self,
+    fn to_diagnostics(
+        &self,
         core_expected_increments: &[f64],
     ) -> MeanReversionStageCandidateDiagnostics {
         MeanReversionStageCandidateDiagnostics {
             candidate_family: self.candidate_family.to_string(),
-            anchor_model: self.anchor_model,
+            anchor_model: self.anchor_model.clone(),
             anchor_origin_level: self.anchor_origin_level,
             phi_reference: self.phi_reference,
             kappa: self.kappa,
@@ -438,30 +586,59 @@ impl MeanReversionStageCandidateEvaluation {
             deviation_sample_count: self.deviations.len(),
             regression_pair_count: self.residuals.len(),
             core_expected_increments: core_expected_increments.to_vec(),
-            pressure_state_path: self.pressure_state_path,
-            boundary_anchor_values: self.boundary_anchor_values,
-            deviations: self.deviations,
-            residuals: self.residuals,
-            stage_decision_reason: self.stage_decision_reason,
+            pressure_state_path: self.pressure_state_path.clone(),
+            boundary_anchor_values: self.boundary_anchor_values.clone(),
+            deviations: self.deviations.clone(),
+            residuals: self.residuals.clone(),
+            predictive_evidence: self.predictive_evidence.clone(),
+            stage_decision_reason: self.stage_decision_reason.clone(),
         }
     }
 }
 
-fn estimate_endogenous_mean_reversion_fitted_parameters(
+#[derive(Debug, Clone)]
+struct MeanReversionGridCandidateEvaluation {
+    calibration_grid: MeanReversionStageCalibrationGrid,
+    observation_levels: Vec<f64>,
+    calibration_context: Option<EndogenousMeanReversionCalibrationContext>,
+    evaluated_candidates: Vec<MeanReversionStageCandidateEvaluation>,
+    stage_decision_reason: String,
+}
+
+impl MeanReversionGridCandidateEvaluation {
+    fn to_diagnostics(&self) -> MeanReversionStageGridDiagnostics {
+        let core_expected_increments = self
+            .calibration_context
+            .as_ref()
+            .map(|context| context.core_expected_increments.as_slice())
+            .unwrap_or(&[]);
+
+        MeanReversionStageGridDiagnostics {
+            calibration_grid: self.calibration_grid.clone(),
+            evaluated_candidates: self
+                .evaluated_candidates
+                .iter()
+                .map(|candidate| candidate.to_diagnostics(core_expected_increments))
+                .collect(),
+            stage_decision_reason: self.stage_decision_reason.clone(),
+        }
+    }
+}
+
+fn estimate_endogenous_mean_reversion_grid_candidate(
     calendar_registry: &ExchangeCalendarRegistry,
     execution_input: &MeanReversionStageExecutionInput,
     solver_settings: &CalibrationOptimizerSettings,
     calibration_grid: MeanReversionStageCalibrationGrid,
+    grid_candidate: &MeanReversionStageGridCandidate,
     observation_levels: &[f64],
     candidate_family_support: MeanReversionCandidateFamilySupport,
-) -> Result<
-    (MeanReversionFittedParameters, MeanReversionStageDiagnostics),
-    MeanReversionStageExecutionFailure,
-> {
+) -> Result<MeanReversionGridCandidateEvaluation, MeanReversionStageExecutionFailure> {
     let calibration_context = if candidate_family_support.requires_endogenous_context() {
         Some(build_endogenous_mean_reversion_calibration_context(
             calendar_registry,
             execution_input,
+            grid_candidate,
             observation_levels,
         )?)
     } else {
@@ -505,70 +682,19 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
         calibration_grid.calibration_grid_interval_hours,
     ));
 
-    let Some(selected_candidate) =
-        select_best_admissible_candidate_by_information_criterion(evaluated_candidates.as_slice())
-    else {
-        return Ok(zero_kappa_endogenous_fit_with_evaluated_candidates(
-            calibration_grid,
-            QUASI_LIKELIHOOD_MODEL_SELECTION_SAMPLE_SUPPORT_REQUIRED_REASON,
-            evaluated_candidates,
-            calibration_context
-                .as_ref()
-                .map(|context| context.core_expected_increments.as_slice())
-                .unwrap_or(&[]),
-        ));
-    };
-
-    let fitted_parameters = MeanReversionFittedParameters::try_new(
-        selected_candidate.kappa,
-        selected_candidate.anchor_model.clone(),
-    )
-    .map_err(
-        |source| MeanReversionStageExecutionFailure::InvalidRunSpec {
-            error_message: format!("selected mean-reversion candidate is invalid: {source}"),
-        },
-    )?;
-
-    Ok((
-        fitted_parameters,
-        MeanReversionStageDiagnostics {
-            selected_candidate_family: selected_candidate.candidate_family.to_string(),
-            calibration_grid,
-            anchor_parameter_estimates: selected_candidate.anchor_model.clone(),
-            anchor_origin_level: selected_candidate.anchor_origin_level,
-            phi_reference: selected_candidate.phi_reference,
-            kappa: selected_candidate.kappa,
-            residual_sum_of_squares: selected_candidate.residual_sum_of_squares,
-            quasi_log_likelihood: finite_metric_or_none(selected_candidate.quasi_log_likelihood),
-            information_criterion_bic: finite_metric_or_none(
-                selected_candidate.information_criterion_bic,
-            ),
-            model_selection_policy: ENDOGENOUS_MODEL_SELECTION_POLICY.to_string(),
-            deviation_sample_count: selected_candidate.deviations.len(),
-            regression_pair_count: selected_candidate.residuals.len(),
-            least_squares_rank: selected_candidate.least_squares_rank,
-            evaluated_candidates: evaluated_candidates
-                .into_iter()
-                .map(|candidate| {
-                    let core_expected_increments = calibration_context
-                        .as_ref()
-                        .map(|context| context.core_expected_increments.as_slice())
-                        .unwrap_or(&[]);
-
-                    candidate.into_diagnostics(core_expected_increments)
-                })
-                .collect(),
-            stage_decision_reason: format!(
-                "{}|{}",
-                selected_candidate.stage_decision_reason, ENDOGENOUS_MODEL_SELECTION_POLICY
-            ),
-        },
-    ))
+    Ok(MeanReversionGridCandidateEvaluation {
+        calibration_grid,
+        observation_levels: observation_levels.to_vec(),
+        calibration_context,
+        evaluated_candidates,
+        stage_decision_reason: "mean_reversion_grid_candidate_evaluated.v1".to_string(),
+    })
 }
 
 fn build_endogenous_mean_reversion_calibration_context(
     calendar_registry: &ExchangeCalendarRegistry,
     execution_input: &MeanReversionStageExecutionInput,
+    grid_candidate: &MeanReversionStageGridCandidate,
     observation_levels: &[f64],
 ) -> Result<EndogenousMeanReversionCalibrationContext, MeanReversionStageExecutionFailure> {
     let Some(seasonality_input) = execution_input.seasonality_stage_input.as_ref() else {
@@ -585,9 +711,9 @@ fn build_endogenous_mean_reversion_calibration_context(
     };
 
     let interval_duration_nanos =
-        derive_observation_interval_duration_nanos(execution_input.observations.as_slice())?;
+        derive_observation_interval_duration_nanos(grid_candidate.observations.as_slice())?;
 
-    let Some(first_observation) = execution_input.observations.first() else {
+    let Some(first_observation) = grid_candidate.observations.first() else {
         return Err(
             MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
                 error_message:
@@ -597,7 +723,7 @@ fn build_endogenous_mean_reversion_calibration_context(
         );
     };
 
-    let Some(last_observation) = execution_input.observations.last() else {
+    let Some(last_observation) = grid_candidate.observations.last() else {
         return Err(
             MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
                 error_message:
@@ -609,11 +735,13 @@ fn build_endogenous_mean_reversion_calibration_context(
 
     let range_start_utc =
         DateTime::<Utc>::from_timestamp_nanos(first_observation.observation_timestamp_utc_nanos);
+
     let range_end_utc =
         DateTime::<Utc>::from_timestamp_nanos(last_observation.observation_timestamp_utc_nanos);
 
     let runtime_hourly_seasonality_range_start_utc_nanos =
         floor_to_hour_utc_nanos(first_observation.observation_timestamp_utc_nanos);
+
     let runtime_hourly_seasonality_range_end_utc_nanos =
         ceil_to_hour_utc_nanos(last_observation.observation_timestamp_utc_nanos);
 
@@ -635,7 +763,7 @@ fn build_endogenous_mean_reversion_calibration_context(
             MeanReversionStageExecutionFailure::HourlyFactorMaterializationFailed { error_message }
         })?;
 
-    let interval_count = execution_input.observations.len().saturating_sub(1);
+    let interval_count = grid_candidate.observations.len().saturating_sub(1);
 
     let surprise_deterministic_time_multiplier_by_interval_index =
         build_surprise_multipliers_for_interval_grid(
@@ -721,9 +849,19 @@ fn build_endogenous_mean_reversion_calibration_context(
         )
         .collect();
 
+    let Some(initial_observation_level) = observation_levels.first().copied() else {
+        return Err(
+            MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
+                error_message:
+                    "mean-reversion endogenous calibration requires at least one observation level"
+                        .to_string(),
+            },
+        );
+    };
+
     let anchor_materialization = materialize_endogenous_anchor_path(
         CALIBRATION_GRID_ALIGNMENT_POLICY,
-        observation_levels[0],
+        initial_observation_level,
         ExponentialAffineTransformEquationSpecification::new(
             hawkes_payload.fitted_parameters.kernel_parameters,
             return_components_payload
@@ -1032,6 +1170,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
         boundary_anchor_values,
         deviations,
         residuals,
+        predictive_evidence: None,
         stage_decision_reason: stage_decision_reason_with_boundary_flags(
             FLAT_ANCHOR_MEAN_REVERSION_REASON,
             None,
@@ -1073,28 +1212,9 @@ fn evaluate_random_walk_null_candidate(
         boundary_anchor_values: vec![0.0; observation_levels.len()],
         deviations: observation_levels.to_vec(),
         residuals,
+        predictive_evidence: None,
         stage_decision_reason: RANDOM_WALK_NULL_REASON.to_string(),
     }
-}
-
-fn select_best_admissible_candidate_by_information_criterion(
-    evaluated_candidates: &[MeanReversionStageCandidateEvaluation],
-) -> Option<MeanReversionStageCandidateEvaluation> {
-    let mut admissible_candidates = evaluated_candidates
-        .iter()
-        .filter(|candidate| candidate_supports_quasi_likelihood_model_selection(candidate));
-
-    let first_candidate = admissible_candidates.next()?.clone();
-
-    Some(
-        admissible_candidates.fold(first_candidate, |best_candidate, candidate| {
-            if candidate.information_criterion_bic < best_candidate.information_criterion_bic {
-                candidate.clone()
-            } else {
-                best_candidate
-            }
-        }),
-    )
 }
 
 fn candidate_supports_quasi_likelihood_model_selection(
@@ -1389,6 +1509,7 @@ fn assemble_candidate_evaluation(
         boundary_anchor_values,
         deviations,
         residuals,
+        predictive_evidence: None,
         stage_decision_reason: stage_decision_reason_with_boundary_flags(
             base_stage_decision_reason,
             Some(pressure_persistence_per_reference_interval),
@@ -1397,20 +1518,14 @@ fn assemble_candidate_evaluation(
     })
 }
 
-fn zero_kappa_endogenous_fit(
+fn runtime_projection_required_grid_evaluation(
     calibration_grid: MeanReversionStageCalibrationGrid,
-    stage_decision_reason: &str,
-) -> (MeanReversionFittedParameters, MeanReversionStageDiagnostics) {
+) -> MeanReversionGridCandidateEvaluation {
     let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(
         calibration_grid.calibration_grid_interval_hours,
         0.0,
         0.0,
     );
-
-    let fitted_parameters = MeanReversionFittedParameters {
-        kappa: 0.0,
-        anchor_model: anchor_model.clone(),
-    };
 
     let fallback_candidate = MeanReversionStageCandidateEvaluation {
         candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY,
@@ -1427,37 +1542,37 @@ fn zero_kappa_endogenous_fit(
         boundary_anchor_values: Vec::new(),
         deviations: Vec::new(),
         residuals: Vec::new(),
-        stage_decision_reason: stage_decision_reason.to_string(),
+        predictive_evidence: None,
+        stage_decision_reason: ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON.to_string(),
     };
 
-    (
-        fitted_parameters,
-        MeanReversionStageDiagnostics {
-            selected_candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY.to_string(),
-            calibration_grid,
-            anchor_parameter_estimates: anchor_model,
-            anchor_origin_level: None,
-            phi_reference: 1.0,
-            kappa: 0.0,
-            residual_sum_of_squares: 0.0,
-            quasi_log_likelihood: None,
-            information_criterion_bic: None,
-            model_selection_policy: ENDOGENOUS_MODEL_SELECTION_POLICY.to_string(),
-            deviation_sample_count: 0,
-            regression_pair_count: 0,
-            least_squares_rank: 0,
-            evaluated_candidates: vec![fallback_candidate.into_diagnostics(&[])],
-            stage_decision_reason: stage_decision_reason.to_string(),
-        },
-    )
+    MeanReversionGridCandidateEvaluation {
+        calibration_grid,
+        observation_levels: Vec::new(),
+        calibration_context: None,
+        evaluated_candidates: vec![fallback_candidate],
+        stage_decision_reason: ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON.to_string(),
+    }
 }
 
-fn zero_kappa_endogenous_fit_with_evaluated_candidates(
-    calibration_grid: MeanReversionStageCalibrationGrid,
+fn zero_kappa_endogenous_fit_with_grid_evaluations(
+    grid_evaluations: Vec<MeanReversionGridCandidateEvaluation>,
     stage_decision_reason: &str,
-    evaluated_candidates: Vec<MeanReversionStageCandidateEvaluation>,
-    core_expected_increments: &[f64],
-) -> (MeanReversionFittedParameters, MeanReversionStageDiagnostics) {
+) -> Result<
+    (MeanReversionFittedParameters, MeanReversionStageDiagnostics),
+    MeanReversionStageExecutionFailure,
+> {
+    let Some(calibration_grid) = grid_evaluations
+        .first()
+        .map(|grid_evaluation| grid_evaluation.calibration_grid.clone())
+    else {
+        return Err(MeanReversionStageExecutionFailure::InvalidRunSpec {
+            error_message:
+                "mean-reversion zero-kappa fallback requires at least one evaluated grid"
+                    .to_string(),
+        });
+    };
+
     let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(
         calibration_grid.calibration_grid_interval_hours,
         0.0,
@@ -1469,11 +1584,11 @@ fn zero_kappa_endogenous_fit_with_evaluated_candidates(
         anchor_model: anchor_model.clone(),
     };
 
-    (
+    Ok((
         fitted_parameters,
         MeanReversionStageDiagnostics {
             selected_candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY.to_string(),
-            calibration_grid,
+            calibration_grid: calibration_grid.clone(),
             anchor_parameter_estimates: anchor_model,
             anchor_origin_level: None,
             phi_reference: 1.0,
@@ -1481,17 +1596,19 @@ fn zero_kappa_endogenous_fit_with_evaluated_candidates(
             residual_sum_of_squares: 0.0,
             quasi_log_likelihood: None,
             information_criterion_bic: None,
-            model_selection_policy: ENDOGENOUS_MODEL_SELECTION_POLICY.to_string(),
+            model_selection_policy: evidence::PREDICTIVE_EVIDENCE_MODEL_SELECTION_POLICY
+                .to_string(),
             deviation_sample_count: 0,
             regression_pair_count: 0,
             least_squares_rank: 0,
-            evaluated_candidates: evaluated_candidates
-                .into_iter()
-                .map(|candidate| candidate.into_diagnostics(core_expected_increments))
+            evaluated_candidates: Vec::new(),
+            evaluated_grids: grid_evaluations
+                .iter()
+                .map(MeanReversionGridCandidateEvaluation::to_diagnostics)
                 .collect(),
             stage_decision_reason: stage_decision_reason.to_string(),
         },
-    )
+    ))
 }
 
 fn derive_observation_interval_duration_nanos(
@@ -1500,8 +1617,12 @@ fn derive_observation_interval_duration_nanos(
     let mut interval_duration_nanos: Option<i64> = None;
 
     for observation_window in observations.windows(2) {
-        let current_timestamp = observation_window[0].observation_timestamp_utc_nanos;
-        let next_timestamp = observation_window[1].observation_timestamp_utc_nanos;
+        let [current_observation, next_observation] = observation_window else {
+            continue;
+        };
+
+        let current_timestamp = current_observation.observation_timestamp_utc_nanos;
+        let next_timestamp = next_observation.observation_timestamp_utc_nanos;
 
         let observed_delta_nanos = next_timestamp.saturating_sub(current_timestamp);
         if observed_delta_nanos <= 0 {
@@ -1600,8 +1721,8 @@ fn solve_two_column_least_squares(
     let response_vector = Vector2::new(first_response_inner_product, second_response_inner_product);
     if let Some(coefficients) = normal_matrix.lu().solve(&response_vector) {
         return MeanReversionLeastSquaresSolution {
-            first_coefficient: coefficients[0],
-            second_coefficient: coefficients[1],
+            first_coefficient: coefficients.x,
+            second_coefficient: coefficients.y,
             rank: 2,
         };
     }
