@@ -5209,7 +5209,7 @@
 | [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataworkflowscope) | enum | 3 members |
-| [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-calibrationmeanreversionconfiguration) | contract_model | 1 fields |
+| [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-calibrationmeanreversionconfiguration) | contract_model | 2 fields |
 | [`CalibrationOptionQuoteInputPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationoptionquoteinputpolicy) | enum | 3 members |
 | [`CalibrationOptionSurfaceColumnMapping`](#python-api-symbol-janiform-calibration-market-data-calibrationoptionsurfacecolumnmapping) | contract_model | 8 fields |
 | [`CalibrationSessionConfigurationInput`](#python-api-symbol-janiform-calibration-market-data-calibrationsessionconfigurationinput) | contract_model | 3 fields |
@@ -5421,8 +5421,8 @@
 ### `CalibrationMeanReversionConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'`
-- Fields: `calibration_grid_interval_hours`
+- Signature: `(calibration_grid_interval_hours: 'Optional[float]' = None, predictive_evidence_alpha: 'Optional[float]' = None) -> 'None'`
+- Fields: `calibration_grid_interval_hours`, `predictive_evidence_alpha`
 
 | Method | Signature |
 |--------|-----------|
@@ -5729,7 +5729,7 @@
 | [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataworkflowscope) | enum | 3 members |
-| [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmeanreversionconfiguration) | contract_model | 1 fields |
+| [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmeanreversionconfiguration) | contract_model | 2 fields |
 | [`CalibrationOptionQuoteInputPolicy`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationoptionquoteinputpolicy) | enum | 3 members |
 | [`CalibrationOptionSurfaceColumnMapping`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationoptionsurfacecolumnmapping) | contract_model | 8 fields |
 | [`CalibrationSessionConfigurationInput`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationsessionconfigurationinput) | contract_model | 3 fields |
@@ -5930,8 +5930,8 @@
 ### `CalibrationMeanReversionConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'`
-- Fields: `calibration_grid_interval_hours`
+- Signature: `(calibration_grid_interval_hours: 'Optional[float]' = None, predictive_evidence_alpha: 'Optional[float]' = None) -> 'None'`
+- Fields: `calibration_grid_interval_hours`, `predictive_evidence_alpha`
 
 | Method | Signature |
 |--------|-----------|
