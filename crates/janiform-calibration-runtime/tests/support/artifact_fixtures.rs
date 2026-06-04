@@ -13,13 +13,13 @@ use janiform_calibration_artifacts::{
     JointRefinementStageParameterArtifactInput, JointRefinementStageRestartDiagnostics,
     JointRefinementStageRuntimeProfile, LongVarianceStageDiagnostics,
     LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
-    MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
-    NewsShocksStageDiagnostics, NewsShocksStageParameterArtifactInput,
-    ReturnBackfitStageDiagnostics, ReturnBackfitStageParameterArtifactInput,
-    ReturnBackfitStageVarianceBudgetDiagnostic, ReturnComponentsStageFittedParameters,
-    ReturnComponentsStageParameterArtifactInput, SeasonalityStageParameterArtifactInput,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
-    build_calibration_stage_parameter_artifact, calibration_stage_token,
+    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
+    MeanReversionStageParameterArtifactInput, NewsShocksStageDiagnostics,
+    NewsShocksStageParameterArtifactInput, ReturnBackfitStageDiagnostics,
+    ReturnBackfitStageParameterArtifactInput, ReturnBackfitStageVarianceBudgetDiagnostic,
+    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
+    SeasonalityStageParameterArtifactInput, SurpriseNewsDeterministicIntensityProfile,
+    TickGridObservationModel, build_calibration_stage_parameter_artifact, calibration_stage_token,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::KnownNewsArrivalConfiguration;
@@ -535,15 +535,17 @@ fn regression_news_process_configuration() -> NewsProcessConfiguration {
 fn regression_mean_reversion_diagnostics(
     fitted_parameters: &MeanReversionFittedParameters,
 ) -> MeanReversionStageDiagnostics {
+    let calibration_grid = MeanReversionStageCalibrationGrid {
+        calibration_grid_kind: "artifact_regression_fixture.v1".to_string(),
+        calibration_grid_interval_hours: 1.0,
+        source_observation_count: 0,
+        retained_observation_count: 0,
+        coverage_ratio: 0.0,
+    };
+
     MeanReversionStageDiagnostics {
         selected_candidate_family: "artifact_regression_fixture".to_string(),
-        calibration_grid: MeanReversionStageCalibrationGrid {
-            calibration_grid_kind: "artifact_regression_fixture.v1".to_string(),
-            calibration_grid_interval_hours: 1.0,
-            source_observation_count: 0,
-            retained_observation_count: 0,
-            coverage_ratio: 0.0,
-        },
+        calibration_grid: calibration_grid.clone(),
         anchor_parameter_estimates: fitted_parameters.anchor_model.clone(),
         anchor_origin_level: None,
         phi_reference: 1.0,
@@ -556,6 +558,11 @@ fn regression_mean_reversion_diagnostics(
         regression_pair_count: 0,
         least_squares_rank: 0,
         evaluated_candidates: Vec::new(),
+        evaluated_grids: vec![MeanReversionStageGridDiagnostics {
+            calibration_grid,
+            evaluated_candidates: Vec::new(),
+            stage_decision_reason: "artifact regression fixture".to_string(),
+        }],
         stage_decision_reason: "artifact regression fixture".to_string(),
     }
 }
